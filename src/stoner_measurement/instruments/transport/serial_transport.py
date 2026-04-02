@@ -18,11 +18,18 @@ if TYPE_CHECKING:
 class SerialTransport(BaseTransport):
     """Serial-port transport using pyserial.
 
+    The default parameters match the most common factory settings found on
+    scientific instruments (Keithley, Agilent/Keysight, Oxford Instruments,
+    Lakeshore, Stanford Research Systems, etc.): **9600 baud, 8 data bits,
+    1 stop bit, no parity, no flow control**.  Adjust when an instrument's
+    manual specifies different values.
+
     Attributes:
         port (str):
             System device name (e.g. ``"/dev/ttyUSB0"`` or ``"COM3"``).
         baud_rate (int):
-            Baud rate in bits per second.  Common values: 9600, 19200, 115200.
+            Baud rate in bits per second.  Common values: 9600, 19200,
+            57600, 115200.  Defaults to ``9600``.
         data_bits (int):
             Number of data bits per character (5–8).  Defaults to ``8``.
         stop_bits (float):
@@ -30,6 +37,10 @@ class SerialTransport(BaseTransport):
         parity (str):
             Parity mode: ``"N"`` (none), ``"E"`` (even), ``"O"`` (odd),
             ``"M"`` (mark), or ``"S"`` (space).  Defaults to ``"N"``.
+        xonxoff (bool):
+            Enable software (XON/XOFF) flow control.  Defaults to ``False``.
+        rtscts (bool):
+            Enable hardware (RTS/CTS) flow control.  Defaults to ``False``.
         timeout (float):
             Read timeout in seconds.  Defaults to ``2.0``.
 
@@ -40,6 +51,10 @@ class SerialTransport(BaseTransport):
         '/dev/ttyUSB0'
         >>> t.baud_rate
         9600
+        >>> t.xonxoff
+        False
+        >>> t.rtscts
+        False
     """
 
     def __init__(
@@ -49,9 +64,16 @@ class SerialTransport(BaseTransport):
         data_bits: int = 8,
         stop_bits: float = 1,
         parity: str = "N",
+        xonxoff: bool = False,
+        rtscts: bool = False,
         timeout: float = 2.0,
     ) -> None:
         """Initialise the serial transport.
+
+        The default values match the most common factory settings used by
+        scientific instruments: 9600 baud, 8 data bits, 1 stop bit, no parity,
+        and no flow control.  Override only when the instrument manual specifies
+        different values.
 
         Args:
             port (str):
@@ -67,6 +89,12 @@ class SerialTransport(BaseTransport):
             parity (str):
                 Parity mode (``"N"``, ``"E"``, ``"O"``, ``"M"``, ``"S"``).
                 Defaults to ``"N"``.
+            xonxoff (bool):
+                Enable software (XON/XOFF) flow control.  Defaults to
+                ``False``.
+            rtscts (bool):
+                Enable hardware (RTS/CTS) flow control.  Defaults to
+                ``False``.
             timeout (float):
                 Read timeout in seconds.  Defaults to ``2.0``.
 
@@ -88,6 +116,8 @@ class SerialTransport(BaseTransport):
         self.data_bits = data_bits
         self.stop_bits = stop_bits
         self.parity = parity
+        self.xonxoff = xonxoff
+        self.rtscts = rtscts
         self._serial: _serial_module.Serial | None = None
 
     def open(self) -> None:
@@ -106,6 +136,8 @@ class SerialTransport(BaseTransport):
                 bytesize=self.data_bits,
                 stopbits=self.stop_bits,
                 parity=self.parity,
+                xonxoff=self.xonxoff,
+                rtscts=self.rtscts,
                 timeout=self._timeout,
             )
             self._is_open = True
