@@ -9,6 +9,7 @@ instrument by holding references to a :class:`BaseTransport` and a
 
 from __future__ import annotations
 
+from abc import ABC
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from stoner_measurement.instruments.transport.base import BaseTransport
 
 
-class BaseInstrument:
+class BaseInstrument(ABC):
     """Base class for all instrument drivers.
 
     Uses a composition pattern: each instrument instance holds a *transport*

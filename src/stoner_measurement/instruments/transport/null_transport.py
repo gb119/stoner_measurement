@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from collections import deque
 
-
 from stoner_measurement.instruments.transport.base import BaseTransport
 
 

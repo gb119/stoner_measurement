@@ -61,7 +61,7 @@ class GpibTransport(BaseTransport):
                 If :mod:`pyvisa` is not installed.
         """
         try:
-            import pyvisa  # noqa: F401
+            import pyvisa as _pyvisa  # noqa: F401
         except ImportError as exc:
             raise ImportError(
                 "pyvisa is required for GpibTransport. "

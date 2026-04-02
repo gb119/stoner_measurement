@@ -75,7 +75,7 @@ class SerialTransport(BaseTransport):
                 If :mod:`serial` (pyserial) is not installed.
         """
         try:
-            import serial  # noqa: F401
+            import serial as _serial  # noqa: F401
         except ImportError as exc:
             raise ImportError(
                 "pyserial is required for SerialTransport. "

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import socket
 
-
 from stoner_measurement.instruments.transport.base import BaseTransport
 
 
