@@ -60,6 +60,8 @@ class TestDummyPlugin:
         plugin = DummyPlugin()
         tabs = plugin.config_tabs()
         titles = [t for t, _ in tabs]
+        # Tab titles use an en-dash (\u2013) as the separator, matching the
+        # implementation in DummyPlugin.config_tabs().
         assert titles == ["Dummy \u2013 Settings", "Dummy \u2013 About"]
 
     def test_config_tabs_widgets_are_qwidgets(self, qapp):

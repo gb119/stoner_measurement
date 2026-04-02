@@ -105,13 +105,19 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
-            >>> plugin = DummyPlugin()
+            >>> # Use a minimal plugin to demonstrate the BasePlugin default behaviour.
+            >>> from stoner_measurement.plugins.base_plugin import BasePlugin
+            >>> from typing import Any, Generator
+            >>> class _Minimal(BasePlugin):
+            ...     @property
+            ...     def name(self): return "Minimal"
+            ...     def execute(self, parameters: dict[str, Any]) -> Generator: yield from []
+            >>> plugin = _Minimal()
             >>> tabs = plugin.config_tabs()
             >>> len(tabs)
             1
             >>> tabs[0][0]
-            'Dummy'
+            'Minimal'
         """
         return [(self.name, self.config_widget(parent=parent))]
 

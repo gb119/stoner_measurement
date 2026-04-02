@@ -124,8 +124,8 @@ class ConfigPanel(QWidget):
             >>> panel = ConfigPanel(plugin_manager=pm)
             >>> plugin = DummyPlugin()
             >>> panel.add_plugin_tabs(plugin)
-            >>> panel.tabs.count()
-            1
+            >>> panel.tabs.count()  # DummyPlugin contributes Settings + About tabs
+            2
         """
         if plugin.name in self._plugin_tab_titles:
             return
