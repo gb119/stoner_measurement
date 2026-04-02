@@ -227,6 +227,26 @@ class FunctionScanGenerator(BaseScanGenerator):
             wave = np.zeros(self._num_points)
         return self._amplitude * wave + self._offset
 
+    def measure_flags(self) -> np.ndarray:
+        """Return per-point measure flags for the waveform sequence.
+
+        The function scan generator always records every point as a
+        measurement, so all flags are ``True``.
+
+        Returns:
+            (np.ndarray):
+                A 1-D boolean array of length :attr:`num_points`, all
+                ``True``.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> gen = FunctionScanGenerator(num_points=5)
+            >>> gen.measure_flags().tolist()
+            [True, True, True, True, True]
+        """
+        return np.ones(self._num_points, dtype=bool)
+
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`FunctionScanWidget` configured for this generator.
 

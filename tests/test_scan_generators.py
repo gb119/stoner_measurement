@@ -20,6 +20,9 @@ class TestBaseScanGenerator:
         def generate(self) -> np.ndarray:
             return np.array([1.0, 2.0, 3.0])
 
+        def measure_flags(self) -> np.ndarray:
+            return np.array([True, True, True])
+
         def config_widget(self, parent=None) -> QWidget:
             return QWidget(parent)
 
@@ -31,6 +34,9 @@ class TestBaseScanGenerator:
         """A subclass that only implements config_widget cannot be instantiated."""
 
         class _Partial(BaseScanGenerator):
+            def measure_flags(self):
+                return np.ones(5, dtype=bool)
+
             def config_widget(self, parent=None):
                 return QWidget(parent)
 
@@ -44,6 +50,22 @@ class TestBaseScanGenerator:
             def generate(self):
                 return np.zeros(5)
 
+            def measure_flags(self):
+                return np.ones(5, dtype=bool)
+
+        with pytest.raises(TypeError):
+            _Partial()
+
+    def test_cannot_instantiate_missing_measure_flags(self, qapp):
+        """A subclass that does not implement measure_flags cannot be instantiated."""
+
+        class _Partial(BaseScanGenerator):
+            def generate(self):
+                return np.zeros(5)
+
+            def config_widget(self, parent=None):
+                return QWidget(parent)
+
         with pytest.raises(TypeError):
             _Partial()
 
@@ -55,11 +77,21 @@ class TestBaseScanGenerator:
         gen = self._Minimal()
         assert gen.values is gen.values
 
+    def test_flags_returns_boolean_array(self, qapp):
+        gen = self._Minimal()
+        assert np.array_equal(gen.flags, np.array([True, True, True]))
+
+    def test_flags_cached(self, qapp):
+        gen = self._Minimal()
+        assert gen.flags is gen.flags
+
     def test_invalidate_cache_clears_cache(self, qapp):
         gen = self._Minimal()
         _ = gen.values
+        _ = gen.flags
         gen._invalidate_cache()
         assert gen._cache is None
+        assert gen._flags_cache is None
 
     def test_invalidate_cache_emits_signal(self, qapp):
         gen = self._Minimal()
@@ -74,7 +106,14 @@ class TestBaseScanGenerator:
 
     def test_iter_yields_all_values(self, qapp):
         gen = self._Minimal()
-        assert list(gen) == [1.0, 2.0, 3.0]
+        assert list(gen) == [(1.0, True), (2.0, True), (3.0, True)]
+
+    def test_next_returns_tuple(self, qapp):
+        gen = self._Minimal()
+        it = iter(gen)
+        result = next(it)
+        assert isinstance(result, tuple)
+        assert result == (1.0, True)
 
     def test_next_raises_stop_iteration(self, qapp):
         gen = self._Minimal()
@@ -89,7 +128,23 @@ class TestBaseScanGenerator:
         gen = self._Minimal()
         list(gen)  # exhaust
         gen.reset()
-        assert list(gen) == [1.0, 2.0, 3.0]
+        assert list(gen) == [(1.0, True), (2.0, True), (3.0, True)]
+
+    def test_current_value_changed_emitted_on_next(self, qapp):
+        gen = self._Minimal()
+        emitted: list[float] = []
+        gen.current_value_changed.connect(emitted.append)
+        it = iter(gen)
+        next(it)
+        next(it)
+        assert emitted == [1.0, 2.0]
+
+    def test_current_value_changed_all_values_emitted(self, qapp):
+        gen = self._Minimal()
+        emitted: list[float] = []
+        gen.current_value_changed.connect(emitted.append)
+        list(gen)
+        assert emitted == [1.0, 2.0, 3.0]
 
 
 class TestFunctionScanGenerator:
@@ -205,7 +260,7 @@ class TestFunctionScanGenerator:
     def test_iter_values_match_generate(self, qapp):
         gen = FunctionScanGenerator(num_points=10)
         expected = gen.generate()
-        collected = list(gen)
+        collected = [value for value, _ in gen]
         assert np.allclose(collected, expected)
 
     def test_len(self, qapp):
@@ -331,6 +386,46 @@ class TestFunctionScanGenerator:
         gen.values_changed.connect(lambda: received.append(None))
         gen.periods = 3.0
         assert len(received) == 1
+
+    # ------------------------------------------------------------------
+    # measure_flags()
+    # ------------------------------------------------------------------
+
+    def test_measure_flags_returns_all_true(self, qapp):
+        gen = FunctionScanGenerator(num_points=10)
+        flags = gen.measure_flags()
+        assert isinstance(flags, np.ndarray)
+        assert flags.dtype == bool
+        assert flags.tolist() == [True] * 10
+
+    def test_measure_flags_length_matches_num_points(self, qapp):
+        gen = FunctionScanGenerator(num_points=7)
+        assert len(gen.measure_flags()) == 7
+
+    def test_flags_property_cached(self, qapp):
+        gen = FunctionScanGenerator(num_points=5)
+        assert gen.flags is gen.flags
+
+    def test_flags_cache_invalidated_on_num_points_change(self, qapp):
+        gen = FunctionScanGenerator(num_points=5)
+        _ = gen.flags
+        gen.num_points = 10
+        assert gen._flags_cache is None
+
+    def test_iter_yields_tuples_with_true_measure(self, qapp):
+        gen = FunctionScanGenerator(num_points=3)
+        results = list(gen)
+        assert all(isinstance(r, tuple) and len(r) == 2 for r in results)
+        assert all(r[1] is True for r in results)
+
+    def test_current_value_changed_emitted_during_iteration(self, qapp):
+        gen = FunctionScanGenerator(num_points=4)
+        emitted: list[float] = []
+        gen.current_value_changed.connect(emitted.append)
+        list(gen)
+        assert len(emitted) == 4
+        expected_values = gen.values.tolist()
+        assert emitted == pytest.approx(expected_values)
 
     # ------------------------------------------------------------------
     # config_widget()
