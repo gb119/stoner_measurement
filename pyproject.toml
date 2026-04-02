@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stoner_measurement"
+version = "0.1.0"
+description = "A Python/PyQt6 application for running scientific measurements"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Gavin Burnell", email = "g.burnell@leeds.ac.uk"},
+]
+keywords = ["scientific", "measurement", "PyQt6", "pyqtgraph"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "PyQt6>=6.7",
+    "pyqtgraph>=0.13",
+    "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+docs = [
+    "sphinx>=8.0",
+    "sphinx-rtd-theme>=3.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-qt>=4.4",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+stoner-measurement = "stoner_measurement.main:main"
+
+[project.entry-points."stoner_measurement.plugins"]
+dummy = "stoner_measurement.plugins.dummy:DummyPlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.coverage.run]
+source = ["stoner_measurement"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
