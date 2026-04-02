@@ -1,13 +1,13 @@
 """Dock panel — left 25 % of the main window.
 
-Provides instrument listing, sequence building controls and a run button.
+Provides instrument listing, sequence building controls, a run button,
+and a monitoring section where plugins can display live status widgets.
 """
 
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QDockWidget,
     QLabel,
     QListWidget,
     QPushButton,
@@ -19,15 +19,37 @@ from stoner_measurement.core.plugin_manager import PluginManager
 
 
 class DockPanel(QWidget):
-    """Left panel containing instrument and sequence controls.
+    """Left panel containing instrument, sequence controls, and monitoring widgets.
 
-    Parameters
-    ----------
-    plugin_manager:
-        The application :class:`~stoner_measurement.core.plugin_manager.PluginManager`
-        instance — used to populate the available-instruments list.
-    parent:
-        Optional Qt parent widget.
+    Plugins may contribute a live-status widget via
+    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.monitor_widget`.
+    Those widgets are displayed in a dedicated *Monitoring* section at the
+    bottom of this panel and are removed automatically when the plugin is
+    unregistered.
+
+    Attributes:
+        sequence_steps (list[str]):
+            The current sequence step names.
+
+    Args:
+        plugin_manager (PluginManager):
+            The application
+            :class:`~stoner_measurement.core.plugin_manager.PluginManager`
+            instance — used to populate the available-instruments list and to
+            manage monitoring widgets.
+
+    Keyword Parameters:
+        parent (QWidget | None):
+            Optional Qt parent widget.
+
+    Examples:
+        >>> from PyQt6.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> from stoner_measurement.core.plugin_manager import PluginManager
+        >>> pm = PluginManager()
+        >>> panel = DockPanel(plugin_manager=pm)
+        >>> panel.sequence_steps
+        []
     """
 
     def __init__(
@@ -37,6 +59,8 @@ class DockPanel(QWidget):
     ) -> None:
         super().__init__(parent)
         self._plugin_manager = plugin_manager
+        # Maps plugin name → monitor widget currently shown in the panel.
+        self._monitor_widgets: dict[str, QWidget] = {}
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -61,15 +85,30 @@ class DockPanel(QWidget):
         layout.addWidget(self._add_step_btn)
         layout.addWidget(self._remove_step_btn)
 
+        # --- Monitoring section ---
+        self._monitor_label = QLabel("<b>Monitoring</b>")
+        self._monitor_label.setObjectName("monitoringLabel")
+        self._monitor_label.setVisible(False)
+        layout.addWidget(self._monitor_label)
+
+        self._monitor_container = QWidget()
+        self._monitor_container.setObjectName("monitorContainer")
+        self._monitor_layout = QVBoxLayout(self._monitor_container)
+        self._monitor_layout.setContentsMargins(0, 0, 0, 0)
+        self._monitor_container.setVisible(False)
+        layout.addWidget(self._monitor_container)
+
         self.setLayout(layout)
 
         # Connect signals
         self._add_step_btn.clicked.connect(self._add_step)
         self._remove_step_btn.clicked.connect(self._remove_step)
 
-        # Populate instrument list
+        # Populate instrument list and monitoring widgets
         self._refresh_instruments()
+        self._refresh_monitors()
         plugin_manager.plugins_changed.connect(self._refresh_instruments)
+        plugin_manager.plugins_changed.connect(self._refresh_monitors)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -80,6 +119,20 @@ class DockPanel(QWidget):
         self._instrument_list.clear()
         for name in self._plugin_manager.plugin_names:
             self._instrument_list.addItem(name)
+
+    def _refresh_monitors(self) -> None:
+        """Sync monitoring widgets with the current plugin list."""
+        current_plugins = set(self._plugin_manager.plugins.keys())
+        registered_monitors = set(self._monitor_widgets.keys())
+
+        for name in registered_monitors - current_plugins:
+            self.remove_monitor_widget(name)
+
+        for name, plugin in self._plugin_manager.plugins.items():
+            if name not in self._monitor_widgets:
+                widget = plugin.monitor_widget(parent=self._monitor_container)
+                if widget is not None:
+                    self.add_monitor_widget(name, widget)
 
     def _add_step(self) -> None:
         """Add the selected instrument as a sequence step."""
@@ -93,6 +146,12 @@ class DockPanel(QWidget):
         if row >= 0:
             self._sequence_list.takeItem(row)
 
+    def _update_monitor_visibility(self) -> None:
+        """Show or hide the monitoring section depending on whether any widgets are present."""
+        has_monitors = bool(self._monitor_widgets)
+        self._monitor_label.setVisible(has_monitors)
+        self._monitor_container.setVisible(has_monitors)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -104,3 +163,64 @@ class DockPanel(QWidget):
             self._sequence_list.item(i).text()
             for i in range(self._sequence_list.count())
         ]
+
+    def add_monitor_widget(self, plugin_name: str, widget: QWidget) -> None:
+        """Add a monitoring widget for the named plugin.
+
+        If a monitoring widget for *plugin_name* is already present this call
+        is a no-op.
+
+        Args:
+            plugin_name (str):
+                Unique identifier for the owning plugin.
+            widget (QWidget):
+                The widget to display in the monitoring section.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication, QLabel
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> pm = PluginManager()
+            >>> panel = DockPanel(plugin_manager=pm)
+            >>> panel.add_monitor_widget("test", QLabel("Status: OK"))
+            >>> "test" in panel.monitor_widgets
+            True
+        """
+        if plugin_name in self._monitor_widgets:
+            return
+        widget.setParent(self._monitor_container)
+        self._monitor_layout.addWidget(widget)
+        self._monitor_widgets[plugin_name] = widget
+        self._update_monitor_visibility()
+
+    def remove_monitor_widget(self, plugin_name: str) -> None:
+        """Remove the monitoring widget registered for *plugin_name*.
+
+        If no widget is registered for *plugin_name* this call is a no-op.
+
+        Args:
+            plugin_name (str):
+                Unique identifier for the owning plugin.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication, QLabel
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> pm = PluginManager()
+            >>> panel = DockPanel(plugin_manager=pm)
+            >>> panel.add_monitor_widget("test", QLabel("Status: OK"))
+            >>> panel.remove_monitor_widget("test")
+            >>> "test" in panel.monitor_widgets
+            False
+        """
+        widget = self._monitor_widgets.pop(plugin_name, None)
+        if widget is not None:
+            self._monitor_layout.removeWidget(widget)
+            widget.setParent(None)  # type: ignore[arg-type]
+            widget.deleteLater()
+        self._update_monitor_visibility()
+
+    @property
+    def monitor_widgets(self) -> dict[str, QWidget]:
+        """Mapping of plugin name → currently displayed monitoring widget."""
+        return dict(self._monitor_widgets)

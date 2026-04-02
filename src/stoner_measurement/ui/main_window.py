@@ -43,8 +43,8 @@ class MainWindow(QWidget):
         self._splitter.addWidget(self._plot_widget)
         self._splitter.addWidget(self._config_panel)
 
-        # Wire runner → plot
-        self._runner.data_ready.connect(self._plot_widget.append_data)
+        # Wire runner → plot (trace_name, x, y)
+        self._runner.data_ready.connect(self._plot_widget.append_point)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

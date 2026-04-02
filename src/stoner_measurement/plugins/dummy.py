@@ -32,6 +32,7 @@ class DummyPlugin(BasePlugin):
 
     @property
     def name(self) -> str:
+        """Unique identifier for the dummy plugin."""
         return "Dummy"
 
     def execute(
@@ -58,6 +59,46 @@ class DummyPlugin(BasePlugin):
         layout.addRow(QLabel("Points:"), self._points_spin)
         widget.setLayout(layout)
         return widget
+
+    def config_tabs(
+        self, parent: QWidget | None = None
+    ) -> list[tuple[str, QWidget]]:
+        """Return two configuration tabs: *Settings* and *About*.
+
+        The *Settings* tab contains the standard :meth:`config_widget`
+        form.  The *About* tab provides a brief description of the plugin.
+
+        Keyword Parameters:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (list[tuple[str, QWidget]]):
+                List of ``(tab_title, widget)`` pairs.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> plugin = DummyPlugin()
+            >>> tabs = plugin.config_tabs()
+            >>> [t for t, _ in tabs]
+            ['Dummy – Settings', 'Dummy – About']
+        """
+        settings_widget = self.config_widget(parent=parent)
+
+        about_widget = QWidget(parent)
+        about_layout = QFormLayout(about_widget)
+        about_layout.addRow(
+            QLabel(
+                "<i>Dummy plugin — generates a sine-wave signal for testing.</i>"
+            )
+        )
+        about_widget.setLayout(about_layout)
+
+        return [
+            (f"{self.name} \u2013 Settings", settings_widget),
+            (f"{self.name} \u2013 About", about_widget),
+        ]
 
     @property
     def configured_points(self) -> int:

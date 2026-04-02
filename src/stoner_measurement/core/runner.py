@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class _WorkerThread(QThread):
     """Background thread that iterates over sequence steps."""
 
-    data_ready = pyqtSignal(float, float)
+    data_ready = pyqtSignal(str, float, float)
     status_changed = pyqtSignal(str)
     step_started = pyqtSignal(int, str)   # (step_index, plugin_name)
     step_finished = pyqtSignal(int)       # step_index
@@ -58,7 +58,7 @@ class _WorkerThread(QThread):
                     if self._stop_requested:
                         self.status_changed.emit("Stopped")
                         return
-                    self.data_ready.emit(float(x), float(y))
+                    self.data_ready.emit(step.plugin_name, float(x), float(y))
             except Exception as exc:
                 logger.error("Step %d failed: %s", index, exc)
                 self.status_changed.emit(f"Error in step {index}: {exc}")
@@ -75,8 +75,10 @@ class SequenceRunner(QObject):
 
     Signals
     -------
-    data_ready(x, y):
-        Emitted for every data point produced by a plugin step.
+    data_ready(trace_name, x, y):
+        Emitted for every data point produced by a plugin step.  The
+        *trace_name* is the :attr:`~stoner_measurement.core.sequence.SequenceStep.plugin_name`
+        of the currently executing step.
     status_changed(message):
         Emitted whenever the runner status changes.
     step_started(index, plugin_name):
@@ -87,7 +89,7 @@ class SequenceRunner(QObject):
         Emitted when the whole sequence has run to completion.
     """
 
-    data_ready = pyqtSignal(float, float)
+    data_ready = pyqtSignal(str, float, float)
     status_changed = pyqtSignal(str)
     step_started = pyqtSignal(int, str)
     step_finished = pyqtSignal(int)

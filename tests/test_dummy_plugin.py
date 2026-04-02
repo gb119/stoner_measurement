@@ -51,6 +51,27 @@ class TestDummyPlugin:
         widget = plugin.config_widget()
         assert widget is not None
 
+    def test_config_tabs_returns_two_tabs(self, qapp):
+        plugin = DummyPlugin()
+        tabs = plugin.config_tabs()
+        assert len(tabs) == 2
+
+    def test_config_tabs_titles(self, qapp):
+        plugin = DummyPlugin()
+        tabs = plugin.config_tabs()
+        titles = [t for t, _ in tabs]
+        assert titles == ["Dummy \u2013 Settings", "Dummy \u2013 About"]
+
+    def test_config_tabs_widgets_are_qwidgets(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+        plugin = DummyPlugin()
+        for _title, widget in plugin.config_tabs():
+            assert isinstance(widget, QWidget)
+
+    def test_monitor_widget_returns_none(self):
+        plugin = DummyPlugin()
+        assert plugin.monitor_widget() is None
+
     def test_configured_points_default(self):
         plugin = DummyPlugin()
         assert plugin.configured_points == 100

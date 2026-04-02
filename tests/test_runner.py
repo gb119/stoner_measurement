@@ -36,8 +36,8 @@ class TestSequenceRunner:
         runner.sequence = seq
         runner.set_plugins({"Dummy": DummyPlugin()})
 
-        collected: list[tuple[float, float]] = []
-        runner.data_ready.connect(lambda x, y: collected.append((x, y)))
+        collected: list[tuple[str, float, float]] = []
+        runner.data_ready.connect(lambda name, x, y: collected.append((name, x, y)))
 
         finished_flags: list[bool] = []
         runner.finished.connect(lambda: finished_flags.append(True))
@@ -51,6 +51,8 @@ class TestSequenceRunner:
 
         assert len(collected) == 5
         assert len(finished_flags) == 1
+        # All points should be labelled with the plugin name used as trace name
+        assert all(name == "Dummy" for name, _x, _y in collected)
 
     def test_double_start_is_noop(self, qapp, runner):
         """Starting a running runner should be a no-op."""
