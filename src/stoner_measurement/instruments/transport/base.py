@@ -11,8 +11,11 @@ import re
 import urllib.parse
 from abc import ABC, abstractmethod
 
-# Matches the start of a VISA resource string, e.g. "GPIB0::", "TCPIP::", "ASRL/dev/...".
-_VISA_RE = re.compile(r"^(GPIB|TCPIP|ASRL)\d*::", re.IGNORECASE)
+# Matches the start of a VISA resource string and captures the prefix for
+# later classification.  ASRL resources may have a non-numeric path component
+# (e.g. "ASRL/dev/ttyUSB0::INSTR"), so any non-colon characters are allowed
+# after the prefix rather than digits only.
+_VISA_RE = re.compile(r"^(GPIB|TCPIP|ASRL)[^:]*::", re.IGNORECASE)
 
 
 class BaseTransport(ABC):
@@ -274,13 +277,13 @@ class BaseTransport(ABC):
         parsed = urllib.parse.urlparse(uri)
         query = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
 
-        def _q(name: str, default: str | None = None) -> str | None:
+        def get_query_param(name: str, default: str | None = None) -> str | None:
             """Return the first value of query parameter *name*, or *default*."""
             values = query.get(name)
             return values[0] if values else default
 
         scheme = parsed.scheme.lower()
-        timeout_str = _q("timeout")
+        timeout_str = get_query_param("timeout")
         timeout = float(timeout_str) if timeout_str is not None else 2.0
 
         if scheme == "serial":
@@ -289,18 +292,22 @@ class BaseTransport(ABC):
             port = parsed.netloc if parsed.netloc else parsed.path
             if not port:
                 raise ValueError(f"No serial port specified in URI: {uri!r}")
-            baud_str = _q("baud_rate") or _q("baud")
+            baud_str = get_query_param("baud_rate") or get_query_param("baud")
             return SerialTransport(
                 port=port,
                 baud_rate=int(baud_str) if baud_str is not None else 9600,
-                data_bits=int(_q("data_bits") or 8),
-                stop_bits=float(_q("stop_bits") or 1),
-                parity=(_q("parity") or "N").upper(),
+                data_bits=int(get_query_param("data_bits") or 8),
+                stop_bits=float(get_query_param("stop_bits") or 1),
+                parity=(get_query_param("parity") or "N").upper(),
+                xonxoff=(get_query_param("xonxoff") or "").lower() in ("1", "true", "yes"),
+                rtscts=(get_query_param("rtscts") or "").lower() in ("1", "true", "yes"),
                 timeout=timeout,
             )
 
         if scheme in ("tcp", "tcpip"):
-            from stoner_measurement.instruments.transport.ethernet_transport import EthernetTransport
+            from stoner_measurement.instruments.transport.ethernet_transport import (
+                EthernetTransport,
+            )
 
             host = parsed.hostname
             port_num = parsed.port
@@ -351,7 +358,9 @@ class BaseTransport(ABC):
             return GpibTransport(address=address, board=board)
 
         if prefix_upper.startswith("TCPIP"):
-            from stoner_measurement.instruments.transport.ethernet_transport import EthernetTransport
+            from stoner_measurement.instruments.transport.ethernet_transport import (
+                EthernetTransport,
+            )
 
             host = parts[1]
             suffix = parts[-1].upper()

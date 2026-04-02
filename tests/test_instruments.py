@@ -905,3 +905,60 @@ class TestFromUriVisaResourceStrings:
 
         with pytest.raises(ValueError, match="Unrecognised VISA resource string"):
             BaseTransport.from_uri("notauri")
+
+
+# ---------------------------------------------------------------------------
+# SerialTransport — flow control defaults and parameters
+# ---------------------------------------------------------------------------
+
+
+class TestSerialTransportFlowControl:
+    """Tests for the flow-control parameters on SerialTransport."""
+
+    def test_default_xonxoff_is_false(self):
+        serial = pytest.importorskip("serial")  # noqa: F841
+        from stoner_measurement.instruments.transport import SerialTransport
+
+        assert SerialTransport(port="/dev/ttyUSB0").xonxoff is False
+
+    def test_default_rtscts_is_false(self):
+        serial = pytest.importorskip("serial")  # noqa: F841
+        from stoner_measurement.instruments.transport import SerialTransport
+
+        assert SerialTransport(port="/dev/ttyUSB0").rtscts is False
+
+    def test_xonxoff_can_be_enabled(self):
+        serial = pytest.importorskip("serial")  # noqa: F841
+        from stoner_measurement.instruments.transport import SerialTransport
+
+        assert SerialTransport(port="/dev/ttyUSB0", xonxoff=True).xonxoff is True
+
+    def test_rtscts_can_be_enabled(self):
+        serial = pytest.importorskip("serial")  # noqa: F841
+        from stoner_measurement.instruments.transport import SerialTransport
+
+        assert SerialTransport(port="/dev/ttyUSB0", rtscts=True).rtscts is True
+
+    def test_serial_uri_xonxoff_true(self):
+        serial = pytest.importorskip("serial")  # noqa: F841
+        from stoner_measurement.instruments.transport import BaseTransport
+
+        t = BaseTransport.from_uri("serial:///dev/ttyUSB0?xonxoff=true")
+        assert t.xonxoff is True
+        assert t.rtscts is False
+
+    def test_serial_uri_rtscts_true(self):
+        serial = pytest.importorskip("serial")  # noqa: F841
+        from stoner_measurement.instruments.transport import BaseTransport
+
+        t = BaseTransport.from_uri("serial:///dev/ttyUSB0?rtscts=1")
+        assert t.rtscts is True
+        assert t.xonxoff is False
+
+    def test_serial_uri_no_flow_control_by_default(self):
+        serial = pytest.importorskip("serial")  # noqa: F841
+        from stoner_measurement.instruments.transport import BaseTransport
+
+        t = BaseTransport.from_uri("serial:///dev/ttyUSB0")
+        assert t.xonxoff is False
+        assert t.rtscts is False
