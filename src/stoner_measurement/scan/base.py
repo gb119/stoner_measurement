@@ -23,22 +23,30 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
 
     A scan generator produces a sequence of output values that are sent to
     instruments to control an experiment.  Subclasses must implement
-    :meth:`generate` and :meth:`config_widget`.
+    :meth:`generate`, :meth:`measure_flags`, and :meth:`config_widget`.
 
     The class provides:
 
     * **Iterator interface** — :meth:`__iter__` and :meth:`__next__` allow
       direct iteration over the generated values; :meth:`reset` restarts
-      iteration.
+      iteration.  Each step yields a ``(value, measure)`` tuple where
+      *measure* indicates whether the point should be recorded as a
+      measurement.
     * **Value caching** — :attr:`values` calls :meth:`generate` on first
-      access and caches the result until a parameter changes.
+      access and caches the result until a parameter changes.  :attr:`flags`
+      similarly caches the result of :meth:`measure_flags`.
     * **Change notification** — the :attr:`values_changed` signal is emitted
-      whenever a parameter is updated.
+      whenever a parameter is updated; :attr:`current_value_changed` is
+      emitted on every iteration step with the current output value.
 
     Attributes:
         values_changed (pyqtSignal):
             Emitted when the sequence of values changes due to a parameter
             update.
+        current_value_changed (pyqtSignal):
+            Emitted on each iteration step with the current output value as
+            a ``float`` argument.  Consumers can connect this signal to a
+            display widget to show the current scan position.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -46,11 +54,13 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
     """
 
     values_changed = pyqtSignal()
+    current_value_changed = pyqtSignal(float)
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the generator state."""
         super().__init__(parent)
         self._cache: np.ndarray | None = None
+        self._flags_cache: np.ndarray | None = None
         self._index: int = 0
 
     @abstractmethod
@@ -60,6 +70,31 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         Returns:
             (np.ndarray):
                 A 1-D array of values representing the scan sequence.
+        """
+
+    @abstractmethod
+    def measure_flags(self) -> np.ndarray:
+        """Compute and return the per-point measure flags.
+
+        Each element in the returned array corresponds to the point at the
+        same index in :meth:`generate` and indicates whether that point
+        should be recorded as a measurement (``True``) or used only to
+        update experimental state without being recorded (``False``).
+
+        Returns:
+            (np.ndarray):
+                A 1-D boolean array of the same length as :meth:`generate`.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.scan.function_generator import FunctionScanGenerator
+            >>> gen = FunctionScanGenerator(num_points=5)
+            >>> flags = gen.measure_flags()
+            >>> flags.dtype == bool
+            True
+            >>> flags.tolist()
+            [True, True, True, True, True]
         """
 
     @abstractmethod
@@ -100,9 +135,35 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
             self._cache = self.generate()
         return self._cache
 
+    @property
+    def flags(self) -> np.ndarray:
+        """Cached per-point measure flags.
+
+        The result of :meth:`measure_flags` is cached on first access and
+        invalidated whenever a parameter changes (via
+        :meth:`_invalidate_cache`).  Each element is ``True`` when the
+        corresponding point should be recorded as a measurement.
+
+        Returns:
+            (np.ndarray):
+                A 1-D boolean array of per-point measure flags.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.scan.function_generator import FunctionScanGenerator
+            >>> gen = FunctionScanGenerator(num_points=3)
+            >>> gen.flags.tolist()
+            [True, True, True]
+        """
+        if self._flags_cache is None:
+            self._flags_cache = self.measure_flags()
+        return self._flags_cache
+
     def _invalidate_cache(self) -> None:
-        """Invalidate the cached values and emit :attr:`values_changed`."""
+        """Invalidate the cached values and flags, and emit :attr:`values_changed`."""
         self._cache = None
+        self._flags_cache = None
         self.values_changed.emit()
 
     def reset(self) -> None:
@@ -152,12 +213,17 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         self._index = 0
         return self
 
-    def __next__(self) -> float:
-        """Return the next value in the sequence.
+    def __next__(self) -> tuple[float, bool]:
+        """Return the next value and measure flag in the sequence.
+
+        Also emits :attr:`current_value_changed` with the current output
+        value so that connected widgets can update a position indicator.
 
         Returns:
             (float):
                 The next output value.
+            (bool):
+                Whether this point should be recorded as a measurement.
 
         Raises:
             StopIteration:
@@ -166,5 +232,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         if self._index >= len(self.values):
             raise StopIteration
         value = float(self.values[self._index])
+        measure = bool(self.flags[self._index])
         self._index += 1
-        return value
+        self.current_value_changed.emit(value)
+        return value, measure
