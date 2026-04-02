@@ -108,7 +108,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
     def reset(self) -> None:
         """Reset the iterator to the beginning of the sequence.
 
-        After calling :meth:`reset`, the next call to :func:`next` will return
+        After calling :meth:`reset`, the next call to :meth:`__next__` will return
         the first value in the sequence.
 
         Examples:

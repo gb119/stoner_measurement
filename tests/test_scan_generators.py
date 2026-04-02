@@ -15,6 +15,14 @@ from stoner_measurement.scan import (
 
 
 class TestBaseScanGenerator:
+    # A minimal concrete subclass used to test the base class behaviours.
+    class _Minimal(BaseScanGenerator):
+        def generate(self) -> np.ndarray:
+            return np.array([1.0, 2.0, 3.0])
+
+        def config_widget(self, parent=None) -> QWidget:
+            return QWidget(parent)
+
     def test_cannot_instantiate_directly(self):
         with pytest.raises(TypeError):
             BaseScanGenerator()  # type: ignore[abstract]
@@ -38,6 +46,50 @@ class TestBaseScanGenerator:
 
         with pytest.raises(TypeError):
             _Partial()
+
+    def test_values_returns_array(self, qapp):
+        gen = self._Minimal()
+        assert np.array_equal(gen.values, np.array([1.0, 2.0, 3.0]))
+
+    def test_values_cached(self, qapp):
+        gen = self._Minimal()
+        assert gen.values is gen.values
+
+    def test_invalidate_cache_clears_cache(self, qapp):
+        gen = self._Minimal()
+        _ = gen.values
+        gen._invalidate_cache()
+        assert gen._cache is None
+
+    def test_invalidate_cache_emits_signal(self, qapp):
+        gen = self._Minimal()
+        received: list[None] = []
+        gen.values_changed.connect(lambda: received.append(None))
+        gen._invalidate_cache()
+        assert len(received) == 1
+
+    def test_len(self, qapp):
+        gen = self._Minimal()
+        assert len(gen) == 3
+
+    def test_iter_yields_all_values(self, qapp):
+        gen = self._Minimal()
+        assert list(gen) == [1.0, 2.0, 3.0]
+
+    def test_next_raises_stop_iteration(self, qapp):
+        gen = self._Minimal()
+        it = iter(gen)
+        next(it)
+        next(it)
+        next(it)
+        with pytest.raises(StopIteration):
+            next(it)
+
+    def test_reset_restarts_iteration(self, qapp):
+        gen = self._Minimal()
+        list(gen)  # exhaust
+        gen.reset()
+        assert list(gen) == [1.0, 2.0, 3.0]
 
 
 class TestFunctionScanGenerator:
@@ -75,13 +127,12 @@ class TestFunctionScanGenerator:
         assert arr.min() >= -1.0 - 1e-9
 
     def test_generate_square_values(self, qapp):
-        """Square wave values should be close to ±amplitude (ignoring zero crossings)."""
+        """Square wave values should be strictly ±amplitude (no zero crossings)."""
         gen = FunctionScanGenerator(
             waveform=WaveformType.SQUARE, amplitude=3.0, offset=0.0, num_points=100
         )
         arr = gen.generate()
-        non_zero = arr[arr != 0.0]
-        assert np.all(np.abs(np.abs(non_zero) - 3.0) < 1e-9)
+        assert np.all(np.abs(np.abs(arr) - 3.0) < 1e-9)
 
     def test_generate_sawtooth_range(self, qapp):
         gen = FunctionScanGenerator(

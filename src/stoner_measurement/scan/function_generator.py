@@ -25,6 +25,10 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.scan.base import BaseScanGenerator
 
+# Shared spin-box limits used across the widget controls.
+_SPINBOX_MAX_ABS = 1e6
+_MAX_NUM_POINTS = 10_000
+
 
 class WaveformType(enum.Enum):
     """Supported waveform shapes for :class:`FunctionScanGenerator`."""
@@ -191,7 +195,8 @@ class FunctionScanGenerator(BaseScanGenerator):
             # which gives a smooth, exact triangle with amplitude 1.
             wave = (2.0 / np.pi) * np.arcsin(np.sin(x))
         elif wf is WaveformType.SQUARE:
-            wave = np.sign(np.sin(x))
+            # Use np.where to ensure values are strictly ±1 with no zero crossings.
+            wave = np.where(np.sin(x) >= 0, 1.0, -1.0)
         elif wf is WaveformType.SAWTOOTH:
             # Rising sawtooth: -1 at the start, +1 just before the period ends.
             wave = 2.0 * ((x / (2.0 * np.pi)) % 1.0) - 1.0
@@ -275,7 +280,7 @@ class FunctionScanWidget(QWidget):
         form.addRow("Waveform:", self._waveform_combo)
 
         self._amplitude_spin = QDoubleSpinBox()
-        self._amplitude_spin.setRange(-1e6, 1e6)
+        self._amplitude_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
         self._amplitude_spin.setSingleStep(0.1)
         self._amplitude_spin.setDecimals(4)
         self._amplitude_spin.setValue(self._generator.amplitude)
@@ -283,7 +288,7 @@ class FunctionScanWidget(QWidget):
         form.addRow("Amplitude:", self._amplitude_spin)
 
         self._offset_spin = QDoubleSpinBox()
-        self._offset_spin.setRange(-1e6, 1e6)
+        self._offset_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
         self._offset_spin.setSingleStep(0.1)
         self._offset_spin.setDecimals(4)
         self._offset_spin.setValue(self._generator.offset)
@@ -299,7 +304,7 @@ class FunctionScanWidget(QWidget):
         form.addRow("Phase (°):", self._phase_spin)
 
         self._points_spin = QSpinBox()
-        self._points_spin.setRange(2, 10_000)
+        self._points_spin.setRange(2, _MAX_NUM_POINTS)
         self._points_spin.setValue(self._generator.num_points)
         self._points_spin.setToolTip("Number of points in the sequence")
         form.addRow("Points:", self._points_spin)
