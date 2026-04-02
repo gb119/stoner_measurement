@@ -17,6 +17,7 @@ References:
 
 from __future__ import annotations
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 
 #: Terminator appended to every outgoing Oxford message.
@@ -25,6 +26,13 @@ OXFORD_TERMINATOR = b"\r"
 
 class OxfordProtocol(BaseProtocol):
     """Oxford Instruments carriage-return-terminated ASCII protocol.
+
+    Oxford Instruments instruments echo the command letter as the first
+    character of each response.  An error is indicated when the response
+    payload (after stripping the echo character) begins with ``"?"``.
+    Because the error is carried in the normal response, this protocol sets
+    :attr:`errors_in_response` to ``True``; callers should invoke
+    :meth:`check_error` on every parsed query response.
 
     Attributes:
         terminator (bytes):
@@ -40,7 +48,26 @@ class OxfordProtocol(BaseProtocol):
         b'R1\\r'
         >>> p.parse_response(b'R1.234\\r')
         '1.234'
+        >>> p.errors_in_response
+        True
+        >>> p.error_query is None
+        True
     """
+
+    @property
+    def errors_in_response(self) -> bool:
+        """``True`` — Oxford errors are embedded in the response payload.
+
+        Returns:
+            (bool):
+                Always ``True`` for :class:`OxfordProtocol`.
+
+        Examples:
+            >>> from stoner_measurement.instruments.protocol import OxfordProtocol
+            >>> OxfordProtocol().errors_in_response
+            True
+        """
+        return True
 
     def __init__(self, terminator: bytes = OXFORD_TERMINATOR) -> None:
         """Initialise the Oxford Instruments protocol.
@@ -119,29 +146,36 @@ class OxfordProtocol(BaseProtocol):
             return decoded[1:]
         return decoded
 
-    def check_error(self, response: str) -> None:
-        """Raise :exc:`RuntimeError` if *response* indicates an Oxford error.
+    def check_error(self, response: str, *, command: str | None = None) -> None:
+        """Raise :exc:`~stoner_measurement.instruments.errors.InstrumentError` if *response* indicates an Oxford error.
 
-        Oxford instruments encode the system status in a status byte
-        (``?SXXX`` format for the ``X`` command).  The ``?`` prefix
-        indicates the instrument did not understand the command.
+        Oxford instruments respond with a payload starting with ``"?"`` when
+        the instrument did not understand the command.
 
         Args:
             response (str):
-                Parsed response string.
+                Parsed response string (echo character already stripped by
+                :meth:`parse_response`).
+
+        Keyword Parameters:
+            command (str | None):
+                The original command that was sent.
 
         Raises:
-            RuntimeError:
+            InstrumentError:
                 If the response starts with ``"?"``.
 
         Examples:
             >>> from stoner_measurement.instruments.protocol import OxfordProtocol
             >>> OxfordProtocol().check_error("1.234")  # no exception
             >>> try:
-            ...     OxfordProtocol().check_error("?")
-            ... except RuntimeError as exc:
-            ...     print(exc)
-            Oxford Instruments instrument error: ?
+            ...     OxfordProtocol().check_error("?", command="R99")
+            ... except Exception as exc:
+            ...     print(type(exc).__name__, exc)
+            InstrumentError Oxford Instruments: unrecognised command (command: R99)
         """
         if response.startswith("?"):
-            raise RuntimeError(f"Oxford Instruments instrument error: {response}")
+            raise InstrumentError(
+                "Oxford Instruments: unrecognised command",
+                command=command,
+            )

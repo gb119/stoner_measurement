@@ -160,6 +160,36 @@ class BaseTransport(ABC):
         a hardware flush operation is meaningful.
         """
 
+    def read_status_byte(self) -> int | None:
+        """Return the instrument status byte via an out-of-band mechanism.
+
+        Some transports (notably GPIB) can perform a *serial poll* to read
+        the IEEE 488.2 status byte (STB) without sending a command, allowing
+        the caller to check whether an error condition exists before issuing
+        an expensive error-queue query.
+
+        The default implementation returns ``None``, indicating that no
+        out-of-band mechanism is available.  Subclasses that support
+        hardware-level status polling (e.g. :class:`GpibTransport`) should
+        override this method.
+
+        If :meth:`read_status_byte` returns ``None``,
+        :meth:`~stoner_measurement.instruments.base_instrument.BaseInstrument.check_for_errors`
+        will fall back to issuing the protocol's
+        :attr:`~stoner_measurement.instruments.protocol.base.BaseProtocol.error_query`
+        command directly.
+
+        Returns:
+            (int | None):
+                The 8-bit status byte, or ``None`` if not supported.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> NullTransport().read_status_byte() is None
+            True
+        """
+        return None
+
     def __enter__(self) -> BaseTransport:
         """Open the transport and return ``self`` for use as a context manager.
 

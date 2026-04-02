@@ -16,6 +16,7 @@ References:
 
 from __future__ import annotations
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 
 #: Terminator appended to every outgoing Lakeshore message.
@@ -27,6 +28,11 @@ LAKESHORE_ERROR_PREFIX = "?"
 
 class LakeshoreProtocol(BaseProtocol):
     """Lakeshore simple ASCII CRLF-terminated protocol.
+
+    Lakeshore instruments signal an unrecognised command by returning ``"?"``
+    or a ``"?"``-prefixed string in place of the expected value.  Because
+    the error indicator is embedded in the normal query response, this
+    protocol sets :attr:`errors_in_response` to ``True``.
 
     Attributes:
         terminator (bytes):
@@ -42,7 +48,26 @@ class LakeshoreProtocol(BaseProtocol):
         b'KRDG? A\\r\\n'
         >>> p.parse_response(b'+273.150\\r\\n')
         '+273.150'
+        >>> p.errors_in_response
+        True
+        >>> p.error_query is None
+        True
     """
+
+    @property
+    def errors_in_response(self) -> bool:
+        """``True`` — Lakeshore errors are embedded in the response payload.
+
+        Returns:
+            (bool):
+                Always ``True`` for :class:`LakeshoreProtocol`.
+
+        Examples:
+            >>> from stoner_measurement.instruments.protocol import LakeshoreProtocol
+            >>> LakeshoreProtocol().errors_in_response
+            True
+        """
+        return True
 
     def __init__(self, terminator: bytes = LAKESHORE_TERMINATOR) -> None:
         """Initialise the Lakeshore protocol.
@@ -113,8 +138,8 @@ class LakeshoreProtocol(BaseProtocol):
         """
         return raw.decode("ascii", errors="replace").strip()
 
-    def check_error(self, response: str) -> None:
-        """Raise :exc:`RuntimeError` if *response* indicates a Lakeshore error.
+    def check_error(self, response: str, *, command: str | None = None) -> None:
+        """Raise :exc:`~stoner_measurement.instruments.errors.InstrumentError` if *response* indicates a Lakeshore error.
 
         Some Lakeshore models return ``"?"`` or a ``"?"``-prefixed string for
         unrecognised commands.
@@ -123,18 +148,25 @@ class LakeshoreProtocol(BaseProtocol):
             response (str):
                 Parsed response string.
 
+        Keyword Parameters:
+            command (str | None):
+                The original command that was sent.
+
         Raises:
-            RuntimeError:
+            InstrumentError:
                 If the response is ``"?"`` or starts with ``"?"``.
 
         Examples:
             >>> from stoner_measurement.instruments.protocol import LakeshoreProtocol
             >>> LakeshoreProtocol().check_error("+77.350")  # no exception
             >>> try:
-            ...     LakeshoreProtocol().check_error("?")
-            ... except RuntimeError as exc:
-            ...     print(exc)
-            Lakeshore instrument error: ?
+            ...     LakeshoreProtocol().check_error("?", command="KRDG? Z")
+            ... except Exception as exc:
+            ...     print(type(exc).__name__, exc)
+            InstrumentError Lakeshore: unrecognised command (command: KRDG? Z)
         """
         if response.startswith(LAKESHORE_ERROR_PREFIX):
-            raise RuntimeError(f"Lakeshore instrument error: {response}")
+            raise InstrumentError(
+                "Lakeshore: unrecognised command",
+                command=command,
+            )

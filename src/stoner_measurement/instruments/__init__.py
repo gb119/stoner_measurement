@@ -29,6 +29,7 @@ laboratory instruments:
 """
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.magnet_controller import MagnetController
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.source_meter import SourceMeter
@@ -36,6 +37,7 @@ from stoner_measurement.instruments.temperature_controller import TemperatureCon
 
 __all__ = [
     "BaseInstrument",
+    "InstrumentError",
     "MagnetController",
     "Nanovoltmeter",
     "SourceMeter",

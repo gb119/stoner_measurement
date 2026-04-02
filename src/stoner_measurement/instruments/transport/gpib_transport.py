@@ -169,3 +169,26 @@ class GpibTransport(BaseTransport):
         """
         if self._resource is not None:
             self._resource.timeout = int(value * 1000)
+
+    def read_status_byte(self) -> int | None:
+        """Return the IEEE 488.2 status byte via a GPIB serial poll.
+
+        Performs an out-of-band serial poll (PyVISA ``read_stb()``) without
+        transmitting any command to the instrument.  This is the preferred
+        mechanism for checking the GPIB status byte because it does not
+        consume a response from the instrument's output buffer.
+
+        Returns:
+            (int | None):
+                The 8-bit status byte, or ``None`` if the transport is not
+                currently open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import GpibTransport
+            >>> t = GpibTransport(address=22)
+            >>> t.read_status_byte() is None  # not open
+            True
+        """
+        if self._resource is None:
+            return None
+        return int(self._resource.read_stb())

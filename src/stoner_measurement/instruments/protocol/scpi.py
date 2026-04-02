@@ -12,16 +12,22 @@ speak SCPI, making this the most commonly used protocol in this package.
 
 from __future__ import annotations
 
+import re
+
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 
 #: Terminator appended to every outgoing SCPI message.
 SCPI_TERMINATOR = b"\n"
 
 #: SCPI query to retrieve the first entry in the error queue.
-SCPI_ERROR_QUERY = b"SYST:ERR?\n"
+SCPI_ERROR_QUERY = "SYST:ERR?"
 
 #: Response prefix from ``SYST:ERR?`` when no error is queued.
 SCPI_NO_ERROR_PREFIX = "+0"
+
+#: Pattern matching a SCPI error response: ``<code>,"<message>"``.
+_SCPI_ERROR_RE = re.compile(r"^\s*([+-]?\d+)\s*,\s*\"?(.*)\"?\s*$")
 
 
 class ScpiProtocol(BaseProtocol):
@@ -41,6 +47,10 @@ class ScpiProtocol(BaseProtocol):
         b'MEAS:CURR?\\n'
         >>> p.parse_response(b'  +1.234E-03\\n')
         '+1.234E-03'
+        >>> p.errors_in_response
+        False
+        >>> p.error_query
+        'SYST:ERR?'
     """
 
     def __init__(self, terminator: bytes = SCPI_TERMINATOR) -> None:
@@ -52,6 +62,22 @@ class ScpiProtocol(BaseProtocol):
                 Defaults to ``b"\\n"``.
         """
         self.terminator = terminator
+
+    @property
+    def error_query(self) -> str:
+        """SCPI error-queue query string.
+
+        Returns:
+            (str):
+                ``"SYST:ERR?"`` — the standard SCPI command for reading the
+                first entry from the instrument's error queue.
+
+        Examples:
+            >>> from stoner_measurement.instruments.protocol import ScpiProtocol
+            >>> ScpiProtocol().error_query
+            'SYST:ERR?'
+        """
+        return SCPI_ERROR_QUERY
 
     def format_command(self, command: str) -> bytes:
         """Format a SCPI command for transmission.
@@ -109,28 +135,41 @@ class ScpiProtocol(BaseProtocol):
         """
         return raw.decode("utf-8", errors="replace").strip()
 
-    def check_error(self, response: str) -> None:
-        """Raise :exc:`RuntimeError` if *response* signals a SCPI error.
+    def check_error(self, response: str, *, command: str | None = None) -> None:
+        """Raise :exc:`~stoner_measurement.instruments.errors.InstrumentError` if *response* signals a SCPI error.
 
-        SCPI instruments report errors as ``"<code>,<message>"``.  A code of
-        ``+0`` means *No Error*.
+        *response* should be the parsed reply to a ``SYST:ERR?`` query.  SCPI
+        instruments encode their error queue entries as
+        ``"<code>,\\"<message>\\""``; a code of ``+0`` means *No Error*.
 
         Args:
             response (str):
-                A response string previously obtained from ``SYST:ERR?``.
+                A response string previously obtained from :attr:`error_query`.
+
+        Keyword Parameters:
+            command (str | None):
+                The original command that triggered the error check.
 
         Raises:
-            RuntimeError:
+            InstrumentError:
                 If *response* does not start with ``"+0"``.
 
         Examples:
             >>> from stoner_measurement.instruments.protocol import ScpiProtocol
             >>> ScpiProtocol().check_error('+0,"No error"')  # no exception
             >>> try:
-            ...     ScpiProtocol().check_error('-113,"Undefined header"')
-            ... except RuntimeError as exc:
-            ...     print(exc)
-            Instrument error: -113,"Undefined header"
+            ...     ScpiProtocol().check_error('-113,"Undefined header"', command="*IDN")
+            ... except Exception as exc:
+            ...     print(type(exc).__name__, exc)
+            InstrumentError Undefined header (command: *IDN, code: -113)
         """
-        if not response.startswith(SCPI_NO_ERROR_PREFIX):
-            raise RuntimeError(f"Instrument error: {response}")
+        if response.startswith(SCPI_NO_ERROR_PREFIX):
+            return
+        match = _SCPI_ERROR_RE.match(response)
+        if match:
+            error_code = int(match.group(1))
+            message = match.group(2).strip().strip('"')
+        else:
+            error_code = None
+            message = response
+        raise InstrumentError(message, command=command, error_code=error_code)

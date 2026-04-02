@@ -6,6 +6,7 @@ Covers:
 - NullTransport record-keeping and context manager support.
 - Protocol formatting and response parsing for SCPI, Oxford, and Lakeshore.
 - Keithley2400 concrete driver methods.
+- InstrumentError structured exception and error-checking paths.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley import Keithley2400
 from stoner_measurement.instruments.magnet_controller import MagnetController
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
@@ -213,7 +215,7 @@ class TestScpiProtocol:
         ScpiProtocol().check_error('+0,"No error"')  # must not raise
 
     def test_check_error_raises_on_error(self):
-        with pytest.raises(RuntimeError, match="Instrument error"):
+        with pytest.raises(InstrumentError, match="Undefined header"):
             ScpiProtocol().check_error('-113,"Undefined header"')
 
     def test_custom_terminator(self):
@@ -244,7 +246,7 @@ class TestOxfordProtocol:
         OxfordProtocol().check_error("1.234")  # must not raise
 
     def test_check_error_raises_on_question_mark(self):
-        with pytest.raises(RuntimeError, match="Oxford Instruments"):
+        with pytest.raises(InstrumentError, match="Oxford Instruments"):
             OxfordProtocol().check_error("?")
 
 
@@ -267,7 +269,7 @@ class TestLakeshoreProtocol:
         LakeshoreProtocol().check_error("+77.350")  # must not raise
 
     def test_check_error_raises_on_question_mark(self):
-        with pytest.raises(RuntimeError, match="Lakeshore"):
+        with pytest.raises(InstrumentError, match="Lakeshore"):
             LakeshoreProtocol().check_error("?")
 
 
@@ -357,3 +359,252 @@ class TestKeithley2400:
         t = _null()
         Keithley2400(transport=t).enable_output(False)
         assert t.write_log[-1] == b":OUTP:STAT 0\n"
+
+
+# ---------------------------------------------------------------------------
+# InstrumentError
+# ---------------------------------------------------------------------------
+
+
+class TestInstrumentError:
+    """Structured exception class for instrument errors."""
+
+    def test_message_only(self):
+        exc = InstrumentError("bad news")
+        assert str(exc) == "bad news"
+        assert exc.message == "bad news"
+        assert exc.command is None
+        assert exc.error_code is None
+
+    def test_with_command(self):
+        exc = InstrumentError("bad news", command="*IDN")
+        assert "command: *IDN" in str(exc)
+        assert exc.command == "*IDN"
+
+    def test_with_error_code(self):
+        exc = InstrumentError("Undefined header", error_code=-113)
+        assert "code: -113" in str(exc)
+        assert exc.error_code == -113
+
+    def test_with_all_fields(self):
+        exc = InstrumentError("Undefined header", command="*IDN", error_code=-113)
+        s = str(exc)
+        assert "Undefined header" in s
+        assert "command: *IDN" in s
+        assert "code: -113" in s
+
+    def test_is_exception(self):
+        assert issubclass(InstrumentError, Exception)
+
+    def test_exported_from_instruments_package(self):
+        from stoner_measurement.instruments import InstrumentError as IE
+
+        assert IE is InstrumentError
+
+
+# ---------------------------------------------------------------------------
+# SCPI protocol — error_query and check_error details
+# ---------------------------------------------------------------------------
+
+
+class TestScpiErrorHandling:
+    def test_error_query_property(self):
+        assert ScpiProtocol().error_query == "SYST:ERR?"
+
+    def test_errors_in_response_is_false(self):
+        assert ScpiProtocol().errors_in_response is False
+
+    def test_check_error_no_error_variants(self):
+        p = ScpiProtocol()
+        p.check_error('+0,"No error"')
+        p.check_error("+0,No error")
+        p.check_error("+00,No error")  # some instruments zero-pad the code
+
+    def test_check_error_sets_error_code(self):
+        with pytest.raises(InstrumentError) as exc_info:
+            ScpiProtocol().check_error('-113,"Undefined header"', command="*IDN")
+        exc = exc_info.value
+        assert exc.error_code == -113
+        assert exc.command == "*IDN"
+        assert "Undefined header" in exc.message
+
+    def test_check_error_unstructured_response(self):
+        with pytest.raises(InstrumentError) as exc_info:
+            ScpiProtocol().check_error("ERROR")
+        assert exc_info.value.error_code is None
+
+    def test_check_error_positive_nonzero_code(self):
+        with pytest.raises(InstrumentError) as exc_info:
+            ScpiProtocol().check_error('+100,"Device-specific error"')
+        assert exc_info.value.error_code == 100
+
+
+# ---------------------------------------------------------------------------
+# Oxford protocol — errors_in_response
+# ---------------------------------------------------------------------------
+
+
+class TestOxfordErrorHandling:
+    def test_errors_in_response_is_true(self):
+        assert OxfordProtocol().errors_in_response is True
+
+    def test_error_query_is_none(self):
+        assert OxfordProtocol().error_query is None
+
+    def test_check_error_ok(self):
+        OxfordProtocol().check_error("1.234")  # must not raise
+
+    def test_check_error_raises(self):
+        with pytest.raises(InstrumentError) as exc_info:
+            OxfordProtocol().check_error("?", command="R99")
+        exc = exc_info.value
+        assert exc.command == "R99"
+        assert exc.error_code is None
+
+    def test_check_error_question_mark_prefix(self):
+        with pytest.raises(InstrumentError):
+            OxfordProtocol().check_error("?status")
+
+
+# ---------------------------------------------------------------------------
+# Lakeshore protocol — errors_in_response
+# ---------------------------------------------------------------------------
+
+
+class TestLakeshoreErrorHandling:
+    def test_errors_in_response_is_true(self):
+        assert LakeshoreProtocol().errors_in_response is True
+
+    def test_error_query_is_none(self):
+        assert LakeshoreProtocol().error_query is None
+
+    def test_check_error_ok(self):
+        LakeshoreProtocol().check_error("+77.350")  # must not raise
+
+    def test_check_error_raises(self):
+        with pytest.raises(InstrumentError) as exc_info:
+            LakeshoreProtocol().check_error("?", command="KRDG? Z")
+        exc = exc_info.value
+        assert exc.command == "KRDG? Z"
+
+
+# ---------------------------------------------------------------------------
+# BaseInstrument.check_for_errors — SCPI / NullTransport (no out-of-band STB)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckForErrors:
+    def test_check_for_errors_no_error(self):
+        t = _null(responses=[b'+0,"No error"\n'])
+        instr = BaseInstrument(t, ScpiProtocol())
+        instr.check_for_errors()  # must not raise
+        assert t.write_log == [b"SYST:ERR?\n"]
+
+    def test_check_for_errors_raises_on_error(self):
+        t = _null(responses=[b'-113,"Undefined header"\n'])
+        instr = BaseInstrument(t, ScpiProtocol())
+        with pytest.raises(InstrumentError) as exc_info:
+            instr.check_for_errors(command="*IDN")
+        assert exc_info.value.error_code == -113
+        assert exc_info.value.command == "*IDN"
+
+    def test_check_for_errors_noop_for_response_embedded_protocol(self):
+        t = _null()
+        instr = BaseInstrument(t, OxfordProtocol())
+        instr.check_for_errors()  # Oxford has no error_query — must be a no-op
+        assert t.write_log == []
+
+    def test_check_for_errors_noop_when_no_error_query(self):
+        t = _null()
+        instr = BaseInstrument(t, LakeshoreProtocol())
+        instr.check_for_errors()  # no error_query — no-op
+        assert t.write_log == []
+
+    def test_check_for_errors_skips_query_when_stb_esb_clear(self):
+        """When transport returns a status byte with ESB clear, no query is sent."""
+
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x00  # ESB bit NOT set
+
+        t = StubTransport()
+        t.open()
+        instr = BaseInstrument(t, ScpiProtocol())
+        instr.check_for_errors()
+        assert t.write_log == []  # no SYST:ERR? sent
+
+    def test_check_for_errors_queries_when_stb_esb_set(self):
+        """When transport returns a status byte with ESB set, error queue is queried."""
+
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x04  # ESB bit set
+
+        t = StubTransport(responses=[b'+0,"No error"\n'])
+        t.open()
+        instr = BaseInstrument(t, ScpiProtocol())
+        instr.check_for_errors()
+        assert t.write_log == [b"SYST:ERR?\n"]
+
+    def test_check_for_errors_raises_when_stb_esb_set_and_error_queued(self):
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x04
+
+        t = StubTransport(responses=[b'-113,"Undefined header"\n'])
+        t.open()
+        instr = BaseInstrument(t, ScpiProtocol())
+        with pytest.raises(InstrumentError) as exc_info:
+            instr.check_for_errors(command="BAD CMD")
+        assert exc_info.value.error_code == -113
+        assert exc_info.value.command == "BAD CMD"
+
+
+# ---------------------------------------------------------------------------
+# auto_check_errors flag
+# ---------------------------------------------------------------------------
+
+
+class TestAutoCheckErrors:
+    def test_auto_check_errors_default_is_false(self):
+        assert BaseInstrument(NullTransport(), ScpiProtocol()).auto_check_errors is False
+
+    def test_auto_check_errors_query_raises_on_scpi_error(self):
+        # The NullTransport serves: first the query response, then the SYST:ERR? response
+        t = _null(responses=[b"ACME\n", b'-113,"Undefined header"\n'])
+        instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
+        with pytest.raises(InstrumentError, match="Undefined header"):
+            instr.query("*IDN?")
+
+    def test_auto_check_errors_query_no_raise_when_queue_clear(self):
+        t = _null(responses=[b"ACME\n", b'+0,"No error"\n'])
+        instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
+        result = instr.query("*IDN?")
+        assert result == "ACME"
+
+    def test_auto_check_errors_write_raises_on_scpi_error(self):
+        t = _null(responses=[b'-113,"Undefined header"\n'])
+        instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
+        with pytest.raises(InstrumentError):
+            instr.write("BAD CMD")
+
+    def test_auto_check_errors_oxford_query_raises_on_error_response(self):
+        # Oxford error is a bare '?\r' response — parse_response returns "?" (single char, no stripping)
+        t = _null(responses=[b"?\r"])
+        instr = BaseInstrument(t, OxfordProtocol(), auto_check_errors=True)
+        with pytest.raises(InstrumentError, match="Oxford Instruments"):
+            instr.query("X9")
+
+    def test_auto_check_errors_oxford_query_ok(self):
+        t = _null(responses=[b"R1.234\r"])
+        instr = BaseInstrument(t, OxfordProtocol(), auto_check_errors=True)
+        assert instr.query("R1") == "1.234"
+
+    def test_auto_check_errors_write_does_not_query_for_response_embedded(self):
+        """Oxford write with auto_check_errors should NOT send an error query."""
+        t = _null()
+        instr = BaseInstrument(t, OxfordProtocol(), auto_check_errors=True)
+        instr.write("H1")
+        # Only the command itself should be in the write log
+        assert t.write_log == [b"H1\r"]
+
