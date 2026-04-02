@@ -113,8 +113,9 @@ class TestFunctionScanGenerator:
         arr = gen.generate()
         assert abs(arr[0]) < 1e-9
 
-    def test_generate_cosine_starts_at_amplitude(self, qapp):
-        gen = FunctionScanGenerator(waveform=WaveformType.COSINE, amplitude=2.0, offset=0.0)
+    def test_generate_cosine_via_phase_shift(self, qapp):
+        """SINE at 90° phase gives cosine behaviour: first sample = amplitude."""
+        gen = FunctionScanGenerator(waveform=WaveformType.SINE, amplitude=2.0, offset=0.0, phase=90.0)
         arr = gen.generate()
         assert abs(arr[0] - 2.0) < 1e-9
 
@@ -248,7 +249,7 @@ class TestFunctionScanGenerator:
     def test_waveform_change_invalidates_cache(self, qapp):
         gen = FunctionScanGenerator()
         _ = gen.values
-        gen.waveform = WaveformType.COSINE
+        gen.waveform = WaveformType.TRIANGLE
         assert gen._cache is None
 
     def test_offset_change_invalidates_cache(self, qapp):
@@ -275,6 +276,60 @@ class TestFunctionScanGenerator:
         received: list[None] = []
         gen.values_changed.connect(lambda: received.append(None))
         gen.amplitude = 3.0
+        assert len(received) == 1
+
+    # ------------------------------------------------------------------
+    # periods parameter
+    # ------------------------------------------------------------------
+
+    def test_default_periods_is_one(self, qapp):
+        gen = FunctionScanGenerator()
+        assert gen.periods == 1.0
+
+    def test_generate_half_period(self, qapp):
+        """0.5 periods of sine: starts at 0, peaks at midpoint, ends near 0."""
+        gen = FunctionScanGenerator(
+            waveform=WaveformType.SINE, amplitude=1.0, offset=0.0, phase=0.0,
+            periods=0.5, num_points=101
+        )
+        arr = gen.generate()
+        assert len(arr) == 101
+        assert abs(arr[0]) < 1e-9         # sin(0) = 0
+        assert abs(arr[50] - 1.0) < 1e-9  # peak at midpoint: sin(π/2) = 1
+        assert abs(arr[-1]) < 1e-9        # sin(π) ≈ 0
+
+    def test_generate_two_periods_length(self, qapp):
+        gen = FunctionScanGenerator(num_points=50, periods=2.0)
+        arr = gen.generate()
+        assert len(arr) == 50
+
+    def test_generate_two_periods_sine_symmetry(self, qapp):
+        """Two periods of sine: the midpoint and endpoint are both ≈ 0."""
+        gen = FunctionScanGenerator(
+            waveform=WaveformType.SINE, amplitude=1.0, offset=0.0, phase=0.0,
+            periods=2.0, num_points=201
+        )
+        arr = gen.generate()
+        # Midpoint is at 2π (start of second period): sin(2π) = 0
+        assert abs(arr[100]) < 1e-9
+        # Endpoint is at 4π: sin(4π) ≈ 0
+        assert abs(arr[-1]) < 1e-9
+
+    def test_periods_change_invalidates_cache(self, qapp):
+        gen = FunctionScanGenerator()
+        _ = gen.values
+        gen.periods = 2.0
+        assert gen._cache is None
+
+    def test_periods_below_minimum_clamped(self, qapp):
+        gen = FunctionScanGenerator(periods=0.0)
+        assert gen.periods > 0.0
+
+    def test_periods_signal_emitted(self, qapp):
+        gen = FunctionScanGenerator()
+        received: list[None] = []
+        gen.values_changed.connect(lambda: received.append(None))
+        gen.periods = 3.0
         assert len(received) == 1
 
     # ------------------------------------------------------------------
@@ -335,9 +390,9 @@ class TestFunctionScanWidget:
     def test_waveform_combo_updates_generator(self, qapp):
         gen = FunctionScanGenerator(waveform=WaveformType.SINE)
         widget = FunctionScanWidget(generator=gen)
-        cosine_index = list(WaveformType).index(WaveformType.COSINE)
-        widget._waveform_combo.setCurrentIndex(cosine_index)
-        assert gen.waveform is WaveformType.COSINE
+        triangle_index = list(WaveformType).index(WaveformType.TRIANGLE)
+        widget._waveform_combo.setCurrentIndex(triangle_index)
+        assert gen.waveform is WaveformType.TRIANGLE
 
     def test_plot_curve_data_matches_generator_after_change(self, qapp):
         gen = FunctionScanGenerator(num_points=20)
@@ -359,3 +414,14 @@ class TestFunctionScanWidget:
         gen.amplitude = 5.0  # triggers values_changed → _refresh_plot
         _x, y = widget._curve.getData()
         assert np.allclose(y, gen.values)
+
+    def test_periods_spinbox_updates_generator(self, qapp):
+        gen = FunctionScanGenerator(periods=1.0)
+        widget = FunctionScanWidget(generator=gen)
+        widget._periods_spin.setValue(2.5)
+        assert abs(gen.periods - 2.5) < 1e-9
+
+    def test_periods_spinbox_initial_value(self, qapp):
+        gen = FunctionScanGenerator(periods=0.5)
+        widget = FunctionScanWidget(generator=gen)
+        assert abs(widget._periods_spin.value() - 0.5) < 1e-9

@@ -1,7 +1,7 @@
 """Function-based scan generator and its configuration widget.
 
 :class:`FunctionScanGenerator` generates a sequence of values based on
-standard waveform functions (sine, cosine, triangle, square, sawtooth).
+standard waveform functions (sine, triangle, square, sawtooth).
 :class:`FunctionScanWidget` provides a live-preview Qt widget for adjusting
 the generator parameters.
 """
@@ -31,10 +31,14 @@ _MAX_NUM_POINTS = 10_000
 
 
 class WaveformType(enum.Enum):
-    """Supported waveform shapes for :class:`FunctionScanGenerator`."""
+    """Supported waveform shapes for :class:`FunctionScanGenerator`.
+
+    Note:
+        Cosine is not a separate waveform type.  It is equivalent to
+        :attr:`SINE` with a phase shift of 90°.
+    """
 
     SINE = "Sine"
-    COSINE = "Cosine"
     TRIANGLE = "Triangle"
     SQUARE = "Square"
     SAWTOOTH = "Sawtooth"
@@ -43,8 +47,12 @@ class WaveformType(enum.Enum):
 class FunctionScanGenerator(BaseScanGenerator):
     """Scan generator that produces values from a standard waveform function.
 
-    The output sequence covers one full period of the selected waveform,
-    scaled by *amplitude*, offset by *offset*, and phase-shifted by *phase*.
+    The output sequence spans *periods* complete periods of the selected
+    waveform, scaled by *amplitude*, offset by *offset*, and phase-shifted
+    by *phase*.
+
+    A cosine waveform is equivalent to :attr:`WaveformType.SINE` with
+    ``phase=90.0``.
 
     Attributes:
         waveform (WaveformType):
@@ -55,6 +63,8 @@ class FunctionScanGenerator(BaseScanGenerator):
             DC offset added to the waveform.
         phase (float):
             Phase shift in degrees.
+        periods (float):
+            Number of complete periods spanned by the sequence (> 0).
         num_points (int):
             Number of points in the sequence (≥ 2).
 
@@ -67,6 +77,8 @@ class FunctionScanGenerator(BaseScanGenerator):
             Initial DC offset. Defaults to ``0.0``.
         phase (float):
             Initial phase shift in degrees. Defaults to ``0.0``.
+        periods (float):
+            Initial number of complete periods. Defaults to ``1.0``.
         num_points (int):
             Initial number of points. Defaults to ``100``.
         parent (QObject | None):
@@ -79,7 +91,7 @@ class FunctionScanGenerator(BaseScanGenerator):
         >>> gen = FunctionScanGenerator(num_points=10)
         >>> len(gen.generate())
         10
-        >>> gen.waveform = WaveformType.COSINE
+        >>> gen.phase = 90.0  # cosine behaviour
         >>> values = list(gen)
         >>> len(values)
         10
@@ -92,6 +104,7 @@ class FunctionScanGenerator(BaseScanGenerator):
         amplitude: float = 1.0,
         offset: float = 0.0,
         phase: float = 0.0,
+        periods: float = 1.0,
         num_points: int = 100,
         parent: QObject | None = None,
     ) -> None:
@@ -101,6 +114,7 @@ class FunctionScanGenerator(BaseScanGenerator):
         self._amplitude = float(amplitude)
         self._offset = float(offset)
         self._phase = float(phase)
+        self._periods = max(1e-9, float(periods))
         self._num_points = max(2, int(num_points))
 
     # ------------------------------------------------------------------
@@ -157,6 +171,16 @@ class FunctionScanGenerator(BaseScanGenerator):
         self._num_points = max(2, int(value))
         self._invalidate_cache()
 
+    @property
+    def periods(self) -> float:
+        """Number of complete periods spanned by the sequence (> 0)."""
+        return self._periods
+
+    @periods.setter
+    def periods(self, value: float) -> None:
+        self._periods = max(1e-9, float(value))
+        self._invalidate_cache()
+
     # ------------------------------------------------------------------
     # Core computation
     # ------------------------------------------------------------------
@@ -164,9 +188,10 @@ class FunctionScanGenerator(BaseScanGenerator):
     def generate(self) -> np.ndarray:
         """Compute the waveform sequence.
 
-        Builds an array of *num_points* values spanning one full period of
-        the selected waveform, scaled by :attr:`amplitude` and shifted by
-        :attr:`offset`.
+        Builds an array of *num_points* values spanning *periods* complete
+        periods of the selected waveform, scaled by :attr:`amplitude` and
+        shifted by :attr:`offset`.  The waveform is phase-shifted by
+        :attr:`phase` degrees.
 
         Returns:
             (np.ndarray):
@@ -184,12 +209,10 @@ class FunctionScanGenerator(BaseScanGenerator):
             True
         """
         phase_rad = np.deg2rad(self._phase)
-        x = np.linspace(0.0, 2.0 * np.pi, self._num_points) + phase_rad
+        x = np.linspace(0.0, 2.0 * np.pi * self._periods, self._num_points) + phase_rad
         wf = self._waveform
         if wf is WaveformType.SINE:
             wave = np.sin(x)
-        elif wf is WaveformType.COSINE:
-            wave = np.cos(x)
         elif wf is WaveformType.TRIANGLE:
             # Produce a triangle wave via the arcsin-of-sin identity,
             # which gives a smooth, exact triangle with amplitude 1.
@@ -309,6 +332,14 @@ class FunctionScanWidget(QWidget):
         self._points_spin.setToolTip("Number of points in the sequence")
         form.addRow("Points:", self._points_spin)
 
+        self._periods_spin = QDoubleSpinBox()
+        self._periods_spin.setRange(0.01, 1000.0)
+        self._periods_spin.setSingleStep(0.5)
+        self._periods_spin.setDecimals(2)
+        self._periods_spin.setValue(self._generator.periods)
+        self._periods_spin.setToolTip("Number of complete periods in the scan")
+        form.addRow("Periods:", self._periods_spin)
+
         root_layout.addWidget(controls_box)
 
         # --- Preview plot ---
@@ -327,6 +358,7 @@ class FunctionScanWidget(QWidget):
         self._offset_spin.valueChanged.connect(self._on_offset_changed)
         self._phase_spin.valueChanged.connect(self._on_phase_changed)
         self._points_spin.valueChanged.connect(self._on_points_changed)
+        self._periods_spin.valueChanged.connect(self._on_periods_changed)
         self._generator.values_changed.connect(self._refresh_plot)
 
     def _on_waveform_changed(self, index: int) -> None:
@@ -348,6 +380,10 @@ class FunctionScanWidget(QWidget):
     def _on_points_changed(self, value: int) -> None:
         """Update generator num_points."""
         self._generator.num_points = value
+
+    def _on_periods_changed(self, value: float) -> None:
+        """Update generator periods."""
+        self._generator.periods = value
 
     def _refresh_plot(self) -> None:
         """Re-render the preview curve from the current generator values."""
