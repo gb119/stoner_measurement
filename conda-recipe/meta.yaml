@@ -1,0 +1,52 @@
+{% set version = "0.1.0" %}
+
+package:
+  name: stoner_measurement
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  entry_points:
+    - stoner-measurement = stoner_measurement.main:main
+
+requirements:
+  host:
+    - python >=3.13
+    - pip
+    - setuptools >=75
+  run:
+    - python >=3.13
+    - pyqt >=6.7
+    - pyqtgraph >=0.13
+    - numpy >=2.0
+
+test:
+  imports:
+    - stoner_measurement
+    - stoner_measurement.core.sequence
+    - stoner_measurement.core.plugin_manager
+    - stoner_measurement.core.runner
+    - stoner_measurement.plugins.base_plugin
+    - stoner_measurement.plugins.dummy
+  commands:
+    - stoner-measurement --help || true
+
+about:
+  home: https://github.com/gb119/stoner_measurement
+  license: MIT
+  license_file: LICENSE
+  summary: A Python/PyQt6 application for running scientific measurements
+  description: |
+    A Python/PyQt6 application for running scientific measurements.
+    Features a three-panel main window (instrument dock, PyQtGraph plot,
+    tabbed configuration), a plugin system, and a background sequence runner.
+  doc_url: https://github.com/gb119/stoner_measurement
+  dev_url: https://github.com/gb119/stoner_measurement
+
+extra:
+  recipe-maintainers:
+    - gb119
