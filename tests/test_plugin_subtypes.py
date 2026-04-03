@@ -172,6 +172,23 @@ class TestTracePlugin:
     def test_monitor_widget_default_none(self, qapp):
         assert _SimpleTrace().monitor_widget() is None
 
+    def test_scan_generator_attribute(self, qapp):
+        from stoner_measurement.scan import SteppedScanGenerator
+        p = _SimpleTrace()
+        assert isinstance(p.scan_generator, SteppedScanGenerator)
+
+    def test_config_tabs_scan_tab_is_first(self, qapp):
+        p = _SimpleTrace()
+        tabs = p.config_tabs()
+        assert len(tabs) >= 2
+        assert "Scan" in tabs[0][0]
+
+    def test_config_tabs_scan_widget_is_qwidget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+        p = _SimpleTrace()
+        tabs = p.config_tabs()
+        assert isinstance(tabs[0][1], QWidget)
+
 
 # ---------------------------------------------------------------------------
 # StateControlPlugin tests

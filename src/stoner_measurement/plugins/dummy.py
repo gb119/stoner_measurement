@@ -64,10 +64,13 @@ class DummyPlugin(TracePlugin):
     def config_tabs(
         self, parent: QWidget | None = None
     ) -> list[tuple[str, QWidget]]:
-        """Return two configuration tabs: *Settings* and *About*.
+        """Return three configuration tabs: *Scan*, *Settings*, and *About*.
 
-        The *Settings* tab contains the standard :meth:`config_widget`
-        form.  The *About* tab provides a brief description of the plugin.
+        The *Scan* tab is inherited from
+        :class:`~stoner_measurement.plugins.trace.TracePlugin` and contains the
+        built-in scan generator widget.  The *Settings* tab contains the
+        standard :meth:`config_widget` form.  The *About* tab provides a brief
+        description of the plugin.
 
         Keyword Parameters:
             parent (QWidget | None):
@@ -83,9 +86,13 @@ class DummyPlugin(TracePlugin):
             >>> plugin = DummyPlugin()
             >>> tabs = plugin.config_tabs()
             >>> [t for t, _ in tabs]
-            ['Dummy – Settings', 'Dummy – About']
+            ['Dummy \u2013 Scan', 'Dummy \u2013 Settings', 'Dummy \u2013 About']
         """
-        settings_widget = self.config_widget(parent=parent)
+        parent_tabs = super().config_tabs(parent=parent)
+        # parent_tabs[0] = ("{name} – Scan", scan_widget)  from TracePlugin.config_tabs
+        # parent_tabs[1] = ("{name}", settings_widget)     from BasePlugin.config_tabs
+        scan_tab = parent_tabs[0]
+        settings_tab = (f"{self.name} \u2013 Settings", parent_tabs[1][1])
 
         about_widget = QWidget(parent)
         about_layout = QFormLayout(about_widget)
@@ -97,7 +104,8 @@ class DummyPlugin(TracePlugin):
         about_widget.setLayout(about_layout)
 
         return [
-            (f"{self.name} \u2013 Settings", settings_widget),
+            scan_tab,
+            settings_tab,
             (f"{self.name} \u2013 About", about_widget),
         ]
 

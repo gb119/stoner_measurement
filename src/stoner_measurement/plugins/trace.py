@@ -9,14 +9,13 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
-
-if TYPE_CHECKING:
-    pass
+from stoner_measurement.scan import SteppedScanGenerator
 
 
 class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
@@ -39,6 +38,10 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
       acquisition.
 
     Attributes:
+        scan_generator (SteppedScanGenerator):
+            Built-in scan generator that defines the sequence of x-axis values
+            for this trace.  The configuration widget for this generator is
+            presented as the first tab of :meth:`config_tabs`.
         trace_started (pyqtSignal[str]):
             Emitted with the channel name when acquisition of a trace begins.
         trace_point (pyqtSignal[str, float, float]):
@@ -70,8 +73,9 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     trace_complete = pyqtSignal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
-        """Initialise the Qt object hierarchy."""
+        """Initialise the Qt object hierarchy and create the built-in scan generator."""
         super().__init__(parent)
+        self.scan_generator: SteppedScanGenerator = SteppedScanGenerator(parent=self)
 
     @property
     def plugin_type(self) -> str:
@@ -82,6 +86,38 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Always ``"trace"``.
         """
         return "trace"
+
+    def config_tabs(
+        self, parent: QWidget | None = None
+    ) -> list[tuple[str, QWidget]]:
+        """Return configuration tabs with the scan generator widget as the first tab.
+
+        The first tab displays the built-in :attr:`scan_generator` configuration
+        widget so that the user can define the x-axis scan sequence.  Subsequent
+        tabs are inherited from
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_tabs`.
+
+        Keyword Parameters:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (list[tuple[str, QWidget]]):
+                List of ``(tab_title, widget)`` pairs; the scan generator tab is
+                always first.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> tabs = plugin.config_tabs()
+            >>> "Scan" in tabs[0][0]
+            True
+        """
+        scan_widget = self.scan_generator.config_widget(parent=parent)
+        scan_tab = (f"{self.name} \u2013 Scan", scan_widget)
+        return [scan_tab] + super().config_tabs(parent=parent)
 
     @abstractmethod
     def execute(

@@ -54,7 +54,7 @@ class TestDummyPlugin:
     def test_config_tabs_returns_two_tabs(self, qapp):
         plugin = DummyPlugin()
         tabs = plugin.config_tabs()
-        assert len(tabs) == 2
+        assert len(tabs) == 3
 
     def test_config_tabs_titles(self, qapp):
         plugin = DummyPlugin()
@@ -62,7 +62,7 @@ class TestDummyPlugin:
         titles = [t for t, _ in tabs]
         # Tab titles use an en-dash (\u2013) as the separator, matching the
         # implementation in DummyPlugin.config_tabs().
-        assert titles == ["Dummy \u2013 Settings", "Dummy \u2013 About"]
+        assert titles == ["Dummy \u2013 Scan", "Dummy \u2013 Settings", "Dummy \u2013 About"]
 
     def test_config_tabs_widgets_are_qwidgets(self, qapp):
         from PyQt6.QtWidgets import QWidget
@@ -77,3 +77,19 @@ class TestDummyPlugin:
     def test_configured_points_default(self):
         plugin = DummyPlugin()
         assert plugin.configured_points == 100
+
+    def test_has_scan_generator(self, qapp):
+        from stoner_measurement.scan import SteppedScanGenerator
+        plugin = DummyPlugin()
+        assert isinstance(plugin.scan_generator, SteppedScanGenerator)
+
+    def test_scan_tab_is_first(self, qapp):
+        plugin = DummyPlugin()
+        tabs = plugin.config_tabs()
+        assert "Scan" in tabs[0][0]
+
+    def test_scan_tab_widget_is_qwidget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+        plugin = DummyPlugin()
+        tabs = plugin.config_tabs()
+        assert isinstance(tabs[0][1], QWidget)
