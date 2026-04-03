@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import QSettings, QSize, Qt
-from PyQt6.QtGui import QAction, QIcon, QKeySequence
+from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -15,7 +15,8 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.core.plugin_manager import PluginManager
-from stoner_measurement.core.runner import SequenceRunner
+from stoner_measurement.core.sequence_engine import SequenceEngine
+from stoner_measurement.plugins.trace import TracePlugin
 from stoner_measurement.ui.main_window import MainWindow
 
 
@@ -24,13 +25,20 @@ class MeasurementApp(QMainWindow):
 
     Composes the :class:`MainWindow` central widget and wires together the
     :class:`~stoner_measurement.core.plugin_manager.PluginManager` and
-    :class:`~stoner_measurement.core.runner.SequenceRunner`.
+    :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`.
 
     The window provides:
 
     * A **menu bar** with File, Sequence, View and Help menus.
-    * A **toolbar** with Run, Stop, Open and Save actions.
-    * A **status bar** that reflects runner status messages.
+    * A **toolbar** with Run, Pause, Stop, Generate Code, Open and Save actions.
+    * A **status bar** that reflects engine status messages.
+
+    When plugins are loaded, instances are automatically injected into the
+    engine namespace under sanitised variable names (e.g. the ``"dummy"``
+    entry-point plugin becomes ``dummy`` in the script namespace).
+    :class:`~stoner_measurement.plugins.trace.TracePlugin` instances have their
+    ``trace_point`` signals wired to the plot widget so that data appears
+    automatically while a script runs.
     """
 
     def __init__(self) -> None:
@@ -38,33 +46,75 @@ class MeasurementApp(QMainWindow):
         self.setWindowTitle("Stoner Measurement")
         self.setMinimumSize(QSize(1200, 700))
 
-        # Core objects
+        # Core objects ---------------------------------------------------------
         self._plugin_manager = PluginManager()
-        self._plugin_manager.discover()
+        self._engine = SequenceEngine(parent=self)
 
-        self._runner = SequenceRunner()
+        # Tracks which plugins have been wired to the engine / plot so they can
+        # be cleanly removed when the plugin list changes.
+        self._engine_plugins: dict[str, object] = {}
 
-        # Central widget
-        self._main_window = MainWindow(
-            plugin_manager=self._plugin_manager,
-            runner=self._runner,
-        )
+        # Central widget -------------------------------------------------------
+        self._main_window = MainWindow(plugin_manager=self._plugin_manager)
         self.setCentralWidget(self._main_window)
 
-        # Status bar
+        # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
         self._status_bar.showMessage("Ready")
-        self._runner.status_changed.connect(self._status_bar.showMessage)
+        self._engine.status_changed.connect(self._status_bar.showMessage)
 
-        # Current open file path (None = unsaved new sequence)
+        # Current open file path (None = unsaved new sequence) ----------------
         self._current_path: Path | None = None
 
+        # Wire the console to the engine --------------------------------------
+        console = self._main_window.sequence_tab.console
+        console.connect_engine(self._engine)
+        self._engine.status_changed.connect(console.write)
+
+        # Connect plugin manager so plugins are synced to the engine ----------
+        self._plugin_manager.plugins_changed.connect(self._on_plugins_changed)
+
+        # Build the UI before discovering plugins (so signals are in place) ---
         self._build_actions()
         self._build_menu_bar()
         self._build_toolbar()
 
         self._restore_settings()
+
+        # Discover plugins (emits plugins_changed → _on_plugins_changed) ------
+        self._plugin_manager.discover()
+
+    # ------------------------------------------------------------------
+    # Plugin synchronisation
+    # ------------------------------------------------------------------
+
+    def _on_plugins_changed(self) -> None:
+        """Synchronise the engine namespace and plot connections with the current plugins."""
+        current = self._plugin_manager.plugins
+
+        # Remove plugins that are no longer registered ----------------------
+        for ep_name in list(self._engine_plugins):
+            if ep_name not in current:
+                old_plugin = self._engine_plugins.pop(ep_name)
+                self._engine.remove_plugin(ep_name)
+                if isinstance(old_plugin, TracePlugin):
+                    try:
+                        old_plugin.trace_point.disconnect(
+                            self._main_window.plot_widget.append_point
+                        )
+                    except (TypeError, RuntimeError):
+                        pass
+
+        # Add plugins that are newly registered -----------------------------
+        for ep_name, plugin in current.items():
+            if ep_name not in self._engine_plugins:
+                self._engine.add_plugin(ep_name, plugin)
+                self._engine_plugins[ep_name] = plugin
+                if isinstance(plugin, TracePlugin):
+                    plugin.trace_point.connect(
+                        self._main_window.plot_widget.append_point
+                    )
 
     # ------------------------------------------------------------------
     # Action construction
@@ -101,13 +151,24 @@ class MeasurementApp(QMainWindow):
         # Sequence actions
         self._act_run = QAction("&Run", self)
         self._act_run.setShortcut(Qt.Key.Key_F5)
-        self._act_run.setStatusTip("Start executing the current sequence")
+        self._act_run.setStatusTip("Execute the sequence script in the editor")
         self._act_run.triggered.connect(self._on_run)
+
+        self._act_pause = QAction("&Pause", self)
+        self._act_pause.setShortcut(Qt.Key.Key_F7)
+        self._act_pause.setStatusTip("Pause or resume the running sequence")
+        self._act_pause.triggered.connect(self._on_pause)
 
         self._act_stop = QAction("S&top", self)
         self._act_stop.setShortcut(Qt.Key.Key_F6)
-        self._act_stop.setStatusTip("Stop the running sequence after the current step")
+        self._act_stop.setStatusTip("Stop the running sequence")
         self._act_stop.triggered.connect(self._on_stop)
+
+        self._act_generate = QAction("&Generate Code", self)
+        self._act_generate.setStatusTip(
+            "Generate a Python script stub from the loaded plugins"
+        )
+        self._act_generate.triggered.connect(self._on_generate_code)
 
         self._act_load_editor = QAction("&Load Steps to Editor", self)
         self._act_load_editor.setStatusTip(
@@ -153,8 +214,10 @@ class MeasurementApp(QMainWindow):
         # Sequence menu
         seq_menu = menu_bar.addMenu("&Sequence")
         seq_menu.addAction(self._act_run)
+        seq_menu.addAction(self._act_pause)
         seq_menu.addAction(self._act_stop)
         seq_menu.addSeparator()
+        seq_menu.addAction(self._act_generate)
         seq_menu.addAction(self._act_load_editor)
 
         # View menu
@@ -171,14 +234,17 @@ class MeasurementApp(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_toolbar(self) -> None:
-        """Build the main toolbar with Run, Stop, Open and Save buttons."""
+        """Build the main toolbar."""
         toolbar = QToolBar("Main Toolbar", self)
         toolbar.setObjectName("mainToolbar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
         toolbar.addAction(self._act_run)
+        toolbar.addAction(self._act_pause)
         toolbar.addAction(self._act_stop)
+        toolbar.addSeparator()
+        toolbar.addAction(self._act_generate)
         toolbar.addSeparator()
         toolbar.addAction(self._act_open)
         toolbar.addAction(self._act_save)
@@ -239,15 +305,36 @@ class MeasurementApp(QMainWindow):
         self._status_bar.showMessage(f"Saved {self._current_path.name}")
 
     def _on_run(self) -> None:
-        """Start executing the sequence."""
-        self._runner.start()
+        """Execute the current sequence script in the engine."""
+        script = self._main_window.sequence_tab.text
+        self._main_window.tabs.setCurrentIndex(1)
+        self._engine.run_script(script)
+
+    def _on_pause(self) -> None:
+        """Pause or resume the running sequence."""
+        if self._engine.is_paused:
+            self._engine.resume()
+        else:
+            self._engine.pause()
 
     def _on_stop(self) -> None:
         """Stop the running sequence."""
-        self._runner.stop()
+        self._engine.stop()
+
+    def _on_generate_code(self) -> None:
+        """Generate a Python script stub from the loaded plugins and load it into the editor.
+
+        The generated script references plugin instances by their sanitised
+        variable names and provides usage examples appropriate for each plugin
+        type.  The user can then edit and run the script.
+        """
+        plugins = self._plugin_manager.plugins
+        code = self._engine.generate_code(plugins)
+        self._main_window.sequence_tab.set_text(code)
+        self._main_window.tabs.setCurrentIndex(1)
 
     def _on_load_to_editor(self) -> None:
-        """Render the current sequence steps as Python code in the editor.
+        """Render the current sequence steps as Python code stubs in the editor.
 
         Each step is represented as a commented-out call stub.  This gives
         the user a starting point for building a real script.
@@ -286,8 +373,8 @@ class MeasurementApp(QMainWindow):
             self.restoreGeometry(geometry)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        """Save window geometry on close."""
+        """Save window geometry and cleanly shut down the engine on close."""
         settings = QSettings()
         settings.setValue("mainWindow/geometry", self.saveGeometry())
-        self._runner.stop()
+        self._engine.shutdown()
         super().closeEvent(event)

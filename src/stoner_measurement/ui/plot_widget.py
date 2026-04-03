@@ -8,17 +8,16 @@ independent x- and y-axes implemented via linked
 from __future__ import annotations
 
 import warnings
+from collections.abc import Sequence
 from itertools import cycle
-from typing import TYPE_CHECKING, Literal, Sequence
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from stoner_measurement.core.runner import SequenceRunner
-
 if TYPE_CHECKING:
-    pass
+    from stoner_measurement.core.runner import SequenceRunner
 
 # Colour palette used when automatically assigning colours to new traces.
 _TRACE_COLOURS = [
@@ -51,13 +50,14 @@ class PlotWidget(QWidget):
         pg_widget (pg.PlotWidget):
             The underlying :class:`pyqtgraph.PlotWidget`.
 
-    Args:
-        runner (SequenceRunner):
-            The application
+    Keyword Parameters:
+        runner (SequenceRunner | None):
+            Optional
             :class:`~stoner_measurement.core.runner.SequenceRunner` whose
             ``data_ready`` signal is connected to :meth:`append_point`.
-
-    Keyword Parameters:
+            Pass ``None`` (the default) when using the new
+            :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`
+            workflow where plugin signals are wired directly.
         parent (QWidget | None):
             Optional Qt parent widget.
 
@@ -74,7 +74,7 @@ class PlotWidget(QWidget):
 
     def __init__(
         self,
-        runner: SequenceRunner,
+        runner: SequenceRunner | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)

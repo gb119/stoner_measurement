@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QApplication
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.runner import SequenceRunner
+from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.dummy import DummyPlugin
 
 
@@ -31,3 +32,11 @@ def plugin_manager(qapp):
 def runner(qapp):
     """Return a fresh SequenceRunner."""
     return SequenceRunner()
+
+
+@pytest.fixture
+def engine(qapp):
+    """Return a fresh SequenceEngine that is shut down after the test."""
+    eng = SequenceEngine()
+    yield eng
+    eng.shutdown()
