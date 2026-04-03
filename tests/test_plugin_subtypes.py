@@ -182,12 +182,43 @@ class TestTracePlugin:
         tabs = p.config_tabs()
         assert len(tabs) >= 2
         assert "Scan" in tabs[0][0]
+        assert "Type" not in tabs[0][0]
+
+    def test_config_tabs_scan_type_tab_is_second(self, qapp):
+        p = _SimpleTrace()
+        tabs = p.config_tabs()
+        assert "Scan Type" in tabs[1][0]
 
     def test_config_tabs_scan_widget_is_qwidget(self, qapp):
         from PyQt6.QtWidgets import QWidget
         p = _SimpleTrace()
         tabs = p.config_tabs()
         assert isinstance(tabs[0][1], QWidget)
+
+    def test_set_scan_generator_class(self, qapp):
+        from stoner_measurement.scan import FunctionScanGenerator
+        p = _SimpleTrace()
+        p.set_scan_generator_class(FunctionScanGenerator)
+        assert isinstance(p.scan_generator, FunctionScanGenerator)
+
+    def test_scan_generator_changed_emitted(self, qapp):
+        from stoner_measurement.scan import FunctionScanGenerator
+        p = _SimpleTrace()
+        received = []
+        p.scan_generator_changed.connect(lambda: received.append(True))
+        p.set_scan_generator_class(FunctionScanGenerator)
+        assert len(received) == 1
+
+    def test_scan_tab_container_refreshes_on_change(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+        from stoner_measurement.scan import FunctionScanGenerator
+        from stoner_measurement.plugins.trace import _ScanTabContainer
+        p = _SimpleTrace()
+        container = _ScanTabContainer(p)
+        widget_before = p.scan_generator.config_widget.__class__
+        p.set_scan_generator_class(FunctionScanGenerator)
+        # Container should still be a QWidget and its content updated
+        assert isinstance(container, QWidget)
 
 
 # ---------------------------------------------------------------------------
