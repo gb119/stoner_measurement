@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any, Generator
-
 import pytest
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -15,11 +13,6 @@ class _MinimalPlugin(BasePlugin):
     @property
     def name(self) -> str:
         return "Minimal"
-
-    def execute(
-        self, parameters: dict[str, Any]
-    ) -> Generator[tuple[float, float], None, None]:
-        yield from []
 
 
 class TestBasePluginDefaults:

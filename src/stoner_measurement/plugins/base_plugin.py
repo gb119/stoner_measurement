@@ -4,31 +4,56 @@ A plugin must:
 
 1. Inherit from :class:`BasePlugin`.
 2. Override :attr:`name` to provide a unique string identifier.
-3. Implement :meth:`execute` to yield ``(x, y)`` data pairs.
-4. Optionally override :meth:`config_widget` to supply a configuration
+3. Optionally override :meth:`config_widget` to supply a configuration
    :class:`~PyQt6.QtWidgets.QWidget` that will appear as a tab in the
    right-hand panel.
-5. Optionally override :meth:`config_tabs` to contribute multiple labelled
+4. Optionally override :meth:`config_tabs` to contribute multiple labelled
    tabs to the configuration panel.
-6. Optionally override :meth:`monitor_widget` to contribute a live-status
+5. Optionally override :meth:`monitor_widget` to contribute a live-status
    widget to the left dock panel.
+
+Concrete plugin behaviour is added by subclassing one of the four specialised
+sub-types: :class:`~stoner_measurement.plugins.trace.TracePlugin`,
+:class:`~stoner_measurement.plugins.state_control.StateControlPlugin`,
+:class:`~stoner_measurement.plugins.monitor.MonitorPlugin`, or
+:class:`~stoner_measurement.plugins.transform.TransformPlugin`.
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any, Generator
+from abc import ABC, ABCMeta, abstractmethod
 
+from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import QLabel, QWidget
 
 
-class BasePlugin(ABC):
-    """Abstract base class for measurement plugins.
+class _ABCQObjectMeta(type(QObject), ABCMeta):
+    """Combined metaclass that resolves the conflict between QObject and ABCMeta."""
 
-    Subclasses must implement :attr:`name` and :meth:`execute`.
-    Subclasses may optionally override :meth:`config_widget`,
-    :meth:`config_tabs`, and :meth:`monitor_widget` to provide richer
-    UI integration.
+
+class BasePlugin(ABC):
+    """Abstract root class shared by all measurement plugins.
+
+    Subclasses must implement :attr:`name`.  Subclasses may optionally
+    override :meth:`config_widget`, :meth:`config_tabs`, and
+    :meth:`monitor_widget` to provide richer UI integration.
+
+    Rather than subclassing :class:`BasePlugin` directly, prefer one of the
+    four specialised sub-types:
+
+    * :class:`~stoner_measurement.plugins.trace.TracePlugin` — collects (x, y)
+      traces from instruments.
+    * :class:`~stoner_measurement.plugins.state_control.StateControlPlugin` —
+      controls experimental state (field, temperature, etc.).
+    * :class:`~stoner_measurement.plugins.monitor.MonitorPlugin` — passively
+      records auxiliary quantities.
+    * :class:`~stoner_measurement.plugins.transform.TransformPlugin` — performs
+      pure-computation transforms on collected data.
+
+    Attributes:
+        plugin_type (str):
+            Short tag identifying the sub-type.  Overridden by each
+            specialised base class.
     """
 
     @property
@@ -36,22 +61,17 @@ class BasePlugin(ABC):
     def name(self) -> str:
         """Unique human-readable name for this plugin."""
 
-    @abstractmethod
-    def execute(
-        self, parameters: dict[str, Any]
-    ) -> Generator[tuple[float, float], None, None]:
-        """Execute the measurement step described by *parameters*.
+    @property
+    def plugin_type(self) -> str:
+        """Short tag identifying the plugin sub-type.
 
-        Yields
-        ------
-        tuple[float, float]
-            ``(x, y)`` data points produced by the step.
-
-        Parameters
-        ----------
-        parameters:
-            Step-specific configuration provided by the user.
+        Returns:
+            (str):
+                ``"base"`` for direct :class:`BasePlugin` subclasses.
+                Overridden to ``"trace"``, ``"state"``, ``"monitor"``, or
+                ``"transform"`` by the respective specialised sub-types.
         """
+        return "base"
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`QWidget` for configuring this plugin.
@@ -105,13 +125,10 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> # Use a minimal plugin to demonstrate the BasePlugin default behaviour.
             >>> from stoner_measurement.plugins.base_plugin import BasePlugin
-            >>> from typing import Any, Generator
             >>> class _Minimal(BasePlugin):
             ...     @property
             ...     def name(self): return "Minimal"
-            ...     def execute(self, parameters: dict[str, Any]) -> Generator: yield from []
             >>> plugin = _Minimal()
             >>> tabs = plugin.config_tabs()
             >>> len(tabs)
