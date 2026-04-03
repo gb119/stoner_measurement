@@ -7,7 +7,8 @@ It requires no hardware and is useful as a smoke-test.
 from __future__ import annotations
 
 import math
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 from PyQt6.QtWidgets import (
     QFormLayout,
@@ -16,10 +17,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.trace import TracePlugin
 
 
-class DummyPlugin(BasePlugin):
+class DummyPlugin(TracePlugin):
     """A built-in demo plugin that generates sine-wave data.
 
     Parameters accepted in ``parameters`` dict
@@ -37,7 +38,7 @@ class DummyPlugin(BasePlugin):
 
     def execute(
         self, parameters: dict[str, Any]
-    ) -> Generator[tuple[float, float], None, None]:
+    ) -> Generator[tuple[float, float]]:
         """Yield ``points`` sine-wave data points."""
         points = int(parameters.get("points", 100))
         amplitude = float(parameters.get("amplitude", 1.0))

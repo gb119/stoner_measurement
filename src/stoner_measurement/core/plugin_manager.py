@@ -101,3 +101,31 @@ class PluginManager(QObject):
     def get(self, name: str) -> BasePlugin | None:  # type: ignore[name-defined]
         """Return the plugin with *name*, or ``None`` if not found."""
         return self._plugins.get(name)
+
+    def plugins_by_type(self, plugin_type: str) -> dict[str, BasePlugin]:  # type: ignore[name-defined]
+        """Return a filtered mapping of plugins matching *plugin_type*.
+
+        Args:
+            plugin_type (str):
+                The :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.plugin_type`
+                tag to filter by (e.g. ``"trace"``, ``"state"``, ``"monitor"``,
+                ``"transform"``).
+
+        Returns:
+            (dict[str, BasePlugin]):
+                Mapping of plugin name → plugin instance for all registered
+                plugins whose :attr:`plugin_type` equals *plugin_type*.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> pm = PluginManager()
+            >>> pm.register("dummy", DummyPlugin())
+            >>> pm.plugins_by_type("trace")
+            {'dummy': <...DummyPlugin...>}
+            >>> pm.plugins_by_type("state")
+            {}
+        """
+        return {name: p for name, p in self._plugins.items() if p.plugin_type == plugin_type}
