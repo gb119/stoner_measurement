@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 from stoner_measurement.core.sequence_engine import SequenceEngine, _to_var_name
 from stoner_measurement.plugins.dummy import DummyPlugin
 
@@ -222,19 +220,6 @@ class TestCodeGeneration:
         plugins = {"dummy": plugin}
         code = engine.generate_code(plugins)
         assert "DummyPlugin" in code
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def engine(qapp):
-    """Provide a fresh SequenceEngine that is shut down after the test."""
-    eng = SequenceEngine()
-    yield eng
-    eng.shutdown()
 
 
 # ---------------------------------------------------------------------------

@@ -52,6 +52,7 @@ class ConsoleWidget(QWidget):
         super().__init__(parent)
 
         self._engine: SequenceEngine | None = None
+        self._local_ns: dict = {}  # persistent namespace for fallback eval/exec
 
         # Output display -------------------------------------------------------
         self._output = QPlainTextEdit(self)
@@ -266,14 +267,13 @@ class ConsoleWidget(QWidget):
             self._engine.execute_command(command)
             return
 
-        ns: dict = {}
         try:
-            result = eval(command, ns)  # noqa: S307
+            result = eval(command, self._local_ns)  # noqa: S307
             if result is not None:
                 self._append_text(repr(result), color=None)
         except SyntaxError:
             try:
-                exec(command, ns)  # noqa: S102
+                exec(command, self._local_ns)  # noqa: S102
             except Exception as exc:
                 self.write_error(str(exc))
         except Exception as exc:

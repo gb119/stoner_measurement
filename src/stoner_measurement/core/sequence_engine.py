@@ -155,7 +155,7 @@ class _EngineThread(QThread):
     # Main loop
     # ------------------------------------------------------------------
 
-    def run(self) -> None:  # pragma: no cover (runs in separate thread)
+    def run(self) -> None:
         """Process items from the command queue until a *quit* sentinel arrives."""
         out_stream = _SignalStream(self.output)
         err_stream = _SignalStream(self.error_output)
@@ -195,6 +195,15 @@ class _EngineThread(QThread):
         pause_event = self._pause_event
 
         def _tracer(frame, event, arg):  # noqa: ANN001, ANN202
+            """Trace function called by CPython at every line/call/return boundary.
+
+            Called by the Python interpreter for each ``"call"``, ``"line"``,
+            ``"return"`` and ``"exception"`` event.  The ``frame`` argument is
+            the current stack frame, ``event`` is the event type string, and
+            ``arg`` is event-dependent (e.g. the return value for ``"return"``
+            events).  Returning the tracer itself re-installs it for subsequent
+            events; returning ``None`` would stop tracing.
+            """
             if stop_event.is_set():
                 raise KeyboardInterrupt("Sequence stopped by user")
             if not pause_event.is_set():

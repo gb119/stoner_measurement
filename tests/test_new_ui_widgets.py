@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from stoner_measurement.app import MeasurementApp
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
@@ -37,7 +35,6 @@ class TestEditorWidget:
     def test_tab_inserts_spaces(self, qapp):
         from PyQt6.QtCore import Qt
         from PyQt6.QtGui import QKeyEvent
-        from PyQt6.QtWidgets import QApplication
 
         editor = EditorWidget()
         event = QKeyEvent(
