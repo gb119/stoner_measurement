@@ -153,16 +153,19 @@ class TestMeasurementApp:
         assert any("Sequence" in t for t in titles)
         assert any("View" in t for t in titles)
         assert any("Help" in t for t in titles)
+        app._engine.shutdown()
 
     def test_has_toolbar(self, qapp):
         from PyQt6.QtWidgets import QToolBar
         app = MeasurementApp()
         toolbars = app.findChildren(QToolBar)
         assert len(toolbars) >= 1
+        app._engine.shutdown()
 
     def test_has_status_bar(self, qapp):
         app = MeasurementApp()
         assert app.statusBar() is not None
+        app._engine.shutdown()
 
     def test_central_widget_has_tabs(self, qapp):
         app = MeasurementApp()
@@ -172,20 +175,40 @@ class TestMeasurementApp:
         assert tabs.count() == 2
         assert tabs.tabText(0) == "Measurement"
         assert tabs.tabText(1) == "Sequence Editor"
+        app._engine.shutdown()
 
     def test_new_action_clears_editor(self, qapp):
         app = MeasurementApp()
         app._main_window.sequence_tab.set_text("old content")
         app._act_new.trigger()
         assert app._main_window.sequence_tab.text == ""
+        app._engine.shutdown()
 
-    def test_run_action_starts_runner(self, qapp):
+    def test_run_action_starts_engine(self, qapp):
         app = MeasurementApp()
-        # With an empty sequence, start() is a no-op that does not raise
+        # With an empty editor, run_script is a no-op that does not raise
         app._act_run.trigger()
         app._act_stop.trigger()
+        app._engine.shutdown()
+
+    def test_pause_action(self, qapp):
+        app = MeasurementApp()
+        # Pause when not running is a no-op
+        app._act_pause.trigger()
+        # Resume via toggle
+        app._act_pause.trigger()
+        app._engine.shutdown()
+
+    def test_generate_code_action_populates_editor(self, qapp):
+        app = MeasurementApp()
+        app._act_generate.trigger()
+        text = app._main_window.sequence_tab.text
+        # Should contain some generated content
+        assert len(text) > 0
+        app._engine.shutdown()
 
     def test_load_to_editor_no_steps(self, qapp):
         app = MeasurementApp()
         app._act_load_editor.trigger()
         assert "No sequence steps" in app._main_window.sequence_tab.text
+        app._engine.shutdown()

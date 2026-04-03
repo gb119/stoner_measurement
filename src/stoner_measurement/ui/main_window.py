@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QSplitter, QTabWidget, QWidget
 
 from stoner_measurement.core.plugin_manager import PluginManager
-from stoner_measurement.core.runner import SequenceRunner
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
 from stoner_measurement.ui.plot_widget import PlotWidget
 from stoner_measurement.ui.sequence_tab import SequenceTab
+
+if TYPE_CHECKING:
+    from stoner_measurement.core.runner import SequenceRunner
 
 
 class MainWindow(QWidget):
@@ -30,8 +34,15 @@ class MainWindow(QWidget):
     Args:
         plugin_manager (PluginManager):
             Shared plugin manager instance.
-        runner (SequenceRunner):
-            Shared sequence runner instance.
+
+    Keyword Parameters:
+        runner (SequenceRunner | None):
+            Optional shared sequence runner instance.  When provided,
+            its ``data_ready`` signal is forwarded to the plot widget and
+            its ``status_changed`` signal is forwarded to the console.
+            Pass ``None`` (the default) when using the new
+            :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`
+            workflow.
         parent (QWidget | None):
             Optional parent widget.
 
@@ -45,7 +56,7 @@ class MainWindow(QWidget):
     def __init__(
         self,
         plugin_manager: PluginManager,
-        runner: SequenceRunner,
+        runner: SequenceRunner | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -63,13 +74,15 @@ class MainWindow(QWidget):
         self._splitter.addWidget(self._plot_widget)
         self._splitter.addWidget(self._config_panel)
 
-        # Wire runner → plot (trace_name, x, y)
-        self._runner.data_ready.connect(self._plot_widget.append_point)
+        # Wire runner → plot (trace_name, x, y) — only when a runner is provided.
+        if runner is not None:
+            runner.data_ready.connect(self._plot_widget.append_point)
 
         # ---- Sequence Editor tab ---------------------------------------
         self._sequence_tab = SequenceTab(self)
-        # Forward runner status messages to the console
-        self._runner.status_changed.connect(self._sequence_tab.console.write)
+        # Forward runner status messages to the console (when runner provided).
+        if runner is not None:
+            runner.status_changed.connect(self._sequence_tab.console.write)
 
         # ---- Tab container ---------------------------------------------
         self._tabs = QTabWidget(self)

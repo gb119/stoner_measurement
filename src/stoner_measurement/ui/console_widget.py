@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
@@ -15,6 +16,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+if TYPE_CHECKING:
+    from stoner_measurement.core.sequence_engine import SequenceEngine
+
 
 class ConsoleWidget(QWidget):
     """Read-only output area combined with a command-input line.
@@ -22,6 +26,11 @@ class ConsoleWidget(QWidget):
     The output area displays timestamped messages written via :meth:`write`.
     The input line supports a command history navigated with the Up/Down arrow
     keys; pressing Return (or clicking *Run*) submits the command.
+
+    When a :class:`~stoner_measurement.core.sequence_engine.SequenceEngine` is
+    connected via :meth:`connect_engine`, submitted commands are forwarded to
+    the engine's shared namespace and the engine's output is displayed here.
+    Without a connected engine the widget falls back to local ``eval``/``exec``.
 
     Args:
         parent (QWidget | None):
@@ -41,6 +50,8 @@ class ConsoleWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+
+        self._engine: SequenceEngine | None = None
 
         # Output display -------------------------------------------------------
         self._output = QPlainTextEdit(self)
@@ -145,6 +156,31 @@ class ConsoleWidget(QWidget):
         """
         self._output.clear()
 
+    def connect_engine(self, engine: SequenceEngine) -> None:
+        """Connect this console to a :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`.
+
+        After calling this method, commands entered in the input line are
+        forwarded to *engine* for execution in its shared namespace.  The
+        engine's ``output`` and ``error_output`` signals are connected to
+        :meth:`write_output` and :meth:`write_error` respectively.
+
+        Args:
+            engine (SequenceEngine):
+                The sequence engine to use for command execution.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> engine = SequenceEngine()
+            >>> console = ConsoleWidget()
+            >>> console.connect_engine(engine)
+            >>> engine.shutdown()
+        """
+        self._engine = engine
+        engine.output.connect(self.write_output)
+        engine.error_output.connect(self.write_error)
+
     # ------------------------------------------------------------------
     # Key handling for the input line
     # ------------------------------------------------------------------
@@ -207,19 +243,29 @@ class ConsoleWidget(QWidget):
         self._execute(command)
 
     def _execute(self, command: str) -> None:
-        """Run *command* using ``exec``/``eval`` and display the result.
+        """Run *command* via the connected engine or local ``exec``/``eval``.
+
+        When a :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`
+        has been connected via :meth:`connect_engine`, the command is forwarded
+        to the engine's background thread; output will arrive asynchronously
+        via the engine's signals.  Without a connected engine the command is
+        evaluated locally (useful for standalone testing).
 
         Args:
             command (str):
                 Python expression or statement to execute.
 
         Notes:
-            ``eval``/``exec`` are used deliberately here because this widget is
-            an interactive Python console intended for use by the scientist
-            operating the instrument.  It is functionally equivalent to a
-            Python REPL and carries the same trust assumptions: the person
+            The local fallback uses ``eval``/``exec`` deliberately because this
+            widget is an interactive Python console intended for use by the
+            scientist operating the instrument.  It is functionally equivalent
+            to a Python REPL and carries the same trust assumptions: the person
             typing commands is trusted to supply safe input.
         """
+        if self._engine is not None:
+            self._engine.execute_command(command)
+            return
+
         ns: dict = {}
         try:
             result = eval(command, ns)  # noqa: S307
