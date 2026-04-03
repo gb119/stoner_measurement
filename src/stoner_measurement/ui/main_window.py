@@ -1,24 +1,45 @@
-"""Main window widget — assembles the three-panel layout."""
+"""Main window widget — assembles the tabbed layout."""
 
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QSplitter, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QSplitter, QTabWidget, QWidget
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.runner import SequenceRunner
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
 from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.sequence_tab import SequenceTab
 
 
 class MainWindow(QWidget):
-    """Central widget that provides the three-panel layout.
+    """Central widget that provides the tabbed layout.
 
-    Layout (left → right):
+    Contains two tabs:
+
+    * **Measurement** — the three-panel layout (DockPanel | PlotWidget | ConfigPanel).
+    * **Sequence Editor** — a Python editor and interactive console.
+
+    Layout of the *Measurement* tab (left → right):
+
     * **DockPanel** — 25 % of width, instrument / sequence control.
     * **PlotWidget** — 50 % of width, PyQtGraph plotting area.
     * **ConfigPanel** — 25 % of width, tabbed configuration.
+
+    Args:
+        plugin_manager (PluginManager):
+            Shared plugin manager instance.
+        runner (SequenceRunner):
+            Shared sequence runner instance.
+        parent (QWidget | None):
+            Optional parent widget.
+
+    Attributes:
+        dock_panel (DockPanel): Left panel of the Measurement tab.
+        plot_widget (PlotWidget): Central plot in the Measurement tab.
+        config_panel (ConfigPanel): Right configuration panel.
+        sequence_tab (SequenceTab): The Sequence Editor tab widget.
     """
 
     def __init__(
@@ -32,13 +53,12 @@ class MainWindow(QWidget):
         self._plugin_manager = plugin_manager
         self._runner = runner
 
-        # Build sub-widgets
+        # ---- Measurement tab: three-panel splitter ----------------------
         self._dock_panel = DockPanel(plugin_manager=plugin_manager, parent=self)
         self._plot_widget = PlotWidget(runner=runner, parent=self)
         self._config_panel = ConfigPanel(plugin_manager=plugin_manager, parent=self)
 
-        # Three-way splitter (left | centre | right)
-        self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._splitter.addWidget(self._dock_panel)
         self._splitter.addWidget(self._plot_widget)
         self._splitter.addWidget(self._config_panel)
@@ -46,9 +66,19 @@ class MainWindow(QWidget):
         # Wire runner → plot (trace_name, x, y)
         self._runner.data_ready.connect(self._plot_widget.append_point)
 
+        # ---- Sequence Editor tab ---------------------------------------
+        self._sequence_tab = SequenceTab(self)
+        # Forward runner status messages to the console
+        self._runner.status_changed.connect(self._sequence_tab.console.write)
+
+        # ---- Tab container ---------------------------------------------
+        self._tabs = QTabWidget(self)
+        self._tabs.addTab(self._splitter, "Measurement")
+        self._tabs.addTab(self._sequence_tab, "Sequence Editor")
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._splitter)
+        layout.addWidget(self._tabs)
         self.setLayout(layout)
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
@@ -64,16 +94,51 @@ class MainWindow(QWidget):
     # ------------------------------------------------------------------
 
     @property
+    def tabs(self) -> QTabWidget:
+        """The top-level tab widget containing all tabs.
+
+        Returns:
+            (QTabWidget):
+                The tab widget.
+        """
+        return self._tabs
+
+    @property
     def dock_panel(self) -> DockPanel:
-        """Left dock panel."""
+        """Left dock panel (Measurement tab).
+
+        Returns:
+            (DockPanel):
+                The dock panel widget.
+        """
         return self._dock_panel
 
     @property
     def plot_widget(self) -> PlotWidget:
-        """Central plot widget."""
+        """Central plot widget (Measurement tab).
+
+        Returns:
+            (PlotWidget):
+                The plot widget.
+        """
         return self._plot_widget
 
     @property
     def config_panel(self) -> ConfigPanel:
-        """Right configuration panel."""
+        """Right configuration panel (Measurement tab).
+
+        Returns:
+            (ConfigPanel):
+                The configuration panel widget.
+        """
         return self._config_panel
+
+    @property
+    def sequence_tab(self) -> SequenceTab:
+        """The Sequence Editor tab widget.
+
+        Returns:
+            (SequenceTab):
+                The sequence tab widget.
+        """
+        return self._sequence_tab
