@@ -229,6 +229,34 @@ class TestStateControlPlugin:
         assert len(errors) == 1
         assert "20.0" in errors[0]
 
+    def test_ramp_to_one_sided_lower_limit(self, qapp):
+        """A lower-only limit should still reject values below it."""
+        import math
+
+        class _LowerLimited(_InstantState):
+            @property
+            def limits(self):
+                return (0.0, float("inf"))
+
+        p = _LowerLimited()
+        errors = []
+        p.state_error.connect(errors.append)
+        p.ramp_to(-1.0, poll_interval=0.0)
+        assert len(errors) == 1
+
+    def test_ramp_to_one_sided_upper_limit(self, qapp):
+        """An upper-only limit should still reject values above it."""
+        class _UpperLimited(_InstantState):
+            @property
+            def limits(self):
+                return (float("-inf"), 5.0)
+
+        p = _UpperLimited()
+        errors = []
+        p.state_error.connect(errors.append)
+        p.ramp_to(10.0, poll_interval=0.0)
+        assert len(errors) == 1
+
     def test_ramp_to_within_limits(self, qapp):
         class _LimitedState(_InstantState):
             @property

@@ -39,6 +39,9 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         read_error (pyqtSignal[str]):
             Emitted with a descriptive message if :meth:`read` raises an
             exception during polling.
+        _last_reading (dict[str, float]):
+            Internal cache updated after each successful poll; exposed
+            read-only via the :attr:`last_reading` property.
 
     Keyword Parameters:
         parent (QObject | None):

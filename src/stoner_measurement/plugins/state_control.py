@@ -215,7 +215,7 @@ class StateControlPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             [1.0]
         """
         lo, hi = self.limits
-        if math.isfinite(lo) and math.isfinite(hi) and not (lo <= value <= hi):
+        if (math.isfinite(lo) and value < lo) or (math.isfinite(hi) and value > hi):
             self.state_error.emit(f"Target {value} is outside limits [{lo}, {hi}]")
             return
 
