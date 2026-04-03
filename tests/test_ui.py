@@ -247,11 +247,13 @@ class TestConfigPanel:
         assert panel is not None
 
     def test_tabs_populated(self, plugin_manager):
-        """DummyPlugin contributes 2 tabs (Settings + About)."""
+        """DummyPlugin contributes 4 tabs (Scan + Scan Type + Settings + About)."""
         panel = ConfigPanel(plugin_manager=plugin_manager)
-        assert panel.tabs.count() == 2
-        assert panel.tabs.tabText(0) == "Dummy \u2013 Settings"
-        assert panel.tabs.tabText(1) == "Dummy \u2013 About"
+        assert panel.tabs.count() == 4
+        assert panel.tabs.tabText(0) == "Dummy \u2013 Scan"
+        assert panel.tabs.tabText(1) == "Dummy \u2013 Scan Type"
+        assert panel.tabs.tabText(2) == "Dummy \u2013 Settings"
+        assert panel.tabs.tabText(3) == "Dummy \u2013 About"
 
     def test_tabs_added_on_plugin_registration(self, qapp):
         pm = PluginManager()
@@ -259,13 +261,13 @@ class TestConfigPanel:
         assert panel.tabs.count() == 0
 
         pm.register("Dummy", DummyPlugin())
-        assert panel.tabs.count() == 2
+        assert panel.tabs.count() == 4
 
     def test_tabs_removed_on_plugin_unregistration(self, qapp):
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
         panel = ConfigPanel(plugin_manager=pm)
-        assert panel.tabs.count() == 2
+        assert panel.tabs.count() == 4
 
         pm.unregister("Dummy")
         assert panel.tabs.count() == 0
@@ -287,7 +289,7 @@ class TestConfigPanel:
         plugin = DummyPlugin()
         panel.add_plugin_tabs(plugin)
         panel.add_plugin_tabs(plugin)  # second call should be ignored
-        assert panel.tabs.count() == 2
+        assert panel.tabs.count() == 4
 
     def test_remove_plugin_tabs_missing_noop(self, qapp):
         pm = PluginManager()

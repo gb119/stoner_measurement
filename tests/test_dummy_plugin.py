@@ -54,15 +54,20 @@ class TestDummyPlugin:
     def test_config_tabs_returns_two_tabs(self, qapp):
         plugin = DummyPlugin()
         tabs = plugin.config_tabs()
-        assert len(tabs) == 2
+        assert len(tabs) == 4
 
     def test_config_tabs_titles(self, qapp):
         plugin = DummyPlugin()
         tabs = plugin.config_tabs()
         titles = [t for t, _ in tabs]
         # Tab titles use an en-dash (\u2013) as the separator, matching the
-        # implementation in DummyPlugin.config_tabs().
-        assert titles == ["Dummy \u2013 Settings", "Dummy \u2013 About"]
+        # implementation in TracePlugin.config_tabs() and DummyPlugin._plugin_config_tabs().
+        assert titles == [
+            "Dummy \u2013 Scan",
+            "Dummy \u2013 Scan Type",
+            "Dummy \u2013 Settings",
+            "Dummy \u2013 About",
+        ]
 
     def test_config_tabs_widgets_are_qwidgets(self, qapp):
         from PyQt6.QtWidgets import QWidget
@@ -77,3 +82,52 @@ class TestDummyPlugin:
     def test_configured_points_default(self):
         plugin = DummyPlugin()
         assert plugin.configured_points == 100
+
+    def test_has_scan_generator(self, qapp):
+        from stoner_measurement.scan import SteppedScanGenerator
+        plugin = DummyPlugin()
+        assert isinstance(plugin.scan_generator, SteppedScanGenerator)
+
+    def test_scan_tab_is_first(self, qapp):
+        plugin = DummyPlugin()
+        tabs = plugin.config_tabs()
+        assert "Scan" in tabs[0][0]
+        assert "Type" not in tabs[0][0]
+
+    def test_scan_tab_widget_is_qwidget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+        plugin = DummyPlugin()
+        tabs = plugin.config_tabs()
+        assert isinstance(tabs[0][1], QWidget)
+
+    def test_scan_type_tab_is_second(self, qapp):
+        plugin = DummyPlugin()
+        tabs = plugin.config_tabs()
+        assert "Scan Type" in tabs[1][0]
+
+    def test_set_scan_generator_class(self, qapp):
+        from stoner_measurement.scan import FunctionScanGenerator
+        plugin = DummyPlugin()
+        plugin.set_scan_generator_class(FunctionScanGenerator)
+        assert isinstance(plugin.scan_generator, FunctionScanGenerator)
+
+    def test_set_scan_generator_class_noop_if_same(self, qapp):
+        from stoner_measurement.scan import SteppedScanGenerator
+        plugin = DummyPlugin()
+        gen_before = plugin.scan_generator
+        plugin.set_scan_generator_class(SteppedScanGenerator)
+        assert plugin.scan_generator is gen_before
+
+    def test_scan_generator_changed_signal(self, qapp):
+        from stoner_measurement.scan import FunctionScanGenerator
+        plugin = DummyPlugin()
+        received = []
+        plugin.scan_generator_changed.connect(lambda: received.append(True))
+        plugin.set_scan_generator_class(FunctionScanGenerator)
+        assert len(received) == 1
+
+    def test_plugin_config_tabs_returns_settings_and_about(self, qapp):
+        plugin = DummyPlugin()
+        tabs = plugin._plugin_config_tabs()
+        titles = [t for t, _ in tabs]
+        assert titles == ["Dummy \u2013 Settings", "Dummy \u2013 About"]

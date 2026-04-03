@@ -61,13 +61,13 @@ class DummyPlugin(TracePlugin):
         widget.setLayout(layout)
         return widget
 
-    def config_tabs(
+    def _plugin_config_tabs(
         self, parent: QWidget | None = None
     ) -> list[tuple[str, QWidget]]:
-        """Return two configuration tabs: *Settings* and *About*.
+        """Return the *Settings* and *About* plugin-specific configuration tabs.
 
-        The *Settings* tab contains the standard :meth:`config_widget`
-        form.  The *About* tab provides a brief description of the plugin.
+        These tabs follow the scan-related tabs provided by
+        :class:`~stoner_measurement.plugins.trace.TracePlugin`.
 
         Keyword Parameters:
             parent (QWidget | None):
@@ -81,9 +81,9 @@ class DummyPlugin(TracePlugin):
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = DummyPlugin()
-            >>> tabs = plugin.config_tabs()
+            >>> tabs = plugin._plugin_config_tabs()
             >>> [t for t, _ in tabs]
-            ['Dummy – Settings', 'Dummy – About']
+            ['Dummy \u2013 Settings', 'Dummy \u2013 About']
         """
         settings_widget = self.config_widget(parent=parent)
 
