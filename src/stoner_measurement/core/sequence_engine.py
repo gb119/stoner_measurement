@@ -452,6 +452,11 @@ class SequenceEngine(QObject):
             new_var_name (str):
                 New Python identifier to use in the namespace.
 
+        Raises:
+            ValueError:
+                If *new_var_name* is already used by a different plugin
+                in the namespace.
+
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
@@ -469,6 +474,15 @@ class SequenceEngine(QObject):
         old_var = self._plugin_var_names.get(ep_name)
         if old_var is None:
             return
+        # Guard against overwriting a variable belonging to a different plugin.
+        if new_var_name != old_var and new_var_name in self._namespace:
+            existing = self._namespace[new_var_name]
+            current_plugin = self._namespace.get(old_var)
+            if existing is not current_plugin:
+                raise ValueError(
+                    f"Cannot rename plugin {ep_name!r}: "
+                    f"{new_var_name!r} is already in use in the namespace."
+                )
         plugin = self._namespace.pop(old_var, None)
         if plugin is not None:
             self._namespace[new_var_name] = plugin

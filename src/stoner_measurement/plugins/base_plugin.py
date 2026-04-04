@@ -162,8 +162,16 @@ class BasePlugin(ABC):
         def _apply() -> None:
             new_name = name_edit.text().strip()
             if new_name and new_name.isidentifier():
+                name_edit.setStyleSheet("")
                 self.instance_name = new_name
             else:
+                # Highlight the field and revert to the current valid value.
+                name_edit.setStyleSheet("border: 1px solid red;")
+                name_edit.setToolTip(
+                    f"{new_name!r} is not a valid Python identifier. "
+                    "Use only letters, digits and underscores, "
+                    "and do not start with a digit."
+                )
                 name_edit.setText(self.instance_name)
 
         name_edit.editingFinished.connect(_apply)

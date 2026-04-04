@@ -122,7 +122,7 @@ class MeasurementApp(QMainWindow):
                     )
                 if hasattr(plugin, "instance_name_changed"):
                     plugin.instance_name_changed.connect(
-                        lambda old, new, ep=ep_name: self._engine.rename_plugin(ep, new)
+                        lambda _, new, ep=ep_name: self._engine.rename_plugin(ep, new)
                     )
 
     # ------------------------------------------------------------------
