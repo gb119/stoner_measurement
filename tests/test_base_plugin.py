@@ -27,7 +27,7 @@ class TestBasePluginDefaults:
         plugin = _MinimalPlugin()
         tabs = plugin.config_tabs()
         assert isinstance(tabs, list)
-        assert len(tabs) == 1
+        assert len(tabs) == 2
         title, widget = tabs[0]
         assert title == "Minimal"
         from PyQt6.QtWidgets import QWidget
@@ -37,6 +37,11 @@ class TestBasePluginDefaults:
         plugin = _MinimalPlugin()
         tabs = plugin.config_tabs()
         assert tabs[0][0] == plugin.name
+
+    def test_config_tabs_general_tab_is_last(self, qapp):
+        plugin = _MinimalPlugin()
+        tabs = plugin.config_tabs()
+        assert tabs[-1][0] == "General"
 
     def test_monitor_widget_returns_none(self):
         plugin = _MinimalPlugin()

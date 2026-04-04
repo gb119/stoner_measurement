@@ -71,10 +71,15 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     """
 
     transform_complete = pyqtSignal(dict)
+    instance_name_changed = pyqtSignal(str, str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the Qt object hierarchy."""
         super().__init__(parent)
+
+    def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
+        """Emit :attr:`instance_name_changed` when the instance name changes."""
+        self.instance_name_changed.emit(old_name, new_name)
 
     @property
     def plugin_type(self) -> str:

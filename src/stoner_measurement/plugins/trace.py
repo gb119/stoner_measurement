@@ -168,11 +168,16 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     trace_point = pyqtSignal(str, float, float)
     trace_complete = pyqtSignal(str)
     scan_generator_changed = pyqtSignal()
+    instance_name_changed = pyqtSignal(str, str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the Qt object hierarchy and create the built-in scan generator."""
         super().__init__(parent)
         self.scan_generator: BaseScanGenerator = self._scan_generator_class(parent=self)
+
+    def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
+        """Emit :attr:`instance_name_changed` when the instance name changes."""
+        self.instance_name_changed.emit(old_name, new_name)
 
     # ------------------------------------------------------------------
     # Scan generator management
@@ -234,7 +239,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         generator changes.  When :attr:`_scan_generator_classes` lists more
         than one class, a *Scan Type* tab with a :class:`_ScanTypeSelector`
         combo box is appended next.  Plugin-specific tabs from
-        :meth:`_plugin_config_tabs` follow.
+        :meth:`_plugin_config_tabs` follow, and a *General* tab for editing
+        the instance name is appended last.
 
         Keyword Parameters:
             parent (QWidget | None):
@@ -262,6 +268,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 (f"{self.name} \u2013 Scan Type", _ScanTypeSelector(self, parent=parent))
             )
         tabs.extend(self._plugin_config_tabs(parent=parent))
+        tabs.append((f"{self.name} \u2013 General", self._general_config_widget(parent=parent)))
         return tabs
 
     def _plugin_config_tabs(

@@ -105,6 +105,11 @@ class MeasurementApp(QMainWindow):
                         )
                     except (TypeError, RuntimeError):
                         pass
+                if hasattr(old_plugin, "instance_name_changed"):
+                    try:
+                        old_plugin.instance_name_changed.disconnect()
+                    except (TypeError, RuntimeError):
+                        pass
 
         # Add plugins that are newly registered -----------------------------
         for ep_name, plugin in current.items():
@@ -114,6 +119,10 @@ class MeasurementApp(QMainWindow):
                 if isinstance(plugin, TracePlugin):
                     plugin.trace_point.connect(
                         self._main_window.plot_widget.append_point
+                    )
+                if hasattr(plugin, "instance_name_changed"):
+                    plugin.instance_name_changed.connect(
+                        lambda old, new, ep=ep_name: self._engine.rename_plugin(ep, new)
                     )
 
     # ------------------------------------------------------------------

@@ -80,10 +80,15 @@ class StateControlPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     state_changed = pyqtSignal(float)
     state_reached = pyqtSignal(float)
     state_error = pyqtSignal(str)
+    instance_name_changed = pyqtSignal(str, str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the Qt object hierarchy."""
         super().__init__(parent)
+
+    def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
+        """Emit :attr:`instance_name_changed` when the instance name changes."""
+        self.instance_name_changed.emit(old_name, new_name)
 
     @property
     def plugin_type(self) -> str:

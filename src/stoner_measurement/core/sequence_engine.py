@@ -388,9 +388,10 @@ class SequenceEngine(QObject):
     def add_plugin(self, ep_name: str, plugin: BasePlugin) -> None:
         """Add *plugin* to the interpreter namespace.
 
-        The variable name is derived from ``plugin.name`` (lowercase, spaces
-        and hyphens replaced with underscores).  If the entry-point name
-        *ep_name* produces a different identifier it is also added as an alias.
+        The variable name is taken from ``plugin.instance_name`` (a valid
+        Python identifier, defaulting to a sanitised form of ``plugin.name``).
+        If the entry-point name *ep_name* produces a different identifier it
+        is also added as an alias.
 
         Args:
             ep_name (str):
@@ -408,7 +409,7 @@ class SequenceEngine(QObject):
             True
             >>> engine.shutdown()
         """
-        var_name = _to_var_name(plugin.name)
+        var_name = plugin.instance_name
         self._namespace[var_name] = plugin
         self._plugin_var_names[ep_name] = var_name
         ep_var = _to_var_name(ep_name)
@@ -438,6 +439,40 @@ class SequenceEngine(QObject):
             self._namespace.pop(var_name, None)
         ep_var = _to_var_name(ep_name)
         self._namespace.pop(ep_var, None)
+
+    def rename_plugin(self, ep_name: str, new_var_name: str) -> None:
+        """Rename the namespace variable for the plugin registered under *ep_name*.
+
+        Removes the old variable name and inserts the plugin under *new_var_name*.
+        Does nothing if *ep_name* is not currently registered.
+
+        Args:
+            ep_name (str):
+                Entry-point name passed to :meth:`add_plugin`.
+            new_var_name (str):
+                New Python identifier to use in the namespace.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> engine = SequenceEngine()
+            >>> plugin = DummyPlugin()
+            >>> engine.add_plugin("dummy", plugin)
+            >>> engine.rename_plugin("dummy", "my_dummy")
+            >>> "my_dummy" in engine.namespace
+            True
+            >>> "dummy" in engine.namespace
+            False
+            >>> engine.shutdown()
+        """
+        old_var = self._plugin_var_names.get(ep_name)
+        if old_var is None:
+            return
+        plugin = self._namespace.pop(old_var, None)
+        if plugin is not None:
+            self._namespace[new_var_name] = plugin
+            self._plugin_var_names[ep_name] = new_var_name
 
     @property
     def namespace(self) -> dict:
@@ -630,7 +665,7 @@ class SequenceEngine(QObject):
 
         lines.append("# Available plugin instances:")
         for ep_name, plugin in plugins.items():
-            var_name = _to_var_name(plugin.name)
+            var_name = plugin.instance_name
             lines.append(
                 f"#   {var_name:<20} — {type(plugin).__name__} ({plugin.plugin_type})"
             )
@@ -638,7 +673,7 @@ class SequenceEngine(QObject):
         lines.append("")
 
         for ep_name, plugin in plugins.items():
-            var_name = _to_var_name(plugin.name)
+            var_name = plugin.instance_name
             sep = f"# {'─' * 60}"
             lines.append(sep)
             lines.append(f"# {type(plugin).__name__}: {var_name}")
