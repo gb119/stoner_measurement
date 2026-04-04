@@ -89,6 +89,10 @@ class BasePlugin(ABC):
         can read or write variables that were set by other parts of the
         measurement sequence.
 
+        Because this is the live dict (not a copy), reads always reflect the
+        current state of the namespace even during a running script.  Writes
+        are also immediately visible to the executing script.
+
         When the plugin is not attached to an engine (i.e.
         :attr:`sequence_engine` is ``None``) an empty dict is returned so that
         callers do not need to guard against ``None``.
@@ -102,6 +106,15 @@ class BasePlugin(ABC):
             >>> plugin = DummyPlugin()
             >>> plugin.engine_namespace   # detached — returns empty dict
             {}
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> engine = SequenceEngine()
+            >>> engine.add_plugin("dummy", plugin)
+            >>> engine._namespace["sweep_start"] = 0.5
+            >>> plugin.engine_namespace["sweep_start"]
+            0.5
+            >>> engine.shutdown()
         """
         if self.sequence_engine is None:
             return {}

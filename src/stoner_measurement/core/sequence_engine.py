@@ -6,6 +6,35 @@ sequence editor).  Plugin instances registered with the
 :class:`~stoner_measurement.core.plugin_manager.PluginManager` are injected
 into the namespace automatically, so scripts can reference them directly by a
 sanitised variable name derived from each plugin's ``name`` property.
+
+Namespace access
+----------------
+The shared interpreter namespace is a plain Python ``dict`` that persists for
+the lifetime of the engine.  It is the ``globals()`` environment in which all
+scripts and REPL commands execute.
+
+* **Scripts** read and write namespace variables in the normal Python way —
+  any assignment (``x = 1``) or import creates a new key; subsequent scripts
+  or REPL commands see the same variable.
+* **Plugin lifecycle methods** (``connect``, ``configure``, ``measure``, etc.)
+  can access the same namespace via
+  :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`.
+  When a plugin is registered with the engine its
+  :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+  attribute is set to the owning :class:`SequenceEngine` instance, which gives
+  the plugin a direct reference to the live ``_namespace`` dict.  For example::
+
+      class MyPlugin(TracePlugin):
+          def connect(self) -> None:
+              # Read a parameter set by an earlier script step
+              sweep_start = self.engine_namespace.get("sweep_start", 0.0)
+              self._instrument.set_start(sweep_start)
+
+  The :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.namespace`
+  property on :class:`SequenceEngine` (see below) returns a *snapshot copy*
+  and is intended for external inspection (e.g. by the UI); plugin code should
+  use ``engine_namespace`` instead so that mutations are immediately visible
+  to running scripts.
 """
 
 from __future__ import annotations
@@ -327,6 +356,14 @@ class SequenceEngine(QObject):
       ``sys.settrace`` installed so that :meth:`pause` and :meth:`stop` work
       at Python line boundaries.
 
+    All scripts and REPL commands share the same persistent namespace (a plain
+    Python ``dict`` used as ``globals()``).  Variables assigned in one script
+    are visible in all subsequent scripts and REPL commands.
+
+    Plugin code can read and write the same namespace via
+    :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
+    — see the module-level documentation for details and an example.
+
     Signals
     -------
     output(str):
@@ -509,11 +546,31 @@ class SequenceEngine(QObject):
 
     @property
     def namespace(self) -> dict:
-        """Read-only view of the current interpreter namespace.
+        """Read-only snapshot of the current interpreter namespace.
+
+        Returns a *copy* of the interpreter ``globals`` dict so that callers
+        cannot accidentally mutate the live namespace.  This property is
+        intended for external inspection (e.g. the UI displaying available
+        variables) and for testing.
+
+        .. note::
+            Plugin lifecycle methods should **not** use this property to read
+            back values from the namespace, because the copy they receive would
+            immediately become stale.  Use
+            :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
+            instead, which returns the *live* dict directly.
 
         Returns:
             (dict):
-                A copy of the interpreter globals.
+                A shallow copy of the interpreter globals.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> engine = SequenceEngine()
+            >>> isinstance(engine.namespace, dict)
+            True
+            >>> engine.shutdown()
         """
         return dict(self._namespace)
 
