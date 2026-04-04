@@ -72,6 +72,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
     data_available = pyqtSignal(dict)
     read_error = pyqtSignal(str)
+    instance_name_changed = pyqtSignal(str, str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the Qt object hierarchy and the internal polling timer."""
@@ -79,6 +80,10 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._poll)
         self._last_reading: dict[str, float] = {}
+
+    def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
+        """Emit :attr:`instance_name_changed` when the instance name changes."""
+        self.instance_name_changed.emit(old_name, new_name)
 
     @property
     def plugin_type(self) -> str:

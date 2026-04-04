@@ -54,7 +54,7 @@ class TestDummyPlugin:
     def test_config_tabs_returns_two_tabs(self, qapp):
         plugin = DummyPlugin()
         tabs = plugin.config_tabs()
-        assert len(tabs) == 4
+        assert len(tabs) == 5
 
     def test_config_tabs_titles(self, qapp):
         plugin = DummyPlugin()
@@ -67,6 +67,7 @@ class TestDummyPlugin:
             "Dummy \u2013 Scan Type",
             "Dummy \u2013 Settings",
             "Dummy \u2013 About",
+            "Dummy \u2013 General",
         ]
 
     def test_config_tabs_widgets_are_qwidgets(self, qapp):

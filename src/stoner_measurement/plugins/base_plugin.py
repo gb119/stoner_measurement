@@ -24,7 +24,7 @@ from __future__ import annotations
 from abc import ABC, ABCMeta, abstractmethod
 
 from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 
 
 class _ABCQObjectMeta(type(QObject), ABCMeta):
@@ -54,12 +54,131 @@ class BasePlugin(ABC):
         plugin_type (str):
             Short tag identifying the sub-type.  Overridden by each
             specialised base class.
+        instance_name (str):
+            Per-instance variable name used in the sequence engine namespace.
+            Defaults to a sanitised form of :attr:`name` (lowercase, spaces
+            and hyphens replaced with underscores).  Must be a valid Python
+            identifier.  Setting this attribute emits
+            ``instance_name_changed(old_name, new_name)`` in QObject
+            sub-types.
     """
 
     @property
     @abstractmethod
     def name(self) -> str:
         """Unique human-readable name for this plugin."""
+
+    # ------------------------------------------------------------------
+    # Per-instance name
+    # ------------------------------------------------------------------
+
+    @property
+    def instance_name(self) -> str:
+        """Variable name for this instance in the sequence engine namespace.
+
+        Defaults to a sanitised form of :attr:`name` (lowercase, spaces and
+        hyphens replaced with underscores).  May be changed at runtime to
+        support multiple instances of the same plugin type.
+
+        Returns:
+            (str):
+                A valid Python identifier.
+
+        Examples:
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> plugin.instance_name
+            'dummy'
+        """
+        try:
+            return self._instance_name
+        except AttributeError:
+            return self.name.lower().replace(" ", "_").replace("-", "_")
+
+    @instance_name.setter
+    def instance_name(self, value: str) -> None:
+        """Set the instance name, notifying listeners if it changed.
+
+        Args:
+            value (str):
+                New variable name.  Must be a valid Python identifier.
+
+        Raises:
+            ValueError:
+                If *value* is not a valid Python identifier.
+        """
+        if not value or not value.isidentifier():
+            raise ValueError(
+                f"instance_name must be a valid Python identifier, got {value!r}"
+            )
+        old = self.instance_name
+        if value == old:
+            return
+        self._instance_name = value
+        self._on_instance_name_changed(old, value)
+
+    def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
+        """Hook called after :attr:`instance_name` changes.
+
+        The default implementation is a no-op.  QObject sub-types override
+        this to emit the ``instance_name_changed`` signal.
+
+        Args:
+            old_name (str):
+                Previous instance name.
+            new_name (str):
+                New instance name.
+        """
+
+    # ------------------------------------------------------------------
+    # General config widget (instance name editor)
+    # ------------------------------------------------------------------
+
+    def _general_config_widget(self, parent: QWidget | None = None) -> QWidget:
+        """Return a widget containing the instance-name editor and plugin-type display.
+
+        This widget is included as a *General* tab in :meth:`config_tabs` so
+        that users can rename the sequence-engine variable for this plugin
+        instance.
+
+        Keyword Parameters:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (QWidget):
+                A :class:`~PyQt6.QtWidgets.QWidget` with a
+                :class:`~PyQt6.QtWidgets.QLineEdit` for editing
+                :attr:`instance_name` and a label showing the plugin type.
+        """
+        widget = QWidget(parent)
+        layout = QFormLayout(widget)
+
+        name_edit = QLineEdit(self.instance_name, widget)
+        name_edit.setToolTip(
+            "Python variable name used to access this plugin in the sequence engine"
+        )
+
+        def _apply() -> None:
+            new_name = name_edit.text().strip()
+            if new_name and new_name.isidentifier():
+                name_edit.setStyleSheet("")
+                self.instance_name = new_name
+            else:
+                # Highlight the field and revert to the current valid value.
+                name_edit.setStyleSheet("border: 1px solid red;")
+                name_edit.setToolTip(
+                    f"{new_name!r} is not a valid Python identifier. "
+                    "Use only letters, digits and underscores, "
+                    "and do not start with a digit."
+                )
+                name_edit.setText(self.instance_name)
+
+        name_edit.editingFinished.connect(_apply)
+        layout.addRow("Instance name:", name_edit)
+        layout.addRow("Plugin type:", QLabel(self.plugin_type, widget))
+        widget.setLayout(layout)
+        return widget
 
     @property
     def plugin_type(self) -> str:
@@ -108,8 +227,9 @@ class BasePlugin(ABC):
         """Return a list of ``(tab_title, widget)`` pairs for the config panel.
 
         Each pair contributes one tab to the right-hand configuration panel.
-        The default implementation wraps :meth:`config_widget` in a
-        single-element list using :attr:`name` as the tab title.
+        The default implementation wraps :meth:`config_widget` in a list using
+        :attr:`name` as the tab title, and appends a *General* tab containing
+        the instance-name editor.
 
         Override this method when a plugin needs to contribute more than one
         tab, or when a custom tab title is desired.
@@ -132,11 +252,16 @@ class BasePlugin(ABC):
             >>> plugin = _Minimal()
             >>> tabs = plugin.config_tabs()
             >>> len(tabs)
-            1
+            2
             >>> tabs[0][0]
             'Minimal'
+            >>> tabs[1][0]
+            'General'
         """
-        return [(self.name, self.config_widget(parent=parent))]
+        return [
+            (self.name, self.config_widget(parent=parent)),
+            ("General", self._general_config_widget(parent=parent)),
+        ]
 
     def monitor_widget(self, parent: QWidget | None = None) -> QWidget | None:
         """Return an optional live-status widget for the left dock panel.
