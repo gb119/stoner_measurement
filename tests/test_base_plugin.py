@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from stoner_measurement.plugins.base_plugin import BasePlugin
 
 
@@ -52,3 +50,11 @@ class TestBasePluginDefaults:
         plugin = _MinimalPlugin()
         parent = QWidget()
         assert plugin.monitor_widget(parent=parent) is None
+
+    def test_sequence_engine_default_none(self):
+        plugin = _MinimalPlugin()
+        assert plugin.sequence_engine is None
+
+    def test_engine_namespace_detached_returns_empty_dict(self):
+        plugin = _MinimalPlugin()
+        assert plugin.engine_namespace == {}

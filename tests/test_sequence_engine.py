@@ -71,14 +71,38 @@ class TestPluginNamespace:
         # ep alias also added when different
         assert "my_ep" in engine.namespace
 
+    def test_add_plugin_sets_sequence_engine_reference(self, engine):
+        plugin = DummyPlugin()
+        assert plugin.sequence_engine is None
+        engine.add_plugin("dummy", plugin)
+        assert plugin.sequence_engine is engine
+
     def test_remove_plugin_clears_namespace(self, engine):
         plugin = DummyPlugin()
         engine.add_plugin("dummy", plugin)
         engine.remove_plugin("dummy")
         assert "dummy" not in engine.namespace
 
+    def test_remove_plugin_clears_sequence_engine_reference(self, engine):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        engine.remove_plugin("dummy")
+        assert plugin.sequence_engine is None
+
     def test_remove_nonexistent_plugin_noop(self, engine):
         engine.remove_plugin("nonexistent")  # should not raise
+
+    def test_engine_namespace_returns_live_dict(self, engine, qapp):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        # Write a value into the engine namespace directly
+        engine._namespace["_test_var"] = 99
+        assert plugin.engine_namespace.get("_test_var") == 99
+
+    def test_engine_namespace_detached_returns_empty(self):
+        from stoner_measurement.plugins.dummy import DummyPlugin as _DP
+        plugin = _DP()
+        assert plugin.engine_namespace == {}
 
 
 # ---------------------------------------------------------------------------

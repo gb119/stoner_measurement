@@ -393,6 +393,13 @@ class SequenceEngine(QObject):
         If the entry-point name *ep_name* produces a different identifier it
         is also added as an alias.
 
+        The plugin's
+        :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+        attribute is set to this engine so that lifecycle methods
+        (``connect``, ``configure``, ``measure``, etc.) can access the shared
+        namespace via
+        :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`.
+
         Args:
             ep_name (str):
                 Entry-point name used to register the plugin.
@@ -404,8 +411,11 @@ class SequenceEngine(QObject):
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.dummy import DummyPlugin
             >>> engine = SequenceEngine()
-            >>> engine.add_plugin("dummy", DummyPlugin())
+            >>> plugin = DummyPlugin()
+            >>> engine.add_plugin("dummy", plugin)
             >>> "dummy" in engine.namespace
+            True
+            >>> plugin.sequence_engine is engine
             True
             >>> engine.shutdown()
         """
@@ -415,9 +425,14 @@ class SequenceEngine(QObject):
         ep_var = _to_var_name(ep_name)
         if ep_var != var_name:
             self._namespace[ep_var] = plugin
+        plugin.sequence_engine = self
 
     def remove_plugin(self, ep_name: str) -> None:
         """Remove the plugin registered under *ep_name* from the namespace.
+
+        The plugin's :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+        reference is also cleared so that the plugin no longer holds a reference
+        to this engine.
 
         Args:
             ep_name (str):
@@ -435,10 +450,14 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         var_name = self._plugin_var_names.pop(ep_name, None)
-        if var_name is not None:
-            self._namespace.pop(var_name, None)
+        plugin = self._namespace.pop(var_name, None) if var_name is not None else None
         ep_var = _to_var_name(ep_name)
-        self._namespace.pop(ep_var, None)
+        if plugin is None:
+            plugin = self._namespace.pop(ep_var, None)
+        else:
+            self._namespace.pop(ep_var, None)
+        if plugin is not None:
+            plugin.sequence_engine = None
 
     def rename_plugin(self, ep_name: str, new_var_name: str) -> None:
         """Rename the namespace variable for the plugin registered under *ep_name*.
