@@ -22,9 +22,13 @@ sub-types: :class:`~stoner_measurement.plugins.trace.TracePlugin`,
 from __future__ import annotations
 
 from abc import ABC, ABCMeta, abstractmethod
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
+
+if TYPE_CHECKING:
+    from stoner_measurement.core.sequence_engine import SequenceEngine
 
 
 class _ABCQObjectMeta(type(QObject), ABCMeta):
@@ -61,7 +65,60 @@ class BasePlugin(ABC):
             identifier.  Setting this attribute emits
             ``instance_name_changed(old_name, new_name)`` in QObject
             sub-types.
+        sequence_engine (SequenceEngine | None):
+            Reference to the :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`
+            that owns this plugin, or ``None`` if the plugin is not currently
+            loaded into an engine.  Set automatically by
+            :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.add_plugin`
+            and cleared by
+            :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.remove_plugin`.
+            Plugin lifecycle methods (``connect``, ``configure``, ``measure``,
+            etc.) can read values set by other parts of the measurement sequence
+            via :attr:`engine_namespace`.
     """
+
+    #: Reference to the owning SequenceEngine; set by add_plugin / remove_plugin.
+    sequence_engine: SequenceEngine | None = None
+
+    @property
+    def engine_namespace(self) -> dict:
+        """Live view of the sequence engine's interpreter namespace.
+
+        Returns the *live* ``globals`` dict used by the sequence engine so that
+        plugin lifecycle methods (``connect``, ``configure``, ``measure``, etc.)
+        can read or write variables that were set by other parts of the
+        measurement sequence.
+
+        Because this is the live dict (not a copy), reads always reflect the
+        current state of the namespace even during a running script.  Writes
+        are also immediately visible to the executing script.
+
+        When the plugin is not attached to an engine (i.e.
+        :attr:`sequence_engine` is ``None``) an empty dict is returned so that
+        callers do not need to guard against ``None``.
+
+        Returns:
+            (dict):
+                The live interpreter namespace dict, or ``{}`` when detached.
+
+        Examples:
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> plugin.engine_namespace   # detached — returns empty dict
+            {}
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> engine = SequenceEngine()
+            >>> engine.add_plugin("dummy", plugin)
+            >>> engine._namespace["sweep_start"] = 0.5
+            >>> plugin.engine_namespace["sweep_start"]
+            0.5
+            >>> engine.shutdown()
+        """
+        if self.sequence_engine is None:
+            return {}
+        return self.sequence_engine._namespace  # noqa: SLF001
 
     @property
     @abstractmethod

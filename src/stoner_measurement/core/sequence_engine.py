@@ -6,6 +6,35 @@ sequence editor).  Plugin instances registered with the
 :class:`~stoner_measurement.core.plugin_manager.PluginManager` are injected
 into the namespace automatically, so scripts can reference them directly by a
 sanitised variable name derived from each plugin's ``name`` property.
+
+Namespace access
+----------------
+The shared interpreter namespace is a plain Python ``dict`` that persists for
+the lifetime of the engine.  It is the ``globals()`` environment in which all
+scripts and REPL commands execute.
+
+* **Scripts** read and write namespace variables in the normal Python way —
+  any assignment (``x = 1``) or import creates a new key; subsequent scripts
+  or REPL commands see the same variable.
+* **Plugin lifecycle methods** (``connect``, ``configure``, ``measure``, etc.)
+  can access the same namespace via
+  :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`.
+  When a plugin is registered with the engine its
+  :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+  attribute is set to the owning :class:`SequenceEngine` instance, which gives
+  the plugin a direct reference to the live ``_namespace`` dict.  For example::
+
+      class MyPlugin(TracePlugin):
+          def connect(self) -> None:
+              # Read a parameter set by an earlier script step
+              sweep_start = self.engine_namespace.get("sweep_start", 0.0)
+              self._instrument.set_start(sweep_start)
+
+  The :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.namespace`
+  property on :class:`SequenceEngine` (see below) returns a *snapshot copy*
+  and is intended for external inspection (e.g. by the UI); plugin code should
+  use ``engine_namespace`` instead so that mutations are immediately visible
+  to running scripts.
 """
 
 from __future__ import annotations
@@ -327,6 +356,14 @@ class SequenceEngine(QObject):
       ``sys.settrace`` installed so that :meth:`pause` and :meth:`stop` work
       at Python line boundaries.
 
+    All scripts and REPL commands share the same persistent namespace (a plain
+    Python ``dict`` used as ``globals()``).  Variables assigned in one script
+    are visible in all subsequent scripts and REPL commands.
+
+    Plugin code can read and write the same namespace via
+    :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
+    — see the module-level documentation for details and an example.
+
     Signals
     -------
     output(str):
@@ -393,6 +430,13 @@ class SequenceEngine(QObject):
         If the entry-point name *ep_name* produces a different identifier it
         is also added as an alias.
 
+        The plugin's
+        :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+        attribute is set to this engine so that lifecycle methods
+        (``connect``, ``configure``, ``measure``, etc.) can access the shared
+        namespace via
+        :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`.
+
         Args:
             ep_name (str):
                 Entry-point name used to register the plugin.
@@ -404,8 +448,11 @@ class SequenceEngine(QObject):
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.dummy import DummyPlugin
             >>> engine = SequenceEngine()
-            >>> engine.add_plugin("dummy", DummyPlugin())
+            >>> plugin = DummyPlugin()
+            >>> engine.add_plugin("dummy", plugin)
             >>> "dummy" in engine.namespace
+            True
+            >>> plugin.sequence_engine is engine
             True
             >>> engine.shutdown()
         """
@@ -415,9 +462,14 @@ class SequenceEngine(QObject):
         ep_var = _to_var_name(ep_name)
         if ep_var != var_name:
             self._namespace[ep_var] = plugin
+        plugin.sequence_engine = self
 
     def remove_plugin(self, ep_name: str) -> None:
         """Remove the plugin registered under *ep_name* from the namespace.
+
+        The plugin's :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+        reference is also cleared so that the plugin no longer holds a reference
+        to this engine.
 
         Args:
             ep_name (str):
@@ -435,10 +487,14 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         var_name = self._plugin_var_names.pop(ep_name, None)
-        if var_name is not None:
-            self._namespace.pop(var_name, None)
+        plugin = self._namespace.pop(var_name, None) if var_name is not None else None
         ep_var = _to_var_name(ep_name)
-        self._namespace.pop(ep_var, None)
+        if plugin is None:
+            plugin = self._namespace.pop(ep_var, None)
+        else:
+            self._namespace.pop(ep_var, None)
+        if plugin is not None:
+            plugin.sequence_engine = None
 
     def rename_plugin(self, ep_name: str, new_var_name: str) -> None:
         """Rename the namespace variable for the plugin registered under *ep_name*.
@@ -490,11 +546,31 @@ class SequenceEngine(QObject):
 
     @property
     def namespace(self) -> dict:
-        """Read-only view of the current interpreter namespace.
+        """Read-only snapshot of the current interpreter namespace.
+
+        Returns a *copy* of the interpreter ``globals`` dict so that callers
+        cannot accidentally mutate the live namespace.  This property is
+        intended for external inspection (e.g. the UI displaying available
+        variables) and for testing.
+
+        .. note::
+            Plugin lifecycle methods should **not** use this property to read
+            back values from the namespace, because the copy they receive would
+            immediately become stale.  Use
+            :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
+            instead, which returns the *live* dict directly.
 
         Returns:
             (dict):
-                A copy of the interpreter globals.
+                A shallow copy of the interpreter globals.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> engine = SequenceEngine()
+            >>> isinstance(engine.namespace, dict)
+            True
+            >>> engine.shutdown()
         """
         return dict(self._namespace)
 
@@ -657,7 +733,9 @@ class SequenceEngine(QObject):
             >>> engine = SequenceEngine()
             >>> engine.add_plugin("dummy", DummyPlugin())
             >>> code = engine.generate_code({"dummy": DummyPlugin()})
-            >>> "execute_multichannel" in code
+            >>> "measure" in code
+            True
+            >>> "connect" in code and "disconnect" in code
             True
             >>> engine.shutdown()
         """
@@ -695,8 +773,13 @@ class SequenceEngine(QObject):
 
             if isinstance(plugin, TracePlugin):
                 lines += [
-                    f"for channel, x, y in {var_name}.execute_multichannel({{}}):",
-                    '    print(f"{channel}: x={x:.4g}, y={y:.4g}")',
+                    f"{var_name}.connect()",
+                    f"{var_name}.configure()",
+                    "try:",
+                    f"    for channel, x, y in {var_name}.measure({{}}):",
+                    '        print(f"{channel}: x={x:.4g}, y={y:.4g}")',
+                    "finally:",
+                    f"    {var_name}.disconnect()",
                 ]
             elif isinstance(plugin, StateControlPlugin):
                 state_name = plugin.state_name

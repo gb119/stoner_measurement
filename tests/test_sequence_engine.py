@@ -71,14 +71,38 @@ class TestPluginNamespace:
         # ep alias also added when different
         assert "my_ep" in engine.namespace
 
+    def test_add_plugin_sets_sequence_engine_reference(self, engine):
+        plugin = DummyPlugin()
+        assert plugin.sequence_engine is None
+        engine.add_plugin("dummy", plugin)
+        assert plugin.sequence_engine is engine
+
     def test_remove_plugin_clears_namespace(self, engine):
         plugin = DummyPlugin()
         engine.add_plugin("dummy", plugin)
         engine.remove_plugin("dummy")
         assert "dummy" not in engine.namespace
 
+    def test_remove_plugin_clears_sequence_engine_reference(self, engine):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        engine.remove_plugin("dummy")
+        assert plugin.sequence_engine is None
+
     def test_remove_nonexistent_plugin_noop(self, engine):
         engine.remove_plugin("nonexistent")  # should not raise
+
+    def test_engine_namespace_returns_live_dict(self, engine, qapp):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        # Write a value into the engine namespace directly
+        engine._namespace["_test_var"] = 99
+        assert plugin.engine_namespace.get("_test_var") == 99
+
+    def test_engine_namespace_detached_returns_empty(self):
+        from stoner_measurement.plugins.dummy import DummyPlugin as _DP
+        plugin = _DP()
+        assert plugin.engine_namespace == {}
 
 
 # ---------------------------------------------------------------------------
@@ -203,11 +227,14 @@ class TestCodeGeneration:
         code = engine.generate_code({})
         assert "No plugins loaded" in code
 
-    def test_trace_plugin_generates_execute_multichannel(self, engine):
+    def test_trace_plugin_generates_lifecycle_api(self, engine):
         plugin = DummyPlugin()
         plugins = {"dummy": plugin}
         code = engine.generate_code(plugins)
-        assert "execute_multichannel" in code
+        assert "dummy.connect()" in code
+        assert "dummy.configure()" in code
+        assert "dummy.measure" in code
+        assert "dummy.disconnect()" in code
 
     def test_variable_name_in_generated_code(self, engine):
         plugin = DummyPlugin()  # name == "Dummy"
