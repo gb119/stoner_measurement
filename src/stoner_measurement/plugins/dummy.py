@@ -141,10 +141,8 @@ class DummyPlugin(TracePlugin):
     @property
     def configured_points(self) -> int:
         """Return the number of points configured in the UI (if the widget exists)."""
-        try:
+        if hasattr(self, "_configured_points"):
             return self._configured_points
-        except AttributeError:
-            try:
-                return self._points_spin.value()
-            except AttributeError:
-                return 100
+        if hasattr(self, "_points_spin"):
+            return self._points_spin.value()
+        return 100

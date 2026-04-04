@@ -482,7 +482,11 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
     @property
     def trace_title(self) -> str:
-        """Human-readable title for the trace (used in plot titles, file names, etc.).
+        """Human-readable display title for the trace (used in plot titles, legends, etc.).
+
+        This title is intended for display purposes only.  For file-system
+        usage, derive a sanitised name from :attr:`name` or
+        :attr:`instance_name` instead.
 
         The default implementation returns :attr:`name`.  Override in a
         subclass to provide a more descriptive title.
