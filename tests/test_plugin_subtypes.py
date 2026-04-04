@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 
-from PyQt6.QtWidgets import QApplication
-
 from stoner_measurement.plugins.monitor import MonitorPlugin
 from stoner_measurement.plugins.state_control import StateControlPlugin
-from stoner_measurement.plugins.trace import TracePlugin
+from stoner_measurement.plugins.trace import TracePlugin, TraceStatus
 from stoner_measurement.plugins.transform import TransformPlugin
-
 
 # ---------------------------------------------------------------------------
 # Minimal concrete implementations used across multiple test classes
@@ -29,7 +27,7 @@ class _SimpleTrace(TracePlugin):
 
     def execute(
         self, parameters: dict[str, Any]
-    ) -> Generator[tuple[float, float], None, None]:
+    ) -> Generator[tuple[float, float]]:
         n = int(parameters.get("n", 5))
         for i in range(n):
             yield float(i), float(i * i)
@@ -211,14 +209,147 @@ class TestTracePlugin:
 
     def test_scan_tab_container_refreshes_on_change(self, qapp):
         from PyQt6.QtWidgets import QWidget
-        from stoner_measurement.scan import FunctionScanGenerator
+
         from stoner_measurement.plugins.trace import _ScanTabContainer
+        from stoner_measurement.scan import FunctionScanGenerator
         p = _SimpleTrace()
         container = _ScanTabContainer(p)
-        widget_before = p.scan_generator.config_widget.__class__
         p.set_scan_generator_class(FunctionScanGenerator)
         # Container should still be a QWidget and its content updated
         assert isinstance(container, QWidget)
+
+    # ------------------------------------------------------------------
+    # TraceStatus and status property
+    # ------------------------------------------------------------------
+
+    def test_status_initial_idle(self, qapp):
+        p = _SimpleTrace()
+        assert p.status is TraceStatus.IDLE
+
+    def test_status_changed_signal(self, qapp):
+        p = _SimpleTrace()
+        received = []
+        p.status_changed.connect(received.append)
+        p._set_status(TraceStatus.MEASURING)
+        assert received == [TraceStatus.MEASURING]
+
+    def test_status_changed_not_emitted_when_same(self, qapp):
+        p = _SimpleTrace()
+        received = []
+        p.status_changed.connect(received.append)
+        p._set_status(TraceStatus.IDLE)  # already IDLE
+        assert received == []
+
+    def test_set_status_updates_status(self, qapp):
+        p = _SimpleTrace()
+        p._set_status(TraceStatus.CONFIGURING)
+        assert p.status is TraceStatus.CONFIGURING
+
+    # ------------------------------------------------------------------
+    # Lifecycle API: connect / configure / disconnect
+    # ------------------------------------------------------------------
+
+    def test_connect_default_noop(self, qapp):
+        p = _SimpleTrace()
+        p.connect()  # should not raise
+        assert p.status is TraceStatus.IDLE
+
+    def test_configure_default_noop(self, qapp):
+        p = _SimpleTrace()
+        p.configure()  # should not raise
+
+    def test_disconnect_resets_status_to_idle(self, qapp):
+        p = _SimpleTrace()
+        p._set_status(TraceStatus.DATA_AVAILABLE)
+        p.disconnect()
+        assert p.status is TraceStatus.IDLE
+
+    # ------------------------------------------------------------------
+    # measure() method
+    # ------------------------------------------------------------------
+
+    def test_measure_yields_channel_x_y_triples(self, qapp):
+        p = _SimpleTrace()
+        pts = list(p.measure({"n": 3}))
+        assert len(pts) == 3
+        assert all(len(t) == 3 for t in pts)
+        assert all(ch == "SimpleTrace" for ch, _, _ in pts)
+
+    def test_measure_status_is_measuring_during_iteration(self, qapp):
+        p = _SimpleTrace()
+        statuses = []
+        gen = p.measure({"n": 2})
+        # advance to first point to trigger MEASURING
+        next(gen)
+        statuses.append(p.status)
+        list(gen)  # exhaust generator
+        statuses.append(p.status)
+        assert statuses[0] is TraceStatus.MEASURING
+        assert statuses[1] is TraceStatus.DATA_AVAILABLE
+
+    def test_measure_status_data_available_after_completion(self, qapp):
+        p = _SimpleTrace()
+        list(p.measure({"n": 2}))
+        assert p.status is TraceStatus.DATA_AVAILABLE
+
+    def test_measure_emits_trace_started(self, qapp):
+        p = _SimpleTrace()
+        started = []
+        p.trace_started.connect(started.append)
+        list(p.measure({"n": 3}))
+        assert started == ["SimpleTrace"]
+
+    def test_measure_emits_trace_point_for_each_point(self, qapp):
+        p = _SimpleTrace()
+        points = []
+        p.trace_point.connect(lambda ch, x, y: points.append((ch, x, y)))
+        list(p.measure({"n": 3}))
+        assert len(points) == 3
+
+    def test_measure_emits_trace_complete(self, qapp):
+        p = _SimpleTrace()
+        completed = []
+        p.trace_complete.connect(completed.append)
+        list(p.measure({"n": 3}))
+        assert completed == ["SimpleTrace"]
+
+    def test_measure_emits_data_available_even_if_interrupted(self, qapp):
+        """Status must reach DATA_AVAILABLE even if generator is not exhausted."""
+        p = _SimpleTrace()
+        gen = p.measure({"n": 5})
+        next(gen)  # get one point
+        gen.close()  # close generator without exhausting
+        assert p.status is TraceStatus.DATA_AVAILABLE
+
+    # ------------------------------------------------------------------
+    # Trace detail properties
+    # ------------------------------------------------------------------
+
+    def test_num_traces_default_one(self, qapp):
+        assert _SimpleTrace().num_traces == 1
+
+    def test_trace_title_default_is_name(self, qapp):
+        p = _SimpleTrace()
+        assert p.trace_title == p.name
+
+    def test_x_units_default_empty(self, qapp):
+        assert _SimpleTrace().x_units == ""
+
+    def test_y_units_default_empty(self, qapp):
+        assert _SimpleTrace().y_units == ""
+
+    def test_trace_scan_alias_for_scan_generator(self, qapp):
+        p = _SimpleTrace()
+        assert p.trace_scan is p.scan_generator
+
+    def test_num_traces_reflects_channel_count(self, qapp):
+        class _TwoChannel(_SimpleTrace):
+            @property
+            def channel_names(self):
+                return ["ch1", "ch2"]
+
+        p = _TwoChannel()
+        assert p.num_traces == 2
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +410,6 @@ class TestStateControlPlugin:
 
     def test_ramp_to_one_sided_lower_limit(self, qapp):
         """A lower-only limit should still reject values below it."""
-        import math
 
         class _LowerLimited(_InstantState):
             @property

@@ -657,7 +657,9 @@ class SequenceEngine(QObject):
             >>> engine = SequenceEngine()
             >>> engine.add_plugin("dummy", DummyPlugin())
             >>> code = engine.generate_code({"dummy": DummyPlugin()})
-            >>> "execute_multichannel" in code
+            >>> "measure" in code
+            True
+            >>> "connect" in code and "disconnect" in code
             True
             >>> engine.shutdown()
         """
@@ -695,8 +697,13 @@ class SequenceEngine(QObject):
 
             if isinstance(plugin, TracePlugin):
                 lines += [
-                    f"for channel, x, y in {var_name}.execute_multichannel({{}}):",
-                    '    print(f"{channel}: x={x:.4g}, y={y:.4g}")',
+                    f"{var_name}.connect()",
+                    f"{var_name}.configure()",
+                    "try:",
+                    f"    for channel, x, y in {var_name}.measure({{}}):",
+                    '        print(f"{channel}: x={x:.4g}, y={y:.4g}")',
+                    "finally:",
+                    f"    {var_name}.disconnect()",
                 ]
             elif isinstance(plugin, StateControlPlugin):
                 state_name = plugin.state_name

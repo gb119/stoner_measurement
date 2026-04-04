@@ -203,11 +203,14 @@ class TestCodeGeneration:
         code = engine.generate_code({})
         assert "No plugins loaded" in code
 
-    def test_trace_plugin_generates_execute_multichannel(self, engine):
+    def test_trace_plugin_generates_lifecycle_api(self, engine):
         plugin = DummyPlugin()
         plugins = {"dummy": plugin}
         code = engine.generate_code(plugins)
-        assert "execute_multichannel" in code
+        assert "dummy.connect()" in code
+        assert "dummy.configure()" in code
+        assert "dummy.measure" in code
+        assert "dummy.disconnect()" in code
 
     def test_variable_name_in_generated_code(self, engine):
         plugin = DummyPlugin()  # name == "Dummy"

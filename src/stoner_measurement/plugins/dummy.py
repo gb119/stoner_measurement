@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.plugins.trace import TracePlugin
+from stoner_measurement.plugins.trace import TracePlugin, TraceStatus
 
 
 class DummyPlugin(TracePlugin):
@@ -36,11 +36,48 @@ class DummyPlugin(TracePlugin):
         """Unique identifier for the dummy plugin."""
         return "Dummy"
 
+    def connect(self) -> None:
+        """Initialise the dummy plugin.
+
+        No real hardware is required; this simply marks the plugin as ready.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> plugin = DummyPlugin()
+            >>> plugin.connect()
+            >>> plugin.status is TraceStatus.IDLE
+            True
+        """
+        self._set_status(TraceStatus.IDLE)
+
+    def configure(self) -> None:
+        """Apply the current widget settings to the plugin's measurement parameters.
+
+        Reads the *Points* value from the configuration widget (if it has been
+        created) and stores it so that subsequent :meth:`execute` calls use the
+        configured number of points.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> plugin = DummyPlugin()
+            >>> _ = plugin.config_widget()   # create widget first
+            >>> plugin._points_spin.setValue(42)
+            >>> plugin.configure()
+            >>> plugin.configured_points
+            42
+        """
+        try:
+            self._configured_points = self._points_spin.value()
+        except AttributeError:
+            pass  # widget not yet created; keep default
+
     def execute(
         self, parameters: dict[str, Any]
     ) -> Generator[tuple[float, float]]:
         """Yield ``points`` sine-wave data points."""
-        points = int(parameters.get("points", 100))
+        points = int(parameters.get("points", self.configured_points))
         amplitude = float(parameters.get("amplitude", 1.0))
         for i in range(points):
             x = i / max(points - 1, 1) * 2 * math.pi
@@ -105,6 +142,9 @@ class DummyPlugin(TracePlugin):
     def configured_points(self) -> int:
         """Return the number of points configured in the UI (if the widget exists)."""
         try:
-            return self._points_spin.value()
+            return self._configured_points
         except AttributeError:
-            return 100
+            try:
+                return self._points_spin.value()
+            except AttributeError:
+                return 100

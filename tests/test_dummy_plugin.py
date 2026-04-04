@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import math
-
-import pytest
-
 from stoner_measurement.plugins.dummy import DummyPlugin
+from stoner_measurement.plugins.trace import TraceStatus
 
 
 class TestDummyPlugin:
@@ -132,3 +129,60 @@ class TestDummyPlugin:
         tabs = plugin._plugin_config_tabs()
         titles = [t for t, _ in tabs]
         assert titles == ["Dummy \u2013 Settings", "Dummy \u2013 About"]
+
+    # ------------------------------------------------------------------
+    # Lifecycle API
+    # ------------------------------------------------------------------
+
+    def test_connect_sets_idle_status(self, qapp):
+        plugin = DummyPlugin()
+        plugin.connect()
+        assert plugin.status is TraceStatus.IDLE
+
+    def test_configure_reads_widget_points(self, qapp):
+        plugin = DummyPlugin()
+        _ = plugin.config_widget()
+        plugin._points_spin.setValue(42)
+        plugin.configure()
+        assert plugin.configured_points == 42
+
+    def test_configure_no_widget_is_noop(self):
+        plugin = DummyPlugin()
+        plugin.configure()  # should not raise when widget not created
+
+    def test_disconnect_sets_idle_status(self, qapp):
+        plugin = DummyPlugin()
+        plugin._set_status(TraceStatus.DATA_AVAILABLE)
+        plugin.disconnect()
+        assert plugin.status is TraceStatus.IDLE
+
+    def test_measure_yields_data(self, qapp):
+        plugin = DummyPlugin()
+        pts = list(plugin.measure({"points": 5}))
+        assert len(pts) == 5
+        assert all(ch == "Dummy" for ch, _, _ in pts)
+
+    def test_measure_status_data_available_after_completion(self, qapp):
+        plugin = DummyPlugin()
+        list(plugin.measure({"points": 3}))
+        assert plugin.status is TraceStatus.DATA_AVAILABLE
+
+    # ------------------------------------------------------------------
+    # Trace detail properties
+    # ------------------------------------------------------------------
+
+    def test_num_traces(self, qapp):
+        assert DummyPlugin().num_traces == 1
+
+    def test_trace_title(self, qapp):
+        assert DummyPlugin().trace_title == "Dummy"
+
+    def test_x_units(self, qapp):
+        assert DummyPlugin().x_units == ""
+
+    def test_y_units(self, qapp):
+        assert DummyPlugin().y_units == ""
+
+    def test_trace_scan_is_scan_generator(self, qapp):
+        plugin = DummyPlugin()
+        assert plugin.trace_scan is plugin.scan_generator
