@@ -33,7 +33,12 @@ jobs:
         shell: bash -el {0}
         run: |
           conda install -y sphinx sphinx-automodapi sphinx-copybutton
-          conda install -y -c phygbu sphinx-better-theme || pip install sphinx-better-theme
+          if conda install -y -c phygbu sphinx-better-theme; then
+            echo "sphinx-better-theme installed from phygbu conda channel"
+          else
+            echo "sphinx-better-theme not found on phygbu channel, falling back to pip"
+            pip install sphinx-better-theme
+          fi
           pip install -e ".[docs]"
 
       - name: Build documentation
