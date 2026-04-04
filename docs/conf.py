@@ -6,6 +6,13 @@
 import sys
 from pathlib import Path
 
+try:
+    from better import better_theme_path
+
+    _better_theme_available = True
+except ImportError:
+    _better_theme_available = False
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 # -- Project information -------------------------------------------------------
@@ -39,5 +46,11 @@ intersphinx_mapping = {
 
 # -- Options for HTML output --------------------------------------------------
 
-html_theme = "alabaster"
+if _better_theme_available:
+    html_theme = "better"
+    html_theme_path = [better_theme_path]
+else:
+    html_theme = "alabaster"
+
+html_logo = "_static/StonerLogo2.png"
 html_static_path = ["_static"]

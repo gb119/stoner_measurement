@@ -1,5 +1,7 @@
 # stoner_measurement
 
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://gb119.github.io/stoner_measurement/)
+
 A Python QT6 application for carrying out scientific measurements.
 
 ## Writing a Plugin
