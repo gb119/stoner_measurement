@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel
 
 from stoner_measurement.core.plugin_manager import PluginManager
@@ -192,7 +193,6 @@ class TestDockPanel:
         panel._instrument_list.setCurrentRow(0)
         panel._add_step()
 
-        from PyQt6.QtCore import Qt
         item = panel._sequence_list.item(0)
         assert item.data(Qt.ItemDataRole.UserRole) == "ep_key"
         assert panel.sequence_steps == ["ep_key"]
