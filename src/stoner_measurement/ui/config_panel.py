@@ -1,15 +1,16 @@
 """Configuration panel — right 25 % of the main window.
 
-A :class:`QTabWidget` whose tabs are populated by the loaded plugins.
-Each plugin can contribute one or more configuration tabs via
-:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_tabs`.
+A :class:`QTabWidget` that displays the configuration tabs of whichever plugin
+is currently selected in the sequence editor.  Tabs are shown by calling
+:meth:`ConfigPanel.show_plugin` and cleared when no step is selected.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from stoner_measurement.core.plugin_manager import PluginManager
 
@@ -20,10 +21,13 @@ if TYPE_CHECKING:
 class ConfigPanel(QWidget):
     """Right-hand tabbed configuration panel.
 
-    Tabs are managed incrementally: when a plugin is registered its tabs are
-    appended; when a plugin is unregistered its tabs are removed.  Tabs
-    belonging to plugins that remain registered are preserved (along with any
-    user-edited state they contain).
+    Displays the configuration tabs of the plugin that is currently selected
+    in the sequence editor.  Call :meth:`show_plugin` to load a plugin's tabs
+    or pass ``None`` to return to the idle placeholder.
+
+    When the plugin manager notifies that a plugin has been removed,
+    :meth:`show_plugin` is called with ``None`` automatically if the removed
+    plugin was the one currently being displayed.
 
     Attributes:
         tabs (QTabWidget):
@@ -33,8 +37,8 @@ class ConfigPanel(QWidget):
         plugin_manager (PluginManager):
             The application
             :class:`~stoner_measurement.core.plugin_manager.PluginManager`
-            instance — each plugin may contribute one or more tabs via
-            :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_tabs`.
+            instance — used to detect when the currently displayed plugin is
+            unregistered.
 
     Keyword Parameters:
         parent (QWidget | None):
@@ -57,10 +61,7 @@ class ConfigPanel(QWidget):
     ) -> None:
         super().__init__(parent)
         self._plugin_manager = plugin_manager
-
-        # Maps plugin name → list of tab indices currently in _tabs.
-        # The indices are kept consistent by _remove_plugin_tabs.
-        self._plugin_tab_titles: dict[str, list[str]] = {}
+        self._shown_plugin: BasePlugin | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -70,29 +71,17 @@ class ConfigPanel(QWidget):
         layout.addWidget(self._tabs)
         self.setLayout(layout)
 
-        self._build_tabs()
         plugin_manager.plugins_changed.connect(self._sync_tabs)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_tabs(self) -> None:
-        """Add tabs for all currently loaded plugins."""
-        for _name, plugin in self._plugin_manager.plugins.items():
-            self.add_plugin_tabs(plugin)
-
     def _sync_tabs(self) -> None:
-        """Incrementally sync tabs with the current plugin list."""
-        current_plugins = set(self._plugin_manager.plugins.keys())
-        registered_plugins = set(self._plugin_tab_titles.keys())
-
-        for name in registered_plugins - current_plugins:
-            self.remove_plugin_tabs(name)
-
-        for name, plugin in self._plugin_manager.plugins.items():
-            if name not in self._plugin_tab_titles:
-                self.add_plugin_tabs(plugin)
+        """Clear the panel if the currently shown plugin has been unregistered."""
+        if self._shown_plugin is not None:
+            if self._shown_plugin not in self._plugin_manager.plugins.values():
+                self.show_plugin(None)
 
     # ------------------------------------------------------------------
     # Public API
@@ -103,17 +92,21 @@ class ConfigPanel(QWidget):
         """The underlying :class:`QTabWidget`."""
         return self._tabs
 
-    def add_plugin_tabs(self, plugin: BasePlugin) -> None:
-        """Add all tabs contributed by *plugin* to the configuration panel.
+    def show_plugin(self, plugin: BasePlugin | None) -> None:
+        """Display the configuration tabs for *plugin*, replacing any currently shown tabs.
 
-        If tabs for this plugin have already been added this call is a no-op
-        so that calling code does not need to guard against duplicates.
+        Tab widgets are sourced from
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_tabs`.
+        Because :class:`~stoner_measurement.plugins.trace.TracePlugin` caches
+        its tab widgets, user-edited state is preserved when a plugin is
+        deselected and re-selected in the sequence editor.
+
+        Passing ``None`` removes all tabs and shows an empty panel.
 
         Args:
-            plugin (BasePlugin):
-                The plugin whose
-                :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_tabs`
-                will be called.
+            plugin (BasePlugin | None):
+                The plugin whose tabs should be displayed, or ``None`` to
+                clear the panel.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -123,46 +116,45 @@ class ConfigPanel(QWidget):
             >>> pm = PluginManager()
             >>> panel = ConfigPanel(plugin_manager=pm)
             >>> plugin = DummyPlugin()
-            >>> panel.add_plugin_tabs(plugin)
-            >>> panel.tabs.count()  # DummyPlugin contributes Settings + About tabs
-            2
-        """
-        if plugin.name in self._plugin_tab_titles:
-            return
-        tab_entries = plugin.config_tabs(parent=self._tabs)
-        titles: list[str] = []
-        for title, widget in tab_entries:
-            self._tabs.addTab(widget, title)
-            titles.append(title)
-        self._plugin_tab_titles[plugin.name] = titles
-
-    def remove_plugin_tabs(self, plugin_name: str) -> None:
-        """Remove all tabs that were added by the plugin identified by *plugin_name*.
-
-        If no tabs are registered for *plugin_name* this call is a no-op.
-
-        Args:
-            plugin_name (str):
-                The :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`
-                of the plugin whose tabs should be removed.
-
-        Examples:
-            >>> from PyQt6.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.plugin_manager import PluginManager
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
-            >>> pm = PluginManager()
-            >>> panel = ConfigPanel(plugin_manager=pm)
-            >>> plugin = DummyPlugin()
-            >>> panel.add_plugin_tabs(plugin)
-            >>> panel.remove_plugin_tabs("Dummy")
+            >>> panel.show_plugin(plugin)
+            >>> panel.tabs.count()
+            3
+            >>> panel.show_plugin(None)
             >>> panel.tabs.count()
             0
         """
-        if plugin_name not in self._plugin_tab_titles:
+        # Remove all tabs without deleting widgets (they may be cached on the plugin).
+        while self._tabs.count() > 0:
+            self._tabs.removeTab(0)
+
+        if plugin is None:
+            self._shown_plugin = None
             return
-        titles_to_remove = set(self._plugin_tab_titles.pop(plugin_name))
-        # Iterate in reverse so removing by index does not shift remaining tabs.
-        for i in range(self._tabs.count() - 1, -1, -1):
-            if self._tabs.tabText(i) in titles_to_remove:
-                self._tabs.removeTab(i)
+
+        for title, widget in plugin.config_tabs():
+            self._tabs.addTab(widget, title)
+        self._shown_plugin = plugin
+
+    def show_placeholder(self) -> None:
+        """Display a centred 'no step selected' message in the panel.
+
+        Convenience wrapper around ``show_plugin(None)`` that also adds a
+        single informational tab so the panel does not appear completely empty.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> pm = PluginManager()
+            >>> panel = ConfigPanel(plugin_manager=pm)
+            >>> panel.show_placeholder()
+            >>> panel.tabs.count()
+            1
+        """
+        while self._tabs.count() > 0:
+            self._tabs.removeTab(0)
+        self._shown_plugin = None
+        placeholder = QLabel("Select a sequence step to configure.")
+        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._tabs.addTab(placeholder, "Configuration")
+

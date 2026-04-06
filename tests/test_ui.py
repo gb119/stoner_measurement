@@ -120,6 +120,40 @@ class TestDockPanel:
         pm.unregister("MonitorPlugin")
         assert "MonitorPlugin" not in panel.monitor_widgets
 
+    def test_plugin_selected_emitted_on_step_selection(self, qapp):
+        """Selecting a sequence step emits plugin_selected with the plugin instance."""
+        pm = PluginManager()
+        plugin = DummyPlugin()
+        pm.register("Dummy", plugin)
+        panel = DockPanel(plugin_manager=pm)
+
+        received = []
+        panel.plugin_selected.connect(lambda p: received.append(p))
+
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+        panel._sequence_list.setCurrentRow(0)
+
+        assert len(received) == 1
+        assert received[0] is plugin
+
+    def test_plugin_selected_emits_none_when_selection_cleared(self, qapp):
+        """Clearing the sequence list current item emits plugin_selected(None)."""
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+        panel._sequence_list.setCurrentRow(0)
+
+        received = []
+        panel.plugin_selected.connect(lambda p: received.append(p))
+        panel._sequence_list.setCurrentRow(-1)  # clear current item
+
+        assert len(received) == 1
+        assert received[0] is None
+
 
 class TestPlotWidget:
     def test_creates_widget(self, runner):
@@ -246,56 +280,82 @@ class TestConfigPanel:
         panel = ConfigPanel(plugin_manager=plugin_manager)
         assert panel is not None
 
-    def test_tabs_populated(self, plugin_manager):
-        """DummyPlugin contributes 5 tabs (Scan + Scan Type + Settings + About + General)."""
-        panel = ConfigPanel(plugin_manager=plugin_manager)
-        assert panel.tabs.count() == 5
-        assert panel.tabs.tabText(0) == "Dummy \u2013 Scan"
-        assert panel.tabs.tabText(1) == "Dummy \u2013 Scan Type"
-        assert panel.tabs.tabText(2) == "Dummy \u2013 Settings"
-        assert panel.tabs.tabText(3) == "Dummy \u2013 About"
-        assert panel.tabs.tabText(4) == "Dummy \u2013 General"
-
-    def test_tabs_added_on_plugin_registration(self, qapp):
+    def test_tabs_empty_initially(self, qapp):
+        """No tabs shown until show_plugin() is called."""
         pm = PluginManager()
         panel = ConfigPanel(plugin_manager=pm)
         assert panel.tabs.count() == 0
 
-        pm.register("Dummy", DummyPlugin())
-        assert panel.tabs.count() == 5
+    def test_show_plugin_displays_tabs(self, plugin_manager):
+        """show_plugin() populates the tab widget with the plugin's tabs."""
+        panel = ConfigPanel(plugin_manager=plugin_manager)
+        plugin = DummyPlugin()
+        panel.show_plugin(plugin)
+        assert panel.tabs.count() == 3
+        assert panel.tabs.tabText(0) == "Dummy \u2013 Scan"
+        assert panel.tabs.tabText(1) == "Dummy \u2013 Settings"
+        assert panel.tabs.tabText(2) == "Dummy \u2013 About"
 
-    def test_tabs_removed_on_plugin_unregistration(self, qapp):
+    def test_show_plugin_none_clears_tabs(self, plugin_manager):
+        panel = ConfigPanel(plugin_manager=plugin_manager)
+        plugin = DummyPlugin()
+        panel.show_plugin(plugin)
+        panel.show_plugin(None)
+        assert panel.tabs.count() == 0
+
+    def test_show_plugin_replaces_previous_plugin_tabs(self, qapp):
+        pm = PluginManager()
+        panel = ConfigPanel(plugin_manager=pm)
+        plugin_a = DummyPlugin()
+        plugin_b = DummyPlugin()
+        panel.show_plugin(plugin_a)
+        first_count = panel.tabs.count()
+        panel.show_plugin(plugin_b)
+        assert panel.tabs.count() == first_count  # same type, same count
+        # Widgets belong to plugin_b (different cache)
+        assert panel.tabs.widget(0) is plugin_b.config_tabs()[0][1]
+
+    def test_show_plugin_caches_widgets(self, qapp):
+        """Tabs are cached on the plugin; re-showing reuses the same widgets."""
+        pm = PluginManager()
+        panel = ConfigPanel(plugin_manager=pm)
+        plugin = DummyPlugin()
+        panel.show_plugin(plugin)
+        first_widget = panel.tabs.widget(0)
+        panel.show_plugin(None)
+        panel.show_plugin(plugin)
+        assert panel.tabs.widget(0) is first_widget
+
+    def test_sync_clears_tabs_on_plugin_removal(self, qapp):
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
         panel = ConfigPanel(plugin_manager=pm)
-        assert panel.tabs.count() == 5
+        plugin = pm.plugins["Dummy"]
+        panel.show_plugin(plugin)
+        assert panel.tabs.count() == 3
 
         pm.unregister("Dummy")
         assert panel.tabs.count() == 0
 
-    def test_tabs_preserved_for_existing_plugin(self, qapp):
-        """Tabs for already-registered plugins are not re-created on sync."""
+    def test_sync_leaves_other_plugin_intact(self, qapp):
+        """Removing an unrelated plugin does not clear the current plugin's tabs."""
         pm = PluginManager()
-        pm.register("Dummy", DummyPlugin())
+        plugin_a = DummyPlugin()
+        plugin_b = DummyPlugin()
+        pm.register("A", plugin_a)
+        pm.register("B", plugin_b)
         panel = ConfigPanel(plugin_manager=pm)
-        first_widget = panel.tabs.widget(0)
+        panel.show_plugin(plugin_a)
+        assert panel.tabs.count() == 3
 
-        pm.register("Other", DummyPlugin())  # triggers plugins_changed
-        # The original Dummy tab widget should be the same object
-        assert panel.tabs.widget(0) is first_widget
+        pm.unregister("B")
+        assert panel.tabs.count() == 3  # plugin_a tabs unaffected
 
-    def test_add_plugin_tabs_duplicate_noop(self, qapp):
-        pm = PluginManager()
-        panel = ConfigPanel(plugin_manager=pm)
-        plugin = DummyPlugin()
-        panel.add_plugin_tabs(plugin)
-        panel.add_plugin_tabs(plugin)  # second call should be ignored
-        assert panel.tabs.count() == 5
-
-    def test_remove_plugin_tabs_missing_noop(self, qapp):
+    def test_show_placeholder(self, qapp):
         pm = PluginManager()
         panel = ConfigPanel(plugin_manager=pm)
-        panel.remove_plugin_tabs("nonexistent")  # should not raise
+        panel.show_placeholder()
+        assert panel.tabs.count() == 1
 
 
 class TestMainWindow:
