@@ -102,9 +102,9 @@ class _StateControlScanPage(QWidget):
         header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
         header_form.addRow("State:", QLabel(f"{plugin.state_name} ({plugin.units})"))
 
-        if len(plugin._scan_generator_classes) > 1:
+        if len(type(plugin)._scan_generator_classes) > 1:
             combo = QComboBox()
-            for cls in plugin._scan_generator_classes:
+            for cls in type(plugin)._scan_generator_classes:
                 combo.addItem(cls.__name__, cls)
             current_idx = combo.findData(type(plugin.scan_generator))
             if current_idx >= 0:

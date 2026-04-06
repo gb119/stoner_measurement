@@ -452,10 +452,7 @@ class DockPanel(QWidget):
         # Assign a unique instance name.
         count = self._step_counts.get(ep_name, 0)
         self._step_counts[ep_name] = count + 1
-        if count == 0:
-            # First instance: use the default instance name unchanged.
-            pass
-        else:
+        if count > 0:
             # Subsequent instances: append a numeric suffix.
             new_plugin.instance_name = f"{base_plugin.instance_name}_{count + 1}"
 
