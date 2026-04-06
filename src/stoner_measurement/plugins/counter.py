@@ -30,6 +30,8 @@ class CounterPlugin(StateControlPlugin):
     through the scan set-points in sequence so that its value always equals the
     current position in the scan.
 
+    The counter is initialised to ``0.0`` at construction.
+
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
@@ -86,7 +88,6 @@ class CounterPlugin(StateControlPlugin):
         return ""
 
     def __init__(self, parent=None) -> None:
-        """Initialise the counter with a starting value of zero."""
         super().__init__(parent)
         self._count: float = 0.0
 
