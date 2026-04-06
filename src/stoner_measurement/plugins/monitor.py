@@ -9,6 +9,7 @@ managed by an internal :class:`~PyQt6.QtCore.QTimer`.
 from __future__ import annotations
 
 from abc import abstractmethod
+from collections.abc import Callable
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
@@ -254,3 +255,48 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             self.data_available.emit(reading)
         except Exception as exc:
             self.read_error.emit(str(exc))
+
+    def generate_action_code(
+        self,
+        indent: int,
+        sub_steps: list,
+        render_sub_step: Callable,
+    ) -> list[str]:
+        """Return action code lines that call :meth:`read` and print the result.
+
+        Args:
+            indent (int):
+                Number of four-space indentation levels for the emitted lines.
+            sub_steps (list):
+                Ignored for :class:`MonitorPlugin` (leaf node).
+            render_sub_step (Callable):
+                Ignored for :class:`MonitorPlugin`.
+
+        Returns:
+            (list[str]):
+                Lines calling ``read()`` and printing the reading dict.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.monitor import MonitorPlugin
+            >>> class _M(MonitorPlugin):
+            ...     @property
+            ...     def name(self): return "M"
+            ...     @property
+            ...     def quantity_names(self): return ["v"]
+            ...     @property
+            ...     def units(self): return {"v": "au"}
+            ...     def read(self): return {"v": 0.0}
+            >>> m = _M()
+            >>> lines = m.generate_action_code(1, [], lambda s, i: [])
+            >>> "    data = m.read()" in lines
+            True
+        """
+        prefix = "    " * indent
+        var_name = self.instance_name
+        return [
+            f"{prefix}data = {var_name}.read()",
+            f"{prefix}print(data)",
+            "",
+        ]

@@ -23,6 +23,7 @@ sub-types: :class:`~stoner_measurement.plugins.trace.TracePlugin`,
 from __future__ import annotations
 
 from abc import ABC, ABCMeta, abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject
@@ -346,3 +347,50 @@ class BasePlugin(ABC):
             True
         """
         return None
+
+    def generate_action_code(
+        self,
+        indent: int,
+        sub_steps: list,
+        render_sub_step: Callable,
+    ) -> list[str]:
+        """Return the action code lines for this plugin at the given indentation level.
+
+        The sequence engine calls this method when building the action body of
+        the generated script.  The default implementation emits a comment
+        indicating an unknown plugin type.  Specialised sub-types
+        (:class:`~stoner_measurement.plugins.trace.TracePlugin`,
+        :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`,
+        etc.) override this method to produce the appropriate code.
+
+        Args:
+            indent (int):
+                Number of four-space indentation levels for the emitted lines.
+            sub_steps (list):
+                Raw sub-step descriptors from the sequence tree (strings or
+                ``(plugin_or_name, [sub-steps…])`` tuples).  Leaf plugins
+                (e.g. :class:`~stoner_measurement.plugins.trace.TracePlugin`)
+                can ignore this; container plugins should call *render_sub_step*
+                for each entry.
+            render_sub_step (Callable):
+                Callback with signature ``(step, indent) -> list[str]`` provided
+                by the sequence engine.  Container plugins call this to render
+                each nested step at the appropriate indentation level.
+
+        Returns:
+            (list[str]):
+                Lines of Python source code (without trailing newlines) that
+                implement this plugin's action phase.
+
+        Examples:
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> lines = plugin.generate_action_code(1, [], lambda s, i: [])
+            >>> "dummy.measure" in "\\n".join(lines)
+            True
+        """
+        prefix = "    " * indent
+        return [
+            f"{prefix}# {self.instance_name}: unknown plugin type",
+            "",
+        ]

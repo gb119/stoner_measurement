@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import time
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import ClassVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -674,3 +675,60 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 return
             time.sleep(poll_interval)
         self.state_reached.emit(self.get_state())
+
+    def generate_action_code(
+        self,
+        indent: int,
+        sub_steps: list,
+        render_sub_step: Callable,
+    ) -> list[str]:
+        """Return action code lines for a scan loop over :attr:`scan_generator`.
+
+        Emits a ``for`` loop that iterates over the scan generator's set-points,
+        calls :meth:`ramp_to` for each, and recursively renders any nested
+        sub-steps inside the loop body.
+
+        Args:
+            indent (int):
+                Number of four-space indentation levels for the emitted lines.
+            sub_steps (list):
+                Raw sub-step descriptors from the sequence tree; rendered via
+                *render_sub_step* at ``indent + 1``.
+            render_sub_step (Callable):
+                Callback ``(step, indent) -> list[str]`` provided by the engine.
+
+        Returns:
+            (list[str]):
+                Lines implementing the scan loop with nested sub-step bodies.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import StateControlPlugin
+            >>> class _S(StateControlPlugin):
+            ...     @property
+            ...     def name(self): return "S"
+            ...     @property
+            ...     def state_name(self): return "X"
+            ...     @property
+            ...     def units(self): return "au"
+            ...     def set_state(self, v): pass
+            ...     def get_state(self): return 0.0
+            ...     def is_at_target(self): return True
+            >>> p = _S()
+            >>> lines = p.generate_action_code(1, [], lambda s, i: [])
+            >>> "for _setpoint in s.scan_generator.generate():" in lines
+            True
+        """
+        prefix = "    " * indent
+        loop_prefix = "    " * (indent + 1)
+        var_name = self.instance_name
+        lines: list[str] = [
+            f"{prefix}for _setpoint in {var_name}.scan_generator.generate():",
+            f"{loop_prefix}{var_name}.ramp_to(float(_setpoint))",
+            f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.get_state():.4g}} {self.units}")',
+        ]
+        for sub_step in sub_steps:
+            lines.extend(render_sub_step(sub_step, indent + 1))
+        lines.append("")
+        return lines

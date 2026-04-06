@@ -12,6 +12,7 @@ the resulting outputs alongside the raw traces.
 from __future__ import annotations
 
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -229,3 +230,47 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         result = self.transform(data)
         self.transform_complete.emit(result)
         return result
+
+    def generate_action_code(
+        self,
+        indent: int,
+        sub_steps: list,
+        render_sub_step: Callable,
+    ) -> list[str]:
+        """Return a commented action stub for this transform plugin.
+
+        Args:
+            indent (int):
+                Number of four-space indentation levels for the emitted lines.
+            sub_steps (list):
+                Ignored for :class:`TransformPlugin` (leaf node).
+            render_sub_step (Callable):
+                Ignored for :class:`TransformPlugin`.
+
+        Returns:
+            (list[str]):
+                A single commented-out ``run(data)`` call.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.transform import TransformPlugin
+            >>> class _T(TransformPlugin):
+            ...     @property
+            ...     def name(self): return "T"
+            ...     @property
+            ...     def required_inputs(self): return []
+            ...     @property
+            ...     def output_names(self): return []
+            ...     def transform(self, data): return {}
+            >>> t = _T()
+            >>> lines = t.generate_action_code(1, [], lambda s, i: [])
+            >>> "# result = t.run(data)" in lines
+            True
+        """
+        prefix = "    " * indent
+        var_name = self.instance_name
+        return [
+            f"{prefix}# result = {var_name}.run(data)",
+            "",
+        ]

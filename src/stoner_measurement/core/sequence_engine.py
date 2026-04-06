@@ -711,104 +711,6 @@ class SequenceEngine(QObject):
     # Code generation
     # ------------------------------------------------------------------
 
-    def generate_code(self, plugins: dict[str, BasePlugin]) -> str:
-        """Generate a Python script stub from the registered *plugins*.
-
-        Produces a script that imports nothing extra (plugins are already in
-        the namespace) and demonstrates how to call each plugin according to
-        its type.
-
-        Args:
-            plugins (dict[str, BasePlugin]):
-                Mapping of entry-point name → plugin instance.
-
-        Returns:
-            (str):
-                A Python script with usage stubs for each plugin.
-
-        Examples:
-            >>> from PyQt6.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
-            >>> engine = SequenceEngine()
-            >>> engine.add_plugin("dummy", DummyPlugin())
-            >>> code = engine.generate_code({"dummy": DummyPlugin()})
-            >>> "measure" in code
-            True
-            >>> "connect" in code and "disconnect" in code
-            True
-            >>> engine.shutdown()
-        """
-        # Import here to avoid circular imports at module level.
-        from stoner_measurement.plugins.monitor import MonitorPlugin
-        from stoner_measurement.plugins.state_control import StateControlPlugin
-        from stoner_measurement.plugins.trace import TracePlugin
-        from stoner_measurement.plugins.transform import TransformPlugin
-
-        lines = [
-            "# Sequence script — auto-generated from loaded plugins.",
-            "# Edit as needed, then click Run.",
-            "#",
-        ]
-
-        if not plugins:
-            lines.append("# No plugins loaded yet.")
-            return "\n".join(lines) + "\n"
-
-        lines.append("# Available plugin instances:")
-        for ep_name, plugin in plugins.items():
-            var_name = plugin.instance_name
-            lines.append(
-                f"#   {var_name:<20} — {type(plugin).__name__} ({plugin.plugin_type})"
-            )
-
-        lines.append("")
-
-        for ep_name, plugin in plugins.items():
-            var_name = plugin.instance_name
-            sep = f"# {'─' * 60}"
-            lines.append(sep)
-            lines.append(f"# {type(plugin).__name__}: {var_name}")
-            lines.append("")
-
-            if isinstance(plugin, TracePlugin):
-                lines += [
-                    f"{var_name}.connect()",
-                    f"{var_name}.configure()",
-                    "try:",
-                    f"    data = {var_name}.measure({{}})",
-                    "    for channel, x, y in data:",
-                    '        print(f"{channel}: x={x:.4g}, y={y:.4g}")',
-                    "finally:",
-                    f"    {var_name}.disconnect()",
-                ]
-            elif isinstance(plugin, StateControlPlugin):
-                state_name = plugin.state_name
-                units = plugin.units
-                lines += [
-                    f"{var_name}.connect()",
-                    f"{var_name}.configure()",
-                    "try:",
-                    f"    # Ramp {state_name} to a target value",
-                    f"    {var_name}.ramp_to(0.0)",
-                    f'    print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
-                    "finally:",
-                    f"    {var_name}.disconnect()",
-                ]
-            elif isinstance(plugin, MonitorPlugin):
-                lines += [
-                    f"data = {var_name}.read()",
-                    "print(data)",
-                ]
-            elif isinstance(plugin, TransformPlugin):
-                lines += [
-                    f"# result = {var_name}.run(data)",
-                ]
-
-            lines.append("")
-
-        return "\n".join(lines)
-
     def generate_sequence_code(
         self,
         steps: list,
@@ -823,17 +725,10 @@ class SequenceEngine(QObject):
         2. **Configure** — ``configure()`` is called for every unique plugin
            instance in the same order.
         3. **Action** — the measurement body, wrapped in a single
-           ``try/finally`` block.  The action for each plugin type is:
-
-           * :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`:
-             a ``for`` loop over ``scan_generator.generate()`` that calls
-             ``ramp_to`` and ``get_state`` for each setpoint, then recursively
-             renders any sub-steps inside the loop.
-           * :class:`~stoner_measurement.plugins.trace.TracePlugin`: a single
-             call to ``measure({})`` that returns the complete trace.
-           * :class:`~stoner_measurement.plugins.monitor.MonitorPlugin` /
-             :class:`~stoner_measurement.plugins.transform.TransformPlugin`:
-             placeholder stubs (to be defined).
+           ``try/finally`` block.  Each plugin's action is generated by
+           calling :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.generate_action_code`
+           on the plugin instance, allowing each plugin type to define its own
+           code-generation behaviour.
 
            The ``finally`` block calls ``disconnect()`` on every plugin in
            reverse order so that resources are always released.
@@ -871,11 +766,6 @@ class SequenceEngine(QObject):
         """
         # Import here to avoid circular imports at module level.
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.monitor import MonitorPlugin
-        from stoner_measurement.plugins.sequence_plugin import SequencePlugin
-        from stoner_measurement.plugins.state_control import StateControlPlugin
-        from stoner_measurement.plugins.trace import TracePlugin
-        from stoner_measurement.plugins.transform import TransformPlugin
 
         header = [
             "# Sequence script — auto-generated from sequence tree.",
@@ -945,8 +835,8 @@ class SequenceEngine(QObject):
 
         action_lines: list[str] = []
 
-        def _render_action(step: object, indent: int) -> None:
-            """Recursively render the action for one step at *indent* depth."""
+        def _render_action(step: object, indent: int) -> list[str]:
+            """Resolve *step* to a plugin and delegate to its generate_action_code."""
             prefix = "    " * indent
 
             if isinstance(step, tuple):
@@ -961,54 +851,12 @@ class SequenceEngine(QObject):
                 plugin = plugins.get(plugin_or_name)  # type: ignore[arg-type]
 
             if plugin is None:
-                action_lines.append(f"{prefix}# {plugin_or_name}: plugin not found")
-                return
+                return [f"{prefix}# {plugin_or_name}: plugin not found"]
 
-            var_name = plugin.instance_name
-
-            if isinstance(plugin, StateControlPlugin):
-                state_name = plugin.state_name
-                units = plugin.units
-                loop_prefix = prefix + "    "
-                action_lines.append(
-                    f"{prefix}for _setpoint in {var_name}.scan_generator.generate():"
-                )
-                action_lines.append(f"{loop_prefix}{var_name}.ramp_to(float(_setpoint))")
-                action_lines.append(
-                    f'{loop_prefix}print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")'
-                )
-                for sub_step in sub_steps:
-                    _render_action(sub_step, indent + 1)
-                action_lines.append("")
-
-            elif isinstance(plugin, TracePlugin):
-                action_lines.append(f"{prefix}data = {var_name}.measure({{}})")
-                action_lines.append(f"{prefix}for channel, x, y in data:")
-                action_lines.append(
-                    f'{prefix}    print(f"{{channel}}: x={{x:.4g}}, y={{y:.4g}}")'
-                )
-                action_lines.append("")
-
-            elif isinstance(plugin, SequencePlugin):
-                # Generic SequencePlugin container — render sub-steps only.
-                for sub_step in sub_steps:
-                    _render_action(sub_step, indent)
-
-            elif isinstance(plugin, MonitorPlugin):
-                action_lines.append(f"{prefix}data = {var_name}.read()")
-                action_lines.append(f"{prefix}print(data)")
-                action_lines.append("")
-
-            elif isinstance(plugin, TransformPlugin):
-                action_lines.append(f"{prefix}# result = {var_name}.run(data)")
-                action_lines.append("")
-
-            else:
-                action_lines.append(f"{prefix}# {var_name}: unknown plugin type")
-                action_lines.append("")
+            return plugin.generate_action_code(indent, sub_steps, _render_action)
 
         for step in steps:
-            _render_action(step, 1)
+            action_lines.extend(_render_action(step, 1))
 
         # Trim trailing blank line added by last rendered step.
         while action_lines and action_lines[-1] == "":

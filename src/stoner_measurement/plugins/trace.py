@@ -856,3 +856,44 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         channel = self.channel_names[0]
         for x, y in self.execute(parameters):
             yield channel, x, y
+
+    def generate_action_code(
+        self,
+        indent: int,
+        sub_steps: list,
+        render_sub_step: Any,
+    ) -> list[str]:
+        """Return action code lines that acquire a trace via :meth:`measure`.
+
+        Args:
+            indent (int):
+                Number of four-space indentation levels for the emitted lines.
+            sub_steps (list):
+                Ignored for :class:`TracePlugin` (leaf node in the sequence tree).
+            render_sub_step (Any):
+                Ignored for :class:`TracePlugin`.
+
+        Returns:
+            (list[str]):
+                Lines calling ``measure({})``, iterating ``(channel, x, y)``
+                triples, and printing each point.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> lines = plugin.generate_action_code(1, [], lambda s, i: [])
+            >>> "    data = dummy.measure({})" in lines
+            True
+            >>> "    for channel, x, y in data:" in lines
+            True
+        """
+        prefix = "    " * indent
+        var_name = self.instance_name
+        return [
+            f"{prefix}data = {var_name}.measure({{}})",
+            f"{prefix}for channel, x, y in data:",
+            f'{prefix}    print(f"{{channel}}: x={{x:.4g}}, y={{y:.4g}}")',
+            "",
+        ]
