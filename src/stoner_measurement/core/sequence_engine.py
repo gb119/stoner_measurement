@@ -816,24 +816,38 @@ class SequenceEngine(QObject):
     ) -> str:
         """Generate executable Python code from the sequence tree.
 
-        Walks *steps* (the nested list returned by
-        :attr:`~stoner_measurement.ui.dock_panel.DockPanel.sequence_steps`)
-        and emits real Python code that reflects the tree structure — nested
-        ``try/finally`` blocks for
-        :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
-        container steps with sub-steps indented inside them.
+        Produces a three-phase script from *steps*:
 
-        The generated script is ready to paste into the sequence editor and
-        run; it is not a commented stub.
+        1. **Connect/initialise** — ``connect()`` is called for every unique
+           plugin instance found in the tree, in depth-first order.
+        2. **Configure** — ``configure()`` is called for every unique plugin
+           instance in the same order.
+        3. **Action** — the measurement body, wrapped in a single
+           ``try/finally`` block.  The action for each plugin type is:
+
+           * :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`:
+             a ``for`` loop over ``scan_generator.generate()`` that calls
+             ``set_state`` (via ``ramp_to``) and ``get_state`` for each
+             setpoint, then recursively renders any sub-steps inside the loop.
+           * :class:`~stoner_measurement.plugins.trace.TracePlugin`: a single
+             call to ``measure({})`` that returns the complete trace.
+           * :class:`~stoner_measurement.plugins.monitor.MonitorPlugin` /
+             :class:`~stoner_measurement.plugins.transform.TransformPlugin`:
+             placeholder stubs (to be defined).
+
+           The ``finally`` block calls ``disconnect()`` on every plugin in
+           reverse order so that resources are always released.
 
         Args:
             steps (list):
                 Nested sequence step list from
                 :attr:`~stoner_measurement.ui.dock_panel.DockPanel.sequence_steps`.
-                Each element is either a plain entry-point name string or a
-                ``(ep_name, [sub-steps…])`` tuple.
+                Each element is either a plugin instance, a plain entry-point
+                name string (legacy), or a ``(plugin_or_ep_name, [sub-steps…])``
+                tuple.
             plugins (dict[str, BasePlugin]):
-                Mapping of entry-point name → plugin instance.
+                Mapping of entry-point name → plugin instance used to resolve
+                legacy string step entries.
 
         Returns:
             (str):
@@ -847,11 +861,16 @@ class SequenceEngine(QObject):
             >>> plugin = DummyPlugin()
             >>> engine.add_plugin("dummy", plugin)
             >>> code = engine.generate_sequence_code(["dummy"], {"dummy": plugin})
+            >>> "connect" in code and "configure" in code
+            True
             >>> "measure" in code
+            True
+            >>> "disconnect" in code
             True
             >>> engine.shutdown()
         """
         # Import here to avoid circular imports at module level.
+        from stoner_measurement.plugins.base_plugin import BasePlugin
         from stoner_measurement.plugins.monitor import MonitorPlugin
         from stoner_measurement.plugins.sequence_plugin import SequencePlugin
         from stoner_measurement.plugins.state_control import StateControlPlugin
@@ -867,12 +886,67 @@ class SequenceEngine(QObject):
         if not steps:
             return "\n".join(header) + "# No sequence steps defined yet.\n"
 
-        body_lines: list[str] = []
+        # ------------------------------------------------------------------
+        # Phase 0: collect all unique plugin instances (depth-first order).
+        # ------------------------------------------------------------------
 
-        def _render_step(step: object, indent: int) -> None:
-            """Recursively render one step (leaf or branch) at *indent* depth."""
-            from stoner_measurement.plugins.base_plugin import BasePlugin
+        ordered_plugins: list[BasePlugin] = []
+        seen_ids: set[int] = set()
 
+        def _collect_plugins(step: object) -> None:
+            """Recursively collect unique plugins from the step tree."""
+            if isinstance(step, tuple):
+                plugin_or_name, sub_steps = step
+            else:
+                plugin_or_name = step
+                sub_steps = []
+
+            if isinstance(plugin_or_name, BasePlugin):
+                plugin: BasePlugin | None = plugin_or_name
+            else:
+                plugin = plugins.get(plugin_or_name)  # type: ignore[arg-type]
+
+            if plugin is not None and id(plugin) not in seen_ids:
+                ordered_plugins.append(plugin)
+                seen_ids.add(id(plugin))
+
+            for sub in sub_steps:
+                _collect_plugins(sub)
+
+        for step in steps:
+            _collect_plugins(step)
+
+        if not ordered_plugins:
+            return "\n".join(header) + "# No sequence steps defined yet.\n"
+
+        lines: list[str] = list(header)
+
+        # ------------------------------------------------------------------
+        # Phase 1: connect/initialise all plugins.
+        # ------------------------------------------------------------------
+
+        lines.append("# Connect and initialise all plugins.")
+        for plugin in ordered_plugins:
+            lines.append(f"{plugin.instance_name}.connect()")
+        lines.append("")
+
+        # ------------------------------------------------------------------
+        # Phase 2: configure all plugins.
+        # ------------------------------------------------------------------
+
+        lines.append("# Configure all plugins.")
+        for plugin in ordered_plugins:
+            lines.append(f"{plugin.instance_name}.configure()")
+        lines.append("")
+
+        # ------------------------------------------------------------------
+        # Phase 3: action body inside a single try/finally.
+        # ------------------------------------------------------------------
+
+        action_lines: list[str] = []
+
+        def _render_action(step: object, indent: int) -> None:
+            """Recursively render the action for one step at *indent* depth."""
             prefix = "    " * indent
 
             if isinstance(step, tuple):
@@ -881,80 +955,70 @@ class SequenceEngine(QObject):
                 plugin_or_name = step
                 sub_steps = []
 
-            # Support both plugin instances (new) and ep_name strings (legacy).
             if isinstance(plugin_or_name, BasePlugin):
                 plugin = plugin_or_name
             else:
-                plugin = plugins.get(plugin_or_name)
+                plugin = plugins.get(plugin_or_name)  # type: ignore[arg-type]
+
             if plugin is None:
-                body_lines.append(f"{prefix}# {plugin_or_name}: plugin not found")
+                action_lines.append(f"{prefix}# {plugin_or_name}: plugin not found")
                 return
 
             var_name = plugin.instance_name
 
-            if isinstance(plugin, TracePlugin):
-                body_lines += [
-                    f"{prefix}{var_name}.connect()",
-                    f"{prefix}{var_name}.configure()",
-                    f"{prefix}try:",
-                    f"{prefix}    data = {var_name}.measure({{}})",
-                    f"{prefix}    for channel, x, y in data:",
-                    f'{prefix}        print(f"{{channel}}: x={{x:.4g}}, y={{y:.4g}}")',
-                    f"{prefix}finally:",
-                    f"{prefix}    {var_name}.disconnect()",
-                ]
-
-            elif isinstance(plugin, StateControlPlugin):
+            if isinstance(plugin, StateControlPlugin):
                 state_name = plugin.state_name
                 units = plugin.units
-                inner_prefix = prefix + "    "
-                body_lines += [
-                    f"{prefix}{var_name}.connect()",
-                    f"{prefix}{var_name}.configure()",
-                    f"{prefix}try:",
-                    f"{inner_prefix}for _setpoint in {var_name}.scan_generator.generate():",
-                ]
-                loop_prefix = inner_prefix + "    "
-                body_lines += [
-                    f"{loop_prefix}{var_name}.ramp_to(float(_setpoint))",
-                    f'{loop_prefix}print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
-                ]
+                loop_prefix = prefix + "    "
+                action_lines.append(
+                    f"{prefix}for _setpoint in {var_name}.scan_generator.generate():"
+                )
+                action_lines.append(f"{loop_prefix}{var_name}.ramp_to(float(_setpoint))")
+                action_lines.append(
+                    f'{loop_prefix}print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")'
+                )
                 for sub_step in sub_steps:
-                    _render_step(sub_step, indent + 2)
-                body_lines += [
-                    f"{prefix}finally:",
-                    f"{prefix}    {var_name}.disconnect()",
-                ]
+                    _render_action(sub_step, indent + 1)
+                action_lines.append("")
+
+            elif isinstance(plugin, TracePlugin):
+                action_lines.append(f"{prefix}data = {var_name}.measure({{}})")
+                action_lines.append(f"{prefix}for channel, x, y in data:")
+                action_lines.append(
+                    f'{prefix}    print(f"{{channel}}: x={{x:.4g}}, y={{y:.4g}}")'
+                )
+                action_lines.append("")
 
             elif isinstance(plugin, SequencePlugin):
-                # Generic SequencePlugin (not a StateControlPlugin).
-                body_lines += [
-                    f"{prefix}{var_name}.connect()",
-                    f"{prefix}{var_name}.configure()",
-                    f"{prefix}try:",
-                ]
+                # Generic SequencePlugin container — render sub-steps only.
                 for sub_step in sub_steps:
-                    _render_step(sub_step, indent + 1)
-                body_lines += [
-                    f"{prefix}finally:",
-                    f"{prefix}    {var_name}.disconnect()",
-                ]
+                    _render_action(sub_step, indent)
 
             elif isinstance(plugin, MonitorPlugin):
-                body_lines += [
-                    f"{prefix}data = {var_name}.read()",
-                    f"{prefix}print(data)",
-                ]
+                action_lines.append(f"{prefix}data = {var_name}.read()")
+                action_lines.append(f"{prefix}print(data)")
+                action_lines.append("")
 
             elif isinstance(plugin, TransformPlugin):
-                body_lines.append(f"{prefix}# result = {var_name}.run(data)")
+                action_lines.append(f"{prefix}# result = {var_name}.run(data)")
+                action_lines.append("")
 
             else:
-                body_lines.append(f"{prefix}# {var_name}: unknown plugin type")
-
-            body_lines.append("")
+                action_lines.append(f"{prefix}# {var_name}: unknown plugin type")
+                action_lines.append("")
 
         for step in steps:
-            _render_step(step, 0)
+            _render_action(step, 1)
 
-        return "\n".join(header + body_lines)
+        # Trim trailing blank line added by last rendered step.
+        while action_lines and action_lines[-1] == "":
+            action_lines.pop()
+
+        lines.append("try:")
+        lines.extend(action_lines)
+        lines.append("finally:")
+        for plugin in reversed(ordered_plugins):
+            lines.append(f"    {plugin.instance_name}.disconnect()")
+        lines.append("")
+
+        return "\n".join(lines)
