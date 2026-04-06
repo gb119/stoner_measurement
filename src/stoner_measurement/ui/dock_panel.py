@@ -6,6 +6,8 @@ and a monitoring section where plugins can display live status widgets.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QLabel,
@@ -17,6 +19,11 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.core.plugin_manager import PluginManager
+
+if TYPE_CHECKING:
+    from stoner_measurement.plugins.base_plugin import BasePlugin
+
+_EP_NAME_ROLE = Qt.ItemDataRole.UserRole
 
 
 class DockPanel(QWidget):
@@ -70,6 +77,9 @@ class DockPanel(QWidget):
         self._plugin_manager = plugin_manager
         # Maps plugin name → monitor widget currently shown in the panel.
         self._monitor_widgets: dict[str, QWidget] = {}
+        # Tracks plugin instances for which instance_name_changed is connected,
+        # keyed by ep_name so they can be disconnected if the plugin is removed.
+        self._connected_step_plugins: dict[str, BasePlugin] = {}
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -127,6 +137,15 @@ class DockPanel(QWidget):
     def _refresh_instruments(self) -> None:
         """Reload the instrument list from the plugin manager."""
         self._instrument_list.clear()
+        current_ep_names = set(self._plugin_manager.plugin_names)
+        for ep_name in list(self._connected_step_plugins):
+            if ep_name not in current_ep_names:
+                plugin = self._connected_step_plugins.pop(ep_name)
+                if hasattr(plugin, "instance_name_changed"):
+                    try:
+                        plugin.instance_name_changed.disconnect(self._on_plugin_renamed)
+                    except (TypeError, RuntimeError):
+                        pass
         for name in self._plugin_manager.plugin_names:
             self._instrument_list.addItem(name)
 
@@ -147,8 +166,18 @@ class DockPanel(QWidget):
     def _add_step(self) -> None:
         """Add the selected instrument as a sequence step."""
         current = self._instrument_list.currentItem()
-        if current is not None:
-            self._sequence_list.addItem(current.text())
+        if current is None:
+            return
+        ep_name = current.text()
+        plugin = self._plugin_manager.plugins.get(ep_name)
+        if plugin is None:
+            return
+        item = QListWidgetItem(f"{plugin.instance_name} ({plugin.name})")
+        item.setData(_EP_NAME_ROLE, ep_name)
+        self._sequence_list.addItem(item)
+        if ep_name not in self._connected_step_plugins and hasattr(plugin, "instance_name_changed"):
+            plugin.instance_name_changed.connect(self._on_plugin_renamed)
+            self._connected_step_plugins[ep_name] = plugin
 
     def _remove_step(self) -> None:
         """Remove the currently selected sequence step."""
@@ -163,8 +192,32 @@ class DockPanel(QWidget):
         if current is None:
             self.plugin_selected.emit(None)
             return
-        plugin = self._plugin_manager.plugins.get(current.text())
+        ep_name = current.data(_EP_NAME_ROLE)
+        plugin = self._plugin_manager.plugins.get(ep_name)
         self.plugin_selected.emit(plugin)
+
+    def _on_plugin_renamed(self, old_name: str, new_name: str) -> None:
+        """Update sequence step labels when a plugin's instance name changes.
+
+        This slot is connected to the ``instance_name_changed(old, new)``
+        signal.  The *old_name* argument is received as part of that signal
+        but is not needed here — step items are identified by the ep_name
+        stored in their ``UserRole`` data, and any item whose plugin now has
+        ``instance_name == new_name`` is relabelled.
+
+        Args:
+            old_name (str):
+                Previous instance name (received from the signal but not used
+                for lookup).
+            new_name (str):
+                New instance name to display.
+        """
+        for i in range(self._sequence_list.count()):
+            item = self._sequence_list.item(i)
+            ep_name = item.data(_EP_NAME_ROLE)
+            plugin = self._plugin_manager.plugins.get(ep_name)
+            if plugin is not None and plugin.instance_name == new_name:
+                item.setText(f"{new_name} ({plugin.name})")
 
     def _update_monitor_visibility(self) -> None:
         """Show or hide the monitoring section depending on whether any widgets are present."""
@@ -178,9 +231,13 @@ class DockPanel(QWidget):
 
     @property
     def sequence_steps(self) -> list[str]:
-        """Return the current sequence step names as a list of strings."""
+        """Return the entry-point names of the current sequence steps.
+
+        The returned names are the plugin registry keys (entry-point names)
+        stored when each step was added, not the formatted display labels.
+        """
         return [
-            self._sequence_list.item(i).text()
+            self._sequence_list.item(i).data(_EP_NAME_ROLE)
             for i in range(self._sequence_list.count())
         ]
 

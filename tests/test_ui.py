@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel
 
 from stoner_measurement.core.plugin_manager import PluginManager
@@ -153,6 +154,48 @@ class TestDockPanel:
 
         assert len(received) == 1
         assert received[0] is None
+
+    def test_step_display_format(self, qapp):
+        """Sequence step display text uses '{instance_name} ({plugin.name})' format."""
+        pm = PluginManager()
+        plugin = DummyPlugin()
+        pm.register("Dummy", plugin)
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+
+        item = panel._sequence_list.item(0)
+        assert item.text() == f"{plugin.instance_name} ({plugin.name})"
+
+    def test_step_label_updates_on_rename(self, qapp):
+        """Renaming a plugin's instance_name updates matching step labels."""
+        pm = PluginManager()
+        plugin = DummyPlugin()
+        pm.register("Dummy", plugin)
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+
+        plugin.instance_name = "my_sensor"
+
+        item = panel._sequence_list.item(0)
+        assert item.text() == f"my_sensor ({plugin.name})"
+
+    def test_step_ep_name_preserved_in_user_role(self, qapp):
+        """The ep_name is stored in UserRole data, not the display text."""
+        pm = PluginManager()
+        plugin = DummyPlugin()
+        pm.register("ep_key", plugin)
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+
+        item = panel._sequence_list.item(0)
+        assert item.data(Qt.ItemDataRole.UserRole) == "ep_key"
+        assert panel.sequence_steps == ["ep_key"]
 
 
 class TestPlotWidget:
