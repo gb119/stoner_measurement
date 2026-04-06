@@ -8,11 +8,38 @@ from PyQt6.QtWidgets import QLabel
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.runner import SequenceRunner
+from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
 from stoner_measurement.plugins.dummy import DummyPlugin
+from stoner_measurement.plugins.state_control import StateControlPlugin
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
 from stoner_measurement.ui.main_window import MainWindow
 from stoner_measurement.ui.plot_widget import PlotWidget
+
+
+class _FakeStatePlugin(StateControlPlugin, metaclass=_ABCQObjectMeta):
+    """Minimal concrete StateControlPlugin for use in tests."""
+
+    @property
+    def name(self):
+        return "FakeState"
+
+    @property
+    def state_name(self):
+        return "X"
+
+    @property
+    def units(self):
+        return "au"
+
+    def set_state(self, v):
+        pass
+
+    def get_state(self):
+        return 0.0
+
+    def is_at_target(self):
+        return True
 
 
 class TestDockPanel:
@@ -201,33 +228,8 @@ class TestDockPanel:
 
     def test_sequence_steps_nested_tuple_when_sub_step_present(self, qapp):
         """sequence_steps returns a (ep_name, [sub_ep]) tuple when a step has children."""
-        from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-        from stoner_measurement.plugins.state_control import StateControlPlugin
-
-        class _FakeState(StateControlPlugin, metaclass=_ABCQObjectMeta):
-            @property
-            def name(self):
-                return "FakeState"
-
-            @property
-            def state_name(self):
-                return "X"
-
-            @property
-            def units(self):
-                return "au"
-
-            def set_state(self, v):
-                pass
-
-            def get_state(self):
-                return 0.0
-
-            def is_at_target(self):
-                return True
-
         pm = PluginManager()
-        state_plugin = _FakeState()
+        state_plugin = _FakeStatePlugin()
         trace_plugin = DummyPlugin()
         pm.register("state", state_plugin)
         pm.register("trace", trace_plugin)
@@ -254,33 +256,8 @@ class TestDockPanel:
 
     def test_remove_sub_step(self, qapp):
         """Removing a sub-step removes only the child, leaving the parent intact."""
-        from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-        from stoner_measurement.plugins.state_control import StateControlPlugin
-
-        class _FakeState(StateControlPlugin, metaclass=_ABCQObjectMeta):
-            @property
-            def name(self):
-                return "FakeState"
-
-            @property
-            def state_name(self):
-                return "X"
-
-            @property
-            def units(self):
-                return "au"
-
-            def set_state(self, v):
-                pass
-
-            def get_state(self):
-                return 0.0
-
-            def is_at_target(self):
-                return True
-
         pm = PluginManager()
-        pm.register("state", _FakeState())
+        pm.register("state", _FakeStatePlugin())
         pm.register("trace", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
@@ -305,33 +282,8 @@ class TestDockPanel:
 
     def test_state_control_item_is_bold(self, qapp):
         """StateControlPlugin items are rendered with a bold font in the tree."""
-        from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-        from stoner_measurement.plugins.state_control import StateControlPlugin
-
-        class _FakeState(StateControlPlugin, metaclass=_ABCQObjectMeta):
-            @property
-            def name(self):
-                return "FakeState"
-
-            @property
-            def state_name(self):
-                return "X"
-
-            @property
-            def units(self):
-                return "au"
-
-            def set_state(self, v):
-                pass
-
-            def get_state(self):
-                return 0.0
-
-            def is_at_target(self):
-                return True
-
         pm = PluginManager()
-        pm.register("state", _FakeState())
+        pm.register("state", _FakeStatePlugin())
         panel = DockPanel(plugin_manager=pm)
 
         panel._instrument_list.setCurrentRow(0)
@@ -342,33 +294,8 @@ class TestDockPanel:
 
     def test_step_label_updates_on_rename_in_sub_step(self, qapp):
         """Renaming a plugin updates its label even when it is a sub-step."""
-        from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-        from stoner_measurement.plugins.state_control import StateControlPlugin
-
-        class _FakeState(StateControlPlugin, metaclass=_ABCQObjectMeta):
-            @property
-            def name(self):
-                return "FakeState"
-
-            @property
-            def state_name(self):
-                return "X"
-
-            @property
-            def units(self):
-                return "au"
-
-            def set_state(self, v):
-                pass
-
-            def get_state(self):
-                return 0.0
-
-            def is_at_target(self):
-                return True
-
         pm = PluginManager()
-        pm.register("state", _FakeState())
+        pm.register("state", _FakeStatePlugin())
         trace_plugin = DummyPlugin()
         pm.register("trace", trace_plugin)
         panel = DockPanel(plugin_manager=pm)

@@ -128,7 +128,8 @@ class _SequenceTreeWidget(QTreeWidget):
 
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
         """Reject drops *onto* items that are not StateControlPlugin instances."""
-        target = self.itemAt(event.position().toPoint())
+        pos_point = event.position().toPoint()
+        target = self.itemAt(pos_point)
         pos = self.dropIndicatorPosition()
 
         if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
@@ -148,7 +149,8 @@ class _SequenceTreeWidget(QTreeWidget):
 
     def dropEvent(self, event: QDropEvent) -> None:
         """Handle reorder and nest-as-sub-step drops."""
-        target = self.itemAt(event.position().toPoint())
+        pos_point = event.position().toPoint()
+        target = self.itemAt(pos_point)
         pos = self.dropIndicatorPosition()
         dragged = self.currentItem()
 
@@ -423,6 +425,7 @@ class DockPanel(QWidget):
         """
 
         def _update_subtree(item: QTreeWidgetItem) -> None:
+            """Recursively update text for any item whose plugin matches *new_name*."""
             ep_name = item.data(0, _EP_NAME_ROLE)
             plugin = self._plugin_manager.plugins.get(ep_name)
             if plugin is not None and plugin.instance_name == new_name:
