@@ -282,6 +282,12 @@ class _SequenceTreeWidget(QTreeWidget):
                 self.insertTopLevelItem(target_index + 1, dragged)
 
         self.setCurrentItem(dragged)
+        # Tell Qt the drop action was CopyAction so that its internal
+        # startDrag post-drop cleanup (clearOrRemove) is NOT triggered.
+        # We have already moved the item manually above; if Qt's MoveAction
+        # cleanup ran it would remove the item a second time from its new
+        # location, causing the "disappearing item" bug.
+        event.setDropAction(Qt.DropAction.CopyAction)
         event.accept()
 
 
