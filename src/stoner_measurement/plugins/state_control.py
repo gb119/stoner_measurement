@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
 from stoner_measurement.plugins.sequence_plugin import SequencePlugin
-from stoner_measurement.scan import BaseScanGenerator, SteppedScanGenerator
+from stoner_measurement.scan import BaseScanGenerator, FunctionScanGenerator, SteppedScanGenerator
 
 
 class _StateControlScanTabContainer(QWidget):
@@ -65,9 +65,8 @@ class _StateControlScanTabContainer(QWidget):
 class _StateControlScanPage(QWidget):
     """Combined scan configuration page for a state control plugin.
 
-    Displays the instance-name editor, state name/units labels, an optional
-    scan-generator type selector, a horizontal rule, and the active generator's
-    configuration widget.
+    Displays the instance-name editor, a scan-generator type selector, a
+    horizontal rule, and the active generator's configuration widget.
     """
 
     def __init__(self, plugin: StateControlPlugin, parent: QWidget | None = None) -> None:
@@ -75,7 +74,7 @@ class _StateControlScanPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
 
-        # --- Header form: instance name, state info + optional generator selector ---
+        # --- Header form: instance name + optional generator selector ---
         header_form = QFormLayout()
 
         name_edit = QLineEdit(plugin.instance_name)
@@ -100,7 +99,6 @@ class _StateControlScanPage(QWidget):
         name_edit.editingFinished.connect(_apply_name)
         header_form.addRow("Instance name:", name_edit)
         header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
-        header_form.addRow("State:", QLabel(f"{plugin.state_name} ({plugin.units})"))
 
         if len(type(plugin)._scan_generator_classes) > 1:
             combo = QComboBox()
@@ -236,7 +234,10 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     """
 
     _scan_generator_class: ClassVar[type[BaseScanGenerator]] = SteppedScanGenerator
-    _scan_generator_classes: ClassVar[list[type[BaseScanGenerator]]] = [SteppedScanGenerator]
+    _scan_generator_classes: ClassVar[list[type[BaseScanGenerator]]] = [
+        SteppedScanGenerator,
+        FunctionScanGenerator,
+    ]
 
     state_changed = pyqtSignal(float)
     state_reached = pyqtSignal(float)
