@@ -869,19 +869,25 @@ class SequenceEngine(QObject):
 
         body_lines: list[str] = []
 
-        def _render_step(step: str | tuple, indent: int) -> None:
+        def _render_step(step: object, indent: int) -> None:
             """Recursively render one step (leaf or branch) at *indent* depth."""
+            from stoner_measurement.plugins.base_plugin import BasePlugin
+
             prefix = "    " * indent
 
             if isinstance(step, tuple):
-                ep_name, sub_steps = step
+                plugin_or_name, sub_steps = step
             else:
-                ep_name = step
+                plugin_or_name = step
                 sub_steps = []
 
-            plugin = plugins.get(ep_name)
+            # Support both plugin instances (new) and ep_name strings (legacy).
+            if isinstance(plugin_or_name, BasePlugin):
+                plugin = plugin_or_name
+            else:
+                plugin = plugins.get(plugin_or_name)
             if plugin is None:
-                body_lines.append(f"{prefix}# {ep_name}: plugin not found")
+                body_lines.append(f"{prefix}# {plugin_or_name}: plugin not found")
                 return
 
             var_name = plugin.instance_name
@@ -906,12 +912,15 @@ class SequenceEngine(QObject):
                     f"{prefix}{var_name}.connect()",
                     f"{prefix}{var_name}.configure()",
                     f"{prefix}try:",
-                    f"{inner_prefix}# Ramp {state_name} to a target value",
-                    f"{inner_prefix}{var_name}.ramp_to(0.0)",
-                    f'{inner_prefix}print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
+                    f"{inner_prefix}for _setpoint in {var_name}.scan_generator.generate():",
+                ]
+                loop_prefix = inner_prefix + "    "
+                body_lines += [
+                    f"{loop_prefix}{var_name}.ramp_to(float(_setpoint))",
+                    f'{loop_prefix}print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
                 ]
                 for sub_step in sub_steps:
-                    _render_step(sub_step, indent + 1)
+                    _render_step(sub_step, indent + 2)
                 body_lines += [
                     f"{prefix}finally:",
                     f"{prefix}    {var_name}.disconnect()",

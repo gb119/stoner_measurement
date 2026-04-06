@@ -386,10 +386,34 @@ class MeasurementApp(QMainWindow):
         ``try/finally`` blocks reflecting the sub-sequence structure.  The
         generated script is loaded into the sequence editor so the user can
         inspect, edit, and run it.
+
+        Per-step plugin instances (which may differ from the shared plugin
+        manager instances when multiple steps use the same plugin type) are
+        injected into the engine namespace so that the generated script can
+        reference them by their :attr:`instance_name`.
         """
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
         dock = self._main_window.dock_panel
         steps = dock.sequence_steps
         plugins = self._plugin_manager.plugins
+
+        # Inject per-step plugin instances into the engine namespace so the
+        # generated script can reference them by their instance_name variable.
+        def _inject_step(step: object) -> None:
+            if isinstance(step, tuple):
+                plugin_or_name, sub_steps = step
+            else:
+                plugin_or_name = step
+                sub_steps = []
+            if isinstance(plugin_or_name, BasePlugin):
+                self._engine._namespace[plugin_or_name.instance_name] = plugin_or_name  # noqa: SLF001
+            for sub in sub_steps:
+                _inject_step(sub)
+
+        for step in steps:
+            _inject_step(step)
+
         code = self._engine.generate_sequence_code(steps, plugins)
         self._main_window.sequence_tab.set_text(code)
         self._main_window.tabs.setCurrentIndex(1)

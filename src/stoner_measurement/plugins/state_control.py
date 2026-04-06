@@ -14,11 +14,132 @@ from __future__ import annotations
 import math
 import time
 from abc import abstractmethod
+from typing import ClassVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFormLayout,
+    QFrame,
+    QLabel,
+    QLineEdit,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
 from stoner_measurement.plugins.sequence_plugin import SequencePlugin
+from stoner_measurement.scan import BaseScanGenerator, SteppedScanGenerator
+
+
+class _StateControlScanTabContainer(QWidget):
+    """Container that hosts the active scan generator's config widget for a state control plugin.
+
+    The content is replaced automatically whenever the owning
+    :class:`StateControlPlugin` emits :attr:`~StateControlPlugin.scan_generator_changed`.
+    """
+
+    def __init__(self, plugin: StateControlPlugin, parent: QWidget | None = None) -> None:
+        """Initialise the container and bind it to *plugin*."""
+        super().__init__(parent)
+        self._plugin = plugin
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._content: QWidget | None = None
+        self._refresh()
+        plugin.scan_generator_changed.connect(self._refresh)
+
+    def _refresh(self) -> None:
+        """Replace the content widget with the current generator's config widget."""
+        if self._content is not None:
+            self.layout().removeWidget(self._content)
+            self._content.hide()
+            self._content.deleteLater()
+            self._content = None
+        self._content = self._plugin.scan_generator.config_widget(parent=self)
+        self.layout().addWidget(self._content)
+        self._content.show()
+
+
+class _StateControlScanPage(QWidget):
+    """Combined scan configuration page for a state control plugin.
+
+    Displays the instance-name editor, state name/units labels, an optional
+    scan-generator type selector, a horizontal rule, and the active generator's
+    configuration widget.
+    """
+
+    def __init__(self, plugin: StateControlPlugin, parent: QWidget | None = None) -> None:
+        """Initialise the scan page and bind it to *plugin*."""
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+
+        # --- Header form: instance name, state info + optional generator selector ---
+        header_form = QFormLayout()
+
+        name_edit = QLineEdit(plugin.instance_name)
+        name_edit.setToolTip(
+            "Python variable name used to access this plugin in the sequence engine"
+        )
+
+        def _apply_name() -> None:
+            new_name = name_edit.text().strip()
+            if new_name and new_name.isidentifier():
+                name_edit.setStyleSheet("")
+                plugin.instance_name = new_name
+            else:
+                name_edit.setStyleSheet("border: 1px solid red;")
+                name_edit.setToolTip(
+                    f"{new_name!r} is not a valid Python identifier. "
+                    "Use only letters, digits and underscores, "
+                    "and do not start with a digit."
+                )
+                name_edit.setText(plugin.instance_name)
+
+        name_edit.editingFinished.connect(_apply_name)
+        header_form.addRow("Instance name:", name_edit)
+        header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
+        header_form.addRow("State:", QLabel(f"{plugin.state_name} ({plugin.units})"))
+
+        if len(type(plugin)._scan_generator_classes) > 1:
+            combo = QComboBox()
+            for cls in type(plugin)._scan_generator_classes:
+                combo.addItem(cls.__name__, cls)
+            current_idx = combo.findData(type(plugin.scan_generator))
+            if current_idx >= 0:
+                combo.setCurrentIndex(current_idx)
+
+            def _on_type_changed(index: int) -> None:
+                cls = combo.itemData(index)
+                if cls is not None and not isinstance(plugin.scan_generator, cls):
+                    plugin.set_scan_generator_class(cls)
+
+            def _sync_type_combo() -> None:
+                current_cls = type(plugin.scan_generator)
+                idx = combo.findData(current_cls)
+                if idx >= 0 and combo.currentIndex() != idx:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(idx)
+                    combo.blockSignals(False)
+
+            combo.currentIndexChanged.connect(_on_type_changed)
+            plugin.scan_generator_changed.connect(_sync_type_combo)
+            header_form.addRow("Generator type:", combo)
+
+        header_widget = QWidget()
+        header_widget.setLayout(header_form)
+        layout.addWidget(header_widget)
+
+        # --- Horizontal separator ---
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+
+        # --- Scan generator config widget (auto-refreshes on generator change) ---
+        scan_container = _StateControlScanTabContainer(plugin, parent=self)
+        layout.addWidget(scan_container)
 
 
 class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
@@ -49,13 +170,29 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     * **Safety limits** — :attr:`limits` defines the allowed set-point range;
       :meth:`ramp_to` will emit :attr:`state_error` rather than commanding
       an out-of-range value.
+    * **Scan generator** — :attr:`scan_generator` holds the active
+      :class:`~stoner_measurement.scan.BaseScanGenerator` instance that
+      determines the set-point sequence.  The default generator class is
+      given by :attr:`_scan_generator_class` and can be changed at runtime
+      via :meth:`set_scan_generator_class`.
     * **Sub-sequence execution** —
-      :meth:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin.execute_sequence`
-      connects, configures, runs all sub-step callables in order, then
-      disconnects in a ``finally`` block.  Override to add ramp-to logic
-      around the sub-steps.
+      :meth:`execute_sequence` iterates over the scan generator set-points,
+      calling :meth:`ramp_to` for each and invoking all sub-step callables
+      at every set-point, then disconnects in a ``finally`` block.
 
     Attributes:
+        _scan_generator_class (type[BaseScanGenerator]):
+            Default scan generator class instantiated in :meth:`__init__`.
+            Override at class level in a subclass to change the default for
+            that plugin type.
+        _scan_generator_classes (list[type[BaseScanGenerator]]):
+            Ordered list of scan generator classes offered to the user in the
+            *Scan* configuration tab.  The tab shows a type selector only when
+            this list contains more than one entry.
+        scan_generator (BaseScanGenerator):
+            Active scan generator instance.  Replaced (and
+            :attr:`scan_generator_changed` emitted) when
+            :meth:`set_scan_generator_class` is called.
         state_changed (pyqtSignal[float]):
             Emitted continuously with the current measured value while the
             hardware ramps towards its target.
@@ -64,6 +201,9 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         state_error (pyqtSignal[str]):
             Emitted with a descriptive message if the hardware faults or the
             settle timeout is exceeded.
+        scan_generator_changed (pyqtSignal):
+            Emitted after :attr:`scan_generator` is replaced with a new
+            instance.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -90,16 +230,24 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         (-inf, inf)
         >>> p.settle_timeout
         60.0
+        >>> from stoner_measurement.scan import SteppedScanGenerator
+        >>> isinstance(p.scan_generator, SteppedScanGenerator)
+        True
     """
+
+    _scan_generator_class: ClassVar[type[BaseScanGenerator]] = SteppedScanGenerator
+    _scan_generator_classes: ClassVar[list[type[BaseScanGenerator]]] = [SteppedScanGenerator]
 
     state_changed = pyqtSignal(float)
     state_reached = pyqtSignal(float)
     state_error = pyqtSignal(str)
     instance_name_changed = pyqtSignal(str, str)
+    scan_generator_changed = pyqtSignal()
 
     def __init__(self, parent: QObject | None = None) -> None:
-        """Initialise the Qt object hierarchy."""
+        """Initialise the Qt object hierarchy and create the built-in scan generator."""
         super().__init__(parent)
+        self.scan_generator: BaseScanGenerator = self._scan_generator_class(parent=self)
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
@@ -116,25 +264,155 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         return "state"
 
     # ------------------------------------------------------------------
+    # Scan generator management
+    # ------------------------------------------------------------------
+
+    def set_scan_generator_class(self, cls: type[BaseScanGenerator]) -> None:
+        """Replace the active scan generator with a new instance of *cls*.
+
+        If the current generator is already an instance of *cls* this method
+        does nothing.  Otherwise a new instance is created (with this plugin
+        as Qt parent), assigned to :attr:`scan_generator`, and
+        :attr:`scan_generator_changed` is emitted so that connected widgets
+        can refresh their content.
+
+        Args:
+            cls (type[BaseScanGenerator]):
+                The scan generator class to instantiate.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> plugin = CounterPlugin()
+            >>> from stoner_measurement.scan import SteppedScanGenerator
+            >>> plugin.set_scan_generator_class(SteppedScanGenerator)
+            >>> isinstance(plugin.scan_generator, SteppedScanGenerator)
+            True
+        """
+        if isinstance(self.scan_generator, cls):
+            return
+        self.scan_generator = cls(parent=self)
+        self.scan_generator_changed.emit()
+
+    # ------------------------------------------------------------------
+    # Configuration tabs
+    # ------------------------------------------------------------------
+
+    def config_tabs(
+        self, parent: QWidget | None = None
+    ) -> list[tuple[str, QWidget]]:
+        """Return a fixed set of configuration tabs for this plugin.
+
+        Returns a *Scan* tab (instance name, state info, optional generator
+        selector, and the generator's own config widget), a *Settings* tab
+        populated by :meth:`_plugin_config_tabs`, and an optional *About* tab
+        whose HTML content is provided by :meth:`_about_html`.
+
+        Tab widgets are created once and cached on the plugin instance so that
+        user-edited state is preserved when tabs are hidden and re-shown.
+
+        Keyword Parameters:
+            parent (QWidget | None):
+                Ignored after the first call; widgets are cached without a
+                parent and are re-parented automatically by
+                :class:`~PyQt6.QtWidgets.QTabWidget` when added.
+
+        Returns:
+            (list[tuple[str, QWidget]]):
+                List of ``(tab_title, widget)`` pairs; the *Scan* tab is always
+                first.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> plugin = CounterPlugin()
+            >>> tabs = plugin.config_tabs()
+            >>> tabs[0][0]
+            'Counter \u2013 Scan'
+            >>> tabs[1][0]
+            'Counter \u2013 Settings'
+        """
+        if hasattr(self, "_cached_config_tabs"):
+            return self._cached_config_tabs
+
+        tabs: list[tuple[str, QWidget]] = [
+            (f"{self.name} \u2013 Scan", _StateControlScanPage(self)),
+        ]
+
+        settings_widget = self._plugin_config_tabs()
+        if settings_widget is None:
+            settings_widget = QWidget()
+        tabs.append((f"{self.name} \u2013 Settings", settings_widget))
+
+        about_html = self._about_html()
+        if about_html is not None:
+            about_widget = QTextBrowser()
+            about_widget.setHtml(about_html)
+            tabs.append((f"{self.name} \u2013 About", about_widget))
+
+        self._cached_config_tabs = tabs
+        return self._cached_config_tabs
+
+    def _plugin_config_tabs(self) -> QWidget | None:
+        """Return the settings widget for the *Settings* tab, or ``None`` for a blank tab.
+
+        The default implementation returns ``None``, which causes
+        :meth:`config_tabs` to display an empty :class:`~PyQt6.QtWidgets.QWidget`
+        as the *Settings* tab.
+
+        Override this method in a subclass to return a configured
+        :class:`~PyQt6.QtWidgets.QWidget` for the *Settings* tab.
+
+        Returns:
+            (QWidget | None):
+                The settings widget, or ``None`` for a blank tab.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> CounterPlugin()._plugin_config_tabs() is None
+            True
+        """
+        return None
+
+    def _about_html(self) -> str | None:
+        """Return an HTML string for the *About* tab, or ``None`` to omit the tab.
+
+        The default implementation returns ``None`` so that no *About* tab is
+        shown.  Override in a subclass to provide plugin-specific documentation.
+
+        Returns:
+            (str | None):
+                HTML-formatted documentation string, or ``None`` to omit the
+                *About* tab entirely.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> CounterPlugin()._about_html() is None
+            True
+        """
+        return None
+
+    # ------------------------------------------------------------------
     # Sub-sequence execution
     # ------------------------------------------------------------------
 
     def execute_sequence(self, sub_steps: list) -> None:
-        """Connect, configure, run *sub_steps* in order, then disconnect.
+        """Connect, configure, iterate over the scan, run *sub_steps*, then disconnect.
 
-        This is the default implementation of the
-        :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
-        hook.  It provides a safe lifecycle wrapper:
+        For each set-point in :attr:`scan_generator`, calls :meth:`ramp_to`
+        to move the hardware to that set-point and then invokes every callable
+        in *sub_steps* in order.  The connect/disconnect lifecycle is wrapped
+        in a ``try/finally`` block to ensure resources are always released.
 
-        1. :meth:`connect` is called to open hardware resources.
-        2. :meth:`configure` is called to apply settings.
-        3. Each callable in *sub_steps* is invoked in order.
-        4. :meth:`disconnect` is called in a ``finally`` block to ensure
-           resources are always released even if a sub-step raises.
-
-        Override this method in a concrete subclass to add ramp logic — for
-        example, iterating over setpoints from a scan generator and calling
-        :meth:`ramp_to` for each one before invoking the sub-step callables.
+        When the scan generator has no stages (i.e. it produces only the
+        single start point), this reduces to a single ramp followed by the
+        sub-steps — equivalent to the original behaviour.
 
         Args:
             sub_steps (list):
@@ -151,20 +429,24 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             ...     def state_name(self): return "X"
             ...     @property
             ...     def units(self): return "au"
-            ...     def set_state(self, v): pass
-            ...     def get_state(self): return 0.0
+            ...     def set_state(self, v): self._v = float(v)
+            ...     def get_state(self): return getattr(self, "_v", 0.0)
             ...     def is_at_target(self): return True
-            >>> called = []
+            >>> from stoner_measurement.scan import SteppedScanGenerator
             >>> p = _S()
-            >>> p.execute_sequence([lambda: called.append(1)])
-            >>> called
-            [1]
+            >>> p.scan_generator = SteppedScanGenerator(start=0.0, stages=[(2.0, 1.0, True)])
+            >>> visited = []
+            >>> p.execute_sequence([lambda: visited.append(p.get_state())])
+            >>> visited
+            [0.0, 1.0, 2.0]
         """
         self.connect()
         self.configure()
         try:
-            for sub_step in sub_steps:
-                sub_step()
+            for setpoint in self.scan_generator.generate().tolist():
+                self.ramp_to(float(setpoint))
+                for sub_step in sub_steps:
+                    sub_step()
         finally:
             self.disconnect()
 

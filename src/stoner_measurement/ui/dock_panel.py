@@ -32,11 +32,33 @@ if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
 
 _EP_NAME_ROLE = Qt.ItemDataRole.UserRole
+_PLUGIN_INSTANCE_ROLE = Qt.ItemDataRole.UserRole + 1
 
 # Recursive type alias describing one element of the sequence_steps list.
-# A leaf step is just the entry-point name string; a state-control step with
-# sub-steps is a (ep_name, [sub-steps…]) tuple of arbitrary depth.
-type _SequenceStep = str | tuple[str, list[_SequenceStep]]
+# A leaf step is a plugin instance; a sequence-plugin step with sub-steps is a
+# (plugin_instance, [sub-steps…]) tuple of arbitrary depth.
+type _SequenceStep = BasePlugin | tuple[BasePlugin, list[_SequenceStep]]
+
+# QSS stylesheet for the sequence tree widget to ensure consistent branch
+# indicators (expand/collapse markers and lead lines) across platforms.
+# The style uses simple solid lines for lead lines and relies on Qt's
+# built-in item-view branch indicators (which respect the platform style)
+# by keeping them enabled via show-decoration-selected.
+_TREE_STYLESHEET = """
+QTreeWidget {
+    show-decoration-selected: 1;
+}
+QTreeWidget::branch:has-siblings:!adjoins-item {
+    border-left: 1px solid gray;
+    margin-left: 5px;
+}
+QTreeWidget::branch:has-siblings:adjoins-item,
+QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {
+    border-left: 1px solid gray;
+    margin-left: 5px;
+    border-bottom: 1px solid gray;
+}
+"""
 
 
 class _SequenceTreeWidget(QTreeWidget):
@@ -84,16 +106,17 @@ class _SequenceTreeWidget(QTreeWidget):
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setStyleSheet(_TREE_STYLESHEET)
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    def _is_sequence_plugin(self, ep_name: str) -> bool:
-        """Return ``True`` if *ep_name* identifies a SequencePlugin."""
+    @staticmethod
+    def _is_sequence_plugin_instance(plugin: BasePlugin) -> bool:
+        """Return ``True`` if *plugin* is a SequencePlugin instance."""
         from stoner_measurement.plugins.sequence_plugin import SequencePlugin
 
-        plugin = self._plugin_manager.plugins.get(ep_name)
         return isinstance(plugin, SequencePlugin)
 
     @staticmethod
@@ -121,18 +144,26 @@ class _SequenceTreeWidget(QTreeWidget):
             current = current.parent()
         return False
 
-    def make_item(self, ep_name: str, text: str) -> QTreeWidgetItem:
-        """Create a styled :class:`QTreeWidgetItem` for *ep_name*.
+    def make_item(self, plugin: BasePlugin, text: str, ep_name: str = "") -> QTreeWidgetItem:
+        """Create a styled :class:`QTreeWidgetItem` for *plugin*.
 
         :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
         items are displayed in bold and carry a tooltip that explains the
         drag-onto behaviour.
 
         Args:
-            ep_name (str):
-                Entry-point registry key for the plugin.
+            plugin (BasePlugin):
+                The plugin instance associated with this sequence step.
             text (str):
                 Display label for the item.
+
+        Keyword Parameters:
+            ep_name (str):
+                Entry-point registry key for the plugin.  Stored in
+                :data:`_EP_NAME_ROLE` so that existing code that looks up
+                items by entry-point name continues to work.  Defaults to
+                an empty string when the step was created without a registry
+                key.
 
         Returns:
             (QTreeWidgetItem):
@@ -140,12 +171,13 @@ class _SequenceTreeWidget(QTreeWidget):
         """
         item = QTreeWidgetItem([text])
         item.setData(0, _EP_NAME_ROLE, ep_name)
+        item.setData(0, _PLUGIN_INSTANCE_ROLE, plugin)
         flags = (
             Qt.ItemFlag.ItemIsEnabled
             | Qt.ItemFlag.ItemIsSelectable
             | Qt.ItemFlag.ItemIsDragEnabled
         )
-        if self._is_sequence_plugin(ep_name):
+        if self._is_sequence_plugin_instance(plugin):
             flags |= Qt.ItemFlag.ItemIsDropEnabled
             font = item.font(0)
             font.setBold(True)
@@ -169,8 +201,8 @@ class _SequenceTreeWidget(QTreeWidget):
 
         if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
             # Only SequencePlugin items may accept children.
-            ep_name = target.data(0, _EP_NAME_ROLE)
-            if not self._is_sequence_plugin(ep_name):
+            target_plugin = target.data(0, _PLUGIN_INSTANCE_ROLE)
+            if not self._is_sequence_plugin_instance(target_plugin):
                 event.ignore()
                 return
             # Prevent dropping an item onto itself or one of its own descendants.
@@ -195,8 +227,8 @@ class _SequenceTreeWidget(QTreeWidget):
         # Only SequencePlugin items may accept children; also prevent
         # dropping an item onto itself or one of its own descendants.
         if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
-            ep_name = target.data(0, _EP_NAME_ROLE)
-            if not self._is_sequence_plugin(ep_name):
+            target_plugin = target.data(0, _PLUGIN_INSTANCE_ROLE)
+            if not self._is_sequence_plugin_instance(target_plugin):
                 event.ignore()
                 return
             if self._is_ancestor(dragged, target):
@@ -281,8 +313,8 @@ class DockPanel(QWidget):
     Attributes:
         sequence_steps (list[_SequenceStep]):
             The current sequence steps as a recursive structure.  Each element
-            is either a plain entry-point name string (for a leaf step with no
-            sub-steps) or a ``(ep_name, [sub-steps…])`` tuple for a
+            is either a plugin instance (for a leaf step with no sub-steps) or
+            a ``(plugin_instance, [sub-steps…])`` tuple for a
             :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
             that has nested children.  The inner list follows the same
             ``_SequenceStep`` structure, so nesting may be arbitrarily deep.
@@ -321,9 +353,9 @@ class DockPanel(QWidget):
         self._plugin_manager = plugin_manager
         # Maps plugin name → monitor widget currently shown in the panel.
         self._monitor_widgets: dict[str, QWidget] = {}
-        # Tracks plugin instances for which instance_name_changed is connected,
-        # keyed by ep_name so they can be disconnected if the plugin is removed.
-        self._connected_step_plugins: dict[str, BasePlugin] = {}
+        # Counts how many step instances have been created per ep_name,
+        # used to generate unique instance names for additional copies.
+        self._step_counts: dict[str, int] = {}
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -381,15 +413,6 @@ class DockPanel(QWidget):
     def _refresh_instruments(self) -> None:
         """Reload the instrument list from the plugin manager."""
         self._instrument_list.clear()
-        current_ep_names = set(self._plugin_manager.plugin_names)
-        for ep_name in list(self._connected_step_plugins):
-            if ep_name not in current_ep_names:
-                plugin = self._connected_step_plugins.pop(ep_name)
-                if hasattr(plugin, "instance_name_changed"):
-                    try:
-                        plugin.instance_name_changed.disconnect(self._on_plugin_renamed)
-                    except (TypeError, RuntimeError):
-                        pass
         for name in self._plugin_manager.plugin_names:
             self._instrument_list.addItem(name)
 
@@ -408,19 +431,38 @@ class DockPanel(QWidget):
                     self.add_monitor_widget(name, widget)
 
     def _add_step(self) -> None:
-        """Add the selected instrument as a top-level sequence step."""
+        """Add the selected instrument as a top-level sequence step.
+
+        Each invocation creates a **new** plugin instance from the selected
+        plugin's class so that multiple steps of the same plugin type each have
+        independent configuration.  The new instance is assigned a unique
+        ``instance_name`` (e.g. ``counter``, ``counter_2``, ``counter_3`` …).
+        """
         current = self._instrument_list.currentItem()
         if current is None:
             return
         ep_name = current.text()
-        plugin = self._plugin_manager.plugins.get(ep_name)
-        if plugin is None:
+        base_plugin = self._plugin_manager.plugins.get(ep_name)
+        if base_plugin is None:
             return
-        item = self._sequence_tree.make_item(ep_name, f"{plugin.instance_name} ({plugin.name})")
+
+        # Create a new, independent instance of the same plugin class.
+        new_plugin: BasePlugin = type(base_plugin)()
+
+        # Assign a unique instance name.
+        count = self._step_counts.get(ep_name, 0)
+        self._step_counts[ep_name] = count + 1
+        if count > 0:
+            # Subsequent instances: append a numeric suffix.
+            new_plugin.instance_name = f"{base_plugin.instance_name}_{count + 1}"
+
+        # Wire instance_name_changed so the label in the tree stays in sync.
+        if hasattr(new_plugin, "instance_name_changed"):
+            new_plugin.instance_name_changed.connect(self._on_plugin_renamed)
+
+        text = f"{new_plugin.instance_name} ({new_plugin.name})"
+        item = self._sequence_tree.make_item(new_plugin, text, ep_name=ep_name)
         self._sequence_tree.addTopLevelItem(item)
-        if ep_name not in self._connected_step_plugins and hasattr(plugin, "instance_name_changed"):
-            plugin.instance_name_changed.connect(self._on_plugin_renamed)
-            self._connected_step_plugins[ep_name] = plugin
 
     def _remove_step(self) -> None:
         """Remove the currently selected sequence step (or sub-step)."""
@@ -442,32 +484,29 @@ class DockPanel(QWidget):
         if current is None:
             self.plugin_selected.emit(None)
             return
-        ep_name = current.data(0, _EP_NAME_ROLE)
-        plugin = self._plugin_manager.plugins.get(ep_name)
+        plugin = current.data(0, _PLUGIN_INSTANCE_ROLE)
         self.plugin_selected.emit(plugin)
 
     def _on_plugin_renamed(self, old_name: str, new_name: str) -> None:
         """Update sequence step labels when a plugin's instance name changes.
 
         This slot is connected to the ``instance_name_changed(old, new)``
-        signal.  The *old_name* argument is received as part of that signal
-        but is not needed here — step items are identified by the ep_name
-        stored in their ``UserRole`` data, and any item whose plugin now has
-        ``instance_name == new_name`` is relabelled.
+        signal on each per-step plugin instance.  It uses ``self.sender()``
+        to identify which plugin was renamed and updates only the matching
+        tree item(s).
 
         Args:
             old_name (str):
-                Previous instance name (received from the signal but not used
-                for lookup).
+                Previous instance name (used for logging context).
             new_name (str):
                 New instance name to display.
         """
+        renamed_plugin = self.sender()
 
         def _update_subtree(item: QTreeWidgetItem) -> None:
-            """Recursively update text for any item whose plugin matches *new_name*."""
-            ep_name = item.data(0, _EP_NAME_ROLE)
-            plugin = self._plugin_manager.plugins.get(ep_name)
-            if plugin is not None and plugin.instance_name == new_name:
+            """Recursively update text for the item whose plugin was renamed."""
+            plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+            if plugin is renamed_plugin:
                 item.setText(0, f"{new_name} ({plugin.name})")
             for i in range(item.childCount()):
                 _update_subtree(item.child(i))
@@ -491,8 +530,8 @@ class DockPanel(QWidget):
 
         Each element is either:
 
-        * a plain entry-point name string for a step that has no sub-steps, or
-        * a ``(ep_name, [sub-steps…])`` tuple for a
+        * a plugin instance for a step that has no sub-steps, or
+        * a ``(plugin_instance, [sub-steps…])`` tuple for a
           :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
           step that has at least one nested child.  The inner list follows the
           same structure recursively, allowing arbitrarily deep nesting for
@@ -514,10 +553,10 @@ class DockPanel(QWidget):
 
         def _item_to_step(item: QTreeWidgetItem) -> _SequenceStep:
             """Recursively convert a tree item to its _SequenceStep representation."""
-            ep_name: str = item.data(0, _EP_NAME_ROLE)
+            plugin: BasePlugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
             if item.childCount() == 0:
-                return ep_name
-            return (ep_name, [_item_to_step(item.child(j)) for j in range(item.childCount())])
+                return plugin
+            return (plugin, [_item_to_step(item.child(j)) for j in range(item.childCount())])
 
         return [
             _item_to_step(self._sequence_tree.topLevelItem(i))
