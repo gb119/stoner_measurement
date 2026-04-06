@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.trace import TracePlugin
+from stoner_measurement.ui.icons import make_generate_icon
 from stoner_measurement.ui.main_window import MainWindow
 
 
@@ -134,12 +135,16 @@ class MeasurementApp(QMainWindow):
     def _build_actions(self) -> None:
         """Create all QAction instances used by the menu bar and toolbar."""
         # File actions
-        self._act_new = QAction("&New Sequence", self)
+        style = QApplication.style()
+
+        self._act_new = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_FileIcon),
+            "&New Sequence",
+            self,
+        )
         self._act_new.setShortcut(QKeySequence.StandardKey.New)
         self._act_new.setStatusTip("Clear the sequence editor and start a new script")
         self._act_new.triggered.connect(self._on_new)
-
-        style = QApplication.style()
 
         self._act_open = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
@@ -197,7 +202,7 @@ class MeasurementApp(QMainWindow):
         self._act_stop.setStatusTip("Stop the running sequence")
         self._act_stop.triggered.connect(self._on_stop)
 
-        self._act_generate = QAction("&Generate Code", self)
+        self._act_generate = QAction(make_generate_icon(), "&Generate Code", self)
         self._act_generate.setStatusTip(
             "Generate a Python script stub from the loaded plugins"
         )
@@ -273,6 +278,8 @@ class MeasurementApp(QMainWindow):
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
+        toolbar.addAction(self._act_new)
+        toolbar.addSeparator()
         toolbar.addAction(self._act_open)
         toolbar.addAction(self._act_save)
         toolbar.addSeparator()
