@@ -278,57 +278,53 @@ class TestTracePlugin:
     # measure() method
     # ------------------------------------------------------------------
 
-    def test_measure_yields_channel_x_y_triples(self, qapp):
+    def test_measure_returns_channel_x_y_triples(self, qapp):
         p = _SimpleTrace()
-        pts = list(p.measure({"n": 3}))
+        pts = p.measure({"n": 3})
+        assert isinstance(pts, list)
         assert len(pts) == 3
         assert all(len(t) == 3 for t in pts)
         assert all(ch == "SimpleTrace" for ch, _, _ in pts)
 
-    def test_measure_status_is_measuring_during_iteration(self, qapp):
+    def test_measure_status_is_measuring_during_acquisition(self, qapp):
         p = _SimpleTrace()
-        statuses = []
-        gen = p.measure({"n": 2})
-        # advance to first point to trigger MEASURING
-        next(gen)
-        statuses.append(p.status)
-        list(gen)  # exhaust generator
-        statuses.append(p.status)
-        assert statuses[0] is TraceStatus.MEASURING
-        assert statuses[1] is TraceStatus.DATA_AVAILABLE
+        statuses_during = []
+        p.trace_point.connect(lambda ch, x, y: statuses_during.append(p.status))
+        p.measure({"n": 2})
+        assert all(s is TraceStatus.MEASURING for s in statuses_during)
 
     def test_measure_status_data_available_after_completion(self, qapp):
         p = _SimpleTrace()
-        list(p.measure({"n": 2}))
+        p.measure({"n": 2})
         assert p.status is TraceStatus.DATA_AVAILABLE
 
     def test_measure_emits_trace_started(self, qapp):
         p = _SimpleTrace()
         started = []
         p.trace_started.connect(started.append)
-        list(p.measure({"n": 3}))
+        p.measure({"n": 3})
         assert started == ["SimpleTrace"]
 
     def test_measure_emits_trace_point_for_each_point(self, qapp):
         p = _SimpleTrace()
         points = []
         p.trace_point.connect(lambda ch, x, y: points.append((ch, x, y)))
-        list(p.measure({"n": 3}))
+        p.measure({"n": 3})
         assert len(points) == 3
 
     def test_measure_emits_trace_complete(self, qapp):
         p = _SimpleTrace()
         completed = []
         p.trace_complete.connect(completed.append)
-        list(p.measure({"n": 3}))
+        p.measure({"n": 3})
         assert completed == ["SimpleTrace"]
 
-    def test_measure_emits_data_available_even_if_interrupted(self, qapp):
-        """Status must reach DATA_AVAILABLE even if generator is not exhausted."""
+    def test_measure_returns_complete_list(self, qapp):
+        """measure() must return the full dataset as a list, not a generator."""
         p = _SimpleTrace()
-        gen = p.measure({"n": 5})
-        next(gen)  # get one point
-        gen.close()  # close generator without exhausting
+        result = p.measure({"n": 5})
+        assert isinstance(result, list)
+        assert len(result) == 5
         assert p.status is TraceStatus.DATA_AVAILABLE
 
     # ------------------------------------------------------------------
