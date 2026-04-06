@@ -49,6 +49,7 @@ dev = [
 stoner-measurement = "stoner_measurement.main:main"
 
 [project.entry-points."stoner_measurement.plugins"]
+counter = "stoner_measurement.plugins.counter:CounterPlugin"
 dummy = "stoner_measurement.plugins.dummy:DummyPlugin"
 
 [tool.setuptools.packages.find]
