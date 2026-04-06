@@ -786,9 +786,14 @@ class SequenceEngine(QObject):
                 state_name = plugin.state_name
                 units = plugin.units
                 lines += [
-                    f"# Ramp {state_name} to a target value",
-                    f"{var_name}.ramp_to(0.0)",
-                    f'print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
+                    f"{var_name}.connect()",
+                    f"{var_name}.configure()",
+                    "try:",
+                    f"    # Ramp {state_name} to a target value",
+                    f"    {var_name}.ramp_to(0.0)",
+                    f'    print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
+                    "finally:",
+                    f"    {var_name}.disconnect()",
                 ]
             elif isinstance(plugin, MonitorPlugin):
                 lines += [

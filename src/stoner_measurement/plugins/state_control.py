@@ -30,6 +30,10 @@ class StateControlPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
     The class provides:
 
+    * **Instrument lifecycle** — :meth:`connect`, :meth:`configure`, and
+      :meth:`disconnect` form the standard sequence-engine interface for
+      opening, configuring, and releasing hardware resources.  Default
+      implementations are no-ops; override them in concrete plugins.
     * **Direct control** — :meth:`set_state` and :meth:`get_state` offer
       a low-level read/write interface to the underlying hardware.
     * **Blocking ramp helper** — :meth:`ramp_to` calls :meth:`set_state`,
@@ -99,6 +103,94 @@ class StateControlPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Always ``"state"``.
         """
         return "state"
+
+    # ------------------------------------------------------------------
+    # Instrument lifecycle API
+    # ------------------------------------------------------------------
+
+    def connect(self) -> None:
+        """Open instrument connections and verify the instrument identity.
+
+        Called once at the start of a measurement sequence to reserve hardware
+        resources.  Subclasses should override this method to open serial,
+        USB, GPIB, or Ethernet connections and to confirm that the connected
+        instrument is the expected type.
+
+        The default implementation is a no-op.  Subclass implementations
+        should raise :exc:`RuntimeError` if the instrument cannot be reached
+        or is not the expected type.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import StateControlPlugin
+            >>> class _S(StateControlPlugin):
+            ...     @property
+            ...     def name(self): return "S"
+            ...     @property
+            ...     def state_name(self): return "X"
+            ...     @property
+            ...     def units(self): return "au"
+            ...     def set_state(self, v): pass
+            ...     def get_state(self): return 0.0
+            ...     def is_at_target(self): return True
+            >>> p = _S()
+            >>> p.connect()  # no-op by default
+        """
+
+    def configure(self) -> None:
+        """Apply plugin settings to the instrument.
+
+        Called after :meth:`connect` and before the measurement loop to push
+        configuration (output range, ramp rate, etc.) to the hardware.  May
+        also be called mid-sequence to reconfigure without reconnecting.
+
+        The default implementation is a no-op.  Override to send the
+        appropriate commands to the instrument.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import StateControlPlugin
+            >>> class _S(StateControlPlugin):
+            ...     @property
+            ...     def name(self): return "S"
+            ...     @property
+            ...     def state_name(self): return "X"
+            ...     @property
+            ...     def units(self): return "au"
+            ...     def set_state(self, v): pass
+            ...     def get_state(self): return 0.0
+            ...     def is_at_target(self): return True
+            >>> p = _S()
+            >>> p.configure()  # no-op by default
+        """
+
+    def disconnect(self) -> None:
+        """Release all reserved instrument resources.
+
+        Called at the end of a measurement sequence (or after an error) to
+        cleanly close connections and free hardware resources.  The default
+        implementation is a no-op.  Override to close serial/USB/GPIB/Ethernet
+        connections.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import StateControlPlugin
+            >>> class _S(StateControlPlugin):
+            ...     @property
+            ...     def name(self): return "S"
+            ...     @property
+            ...     def state_name(self): return "X"
+            ...     @property
+            ...     def units(self): return "au"
+            ...     def set_state(self, v): pass
+            ...     def get_state(self): return 0.0
+            ...     def is_at_target(self): return True
+            >>> p = _S()
+            >>> p.disconnect()  # no-op by default
+        """
 
     @property
     @abstractmethod

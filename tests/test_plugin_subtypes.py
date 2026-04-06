@@ -467,6 +467,30 @@ class TestStateControlPlugin:
         p.state_error.emit("fault")
         assert received == ["fault"]
 
+    # ------------------------------------------------------------------
+    # Lifecycle API: connect / configure / disconnect
+    # ------------------------------------------------------------------
+
+    def test_connect_default_noop(self, qapp):
+        p = _InstantState()
+        p.connect()  # should not raise
+
+    def test_configure_default_noop(self, qapp):
+        p = _InstantState()
+        p.configure()  # should not raise
+
+    def test_disconnect_default_noop(self, qapp):
+        p = _InstantState()
+        p.disconnect()  # should not raise
+
+    def test_connect_configure_disconnect_sequence(self, qapp):
+        """Full lifecycle sequence (connect → configure → ramp → disconnect) completes without error."""
+        p = _InstantState()
+        p.connect()
+        p.configure()
+        p.ramp_to(1.0, poll_interval=0.0)
+        p.disconnect()
+
 
 # ---------------------------------------------------------------------------
 # MonitorPlugin tests
