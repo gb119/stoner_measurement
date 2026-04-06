@@ -32,9 +32,15 @@ class TestSequenceRunner:
 
     def test_data_ready_signal(self, qapp, runner):
         """Run a short sequence and collect data_ready emissions."""
-        seq = Sequence([SequenceStep("Dummy", {"points": 5})])
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )  # yields 5 points: 0.0, 0.1, 0.2, 0.3, 0.4
+        seq = Sequence([SequenceStep("Dummy", {})])
         runner.sequence = seq
-        runner.set_plugins({"Dummy": DummyPlugin()})
+        runner.set_plugins({"Dummy": plugin})
 
         collected: list[tuple[str, float, float]] = []
         runner.data_ready.connect(lambda name, x, y: collected.append((name, x, y)))

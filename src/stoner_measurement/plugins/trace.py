@@ -27,7 +27,16 @@ from collections.abc import Generator
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QComboBox, QFormLayout, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFormLayout,
+    QFrame,
+    QLabel,
+    QLineEdit,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.scan import BaseScanGenerator, FunctionScanGenerator, SteppedScanGenerator
@@ -110,45 +119,85 @@ class _ScanTabContainer(QWidget):
         self._content.show()
 
 
-class _ScanTypeSelector(QWidget):
-    """Widget for selecting the scan generator class used by a :class:`TracePlugin`.
+class _ScanPage(QWidget):
+    """Combined scan configuration page.
 
-    Presents a labelled combo box populated from the plugin's
-    :attr:`~TracePlugin._scan_generator_classes` list.  Changing the selection
-    calls :meth:`~TracePlugin.set_scan_generator_class` on the plugin and the
-    combo box stays in sync if the generator is changed programmatically.
+    Displays the instance-name editor, an optional scan-generator type
+    selector, a horizontal rule, and the active generator's configuration
+    widget — all on a single page.  The generator widget auto-refreshes when
+    the active generator changes; the type combo box stays in sync with the
+    current generator class.
     """
 
     def __init__(self, plugin: TracePlugin, parent: QWidget | None = None) -> None:
-        """Initialise the selector widget and bind it to *plugin*."""
+        """Initialise the scan page and bind it to *plugin*."""
         super().__init__(parent)
-        self._plugin = plugin
-        layout = QFormLayout(self)
-        self._combo = QComboBox()
-        for cls in plugin._scan_generator_classes:
-            self._combo.addItem(cls.__name__, cls)
-        current_cls = type(plugin.scan_generator)
-        idx = self._combo.findData(current_cls)
-        if idx >= 0:
-            self._combo.setCurrentIndex(idx)
-        layout.addRow("Generator type:", self._combo)
-        self._combo.currentIndexChanged.connect(self._on_changed)
-        plugin.scan_generator_changed.connect(self._sync_combo)
+        layout = QVBoxLayout(self)
 
-    def _on_changed(self, index: int) -> None:
-        """Forward the selected class to the plugin."""
-        cls = self._combo.itemData(index)
-        if cls is not None and not isinstance(self._plugin.scan_generator, cls):
-            self._plugin.set_scan_generator_class(cls)
+        # --- Header form: instance name + optional generator selector ---
+        header_form = QFormLayout()
 
-    def _sync_combo(self) -> None:
-        """Keep the combo box in sync with the plugin's current generator type."""
-        current_cls = type(self._plugin.scan_generator)
-        idx = self._combo.findData(current_cls)
-        if idx >= 0 and self._combo.currentIndex() != idx:
-            self._combo.blockSignals(True)
-            self._combo.setCurrentIndex(idx)
-            self._combo.blockSignals(False)
+        name_edit = QLineEdit(plugin.instance_name)
+        name_edit.setToolTip(
+            "Python variable name used to access this plugin in the sequence engine"
+        )
+
+        def _apply_name() -> None:
+            new_name = name_edit.text().strip()
+            if new_name and new_name.isidentifier():
+                name_edit.setStyleSheet("")
+                plugin.instance_name = new_name
+            else:
+                name_edit.setStyleSheet("border: 1px solid red;")
+                name_edit.setToolTip(
+                    f"{new_name!r} is not a valid Python identifier. "
+                    "Use only letters, digits and underscores, "
+                    "and do not start with a digit."
+                )
+                name_edit.setText(plugin.instance_name)
+
+        name_edit.editingFinished.connect(_apply_name)
+        header_form.addRow("Instance name:", name_edit)
+        header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
+
+        if len(plugin._scan_generator_classes) > 1:
+            combo = QComboBox()
+            for cls in plugin._scan_generator_classes:
+                combo.addItem(cls.__name__, cls)
+            current_idx = combo.findData(type(plugin.scan_generator))
+            if current_idx >= 0:
+                combo.setCurrentIndex(current_idx)
+
+            def _on_type_changed(index: int) -> None:
+                cls = combo.itemData(index)
+                if cls is not None and not isinstance(plugin.scan_generator, cls):
+                    plugin.set_scan_generator_class(cls)
+
+            def _sync_type_combo() -> None:
+                current_cls = type(plugin.scan_generator)
+                idx = combo.findData(current_cls)
+                if idx >= 0 and combo.currentIndex() != idx:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(idx)
+                    combo.blockSignals(False)
+
+            combo.currentIndexChanged.connect(_on_type_changed)
+            plugin.scan_generator_changed.connect(_sync_type_combo)
+            header_form.addRow("Generator type:", combo)
+
+        header_widget = QWidget()
+        header_widget.setLayout(header_form)
+        layout.addWidget(header_widget)
+
+        # --- Horizontal separator ---
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+
+        # --- Scan generator config widget (auto-refreshes on generator change) ---
+        scan_container = _ScanTabContainer(plugin, parent=self)
+        layout.addWidget(scan_container)
 
 
 class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
@@ -416,10 +465,14 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.scan import SteppedScanGenerator
             >>> plugin = DummyPlugin()
-            >>> pts = list(plugin.measure({"points": 3}))
+            >>> plugin.scan_generator = SteppedScanGenerator(
+            ...     start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+            ... )
+            >>> pts = list(plugin.measure({}))
             >>> len(pts)
-            3
+            5
             >>> pts[0][0]
             'Dummy'
             >>> plugin.status is TraceStatus.DATA_AVAILABLE
@@ -576,24 +629,28 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     def config_tabs(
         self, parent: QWidget | None = None
     ) -> list[tuple[str, QWidget]]:
-        """Return configuration tabs with the scan generator widget as the first tab.
+        """Return a fixed set of configuration tabs for this plugin.
 
-        The returned list always begins with a *Scan* tab containing a
-        :class:`_ScanTabContainer` whose content updates whenever the active
-        generator changes.  When :attr:`_scan_generator_classes` lists more
-        than one class, a *Scan Type* tab with a :class:`_ScanTypeSelector`
-        combo box is appended next.  Plugin-specific tabs from
-        :meth:`_plugin_config_tabs` follow, and a *General* tab for editing
-        the instance name is appended last.
+        Returns a *Scan* tab (instance name, optional generator selector, and
+        the generator's own config widget), a *Settings* tab populated by
+        :meth:`_plugin_config_tabs`, and an optional *About* tab whose HTML
+        content is provided by :meth:`_about_html`.
+
+        Tab widgets are created once and cached on the plugin instance so that
+        user-edited state is preserved when tabs are hidden and re-shown (e.g.
+        when the user selects a different sequence step and then re-selects this
+        one).
 
         Keyword Parameters:
             parent (QWidget | None):
-                Optional Qt parent widget.
+                Ignored after the first call; widgets are cached without a
+                parent and are re-parented automatically by
+                :class:`~PyQt6.QtWidgets.QTabWidget` when added.
 
         Returns:
             (list[tuple[str, QWidget]]):
-                List of ``(tab_title, widget)`` pairs; the scan generator tab
-                is always first.
+                List of ``(tab_title, widget)`` pairs; the *Scan* tab is always
+                first.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -601,52 +658,79 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> from stoner_measurement.plugins.dummy import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> tabs = plugin.config_tabs()
-            >>> "Scan" in tabs[0][0]
-            True
+            >>> tabs[0][0]
+            'Dummy \u2013 Scan'
+            >>> tabs[1][0]
+            'Dummy \u2013 Settings'
         """
+        if hasattr(self, "_cached_config_tabs"):
+            return self._cached_config_tabs
+
         tabs: list[tuple[str, QWidget]] = [
-            (f"{self.name} \u2013 Scan", _ScanTabContainer(self, parent=parent)),
+            (f"{self.name} \u2013 Scan", _ScanPage(self)),
         ]
-        if len(self._scan_generator_classes) > 1:
-            tabs.append(
-                (f"{self.name} \u2013 Scan Type", _ScanTypeSelector(self, parent=parent))
-            )
-        tabs.extend(self._plugin_config_tabs(parent=parent))
-        tabs.append((f"{self.name} \u2013 General", self._general_config_widget(parent=parent)))
-        return tabs
 
-    def _plugin_config_tabs(
-        self, parent: QWidget | None = None
-    ) -> list[tuple[str, QWidget]]:
-        """Return plugin-specific configuration tabs (excluding scan tabs).
+        settings_widget = self._plugin_config_tabs()
+        if settings_widget is None:
+            settings_widget = QWidget()
+        tabs.append((f"{self.name} \u2013 Settings", settings_widget))
 
-        The default implementation delegates to
-        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_tabs`,
-        which wraps :meth:`config_widget` in a single tab titled with
-        :attr:`name`.
+        about_html = self._about_html()
+        if about_html is not None:
+            about_widget = QTextBrowser()
+            about_widget.setHtml(about_html)
+            tabs.append((f"{self.name} \u2013 About", about_widget))
 
-        Override this method in a subclass to contribute additional plugin-
-        specific tabs.  Do **not** override :meth:`config_tabs` directly; that
-        would bypass the scan-related tabs injected by this class.
+        self._cached_config_tabs = tabs
+        return self._cached_config_tabs
 
-        Keyword Parameters:
-            parent (QWidget | None):
-                Optional Qt parent widget.
+    def _plugin_config_tabs(self) -> QWidget | None:
+        """Return the settings widget for the *Settings* tab, or ``None`` for a blank tab.
+
+        The default implementation returns ``None``, which causes
+        :meth:`config_tabs` to display an empty :class:`~PyQt6.QtWidgets.QWidget`
+        as the *Settings* tab.
+
+        Override this method in a subclass to return a configured
+        :class:`~PyQt6.QtWidgets.QWidget` for the *Settings* tab.  Do
+        **not** override :meth:`config_tabs` directly; that would bypass the
+        scan-related tab structure managed by this class.
 
         Returns:
-            (list[tuple[str, QWidget]]):
-                List of ``(tab_title, widget)`` pairs for plugin-specific tabs.
+            (QWidget | None):
+                The settings widget, or ``None`` for a blank tab.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.dummy import DummyPlugin
             >>> plugin = DummyPlugin()
-            >>> tabs = plugin._plugin_config_tabs()
-            >>> len(tabs)
-            2
+            >>> plugin._plugin_config_tabs() is None
+            True
         """
-        return BasePlugin.config_tabs(self, parent=parent)
+        return None
+
+    def _about_html(self) -> str | None:
+        """Return an HTML string for the *About* tab, or ``None`` to omit the tab.
+
+        The default implementation returns ``None`` so that no *About* tab is
+        shown for the base :class:`TracePlugin`.  Override in a subclass to
+        provide plugin-specific documentation or instructions rendered in a
+        :class:`~PyQt6.QtWidgets.QTextBrowser`.
+
+        Returns:
+            (str | None):
+                HTML-formatted documentation string, or ``None`` to omit the
+                *About* tab entirely.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> isinstance(DummyPlugin()._about_html(), str)
+            True
+        """
+        return None
 
     # ------------------------------------------------------------------
     # Abstract acquisition interface
@@ -674,8 +758,12 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.scan import SteppedScanGenerator
             >>> plugin = DummyPlugin()
-            >>> pts = list(plugin.execute({"points": 5}))
+            >>> plugin.scan_generator = SteppedScanGenerator(
+            ...     start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+            ... )
+            >>> pts = list(plugin.execute({}))
             >>> len(pts)
             5
             >>> isinstance(pts[0], tuple) and len(pts[0]) == 2
@@ -743,8 +831,12 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.scan import SteppedScanGenerator
             >>> plugin = DummyPlugin()
-            >>> pts = list(plugin.execute_multichannel({"points": 3}))
+            >>> plugin.scan_generator = SteppedScanGenerator(
+            ...     start=0.0, stages=[(0.2, 0.1, True)], parent=plugin
+            ... )
+            >>> pts = list(plugin.execute_multichannel({}))
             >>> len(pts)
             3
             >>> pts[0][0]

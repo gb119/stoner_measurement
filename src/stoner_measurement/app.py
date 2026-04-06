@@ -78,6 +78,11 @@ class MeasurementApp(QMainWindow):
         # Connect plugin manager so plugins are synced to the engine ----------
         self._plugin_manager.plugins_changed.connect(self._on_plugins_changed)
 
+        # Wire sequence step selection → config panel -------------------------
+        self._main_window.dock_panel.plugin_selected.connect(
+            self._main_window.config_panel.show_plugin
+        )
+
         # Build the UI before discovering plugins (so signals are in place) ---
         self._build_actions()
         self._build_menu_bar()

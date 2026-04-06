@@ -6,10 +6,11 @@ and a monitoring section where plugins can display live status widgets.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -26,6 +27,10 @@ class DockPanel(QWidget):
     Those widgets are displayed in a dedicated *Monitoring* section at the
     bottom of this panel and are removed automatically when the plugin is
     unregistered.
+
+    When the user clicks a step in the *Sequence Steps* list, the
+    :attr:`plugin_selected` signal is emitted with the corresponding plugin
+    instance so that the configuration panel can update itself accordingly.
 
     Attributes:
         sequence_steps (list[str]):
@@ -51,6 +56,10 @@ class DockPanel(QWidget):
         >>> panel.sequence_steps
         []
     """
+
+    #: Emitted with the plugin instance when a sequence step is selected, or
+    #: ``None`` when the selection is cleared.
+    plugin_selected = pyqtSignal(object)
 
     def __init__(
         self,
@@ -103,6 +112,7 @@ class DockPanel(QWidget):
         # Connect signals
         self._add_step_btn.clicked.connect(self._add_step)
         self._remove_step_btn.clicked.connect(self._remove_step)
+        self._sequence_list.currentItemChanged.connect(self._on_step_selected)
 
         # Populate instrument list and monitoring widgets
         self._refresh_instruments()
@@ -145,6 +155,16 @@ class DockPanel(QWidget):
         row = self._sequence_list.currentRow()
         if row >= 0:
             self._sequence_list.takeItem(row)
+
+    def _on_step_selected(
+        self, current: QListWidgetItem | None, previous: QListWidgetItem | None
+    ) -> None:
+        """Emit :attr:`plugin_selected` when the sequence-step selection changes."""
+        if current is None:
+            self.plugin_selected.emit(None)
+            return
+        plugin = self._plugin_manager.plugins.get(current.text())
+        self.plugin_selected.emit(plugin)
 
     def _update_monitor_visibility(self) -> None:
         """Show or hide the monitoring section depending on whether any widgets are present."""

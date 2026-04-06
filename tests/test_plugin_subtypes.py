@@ -182,10 +182,20 @@ class TestTracePlugin:
         assert "Scan" in tabs[0][0]
         assert "Type" not in tabs[0][0]
 
-    def test_config_tabs_scan_type_tab_is_second(self, qapp):
+    def test_config_tabs_settings_tab_is_second(self, qapp):
         p = _SimpleTrace()
         tabs = p.config_tabs()
-        assert "Scan Type" in tabs[1][0]
+        assert "Settings" in tabs[1][0]
+
+    def test_scan_page_contains_generator_type_selector(self, qapp):
+        """Generator type selector is embedded in the Scan page (not a separate tab)."""
+        from PyQt6.QtWidgets import QComboBox
+        p = _SimpleTrace()
+        tabs = p.config_tabs()
+        scan_page = tabs[0][1]
+        # Find a combo box within the scan page
+        combos = scan_page.findChildren(QComboBox)
+        assert len(combos) == 1
 
     def test_config_tabs_scan_widget_is_qwidget(self, qapp):
         from PyQt6.QtWidgets import QWidget
