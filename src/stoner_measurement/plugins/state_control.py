@@ -49,9 +49,11 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     * **Safety limits** — :attr:`limits` defines the allowed set-point range;
       :meth:`ramp_to` will emit :attr:`state_error` rather than commanding
       an out-of-range value.
-    * **Sub-sequence execution** — :meth:`execute_sequence` connects,
-      configures, runs all sub-step callables in order, then disconnects in a
-      ``finally`` block.  Override to add ramp-to logic around the sub-steps.
+    * **Sub-sequence execution** —
+      :meth:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin.execute_sequence`
+      connects, configures, runs all sub-step callables in order, then
+      disconnects in a ``finally`` block.  Override to add ramp-to logic
+      around the sub-steps.
 
     Attributes:
         state_changed (pyqtSignal[float]):

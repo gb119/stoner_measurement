@@ -131,6 +131,11 @@ class TopLevelSequence(SequencePlugin):
     sequence tree.  Its :meth:`execute_sequence` implementation simply calls
     each sub-step callable in order, making it a transparent pass-through.
 
+    Unlike :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`,
+    this class is *pure Python* — it does not inherit from
+    :class:`~PyQt6.QtCore.QObject` and therefore has no Qt signals or event-loop
+    dependencies.
+
     The engine namespace is shared automatically because the
     :class:`~stoner_measurement.core.sequence_engine.SequenceEngine` maintains
     a single flat ``dict`` for the duration of a run.

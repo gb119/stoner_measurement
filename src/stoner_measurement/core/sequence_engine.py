@@ -908,8 +908,7 @@ class SequenceEngine(QObject):
                     f"{prefix}try:",
                     f"{inner_prefix}# Ramp {state_name} to a target value",
                     f"{inner_prefix}{var_name}.ramp_to(0.0)",
-                    f"{inner_prefix}"
-                    f'print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
+                    f'{inner_prefix}print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
                 ]
                 for sub_step in sub_steps:
                     _render_step(sub_step, indent + 1)
