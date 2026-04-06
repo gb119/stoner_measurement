@@ -393,6 +393,7 @@ class MeasurementApp(QMainWindow):
         lines: list[str] = []
 
         def _render(step_list: list, indent: int) -> None:
+            """Recursively append commented stubs for *step_list* at *indent* depth."""
             prefix = "    " * indent
             for step in step_list:
                 if isinstance(step, tuple):

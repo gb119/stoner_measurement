@@ -348,8 +348,8 @@ class TestDockPanel:
         trace_item = self._find_item(panel, "trace")
 
         # Nest inner state under outer state
-        outer_idx = panel._sequence_tree.indexOfTopLevelItem(inner_item)
-        panel._sequence_tree.takeTopLevelItem(outer_idx)
+        inner_idx = panel._sequence_tree.indexOfTopLevelItem(inner_item)
+        panel._sequence_tree.takeTopLevelItem(inner_idx)
         outer_item.addChild(inner_item)
         outer_item.setExpanded(True)
 
