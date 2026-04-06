@@ -40,9 +40,9 @@ Building and running a sequence
 Writing a plugin
 ----------------
 
-Subclass :class:`~stoner_measurement.plugins.base_plugin.BasePlugin` and
-register it via the ``stoner_measurement.plugins`` entry-point group in your
-package's ``pyproject.toml``:
+Subclass :class:`~stoner_measurement.plugins.trace.TracePlugin` (for
+measurement traces) and register it via the ``stoner_measurement.plugins``
+entry-point group in your package's ``pyproject.toml``:
 
 .. code-block:: toml
 
@@ -53,10 +53,15 @@ Implement at minimum:
 
 * :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name` — unique
   string identifier.
-* :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.execute` — generator
-  that yields ``(x, y)`` data tuples.
+* :meth:`~stoner_measurement.plugins.trace.TracePlugin.execute` — generator
+  that yields ``(x, y)`` data tuples for each measured scan point.
+
+The sequence engine calls :meth:`~stoner_measurement.plugins.trace.TracePlugin.measure`
+once per step, which collects the complete multipoint trace and returns it as a
+list of ``(channel, x, y)`` tuples.
 
 Optionally override:
 
-* :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_widget` —
-  return a :class:`~PyQt6.QtWidgets.QWidget` that appears as a configuration tab.
+* :meth:`~stoner_measurement.plugins.trace.TracePlugin._plugin_config_tabs` —
+  return a :class:`~PyQt6.QtWidgets.QWidget` that appears as the *Settings*
+  configuration tab.

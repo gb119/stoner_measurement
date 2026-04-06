@@ -186,14 +186,14 @@ class TestDummyPlugin:
     def test_measure_yields_data(self, qapp):
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.4, step=0.1)
-        pts = list(plugin.measure({}))
+        pts = plugin.measure({})
         assert len(pts) == 5
         assert all(ch == "Dummy" for ch, _, _ in pts)
 
     def test_measure_status_data_available_after_completion(self, qapp):
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.2, step=0.1)
-        list(plugin.measure({}))
+        plugin.measure({})
         assert plugin.status is TraceStatus.DATA_AVAILABLE
 
     # ------------------------------------------------------------------
