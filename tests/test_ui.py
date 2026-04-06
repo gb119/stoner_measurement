@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QLabel, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.runner import SequenceRunner
@@ -226,6 +226,15 @@ class TestDockPanel:
 
     # --- Sub-step / nesting tests ---
 
+    def _find_item(self, panel: DockPanel, ep_name: str) -> QTreeWidgetItem:
+        """Return the top-level tree item whose ep_name data matches *ep_name*."""
+        tree = panel._sequence_tree
+        for i in range(tree.topLevelItemCount()):
+            item = tree.topLevelItem(i)
+            if item.data(0, Qt.ItemDataRole.UserRole) == ep_name:
+                return item
+        raise KeyError(ep_name)
+
     def test_sequence_steps_nested_tuple_when_sub_step_present(self, qapp):
         """sequence_steps returns a (ep_name, [sub_ep]) tuple when a step has children."""
         pm = PluginManager()
@@ -313,6 +322,103 @@ class TestDockPanel:
         trace_plugin.instance_name = "renamed_trace"
 
         assert trace_item.text(0) == f"renamed_trace ({trace_plugin.name})"
+
+    # --- Multi-dimensional / nested state-control tests ---
+
+    def test_state_control_nested_under_state_control(self, qapp):
+        """A StateControlPlugin may be nested under another StateControlPlugin.
+
+        This supports multi-dimensional scans, e.g. field inside temperature.
+        sequence_steps returns a recursive tuple structure reflecting the nesting.
+        """
+        pm = PluginManager()
+        pm.register("outer", _FakeStatePlugin())
+        pm.register("inner", _FakeStatePlugin())
+        pm.register("trace", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        # Add all three as top-level steps
+        for row in range(3):
+            panel._instrument_list.setCurrentRow(row)
+            panel._add_step()
+
+        # Locate items by ep_name (plugin_names is sorted, so positions may vary)
+        outer_item = self._find_item(panel, "outer")
+        inner_item = self._find_item(panel, "inner")
+        trace_item = self._find_item(panel, "trace")
+
+        # Nest inner state under outer state
+        outer_idx = panel._sequence_tree.indexOfTopLevelItem(inner_item)
+        panel._sequence_tree.takeTopLevelItem(outer_idx)
+        outer_item.addChild(inner_item)
+        outer_item.setExpanded(True)
+
+        # Nest trace under inner state (second-level nesting)
+        trace_idx = panel._sequence_tree.indexOfTopLevelItem(trace_item)
+        panel._sequence_tree.takeTopLevelItem(trace_idx)
+        inner_item.addChild(trace_item)
+        inner_item.setExpanded(True)
+
+        steps = panel.sequence_steps
+        assert len(steps) == 1
+        outer_ep, outer_sub = steps[0]
+        assert outer_ep == "outer"
+        assert len(outer_sub) == 1
+        inner_ep, inner_sub = outer_sub[0]
+        assert inner_ep == "inner"
+        assert inner_sub == ["trace"]
+
+    def test_remove_nested_state_control_removes_subtree(self, qapp):
+        """Removing a nested StateControlPlugin also removes its own sub-steps."""
+        pm = PluginManager()
+        pm.register("outer", _FakeStatePlugin())
+        pm.register("inner", _FakeStatePlugin())
+        pm.register("trace", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        for row in range(3):
+            panel._instrument_list.setCurrentRow(row)
+            panel._add_step()
+
+        outer_item = self._find_item(panel, "outer")
+        inner_item = self._find_item(panel, "inner")
+        trace_item = self._find_item(panel, "trace")
+
+        inner_idx = panel._sequence_tree.indexOfTopLevelItem(inner_item)
+        panel._sequence_tree.takeTopLevelItem(inner_idx)
+        outer_item.addChild(inner_item)
+
+        trace_idx = panel._sequence_tree.indexOfTopLevelItem(trace_item)
+        panel._sequence_tree.takeTopLevelItem(trace_idx)
+        inner_item.addChild(trace_item)
+
+        # Remove the inner state-control item (which itself has a child)
+        panel._sequence_tree.setCurrentItem(inner_item)
+        panel._remove_step()
+
+        # Only the outer state-control remains with no children
+        assert panel._sequence_tree.topLevelItemCount() == 1
+        assert panel._sequence_tree.topLevelItem(0).childCount() == 0
+        assert panel.sequence_steps == ["outer"]
+
+    def test_is_ancestor_helper(self, qapp):
+        """_SequenceTreeWidget._is_ancestor returns correct values for parent/child/unrelated."""
+        from stoner_measurement.ui.dock_panel import _SequenceTreeWidget
+
+        pm = PluginManager()
+        tree = _SequenceTreeWidget(plugin_manager=pm)
+
+        parent_item = QTreeWidgetItem(["parent"])
+        child_item = QTreeWidgetItem(["child"])
+        unrelated_item = QTreeWidgetItem(["unrelated"])
+        tree.addTopLevelItem(parent_item)
+        parent_item.addChild(child_item)
+        tree.addTopLevelItem(unrelated_item)
+
+        assert tree._is_ancestor(parent_item, child_item)
+        assert tree._is_ancestor(child_item, child_item)  # item is its own ancestor
+        assert not tree._is_ancestor(child_item, parent_item)
+        assert not tree._is_ancestor(unrelated_item, child_item)
 
 
 class TestPlotWidget:

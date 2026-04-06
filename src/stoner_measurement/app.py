@@ -384,22 +384,29 @@ class MeasurementApp(QMainWindow):
         Each step is represented as a commented-out call stub, indented to
         reflect sub-sequence nesting beneath a
         :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
-        step.  This gives the user a starting point for building a real script.
+        step.  Nesting may be arbitrarily deep (each level adds four spaces
+        of indentation).  This gives the user a starting point for building
+        a real script.
         """
         dock = self._main_window.dock_panel
         steps = dock.sequence_steps
+        lines: list[str] = []
+
+        def _render(step_list: list, indent: int) -> None:
+            prefix = "    " * indent
+            for step in step_list:
+                if isinstance(step, tuple):
+                    ep_name, sub_steps = step
+                    lines.append(f"# {prefix}{ep_name}()\n")
+                    _render(sub_steps, indent + 1)
+                else:
+                    lines.append(f"# {prefix}{step}()\n")
+
         if not steps:
             lines = ["# No sequence steps defined yet.\n"]
         else:
             lines = ["# Auto-generated sequence script\n", "\n"]
-            for step in steps:
-                if isinstance(step, tuple):
-                    ep_name, sub_steps = step
-                    lines.append(f"# {ep_name}()\n")
-                    for sub_step in sub_steps:
-                        lines.append(f"#     {sub_step}()\n")
-                else:
-                    lines.append(f"# {step}()\n")
+            _render(steps, 0)
         self._main_window.sequence_tab.set_text("".join(lines))
         self._main_window.tabs.setCurrentIndex(1)
 
