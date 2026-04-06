@@ -7,10 +7,12 @@ from pathlib import Path
 from PyQt6.QtCore import QSettings, QSize, Qt
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QMainWindow,
     QMessageBox,
     QStatusBar,
+    QStyle,
     QToolBar,
 )
 
@@ -137,12 +139,22 @@ class MeasurementApp(QMainWindow):
         self._act_new.setStatusTip("Clear the sequence editor and start a new script")
         self._act_new.triggered.connect(self._on_new)
 
-        self._act_open = QAction("&Open Sequence…", self)
+        style = QApplication.style()
+
+        self._act_open = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
+            "&Open Sequence…",
+            self,
+        )
         self._act_open.setShortcut(QKeySequence.StandardKey.Open)
         self._act_open.setStatusTip("Open a Python sequence script from disk")
         self._act_open.triggered.connect(self._on_open)
 
-        self._act_save = QAction("&Save Sequence", self)
+        self._act_save = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton),
+            "&Save Sequence",
+            self,
+        )
         self._act_save.setShortcut(QKeySequence.StandardKey.Save)
         self._act_save.setStatusTip("Save the current sequence script")
         self._act_save.triggered.connect(self._on_save)
@@ -158,17 +170,29 @@ class MeasurementApp(QMainWindow):
         self._act_exit.triggered.connect(self.close)
 
         # Sequence actions
-        self._act_run = QAction("&Run", self)
+        self._act_run = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay),
+            "&Run",
+            self,
+        )
         self._act_run.setShortcut(Qt.Key.Key_F5)
         self._act_run.setStatusTip("Execute the sequence script in the editor")
         self._act_run.triggered.connect(self._on_run)
 
-        self._act_pause = QAction("&Pause", self)
+        self._act_pause = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaPause),
+            "&Pause",
+            self,
+        )
         self._act_pause.setShortcut(Qt.Key.Key_F7)
         self._act_pause.setStatusTip("Pause or resume the running sequence")
         self._act_pause.triggered.connect(self._on_pause)
 
-        self._act_stop = QAction("S&top", self)
+        self._act_stop = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaStop),
+            "S&top",
+            self,
+        )
         self._act_stop.setShortcut(Qt.Key.Key_F6)
         self._act_stop.setStatusTip("Stop the running sequence")
         self._act_stop.triggered.connect(self._on_stop)
@@ -249,14 +273,14 @@ class MeasurementApp(QMainWindow):
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
+        toolbar.addAction(self._act_open)
+        toolbar.addAction(self._act_save)
+        toolbar.addSeparator()
         toolbar.addAction(self._act_run)
         toolbar.addAction(self._act_pause)
         toolbar.addAction(self._act_stop)
         toolbar.addSeparator()
         toolbar.addAction(self._act_generate)
-        toolbar.addSeparator()
-        toolbar.addAction(self._act_open)
-        toolbar.addAction(self._act_save)
 
     # ------------------------------------------------------------------
     # Action handlers
