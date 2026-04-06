@@ -243,7 +243,7 @@ class TestCodeGeneration:
         code = engine.generate_sequence_code(["dummy"], plugins)
         assert "dummy" in code
 
-    def test_unknown_ep_name_generates_not_found_comment(self, engine):
+    def test_unknown_ep_name_produces_no_steps_comment(self, engine):
         code = engine.generate_sequence_code(["nonexistent"], {})
         assert "No sequence steps" in code
 
