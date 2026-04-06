@@ -379,36 +379,19 @@ class MeasurementApp(QMainWindow):
         self._main_window.tabs.setCurrentIndex(1)
 
     def _on_load_to_editor(self) -> None:
-        """Render the current sequence steps as Python code stubs in the editor.
+        """Render the current sequence steps as executable Python code in the editor.
 
-        Each step is represented as a commented-out call stub, indented to
-        reflect sub-sequence nesting beneath a
-        :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
-        step.  Nesting may be arbitrarily deep (each level adds four spaces
-        of indentation).  This gives the user a starting point for building
-        a real script.
+        Calls :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.generate_sequence_code`
+        to convert the sequence tree into a runnable Python script, with nested
+        ``try/finally`` blocks reflecting the sub-sequence structure.  The
+        generated script is loaded into the sequence editor so the user can
+        inspect, edit, and run it.
         """
         dock = self._main_window.dock_panel
         steps = dock.sequence_steps
-        lines: list[str] = []
-
-        def _render(step_list: list, indent: int) -> None:
-            """Recursively append commented stubs for *step_list* at *indent* depth."""
-            prefix = "    " * indent
-            for step in step_list:
-                if isinstance(step, tuple):
-                    ep_name, sub_steps = step
-                    lines.append(f"# {prefix}{ep_name}()\n")
-                    _render(sub_steps, indent + 1)
-                else:
-                    lines.append(f"# {prefix}{step}()\n")
-
-        if not steps:
-            lines = ["# No sequence steps defined yet.\n"]
-        else:
-            lines = ["# Auto-generated sequence script\n", "\n"]
-            _render(steps, 0)
-        self._main_window.sequence_tab.set_text("".join(lines))
+        plugins = self._plugin_manager.plugins
+        code = self._engine.generate_sequence_code(steps, plugins)
+        self._main_window.sequence_tab.set_text(code)
         self._main_window.tabs.setCurrentIndex(1)
 
     def _on_about(self) -> None:

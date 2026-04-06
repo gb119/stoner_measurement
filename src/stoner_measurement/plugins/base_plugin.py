@@ -12,11 +12,12 @@ A plugin must:
 5. Optionally override :meth:`monitor_widget` to contribute a live-status
    widget to the left dock panel.
 
-Concrete plugin behaviour is added by subclassing one of the four specialised
+Concrete plugin behaviour is added by subclassing one of the five specialised
 sub-types: :class:`~stoner_measurement.plugins.trace.TracePlugin`,
 :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`,
-:class:`~stoner_measurement.plugins.monitor.MonitorPlugin`, or
-:class:`~stoner_measurement.plugins.transform.TransformPlugin`.
+:class:`~stoner_measurement.plugins.monitor.MonitorPlugin`,
+:class:`~stoner_measurement.plugins.transform.TransformPlugin`, or
+:class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`.
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ class BasePlugin(ABC):
     :meth:`monitor_widget` to provide richer UI integration.
 
     Rather than subclassing :class:`BasePlugin` directly, prefer one of the
-    four specialised sub-types:
+    five specialised sub-types:
 
     * :class:`~stoner_measurement.plugins.trace.TracePlugin` — collects (x, y)
       traces from instruments.
@@ -53,6 +54,8 @@ class BasePlugin(ABC):
       records auxiliary quantities.
     * :class:`~stoner_measurement.plugins.transform.TransformPlugin` — performs
       pure-computation transforms on collected data.
+    * :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` —
+      acts as a branch node in the sequence tree, containing nested sub-steps.
 
     Attributes:
         plugin_type (str):
