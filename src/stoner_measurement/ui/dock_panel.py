@@ -356,6 +356,9 @@ class DockPanel(QWidget):
         # Counts how many step instances have been created per ep_name,
         # used to generate unique instance names for additional copies.
         self._step_counts: dict[str, int] = {}
+        # Keeps strong Python references to per-step plugin instances so they
+        # are not garbage-collected while stored only via QTreeWidgetItem.setData()..
+        self._step_plugins: list[BasePlugin] = []
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -430,6 +433,24 @@ class DockPanel(QWidget):
                 if widget is not None:
                     self.add_monitor_widget(name, widget)
 
+    def _release_step_plugins(self, item: QTreeWidgetItem) -> None:
+        """Remove the strong reference to the plugin in *item* (and all children).
+
+        Called before an item is removed from the tree so that the plugin
+        instances are no longer held alive by :attr:`_step_plugins` after
+        the tree item is gone.
+
+        Args:
+            item (QTreeWidgetItem):
+                The item (and its subtree) whose plugin references should be
+                released.
+        """
+        plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+        if plugin is not None and plugin in self._step_plugins:
+            self._step_plugins.remove(plugin)
+        for i in range(item.childCount()):
+            self._release_step_plugins(item.child(i))
+
     def _add_step(self) -> None:
         """Add the selected instrument as a top-level sequence step.
 
@@ -460,6 +481,10 @@ class DockPanel(QWidget):
         if hasattr(new_plugin, "instance_name_changed"):
             new_plugin.instance_name_changed.connect(self._on_plugin_renamed)
 
+        # Keep a strong Python reference so the instance is not garbage-collected
+        # while it is stored only via QTreeWidgetItem.setData().
+        self._step_plugins.append(new_plugin)
+
         text = f"{new_plugin.instance_name} ({new_plugin.name})"
         item = self._sequence_tree.make_item(new_plugin, text, ep_name=ep_name)
         self._sequence_tree.addTopLevelItem(item)
@@ -469,6 +494,8 @@ class DockPanel(QWidget):
         item = self._sequence_tree.currentItem()
         if item is None:
             return
+        # Release strong references for the item and all nested children.
+        self._release_step_plugins(item)
         parent = item.parent()
         if parent is not None:
             parent.removeChild(item)
