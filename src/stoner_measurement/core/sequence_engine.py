@@ -827,8 +827,8 @@ class SequenceEngine(QObject):
 
            * :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`:
              a ``for`` loop over ``scan_generator.generate()`` that calls
-             ``set_state`` (via ``ramp_to``) and ``get_state`` for each
-             setpoint, then recursively renders any sub-steps inside the loop.
+             ``ramp_to`` and ``get_state`` for each setpoint, then recursively
+             renders any sub-steps inside the loop.
            * :class:`~stoner_measurement.plugins.trace.TracePlugin`: a single
              call to ``measure({})`` that returns the complete trace.
            * :class:`~stoner_measurement.plugins.monitor.MonitorPlugin` /
