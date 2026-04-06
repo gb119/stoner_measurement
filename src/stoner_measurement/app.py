@@ -381,8 +381,10 @@ class MeasurementApp(QMainWindow):
     def _on_load_to_editor(self) -> None:
         """Render the current sequence steps as Python code stubs in the editor.
 
-        Each step is represented as a commented-out call stub.  This gives
-        the user a starting point for building a real script.
+        Each step is represented as a commented-out call stub, indented to
+        reflect sub-sequence nesting beneath a
+        :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+        step.  This gives the user a starting point for building a real script.
         """
         dock = self._main_window.dock_panel
         steps = dock.sequence_steps
@@ -391,7 +393,13 @@ class MeasurementApp(QMainWindow):
         else:
             lines = ["# Auto-generated sequence script\n", "\n"]
             for step in steps:
-                lines.append(f"# {step}()\n")
+                if isinstance(step, tuple):
+                    ep_name, sub_steps = step
+                    lines.append(f"# {ep_name}()\n")
+                    for sub_step in sub_steps:
+                        lines.append(f"#     {sub_step}()\n")
+                else:
+                    lines.append(f"# {step}()\n")
         self._main_window.sequence_tab.set_text("".join(lines))
         self._main_window.tabs.setCurrentIndex(1)
 

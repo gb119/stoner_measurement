@@ -39,7 +39,7 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=plugin_manager)
         panel._instrument_list.setCurrentRow(0)
         panel._add_step()
-        panel._sequence_list.setCurrentRow(0)
+        panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
         panel._remove_step()
         assert panel.sequence_steps == []
 
@@ -133,24 +133,24 @@ class TestDockPanel:
 
         panel._instrument_list.setCurrentRow(0)
         panel._add_step()
-        panel._sequence_list.setCurrentRow(0)
+        panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
 
         assert len(received) == 1
         assert received[0] is plugin
 
     def test_plugin_selected_emits_none_when_selection_cleared(self, qapp):
-        """Clearing the sequence list current item emits plugin_selected(None)."""
+        """Clearing the sequence tree current item emits plugin_selected(None)."""
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
         panel._instrument_list.setCurrentRow(0)
         panel._add_step()
-        panel._sequence_list.setCurrentRow(0)
+        panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
 
         received = []
         panel.plugin_selected.connect(lambda p: received.append(p))
-        panel._sequence_list.setCurrentRow(-1)  # clear current item
+        panel._sequence_tree.setCurrentItem(None)  # clear current item
 
         assert len(received) == 1
         assert received[0] is None
@@ -165,8 +165,8 @@ class TestDockPanel:
         panel._instrument_list.setCurrentRow(0)
         panel._add_step()
 
-        item = panel._sequence_list.item(0)
-        assert item.text() == f"{plugin.instance_name} ({plugin.name})"
+        item = panel._sequence_tree.topLevelItem(0)
+        assert item.text(0) == f"{plugin.instance_name} ({plugin.name})"
 
     def test_step_label_updates_on_rename(self, qapp):
         """Renaming a plugin's instance_name updates matching step labels."""
@@ -180,8 +180,8 @@ class TestDockPanel:
 
         plugin.instance_name = "my_sensor"
 
-        item = panel._sequence_list.item(0)
-        assert item.text() == f"my_sensor ({plugin.name})"
+        item = panel._sequence_tree.topLevelItem(0)
+        assert item.text(0) == f"my_sensor ({plugin.name})"
 
     def test_step_ep_name_preserved_in_user_role(self, qapp):
         """The ep_name is stored in UserRole data, not the display text."""
@@ -193,9 +193,199 @@ class TestDockPanel:
         panel._instrument_list.setCurrentRow(0)
         panel._add_step()
 
-        item = panel._sequence_list.item(0)
-        assert item.data(Qt.ItemDataRole.UserRole) == "ep_key"
+        item = panel._sequence_tree.topLevelItem(0)
+        assert item.data(0, Qt.ItemDataRole.UserRole) == "ep_key"
         assert panel.sequence_steps == ["ep_key"]
+
+    # --- Sub-step / nesting tests ---
+
+    def test_sequence_steps_nested_tuple_when_sub_step_present(self, qapp):
+        """sequence_steps returns a (ep_name, [sub_ep]) tuple when a step has children."""
+        from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
+        from stoner_measurement.plugins.state_control import StateControlPlugin
+
+        class _FakeState(StateControlPlugin, metaclass=_ABCQObjectMeta):
+            @property
+            def name(self):
+                return "FakeState"
+
+            @property
+            def state_name(self):
+                return "X"
+
+            @property
+            def units(self):
+                return "au"
+
+            def set_state(self, v):
+                pass
+
+            def get_state(self):
+                return 0.0
+
+            def is_at_target(self):
+                return True
+
+        pm = PluginManager()
+        state_plugin = _FakeState()
+        trace_plugin = DummyPlugin()
+        pm.register("state", state_plugin)
+        pm.register("trace", trace_plugin)
+        panel = DockPanel(plugin_manager=pm)
+
+        # Add both as top-level steps
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+        panel._instrument_list.setCurrentRow(1)
+        panel._add_step()
+
+        # Manually nest the trace item under the state item
+        state_item = panel._sequence_tree.topLevelItem(0)
+        trace_item = panel._sequence_tree.topLevelItem(1)
+        panel._sequence_tree.takeTopLevelItem(1)
+        state_item.addChild(trace_item)
+        state_item.setExpanded(True)
+
+        steps = panel.sequence_steps
+        assert len(steps) == 1
+        ep_name, sub_steps = steps[0]
+        assert ep_name == "state"
+        assert sub_steps == ["trace"]
+
+    def test_remove_sub_step(self, qapp):
+        """Removing a sub-step removes only the child, leaving the parent intact."""
+        from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
+        from stoner_measurement.plugins.state_control import StateControlPlugin
+
+        class _FakeState(StateControlPlugin, metaclass=_ABCQObjectMeta):
+            @property
+            def name(self):
+                return "FakeState"
+
+            @property
+            def state_name(self):
+                return "X"
+
+            @property
+            def units(self):
+                return "au"
+
+            def set_state(self, v):
+                pass
+
+            def get_state(self):
+                return 0.0
+
+            def is_at_target(self):
+                return True
+
+        pm = PluginManager()
+        pm.register("state", _FakeState())
+        pm.register("trace", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+        panel._instrument_list.setCurrentRow(1)
+        panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        trace_item = panel._sequence_tree.topLevelItem(1)
+        panel._sequence_tree.takeTopLevelItem(1)
+        state_item.addChild(trace_item)
+
+        # Select and remove the sub-step
+        panel._sequence_tree.setCurrentItem(trace_item)
+        panel._remove_step()
+
+        # Parent (state) still present, no children
+        assert panel._sequence_tree.topLevelItemCount() == 1
+        assert panel._sequence_tree.topLevelItem(0).childCount() == 0
+        assert panel.sequence_steps == ["state"]
+
+    def test_state_control_item_is_bold(self, qapp):
+        """StateControlPlugin items are rendered with a bold font in the tree."""
+        from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
+        from stoner_measurement.plugins.state_control import StateControlPlugin
+
+        class _FakeState(StateControlPlugin, metaclass=_ABCQObjectMeta):
+            @property
+            def name(self):
+                return "FakeState"
+
+            @property
+            def state_name(self):
+                return "X"
+
+            @property
+            def units(self):
+                return "au"
+
+            def set_state(self, v):
+                pass
+
+            def get_state(self):
+                return 0.0
+
+            def is_at_target(self):
+                return True
+
+        pm = PluginManager()
+        pm.register("state", _FakeState())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+
+        item = panel._sequence_tree.topLevelItem(0)
+        assert item.font(0).bold()
+
+    def test_step_label_updates_on_rename_in_sub_step(self, qapp):
+        """Renaming a plugin updates its label even when it is a sub-step."""
+        from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
+        from stoner_measurement.plugins.state_control import StateControlPlugin
+
+        class _FakeState(StateControlPlugin, metaclass=_ABCQObjectMeta):
+            @property
+            def name(self):
+                return "FakeState"
+
+            @property
+            def state_name(self):
+                return "X"
+
+            @property
+            def units(self):
+                return "au"
+
+            def set_state(self, v):
+                pass
+
+            def get_state(self):
+                return 0.0
+
+            def is_at_target(self):
+                return True
+
+        pm = PluginManager()
+        pm.register("state", _FakeState())
+        trace_plugin = DummyPlugin()
+        pm.register("trace", trace_plugin)
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.setCurrentRow(0)
+        panel._add_step()
+        panel._instrument_list.setCurrentRow(1)
+        panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        trace_item = panel._sequence_tree.topLevelItem(1)
+        panel._sequence_tree.takeTopLevelItem(1)
+        state_item.addChild(trace_item)
+
+        trace_plugin.instance_name = "renamed_trace"
+
+        assert trace_item.text(0) == f"renamed_trace ({trace_plugin.name})"
 
 
 class TestPlotWidget:

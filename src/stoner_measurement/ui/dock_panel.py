@@ -2,6 +2,9 @@
 
 Provides instrument listing, sequence building controls, a run button,
 and a monitoring section where plugins can display live status widgets.
+The sequence list is a tree widget that supports drag-and-drop reordering
+and sub-sequence nesting for :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+items.
 """
 
 from __future__ import annotations
@@ -9,11 +12,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QDragMoveEvent, QDropEvent
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QLabel,
     QListWidget,
-    QListWidgetItem,
     QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -26,6 +32,191 @@ if TYPE_CHECKING:
 _EP_NAME_ROLE = Qt.ItemDataRole.UserRole
 
 
+class _SequenceTreeWidget(QTreeWidget):
+    """Tree widget for sequence steps with drag-and-drop support.
+
+    Supports:
+
+    * **Reordering** — drag a step above or below another to reorder.
+    * **Sub-sequencing** — drag any non-state-control step *onto* a
+      :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+      item to nest it as a sub-step.  Nested items are shown with
+      indentation.
+    * **Promotion** — drag a sub-step above or below any top-level item to
+      promote it back to the top level.
+
+    :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+    items are displayed in bold to indicate that they may accept nested
+    steps.  A tooltip explains the drag-onto behaviour.
+
+    Args:
+        plugin_manager (PluginManager):
+            Used to look up plugin types when determining whether an item
+            accepts child drops.
+
+    Keyword Parameters:
+        parent (QWidget | None):
+            Optional Qt parent widget.
+    """
+
+    def __init__(
+        self,
+        plugin_manager: PluginManager,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._plugin_manager = plugin_manager
+        self.setHeaderHidden(True)
+        self.setRootIsDecorated(True)
+        self.setIndentation(20)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _is_state_control(self, ep_name: str) -> bool:
+        """Return ``True`` if *ep_name* identifies a StateControlPlugin."""
+        from stoner_measurement.plugins.state_control import StateControlPlugin
+
+        plugin = self._plugin_manager.plugins.get(ep_name)
+        return isinstance(plugin, StateControlPlugin)
+
+    def make_item(self, ep_name: str, text: str) -> QTreeWidgetItem:
+        """Create a styled :class:`QTreeWidgetItem` for *ep_name*.
+
+        StateControlPlugin items are displayed in bold and carry a tooltip
+        that explains the drag-onto behaviour.
+
+        Args:
+            ep_name (str):
+                Entry-point registry key for the plugin.
+            text (str):
+                Display label for the item.
+
+        Returns:
+            (QTreeWidgetItem):
+                A new item ready to be inserted into the tree.
+        """
+        item = QTreeWidgetItem([text])
+        item.setData(0, _EP_NAME_ROLE, ep_name)
+        flags = (
+            Qt.ItemFlag.ItemIsEnabled
+            | Qt.ItemFlag.ItemIsSelectable
+            | Qt.ItemFlag.ItemIsDragEnabled
+        )
+        if self._is_state_control(ep_name):
+            flags |= Qt.ItemFlag.ItemIsDropEnabled
+            font = item.font(0)
+            font.setBold(True)
+            item.setFont(0, font)
+            item.setToolTip(
+                0,
+                "Drag other steps onto this item to nest them as sub-steps.",
+            )
+        item.setFlags(flags)
+        return item
+
+    # ------------------------------------------------------------------
+    # Drag-and-drop overrides
+    # ------------------------------------------------------------------
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
+        """Reject drops *onto* items that are not StateControlPlugin instances."""
+        target = self.itemAt(event.position().toPoint())
+        pos = self.dropIndicatorPosition()
+
+        if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
+            ep_name = target.data(0, _EP_NAME_ROLE)
+            if not self._is_state_control(ep_name):
+                event.ignore()
+                return
+            # StateControlPlugin items may not themselves be nested
+            dragged = self.currentItem()
+            if dragged is not None:
+                dragged_ep = dragged.data(0, _EP_NAME_ROLE)
+                if self._is_state_control(dragged_ep):
+                    event.ignore()
+                    return
+
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        """Handle reorder and nest-as-sub-step drops."""
+        target = self.itemAt(event.position().toPoint())
+        pos = self.dropIndicatorPosition()
+        dragged = self.currentItem()
+
+        if dragged is None:
+            event.ignore()
+            return
+
+        # Validate: cannot drop a StateControlPlugin onto another item
+        if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
+            ep_name = target.data(0, _EP_NAME_ROLE)
+            if not self._is_state_control(ep_name):
+                event.ignore()
+                return
+            dragged_ep = dragged.data(0, _EP_NAME_ROLE)
+            if self._is_state_control(dragged_ep):
+                event.ignore()
+                return
+
+        # Remember target position before modifying the tree
+        target_parent: QTreeWidgetItem | None = None
+        target_index = 0
+        if target is not None:
+            target_parent = target.parent()
+            if target_parent is not None:
+                target_index = target_parent.indexOfChild(target)
+            else:
+                target_index = self.indexOfTopLevelItem(target)
+
+        # Detach dragged item from its current location
+        dragged_parent = dragged.parent()
+        if dragged_parent is not None:
+            dragged_idx = dragged_parent.indexOfChild(dragged)
+            dragged_parent.takeChild(dragged_idx)
+        else:
+            dragged_idx = self.indexOfTopLevelItem(dragged)
+            self.takeTopLevelItem(dragged_idx)
+
+        # Adjust target_index when dragged and target shared the same parent
+        # and dragged was before the target (its removal shifts the target down).
+        if (
+            target is not None
+            and pos != QAbstractItemView.DropIndicatorPosition.OnItem
+            and dragged_parent is target_parent
+            and dragged_idx < target_index
+        ):
+            target_index -= 1
+
+        # Insert at the new location
+        if target is None:
+            self.addTopLevelItem(dragged)
+        elif pos == QAbstractItemView.DropIndicatorPosition.OnItem:
+            target.addChild(dragged)
+            target.setExpanded(True)
+        elif pos == QAbstractItemView.DropIndicatorPosition.AboveItem:
+            if target_parent is not None:
+                target_parent.insertChild(target_index, dragged)
+            else:
+                self.insertTopLevelItem(target_index, dragged)
+        else:  # BelowItem or OnViewport
+            if target_parent is not None:
+                target_parent.insertChild(target_index + 1, dragged)
+            else:
+                self.insertTopLevelItem(target_index + 1, dragged)
+
+        self.setCurrentItem(dragged)
+        event.accept()
+
+
 class DockPanel(QWidget):
     """Left panel containing instrument, sequence controls, and monitoring widgets.
 
@@ -35,13 +226,25 @@ class DockPanel(QWidget):
     bottom of this panel and are removed automatically when the plugin is
     unregistered.
 
-    When the user clicks a step in the *Sequence Steps* list, the
+    When the user clicks a step in the *Sequence Steps* tree, the
     :attr:`plugin_selected` signal is emitted with the corresponding plugin
     instance so that the configuration panel can update itself accordingly.
 
+    The sequence tree supports **drag-and-drop**:
+
+    * Drag a step above or below another to reorder.
+    * Drag any non-state-control step *onto* a
+      :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+      item to nest it as a sub-step (shown with indentation).
+    * Drag a sub-step to the top level to promote it.
+
     Attributes:
-        sequence_steps (list[str]):
-            The current sequence step names.
+        sequence_steps (list[str | tuple[str, list[str]]]):
+            The current sequence steps.  Each element is either a plain
+            entry-point name string (for simple top-level steps) or a
+            ``(ep_name, [sub_ep_names])`` tuple for a
+            :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+            that has nested sub-steps.
 
     Args:
         plugin_manager (PluginManager):
@@ -92,9 +295,9 @@ class DockPanel(QWidget):
 
         # --- Sequence steps ---
         layout.addWidget(QLabel("<b>Sequence Steps</b>"))
-        self._sequence_list = QListWidget()
-        self._sequence_list.setObjectName("sequenceList")
-        layout.addWidget(self._sequence_list)
+        self._sequence_tree = _SequenceTreeWidget(plugin_manager=plugin_manager)
+        self._sequence_tree.setObjectName("sequenceTree")
+        layout.addWidget(self._sequence_tree)
 
         # --- Control buttons ---
         self._add_step_btn = QPushButton("Add Step")
@@ -122,7 +325,7 @@ class DockPanel(QWidget):
         # Connect signals
         self._add_step_btn.clicked.connect(self._add_step)
         self._remove_step_btn.clicked.connect(self._remove_step)
-        self._sequence_list.currentItemChanged.connect(self._on_step_selected)
+        self._sequence_tree.currentItemChanged.connect(self._on_step_selected)
 
         # Populate instrument list and monitoring widgets
         self._refresh_instruments()
@@ -164,7 +367,7 @@ class DockPanel(QWidget):
                     self.add_monitor_widget(name, widget)
 
     def _add_step(self) -> None:
-        """Add the selected instrument as a sequence step."""
+        """Add the selected instrument as a top-level sequence step."""
         current = self._instrument_list.currentItem()
         if current is None:
             return
@@ -172,27 +375,33 @@ class DockPanel(QWidget):
         plugin = self._plugin_manager.plugins.get(ep_name)
         if plugin is None:
             return
-        item = QListWidgetItem(f"{plugin.instance_name} ({plugin.name})")
-        item.setData(_EP_NAME_ROLE, ep_name)
-        self._sequence_list.addItem(item)
+        item = self._sequence_tree.make_item(ep_name, f"{plugin.instance_name} ({plugin.name})")
+        self._sequence_tree.addTopLevelItem(item)
         if ep_name not in self._connected_step_plugins and hasattr(plugin, "instance_name_changed"):
             plugin.instance_name_changed.connect(self._on_plugin_renamed)
             self._connected_step_plugins[ep_name] = plugin
 
     def _remove_step(self) -> None:
-        """Remove the currently selected sequence step."""
-        row = self._sequence_list.currentRow()
-        if row >= 0:
-            self._sequence_list.takeItem(row)
+        """Remove the currently selected sequence step (or sub-step)."""
+        item = self._sequence_tree.currentItem()
+        if item is None:
+            return
+        parent = item.parent()
+        if parent is not None:
+            parent.removeChild(item)
+        else:
+            idx = self._sequence_tree.indexOfTopLevelItem(item)
+            if idx >= 0:
+                self._sequence_tree.takeTopLevelItem(idx)
 
     def _on_step_selected(
-        self, current: QListWidgetItem | None, previous: QListWidgetItem | None
+        self, current: QTreeWidgetItem | None, previous: QTreeWidgetItem | None
     ) -> None:
         """Emit :attr:`plugin_selected` when the sequence-step selection changes."""
         if current is None:
             self.plugin_selected.emit(None)
             return
-        ep_name = current.data(_EP_NAME_ROLE)
+        ep_name = current.data(0, _EP_NAME_ROLE)
         plugin = self._plugin_manager.plugins.get(ep_name)
         self.plugin_selected.emit(plugin)
 
@@ -212,12 +421,17 @@ class DockPanel(QWidget):
             new_name (str):
                 New instance name to display.
         """
-        for i in range(self._sequence_list.count()):
-            item = self._sequence_list.item(i)
-            ep_name = item.data(_EP_NAME_ROLE)
+
+        def _update_subtree(item: QTreeWidgetItem) -> None:
+            ep_name = item.data(0, _EP_NAME_ROLE)
             plugin = self._plugin_manager.plugins.get(ep_name)
             if plugin is not None and plugin.instance_name == new_name:
-                item.setText(f"{new_name} ({plugin.name})")
+                item.setText(0, f"{new_name} ({plugin.name})")
+            for i in range(item.childCount()):
+                _update_subtree(item.child(i))
+
+        for i in range(self._sequence_tree.topLevelItemCount()):
+            _update_subtree(self._sequence_tree.topLevelItem(i))
 
     def _update_monitor_visibility(self) -> None:
         """Show or hide the monitoring section depending on whether any widgets are present."""
@@ -230,16 +444,43 @@ class DockPanel(QWidget):
     # ------------------------------------------------------------------
 
     @property
-    def sequence_steps(self) -> list[str]:
-        """Return the entry-point names of the current sequence steps.
+    def sequence_steps(self) -> list[str | tuple[str, list[str]]]:
+        """Return the current sequence steps as a (possibly nested) list.
 
-        The returned names are the plugin registry keys (entry-point names)
-        stored when each step was added, not the formatted display labels.
+        Each element is either:
+
+        * a plain entry-point name string for a top-level step that has no
+          sub-steps, or
+        * a ``(ep_name, [sub_ep_name, ...])`` tuple for a top-level
+          :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+          step that has at least one nested sub-step.
+
+        Returns:
+            (list[str | tuple[str, list[str]]]):
+                Ordered sequence of step descriptors.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> pm = PluginManager()
+            >>> panel = DockPanel(plugin_manager=pm)
+            >>> panel.sequence_steps
+            []
         """
-        return [
-            self._sequence_list.item(i).data(_EP_NAME_ROLE)
-            for i in range(self._sequence_list.count())
-        ]
+        result: list[str | tuple[str, list[str]]] = []
+        for i in range(self._sequence_tree.topLevelItemCount()):
+            item = self._sequence_tree.topLevelItem(i)
+            ep_name: str = item.data(0, _EP_NAME_ROLE)
+            sub_steps = [
+                item.child(j).data(0, _EP_NAME_ROLE)
+                for j in range(item.childCount())
+            ]
+            if sub_steps:
+                result.append((ep_name, sub_steps))
+            else:
+                result.append(ep_name)
+        return result
 
     def add_monitor_widget(self, plugin_name: str, widget: QWidget) -> None:
         """Add a monitoring widget for the named plugin.
