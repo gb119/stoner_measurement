@@ -1,0 +1,34 @@
+name: stoner_measurement
+# Conda environment for developing and testing stoner_measurement.
+#
+# Create the environment:
+#   conda env create -f environment.yml
+#
+# Activate and install the package in editable mode:
+#   conda activate stoner_measurement
+#   pip install -e .
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.13
+  - pip
+  - setuptools>=61
+  # Runtime dependencies
+  - pyqt>=6.7
+  - pyqtgraph>=0.13
+  - numpy>=2.0
+  # Instrument communication
+  - pyserial>=3.5
+  - pyvisa>=1.13
+  # Testing
+  - pytest>=8.0
+  - pytest-qt>=4.4
+  - pytest-cov>=6.0
+  # Linting
+  - ruff>=0.8
+  # Documentation
+  - sphinx>=8.0
+  - pip:
+    # Not available on conda-forge
+    - sphinx-better-theme>=0.1.5
