@@ -4,7 +4,8 @@ Provides instrument listing, sequence building controls, a run button,
 and a monitoring section where plugins can display live status widgets.
 The sequence list is a tree widget that supports drag-and-drop reordering
 and arbitrarily deep sub-sequence nesting for
-:class:`~stoner_measurement.plugins.state_control.StateControlPlugin` items,
+:class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` items
+(including :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`),
 enabling multi-dimensional measurement scans.
 """
 
@@ -45,15 +46,15 @@ class _SequenceTreeWidget(QTreeWidget):
 
     * **Reordering** — drag a step above or below another to reorder.
     * **Sub-sequencing** — drag any step *onto* a
-      :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+      :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
       item to nest it as a sub-step.  This includes dragging one
-      :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+      :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
       onto another, enabling arbitrarily deep nesting for multi-dimensional
       measurement scans.  Nested items are shown with indentation.
     * **Promotion** — drag a sub-step above or below any top-level item to
       move it back up the hierarchy.
 
-    :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+    :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
     items are displayed in bold to indicate that they may accept nested
     steps.  A tooltip explains the drag-onto behaviour.
 
@@ -88,12 +89,12 @@ class _SequenceTreeWidget(QTreeWidget):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _is_state_control(self, ep_name: str) -> bool:
-        """Return ``True`` if *ep_name* identifies a StateControlPlugin."""
-        from stoner_measurement.plugins.state_control import StateControlPlugin
+    def _is_sequence_plugin(self, ep_name: str) -> bool:
+        """Return ``True`` if *ep_name* identifies a SequencePlugin."""
+        from stoner_measurement.plugins.sequence_plugin import SequencePlugin
 
         plugin = self._plugin_manager.plugins.get(ep_name)
-        return isinstance(plugin, StateControlPlugin)
+        return isinstance(plugin, SequencePlugin)
 
     @staticmethod
     def _is_ancestor(candidate: QTreeWidgetItem, item: QTreeWidgetItem) -> bool:
@@ -123,8 +124,9 @@ class _SequenceTreeWidget(QTreeWidget):
     def make_item(self, ep_name: str, text: str) -> QTreeWidgetItem:
         """Create a styled :class:`QTreeWidgetItem` for *ep_name*.
 
-        StateControlPlugin items are displayed in bold and carry a tooltip
-        that explains the drag-onto behaviour.
+        :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+        items are displayed in bold and carry a tooltip that explains the
+        drag-onto behaviour.
 
         Args:
             ep_name (str):
@@ -143,7 +145,7 @@ class _SequenceTreeWidget(QTreeWidget):
             | Qt.ItemFlag.ItemIsSelectable
             | Qt.ItemFlag.ItemIsDragEnabled
         )
-        if self._is_state_control(ep_name):
+        if self._is_sequence_plugin(ep_name):
             flags |= Qt.ItemFlag.ItemIsDropEnabled
             font = item.font(0)
             font.setBold(True)
@@ -160,15 +162,15 @@ class _SequenceTreeWidget(QTreeWidget):
     # ------------------------------------------------------------------
 
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        """Reject drops *onto* non-StateControlPlugin items or onto descendants."""
+        """Reject drops *onto* non-SequencePlugin items or onto descendants."""
         pos_point = event.position().toPoint()
         target = self.itemAt(pos_point)
         pos = self.dropIndicatorPosition()
 
         if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
-            # Only StateControlPlugin items may accept children.
+            # Only SequencePlugin items may accept children.
             ep_name = target.data(0, _EP_NAME_ROLE)
-            if not self._is_state_control(ep_name):
+            if not self._is_sequence_plugin(ep_name):
                 event.ignore()
                 return
             # Prevent dropping an item onto itself or one of its own descendants.
@@ -190,11 +192,11 @@ class _SequenceTreeWidget(QTreeWidget):
             event.ignore()
             return
 
-        # Only StateControlPlugin items may accept children; also prevent
+        # Only SequencePlugin items may accept children; also prevent
         # dropping an item onto itself or one of its own descendants.
         if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
             ep_name = target.data(0, _EP_NAME_ROLE)
-            if not self._is_state_control(ep_name):
+            if not self._is_sequence_plugin(ep_name):
                 event.ignore()
                 return
             if self._is_ancestor(dragged, target):
@@ -268,9 +270,11 @@ class DockPanel(QWidget):
 
     * Drag a step above or below another to reorder.
     * Drag any step *onto* a
-      :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
-      item to nest it as a sub-step (shown with indentation).  This includes
-      dragging one state-control step onto another, enabling multi-dimensional
+      :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+      item (e.g. a
+      :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`)
+      to nest it as a sub-step (shown with indentation).  This includes
+      dragging one sequence-plugin step onto another, enabling multi-dimensional
       measurement scans at arbitrary depth.
     * Drag a sub-step to the top level to promote it.
 
@@ -279,7 +283,7 @@ class DockPanel(QWidget):
             The current sequence steps as a recursive structure.  Each element
             is either a plain entry-point name string (for a leaf step with no
             sub-steps) or a ``(ep_name, [sub-steps…])`` tuple for a
-            :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+            :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
             that has nested children.  The inner list follows the same
             ``_SequenceStep`` structure, so nesting may be arbitrarily deep.
 
@@ -489,7 +493,7 @@ class DockPanel(QWidget):
 
         * a plain entry-point name string for a step that has no sub-steps, or
         * a ``(ep_name, [sub-steps…])`` tuple for a
-          :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+          :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
           step that has at least one nested child.  The inner list follows the
           same structure recursively, allowing arbitrarily deep nesting for
           multi-dimensional measurement scans.

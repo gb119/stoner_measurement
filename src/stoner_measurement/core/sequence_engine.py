@@ -808,3 +808,145 @@ class SequenceEngine(QObject):
             lines.append("")
 
         return "\n".join(lines)
+
+    def generate_sequence_code(
+        self,
+        steps: list,
+        plugins: dict[str, BasePlugin],
+    ) -> str:
+        """Generate executable Python code from the sequence tree.
+
+        Walks *steps* (the nested list returned by
+        :attr:`~stoner_measurement.ui.dock_panel.DockPanel.sequence_steps`)
+        and emits real Python code that reflects the tree structure — nested
+        ``try/finally`` blocks for
+        :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+        container steps with sub-steps indented inside them.
+
+        The generated script is ready to paste into the sequence editor and
+        run; it is not a commented stub.
+
+        Args:
+            steps (list):
+                Nested sequence step list from
+                :attr:`~stoner_measurement.ui.dock_panel.DockPanel.sequence_steps`.
+                Each element is either a plain entry-point name string or a
+                ``(ep_name, [sub-steps…])`` tuple.
+            plugins (dict[str, BasePlugin]):
+                Mapping of entry-point name → plugin instance.
+
+        Returns:
+            (str):
+                Executable Python script representing the sequence tree.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> engine = SequenceEngine()
+            >>> plugin = DummyPlugin()
+            >>> engine.add_plugin("dummy", plugin)
+            >>> code = engine.generate_sequence_code(["dummy"], {"dummy": plugin})
+            >>> "measure" in code
+            True
+            >>> engine.shutdown()
+        """
+        # Import here to avoid circular imports at module level.
+        from stoner_measurement.plugins.monitor import MonitorPlugin
+        from stoner_measurement.plugins.sequence_plugin import SequencePlugin
+        from stoner_measurement.plugins.state_control import StateControlPlugin
+        from stoner_measurement.plugins.trace import TracePlugin
+        from stoner_measurement.plugins.transform import TransformPlugin
+
+        header = [
+            "# Sequence script — auto-generated from sequence tree.",
+            "# Edit as needed, then click Run.",
+            "",
+        ]
+
+        if not steps:
+            return "\n".join(header) + "# No sequence steps defined yet.\n"
+
+        body_lines: list[str] = []
+
+        def _render_step(step: str | tuple, indent: int) -> None:
+            """Recursively render one step (leaf or branch) at *indent* depth."""
+            prefix = "    " * indent
+
+            if isinstance(step, tuple):
+                ep_name, sub_steps = step
+            else:
+                ep_name = step
+                sub_steps = []
+
+            plugin = plugins.get(ep_name)
+            if plugin is None:
+                body_lines.append(f"{prefix}# {ep_name}: plugin not found")
+                return
+
+            var_name = plugin.instance_name
+
+            if isinstance(plugin, TracePlugin):
+                body_lines += [
+                    f"{prefix}{var_name}.connect()",
+                    f"{prefix}{var_name}.configure()",
+                    f"{prefix}try:",
+                    f"{prefix}    data = {var_name}.measure({{}})",
+                    f"{prefix}    for channel, x, y in data:",
+                    f'{prefix}        print(f"{{channel}}: x={{x:.4g}}, y={{y:.4g}}")',
+                    f"{prefix}finally:",
+                    f"{prefix}    {var_name}.disconnect()",
+                ]
+
+            elif isinstance(plugin, StateControlPlugin):
+                state_name = plugin.state_name
+                units = plugin.units
+                inner_prefix = prefix + "    "
+                body_lines += [
+                    f"{prefix}{var_name}.connect()",
+                    f"{prefix}{var_name}.configure()",
+                    f"{prefix}try:",
+                    f"{inner_prefix}# Ramp {state_name} to a target value",
+                    f"{inner_prefix}{var_name}.ramp_to(0.0)",
+                    f"{inner_prefix}"
+                    f'print(f"{state_name}: {{{var_name}.get_state():.4g}} {units}")',
+                ]
+                for sub_step in sub_steps:
+                    _render_step(sub_step, indent + 1)
+                body_lines += [
+                    f"{prefix}finally:",
+                    f"{prefix}    {var_name}.disconnect()",
+                ]
+
+            elif isinstance(plugin, SequencePlugin):
+                # Generic SequencePlugin (not a StateControlPlugin).
+                body_lines += [
+                    f"{prefix}{var_name}.connect()",
+                    f"{prefix}{var_name}.configure()",
+                    f"{prefix}try:",
+                ]
+                for sub_step in sub_steps:
+                    _render_step(sub_step, indent + 1)
+                body_lines += [
+                    f"{prefix}finally:",
+                    f"{prefix}    {var_name}.disconnect()",
+                ]
+
+            elif isinstance(plugin, MonitorPlugin):
+                body_lines += [
+                    f"{prefix}data = {var_name}.read()",
+                    f"{prefix}print(data)",
+                ]
+
+            elif isinstance(plugin, TransformPlugin):
+                body_lines.append(f"{prefix}# result = {var_name}.run(data)")
+
+            else:
+                body_lines.append(f"{prefix}# {var_name}: unknown plugin type")
+
+            body_lines.append("")
+
+        for step in steps:
+            _render_step(step, 0)
+
+        return "\n".join(header + body_lines)

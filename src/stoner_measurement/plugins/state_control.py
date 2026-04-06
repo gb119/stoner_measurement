@@ -17,16 +17,22 @@ from abc import abstractmethod
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
+from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
+from stoner_measurement.plugins.sequence_plugin import SequencePlugin
 
 
-class StateControlPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
+class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     """Abstract base class for plugins that control experimental state.
 
     A :class:`StateControlPlugin` commands an instrument to move to a target
     value and monitors progress until the state has stabilised.  Subclasses
     must implement :attr:`name`, :attr:`state_name`, :attr:`units`,
     :meth:`set_state`, :meth:`get_state`, and :meth:`is_at_target`.
+
+    Inheriting from :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+    means that a :class:`StateControlPlugin` item in the sequence tree may act
+    as a branch node: other steps can be nested beneath it and will be executed
+    via :meth:`execute_sequence` at the appropriate point in the ramp lifecycle.
 
     The class provides:
 
@@ -43,6 +49,9 @@ class StateControlPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     * **Safety limits** — :attr:`limits` defines the allowed set-point range;
       :meth:`ramp_to` will emit :attr:`state_error` rather than commanding
       an out-of-range value.
+    * **Sub-sequence execution** — :meth:`execute_sequence` connects,
+      configures, runs all sub-step callables in order, then disconnects in a
+      ``finally`` block.  Override to add ramp-to logic around the sub-steps.
 
     Attributes:
         state_changed (pyqtSignal[float]):
@@ -103,6 +112,59 @@ class StateControlPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Always ``"state"``.
         """
         return "state"
+
+    # ------------------------------------------------------------------
+    # Sub-sequence execution
+    # ------------------------------------------------------------------
+
+    def execute_sequence(self, sub_steps: list) -> None:
+        """Connect, configure, run *sub_steps* in order, then disconnect.
+
+        This is the default implementation of the
+        :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+        hook.  It provides a safe lifecycle wrapper:
+
+        1. :meth:`connect` is called to open hardware resources.
+        2. :meth:`configure` is called to apply settings.
+        3. Each callable in *sub_steps* is invoked in order.
+        4. :meth:`disconnect` is called in a ``finally`` block to ensure
+           resources are always released even if a sub-step raises.
+
+        Override this method in a concrete subclass to add ramp logic — for
+        example, iterating over setpoints from a scan generator and calling
+        :meth:`ramp_to` for each one before invoking the sub-step callables.
+
+        Args:
+            sub_steps (list):
+                Ordered list of zero-argument callables, one per nested step.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import StateControlPlugin
+            >>> class _S(StateControlPlugin):
+            ...     @property
+            ...     def name(self): return "S"
+            ...     @property
+            ...     def state_name(self): return "X"
+            ...     @property
+            ...     def units(self): return "au"
+            ...     def set_state(self, v): pass
+            ...     def get_state(self): return 0.0
+            ...     def is_at_target(self): return True
+            >>> called = []
+            >>> p = _S()
+            >>> p.execute_sequence([lambda: called.append(1)])
+            >>> called
+            [1]
+        """
+        self.connect()
+        self.configure()
+        try:
+            for sub_step in sub_steps:
+                sub_step()
+        finally:
+            self.disconnect()
 
     # ------------------------------------------------------------------
     # Instrument lifecycle API
