@@ -86,6 +86,7 @@ class MainWindow(QWidget):
 
         # ---- Tab container ---------------------------------------------
         self._tabs = QTabWidget(self)
+        self._tabs.setTabPosition(QTabWidget.TabPosition.West)
         self._tabs.addTab(self._splitter, "Measurement")
         self._tabs.addTab(self._sequence_tab, "Sequence Editor")
 

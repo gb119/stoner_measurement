@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.trace import TracePlugin
+from stoner_measurement.ui.icons import make_generate_icon
 from stoner_measurement.ui.main_window import MainWindow
 
 
@@ -197,7 +198,7 @@ class MeasurementApp(QMainWindow):
         self._act_stop.setStatusTip("Stop the running sequence")
         self._act_stop.triggered.connect(self._on_stop)
 
-        self._act_generate = QAction("&Generate Code", self)
+        self._act_generate = QAction(make_generate_icon(), "&Generate Code", self)
         self._act_generate.setStatusTip(
             "Generate a Python script stub from the loaded plugins"
         )
