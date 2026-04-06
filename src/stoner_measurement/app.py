@@ -209,15 +209,9 @@ class MeasurementApp(QMainWindow):
 
         self._act_generate = QAction(make_generate_icon(), "&Generate Code", self)
         self._act_generate.setStatusTip(
-            "Generate a Python script stub from the loaded plugins"
-        )
-        self._act_generate.triggered.connect(self._on_generate_code)
-
-        self._act_load_editor = QAction("&Load Steps to Editor", self)
-        self._act_load_editor.setStatusTip(
             "Render the current sequence steps as Python code in the editor"
         )
-        self._act_load_editor.triggered.connect(self._on_load_to_editor)
+        self._act_generate.triggered.connect(self._on_load_to_editor)
 
         # View actions
         self._act_view_measurement = QAction("&Measurement", self)
@@ -261,7 +255,6 @@ class MeasurementApp(QMainWindow):
         seq_menu.addAction(self._act_stop)
         seq_menu.addSeparator()
         seq_menu.addAction(self._act_generate)
-        seq_menu.addAction(self._act_load_editor)
 
         # View menu
         view_menu = menu_bar.addMenu("&View")
@@ -365,18 +358,6 @@ class MeasurementApp(QMainWindow):
     def _on_stop(self) -> None:
         """Stop the running sequence."""
         self._engine.stop()
-
-    def _on_generate_code(self) -> None:
-        """Generate a Python script stub from the loaded plugins and load it into the editor.
-
-        The generated script references plugin instances by their sanitised
-        variable names and provides usage examples appropriate for each plugin
-        type.  The user can then edit and run the script.
-        """
-        plugins = self._plugin_manager.plugins
-        code = self._engine.generate_code(plugins)
-        self._main_window.sequence_tab.set_text(code)
-        self._main_window.tabs.setCurrentIndex(1)
 
     def _on_load_to_editor(self) -> None:
         """Render the current sequence steps as executable Python code in the editor.

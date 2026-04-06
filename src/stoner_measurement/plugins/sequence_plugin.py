@@ -16,12 +16,9 @@ flat ``dict`` as the execution namespace throughout a run.
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
-
-if TYPE_CHECKING:
-    pass
 
 
 class SequencePlugin(BasePlugin):
@@ -94,6 +91,43 @@ class SequencePlugin(BasePlugin):
                 Always ``"sequence"``.
         """
         return "sequence"
+
+    def generate_action_code(
+        self,
+        indent: int,
+        sub_steps: list,
+        render_sub_step: Callable,
+    ) -> list[str]:
+        """Return action code lines by transparently rendering all sub-steps.
+
+        A generic :class:`SequencePlugin` container has no action of its own;
+        it simply delegates to each nested step at the same indentation level.
+        :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+        overrides this method to wrap sub-steps inside a scan loop.
+
+        Args:
+            indent (int):
+                Number of four-space indentation levels for the emitted lines.
+            sub_steps (list):
+                Raw sub-step descriptors from the sequence tree.
+            render_sub_step (Callable):
+                Callback ``(step, indent) -> list[str]`` provided by the engine.
+
+        Returns:
+            (list[str]):
+                Lines for all nested sub-steps at the same indentation level.
+
+        Examples:
+            >>> from stoner_measurement.plugins.sequence_plugin import TopLevelSequence
+            >>> seq = TopLevelSequence()
+            >>> lines = seq.generate_action_code(0, [], lambda s, i: [])
+            >>> lines
+            []
+        """
+        lines: list[str] = []
+        for sub_step in sub_steps:
+            lines.extend(render_sub_step(sub_step, indent))
+        return lines
 
     @abstractmethod
     def execute_sequence(self, sub_steps: list) -> None:

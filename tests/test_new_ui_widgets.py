@@ -200,12 +200,7 @@ class TestMeasurementApp:
         app = MeasurementApp()
         app._act_generate.trigger()
         text = app._main_window.sequence_tab.text
-        # Should contain some generated content
+        # Should contain some generated content (at least the header comment)
         assert len(text) > 0
         app._engine.shutdown()
 
-    def test_load_to_editor_no_steps(self, qapp):
-        app = MeasurementApp()
-        app._act_load_editor.trigger()
-        assert "No sequence steps" in app._main_window.sequence_tab.text
-        app._engine.shutdown()

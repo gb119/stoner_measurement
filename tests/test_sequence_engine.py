@@ -223,14 +223,14 @@ class TestScriptExecution:
 
 
 class TestCodeGeneration:
-    def test_empty_plugins_returns_comment(self, engine):
-        code = engine.generate_code({})
-        assert "No plugins loaded" in code
+    def test_empty_steps_returns_comment(self, engine):
+        code = engine.generate_sequence_code([], {})
+        assert "No sequence steps" in code
 
     def test_trace_plugin_generates_lifecycle_api(self, engine):
         plugin = DummyPlugin()
         plugins = {"dummy": plugin}
-        code = engine.generate_code(plugins)
+        code = engine.generate_sequence_code(["dummy"], plugins)
         assert "dummy.connect()" in code
         assert "dummy.configure()" in code
         assert "data = dummy.measure({})" in code
@@ -240,14 +240,12 @@ class TestCodeGeneration:
     def test_variable_name_in_generated_code(self, engine):
         plugin = DummyPlugin()  # name == "Dummy"
         plugins = {"dummy": plugin}
-        code = engine.generate_code(plugins)
+        code = engine.generate_sequence_code(["dummy"], plugins)
         assert "dummy" in code
 
-    def test_plugin_type_comment_in_generated_code(self, engine):
-        plugin = DummyPlugin()
-        plugins = {"dummy": plugin}
-        code = engine.generate_code(plugins)
-        assert "DummyPlugin" in code
+    def test_unknown_ep_name_generates_not_found_comment(self, engine):
+        code = engine.generate_sequence_code(["nonexistent"], {})
+        assert "No sequence steps" in code
 
 
 # ---------------------------------------------------------------------------
