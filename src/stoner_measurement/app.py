@@ -135,12 +135,16 @@ class MeasurementApp(QMainWindow):
     def _build_actions(self) -> None:
         """Create all QAction instances used by the menu bar and toolbar."""
         # File actions
-        self._act_new = QAction("&New Sequence", self)
+        style = QApplication.style()
+
+        self._act_new = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_FileIcon),
+            "&New Sequence",
+            self,
+        )
         self._act_new.setShortcut(QKeySequence.StandardKey.New)
         self._act_new.setStatusTip("Clear the sequence editor and start a new script")
         self._act_new.triggered.connect(self._on_new)
-
-        style = QApplication.style()
 
         self._act_open = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
@@ -274,6 +278,8 @@ class MeasurementApp(QMainWindow):
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
+        toolbar.addAction(self._act_new)
+        toolbar.addSeparator()
         toolbar.addAction(self._act_open)
         toolbar.addAction(self._act_save)
         toolbar.addSeparator()
