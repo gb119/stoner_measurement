@@ -251,7 +251,7 @@ class TestMeasurementApp:
         assert isinstance(tabs, QTabWidget)
         assert tabs.count() == 2
         assert tabs.tabText(0) == "Measurement"
-        assert tabs.tabText(1) == "Sequence Editor"
+        assert tabs.tabText(1) == "Script Editor"
         app._engine.shutdown()
 
     def test_new_action_opens_new_tab(self, qapp):
@@ -310,11 +310,4 @@ class TestMeasurementApp:
         assert len(text) > 0
         app._engine.shutdown()
 
-    def test_sequence_tab_alias(self, qapp):
-        """sequence_tab property is retained as a backward-compatible alias."""
-        app = MeasurementApp()
-        from stoner_measurement.ui.script_tab import ScriptTab as ST
-        assert isinstance(app._main_window.sequence_tab, ST)
-        assert app._main_window.sequence_tab is app._main_window.script_tab
-        app._engine.shutdown()
 
