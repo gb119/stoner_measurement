@@ -40,6 +40,7 @@ scripts and REPL commands execute.
 from __future__ import annotations
 
 import builtins
+import linecache
 import queue
 import sys
 import threading
@@ -150,14 +151,32 @@ class _EngineThread(QThread):
         """
         self._queue.put(("command", source))
 
-    def submit_script(self, code_str: str) -> None:
+    def submit_script(
+        self,
+        code_str: str,
+        customised: bool = True,
+        line_map: dict[int, BasePlugin] | None = None,
+    ) -> None:
         """Queue a complete Python *code_str* script for execution.
 
         Args:
             code_str (str):
                 A full Python script to compile and execute.
+
+        Keyword Parameters:
+            customised (bool):
+                ``True`` when the user has manually edited the generated script,
+                or when the script was loaded from a file rather than generated
+                from the sequence tree.  Controls the exception-reporting
+                strategy: customised scripts show a filtered traceback; auto-
+                generated scripts report the responsible sequence-step plugin.
+            line_map (dict[int, BasePlugin] | None):
+                Mapping of 1-based line numbers in the script to the plugin
+                instance whose generated code occupies that line.  Only
+                meaningful (and used) when *customised* is ``False``.  Pass
+                ``None`` to skip plugin attribution.
         """
-        self._queue.put(("script", code_str))
+        self._queue.put(("script", code_str, customised, line_map))
 
     # ------------------------------------------------------------------
     # Control
@@ -195,13 +214,14 @@ class _EngineThread(QThread):
             except queue.Empty:
                 continue
 
-            kind, content = item
+            kind = item[0]
             if kind == "quit":
                 break
             elif kind == "command":
-                self._exec_command(content, out_stream, err_stream)
+                self._exec_command(item[1], out_stream, err_stream)
             elif kind == "script":
-                self._exec_script(content, out_stream, err_stream)
+                # item is ("script", code_str, customised, line_map)
+                self._exec_script(item[1], out_stream, err_stream, item[2], item[3])
             self._completed += 1
 
     # ------------------------------------------------------------------
@@ -248,6 +268,8 @@ class _EngineThread(QThread):
         code_str: str,
         out_stream: _SignalStream,
         err_stream: _SignalStream,
+        customised: bool = True,
+        line_map: dict[int, BasePlugin] | None = None,
     ) -> None:
         """Compile and execute *code_str* in the shared namespace.
 
@@ -258,6 +280,18 @@ class _EngineThread(QThread):
                 Stream forwarding stdout to the output signal.
             err_stream (_SignalStream):
                 Stream forwarding stderr to the error_output signal.
+
+        Keyword Parameters:
+            customised (bool):
+                When ``True`` the script has been edited by the user (or loaded
+                from a file), so exception tracebacks are filtered to frames
+                within the script itself.  When ``False`` the script is auto-
+                generated and *line_map* is used to identify the responsible
+                sequence-step plugin.
+            line_map (dict[int, BasePlugin] | None):
+                Mapping of 1-based line numbers to the plugin instance whose
+                code occupies that line.  Only consulted when *customised* is
+                ``False``.
         """
         self._running_script = True
         self._stop_event.clear()
@@ -281,10 +315,97 @@ class _EngineThread(QThread):
             self.error_output.emit(f"Syntax error: {exc}")
             self.status_changed.emit("Error")
         except Exception:
-            self.error_output.emit(traceback.format_exc().rstrip())
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            self._emit_script_error(exc_type, exc_value, exc_tb, code_str, customised, line_map)
             self.status_changed.emit("Error")
         finally:
             self._running_script = False
+
+    def _emit_script_error(
+        self,
+        exc_type: type,
+        exc_value: BaseException,
+        exc_tb: object,
+        code_str: str,
+        customised: bool,
+        line_map: dict[int, BasePlugin] | None,
+    ) -> None:
+        """Format and emit an error arising from script execution.
+
+        The output format depends on whether the script has been customised by
+        the user or is still the auto-generated version:
+
+        * **Customised** — emits a traceback filtered to frames inside the
+          script (``"<sequence>"``), populated with actual source lines from
+          *code_str* so the user can see exactly which line failed.
+        * **Auto-generated** — looks up the errant line number in *line_map*
+          to identify the responsible sequence-step plugin, and emits a concise
+          ``"Error in sequence step: …"`` message.  Falls back to a full
+          traceback when attribution is not available (e.g. the error occurred
+          in the connect/configure/disconnect infrastructure).
+
+        Args:
+            exc_type (type):
+                The exception class (from :func:`sys.exc_info`).
+            exc_value (BaseException):
+                The exception instance.
+            exc_tb (object):
+                The traceback object (from :func:`sys.exc_info`).
+            code_str (str):
+                The script source, used to populate :mod:`linecache` for
+                customised-script tracebacks.
+            customised (bool):
+                Whether the script has been user-edited.
+            line_map (dict[int, BasePlugin] | None):
+                Line-number → plugin mapping for auto-generated scripts.
+        """
+        if customised:
+            # Populate linecache so traceback can show the actual source lines.
+            source_lines = code_str.splitlines(True)
+            linecache.cache["<sequence>"] = (len(code_str), None, source_lines, "<sequence>")
+            try:
+                seq_frames = []
+                cur_tb = exc_tb
+                while cur_tb is not None:
+                    if cur_tb.tb_frame.f_code.co_filename == "<sequence>":  # type: ignore[union-attr]
+                        seq_frames.append((cur_tb.tb_frame, cur_tb.tb_lineno))  # type: ignore[union-attr]
+                    cur_tb = cur_tb.tb_next  # type: ignore[union-attr]
+
+                if seq_frames:
+                    stack = traceback.StackSummary.extract(seq_frames, lookup_lines=True)
+                    parts: list[str] = ["Traceback (in sequence script):\n"]
+                    parts.extend(traceback.format_list(stack))
+                    parts.extend(traceback.format_exception_only(exc_type, exc_value))
+                    self.error_output.emit("".join(parts).rstrip())
+                else:
+                    self.error_output.emit(traceback.format_exc().rstrip())
+            finally:
+                linecache.cache.pop("<sequence>", None)
+        else:
+            # Auto-generated script — find the innermost <sequence> frame and
+            # look up the responsible plugin in the line map.
+            responsible_plugin = None
+            if line_map:
+                seq_lineno: int | None = None
+                cur_tb = exc_tb
+                while cur_tb is not None:
+                    if cur_tb.tb_frame.f_code.co_filename == "<sequence>":  # type: ignore[union-attr]
+                        seq_lineno = cur_tb.tb_lineno  # type: ignore[union-attr]
+                    cur_tb = cur_tb.tb_next  # type: ignore[union-attr]
+                if seq_lineno is not None:
+                    responsible_plugin = line_map.get(seq_lineno)
+
+            if responsible_plugin is not None:
+                exc_str = "".join(
+                    traceback.format_exception_only(exc_type, exc_value)
+                ).rstrip()
+                msg = (
+                    f"Error in sequence step: {responsible_plugin.instance_name}"
+                    f" ({responsible_plugin.name})\n{exc_str}"
+                )
+                self.error_output.emit(msg)
+            else:
+                self.error_output.emit(traceback.format_exc().rstrip())
 
     def _exec_command(
         self,
@@ -578,7 +699,12 @@ class SequenceEngine(QObject):
     # Execution
     # ------------------------------------------------------------------
 
-    def run_script(self, code_str: str) -> None:
+    def run_script(
+        self,
+        code_str: str,
+        customised: bool = True,
+        line_map: dict[int, BasePlugin] | None = None,
+    ) -> None:
         """Submit *code_str* for execution in the background thread.
 
         If a script is already running it is allowed to complete (or be stopped
@@ -589,6 +715,20 @@ class SequenceEngine(QObject):
             code_str (str):
                 Python source code to execute.
 
+        Keyword Parameters:
+            customised (bool):
+                When ``True`` (the default) the script has been user-edited or
+                loaded from a file, and exceptions will be reported as a
+                traceback filtered to the script's own frames.  When ``False``
+                the script is the auto-generated version and exceptions are
+                attributed to the responsible sequence-step plugin via
+                *line_map*.
+            line_map (dict[int, BasePlugin] | None):
+                Mapping of 1-based line numbers to the plugin instance
+                responsible for that line.  Obtained from
+                :meth:`generate_sequence_code` with ``return_line_map=True``.
+                Only consulted when *customised* is ``False``.
+
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
@@ -596,7 +736,7 @@ class SequenceEngine(QObject):
             >>> engine.run_script("x = 1 + 1")
             >>> engine.shutdown()
         """
-        self._thread.submit_script(code_str)
+        self._thread.submit_script(code_str, customised=customised, line_map=line_map)
 
     def execute_command(self, source: str) -> None:
         """Submit a single REPL *source* line for execution.
@@ -715,7 +855,9 @@ class SequenceEngine(QObject):
         self,
         steps: list,
         plugins: dict[str, BasePlugin],
-    ) -> str:
+        *,
+        return_line_map: bool = False,
+    ) -> str | tuple[str, dict[int, BasePlugin]]:
         """Generate executable Python code from the sequence tree.
 
         Produces a three-phase script from *steps*:
@@ -744,9 +886,21 @@ class SequenceEngine(QObject):
                 Mapping of entry-point name → plugin instance used to resolve
                 legacy string step entries.
 
+        Keyword Parameters:
+            return_line_map (bool):
+                When ``True`` the method returns a ``(code, line_map)`` tuple
+                instead of just the code string.  *line_map* maps 1-based line
+                numbers in the returned script to the plugin instance whose
+                generated action code occupies that line.  Only action lines
+                (inside the ``try:`` block) are mapped; infrastructure lines
+                (connect/configure/disconnect) are not included.
+
         Returns:
             (str):
-                Executable Python script representing the sequence tree.
+                Executable Python script representing the sequence tree
+                (when *return_line_map* is ``False``).
+            (tuple[str, dict[int, BasePlugin]]):
+                ``(code, line_map)`` pair when *return_line_map* is ``True``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -762,6 +916,13 @@ class SequenceEngine(QObject):
             True
             >>> "disconnect" in code
             True
+            >>> code2, lmap = engine.generate_sequence_code(
+            ...     ["dummy"], {"dummy": plugin}, return_line_map=True
+            ... )
+            >>> code2 == code
+            True
+            >>> any(v is plugin for v in lmap.values())
+            True
             >>> engine.shutdown()
         """
         # Import here to avoid circular imports at module level.
@@ -774,7 +935,8 @@ class SequenceEngine(QObject):
         ]
 
         if not steps:
-            return "\n".join(header) + "# No sequence steps defined yet.\n"
+            code = "\n".join(header) + "# No sequence steps defined yet.\n"
+            return (code, {}) if return_line_map else code
 
         # ------------------------------------------------------------------
         # Phase 0: collect all unique plugin instances (depth-first order).
@@ -807,7 +969,8 @@ class SequenceEngine(QObject):
             _collect_plugins(step)
 
         if not ordered_plugins:
-            return "\n".join(header) + "# No sequence steps defined yet.\n"
+            code = "\n".join(header) + "# No sequence steps defined yet.\n"
+            return (code, {}) if return_line_map else code
 
         lines: list[str] = list(header)
 
@@ -834,6 +997,11 @@ class SequenceEngine(QObject):
         # ------------------------------------------------------------------
 
         action_lines: list[str] = []
+        # Maps action_lines index → plugin that generated the line.
+        # Attribution is at the top-level step granularity: all lines produced
+        # by a step's _render_action call (including nested sub-steps) are
+        # attributed to the outermost plugin for that step.
+        _action_line_owner: dict[int, BasePlugin] = {}
 
         def _render_action(step: object, indent: int) -> list[str]:
             """Resolve *step* to a plugin and delegate to its generate_action_code."""
@@ -856,17 +1024,46 @@ class SequenceEngine(QObject):
             return plugin.generate_action_code(indent, sub_steps, _render_action)
 
         for step in steps:
+            start_idx = len(action_lines)
             action_lines.extend(_render_action(step, 1))
+            end_idx = len(action_lines)
+
+            # Determine the plugin for attribution.
+            step_plugin_or_name = step[0] if isinstance(step, tuple) else step
+            step_plugin: BasePlugin | None = (
+                step_plugin_or_name
+                if isinstance(step_plugin_or_name, BasePlugin)
+                else plugins.get(step_plugin_or_name)  # type: ignore[arg-type]
+            )
+            if step_plugin is not None:
+                for i in range(start_idx, end_idx):
+                    _action_line_owner[i] = step_plugin
 
         # Trim trailing blank line added by last rendered step.
         while action_lines and action_lines[-1] == "":
             action_lines.pop()
 
         lines.append("try:")
+        # Record where in 'lines' the action lines start (0-based).
+        # action_lines[i] will be at lines[action_lines_start + i],
+        # which is 1-based line number (action_lines_start + i + 1).
+        action_lines_start = len(lines)
         lines.extend(action_lines)
         lines.append("finally:")
         for plugin in reversed(ordered_plugins):
             lines.append(f"    {plugin.instance_name}.disconnect()")
         lines.append("")
 
-        return "\n".join(lines)
+        code = "\n".join(lines)
+
+        if not return_line_map:
+            return code
+
+        # Build the line_map: 1-based line number → plugin.
+        # Only include indices that survived the trailing-blank trim.
+        line_map: dict[int, BasePlugin] = {}
+        for idx, lm_plugin in _action_line_owner.items():
+            if idx < len(action_lines):
+                line_map[action_lines_start + idx + 1] = lm_plugin
+
+        return code, line_map

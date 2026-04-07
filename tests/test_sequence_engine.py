@@ -247,6 +247,184 @@ class TestCodeGeneration:
         code = engine.generate_sequence_code(["nonexistent"], {})
         assert "No sequence steps" in code
 
+    def test_return_line_map_false_returns_string(self, engine):
+        plugin = DummyPlugin()
+        result = engine.generate_sequence_code(["dummy"], {"dummy": plugin})
+        assert isinstance(result, str)
+
+    def test_return_line_map_true_returns_tuple(self, engine):
+        plugin = DummyPlugin()
+        result = engine.generate_sequence_code(
+            ["dummy"], {"dummy": plugin}, return_line_map=True
+        )
+        assert isinstance(result, tuple)
+        code, line_map = result
+        assert isinstance(code, str)
+        assert isinstance(line_map, dict)
+
+    def test_line_map_code_matches_plain_code(self, engine):
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code_plain = engine.generate_sequence_code(["dummy"], plugins)
+        code_mapped, _ = engine.generate_sequence_code(
+            ["dummy"], plugins, return_line_map=True
+        )
+        assert code_plain == code_mapped
+
+    def test_line_map_covers_action_lines(self, engine):
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code, line_map = engine.generate_sequence_code(
+            ["dummy"], plugins, return_line_map=True
+        )
+        assert line_map, "line_map should not be empty for a non-empty sequence"
+        # Every entry in the map should point to the dummy plugin.
+        assert all(v is plugin for v in line_map.values())
+
+    def test_line_map_keys_are_valid_line_numbers(self, engine):
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code, line_map = engine.generate_sequence_code(
+            ["dummy"], plugins, return_line_map=True
+        )
+        source_lines = code.splitlines()
+        total_lines = len(source_lines)
+        for lineno in line_map:
+            assert 1 <= lineno <= total_lines, f"Line {lineno} out of range 1..{total_lines}"
+
+    def test_line_map_lines_are_action_code(self, engine):
+        """Lines in the map should be inside the try: block (action code)."""
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code, line_map = engine.generate_sequence_code(
+            ["dummy"], plugins, return_line_map=True
+        )
+        source_lines = code.splitlines()
+        for lineno in line_map:
+            line = source_lines[lineno - 1]
+            assert line.startswith("    "), (
+                f"Action line {lineno} should be indented: {line!r}"
+            )
+
+    def test_line_map_empty_for_empty_steps(self, engine):
+        _, line_map = engine.generate_sequence_code([], {}, return_line_map=True)
+        assert line_map == {}
+
+    def test_line_map_empty_for_unknown_plugin(self, engine):
+        _, line_map = engine.generate_sequence_code(
+            ["nonexistent"], {}, return_line_map=True
+        )
+        assert line_map == {}
+
+    def test_line_map_two_steps_both_attributed(self, engine):
+        plugin_a = DummyPlugin()
+        plugin_a._instance_name = "alpha"
+        plugin_b = DummyPlugin()
+        plugin_b._instance_name = "beta"
+        plugins = {"alpha": plugin_a, "beta": plugin_b}
+        code, line_map = engine.generate_sequence_code(
+            ["alpha", "beta"], plugins, return_line_map=True
+        )
+        attributed_plugins = set(line_map.values())
+        assert plugin_a in attributed_plugins
+        assert plugin_b in attributed_plugins
+
+
+# ---------------------------------------------------------------------------
+# Exception reporting
+# ---------------------------------------------------------------------------
+
+
+class TestExceptionReporting:
+    def test_customised_script_error_shows_sequence_traceback(self, engine, qapp):
+        """Customised-script exceptions should show a filtered traceback header."""
+        errors: list[str] = []
+        engine.error_output.connect(lambda s: errors.append(s))
+        engine.run_script("raise ValueError('test error')", customised=True)
+        _wait_for_status(engine, qapp, {"Error"})
+        assert errors, "error_output should have been emitted"
+        combined = "\n".join(errors)
+        assert "Traceback (in sequence script):" in combined
+        assert "ValueError" in combined
+        assert "test error" in combined
+
+    def test_customised_script_error_contains_source_line(self, engine, qapp):
+        """Customised-script traceback should include the errant source line."""
+        errors: list[str] = []
+        engine.error_output.connect(lambda s: errors.append(s))
+        script = "x = 1\nraise RuntimeError('boom')\ny = 2\n"
+        engine.run_script(script, customised=True)
+        _wait_for_status(engine, qapp, {"Error"})
+        combined = "\n".join(errors)
+        # The traceback should reference the script filename
+        assert "<sequence>" in combined
+        assert "boom" in combined
+
+    def test_customised_script_no_internal_engine_frames(self, engine, qapp):
+        """Customised-script tracebacks should not include engine module frames."""
+        errors: list[str] = []
+        engine.error_output.connect(lambda s: errors.append(s))
+        engine.run_script("raise ValueError('oops')", customised=True)
+        _wait_for_status(engine, qapp, {"Error"})
+        combined = "\n".join(errors)
+        assert "sequence_engine.py" not in combined
+
+    def test_non_customised_script_reports_plugin_name(self, engine, qapp):
+        """Auto-generated script exceptions should name the responsible plugin."""
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        plugins = {"dummy": plugin}
+        # Build a script that will raise an error at a known action line.
+        code, line_map = engine.generate_sequence_code(
+            ["dummy"], plugins, return_line_map=True
+        )
+        # Replace the action body with a line that raises so we can test attribution.
+        # Instead, inject a script with the correct structure but a raising action.
+        # We craft a minimal script that mirrors what the engine generates but raises.
+        action_lineno = min(line_map)  # first mapped line
+        source_lines = code.splitlines()
+        # Replace the first action line with a raise statement.
+        source_lines[action_lineno - 1] = "    raise RuntimeError('plugin error')"
+        bad_script = "\n".join(source_lines)
+
+        errors: list[str] = []
+        engine.error_output.connect(lambda s: errors.append(s))
+        engine.run_script(bad_script, customised=False, line_map=line_map)
+        _wait_for_status(engine, qapp, {"Error"})
+        combined = "\n".join(errors)
+        assert "Error in sequence step:" in combined
+        assert plugin.instance_name in combined
+        assert "RuntimeError" in combined
+
+    def test_non_customised_script_no_line_map_falls_back(self, engine, qapp):
+        """Without a line_map, auto-generated errors emit a regular traceback."""
+        errors: list[str] = []
+        engine.error_output.connect(lambda s: errors.append(s))
+        engine.run_script("raise ValueError('fallback')", customised=False, line_map=None)
+        _wait_for_status(engine, qapp, {"Error"})
+        combined = "\n".join(errors)
+        assert "ValueError" in combined
+
+    def test_non_customised_infra_error_falls_back_to_traceback(self, engine, qapp):
+        """Errors outside action lines (e.g. on line 1) should emit a full traceback."""
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code, line_map = engine.generate_sequence_code(
+            ["dummy"], plugins, return_line_map=True
+        )
+        # Replace line 1 (header comment) with a raise — not in line_map.
+        source_lines = code.splitlines()
+        source_lines[0] = "raise RuntimeError('infra error')"
+        bad_script = "\n".join(source_lines)
+
+        errors: list[str] = []
+        engine.error_output.connect(lambda s: errors.append(s))
+        engine.run_script(bad_script, customised=False, line_map=line_map)
+        _wait_for_status(engine, qapp, {"Error"})
+        combined = "\n".join(errors)
+        # Falls back to full traceback — line_map has no entry for line 1
+        assert "RuntimeError" in combined
+
 
 # ---------------------------------------------------------------------------
 # Helpers
