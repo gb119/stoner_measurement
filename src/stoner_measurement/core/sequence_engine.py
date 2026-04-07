@@ -47,7 +47,7 @@ import threading
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from io import TextIOBase
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
@@ -360,7 +360,8 @@ class _EngineThread(QThread):
                 Line-number → plugin mapping for auto-generated scripts.
         """
         if customised:
-            # Populate linecache so traceback can show the actual source lines.
+            # Populate linecache so traceback.format_list can show source lines.
+            # Cache entry format: (size, mtime, lines, fullname) — see linecache docs.
             source_lines = code_str.splitlines(True)
             linecache.cache["<sequence>"] = (len(code_str), None, source_lines, "<sequence>")
             try:
@@ -851,6 +852,24 @@ class SequenceEngine(QObject):
     # Code generation
     # ------------------------------------------------------------------
 
+    @overload
+    def generate_sequence_code(
+        self,
+        steps: list,
+        plugins: dict[str, BasePlugin],
+        *,
+        return_line_map: Literal[False] = ...,
+    ) -> str: ...
+
+    @overload
+    def generate_sequence_code(
+        self,
+        steps: list,
+        plugins: dict[str, BasePlugin],
+        *,
+        return_line_map: Literal[True],
+    ) -> tuple[str, dict[int, BasePlugin]]: ...
+
     def generate_sequence_code(
         self,
         steps: list,
@@ -1030,11 +1049,11 @@ class SequenceEngine(QObject):
 
             # Determine the plugin for attribution.
             step_plugin_or_name = step[0] if isinstance(step, tuple) else step
-            step_plugin: BasePlugin | None = (
-                step_plugin_or_name
-                if isinstance(step_plugin_or_name, BasePlugin)
-                else plugins.get(step_plugin_or_name)  # type: ignore[arg-type]
-            )
+            if isinstance(step_plugin_or_name, BasePlugin):
+                step_plugin: BasePlugin | None = step_plugin_or_name
+            else:
+                # step_plugin_or_name is an ep_name string in this branch.
+                step_plugin = plugins.get(str(step_plugin_or_name))
             if step_plugin is not None:
                 for i in range(start_idx, end_idx):
                     _action_line_owner[i] = step_plugin

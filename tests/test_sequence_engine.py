@@ -258,6 +258,7 @@ class TestCodeGeneration:
             ["dummy"], {"dummy": plugin}, return_line_map=True
         )
         assert isinstance(result, tuple)
+        assert len(result) == 2
         code, line_map = result
         assert isinstance(code, str)
         assert isinstance(line_map, dict)

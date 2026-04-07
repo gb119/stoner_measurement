@@ -466,7 +466,7 @@ class MeasurementApp(QMainWindow):
             dock = self._main_window.dock_panel
             steps = dock.sequence_steps
             plugins = self._plugin_manager.plugins
-            _, line_map = self._engine.generate_sequence_code(  # type: ignore[misc]
+            _, line_map = self._engine.generate_sequence_code(
                 steps, plugins, return_line_map=True
             )
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
