@@ -18,7 +18,9 @@ from PyQt6.QtGui import QDragMoveEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QLabel,
+    QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -371,6 +373,11 @@ class DockPanel(QWidget):
 
         # --- Available instruments / plugins ---
         layout.addWidget(QLabel("<b>Available Instruments</b>"))
+        self._instrument_filter = QLineEdit()
+        self._instrument_filter.setObjectName("instrumentFilter")
+        self._instrument_filter.setPlaceholderText("Filter plugins...")
+        self._instrument_filter.setClearButtonEnabled(True)
+        layout.addWidget(self._instrument_filter)
         self._instrument_list = QListWidget()
         self._instrument_list.setObjectName("instrumentList")
         layout.addWidget(self._instrument_list)
@@ -408,6 +415,8 @@ class DockPanel(QWidget):
         self._add_step_btn.clicked.connect(self._add_step)
         self._remove_step_btn.clicked.connect(self._remove_step)
         self._sequence_tree.currentItemChanged.connect(self._on_step_selected)
+        self._instrument_list.itemDoubleClicked.connect(self._on_instrument_double_clicked)
+        self._instrument_filter.textChanged.connect(self._filter_instruments)
 
         # Populate instrument list and monitoring widgets
         self._refresh_instruments()
@@ -422,8 +431,11 @@ class DockPanel(QWidget):
     def _refresh_instruments(self) -> None:
         """Reload the instrument list from the plugin manager."""
         self._instrument_list.clear()
-        for name in self._plugin_manager.plugin_names:
-            self._instrument_list.addItem(name)
+        for name, plugin in self._plugin_manager.plugins.items():
+            item = QListWidgetItem(name)
+            item.setToolTip(plugin.tooltip())
+            self._instrument_list.addItem(item)
+        self._filter_instruments(self._instrument_filter.text())
 
     def _refresh_monitors(self) -> None:
         """Sync monitoring widgets with the current plugin list."""
@@ -438,6 +450,25 @@ class DockPanel(QWidget):
                 widget = plugin.monitor_widget(parent=self._monitor_container)
                 if widget is not None:
                     self.add_monitor_widget(name, widget)
+
+    def _on_instrument_double_clicked(self) -> None:
+        """Add the double-clicked instrument as a sequence step."""
+        self._add_step()
+
+    def _filter_instruments(self, text: str) -> None:
+        """Show only instrument list items whose name contains *text*.
+
+        The filter is case-insensitive.  An empty *text* shows all items.
+
+        Args:
+            text (str):
+                The filter string typed into the filter box.
+        """
+        text_lower = text.lower()
+        for i in range(self._instrument_list.count()):
+            item = self._instrument_list.item(i)
+            if item is not None:
+                item.setHidden(text_lower not in item.text().lower())
 
     def _release_step_plugins(self, item: QTreeWidgetItem) -> None:
         """Remove the strong reference to the plugin in *item* (and all children).
