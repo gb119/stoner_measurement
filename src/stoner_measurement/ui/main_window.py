@@ -23,7 +23,7 @@ class MainWindow(QWidget):
     Contains two tabs:
 
     * **Measurement** — the three-panel layout (DockPanel | PlotWidget | ConfigPanel).
-    * **Sequence Editor** — a Python editor and interactive console.
+    * **Script Editor** — a Python editor and interactive console.
 
     Layout of the *Measurement* tab (left → right):
 
@@ -50,7 +50,7 @@ class MainWindow(QWidget):
         dock_panel (DockPanel): Left panel of the Measurement tab.
         plot_widget (PlotWidget): Central plot in the Measurement tab.
         config_panel (ConfigPanel): Right configuration panel.
-        script_tab (ScriptTab): The Sequence Editor tab widget.
+        script_tab (ScriptTab): The Script Editor tab widget.
     """
 
     def __init__(
@@ -78,7 +78,7 @@ class MainWindow(QWidget):
         if runner is not None:
             runner.data_ready.connect(self._plot_widget.append_point)
 
-        # ---- Sequence Editor tab ---------------------------------------
+        # ---- Script Editor tab -----------------------------------------
         self._script_tab = ScriptTab(self)
         # Forward runner status messages to the console (when runner provided).
         if runner is not None:
@@ -88,7 +88,7 @@ class MainWindow(QWidget):
         self._tabs = QTabWidget(self)
         self._tabs.setTabPosition(QTabWidget.TabPosition.West)
         self._tabs.addTab(self._splitter, "Measurement")
-        self._tabs.addTab(self._script_tab, "Sequence Editor")
+        self._tabs.addTab(self._script_tab, "Script Editor")
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -149,17 +149,7 @@ class MainWindow(QWidget):
 
     @property
     def script_tab(self) -> ScriptTab:
-        """The Sequence Editor tab widget.
-
-        Returns:
-            (ScriptTab):
-                The script tab widget.
-        """
-        return self._script_tab
-
-    @property
-    def sequence_tab(self) -> ScriptTab:
-        """Alias for :attr:`script_tab` retained for backwards compatibility.
+        """The Script Editor tab widget.
 
         Returns:
             (ScriptTab):

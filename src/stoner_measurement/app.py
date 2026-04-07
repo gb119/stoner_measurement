@@ -223,8 +223,8 @@ class MeasurementApp(QMainWindow):
             lambda: self._main_window.tabs.setCurrentIndex(0)
         )
 
-        self._act_view_editor = QAction("&Sequence Editor", self)
-        self._act_view_editor.setStatusTip("Switch to the Sequence Editor tab")
+        self._act_view_editor = QAction("&Script Editor", self)
+        self._act_view_editor.setStatusTip("Switch to the Script Editor tab")
         self._act_view_editor.triggered.connect(
             lambda: self._main_window.tabs.setCurrentIndex(1)
         )
