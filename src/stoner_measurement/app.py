@@ -456,9 +456,21 @@ class MeasurementApp(QMainWindow):
 
     def _on_run(self) -> None:
         """Execute the current sequence script in the engine."""
+        pane = self._main_window.script_tab.current_pane()
         script = self._main_window.script_tab.text
+        customised = pane.customised if pane is not None else True
+        line_map = None
+        if not customised:
+            # Auto-generated script: build the line-number → plugin map so that
+            # exceptions can be attributed to the responsible sequence step.
+            dock = self._main_window.dock_panel
+            steps = dock.sequence_steps
+            plugins = self._plugin_manager.plugins
+            _, line_map = self._engine.generate_sequence_code(
+                steps, plugins, return_line_map=True
+            )
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
-        self._engine.run_script(script)
+        self._engine.run_script(script, customised=customised, line_map=line_map)
 
     def _on_pause(self) -> None:
         """Pause or resume the running sequence."""
