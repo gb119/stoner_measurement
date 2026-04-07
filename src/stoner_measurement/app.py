@@ -67,11 +67,8 @@ class MeasurementApp(QMainWindow):
         self._status_bar.showMessage("Ready")
         self._engine.status_changed.connect(self._status_bar.showMessage)
 
-        # Current open file path (None = unsaved new sequence) ----------------
-        self._current_path: Path | None = None
-
         # Wire the console to the engine --------------------------------------
-        console = self._main_window.sequence_tab.console
+        console = self._main_window.script_tab.console
         console.connect_engine(self._engine)
         self._engine.status_changed.connect(console.write)
 
@@ -87,6 +84,11 @@ class MeasurementApp(QMainWindow):
         self._build_actions()
         self._build_menu_bar()
         self._build_toolbar()
+
+        # Update window title when the active script tab changes --------------
+        self._main_window.script_tab._script_tabs.currentChanged.connect(  # noqa: SLF001
+            lambda _: self._update_window_title()
+        )
 
         self._restore_settings()
 
@@ -394,59 +396,67 @@ class MeasurementApp(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_new_script(self) -> None:
-        """Clear the editor and reset the current file path."""
-        self._main_window.sequence_tab.set_text("")
-        self._current_path = None
-        self.setWindowTitle("Stoner Measurement — New Sequence")
+        """Open a new empty script tab in the editor."""
+        self._main_window.script_tab.new_tab()
+        self._update_window_title()
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
 
     def _on_open_script(self) -> None:
-        """Prompt the user to open a Python sequence file."""
+        """Prompt the user to open a Python sequence file in a new tab."""
+        pane = self._main_window.script_tab.current_pane()
+        start_dir = str(pane.path.parent) if pane and pane.path else ""
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Sequence Script",
-            str(self._current_path.parent) if self._current_path else "",
+            start_dir,
             "Python Files (*.py);;All Files (*)",
         )
         if not path:
             return
-        self._current_path = Path(path)
-        text = self._current_path.read_text(encoding="utf-8")
-        self._main_window.sequence_tab.set_text(text)
-        self.setWindowTitle(f"Stoner Measurement — {self._current_path.name}")
+        file_path = Path(path)
+        text = file_path.read_text(encoding="utf-8")
+        self._main_window.script_tab.add_tab(text, path=file_path)
+        self._update_window_title()
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
 
     def _on_save_script(self) -> None:
-        """Save the editor contents, prompting for a path if not yet saved."""
-        if self._current_path is None:
+        """Save the active tab's editor contents, prompting for a path if needed."""
+        pane = self._main_window.script_tab.current_pane()
+        if pane is None or pane.path is None:
             self._on_save_as_script()
         else:
             self._write_current_file()
 
     def _on_save_as_script(self) -> None:
-        """Prompt the user for a save path and write the editor contents."""
+        """Prompt the user for a save path and write the active tab's editor contents."""
+        pane = self._main_window.script_tab.current_pane()
+        start = str(pane.path) if pane and pane.path else "sequence.py"
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Sequence Script",
-            str(self._current_path) if self._current_path else "sequence.py",
+            start,
             "Python Files (*.py);;All Files (*)",
         )
         if not path:
             return
-        self._current_path = Path(path)
+        if pane is not None:
+            pane.path = Path(path)
         self._write_current_file()
 
     def _write_current_file(self) -> None:
-        """Write the editor text to :attr:`_current_path`."""
-        assert self._current_path is not None  # noqa: S101
-        text = self._main_window.sequence_tab.text
-        self._current_path.write_text(text, encoding="utf-8")
-        self.setWindowTitle(f"Stoner Measurement — {self._current_path.name}")
-        self._status_bar.showMessage(f"Saved {self._current_path.name}")
+        """Write the active tab's editor text to its associated path."""
+        pane = self._main_window.script_tab.current_pane()
+        if pane is None or pane.path is None:
+            return
+        pane.path.write_text(pane.editor.text(), encoding="utf-8")
+        pane.mark_clean()
+        self._main_window.script_tab._update_tab_title(pane)  # noqa: SLF001
+        self._update_window_title()
+        self._status_bar.showMessage(f"Saved {pane.path.name}")
 
     def _on_run(self) -> None:
         """Execute the current sequence script in the engine."""
-        script = self._main_window.sequence_tab.text
+        script = self._main_window.script_tab.text
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
         self._engine.run_script(script)
 
@@ -498,7 +508,7 @@ class MeasurementApp(QMainWindow):
             _inject_step(step)
 
         code = self._engine.generate_sequence_code(steps, plugins)
-        self._main_window.sequence_tab.set_text(code)
+        self._main_window.script_tab.add_tab(code, customised=True)
         self._main_window.tabs.setCurrentIndex(1)
 
     def _on_about(self) -> None:
@@ -511,6 +521,15 @@ class MeasurementApp(QMainWindow):
             "scientific instruments via USB, Serial, GPIB and Ethernet.<br/><br/>"
             "© University of Leeds",
         )
+
+    def _update_window_title(self) -> None:
+        """Refresh the window title to reflect the active script tab."""
+        pane = self._main_window.script_tab.current_pane()
+        if pane is None or pane.path is None:
+            self.setWindowTitle("Stoner Measurement")
+        else:
+            suffix = " *" if pane.dirty else ""
+            self.setWindowTitle(f"Stoner Measurement — {pane.path.name}{suffix}")
 
     # ------------------------------------------------------------------
     # Settings persistence

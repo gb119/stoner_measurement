@@ -11,7 +11,7 @@ from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
 from stoner_measurement.ui.plot_widget import PlotWidget
-from stoner_measurement.ui.sequence_tab import SequenceTab
+from stoner_measurement.ui.script_tab import ScriptTab
 
 if TYPE_CHECKING:
     from stoner_measurement.core.runner import SequenceRunner
@@ -50,7 +50,7 @@ class MainWindow(QWidget):
         dock_panel (DockPanel): Left panel of the Measurement tab.
         plot_widget (PlotWidget): Central plot in the Measurement tab.
         config_panel (ConfigPanel): Right configuration panel.
-        sequence_tab (SequenceTab): The Sequence Editor tab widget.
+        script_tab (ScriptTab): The Sequence Editor tab widget.
     """
 
     def __init__(
@@ -79,16 +79,16 @@ class MainWindow(QWidget):
             runner.data_ready.connect(self._plot_widget.append_point)
 
         # ---- Sequence Editor tab ---------------------------------------
-        self._sequence_tab = SequenceTab(self)
+        self._script_tab = ScriptTab(self)
         # Forward runner status messages to the console (when runner provided).
         if runner is not None:
-            runner.status_changed.connect(self._sequence_tab.console.write)
+            runner.status_changed.connect(self._script_tab.console.write)
 
         # ---- Tab container ---------------------------------------------
         self._tabs = QTabWidget(self)
         self._tabs.setTabPosition(QTabWidget.TabPosition.West)
         self._tabs.addTab(self._splitter, "Measurement")
-        self._tabs.addTab(self._sequence_tab, "Sequence Editor")
+        self._tabs.addTab(self._script_tab, "Sequence Editor")
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -148,11 +148,21 @@ class MainWindow(QWidget):
         return self._config_panel
 
     @property
-    def sequence_tab(self) -> SequenceTab:
+    def script_tab(self) -> ScriptTab:
         """The Sequence Editor tab widget.
 
         Returns:
-            (SequenceTab):
-                The sequence tab widget.
+            (ScriptTab):
+                The script tab widget.
         """
-        return self._sequence_tab
+        return self._script_tab
+
+    @property
+    def sequence_tab(self) -> ScriptTab:
+        """Alias for :attr:`script_tab` retained for backwards compatibility.
+
+        Returns:
+            (ScriptTab):
+                The script tab widget.
+        """
+        return self._script_tab
