@@ -189,7 +189,7 @@ class MeasurementApp(QMainWindow):
             self,
         )
         self._act_run.setShortcut(Qt.Key.Key_F5)
-        self._act_run.setStatusTip("Execute the sequence script in the editor")
+        self._act_run.setStatusTip("Run the current sequence or script")
         self._act_run.triggered.connect(self._on_run)
 
         self._act_pause = QAction(
@@ -309,6 +309,13 @@ class MeasurementApp(QMainWindow):
             self._act_save.setStatusTip("Save the current measurement sequence")
             self._act_save_as.setText("Save Measurement &As…")
             self._act_save_as.setStatusTip("Save the current measurement sequence to a new file")
+            self._act_run.setStatusTip(
+                "Convert the measurement sequence to a script and execute it"
+            )
+            self._act_generate.setStatusTip(
+                "Render the current sequence steps as Python code in the editor"
+                " (without switching tabs)"
+            )
         elif index == self._TAB_EDITOR:
             self._act_new.setText("&New Sequence")
             self._act_new.setStatusTip("Clear the sequence editor and start a new script")
@@ -318,6 +325,10 @@ class MeasurementApp(QMainWindow):
             self._act_save.setStatusTip("Save the current sequence script")
             self._act_save_as.setText("Save Sequence &As…")
             self._act_save_as.setStatusTip("Save the current sequence script to a new file")
+            self._act_run.setStatusTip("Execute the sequence script in the editor")
+            self._act_generate.setStatusTip(
+                "Render the current sequence steps as Python code in the editor"
+            )
 
     # ------------------------------------------------------------------
     # Dispatcher — delegates to the correct handler for the active tab
@@ -455,7 +466,20 @@ class MeasurementApp(QMainWindow):
         self._status_bar.showMessage(f"Saved {pane.path.name}")
 
     def _on_run(self) -> None:
-        """Execute the current sequence script in the engine."""
+        """Dispatch the Run action to the appropriate handler for the active tab.
+
+        On the *Script Editor* tab the current script pane is executed as-is
+        (existing behaviour).  On the *Measurement* tab the sequence tree is
+        converted to a script first and executed without switching away from
+        the Measurement tab.
+        """
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._on_run_from_measurement()
+        else:
+            self._on_run_from_editor()
+
+    def _on_run_from_editor(self) -> None:
+        """Execute the current script in the editor pane."""
         pane = self._main_window.script_tab.current_pane()
         script = self._main_window.script_tab.text
         customised = pane.customised if pane is not None else True
@@ -471,6 +495,11 @@ class MeasurementApp(QMainWindow):
             )
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
         self._engine.run_script(script, customised=customised, line_map=line_map)
+
+    def _on_run_from_measurement(self) -> None:
+        """Convert the sequence to a script and execute it without switching tabs."""
+        code, line_map = self._generate_to_script_tab(switch_to_editor=False)
+        self._engine.run_script(code, customised=False, line_map=line_map)
 
     def _on_pause(self) -> None:
         """Pause or resume the running sequence."""
@@ -496,6 +525,36 @@ class MeasurementApp(QMainWindow):
         manager instances when multiple steps use the same plugin type) are
         injected into the engine namespace so that the generated script can
         reference them by their :attr:`instance_name`.
+
+        When called from the *Measurement* tab the script tab is updated in the
+        background without switching away from the Measurement tab.  When called
+        from the *Script Editor* tab the editor tab is brought to the front.
+        """
+        on_measurement = self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT
+        self._generate_to_script_tab(switch_to_editor=not on_measurement)
+
+    def _generate_to_script_tab(self, *, switch_to_editor: bool) -> tuple[str, dict]:
+        """Generate sequence code and place it in a script pane.
+
+        Injects per-step plugin instances into the engine namespace, generates
+        executable Python code from the current sequence tree, and places the
+        result into the script editor — reusing the current pane when it has
+        not been user-edited, otherwise opening a new tab.
+
+        Keyword Parameters:
+            switch_to_editor (bool):
+                When ``True``, the *Script Editor* tab is brought to the front
+                after the code is written.  Pass ``False`` to keep the current
+                tab active (e.g. when called from the Measurement tab).
+
+        Returns:
+            (tuple):
+                A two-element tuple containing:
+
+                - ``str`` — the generated Python source code.
+                - ``dict`` — the line-number → plugin mapping produced by
+                  :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.generate_sequence_code`
+                  with ``return_line_map=True``.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
@@ -519,7 +578,7 @@ class MeasurementApp(QMainWindow):
         for step in steps:
             _inject_step(step)
 
-        code = self._engine.generate_sequence_code(steps, plugins)
+        code, line_map = self._engine.generate_sequence_code(steps, plugins, return_line_map=True)
         script_tab = self._main_window.script_tab
         pane = script_tab.current_pane()
         if pane is None or pane.customised:
@@ -528,7 +587,9 @@ class MeasurementApp(QMainWindow):
         else:
             # Current tab is unmodified generated (or fresh): replace its content.
             pane.set_text(code)
-        self._main_window.tabs.setCurrentIndex(1)
+        if switch_to_editor:
+            self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
+        return code, line_map
 
     def _on_about(self) -> None:
         """Display the About dialogue."""
