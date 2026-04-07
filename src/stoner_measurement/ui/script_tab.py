@@ -23,10 +23,9 @@ class _ScriptPane(QWidget):
 
     * ``path`` — the file-system path to the saved script (``None`` for unsaved).
     * ``dirty`` — set whenever the editor content changes after the last save or
-      load; cleared by :meth:`mark_clean`.
-    * ``customised`` — set when the user edits a script that was generated from
-      a measurement sequence; cleared only by :meth:`mark_clean` (which resets
-      both flags together).
+      load; cleared by :meth:`mark_clean` or :meth:`set_text`.
+    * ``customised`` — set when the user manually edits content in the pane;
+      cleared by :meth:`set_text` (programmatic replacement resets the flag).
 
     Args:
         parent (QWidget | None):
@@ -110,6 +109,9 @@ class _ScriptPane(QWidget):
     def set_text(self, text: str) -> None:
         """Replace the editor content with *text* without marking the pane dirty.
 
+        Both the dirty and customised flags are cleared by this method, since
+        a programmatic replacement resets any user-edit state.
+
         Args:
             text (str):
                 New content for the editor.
@@ -119,6 +121,7 @@ class _ScriptPane(QWidget):
             self._editor.set_text(text)
         finally:
             self._suppress_dirty = False
+        self._customised = False
         if self._dirty:
             self._dirty = False
             self.dirty_changed.emit(False)
@@ -152,9 +155,10 @@ class _ScriptPane(QWidget):
     # ------------------------------------------------------------------
 
     def _on_contents_changed(self) -> None:
-        """Mark the pane dirty when the editor content changes."""
+        """Mark the pane dirty and customised when the editor content changes."""
         if self._suppress_dirty:
             return
+        self._customised = True
         if not self._dirty:
             self._dirty = True
             self.dirty_changed.emit(True)

@@ -508,7 +508,14 @@ class MeasurementApp(QMainWindow):
             _inject_step(step)
 
         code = self._engine.generate_sequence_code(steps, plugins)
-        self._main_window.script_tab.add_tab(code, customised=True)
+        script_tab = self._main_window.script_tab
+        pane = script_tab.current_pane()
+        if pane is None or pane.customised:
+            # No open tabs, or current tab has been user-edited: open a new tab.
+            script_tab.add_tab(code)
+        else:
+            # Current tab is unmodified generated (or fresh): replace its content.
+            pane.set_text(code)
         self._main_window.tabs.setCurrentIndex(1)
 
     def _on_about(self) -> None:
