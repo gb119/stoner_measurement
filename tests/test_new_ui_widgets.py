@@ -160,6 +160,14 @@ class TestScriptTab:
         pane.editor.insertPlainText("# edit")
         assert pane.dirty is True
 
+    def test_customised_flag_set_on_edit(self, qapp):
+        tab = ScriptTab()
+        pane = tab.current_pane()
+        assert pane is not None
+        assert pane.customised is False
+        pane.editor.insertPlainText("# edit")
+        assert pane.customised is True
+
     def test_mark_clean_clears_dirty(self, qapp):
         tab = ScriptTab()
         pane = tab.current_pane()
@@ -169,12 +177,30 @@ class TestScriptTab:
         pane.mark_clean()
         assert pane.dirty is False
 
+    def test_mark_clean_does_not_clear_customised(self, qapp):
+        tab = ScriptTab()
+        pane = tab.current_pane()
+        assert pane is not None
+        pane.editor.insertPlainText("# edit")
+        assert pane.customised is True
+        pane.mark_clean()
+        assert pane.customised is True
+
     def test_set_text_does_not_set_dirty(self, qapp):
         tab = ScriptTab()
         pane = tab.current_pane()
         assert pane is not None
         tab.set_text("x = 99")
         assert pane.dirty is False
+
+    def test_set_text_clears_customised(self, qapp):
+        tab = ScriptTab()
+        pane = tab.current_pane()
+        assert pane is not None
+        pane.editor.insertPlainText("# edit")
+        assert pane.customised is True
+        pane.set_text("x = 0")
+        assert pane.customised is False
 
     def test_tab_title_shows_dirty_marker(self, qapp):
         tab = ScriptTab()
@@ -255,19 +281,33 @@ class TestMeasurementApp:
         app._act_pause.trigger()
         app._engine.shutdown()
 
-    def test_generate_code_action_opens_new_tab(self, qapp):
+    def test_generate_code_action_replaces_uncustomised_tab(self, qapp):
         app = MeasurementApp()
+        # Initial tab is fresh (not customised); generate should reuse it.
         initial_count = app._main_window.script_tab._script_tabs.count()
         app._act_generate.trigger()
-        # A new tab should have been added
-        assert app._main_window.script_tab._script_tabs.count() == initial_count + 1
+        assert app._main_window.script_tab._script_tabs.count() == initial_count
         text = app._main_window.script_tab.text
-        # Should contain some generated content (at least the header comment)
         assert len(text) > 0
-        # The new tab should be marked as customised
+        # The tab should NOT be marked customised (user has not edited it).
         pane = app._main_window.script_tab.current_pane()
         assert pane is not None
+        assert pane.customised is False
+        app._engine.shutdown()
+
+    def test_generate_code_action_creates_new_tab_for_customised(self, qapp):
+        app = MeasurementApp()
+        # Mark the current tab as customised by having the user edit it.
+        pane = app._main_window.script_tab.current_pane()
+        assert pane is not None
+        pane.editor.insertPlainText("# user edit")
         assert pane.customised is True
+        initial_count = app._main_window.script_tab._script_tabs.count()
+        app._act_generate.trigger()
+        # A new tab should be created rather than replacing the customised one.
+        assert app._main_window.script_tab._script_tabs.count() == initial_count + 1
+        text = app._main_window.script_tab.text
+        assert len(text) > 0
         app._engine.shutdown()
 
     def test_sequence_tab_alias(self, qapp):
