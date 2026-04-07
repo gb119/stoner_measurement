@@ -144,35 +144,36 @@ class MeasurementApp(QMainWindow):
 
         self._act_new = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_FileIcon),
-            "&New Sequence",
+            "&New",
             self,
         )
         self._act_new.setShortcut(QKeySequence.StandardKey.New)
-        self._act_new.setStatusTip("Clear the sequence editor and start a new script")
         self._act_new.triggered.connect(self._on_new)
 
         self._act_open = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
-            "&Open Sequence…",
+            "&Open…",
             self,
         )
         self._act_open.setShortcut(QKeySequence.StandardKey.Open)
-        self._act_open.setStatusTip("Open a Python sequence script from disk")
         self._act_open.triggered.connect(self._on_open)
 
         self._act_save = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton),
-            "&Save Sequence",
+            "&Save",
             self,
         )
         self._act_save.setShortcut(QKeySequence.StandardKey.Save)
-        self._act_save.setStatusTip("Save the current sequence script")
         self._act_save.triggered.connect(self._on_save)
 
-        self._act_save_as = QAction("Save Sequence &As…", self)
+        self._act_save_as = QAction("Save &As…", self)
         self._act_save_as.setShortcut(QKeySequence.StandardKey.SaveAs)
-        self._act_save_as.setStatusTip("Save the current sequence script to a new file")
         self._act_save_as.triggered.connect(self._on_save_as)
+
+        # Connect tab changes so action labels/tips stay current --------
+        self._main_window.tabs.currentChanged.connect(self._on_tab_changed)
+        # Initialise labels for the default (Measurement) tab -----------
+        self._on_tab_changed(self._main_window.tabs.currentIndex())
 
         self._act_exit = QAction("E&xit", self)
         self._act_exit.setShortcut(QKeySequence.StandardKey.Quit)
@@ -288,17 +289,118 @@ class MeasurementApp(QMainWindow):
         toolbar.addAction(self._act_generate)
 
     # ------------------------------------------------------------------
-    # Action handlers
+    # Tab-change handler — keeps action labels/tips in sync
+    # ------------------------------------------------------------------
+
+    # Tab indices (must match the order addTab() is called in MainWindow)
+    _TAB_MEASUREMENT = 0
+    _TAB_EDITOR = 1
+
+    def _on_tab_changed(self, index: int) -> None:
+        """Update action labels and status tips when the active tab changes."""
+        if index == self._TAB_MEASUREMENT:
+            self._act_new.setText("&New Measurement")
+            self._act_new.setStatusTip("Clear the measurement sequence and start a new one")
+            self._act_open.setText("&Open Measurement…")
+            self._act_open.setStatusTip("Open a saved measurement sequence from disk")
+            self._act_save.setText("&Save Measurement")
+            self._act_save.setStatusTip("Save the current measurement sequence")
+            self._act_save_as.setText("Save Measurement &As…")
+            self._act_save_as.setStatusTip("Save the current measurement sequence to a new file")
+        elif index == self._TAB_EDITOR:
+            self._act_new.setText("&New Sequence")
+            self._act_new.setStatusTip("Clear the sequence editor and start a new script")
+            self._act_open.setText("&Open Sequence…")
+            self._act_open.setStatusTip("Open a Python sequence script from disk")
+            self._act_save.setText("&Save Sequence")
+            self._act_save.setStatusTip("Save the current sequence script")
+            self._act_save_as.setText("Save Sequence &As…")
+            self._act_save_as.setStatusTip("Save the current sequence script to a new file")
+
+    # ------------------------------------------------------------------
+    # Dispatcher — delegates to the correct handler for the active tab
     # ------------------------------------------------------------------
 
     def _on_new(self) -> None:
+        """Dispatch the New action to the appropriate handler for the active tab."""
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._on_new_measurement()
+        elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
+            self._on_new_script()
+
+    def _on_open(self) -> None:
+        """Dispatch the Open action to the appropriate handler for the active tab."""
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._on_open_measurement()
+        elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
+            self._on_open_script()
+
+    def _on_save(self) -> None:
+        """Dispatch the Save action to the appropriate handler for the active tab."""
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._on_save_measurement()
+        elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
+            self._on_save_script()
+
+    def _on_save_as(self) -> None:
+        """Dispatch the Save As action to the appropriate handler for the active tab."""
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._on_save_as_measurement()
+        elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
+            self._on_save_as_script()
+
+    # ------------------------------------------------------------------
+    # Measurement-tab stubs (to be implemented once serialisation is ready)
+    # ------------------------------------------------------------------
+
+    def _on_new_measurement(self) -> None:
+        """Clear the measurement sequence and start a new one.
+
+        Notes:
+            This is a stub — full implementation will follow once a
+            serialisation format for the measurement sequence has been
+            established.
+        """
+
+    def _on_open_measurement(self) -> None:
+        """Open a saved measurement sequence from disk.
+
+        Notes:
+            This is a stub — full implementation will follow once a
+            serialisation format for the measurement sequence has been
+            established.
+        """
+
+    def _on_save_measurement(self) -> None:
+        """Save the current measurement sequence to disk.
+
+        Notes:
+            This is a stub — full implementation will follow once a
+            serialisation format for the measurement sequence has been
+            established.
+        """
+
+    def _on_save_as_measurement(self) -> None:
+        """Save the current measurement sequence to a new file.
+
+        Notes:
+            This is a stub — full implementation will follow once a
+            serialisation format for the measurement sequence has been
+            established.
+        """
+
+    # ------------------------------------------------------------------
+    # Sequence-editor (script) action handlers
+    # ------------------------------------------------------------------
+
+    def _on_new_script(self) -> None:
         """Clear the editor and reset the current file path."""
         self._main_window.sequence_tab.set_text("")
         self._current_path = None
         self.setWindowTitle("Stoner Measurement — New Sequence")
-        self._main_window.tabs.setCurrentIndex(1)
+        self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
 
-    def _on_open(self) -> None:
+    def _on_open_script(self) -> None:
         """Prompt the user to open a Python sequence file."""
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -312,16 +414,16 @@ class MeasurementApp(QMainWindow):
         text = self._current_path.read_text(encoding="utf-8")
         self._main_window.sequence_tab.set_text(text)
         self.setWindowTitle(f"Stoner Measurement — {self._current_path.name}")
-        self._main_window.tabs.setCurrentIndex(1)
+        self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
 
-    def _on_save(self) -> None:
+    def _on_save_script(self) -> None:
         """Save the editor contents, prompting for a path if not yet saved."""
         if self._current_path is None:
-            self._on_save_as()
+            self._on_save_as_script()
         else:
             self._write_current_file()
 
-    def _on_save_as(self) -> None:
+    def _on_save_as_script(self) -> None:
         """Prompt the user for a save path and write the editor contents."""
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -345,7 +447,7 @@ class MeasurementApp(QMainWindow):
     def _on_run(self) -> None:
         """Execute the current sequence script in the engine."""
         script = self._main_window.sequence_tab.text
-        self._main_window.tabs.setCurrentIndex(1)
+        self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
         self._engine.run_script(script)
 
     def _on_pause(self) -> None:
