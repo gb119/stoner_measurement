@@ -476,122 +476,122 @@ class TestDockPanel:
 
 
 class TestPlotWidget:
-    def test_creates_widget(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_creates_widget(self, qapp):
+        widget = PlotWidget()
         assert widget is not None
 
-    def test_initial_data_empty(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_initial_data_empty(self, qapp):
+        widget = PlotWidget()
         assert widget.x_data() == []
         assert widget.y_data() == []
 
-    def test_append_point(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_append_point(self, qapp):
+        widget = PlotWidget()
         widget.append_point("sig", 1.0, 2.0)
         assert widget.x_data("sig") == [1.0]
         assert widget.y_data("sig") == [2.0]
 
-    def test_append_point_multiple_traces(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_append_point_multiple_traces(self, qapp):
+        widget = PlotWidget()
         widget.append_point("a", 1.0, 10.0)
         widget.append_point("b", 2.0, 20.0)
         assert widget.x_data("a") == [1.0]
         assert widget.x_data("b") == [2.0]
         assert sorted(widget.trace_names) == ["a", "b"]
 
-    def test_set_trace(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_set_trace(self, qapp):
+        widget = PlotWidget()
         widget.set_trace("sig", [0.0, 1.0, 2.0], [3.0, 4.0, 5.0])
         assert widget.x_data("sig") == [0.0, 1.0, 2.0]
         assert widget.y_data("sig") == [3.0, 4.0, 5.0]
 
-    def test_set_trace_replaces_data(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_set_trace_replaces_data(self, qapp):
+        widget = PlotWidget()
         widget.set_trace("sig", [0.0, 1.0], [2.0, 3.0])
         widget.set_trace("sig", [10.0], [20.0])
         assert widget.x_data("sig") == [10.0]
         assert widget.y_data("sig") == [20.0]
 
-    def test_remove_trace(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_remove_trace(self, qapp):
+        widget = PlotWidget()
         widget.append_point("sig", 1.0, 2.0)
         widget.remove_trace("sig")
         assert "sig" not in widget.trace_names
         assert widget.x_data("sig") == []
 
-    def test_remove_trace_missing_noop(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_remove_trace_missing_noop(self, qapp):
+        widget = PlotWidget()
         widget.remove_trace("nonexistent")  # should not raise
 
-    def test_clear_all(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_clear_all(self, qapp):
+        widget = PlotWidget()
         widget.append_point("a", 1.0, 2.0)
         widget.append_point("b", 3.0, 4.0)
         widget.clear_all()
         assert widget.trace_names == []
 
-    def test_clear_data_deprecated(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_clear_data_deprecated(self, qapp):
+        widget = PlotWidget()
         widget.append_point("default", 1.0, 2.0)
         with pytest.warns(DeprecationWarning):
             widget.clear_data()
         assert widget.trace_names == []
 
-    def test_append_data_deprecated(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_append_data_deprecated(self, qapp):
+        widget = PlotWidget()
         with pytest.warns(DeprecationWarning):
             widget.append_data(1.0, 2.0)
         assert widget.x_data("default") == [1.0]
 
-    def test_pg_widget_exists(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_pg_widget_exists(self, qapp):
+        widget = PlotWidget()
         assert widget.pg_widget is not None
 
-    def test_default_axis_names(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_default_axis_names(self, qapp):
+        widget = PlotWidget()
         assert "left" in widget.axis_names
         assert "bottom" in widget.axis_names
 
-    def test_add_y_axis(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_add_y_axis(self, qapp):
+        widget = PlotWidget()
         widget.add_y_axis("temperature", "Temperature (K)", side="right")
         assert "temperature" in widget.axis_names
 
-    def test_add_y_axis_duplicate_noop(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_add_y_axis_duplicate_noop(self, qapp):
+        widget = PlotWidget()
         widget.add_y_axis("temp", "Temp", side="right")
         widget.add_y_axis("temp", "Other", side="right")  # should not raise
         assert widget.axis_names.count("temp") == 1
 
-    def test_add_x_axis(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_add_x_axis(self, qapp):
+        widget = PlotWidget()
         widget.add_x_axis("freq", "Frequency (Hz)", position="top")
         assert "freq" in widget.axis_names
 
-    def test_assign_trace_axes(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_assign_trace_axes(self, qapp):
+        widget = PlotWidget()
         widget.add_y_axis("temp", "Temperature (K)")
         widget.append_point("sig", 0.0, 300.0)
         widget.assign_trace_axes("sig", y_axis="temp")
         assert widget._trace_axes["sig"] == ("bottom", "temp")
 
-    def test_assign_trace_axes_unknown_trace_raises(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_assign_trace_axes_unknown_trace_raises(self, qapp):
+        widget = PlotWidget()
         with pytest.raises(KeyError, match="unknown"):
             widget.assign_trace_axes("unknown", y_axis="left")
 
-    def test_assign_trace_axes_unknown_axis_raises(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_assign_trace_axes_unknown_axis_raises(self, qapp):
+        widget = PlotWidget()
         widget.append_point("sig", 0.0, 1.0)
         with pytest.raises(KeyError, match="no_such"):
             widget.assign_trace_axes("sig", y_axis="no_such")
 
-    def test_x_data_unknown_trace_returns_empty(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_x_data_unknown_trace_returns_empty(self, qapp):
+        widget = PlotWidget()
         assert widget.x_data("nonexistent") == []
 
-    def test_y_data_unknown_trace_returns_empty(self, runner):
-        widget = PlotWidget(runner=runner)
+    def test_y_data_unknown_trace_returns_empty(self, qapp):
+        widget = PlotWidget()
         assert widget.y_data("nonexistent") == []
 
 
@@ -679,12 +679,12 @@ class TestConfigPanel:
 
 
 class TestMainWindow:
-    def test_creates_window(self, plugin_manager, runner):
-        window = MainWindow(plugin_manager=plugin_manager, runner=runner)
+    def test_creates_window(self, plugin_manager):
+        window = MainWindow(plugin_manager=plugin_manager)
         assert window is not None
 
-    def test_has_three_panels(self, plugin_manager, runner):
-        window = MainWindow(plugin_manager=plugin_manager, runner=runner)
+    def test_has_three_panels(self, plugin_manager):
+        window = MainWindow(plugin_manager=plugin_manager)
         assert window.dock_panel is not None
         assert window.plot_widget is not None
         assert window.config_panel is not None
