@@ -40,28 +40,61 @@ Building and running a sequence
 Writing a plugin
 ----------------
 
-Subclass :class:`~stoner_measurement.plugins.trace.TracePlugin` (for
-measurement traces) and register it via the ``stoner_measurement.plugins``
-entry-point group in your package's ``pyproject.toml``:
+Choose the appropriate base class for your plugin type and register it via
+the ``stoner_measurement.plugins`` entry-point group in your package's
+``pyproject.toml``:
 
 .. code-block:: toml
 
     [project.entry-points."stoner_measurement.plugins"]
     my_instrument = "my_package.my_plugin:MyPlugin"
 
-Implement at minimum:
+**Measurement trace plugin** — subclass
+:class:`~stoner_measurement.plugins.trace.TracePlugin`:
 
-* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name` — unique
-  string identifier.
-* :meth:`~stoner_measurement.plugins.trace.TracePlugin.execute` — generator
-  that yields ``(x, y)`` data tuples for each measured scan point.
+* Required: :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`
+  and :meth:`~stoner_measurement.plugins.trace.TracePlugin.execute` (a
+  generator that yields ``(x, y)`` tuples for each measured point).
+* Optionally override :meth:`~stoner_measurement.plugins.trace.TracePlugin.connect`,
+  :meth:`~stoner_measurement.plugins.trace.TracePlugin.configure`, and
+  :meth:`~stoner_measurement.plugins.trace.TracePlugin.disconnect` to manage
+  hardware connections.
 
-The sequence engine calls :meth:`~stoner_measurement.plugins.trace.TracePlugin.measure`
-once per step, which collects the complete multipoint trace and returns it as a
-list of ``(channel, x, y)`` tuples.
+**State-control plugin** — subclass
+:class:`~stoner_measurement.plugins.state_control.StateControlPlugin`:
 
-Optionally override:
+* Required: :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`,
+  :attr:`~stoner_measurement.plugins.state_control.StateControlPlugin.state_name`,
+  :attr:`~stoner_measurement.plugins.state_control.StateControlPlugin.units`,
+  :meth:`~stoner_measurement.plugins.state_control.StateControlPlugin.set_state`,
+  :meth:`~stoner_measurement.plugins.state_control.StateControlPlugin.get_state`,
+  and :meth:`~stoner_measurement.plugins.state_control.StateControlPlugin.is_at_target`.
+* The sequence engine drives this plugin over a scan defined by
+  :attr:`~stoner_measurement.plugins.state_control.StateControlPlugin.scan_generator`.
+  Other steps can be nested beneath it in the sequence tree.
+
+**Monitor plugin** — subclass
+:class:`~stoner_measurement.plugins.monitor.MonitorPlugin`:
+
+* Required: :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`,
+  :attr:`~stoner_measurement.plugins.monitor.MonitorPlugin.quantity_names`,
+  :attr:`~stoner_measurement.plugins.monitor.MonitorPlugin.units`, and
+  :meth:`~stoner_measurement.plugins.monitor.MonitorPlugin.read`.
+
+**Transform plugin** — subclass
+:class:`~stoner_measurement.plugins.transform.TransformPlugin`:
+
+* Required: :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`,
+  :attr:`~stoner_measurement.plugins.transform.TransformPlugin.required_inputs`,
+  :attr:`~stoner_measurement.plugins.transform.TransformPlugin.output_names`,
+  and :meth:`~stoner_measurement.plugins.transform.TransformPlugin.transform`.
+
+All :class:`~stoner_measurement.plugins.trace.TracePlugin` and
+:class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+subclasses can optionally provide custom configuration tabs by overriding:
 
 * :meth:`~stoner_measurement.plugins.trace.TracePlugin._plugin_config_tabs` —
   return a :class:`~PyQt6.QtWidgets.QWidget` that appears as the *Settings*
   configuration tab.
+* :meth:`~stoner_measurement.plugins.trace.TracePlugin._about_html` — return
+  an HTML string that appears as an *About* configuration tab.
