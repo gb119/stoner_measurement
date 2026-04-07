@@ -324,6 +324,36 @@ class BasePlugin(ABC):
             ("General", self._general_config_widget(parent=parent)),
         ]
 
+    def tooltip(self) -> str:
+        """Return a short tooltip description for this plugin.
+
+        The default implementation extracts the first non-empty line of the
+        class docstring and returns it (stripped of leading/trailing whitespace).
+        Subclasses may override this to provide alternative tooltip text.
+
+        Returns:
+            (str):
+                A one-line description of the plugin, or an empty string if no
+                docstring is available.
+
+        Examples:
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> tooltip = plugin.tooltip()
+            >>> isinstance(tooltip, str)
+            True
+            >>> len(tooltip) > 0
+            True
+        """
+        doc = type(self).__doc__
+        if not doc:
+            return ""
+        for line in doc.splitlines():
+            stripped = line.strip()
+            if stripped:
+                return stripped
+        return ""
+
     def monitor_widget(self, parent: QWidget | None = None) -> QWidget | None:
         """Return an optional live-status widget for the left dock panel.
 
