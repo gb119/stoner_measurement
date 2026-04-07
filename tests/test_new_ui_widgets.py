@@ -1,11 +1,11 @@
-"""Tests for the new UI widgets: EditorWidget, ConsoleWidget, SequenceTab."""
+"""Tests for the new UI widgets: EditorWidget, ConsoleWidget, ScriptTab."""
 
 from __future__ import annotations
 
 from stoner_measurement.app import MeasurementApp
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
-from stoner_measurement.ui.sequence_tab import SequenceTab
+from stoner_measurement.ui.script_tab import ScriptTab
 
 
 class TestEditorWidget:
@@ -117,27 +117,81 @@ class TestConsoleWidget:
         assert "my_command" in console._history
 
 
-class TestSequenceTab:
+class TestScriptTab:
     def test_creates_widget(self, qapp):
-        tab = SequenceTab()
+        tab = ScriptTab()
         assert tab is not None
 
     def test_initial_text_empty(self, qapp):
-        tab = SequenceTab()
+        tab = ScriptTab()
         assert tab.text == ""
 
     def test_set_and_get_text(self, qapp):
-        tab = SequenceTab()
+        tab = ScriptTab()
         tab.set_text("# sequence")
         assert tab.text == "# sequence"
 
     def test_has_editor(self, qapp):
-        tab = SequenceTab()
+        tab = ScriptTab()
         assert isinstance(tab.editor, EditorWidget)
 
     def test_has_console(self, qapp):
-        tab = SequenceTab()
+        tab = ScriptTab()
         assert isinstance(tab.console, ConsoleWidget)
+
+    def test_new_tab_increments_count(self, qapp):
+        tab = ScriptTab()
+        initial = tab._script_tabs.count()
+        tab.new_tab()
+        assert tab._script_tabs.count() == initial + 1
+
+    def test_add_tab_sets_text_and_customised(self, qapp):
+        tab = ScriptTab()
+        pane = tab.add_tab("x = 1", customised=True)
+        assert pane.editor.text() == "x = 1"
+        assert pane.customised is True
+        assert pane.dirty is False
+
+    def test_dirty_flag_set_on_edit(self, qapp):
+        tab = ScriptTab()
+        pane = tab.current_pane()
+        assert pane is not None
+        assert pane.dirty is False
+        pane.editor.insertPlainText("# edit")
+        assert pane.dirty is True
+
+    def test_mark_clean_clears_dirty(self, qapp):
+        tab = ScriptTab()
+        pane = tab.current_pane()
+        assert pane is not None
+        pane.editor.insertPlainText("# edit")
+        assert pane.dirty is True
+        pane.mark_clean()
+        assert pane.dirty is False
+
+    def test_set_text_does_not_set_dirty(self, qapp):
+        tab = ScriptTab()
+        pane = tab.current_pane()
+        assert pane is not None
+        tab.set_text("x = 99")
+        assert pane.dirty is False
+
+    def test_tab_title_shows_dirty_marker(self, qapp):
+        tab = ScriptTab()
+        pane = tab.current_pane()
+        assert pane is not None
+        clean_title = pane.tab_title()
+        pane.editor.insertPlainText("# edit")
+        assert pane.tab_title() == f"{clean_title} *"
+
+    def test_close_last_tab_resets_not_removes(self, qapp):
+        tab = ScriptTab()
+        assert tab._script_tabs.count() == 1
+        tab.set_text("some text")
+        tab._on_close_tab(0)
+        # Still one tab, but now empty
+        assert tab._script_tabs.count() == 1
+        assert tab.text == ""
 
 
 class TestMeasurementApp:
@@ -174,11 +228,16 @@ class TestMeasurementApp:
         assert tabs.tabText(1) == "Sequence Editor"
         app._engine.shutdown()
 
-    def test_new_action_clears_editor(self, qapp):
+    def test_new_action_opens_new_tab(self, qapp):
         app = MeasurementApp()
-        app._main_window.sequence_tab.set_text("old content")
+        # Switch to editor tab so the New action targets it
+        app._main_window.tabs.setCurrentIndex(app._TAB_EDITOR)
+        app._main_window.script_tab.set_text("old content")
+        initial_count = app._main_window.script_tab._script_tabs.count()
         app._act_new.trigger()
-        assert app._main_window.sequence_tab.text == ""
+        # A new empty tab should have been added and be current
+        assert app._main_window.script_tab._script_tabs.count() == initial_count + 1
+        assert app._main_window.script_tab.text == ""
         app._engine.shutdown()
 
     def test_run_action_starts_engine(self, qapp):
@@ -196,11 +255,26 @@ class TestMeasurementApp:
         app._act_pause.trigger()
         app._engine.shutdown()
 
-    def test_generate_code_action_populates_editor(self, qapp):
+    def test_generate_code_action_opens_new_tab(self, qapp):
         app = MeasurementApp()
+        initial_count = app._main_window.script_tab._script_tabs.count()
         app._act_generate.trigger()
-        text = app._main_window.sequence_tab.text
+        # A new tab should have been added
+        assert app._main_window.script_tab._script_tabs.count() == initial_count + 1
+        text = app._main_window.script_tab.text
         # Should contain some generated content (at least the header comment)
         assert len(text) > 0
+        # The new tab should be marked as customised
+        pane = app._main_window.script_tab.current_pane()
+        assert pane is not None
+        assert pane.customised is True
+        app._engine.shutdown()
+
+    def test_sequence_tab_alias(self, qapp):
+        """sequence_tab property is retained as a backward-compatible alias."""
+        app = MeasurementApp()
+        from stoner_measurement.ui.script_tab import ScriptTab as ST
+        assert isinstance(app._main_window.sequence_tab, ST)
+        assert app._main_window.sequence_tab is app._main_window.script_tab
         app._engine.shutdown()
 
