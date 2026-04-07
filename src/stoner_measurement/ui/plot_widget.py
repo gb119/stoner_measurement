@@ -10,14 +10,11 @@ from __future__ import annotations
 import warnings
 from collections.abc import Sequence
 from itertools import cycle
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
-
-if TYPE_CHECKING:
-    from stoner_measurement.core.runner import SequenceRunner
 
 # Colour palette used when automatically assigning colours to new traces.
 _TRACE_COLOURS = [
@@ -51,22 +48,13 @@ class PlotWidget(QWidget):
             The underlying :class:`pyqtgraph.PlotWidget`.
 
     Keyword Parameters:
-        runner (SequenceRunner | None):
-            Optional
-            :class:`~stoner_measurement.core.runner.SequenceRunner` whose
-            ``data_ready`` signal is connected to :meth:`append_point`.
-            Pass ``None`` (the default) when using the new
-            :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`
-            workflow where plugin signals are wired directly.
         parent (QWidget | None):
             Optional Qt parent widget.
 
     Examples:
         >>> from PyQt6.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.core.runner import SequenceRunner
-        >>> runner = SequenceRunner()
-        >>> widget = PlotWidget(runner=runner)
+        >>> widget = PlotWidget()
         >>> widget.append_point("my_trace", 1.0, 2.0)
         >>> widget.x_data("my_trace")
         [1.0]
@@ -74,11 +62,9 @@ class PlotWidget(QWidget):
 
     def __init__(
         self,
-        runner: SequenceRunner | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._runner = runner
 
         # Per-trace data storage: name → (x_list, y_list)
         self._trace_data: dict[str, tuple[list[float], list[float]]] = {}
@@ -154,8 +140,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.append_point("sig", 0.0, 1.0)
             >>> widget.x_data("sig")
             [0.0]
@@ -187,8 +172,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.set_trace("sig", [0.0, 1.0], [2.0, 3.0])
             >>> widget.y_data("sig")
             [2.0, 3.0]
@@ -211,8 +195,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.append_point("sig", 0.0, 1.0)
             >>> widget.remove_trace("sig")
             >>> widget.trace_names
@@ -233,8 +216,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.append_point("a", 1.0, 2.0)
             >>> widget.clear_all()
             >>> widget.trace_names
@@ -286,8 +268,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.add_y_axis("temperature", "Temperature (K)", side="right")
             >>> "temperature" in widget.axis_names
             True
@@ -334,8 +315,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.add_x_axis("freq", "Frequency (Hz)", position="top")
             >>> "freq" in widget.axis_names
             True
@@ -389,8 +369,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.add_y_axis("temp", "Temperature (K)")
             >>> widget.append_point("sig", 0.0, 300.0)
             >>> widget.assign_trace_axes("sig", y_axis="temp")
@@ -429,8 +408,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.append_point("sig", 1.0, 2.0)
             >>> widget.x_data("sig")
             [1.0]
@@ -453,8 +431,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.append_point("sig", 1.0, 2.0)
             >>> widget.y_data("sig")
             [2.0]
@@ -470,8 +447,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> widget.append_point("b", 0.0, 1.0)
             >>> widget.append_point("a", 0.0, 1.0)
             >>> widget.trace_names
@@ -486,8 +462,7 @@ class PlotWidget(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.core.runner import SequenceRunner
-            >>> widget = PlotWidget(runner=SequenceRunner())
+            >>> widget = PlotWidget()
             >>> sorted(widget.axis_names)
             ['bottom', 'left']
         """
