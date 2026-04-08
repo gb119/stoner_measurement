@@ -407,7 +407,7 @@ class MeasurementApp(QMainWindow):
         try:
             data = json.loads(file_path.read_text(encoding="utf-8"))
             steps = sequence_from_json(data)
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError) as exc:
             QMessageBox.critical(
                 self,
                 "Open Measurement",
@@ -474,7 +474,7 @@ class MeasurementApp(QMainWindow):
         try:
             data = sequence_to_json(steps)
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, TypeError, ValueError) as exc:
             QMessageBox.critical(
                 self,
                 "Save Measurement",

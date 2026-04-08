@@ -658,10 +658,10 @@ class DockPanel(QWidget):
             1
         """
         # Release all existing step plugins and clear the tree.
-        while self._sequence_tree.topLevelItemCount() > 0:
-            item = self._sequence_tree.topLevelItem(0)
+        for i in range(self._sequence_tree.topLevelItemCount() - 1, -1, -1):
+            item = self._sequence_tree.topLevelItem(i)
             self._release_step_plugins(item)
-            self._sequence_tree.takeTopLevelItem(0)
+            self._sequence_tree.takeTopLevelItem(i)
         self._step_plugins.clear()
         self._step_counts.clear()
 
