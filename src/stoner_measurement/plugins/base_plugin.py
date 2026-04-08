@@ -22,9 +22,10 @@ sub-types: :class:`~stoner_measurement.plugins.trace.TracePlugin`,
 
 from __future__ import annotations
 
+import importlib
 from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
@@ -189,6 +190,119 @@ class BasePlugin(ABC):
                 Previous instance name.
             new_name (str):
                 New instance name.
+        """
+
+    # ------------------------------------------------------------------
+    # JSON serialisation
+    # ------------------------------------------------------------------
+
+    def to_json(self) -> dict[str, Any]:
+        """Serialise this plugin's configuration to a JSON-compatible dict.
+
+        The returned dict contains at minimum:
+
+        * ``"type"`` — the plugin sub-type tag (e.g. ``"trace"``, ``"state"``).
+        * ``"class"`` — the fully qualified class path
+          ``"module:ClassName"`` used by :meth:`from_json` to reconstruct the
+          exact subclass.
+        * ``"instance_name"`` — the current :attr:`instance_name`.
+
+        Subclasses should call ``super().to_json()`` and then add their own
+        configuration keys to the returned dict.
+
+        Returns:
+            (dict[str, Any]):
+                A JSON-serialisable dictionary representing this plugin's
+                current configuration.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> d = plugin.to_json()
+            >>> d["type"]
+            'trace'
+            >>> d["instance_name"]
+            'dummy'
+            >>> "class" in d
+            True
+        """
+        cls = type(self)
+        return {
+            "type": self.plugin_type,
+            "class": f"{cls.__module__}:{cls.__qualname__}",
+            "instance_name": self.instance_name,
+        }
+
+    @classmethod
+    def from_json(
+        cls, data: dict[str, Any], parent: QObject | None = None
+    ) -> BasePlugin:
+        """Reconstruct a plugin from a serialised dict produced by :meth:`to_json`.
+
+        Uses the ``"class"`` field to import the concrete plugin class, creates
+        a new instance, restores :attr:`instance_name`, and calls
+        :meth:`_restore_from_json` so that subclasses can restore additional
+        state such as the active scan generator.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised plugin dict as produced by :meth:`to_json`.
+
+        Keyword Parameters:
+            parent (QObject | None):
+                Optional Qt parent for QObject-based plugin subclasses.
+
+        Returns:
+            (BasePlugin):
+                A fully configured plugin instance of the correct concrete type.
+
+        Raises:
+            KeyError:
+                If ``data`` does not contain a ``"class"`` key.
+            ImportError:
+                If the module specified in ``"class"`` cannot be imported.
+            AttributeError:
+                If the class name specified in ``"class"`` is not found in the
+                module.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> original = DummyPlugin()
+            >>> original.instance_name = "my_dummy"
+            >>> restored = BasePlugin.from_json(original.to_json())
+            >>> restored.instance_name
+            'my_dummy'
+            >>> type(restored).__name__
+            'DummyPlugin'
+        """
+        class_path = data["class"]
+        module_name, class_name = class_path.rsplit(":", 1)
+        module = importlib.import_module(module_name)
+        plugin_cls = getattr(module, class_name)
+        try:
+            instance: BasePlugin = plugin_cls(parent=parent)
+        except TypeError:
+            instance = plugin_cls()
+        if "instance_name" in data:
+            instance.instance_name = data["instance_name"]
+        instance._restore_from_json(data)  # noqa: SLF001
+        return instance
+
+    def _restore_from_json(self, data: dict[str, Any]) -> None:
+        """Restore additional plugin state from *data* after construction.
+
+        Called by :meth:`from_json` after the instance is created and
+        :attr:`instance_name` is set.  The default implementation is a no-op.
+        Subclasses with extra persistent state (e.g. a scan generator)
+        should override this method.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised plugin dict as produced by :meth:`to_json`.
         """
 
     # ------------------------------------------------------------------

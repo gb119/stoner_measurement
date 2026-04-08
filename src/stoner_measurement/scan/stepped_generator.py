@@ -213,6 +213,64 @@ class SteppedScanGenerator(BaseScanGenerator):
         """
         return SteppedScanWidget(generator=self, parent=parent)
 
+    def to_json(self) -> dict:
+        """Serialise this generator's configuration to a JSON-compatible dict.
+
+        Returns:
+            (dict):
+                A dict with keys ``"type"``, ``"start"``, and ``"stages"``.
+                Each element of ``"stages"`` is a ``[target, step_size, measure]``
+                list suitable for direct JSON serialisation.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.25, True)])
+            >>> d = gen.to_json()
+            >>> d["type"]
+            'SteppedScanGenerator'
+            >>> d["start"]
+            0.0
+            >>> d["stages"]
+            [[1.0, 0.25, True]]
+        """
+        return {
+            "type": "SteppedScanGenerator",
+            "start": self._start,
+            "stages": [[t, s, m] for t, s, m in self._stages],
+        }
+
+    @classmethod
+    def _from_json_data(
+        cls, data: dict, parent=None
+    ) -> SteppedScanGenerator:
+        """Reconstruct a :class:`SteppedScanGenerator` from serialised *data*.
+
+        Args:
+            data (dict):
+                Dict as produced by :meth:`to_json`.
+
+        Keyword Parameters:
+            parent (QObject | None):
+                Optional Qt parent object.
+
+        Returns:
+            (SteppedScanGenerator):
+                A fully configured instance.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> gen = SteppedScanGenerator(start=2.0, stages=[(4.0, 1.0, False)])
+            >>> restored = SteppedScanGenerator._from_json_data(gen.to_json())
+            >>> restored.start
+            2.0
+            >>> restored.stages
+            [(4.0, 1.0, False)]
+        """
+        stages = [(float(t), float(s), bool(m)) for t, s, m in data.get("stages", [])]
+        return cls(start=float(data.get("start", 0.0)), stages=stages, parent=parent)
+
 
 class SteppedScanWidget(QWidget):
     """Configuration and live-preview widget for :class:`SteppedScanGenerator`.

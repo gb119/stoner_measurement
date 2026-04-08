@@ -26,6 +26,9 @@ class TestBaseScanGenerator:
         def config_widget(self, parent=None) -> QWidget:
             return QWidget(parent)
 
+        def to_json(self) -> dict:
+            return {"type": "_Minimal"}
+
     def test_cannot_instantiate_directly(self):
         with pytest.raises(TypeError):
             BaseScanGenerator()  # type: ignore[abstract]
@@ -40,6 +43,9 @@ class TestBaseScanGenerator:
             def config_widget(self, parent=None):
                 return QWidget(parent)
 
+            def to_json(self):
+                return {"type": "_Partial"}
+
         with pytest.raises(TypeError):
             _Partial()
 
@@ -53,6 +59,9 @@ class TestBaseScanGenerator:
             def measure_flags(self):
                 return np.ones(5, dtype=bool)
 
+            def to_json(self):
+                return {"type": "_Partial"}
+
         with pytest.raises(TypeError):
             _Partial()
 
@@ -65,6 +74,9 @@ class TestBaseScanGenerator:
 
             def config_widget(self, parent=None):
                 return QWidget(parent)
+
+            def to_json(self):
+                return {"type": "_Partial"}
 
         with pytest.raises(TypeError):
             _Partial()

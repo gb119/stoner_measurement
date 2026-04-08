@@ -627,6 +627,87 @@ class DockPanel(QWidget):
             for i in range(self._sequence_tree.topLevelItemCount())
         ]
 
+    def load_sequence(self, steps: list[_SequenceStep]) -> None:
+        """Replace the current sequence tree with *steps*.
+
+        All existing steps are removed and their plugin references released
+        before the new steps are inserted.  Each plugin is added to
+        :attr:`_step_plugins` so that it is not garbage-collected, and its
+        ``instance_name_changed`` signal (if present) is wired to the tree's
+        label-update handler.
+
+        This method is the programmatic counterpart of the interactive
+        drag-and-drop sequence builder.  Use it when loading a sequence from a
+        file (see :mod:`stoner_measurement.core.serializer`).
+
+        Args:
+            steps (list[_SequenceStep]):
+                Sequence steps in the same nested format returned by
+                :attr:`sequence_steps`.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> pm = PluginManager()
+            >>> panel = DockPanel(plugin_manager=pm)
+            >>> plugin = DummyPlugin()
+            >>> panel.load_sequence([plugin])
+            >>> len(panel.sequence_steps)
+            1
+        """
+        # Release all existing step plugins and clear the tree.
+        for i in range(self._sequence_tree.topLevelItemCount() - 1, -1, -1):
+            item = self._sequence_tree.topLevelItem(i)
+            self._release_step_plugins(item)
+            self._sequence_tree.takeTopLevelItem(i)
+        self._step_plugins.clear()
+        self._step_counts.clear()
+
+        for step in steps:
+            self._load_step(step, parent_item=None)
+
+    def _load_step(
+        self, step: _SequenceStep, parent_item: QTreeWidgetItem | None
+    ) -> QTreeWidgetItem:
+        """Insert a single *step* into the tree under *parent_item*.
+
+        Recursively processes sub-steps for
+        :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+        steps.
+
+        Args:
+            step (_SequenceStep):
+                A plugin instance or ``(plugin, [sub-steps…])`` tuple.
+            parent_item (QTreeWidgetItem | None):
+                Parent tree item, or ``None`` for top-level items.
+
+        Returns:
+            (QTreeWidgetItem):
+                The newly created tree item.
+        """
+        if isinstance(step, tuple):
+            plugin, sub_steps = step
+        else:
+            plugin, sub_steps = step, []
+
+        if hasattr(plugin, "instance_name_changed"):
+            plugin.instance_name_changed.connect(self._on_plugin_renamed)
+        self._step_plugins.append(plugin)
+
+        text = f"{plugin.instance_name} ({plugin.name})"
+        item = self._sequence_tree.make_item(plugin, text)
+        if parent_item is None:
+            self._sequence_tree.addTopLevelItem(item)
+        else:
+            parent_item.addChild(item)
+
+        for sub_step in sub_steps:
+            self._load_step(sub_step, parent_item=item)
+
+        return item
+
     def add_monitor_widget(self, plugin_name: str, widget: QWidget) -> None:
         """Add a monitoring widget for the named plugin.
 

@@ -8,10 +8,14 @@ a caching mechanism, and a Qt widget for configuration.
 from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QWidget
+
+if TYPE_CHECKING:
+    pass
 
 
 class _ABCQObjectMeta(type(QObject), ABCMeta):
@@ -62,6 +66,108 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         self._cache: np.ndarray | None = None
         self._flags_cache: np.ndarray | None = None
         self._index: int = 0
+
+    @abstractmethod
+    def to_json(self) -> dict[str, Any]:
+        """Serialise the generator's configuration to a JSON-compatible dict.
+
+        The returned dict must contain at least a ``"type"`` key whose value is
+        the generator's class name (e.g. ``"SteppedScanGenerator"``).  All
+        parameters needed to exactly recreate the current configuration must
+        also be included so that a round-trip through :meth:`from_json` is
+        lossless.
+
+        Returns:
+            (dict[str, Any]):
+                A JSON-serialisable dictionary representing the generator's
+                current state.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.scan.stepped_generator import SteppedScanGenerator
+            >>> gen = SteppedScanGenerator(start=1.0, stages=[(2.0, 0.5, True)])
+            >>> d = gen.to_json()
+            >>> d["type"]
+            'SteppedScanGenerator'
+            >>> d["start"]
+            1.0
+        """
+
+    @classmethod
+    def from_json(
+        cls, data: dict[str, Any], parent: QObject | None = None
+    ) -> BaseScanGenerator:
+        """Reconstruct a scan generator from a serialised dict produced by :meth:`to_json`.
+
+        Dispatches to the appropriate concrete subclass based on the value of
+        ``data["type"]``.  Raises :exc:`ValueError` if the type is unknown.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised generator dict as produced by :meth:`to_json`.
+
+        Keyword Parameters:
+            parent (QObject | None):
+                Optional Qt parent for the new generator instance.
+
+        Returns:
+            (BaseScanGenerator):
+                A fully configured scan generator instance.
+
+        Raises:
+            ValueError:
+                If ``data["type"]`` does not match any registered generator class.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.scan.stepped_generator import SteppedScanGenerator
+            >>> gen = SteppedScanGenerator(start=0.5, stages=[(1.0, 0.25, True)])
+            >>> restored = BaseScanGenerator.from_json(gen.to_json())
+            >>> restored.start
+            0.5
+            >>> restored.stages
+            [(1.0, 0.25, True)]
+        """
+        from stoner_measurement.scan.function_generator import FunctionScanGenerator
+        from stoner_measurement.scan.stepped_generator import SteppedScanGenerator
+
+        _REGISTRY: dict[str, type[BaseScanGenerator]] = {
+            "SteppedScanGenerator": SteppedScanGenerator,
+            "FunctionScanGenerator": FunctionScanGenerator,
+        }
+        type_name = data.get("type", "")
+        gen_cls = _REGISTRY.get(type_name)
+        if gen_cls is None:
+            raise ValueError(
+                f"Unknown scan generator type: {type_name!r}. "
+                f"Expected one of: {sorted(_REGISTRY)}"
+            )
+        return gen_cls._from_json_data(data, parent)  # noqa: SLF001
+
+    @classmethod
+    def _from_json_data(
+        cls, data: dict[str, Any], parent: QObject | None = None
+    ) -> BaseScanGenerator:
+        """Reconstruct an instance of *this* class from *data*.
+
+        Concrete subclasses must override this classmethod to read their
+        specific parameters from *data* and return a fully configured instance.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised generator dict as produced by :meth:`to_json`.
+
+        Keyword Parameters:
+            parent (QObject | None):
+                Optional Qt parent for the new generator instance.
+
+        Returns:
+            (BaseScanGenerator):
+                A fully configured instance of this generator class.
+        """
+        raise NotImplementedError(f"{cls.__name__} must implement _from_json_data()")
 
     @abstractmethod
     def generate(self) -> np.ndarray:
