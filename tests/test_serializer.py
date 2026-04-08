@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from stoner_measurement.scan import (
@@ -329,3 +331,186 @@ class TestSequenceSerializer:
         assert len(steps) == 3
         for i, step in enumerate(steps):
             assert step.instance_name == f"dummy_{i}"
+
+
+class TestJsonTextRoundTrip:
+    """Tests that verify JSON text serialisation — i.e. the dict can be rendered to
+    a JSON string and then parsed back to produce an identical result.
+
+    This mirrors the real on-disk path: ``json.dumps`` then ``json.loads``.
+    """
+
+    def test_stepped_generator_json_text_round_trip(self, qapp):
+        gen = SteppedScanGenerator(start=1.5, stages=[(3.0, 0.5, True), (5.0, 0.25, False)])
+        text = json.dumps(gen.to_json())
+        restored = BaseScanGenerator.from_json(json.loads(text))
+        assert isinstance(restored, SteppedScanGenerator)
+        assert restored.start == gen.start
+        assert restored.stages == gen.stages
+
+    def test_function_generator_json_text_round_trip(self, qapp):
+        gen = FunctionScanGenerator(
+            waveform=WaveformType.SAWTOOTH, amplitude=2.0, offset=-1.0,
+            phase=30.0, periods=2.5, num_points=64,
+        )
+        text = json.dumps(gen.to_json())
+        restored = BaseScanGenerator.from_json(json.loads(text))
+        assert isinstance(restored, FunctionScanGenerator)
+        assert restored.waveform is WaveformType.SAWTOOTH
+        assert restored.amplitude == 2.0
+        assert restored.offset == -1.0
+        assert restored.phase == 30.0
+        assert restored.periods == 2.5
+        assert restored.num_points == 64
+
+    def test_trace_plugin_json_text_round_trip(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+        from stoner_measurement.plugins.dummy import DummyPlugin
+
+        plugin = DummyPlugin()
+        plugin.instance_name = "my_trace"
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(2.0, 1.0, True)], parent=plugin
+        )
+        text = json.dumps(plugin.to_json())
+        restored = BasePlugin.from_json(json.loads(text))
+        assert isinstance(restored, DummyPlugin)
+        assert restored.instance_name == "my_trace"
+        assert isinstance(restored.scan_generator, SteppedScanGenerator)
+        assert restored.scan_generator.start == 0.0
+        assert restored.scan_generator.stages == [(2.0, 1.0, True)]
+
+    def test_state_control_plugin_json_text_round_trip(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+        from stoner_measurement.plugins.counter import CounterPlugin
+
+        plugin = CounterPlugin()
+        plugin.instance_name = "my_counter"
+        plugin.scan_generator = SteppedScanGenerator(
+            start=-1.0, stages=[(1.0, 0.5, True)], parent=plugin
+        )
+        text = json.dumps(plugin.to_json())
+        restored = BasePlugin.from_json(json.loads(text))
+        assert isinstance(restored, CounterPlugin)
+        assert restored.instance_name == "my_counter"
+        assert isinstance(restored.scan_generator, SteppedScanGenerator)
+        assert restored.scan_generator.start == -1.0
+        assert restored.scan_generator.stages == [(1.0, 0.5, True)]
+
+    def test_full_sequence_json_text_round_trip(self, qapp):
+        from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
+        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.dummy import DummyPlugin
+
+        outer = CounterPlugin()
+        outer.instance_name = "field"
+        outer.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(10.0, 1.0, True)], parent=outer
+        )
+        inner = DummyPlugin()
+        inner.instance_name = "iv_curve"
+        inner.scan_generator = FunctionScanGenerator(amplitude=0.1, num_points=50, parent=inner)
+        standalone = DummyPlugin()
+        standalone.instance_name = "calibration"
+
+        original_steps = [(outer, [inner]), standalone]
+        text = json.dumps(sequence_to_json(original_steps))
+        restored_steps = sequence_from_json(json.loads(text))
+
+        assert len(restored_steps) == 2
+
+        # Check the nested outer step.
+        restored_outer, restored_sub = restored_steps[0]
+        assert isinstance(restored_outer, CounterPlugin)
+        assert restored_outer.instance_name == "field"
+        assert isinstance(restored_outer.scan_generator, SteppedScanGenerator)
+        assert restored_outer.scan_generator.stages == [(10.0, 1.0, True)]
+
+        # Check the inner sub-step.
+        assert len(restored_sub) == 1
+        assert isinstance(restored_sub[0], DummyPlugin)
+        assert restored_sub[0].instance_name == "iv_curve"
+        assert isinstance(restored_sub[0].scan_generator, FunctionScanGenerator)
+        assert restored_sub[0].scan_generator.amplitude == 0.1
+        assert restored_sub[0].scan_generator.num_points == 50
+
+        # Check the standalone leaf step.
+        assert isinstance(restored_steps[1], DummyPlugin)
+        assert restored_steps[1].instance_name == "calibration"
+
+
+class TestSequenceEqualityRoundTrip:
+    """Verify that a round-trip through JSON yields a structurally identical sequence.
+
+    The canonical comparison is ``original.to_json() == restored.to_json()``:
+    if both sides produce the same dict, the plugin and its scan generator
+    have been faithfully recreated.
+    """
+
+    def _assert_step_equal(self, original, restored) -> None:
+        """Recursively compare two _SequenceStep values by their to_json() output."""
+        if isinstance(original, tuple):
+            orig_plugin, orig_sub = original
+            rest_plugin, rest_sub = restored
+            assert orig_plugin.to_json() == rest_plugin.to_json()
+            assert len(orig_sub) == len(rest_sub)
+            for o, r in zip(orig_sub, rest_sub):
+                self._assert_step_equal(o, r)
+        else:
+            assert original.to_json() == restored.to_json()
+
+    def test_flat_sequence_equality(self, qapp):
+        from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
+        from stoner_measurement.plugins.dummy import DummyPlugin
+
+        steps = [DummyPlugin(), DummyPlugin()]
+        steps[0].instance_name = "a"
+        steps[1].instance_name = "b"
+        steps[1].scan_generator = FunctionScanGenerator(amplitude=3.0, num_points=10)
+        restored = sequence_from_json(json.loads(json.dumps(sequence_to_json(steps))))
+        assert len(restored) == len(steps)
+        for orig, rest in zip(steps, restored):
+            self._assert_step_equal(orig, rest)
+
+    def test_nested_sequence_equality(self, qapp):
+        from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
+        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.dummy import DummyPlugin
+
+        outer = CounterPlugin()
+        outer.instance_name = "sweep"
+        outer.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(5.0, 0.5, True), (10.0, 0.5, False)], parent=outer
+        )
+        inner1 = DummyPlugin()
+        inner1.instance_name = "trace_a"
+        inner2 = DummyPlugin()
+        inner2.instance_name = "trace_b"
+        inner2.scan_generator = FunctionScanGenerator(
+            waveform=WaveformType.TRIANGLE, amplitude=2.0, num_points=30, parent=inner2
+        )
+
+        original = [(outer, [inner1, inner2])]
+        text = json.dumps(sequence_to_json(original))
+        restored = sequence_from_json(json.loads(text))
+
+        assert len(restored) == 1
+        self._assert_step_equal(original[0], restored[0])
+
+    def test_deeply_nested_sequence_equality(self, qapp):
+        from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
+        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.dummy import DummyPlugin
+
+        level1 = CounterPlugin()
+        level1.instance_name = "outer"
+        level2 = CounterPlugin()
+        level2.instance_name = "middle"
+        level3 = DummyPlugin()
+        level3.instance_name = "leaf"
+
+        original = [(level1, [(level2, [level3])])]
+        text = json.dumps(sequence_to_json(original))
+        restored = sequence_from_json(json.loads(text))
+
+        self._assert_step_equal(original[0], restored[0])
