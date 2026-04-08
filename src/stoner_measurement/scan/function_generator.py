@@ -268,6 +268,77 @@ class FunctionScanGenerator(BaseScanGenerator):
         """
         return FunctionScanWidget(generator=self, parent=parent)
 
+    def to_json(self) -> dict:
+        """Serialise this generator's configuration to a JSON-compatible dict.
+
+        Returns:
+            (dict):
+                A dict with keys ``"type"``, ``"waveform"``, ``"amplitude"``,
+                ``"offset"``, ``"phase"``, ``"periods"``, and ``"num_points"``.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> gen = FunctionScanGenerator(amplitude=2.0, num_points=50)
+            >>> d = gen.to_json()
+            >>> d["type"]
+            'FunctionScanGenerator'
+            >>> d["amplitude"]
+            2.0
+            >>> d["num_points"]
+            50
+        """
+        return {
+            "type": "FunctionScanGenerator",
+            "waveform": self._waveform.value,
+            "amplitude": self._amplitude,
+            "offset": self._offset,
+            "phase": self._phase,
+            "periods": self._periods,
+            "num_points": self._num_points,
+        }
+
+    @classmethod
+    def _from_json_data(
+        cls, data: dict, parent=None
+    ) -> FunctionScanGenerator:
+        """Reconstruct a :class:`FunctionScanGenerator` from serialised *data*.
+
+        Args:
+            data (dict):
+                Dict as produced by :meth:`to_json`.
+
+        Keyword Parameters:
+            parent (QObject | None):
+                Optional Qt parent object.
+
+        Returns:
+            (FunctionScanGenerator):
+                A fully configured instance.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> gen = FunctionScanGenerator(amplitude=3.0, offset=1.0, num_points=20)
+            >>> restored = FunctionScanGenerator._from_json_data(gen.to_json())
+            >>> restored.amplitude
+            3.0
+            >>> restored.offset
+            1.0
+            >>> restored.num_points
+            20
+        """
+        waveform = WaveformType(data.get("waveform", WaveformType.SINE.value))
+        return cls(
+            waveform=waveform,
+            amplitude=float(data.get("amplitude", 1.0)),
+            offset=float(data.get("offset", 0.0)),
+            phase=float(data.get("phase", 0.0)),
+            periods=float(data.get("periods", 1.0)),
+            num_points=int(data.get("num_points", 100)),
+            parent=parent,
+        )
+
 
 class FunctionScanWidget(QWidget):
     """Configuration and live-preview widget for :class:`FunctionScanGenerator`.

@@ -362,8 +362,58 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         return "trace"
 
     # ------------------------------------------------------------------
-    # Status management
+    # JSON serialisation
     # ------------------------------------------------------------------
+
+    def to_json(self) -> dict:
+        """Serialise this plugin's configuration, including the scan generator.
+
+        Extends the base :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
+        dict with a ``"scan_generator"`` key containing the serialised
+        :attr:`scan_generator` state.
+
+        Returns:
+            (dict):
+                A JSON-serialisable dictionary with at least the keys produced
+                by :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
+                plus ``"scan_generator"``.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> d = plugin.to_json()
+            >>> d["type"]
+            'trace'
+            >>> "scan_generator" in d
+            True
+            >>> d["scan_generator"]["type"]
+            'SteppedScanGenerator'
+        """
+        data = super().to_json()
+        data["scan_generator"] = self.scan_generator.to_json()
+        return data
+
+    def _restore_from_json(self, data: dict) -> None:
+        """Restore the scan generator from *data*.
+
+        Called by :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.from_json`
+        after construction.  Reconstructs the :attr:`scan_generator` and emits
+        :attr:`scan_generator_changed` so that any already-connected widgets
+        can update their content.
+
+        Args:
+            data (dict):
+                Serialised plugin dict as produced by :meth:`to_json`.
+        """
+        if "scan_generator" in data:
+            from stoner_measurement.scan.base import BaseScanGenerator
+
+            gen = BaseScanGenerator.from_json(data["scan_generator"], parent=self)
+            self.scan_generator = gen
+            self.scan_generator_changed.emit()
+
 
     @property
     def status(self) -> TraceStatus:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from PyQt6.QtCore import QSettings, QSize, Qt
@@ -56,6 +57,9 @@ class MeasurementApp(QMainWindow):
         # Tracks which plugins have been wired to the engine / plot so they can
         # be cleanly removed when the plugin list changes.
         self._engine_plugins: dict[str, object] = {}
+
+        # Path to the most recently saved/loaded measurement sequence file.
+        self._current_measurement_path: Path | None = None
 
         # Central widget -------------------------------------------------------
         self._main_window = MainWindow(plugin_manager=self._plugin_manager)
@@ -363,44 +367,121 @@ class MeasurementApp(QMainWindow):
             self._on_save_as_script()
 
     # ------------------------------------------------------------------
-    # Measurement-tab stubs (to be implemented once serialisation is ready)
+    # Measurement-tab actions
     # ------------------------------------------------------------------
 
     def _on_new_measurement(self) -> None:
         """Clear the measurement sequence and start a new one.
 
-        Notes:
-            This is a stub — full implementation will follow once a
-            serialisation format for the measurement sequence has been
-            established.
+        Asks the user to confirm discarding the current sequence, then clears
+        the sequence tree and resets the current file path.
         """
+        self._main_window.dock_panel.load_sequence([])
+        self._current_measurement_path = None
+        self._update_window_title()
 
     def _on_open_measurement(self) -> None:
-        """Open a saved measurement sequence from disk.
+        """Open a saved measurement sequence from a JSON file.
 
-        Notes:
-            This is a stub — full implementation will follow once a
-            serialisation format for the measurement sequence has been
-            established.
+        Prompts the user to select a ``.json`` file, loads it, deserialises
+        the sequence, and populates the sequence tree.  Displays an error
+        message if the file cannot be parsed.
         """
+        from stoner_measurement.core.serializer import sequence_from_json
+
+        dock = self._main_window.dock_panel
+        start_dir = (
+            str(self._current_measurement_path.parent)
+            if self._current_measurement_path
+            else ""
+        )
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Measurement Sequence",
+            start_dir,
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not path:
+            return
+        file_path = Path(path)
+        try:
+            data = json.loads(file_path.read_text(encoding="utf-8"))
+            steps = sequence_from_json(data)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self,
+                "Open Measurement",
+                f"Could not load sequence from {file_path.name!r}:\n{exc}",
+            )
+            return
+        dock.load_sequence(steps)
+        self._current_measurement_path = file_path
+        self._update_window_title()
 
     def _on_save_measurement(self) -> None:
-        """Save the current measurement sequence to disk.
+        """Save the current measurement sequence to the last-used file.
 
-        Notes:
-            This is a stub — full implementation will follow once a
-            serialisation format for the measurement sequence has been
-            established.
+        Falls back to :meth:`_on_save_as_measurement` when no file has been
+        chosen yet.
         """
+        if self._current_measurement_path is None:
+            self._on_save_as_measurement()
+            return
+        self._save_measurement_to(self._current_measurement_path)
 
     def _on_save_as_measurement(self) -> None:
-        """Save the current measurement sequence to a new file.
+        """Prompt the user for a file path and save the measurement sequence.
 
-        Notes:
-            This is a stub — full implementation will follow once a
-            serialisation format for the measurement sequence has been
-            established.
+        Displays a save-file dialog restricted to ``.json`` files.  On
+        success the chosen path becomes the new :attr:`_current_measurement_path`
+        so that subsequent *Save* operations write to the same file.
         """
+        start_dir = (
+            str(self._current_measurement_path.parent)
+            if self._current_measurement_path
+            else ""
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Measurement Sequence",
+            start_dir,
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not path:
+            return
+        file_path = Path(path)
+        if file_path.suffix.lower() != ".json":
+            file_path = file_path.with_suffix(".json")
+        if self._save_measurement_to(file_path):
+            self._current_measurement_path = file_path
+            self._update_window_title()
+
+    def _save_measurement_to(self, path: Path) -> bool:
+        """Serialise the current sequence tree and write it to *path*.
+
+        Args:
+            path (Path):
+                Destination file path.
+
+        Returns:
+            (bool):
+                ``True`` on success, ``False`` if an error occurred (an error
+                message box is shown to the user in that case).
+        """
+        from stoner_measurement.core.serializer import sequence_to_json
+
+        steps = self._main_window.dock_panel.sequence_steps
+        try:
+            data = sequence_to_json(steps)
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self,
+                "Save Measurement",
+                f"Could not save sequence to {path.name!r}:\n{exc}",
+            )
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # Sequence-editor (script) action handlers
@@ -603,7 +684,16 @@ class MeasurementApp(QMainWindow):
         )
 
     def _update_window_title(self) -> None:
-        """Refresh the window title to reflect the active script tab."""
+        """Refresh the window title to reflect the active tab and file."""
+        tab_idx = self._main_window.tabs.currentIndex()
+        if tab_idx == self._TAB_MEASUREMENT:
+            if self._current_measurement_path is None:
+                self.setWindowTitle("Stoner Measurement")
+            else:
+                self.setWindowTitle(
+                    f"Stoner Measurement — {self._current_measurement_path.name}"
+                )
+            return
         pane = self._main_window.script_tab.current_pane()
         if pane is None or pane.path is None:
             self.setWindowTitle("Stoner Measurement")
