@@ -26,6 +26,8 @@ from abc import abstractmethod
 from collections.abc import Generator
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import numpy as np
+
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -266,6 +268,11 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             Emitted for each (channel, x, y) data point during acquisition.
         trace_complete (pyqtSignal[str]):
             Emitted with the channel name when a trace is fully acquired.
+        data (dict[str, tuple[np.ndarray, np.ndarray]]):
+            Most recently acquired trace data, populated by :meth:`measure`.
+            Maps each channel name to a ``(x_array, y_array)`` pair of
+            one-dimensional NumPy arrays.  Empty until the first successful
+            call to :meth:`measure`.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -310,6 +317,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         super().__init__(parent)
         self.scan_generator: BaseScanGenerator = self._scan_generator_class(parent=self)
         self._status: TraceStatus = TraceStatus.IDLE
+        self.data: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
@@ -492,8 +500,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
     def measure(
         self, parameters: dict[str, Any]
-    ) -> list[tuple[str, float, float]]:
-        """Trigger acquisition and return all ``(channel, x, y)`` data points.
+    ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """Trigger acquisition and return all trace data keyed by channel name.
 
         This is the primary measurement entry point for the sequence engine.
         It sets :attr:`status` to :attr:`TraceStatus.MEASURING`, delegates to
@@ -502,10 +510,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         signals, and finally sets :attr:`status` to
         :attr:`TraceStatus.DATA_AVAILABLE` before returning.
 
-        Unlike a generator-based approach, this method blocks until the entire
-        trace is acquired and then returns all data points as a single list.
-        The sequence engine calls :meth:`measure` once per measurement step to
-        obtain the complete multipoint dataset.
+        The result is also stored as :attr:`data` so that downstream code can
+        access it without holding on to the return value.
 
         Subclasses may override this method to implement custom measurement
         logic while still honouring the status transitions and signal
@@ -517,8 +523,10 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 :meth:`execute_multichannel` (and thence to :meth:`execute`).
 
         Returns:
-            (list[tuple[str, float, float]]):
-                List of ``(channel_name, x, y)`` triples, one per data point.
+            (dict[str, tuple[np.ndarray, np.ndarray]]):
+                Mapping of channel name to a ``(x_array, y_array)`` pair of
+                one-dimensional NumPy arrays.  The same dict is stored as
+                :attr:`data`.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -529,29 +537,39 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> plugin.scan_generator = SteppedScanGenerator(
             ...     start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
             ... )
-            >>> pts = plugin.measure({})
-            >>> len(pts)
+            >>> result = plugin.measure({})
+            >>> list(result.keys())
+            ['Dummy']
+            >>> import numpy as np
+            >>> isinstance(result['Dummy'][0], np.ndarray)
+            True
+            >>> len(result['Dummy'][0])
             5
-            >>> pts[0][0]
-            'Dummy'
             >>> plugin.status is TraceStatus.DATA_AVAILABLE
+            True
+            >>> plugin.data is result
             True
         """
         self._set_status(TraceStatus.MEASURING)
         started_channels: set[str] = set()
-        result: list[tuple[str, float, float]] = []
+        xs: dict[str, list[float]] = {}
+        ys: dict[str, list[float]] = {}
         try:
             for channel, x, y in self.execute_multichannel(parameters):
                 if channel not in started_channels:
                     self.trace_started.emit(channel)
                     started_channels.add(channel)
+                    xs[channel] = []
+                    ys[channel] = []
                 self.trace_point.emit(channel, x, y)
-                result.append((channel, x, y))
+                xs[channel].append(x)
+                ys[channel].append(y)
         finally:
             for channel in started_channels:
                 self.trace_complete.emit(channel)
             self._set_status(TraceStatus.DATA_AVAILABLE)
-        return result
+        self.data = {ch: (np.array(xs[ch]), np.array(ys[ch])) for ch in xs}
+        return self.data
 
     def disconnect(self) -> None:
         """Release all reserved instrument resources.
@@ -925,8 +943,9 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
         Returns:
             (list[str]):
-                Lines calling ``measure({})``, iterating ``(channel, x, y)``
-                triples, and printing each point.
+                Lines that call ``measure({})``, assigning the result to the
+                plugin's :attr:`data` attribute, then iterate over the returned
+                channel dict printing a summary for each channel.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -934,16 +953,16 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> from stoner_measurement.plugins.dummy import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> lines = plugin.generate_action_code(1, [], lambda s, i: [])
-            >>> "    data = dummy.measure({})" in lines
+            >>> "    dummy.data = dummy.measure({})" in lines
             True
-            >>> "    for channel, x, y in data:" in lines
+            >>> "    for channel, (x_arr, y_arr) in dummy.data.items():" in lines
             True
         """
         prefix = "    " * indent
         var_name = self.instance_name
         return [
-            f"{prefix}data = {var_name}.measure({{}})",
-            f"{prefix}for channel, x, y in data:",
-            f'{prefix}    print(f"{{channel}}: x={{x:.4g}}, y={{y:.4g}}")',
+            f"{prefix}{var_name}.data = {var_name}.measure({{}})",
+            f"{prefix}for channel, (x_arr, y_arr) in {var_name}.data.items():",
+            f'{prefix}    print(f"{{channel}}: {{len(x_arr)}} points")',
             "",
         ]
