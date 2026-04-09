@@ -31,6 +31,7 @@ jobs:
             libxcb-render-util0 \
             libxcb-xinerama0 \
             libxcb-xkb1 \
+            libxcb-xinput0 \
             libxkbcommon-x11-0 \
             libegl1
 
@@ -50,7 +51,9 @@ jobs:
       - name: Run tests
         shell: bash -el {0}
         env:
-          QT_QPA_PLATFORM: offscreen
+          QT_QPA_PLATFORM: xcb
+          QT_OPENGL: software
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             pytest --cov --cov-report=xml --cov-report=term-missing
