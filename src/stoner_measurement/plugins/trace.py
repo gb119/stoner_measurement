@@ -943,9 +943,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
         Returns:
             (list[str]):
-                Lines that call ``measure({})``, assigning the result to the
-                plugin's :attr:`data` attribute, then iterate over the returned
-                channel dict printing a summary for each channel.
+                A single line that calls ``measure({})`` and assigns the
+                result to the plugin's :attr:`data` attribute.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -955,14 +954,12 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> lines = plugin.generate_action_code(1, [], lambda s, i: [])
             >>> "    dummy.data = dummy.measure({})" in lines
             True
-            >>> "    for channel, (x_arr, y_arr) in dummy.data.items():" in lines
-            True
+            >>> any("for" in line for line in lines)
+            False
         """
         prefix = "    " * indent
         var_name = self.instance_name
         return [
             f"{prefix}{var_name}.data = {var_name}.measure({{}})",
-            f"{prefix}for channel, (x_arr, y_arr) in {var_name}.data.items():",
-            f'{prefix}    print(f"{{channel}}: {{len(x_arr)}} points")',
             "",
         ]
