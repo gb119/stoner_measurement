@@ -101,9 +101,9 @@ The following shows the minimum required implementation for a trace plugin:
 
 .. code-block:: python
 
-    from stoner_measurement.plugins.base_plugin import BasePlugin
+    from stoner_measurement.plugins.trace import TracePlugin
 
-    class ThermometerPlugin(BasePlugin):
+    class ThermometerPlugin(TracePlugin):
         @property
         def name(self):
             return "Thermometer"
