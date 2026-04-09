@@ -175,6 +175,11 @@ class BasePlugin(ABC):
                 "sequence engine.  Attach the plugin via "
                 "SequenceEngine.add_plugin() before calling eval()."
             )
+        # A fresh Interpreter is created on each call so that its internal
+        # error list starts empty and any state from a previous evaluation
+        # cannot leak into subsequent calls.  The engine namespace dict is
+        # passed by reference, so the Interpreter always sees the current live
+        # variable state without copying.
         interp = asteval.Interpreter(symtable=self.engine_namespace, use_numpy=False)
         return interp.eval(expr, raise_errors=True)
 

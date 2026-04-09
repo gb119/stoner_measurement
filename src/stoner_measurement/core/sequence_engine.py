@@ -47,7 +47,7 @@ import threading
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from io import TextIOBase
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
@@ -533,7 +533,7 @@ class SequenceEngine(QObject):
     # Namespace management
     # ------------------------------------------------------------------
 
-    def _make_namespace(self) -> dict:
+    def _make_namespace(self) -> dict[str, Any]:
         """Create a fresh Python namespace seeded with standard builtins and numpy.
 
         The namespace is pre-populated with all public numpy functions and
@@ -543,18 +543,18 @@ class SequenceEngine(QObject):
         also available under the name ``np``.
 
         Returns:
-            (dict):
+            (dict[str, Any]):
                 Initial ``globals`` dict for the interpreter.
         """
-        ns: dict = {
+        ns: dict[str, Any] = {
             "__builtins__": builtins,
             "__name__": "__sequence__",
             "np": np,
             "numpy": np,
         }
         # Inject all public numpy names so expressions like sin(x) work directly.
-        for _name in np.__all__:
-            ns[_name] = getattr(np, _name)
+        for func_name in np.__all__:
+            ns[func_name] = getattr(np, func_name)
         return ns
 
     def add_plugin(self, ep_name: str, plugin: BasePlugin) -> None:
