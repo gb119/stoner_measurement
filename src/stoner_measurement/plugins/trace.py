@@ -255,6 +255,11 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             :attr:`scan_generator_changed` emitted) when
             :meth:`set_scan_generator_class` is called.  Also accessible as
             :attr:`trace_scan`.
+        data (dict[str, tuple[np.ndarray, np.ndarray]]):
+            Most recently acquired trace data, populated by :meth:`measure`.
+            Maps each channel name to a ``(x_array, y_array)`` pair of
+            one-dimensional NumPy arrays.  Empty until the first successful
+            call to :meth:`measure`.
         status_changed (pyqtSignal[object]):
             Emitted with the new :class:`TraceStatus` value whenever
             :attr:`status` changes.
@@ -268,11 +273,6 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             Emitted for each (channel, x, y) data point during acquisition.
         trace_complete (pyqtSignal[str]):
             Emitted with the channel name when a trace is fully acquired.
-        data (dict[str, tuple[np.ndarray, np.ndarray]]):
-            Most recently acquired trace data, populated by :meth:`measure`.
-            Maps each channel name to a ``(x_array, y_array)`` pair of
-            one-dimensional NumPy arrays.  Empty until the first successful
-            call to :meth:`measure`.
 
     Keyword Parameters:
         parent (QObject | None):
