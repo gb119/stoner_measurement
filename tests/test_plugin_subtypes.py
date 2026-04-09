@@ -232,6 +232,22 @@ class TestTracePlugin:
     # TraceStatus and status property
     # ------------------------------------------------------------------
 
+    def test_data_attribute_initially_empty(self, qapp):
+        p = _SimpleTrace()
+        assert p.data == {}
+
+    def test_data_attribute_populated_after_measure(self, qapp):
+        import numpy as np
+
+        p = _SimpleTrace()
+        result = p.measure({"n": 4})
+        assert p.data is result
+        assert list(p.data.keys()) == ["SimpleTrace"]
+        x_arr, y_arr = p.data["SimpleTrace"]
+        assert isinstance(x_arr, np.ndarray)
+        assert isinstance(y_arr, np.ndarray)
+        assert len(x_arr) == 4
+
     def test_status_initial_idle(self, qapp):
         p = _SimpleTrace()
         assert p.status is TraceStatus.IDLE
@@ -279,12 +295,17 @@ class TestTracePlugin:
     # ------------------------------------------------------------------
 
     def test_measure_returns_channel_x_y_triples(self, qapp):
+        import numpy as np
+
         p = _SimpleTrace()
-        pts = p.measure({"n": 3})
-        assert isinstance(pts, list)
-        assert len(pts) == 3
-        assert all(len(t) == 3 for t in pts)
-        assert all(ch == "SimpleTrace" for ch, _, _ in pts)
+        result = p.measure({"n": 3})
+        assert isinstance(result, dict)
+        assert list(result.keys()) == ["SimpleTrace"]
+        x_arr, y_arr = result["SimpleTrace"]
+        assert isinstance(x_arr, np.ndarray)
+        assert isinstance(y_arr, np.ndarray)
+        assert len(x_arr) == 3
+        assert len(y_arr) == 3
 
     def test_measure_status_is_measuring_during_acquisition(self, qapp):
         p = _SimpleTrace()
@@ -320,11 +341,15 @@ class TestTracePlugin:
         assert completed == ["SimpleTrace"]
 
     def test_measure_returns_complete_list(self, qapp):
-        """measure() must return the full dataset as a list, not a generator."""
+        """measure() must return a dict mapping channel to (x_arr, y_arr), not a generator."""
+        import numpy as np
+
         p = _SimpleTrace()
         result = p.measure({"n": 5})
-        assert isinstance(result, list)
-        assert len(result) == 5
+        assert isinstance(result, dict)
+        x_arr, y_arr = result["SimpleTrace"]
+        assert len(x_arr) == 5
+        assert isinstance(x_arr, np.ndarray)
         assert p.status is TraceStatus.DATA_AVAILABLE
 
     # ------------------------------------------------------------------

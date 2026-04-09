@@ -184,11 +184,18 @@ class TestDummyPlugin:
         assert plugin.status is TraceStatus.IDLE
 
     def test_measure_yields_data(self, qapp):
+        import numpy as np
+
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.4, step=0.1)
-        pts = plugin.measure({})
-        assert len(pts) == 5
-        assert all(ch == "Dummy" for ch, _, _ in pts)
+        result = plugin.measure({})
+        assert isinstance(result, dict)
+        assert list(result.keys()) == ["Dummy"]
+        x_arr, y_arr = result["Dummy"]
+        assert isinstance(x_arr, np.ndarray)
+        assert isinstance(y_arr, np.ndarray)
+        assert len(x_arr) == 5
+        assert len(y_arr) == 5
 
     def test_measure_status_data_available_after_completion(self, qapp):
         plugin = DummyPlugin()

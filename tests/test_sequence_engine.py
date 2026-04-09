@@ -233,8 +233,8 @@ class TestCodeGeneration:
         code = engine.generate_sequence_code(["dummy"], plugins)
         assert "dummy.connect()" in code
         assert "dummy.configure()" in code
-        assert "data = dummy.measure({})" in code
-        assert "for channel, x, y in data:" in code
+        assert "dummy.data = dummy.measure({})" in code
+        assert "for channel" not in code
         assert "dummy.disconnect()" in code
 
     def test_variable_name_in_generated_code(self, engine):
