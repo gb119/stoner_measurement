@@ -45,6 +45,16 @@ class TestSequenceEngineLifecycle:
         ns = engine.namespace
         assert "__builtins__" in ns
 
+    def test_namespace_has_numpy(self, engine):
+        ns = engine.namespace
+        assert "np" in ns
+
+    def test_namespace_has_numpy_functions(self, engine):
+        ns = engine.namespace
+        assert "sin" in ns
+        assert "sqrt" in ns
+        assert "linspace" in ns
+
     def test_shutdown_is_idempotent(self, qapp):
         eng = SequenceEngine()
         eng.shutdown()

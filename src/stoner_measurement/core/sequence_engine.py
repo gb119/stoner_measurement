@@ -49,6 +49,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import TextIOBase
 from typing import TYPE_CHECKING, Literal, overload
 
+import numpy as np
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 if TYPE_CHECKING:
@@ -533,16 +534,28 @@ class SequenceEngine(QObject):
     # ------------------------------------------------------------------
 
     def _make_namespace(self) -> dict:
-        """Create a fresh Python namespace seeded with standard builtins.
+        """Create a fresh Python namespace seeded with standard builtins and numpy.
+
+        The namespace is pre-populated with all public numpy functions and
+        constants so that sequence scripts and plugin :meth:`eval` calls can
+        use numpy mathematical operations (e.g. ``sin``, ``sqrt``, ``linspace``)
+        without an explicit ``import numpy`` statement.  ``numpy`` itself is
+        also available under the name ``np``.
 
         Returns:
             (dict):
                 Initial ``globals`` dict for the interpreter.
         """
-        return {
+        ns: dict = {
             "__builtins__": builtins,
             "__name__": "__sequence__",
+            "np": np,
+            "numpy": np,
         }
+        # Inject all public numpy names so expressions like sin(x) work directly.
+        for _name in np.__all__:
+            ns[_name] = getattr(np, _name)
+        return ns
 
     def add_plugin(self, ep_name: str, plugin: BasePlugin) -> None:
         """Add *plugin* to the interpreter namespace.
