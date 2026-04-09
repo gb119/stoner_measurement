@@ -510,6 +510,9 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> visited
             [0.0, 1.0, 2.0]
         """
+        self.ix = 0
+        self.value = 0.0
+        self.meas_flag = False
         self.connect()
         self.configure()
         try:
