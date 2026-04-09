@@ -27,6 +27,7 @@ from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import asteval
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 
@@ -124,6 +125,63 @@ class BasePlugin(ABC):
         if self.sequence_engine is None:
             return {}
         return self.sequence_engine._namespace  # noqa: SLF001
+
+    def eval(self, expr: str) -> Any:
+        """Evaluate a Python expression using the sequence engine namespace.
+
+        The expression is evaluated via :class:`asteval.Interpreter` — a safe,
+        restricted evaluator that supports the full mathematical subset of
+        Python syntax.  The live engine namespace (including all numpy functions
+        seeded at startup and any variables set by earlier sequence steps) is
+        used as the interpreter symbol table, so expressions like ``"sqrt(x)"``
+        or ``"linspace(0, field_max, 100)"`` work without any additional imports.
+
+        This method must only be called while the plugin is attached to a
+        sequence engine (i.e. :attr:`sequence_engine` is not ``None``).
+
+        Args:
+            expr (str):
+                A single Python expression to evaluate.
+
+        Returns:
+            (Any):
+                The value produced by evaluating *expr*.
+
+        Raises:
+            RuntimeError:
+                If the plugin is not currently attached to a sequence engine.
+            SyntaxError:
+                If *expr* is not a valid Python expression.
+            Exception:
+                Any exception raised during evaluation of *expr*.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> engine = SequenceEngine()
+            >>> plugin = DummyPlugin()
+            >>> engine.add_plugin("dummy", plugin)
+            >>> plugin.eval("1 + 1")
+            2
+            >>> plugin.eval("sqrt(9.0)")
+            3.0
+            >>> engine.shutdown()
+        """
+        if self.sequence_engine is None:
+            raise RuntimeError(
+                f"{type(self).__name__}.eval() called while not attached to a "
+                "sequence engine.  Attach the plugin via "
+                "SequenceEngine.add_plugin() before calling eval()."
+            )
+        # A fresh Interpreter is created on each call so that its internal
+        # error list starts empty and any state from a previous evaluation
+        # cannot leak into subsequent calls.  The engine namespace dict is
+        # passed by reference, so the Interpreter always sees the current live
+        # variable state without copying.
+        interp = asteval.Interpreter(symtable=self.engine_namespace, use_numpy=False)
+        return interp.eval(expr, raise_errors=True)
 
     @property
     @abstractmethod
