@@ -1,82 +1,77 @@
 # stoner_measurement
 
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://gb119.github.io/stoner_measurement/)
+[![PyPI](https://img.shields.io/pypi/v/stoner_measurement)](https://pypi.org/project/stoner_measurement/)
+[![Python](https://img.shields.io/pypi/pyversions/stoner_measurement)](https://pypi.org/project/stoner_measurement/)
 
-A Python QT6 application for carrying out scientific measurements.
+A Python Qt6 desktop application for carrying out scientific measurements by
+communicating with laboratory instruments over USB, Serial, GPIB, and Ethernet
+interfaces.
 
-## Writing a Plugin
+## Features
 
-All measurement plugins inherit from `BasePlugin` and must implement two
-members:
+- **Instrument plugins** — connect to real hardware via a simple plugin API;
+  instruments are discovered automatically through Python entry-points.
+- **Sequence builder** — drag instruments into a visual sequence list and nest
+  state-control steps to define complex measurement sweeps.
+- **Live plotting** — data points are plotted in real time as a sequence runs.
+- **Script editor** — view, edit, and re-run the auto-generated Python script
+  that drives the sequence engine.
 
-| Member | Type | Required | Description |
-|--------|------|----------|-------------|
-| `name` | `property → str` | **Yes** | Unique human-readable identifier. |
-| `execute(parameters)` | `Generator[tuple[float, float]]` | **Yes** | Yields `(x, y)` data points. |
+## Quick start
 
-### Optional UI integration
+### Install
 
-Plugins can hook into the main window UI by overriding any of the following
-methods.
+```bash
+pip install stoner_measurement
+```
 
-#### `config_tabs(parent=None) → list[tuple[str, QWidget]]`
+Or, to install from source:
 
-Returns a list of `(tab_title, widget)` pairs.  Each pair becomes one tab in
-the right-hand **configuration panel**.
+```bash
+git clone https://github.com/gb119/stoner_measurement.git
+cd stoner_measurement
+pip install -e ".[dev,docs]"
+```
 
-The default implementation wraps `config_widget()` in a single-element list
-using `name` as the tab title.  Override `config_tabs()` directly when a
-plugin needs **more than one tab** or a custom tab title.
+### Launch
+
+```bash
+stoner-measurement
+```
+
+Or from Python:
 
 ```python
-def config_tabs(self, parent=None):
-    settings = self.config_widget(parent=parent)
-    about    = QLabel("My plugin v1.0", parent)
-    return [
-        ("MyPlugin – Settings", settings),
-        ("MyPlugin – About",    about),
-    ]
+from stoner_measurement.main import main
+main()
 ```
 
-#### `config_widget(parent=None) → QWidget`
+## Application layout
 
-Returns a single `QWidget`.  Used by the default `config_tabs()`
-implementation — override this when a single tab is sufficient.
+The main window is divided into three panels:
 
-#### `monitor_widget(parent=None) → QWidget | None`
+| Panel | Description |
+|-------|-------------|
+| **Left (25 %)** | Instrument / plugin list and sequence builder. Drag instruments into the sequence list to build a measurement sequence. |
+| **Central (50 %)** | Live PyQtGraph plotting area. Data points produced by each sequence step are plotted here in real time. |
+| **Right (25 %)** | Tabbed configuration area. Each loaded plugin contributes a tab with its own configuration controls. |
 
-Returns an optional live-status widget shown in the **left dock panel**
-*Monitoring* section while the plugin is registered.  Return `None` (the
-default) if no monitoring widget is needed.
+## Running a measurement
 
-```python
-def monitor_widget(self, parent=None):
-    self._status_label = QLabel("Idle", parent)
-    return self._status_label
-```
+1. Select an instrument in the **left panel** and click *Add Step*.
+2. Repeat for each step you need.
+3. Configure each step via the corresponding tab in the **right panel**.
+4. Click *Run* to start the sequence.
 
-### Minimal example
+## Documentation
 
-```python
-from stoner_measurement.plugins.base_plugin import BasePlugin
+Full documentation — including the API reference, a guide to writing your own
+instrument plugins, and contribution guidelines — is available at:
 
-class ThermometerPlugin(BasePlugin):
-    @property
-    def name(self):
-        return "Thermometer"
+<https://gb119.github.io/stoner_measurement/>
 
-    def execute(self, parameters):
-        for reading in self._hardware.read(parameters.get("samples", 10)):
-            yield reading.time, reading.temperature
-```
+## Licence
 
-### Registering a plugin
-
-Plugins are discovered via Python
-[entry-points](https://packaging.python.org/en/latest/specifications/entry-points/):
-
-```toml
-[project.entry-points."stoner_measurement.plugins"]
-thermometer = "my_package.thermometer:ThermometerPlugin"
-```
+Distributed under the MIT Licence.  See [LICENSE](LICENSE) for details.
 
