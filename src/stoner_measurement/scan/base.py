@@ -319,13 +319,15 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         self._index = 0
         return self
 
-    def __next__(self) -> tuple[float, bool]:
-        """Return the next value and measure flag in the sequence.
+    def __next__(self) -> tuple[int, float, bool]:
+        """Return the index, value and measure flag for the next point in the sequence.
 
         Also emits :attr:`current_value_changed` with the current output
         value so that connected widgets can update a position indicator.
 
         Returns:
+            (int):
+                The zero-based index of the current point in the sequence.
             (float):
                 The next output value.
             (bool):
@@ -337,8 +339,9 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         """
         if self._index >= len(self.values):
             raise StopIteration
+        index = self._index
         value = float(self.values[self._index])
         measure = bool(self.flags[self._index])
         self._index += 1
         self.current_value_changed.emit(value)
-        return value, measure
+        return index, value, measure

@@ -81,7 +81,7 @@ class DummyPlugin(TracePlugin):
             True
         """
         amplitude = float(parameters.get("amplitude", 1.0))
-        for x, measure in self.scan_generator:
+        for _ix, x, measure in self.scan_generator:
             if measure:
                 yield x, amplitude * math.sin(x)
 

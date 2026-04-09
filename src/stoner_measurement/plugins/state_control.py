@@ -192,6 +192,18 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             Active scan generator instance.  Replaced (and
             :attr:`scan_generator_changed` emitted) when
             :meth:`set_scan_generator_class` is called.
+        ix (int):
+            Zero-based index of the current set-point within the active scan.
+            Updated on each iteration step so that nested loops can each
+            expose their own independent position via their plugin instance.
+        value (float):
+            Current set-point value set on the last iteration step.  Updated
+            before :meth:`ramp_to` is called; accessible in generated code as
+            ``plugin.value``.
+        meas_flag (bool):
+            Whether the current set-point should be recorded as a measurement.
+            Updated on each iteration step alongside :attr:`ix` and
+            :attr:`value`.
         state_changed (pyqtSignal[float]):
             Emitted continuously with the current measured value while the
             hardware ramps towards its target.
@@ -250,6 +262,9 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         """Initialise the Qt object hierarchy and create the built-in scan generator."""
         super().__init__(parent)
         self.scan_generator: BaseScanGenerator = self._scan_generator_class(parent=self)
+        self.ix: int = 0
+        self.value: float = 0.0
+        self.meas_flag: bool = False
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
@@ -498,8 +513,8 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.connect()
         self.configure()
         try:
-            for setpoint in self.scan_generator.generate().tolist():
-                self.ramp_to(float(setpoint))
+            for self.ix, self.value, self.meas_flag in self.scan_generator:
+                self.ramp_to(float(self.value))
                 for sub_step in sub_steps:
                     sub_step()
         finally:
@@ -770,15 +785,15 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             ...     def is_at_target(self): return True
             >>> p = _S()
             >>> lines = p.generate_action_code(1, [], lambda s, i: [])
-            >>> "for _setpoint in s.scan_generator.generate():" in lines
+            >>> any("for s.ix, s.value, s.meas_flag in s.scan_generator:" in line for line in lines)
             True
         """
         prefix = "    " * indent
         loop_prefix = "    " * (indent + 1)
         var_name = self.instance_name
         lines: list[str] = [
-            f"{prefix}for _setpoint in {var_name}.scan_generator.generate():",
-            f"{loop_prefix}{var_name}.ramp_to(float(_setpoint))",
+            f"{prefix}for {var_name}.ix, {var_name}.value, {var_name}.meas_flag in {var_name}.scan_generator:",
+            f"{loop_prefix}{var_name}.ramp_to(float({var_name}.value))",
             f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.get_state():.4g}} {self.units}")',
         ]
         for sub_step in sub_steps:

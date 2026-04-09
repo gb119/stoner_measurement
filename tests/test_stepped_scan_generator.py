@@ -216,13 +216,13 @@ class TestSteppedScanGenerator:
     def test_iter_yields_all_values(self, qapp):
         gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
         results = list(gen)
-        values = [v for v, _ in results]
+        values = [v for _, v, _ in results]
         assert np.allclose(values, [0.0, 0.5, 1.0])
 
     def test_iter_flags_match_measure_flags(self, qapp):
         gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
         results = list(gen)
-        flags = [f for _, f in results]
+        flags = [f for _, _, f in results]
         assert flags == [True, True, True]
 
     def test_len(self, qapp):
