@@ -20,7 +20,8 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.trace import TracePlugin
-from stoner_measurement.ui.icons import make_generate_icon
+from stoner_measurement.ui.icons import make_generate_icon, make_log_icon
+from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
 
 
@@ -64,6 +65,10 @@ class MeasurementApp(QMainWindow):
         # Central widget -------------------------------------------------------
         self._main_window = MainWindow(plugin_manager=self._plugin_manager)
         self.setCentralWidget(self._main_window)
+
+        # Log viewer (created before actions so actions can reference it) ------
+        self._log_viewer = LogViewerWindow(parent=None)
+        self._engine.log_handler.record_emitted.connect(self._log_viewer.append_record)
 
         # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
@@ -228,6 +233,10 @@ class MeasurementApp(QMainWindow):
             lambda: self._main_window.tabs.setCurrentIndex(1)
         )
 
+        self._act_show_log = QAction(make_log_icon(), "Show &Log", self)
+        self._act_show_log.setStatusTip("Open the log viewer window")
+        self._act_show_log.triggered.connect(self._on_show_log)
+
         # Help actions
         self._act_about = QAction("&About", self)
         self._act_about.setStatusTip("Show information about this application")
@@ -269,6 +278,8 @@ class MeasurementApp(QMainWindow):
         view_menu = menu_bar.addMenu("&View")
         view_menu.addAction(self._act_view_measurement)
         view_menu.addAction(self._act_view_editor)
+        view_menu.addSeparator()
+        view_menu.addAction(self._act_show_log)
 
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
@@ -295,6 +306,8 @@ class MeasurementApp(QMainWindow):
         toolbar.addAction(self._act_stop)
         toolbar.addSeparator()
         toolbar.addAction(self._act_generate)
+        toolbar.addSeparator()
+        toolbar.addAction(self._act_show_log)
 
     # ------------------------------------------------------------------
     # Tab-change handler — keeps action labels/tips in sync
@@ -684,6 +697,10 @@ class MeasurementApp(QMainWindow):
             "scientific instruments via USB, Serial, GPIB and Ethernet.<br/><br/>"
             "© University of Leeds",
         )
+
+    def _on_show_log(self) -> None:
+        """Show the log viewer window, bringing it to the front if already open."""
+        self._log_viewer.show_and_raise()
 
     def _update_window_title(self) -> None:
         """Refresh the window title to reflect the active tab and file."""

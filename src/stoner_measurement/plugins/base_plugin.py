@@ -23,6 +23,7 @@ sub-types: :class:`~stoner_measurement.plugins.trace.TracePlugin`,
 from __future__ import annotations
 
 import importlib
+import logging
 from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -125,6 +126,43 @@ class BasePlugin(ABC):
         if self.sequence_engine is None:
             return {}
         return self.sequence_engine._namespace  # noqa: SLF001
+
+    @property
+    def log(self) -> logging.Logger:
+        """Logger for this plugin.
+
+        When the plugin is attached to a sequence engine, returns the shared
+        ``log`` :class:`logging.Logger` from the engine namespace so that all
+        plugin code and user scripts share a single logger whose records are
+        routed through the engine's Qt log handler.
+
+        When the plugin is not attached (i.e. :attr:`sequence_engine` is
+        ``None``), returns a module-level logger named after the plugin's class
+        so that standalone plugin code still has a functional logger.
+
+        Returns:
+            (logging.Logger):
+                A :class:`logging.Logger` instance.
+
+        Examples:
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> import logging
+            >>> isinstance(plugin.log, logging.Logger)
+            True
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> engine = SequenceEngine()
+            >>> engine.add_plugin("dummy", plugin)
+            >>> plugin.log is engine._namespace["log"]
+            True
+            >>> engine.shutdown()
+        """
+        ns_log = self.engine_namespace.get("log")
+        if isinstance(ns_log, logging.Logger):
+            return ns_log
+        return logging.getLogger(f"{type(self).__module__}.{type(self).__qualname__}")
 
     def eval(self, expr: str) -> Any:
         """Evaluate a Python expression using the sequence engine namespace.

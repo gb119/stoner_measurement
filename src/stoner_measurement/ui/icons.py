@@ -62,3 +62,67 @@ def make_generate_icon(size: int = 32) -> QIcon:
 
     painter.end()
     return QIcon(QPixmap.fromImage(img))
+
+
+def make_log_icon(size: int = 32) -> QIcon:
+    """Create a simple document-with-lines icon for the *Show Log* action.
+
+    Draws a white rectangle (page) with three horizontal lines representing
+    log entries, and a small coloured bullet on the left of each line to
+    suggest severity colouring.
+
+    Keyword Parameters:
+        size (int):
+            Side length in pixels of the square icon.  Defaults to ``32``.
+
+    Returns:
+        (QIcon):
+            The rendered log icon.
+
+    Examples:
+        >>> icon = make_log_icon()
+        >>> icon.isNull()
+        False
+    """
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    margin = size * 0.1
+    page_w = size * 0.75
+    page_h = size * 0.85
+    page_x = (size - page_w) / 2.0
+    page_y = (size - page_h) / 2.0
+
+    # Draw page background.
+    painter.setBrush(QColor(240, 240, 240))
+    painter.setPen(QColor(160, 160, 160))
+    painter.drawRoundedRect(
+        int(page_x), int(page_y), int(page_w), int(page_h), 2, 2
+    )
+
+    # Draw three log lines with coloured bullets.
+    bullet_colours = [QColor(100, 100, 200), QColor(200, 140, 0), QColor(200, 50, 50)]
+    n_lines = 3
+    line_spacing = page_h / (n_lines + 1)
+    bullet_r = size * 0.055
+    line_left = page_x + margin + bullet_r * 2.5
+    line_right = page_x + page_w - margin
+    painter.setPen(QColor(80, 80, 80))
+    for i in range(n_lines):
+        y = page_y + line_spacing * (i + 1)
+        # Bullet
+        painter.setBrush(bullet_colours[i])
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(QPointF(page_x + margin + bullet_r, y), bullet_r, bullet_r)
+        # Line
+        painter.setPen(QColor(80, 80, 80))
+        painter.drawLine(
+            QPointF(line_left, y), QPointF(line_right, y)
+        )
+
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
