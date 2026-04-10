@@ -7,8 +7,6 @@ temperature controllers, motorised stages, and programmable voltage sources.
 A :class:`StateControlPlugin` is the natural "axis" driven by a
 :class:`~stoner_measurement.scan.base.BaseScanGenerator`: the generator yields
 successive set-point values that are forwarded to :meth:`ramp_to`.
-
-This module is part of the :mod:`stoner_measurement.plugins.state_control` sub-package.
 """
 
 from __future__ import annotations

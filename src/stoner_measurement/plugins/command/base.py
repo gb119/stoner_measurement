@@ -15,8 +15,6 @@ require a scan generator and are always leaf nodes in the sequence tree.
 Concrete implementations must subclass :class:`CommandPlugin` and implement
 :meth:`~CommandPlugin.execute`.  The :class:`SaveCommand` class provided in
 :mod:`stoner_measurement.plugins.command.save` serves as a worked example.
-
-This module is part of the :mod:`stoner_measurement.plugins.command` sub-package.
 """
 
 from __future__ import annotations

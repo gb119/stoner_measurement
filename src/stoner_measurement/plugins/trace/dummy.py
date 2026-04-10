@@ -3,8 +3,6 @@
 The :class:`DummyPlugin` computes the DC I-V characteristic of a resistively
 shunted Josephson junction (RSJ model).  It requires no hardware and is useful
 as a smoke-test and worked example.
-
-This module is part of the :mod:`stoner_measurement.plugins.trace` sub-package.
 """
 
 from __future__ import annotations

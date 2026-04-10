@@ -11,8 +11,6 @@ implementation that acts as the root container for the whole measurement
 sequence.  It shares the engine namespace with all nested plugins because the
 :class:`~stoner_measurement.core.sequence_engine.SequenceEngine` uses a single
 flat ``dict`` as the execution namespace throughout a run.
-
-This module is part of the :mod:`stoner_measurement.plugins.sequence` sub-package.
 """
 
 from __future__ import annotations

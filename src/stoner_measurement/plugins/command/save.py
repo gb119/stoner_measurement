@@ -3,8 +3,6 @@
 :class:`SaveCommand` is a concrete :class:`CommandPlugin` that evaluates a
 Python expression to obtain a file path and then writes the current trace and
 scalar value catalogs from the sequence engine namespace to a JSON file.
-
-This module is part of the :mod:`stoner_measurement.plugins.command` sub-package.
 """
 
 from __future__ import annotations

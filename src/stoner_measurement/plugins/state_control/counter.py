@@ -11,7 +11,6 @@ This plugin is intended as a worked example showing how to implement a
 :class:`~stoner_measurement.plugins.state_control.StateControlPlugin` from
 scratch.
 
-This module is part of the :mod:`stoner_measurement.plugins.state_control`
 sub-package.
 """
 

@@ -4,8 +4,6 @@ Monitor plugins poll hardware at regular intervals and record auxiliary
 experimental quantities such as temperature, ambient pressure, elapsed time,
 or lock-in phase.  They run independently from trace acquisition and are
 managed by an internal :class:`~PyQt6.QtCore.QTimer`.
-
-This module is part of the :mod:`stoner_measurement.plugins.monitor` sub-package.
 """
 
 from __future__ import annotations
