@@ -300,3 +300,39 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             f"{prefix}print(data)",
             "",
         ]
+
+    def reported_values(self) -> dict[str, str]:
+        """Return a mapping of quantity names to Python expressions for accessing monitor readings.
+
+        Each entry corresponds to one quantity polled by this plugin.  The key is
+        ``"{instance_name}:{quantity_name}"`` (a human-readable identifier) and the value
+        is the Python expression ``"{instance_name}.last_reading['{quantity_name}']"`` that
+        retrieves the most recently cached scalar reading for that quantity.
+
+        Returns:
+            (dict[str, str]):
+                Mapping of ``"{instance_name}:{quantity_name}"`` → expression for each
+                name in :attr:`quantity_names`.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.monitor import MonitorPlugin
+            >>> class _M(MonitorPlugin):
+            ...     @property
+            ...     def name(self): return "Temp"
+            ...     @property
+            ...     def quantity_names(self): return ["temperature", "pressure"]
+            ...     @property
+            ...     def units(self): return {"temperature": "K", "pressure": "Pa"}
+            ...     def read(self): return {"temperature": 300.0, "pressure": 1e5}
+            >>> m = _M()
+            >>> vals = m.reported_values()
+            >>> list(vals.keys())
+            ['temp:temperature', 'temp:pressure']
+            >>> vals['temp:temperature']
+            "temp.last_reading['temperature']"
+        """
+        var = self.instance_name
+        return {f"{var}:{qty}": f"{var}.last_reading['{qty}']" for qty in self.quantity_names}
+

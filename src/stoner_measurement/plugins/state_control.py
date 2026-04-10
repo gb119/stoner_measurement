@@ -803,3 +803,39 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             lines.extend(render_sub_step(sub_step, indent + 1))
         lines.append("")
         return lines
+
+    def reported_values(self) -> dict[str, str]:
+        """Return a mapping of the controlled state quantity to a Python expression.
+
+        Reports the current scan set-point as a scalar data value, accessible via
+        ``"{instance_name}.value"``.  This allows downstream plugins (e.g. plot
+        plugins) to reference the current set-point by its human-readable name.
+
+        Returns:
+            (dict[str, str]):
+                Single-entry dict ``{"{instance_name}:{state_name}": "{instance_name}.value"}``.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import StateControlPlugin
+            >>> class _S(StateControlPlugin):
+            ...     @property
+            ...     def name(self): return "Field"
+            ...     @property
+            ...     def state_name(self): return "Magnetic Field"
+            ...     @property
+            ...     def units(self): return "T"
+            ...     def set_state(self, v): pass
+            ...     def get_state(self): return 0.0
+            ...     def is_at_target(self): return True
+            >>> p = _S()
+            >>> vals = p.reported_values()
+            >>> list(vals.keys())
+            ['field:Magnetic Field']
+            >>> vals['field:Magnetic Field']
+            'field.value'
+        """
+        var = self.instance_name
+        return {f"{var}:{self.state_name}": f"{var}.value"}
+
