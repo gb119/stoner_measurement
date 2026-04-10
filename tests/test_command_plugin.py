@@ -62,7 +62,13 @@ class TestCommandPlugin:
     def test_generate_action_code_execute_call(self, qapp):
         p = _Noop()
         lines = p.generate_action_code(1, [], lambda s, i: [])
-        assert lines[0] == "    noop.execute()"
+        assert lines[0] == "    noop()"
+
+    def test_call_delegates_to_execute(self, qapp):
+        p = _Noop()
+        p.executed = []
+        p()
+        assert p.executed == [1]
 
     def test_generate_action_code_blank_separator(self, qapp):
         p = _Noop()
@@ -115,8 +121,8 @@ class TestCommandPlugin:
         assert "noop.connect()" not in code
         assert "noop.configure()" not in code
         assert "noop.disconnect()" not in code
-        # Should contain execute()
-        assert "noop.execute()" in code
+        # Should contain a callable invocation
+        assert "noop()" in code
 
     def test_no_lifecycle_in_generated_code(self, qapp, engine):
         p = _Noop()
@@ -210,4 +216,4 @@ class TestSaveCommand:
     def test_generate_action_code(self, qapp):
         cmd = SaveCommand()
         lines = cmd.generate_action_code(1, [], lambda s, i: [])
-        assert lines[0] == "    save.execute()"
+        assert lines[0] == "    save()"
