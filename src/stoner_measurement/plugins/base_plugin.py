@@ -634,3 +634,71 @@ class BasePlugin(ABC):
             f"{prefix}# {self.instance_name}: unknown plugin type",
             "",
         ]
+
+    def reported_traces(self) -> dict[str, str]:
+        """Return a mapping of trace names to Python expressions for accessing trace data.
+
+        Each entry in the returned dict describes one data trace produced by this plugin.
+        The key is a human-readable name of the form ``"{instance_name}:{trace_name}"``
+        and the value is the Python expression that retrieves the corresponding
+        ``(x_array, y_array)`` tuple from the sequence engine namespace.
+
+        The sequence engine merges the dicts from all registered plugins to build a
+        master catalogue of available traces (see
+        :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.traces_catalog`).
+        This catalogue can be used by downstream plugins (e.g. plot plugins) to
+        discover what data is available without hard-coding variable names.
+
+        The default implementation returns an empty dict.  Subclasses that produce
+        trace data (e.g. :class:`~stoner_measurement.plugins.trace.TracePlugin`)
+        override this method to enumerate their channels.
+
+        Returns:
+            (dict[str, str]):
+                Mapping of ``"{instance_name}:{trace_name}"`` → Python expression
+                string.  Empty dict for plugins that produce no traces.
+
+        Examples:
+            >>> from stoner_measurement.plugins.base_plugin import BasePlugin
+            >>> class _Minimal(BasePlugin):
+            ...     @property
+            ...     def name(self): return "Minimal"
+            >>> _Minimal().reported_traces()
+            {}
+        """
+        return {}
+
+    def reported_values(self) -> dict[str, str]:
+        """Return a mapping of value names to Python expressions for accessing scalar data.
+
+        Each entry describes one scalar data value produced by this plugin during a
+        measurement sequence.  The key is a human-readable name of the form
+        ``"{instance_name}:{value_name}"`` and the value is the Python expression that
+        retrieves the current scalar from the sequence engine namespace.
+
+        The sequence engine merges the dicts from all registered plugins to build a
+        master catalogue of available scalar values (see
+        :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.values_catalog`).
+        This catalogue can be used by downstream plugins (e.g. plot plugins) to
+        discover what scalar data is available.
+
+        The default implementation returns an empty dict.  Subclasses that produce
+        scalar values (e.g.
+        :class:`~stoner_measurement.plugins.monitor.MonitorPlugin`,
+        :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`)
+        override this method to enumerate their quantities.
+
+        Returns:
+            (dict[str, str]):
+                Mapping of ``"{instance_name}:{value_name}"`` → Python expression
+                string.  Empty dict for plugins that produce no scalar values.
+
+        Examples:
+            >>> from stoner_measurement.plugins.base_plugin import BasePlugin
+            >>> class _Minimal(BasePlugin):
+            ...     @property
+            ...     def name(self): return "Minimal"
+            >>> _Minimal().reported_values()
+            {}
+        """
+        return {}

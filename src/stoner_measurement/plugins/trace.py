@@ -963,3 +963,32 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             f"{prefix}{var_name}.data = {var_name}.measure({{}})",
             "",
         ]
+
+    def reported_traces(self) -> dict[str, str]:
+        """Return a mapping of channel names to Python expressions for accessing trace data.
+
+        Each entry corresponds to one measurement channel provided by this plugin.
+        The key is ``"{instance_name}:{channel_name}"`` (a human-readable identifier)
+        and the value is the Python expression ``"{instance_name}.data['{channel_name}']"``
+        that retrieves the ``(x_array, y_array)`` tuple for that channel from the most
+        recently acquired :attr:`data` dict.
+
+        Returns:
+            (dict[str, str]):
+                Mapping of ``"{instance_name}:{channel_name}"`` → expression for each
+                channel in :attr:`channel_names`.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> traces = plugin.reported_traces()
+            >>> list(traces.keys())
+            ['dummy:Dummy']
+            >>> traces['dummy:Dummy']
+            "dummy.data['Dummy']"
+        """
+        var = self.instance_name
+        return {f"{var}:{ch}": f"{var}.data['{ch}']" for ch in self.channel_names}
+

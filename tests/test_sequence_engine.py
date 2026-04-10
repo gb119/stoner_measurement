@@ -438,8 +438,79 @@ class TestExceptionReporting:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Data catalogues (_traces / _values)
 # ---------------------------------------------------------------------------
+
+
+class TestDataCatalogues:
+    def test_traces_catalog_empty_before_plugins(self, engine):
+        assert engine.traces_catalog == {}
+
+    def test_values_catalog_empty_before_plugins(self, engine):
+        assert engine.values_catalog == {}
+
+    def test_namespace_has_traces_key(self, engine):
+        assert "_traces" in engine.namespace
+
+    def test_namespace_has_values_key(self, engine):
+        assert "_values" in engine.namespace
+
+    def test_add_trace_plugin_populates_traces_catalog(self, engine):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        cat = engine.traces_catalog
+        assert len(cat) > 0
+
+    def test_trace_catalog_key_format(self, engine):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        cat = engine.traces_catalog
+        assert "dummy:Dummy" in cat
+
+    def test_trace_catalog_value_is_expression(self, engine):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        assert engine.traces_catalog["dummy:Dummy"] == "dummy.data['Dummy']"
+
+    def test_remove_plugin_clears_traces_catalog(self, engine):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        engine.remove_plugin("dummy")
+        assert engine.traces_catalog == {}
+
+    def test_rename_plugin_updates_traces_catalog(self, engine):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        plugin._instance_name = "my_dummy"
+        engine.rename_plugin("dummy", "my_dummy")
+        cat = engine.traces_catalog
+        assert "my_dummy:Dummy" in cat
+        assert "dummy:Dummy" not in cat
+
+    def test_traces_catalog_in_namespace_is_live(self, engine):
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        assert engine._namespace["_traces"] == engine.traces_catalog
+
+    def test_values_catalog_populated_by_state_plugin(self, engine):
+        from stoner_measurement.plugins.counter import CounterPlugin
+        plugin = CounterPlugin()
+        engine.add_plugin("counter", plugin)
+        cat = engine.values_catalog
+        assert len(cat) > 0
+        assert any("counter" in k for k in cat)
+
+    def test_multiple_plugins_merged_in_catalogs(self, engine):
+        from stoner_measurement.plugins.counter import CounterPlugin
+        trace_plugin = DummyPlugin()
+        state_plugin = CounterPlugin()
+        engine.add_plugin("dummy", trace_plugin)
+        engine.add_plugin("counter", state_plugin)
+        assert len(engine.traces_catalog) > 0
+        assert len(engine.values_catalog) > 0
+
+
+
 
 _TIMEOUT = 5.0  # seconds
 _POLL = 0.02

@@ -681,3 +681,129 @@ class TestTransformPlugin:
         p.transform_complete.connect(received.append)
         p.transform_complete.emit({"out": 1.0})
         assert received == [{"out": 1.0}]
+
+
+# ---------------------------------------------------------------------------
+# reported_traces / reported_values
+# ---------------------------------------------------------------------------
+
+
+class TestReportedTraces:
+    def test_base_plugin_reported_traces_empty(self):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        class _M(BasePlugin):
+            @property
+            def name(self):
+                return "Minimal"
+
+        assert _M().reported_traces() == {}
+
+    def test_base_plugin_reported_values_empty(self):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        class _M(BasePlugin):
+            @property
+            def name(self):
+                return "Minimal"
+
+        assert _M().reported_values() == {}
+
+    def test_trace_plugin_reported_traces_single_channel(self, qapp):
+        p = _SimpleTrace()
+        traces = p.reported_traces()
+        assert "simpletrace:SimpleTrace" in traces
+        assert traces["simpletrace:SimpleTrace"] == "simpletrace.data['SimpleTrace']"
+
+    def test_trace_plugin_reported_traces_multi_channel(self, qapp):
+        class _TwoChannel(_SimpleTrace):
+            @property
+            def channel_names(self):
+                return ["ch1", "ch2"]
+
+        p = _TwoChannel()
+        traces = p.reported_traces()
+        assert "simpletrace:ch1" in traces
+        assert "simpletrace:ch2" in traces
+        assert traces["simpletrace:ch1"] == "simpletrace.data['ch1']"
+
+    def test_trace_plugin_reported_values_empty(self, qapp):
+        assert _SimpleTrace().reported_values() == {}
+
+    def test_trace_plugin_custom_instance_name(self, qapp):
+        p = _SimpleTrace()
+        p.instance_name = "my_trace"
+        traces = p.reported_traces()
+        assert "my_trace:SimpleTrace" in traces
+        assert traces["my_trace:SimpleTrace"] == "my_trace.data['SimpleTrace']"
+
+    def test_monitor_plugin_reported_values(self, qapp):
+        p = _ConstMonitor()
+        vals = p.reported_values()
+        assert "constmonitor:temperature" in vals
+        assert "constmonitor:pressure" in vals
+        assert vals["constmonitor:temperature"] == "constmonitor.last_reading['temperature']"
+        assert vals["constmonitor:pressure"] == "constmonitor.last_reading['pressure']"
+
+    def test_monitor_plugin_reported_traces_empty(self, qapp):
+        assert _ConstMonitor().reported_traces() == {}
+
+    def test_state_control_plugin_reported_values(self, qapp):
+        p = _InstantState()
+        vals = p.reported_values()
+        assert "instantstate:Voltage" in vals
+        assert vals["instantstate:Voltage"] == "instantstate.value"
+
+    def test_state_control_plugin_reported_traces_empty(self, qapp):
+        assert _InstantState().reported_traces() == {}
+
+    def test_transform_plugin_reported_values_default_all_outputs(self, qapp):
+        p = _ScaleTransform()
+        vals = p.reported_values()
+        assert "scale:y_scaled" in vals
+        assert vals["scale:y_scaled"] == "scale.data['y_scaled']"
+
+    def test_transform_plugin_reported_traces_empty_by_default(self, qapp):
+        assert _ScaleTransform().reported_traces() == {}
+
+    def test_transform_plugin_output_trace_names_override(self, qapp):
+        class _MixedTransform(TransformPlugin):
+            @property
+            def name(self):
+                return "Mixed"
+
+            @property
+            def required_inputs(self):
+                return []
+
+            @property
+            def output_names(self):
+                return ["curve", "rms"]
+
+            @property
+            def output_trace_names(self):
+                return ["curve"]
+
+            @property
+            def output_value_names(self):
+                return ["rms"]
+
+            def transform(self, data):
+                return {}
+
+        p = _MixedTransform()
+        traces = p.reported_traces()
+        vals = p.reported_values()
+        assert "mixed:curve" in traces
+        assert traces["mixed:curve"] == "mixed.data['curve']"
+        assert "mixed:rms" in vals
+        assert vals["mixed:rms"] == "mixed.data['rms']"
+        assert "mixed:curve" not in vals
+
+    def test_transform_plugin_run_stores_data(self, qapp):
+        p = _ScaleTransform()
+        p.run({"y": [1.0, 2.0]})
+        assert p.data == {"y_scaled": [3.0, 6.0]}
+
+    def test_transform_plugin_data_empty_before_run(self, qapp):
+        assert _ScaleTransform().data == {}
