@@ -179,8 +179,10 @@ class TestLogViewerWindow:
     def test_all_log_levels_append_without_error(self, qapp):
         from stoner_measurement.ui.log_viewer import LogViewerWindow
         viewer = LogViewerWindow()
-        for level in (logging.DEBUG, logging.INFO, logging.WARNING,
-                      logging.ERROR, logging.CRITICAL):
+        for level in (
+            logging.DEBUG, logging.INFO, logging.WARNING,
+            logging.ERROR, logging.CRITICAL,
+        ):
             record = logging.LogRecord(
                 name="test",
                 level=level,

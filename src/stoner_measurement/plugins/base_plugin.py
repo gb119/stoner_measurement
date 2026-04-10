@@ -162,7 +162,7 @@ class BasePlugin(ABC):
         ns_log = self.engine_namespace.get("log")
         if isinstance(ns_log, logging.Logger):
             return ns_log
-        return logging.getLogger(type(self).__module__ + "." + type(self).__qualname__)
+        return logging.getLogger(f"{type(self).__module__}.{type(self).__qualname__}")
 
     def eval(self, expr: str) -> Any:
         """Evaluate a Python expression using the sequence engine namespace.
