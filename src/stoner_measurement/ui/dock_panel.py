@@ -371,8 +371,8 @@ class DockPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # --- Available instruments / plugins ---
-        layout.addWidget(QLabel("<b>Available Instruments</b>"))
+        # --- Available sequence commands / plugins ---
+        layout.addWidget(QLabel("<b>Available sequence commands</b>"))
         self._instrument_filter = QLineEdit()
         self._instrument_filter.setObjectName("instrumentFilter")
         self._instrument_filter.setPlaceholderText("Filter plugins...")
