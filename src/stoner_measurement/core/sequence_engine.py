@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import builtins
 import linecache
+import logging
 import queue
 import sys
 import threading
@@ -54,6 +55,58 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
+
+#: Logger name used for all sequence-engine and plugin log messages.
+SEQUENCE_LOGGER_NAME = "stoner_measurement.sequence"
+
+
+class _QtLogHandler(logging.Handler, QObject):
+    """A :class:`logging.Handler` that forwards log records via a Qt signal.
+
+    Instances of this handler can be attached to a Python :class:`logging.Logger`
+    so that log records are delivered to any Qt slot connected to
+    :attr:`record_emitted`.  This is used to route sequence-engine log messages
+    to the :class:`~stoner_measurement.ui.log_viewer.LogViewerWindow` without
+    blocking the engine thread.
+
+    Args:
+        parent (QObject | None):
+            Optional Qt parent.
+
+    Keyword Parameters:
+        level (int):
+            Minimum log level to handle.  Defaults to ``logging.DEBUG``.
+
+    Examples:
+        >>> from PyQt6.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> handler = _QtLogHandler()
+        >>> handler.level == logging.DEBUG
+        True
+    """
+
+    record_emitted = pyqtSignal(logging.LogRecord)
+
+    def __init__(self, parent: QObject | None = None, level: int = logging.DEBUG) -> None:
+        logging.Handler.__init__(self, level)
+        QObject.__init__(self, parent)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Forward *record* to all connected Qt slots.
+
+        Args:
+            record (logging.LogRecord):
+                The log record to forward.
+        """
+        try:
+            self.record_emitted.emit(record)
+        except RuntimeError:
+            # The underlying C++ Qt object may have been deleted (e.g. during
+            # application shutdown) before the Python logging atexit handler
+            # runs.  Silently ignore in that case.
+            pass
+        except Exception:  # noqa: BLE001
+            self.handleError(record)
 
 
 class _SignalStream(TextIOBase):
@@ -519,6 +572,11 @@ class SequenceEngine(QObject):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
+        self._log_handler = _QtLogHandler(parent=self)
+        logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        logger.setLevel(logging.DEBUG)
+        logger.addHandler(self._log_handler)
+
         self._namespace = self._make_namespace()
         self._plugin_var_names: dict[str, str] = {}  # ep_name → var_name in namespace
 
@@ -542,6 +600,10 @@ class SequenceEngine(QObject):
         without an explicit ``import numpy`` statement.  ``numpy`` itself is
         also available under the name ``np``.
 
+        A :class:`logging.Logger` instance is also seeded under the name
+        ``log`` so that user scripts and plugins can emit log messages via
+        ``log.debug(...)``, ``log.info(...)``, etc.
+
         Returns:
             (dict[str, Any]):
                 Initial ``globals`` dict for the interpreter.
@@ -555,6 +617,8 @@ class SequenceEngine(QObject):
         # Inject all public numpy names so expressions like sin(x) work directly.
         for func_name in np.__all__:
             ns[func_name] = getattr(np, func_name)
+        # Seed the logger *after* numpy names so it is not shadowed by numpy.log.
+        ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
         return ns
 
     def add_plugin(self, ep_name: str, plugin: BasePlugin) -> None:
@@ -835,10 +899,33 @@ class SequenceEngine(QObject):
         self._thread.wait(2000)
         if self._thread.isRunning():
             self._thread.terminate()
+        logging.getLogger(SEQUENCE_LOGGER_NAME).removeHandler(self._log_handler)
 
     # ------------------------------------------------------------------
     # Status
     # ------------------------------------------------------------------
+
+    @property
+    def log_handler(self) -> _QtLogHandler:
+        """Qt log handler that forwards sequence log records as a signal.
+
+        Connect :attr:`_QtLogHandler.record_emitted` to a slot that accepts a
+        :class:`logging.LogRecord` in order to receive all messages emitted
+        via the ``log`` object in the sequence namespace.
+
+        Returns:
+            (_QtLogHandler):
+                The handler attached to the sequence logger.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> engine = SequenceEngine()
+            >>> engine.log_handler is not None
+            True
+            >>> engine.shutdown()
+        """
+        return self._log_handler
 
     @property
     def is_running(self) -> bool:
