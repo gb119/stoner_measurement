@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 from stoner_measurement.core.sequence_engine import SequenceEngine, _to_var_name
-from stoner_measurement.plugins.dummy import DummyPlugin
+from stoner_measurement.plugins.trace import DummyPlugin
 
 # ---------------------------------------------------------------------------
 # _to_var_name helper
@@ -110,7 +110,7 @@ class TestPluginNamespace:
         assert plugin.engine_namespace.get("_test_var") == 99
 
     def test_engine_namespace_detached_returns_empty(self):
-        from stoner_measurement.plugins.dummy import DummyPlugin as _DP
+        from stoner_measurement.plugins.trace import DummyPlugin as _DP
         plugin = _DP()
         assert plugin.engine_namespace == {}
 
@@ -493,7 +493,7 @@ class TestDataCatalogs:
         assert engine._namespace["_traces"] == engine.traces_catalog
 
     def test_values_catalog_populated_by_state_plugin(self, engine):
-        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
         plugin = CounterPlugin()
         engine.add_plugin("counter", plugin)
         cat = engine.values_catalog
@@ -501,7 +501,7 @@ class TestDataCatalogs:
         assert any("counter" in k for k in cat)
 
     def test_multiple_plugins_merged_in_catalogs(self, engine):
-        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
         trace_plugin = DummyPlugin()
         state_plugin = CounterPlugin()
         engine.add_plugin("dummy", trace_plugin)

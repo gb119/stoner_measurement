@@ -648,7 +648,7 @@ class SequenceEngine(QObject):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
             >>> plugin = DummyPlugin()
             >>> engine.add_plugin("dummy", plugin)
@@ -681,7 +681,7 @@ class SequenceEngine(QObject):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
             >>> engine.add_plugin("dummy", DummyPlugin())
             >>> engine.remove_plugin("dummy")
@@ -720,7 +720,7 @@ class SequenceEngine(QObject):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
             >>> plugin = DummyPlugin()
             >>> engine.add_plugin("dummy", plugin)
@@ -795,7 +795,7 @@ class SequenceEngine(QObject):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
             >>> engine.add_plugin("dummy", DummyPlugin())
             >>> cat = engine.traces_catalog
@@ -829,7 +829,7 @@ class SequenceEngine(QObject):
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_control import StateControlPlugin
-            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
             >>> engine = SequenceEngine()
             >>> engine.add_plugin("counter", CounterPlugin())
             >>> cat = engine.values_catalog
@@ -1120,7 +1120,7 @@ class SequenceEngine(QObject):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
             >>> plugin = DummyPlugin()
             >>> engine.add_plugin("dummy", plugin)

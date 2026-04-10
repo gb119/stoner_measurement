@@ -11,7 +11,7 @@ from stoner_measurement.core.sequence_engine import (
     SequenceEngine,
     _QtLogHandler,
 )
-from stoner_measurement.plugins.dummy import DummyPlugin
+from stoner_measurement.plugins.trace import DummyPlugin
 
 
 # ---------------------------------------------------------------------------

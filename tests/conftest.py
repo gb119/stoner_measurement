@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QApplication
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.plugins.dummy import DummyPlugin
+from stoner_measurement.plugins.trace import DummyPlugin
 
 
 @pytest.fixture(scope="session")

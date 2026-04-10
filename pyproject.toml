@@ -50,8 +50,8 @@ dev = [
 stoner-measurement = "stoner_measurement.main:main"
 
 [project.entry-points."stoner_measurement.plugins"]
-counter = "stoner_measurement.plugins.counter:CounterPlugin"
-dummy = "stoner_measurement.plugins.dummy:DummyPlugin"
+counter = "stoner_measurement.plugins.state_control.counter:CounterPlugin"
+dummy = "stoner_measurement.plugins.trace.dummy:DummyPlugin"
 
 [tool.setuptools.packages.find]
 where = ["src"]

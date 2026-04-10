@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from stoner_measurement.core.plugin_manager import PluginManager
-from stoner_measurement.plugins.dummy import DummyPlugin
+from stoner_measurement.plugins.trace import DummyPlugin
 
 
 class TestPluginManager:

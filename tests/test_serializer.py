@@ -127,7 +127,7 @@ class TestBasePluginJson:
     """Tests for BasePlugin.to_json / from_json on simple plugins."""
 
     def test_to_json_contains_class_type_instance_name(self, qapp):
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         d = plugin.to_json()
@@ -137,7 +137,7 @@ class TestBasePluginJson:
         assert "DummyPlugin" in d["class"]
 
     def test_class_field_has_module_colon_classname_format(self, qapp):
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         d = plugin.to_json()
@@ -148,7 +148,7 @@ class TestBasePluginJson:
 
     def test_from_json_recreates_correct_class(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         restored = BasePlugin.from_json(plugin.to_json())
@@ -156,7 +156,7 @@ class TestBasePluginJson:
 
     def test_from_json_restores_instance_name(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         plugin.instance_name = "my_custom_name"
@@ -174,7 +174,7 @@ class TestTracePluginJson:
     """Tests for TracePlugin JSON serialisation, including scan generator."""
 
     def test_to_json_includes_scan_generator(self, qapp):
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         d = plugin.to_json()
@@ -183,7 +183,7 @@ class TestTracePluginJson:
 
     def test_round_trip_preserves_scan_generator_type(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         plugin.set_scan_generator_class(FunctionScanGenerator)
@@ -192,7 +192,7 @@ class TestTracePluginJson:
 
     def test_round_trip_preserves_stepped_generator_params(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         plugin.scan_generator = SteppedScanGenerator(
@@ -208,14 +208,14 @@ class TestStateControlPluginJson:
     """Tests for StateControlPlugin JSON serialisation."""
 
     def test_to_json_type_is_state(self, qapp):
-        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
 
         plugin = CounterPlugin()
         d = plugin.to_json()
         assert d["type"] == "state"
 
     def test_to_json_includes_scan_generator(self, qapp):
-        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
 
         plugin = CounterPlugin()
         d = plugin.to_json()
@@ -223,7 +223,7 @@ class TestStateControlPluginJson:
 
     def test_round_trip_restores_scan_generator_params(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
 
         plugin = CounterPlugin()
         plugin.scan_generator = SteppedScanGenerator(
@@ -260,7 +260,7 @@ class TestSequenceSerializer:
 
     def test_sequence_to_json_single_leaf_step(self, qapp):
         from stoner_measurement.core.serializer import sequence_to_json
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         data = sequence_to_json([plugin])
@@ -270,8 +270,8 @@ class TestSequenceSerializer:
 
     def test_sequence_to_json_nested_step(self, qapp):
         from stoner_measurement.core.serializer import sequence_to_json
-        from stoner_measurement.plugins.counter import CounterPlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         outer = CounterPlugin()
         inner = DummyPlugin()
@@ -288,22 +288,22 @@ class TestSequenceSerializer:
 
     def test_sequence_from_json_single_leaf(self, qapp):
         from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         plugin.instance_name = "test_dummy"
         data = sequence_to_json([plugin])
         steps = sequence_from_json(data)
         assert len(steps) == 1
-        from stoner_measurement.plugins.dummy import DummyPlugin as _D
+        from stoner_measurement.plugins.trace import DummyPlugin as _D
 
         assert isinstance(steps[0], _D)
         assert steps[0].instance_name == "test_dummy"
 
     def test_sequence_from_json_preserves_nesting(self, qapp):
         from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
-        from stoner_measurement.plugins.counter import CounterPlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         outer = CounterPlugin()
         outer.instance_name = "outer_counter"
@@ -321,7 +321,7 @@ class TestSequenceSerializer:
 
     def test_sequence_round_trip_multiple_steps(self, qapp):
         from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugins = [DummyPlugin(), DummyPlugin(), DummyPlugin()]
         for i, p in enumerate(plugins):
@@ -365,7 +365,7 @@ class TestJsonTextRoundTrip:
 
     def test_trace_plugin_json_text_round_trip(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         plugin = DummyPlugin()
         plugin.instance_name = "my_trace"
@@ -382,7 +382,7 @@ class TestJsonTextRoundTrip:
 
     def test_state_control_plugin_json_text_round_trip(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.counter import CounterPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
 
         plugin = CounterPlugin()
         plugin.instance_name = "my_counter"
@@ -399,8 +399,8 @@ class TestJsonTextRoundTrip:
 
     def test_full_sequence_json_text_round_trip(self, qapp):
         from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
-        from stoner_measurement.plugins.counter import CounterPlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         outer = CounterPlugin()
         outer.instance_name = "field"
@@ -461,7 +461,7 @@ class TestSequenceEqualityRoundTrip:
 
     def test_flat_sequence_equality(self, qapp):
         from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         steps = [DummyPlugin(), DummyPlugin()]
         steps[0].instance_name = "a"
@@ -474,8 +474,8 @@ class TestSequenceEqualityRoundTrip:
 
     def test_nested_sequence_equality(self, qapp):
         from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
-        from stoner_measurement.plugins.counter import CounterPlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         outer = CounterPlugin()
         outer.instance_name = "sweep"
@@ -499,8 +499,8 @@ class TestSequenceEqualityRoundTrip:
 
     def test_deeply_nested_sequence_equality(self, qapp):
         from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
-        from stoner_measurement.plugins.counter import CounterPlugin
-        from stoner_measurement.plugins.dummy import DummyPlugin
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
 
         level1 = CounterPlugin()
         level1.instance_name = "outer"

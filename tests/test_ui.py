@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QLabel, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-from stoner_measurement.plugins.dummy import DummyPlugin
+from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.plugins.state_control import StateControlPlugin
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel

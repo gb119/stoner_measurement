@@ -45,7 +45,7 @@ class SequencePlugin(BasePlugin):
             :class:`SequencePlugin` sub-step).  Defaults to an empty list.
 
     Examples:
-        >>> from stoner_measurement.plugins.sequence_plugin import SequencePlugin
+        >>> from stoner_measurement.plugins.sequence import SequencePlugin
         >>> issubclass(SequencePlugin, SequencePlugin)
         True
     """
@@ -62,7 +62,7 @@ class SequencePlugin(BasePlugin):
                 List of step descriptors (strings or tuples).
 
         Examples:
-            >>> from stoner_measurement.plugins.sequence_plugin import TopLevelSequence
+            >>> from stoner_measurement.plugins.sequence import TopLevelSequence
             >>> seq = TopLevelSequence()
             >>> seq.sub_steps
             []
@@ -118,7 +118,7 @@ class SequencePlugin(BasePlugin):
                 Lines for all nested sub-steps at the same indentation level.
 
         Examples:
-            >>> from stoner_measurement.plugins.sequence_plugin import TopLevelSequence
+            >>> from stoner_measurement.plugins.sequence import TopLevelSequence
             >>> seq = TopLevelSequence()
             >>> lines = seq.generate_action_code(0, [], lambda s, i: [])
             >>> lines
@@ -149,7 +149,7 @@ class SequencePlugin(BasePlugin):
                 Ordered list of zero-argument callables, one per nested step.
 
         Examples:
-            >>> from stoner_measurement.plugins.sequence_plugin import TopLevelSequence
+            >>> from stoner_measurement.plugins.sequence import TopLevelSequence
             >>> seq = TopLevelSequence()
             >>> called = []
             >>> seq.execute_sequence([lambda: called.append(1), lambda: called.append(2)])
@@ -181,7 +181,7 @@ class TopLevelSequence(SequencePlugin):
     Examples:
         >>> from PyQt6.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.sequence_plugin import TopLevelSequence
+        >>> from stoner_measurement.plugins.sequence import TopLevelSequence
         >>> seq = TopLevelSequence()
         >>> seq.plugin_type
         'sequence'
@@ -211,7 +211,7 @@ class TopLevelSequence(SequencePlugin):
                 Ordered list of zero-argument callables.
 
         Examples:
-            >>> from stoner_measurement.plugins.sequence_plugin import TopLevelSequence
+            >>> from stoner_measurement.plugins.sequence import TopLevelSequence
             >>> seq = TopLevelSequence()
             >>> results = []
             >>> seq.execute_sequence([lambda: results.append(1)])

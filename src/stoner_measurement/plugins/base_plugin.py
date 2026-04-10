@@ -36,19 +36,6 @@ from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
-#: Maps old (pre-restructure) plugin module paths to their new locations so that
-#: JSON files serialised before the plugins package was split into sub-packages
-#: can still be deserialised correctly by :meth:`BasePlugin.from_json`.
-_MODULE_REMAP: dict[str, str] = {
-    "stoner_measurement.plugins.command": "stoner_measurement.plugins.command.base",
-    "stoner_measurement.plugins.counter": "stoner_measurement.plugins.state_control.counter",
-    "stoner_measurement.plugins.dummy": "stoner_measurement.plugins.trace.dummy",
-    "stoner_measurement.plugins.monitor": "stoner_measurement.plugins.monitor.base",
-    "stoner_measurement.plugins.sequence_plugin": "stoner_measurement.plugins.sequence.base",
-    "stoner_measurement.plugins.state_control": "stoner_measurement.plugins.state_control.base",
-    "stoner_measurement.plugins.trace": "stoner_measurement.plugins.trace.base",
-    "stoner_measurement.plugins.transform": "stoner_measurement.plugins.transform.base",
-}
 
 
 class _ABCQObjectMeta(type(QObject), ABCMeta):
@@ -131,7 +118,7 @@ class BasePlugin(ABC):
                 The live interpreter namespace dict, or ``{}`` when detached.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> plugin.engine_namespace   # detached — returns empty dict
             {}
@@ -167,7 +154,7 @@ class BasePlugin(ABC):
                 A :class:`logging.Logger` instance.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> import logging
             >>> isinstance(plugin.log, logging.Logger)
@@ -218,7 +205,7 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
             >>> engine = SequenceEngine()
             >>> plugin = DummyPlugin()
@@ -265,7 +252,7 @@ class BasePlugin(ABC):
                 A valid Python identifier.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> plugin.instance_name
             'dummy'
@@ -336,7 +323,7 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> d = plugin.to_json()
             >>> d["type"]
@@ -388,7 +375,7 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> original = DummyPlugin()
             >>> original.instance_name = "my_dummy"
             >>> restored = BasePlugin.from_json(original.to_json())
@@ -399,7 +386,6 @@ class BasePlugin(ABC):
         """
         class_path = data["class"]
         module_name, class_name = class_path.rsplit(":", 1)
-        module_name = _MODULE_REMAP.get(module_name, module_name)
         module = importlib.import_module(module_name)
         plugin_cls = getattr(module, class_name)
         try:
@@ -503,7 +489,7 @@ class BasePlugin(ABC):
                 which overrides this to return ``False``.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> DummyPlugin().has_lifecycle
             True
         """
@@ -528,7 +514,7 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> widget = plugin.config_widget()
             >>> widget is not None
@@ -593,7 +579,7 @@ class BasePlugin(ABC):
                 docstring is available.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> tooltip = plugin.tooltip()
             >>> isinstance(tooltip, str)
@@ -627,7 +613,7 @@ class BasePlugin(ABC):
                 A monitoring widget, or ``None`` if the plugin provides none.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> plugin.monitor_widget() is None
             True
@@ -669,7 +655,7 @@ class BasePlugin(ABC):
                 implement this plugin's action phase.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> lines = plugin.generate_action_code(1, [], lambda s, i: [])
             >>> "dummy.measure" in "\\n".join(lines)
