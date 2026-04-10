@@ -54,7 +54,7 @@ jobs:
       - name: Run tests
         shell: bash -el {0}
         env:
-          QT_QPA_PLATFORM: xcb
+          QT_QPA_PLATFORM: offscreen
           QT_OPENGL: software
           LIBGL_ALWAYS_SOFTWARE: "1"
           QT_DEBUG_PLUGINS: "1"
