@@ -5,6 +5,7 @@ import sys
 from PyQt6.QtWidgets import QApplication
 
 from stoner_measurement.app import MeasurementApp
+from stoner_measurement.ui.icons import make_app_icon
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv)
     app.setApplicationName("Stoner Measurement")
     app.setOrganizationName("University of Leeds")
+    app.setWindowIcon(make_app_icon())
 
     window = MeasurementApp()
     window.show()
