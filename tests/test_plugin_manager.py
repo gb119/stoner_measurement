@@ -58,8 +58,10 @@ class TestPluginManager:
         assert len(emitted) == 1
 
     def test_discover_loads_entry_points(self, qapp):
-        """After discover(), the built-in 'dummy' entry-point should be loaded."""
+        """After discover(), the built-in entry-points should be loaded."""
         pm = PluginManager()
         pm.discover()
-        # The package registers 'dummy' via pyproject.toml entry-points
+        # The package registers these entry-points via pyproject.toml
         assert "dummy" in pm.plugins
+        assert "counter" in pm.plugins
+        assert "save" in pm.plugins
