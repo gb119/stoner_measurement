@@ -18,9 +18,13 @@ The following specialised sub-types are available:
   sequence tree.
 * :class:`~stoner_measurement.plugins.sequence_plugin.TopLevelSequence` —
   concrete root container for the entire measurement sequence.
+* :class:`~stoner_measurement.plugins.command.CommandPlugin` — executes a
+  single action in the sequence without instrument lifecycle steps
+  (no connect/configure/disconnect).
 """
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.command import CommandPlugin, SaveCommand
 from stoner_measurement.plugins.monitor import MonitorPlugin
 from stoner_measurement.plugins.sequence_plugin import SequencePlugin, TopLevelSequence
 from stoner_measurement.plugins.state_control import StateControlPlugin
@@ -29,7 +33,9 @@ from stoner_measurement.plugins.transform import TransformPlugin
 
 __all__ = [
     "BasePlugin",
+    "CommandPlugin",
     "MonitorPlugin",
+    "SaveCommand",
     "SequencePlugin",
     "StateControlPlugin",
     "TopLevelSequence",
@@ -37,3 +43,4 @@ __all__ = [
     "TracePlugin",
     "TransformPlugin",
 ]
+
