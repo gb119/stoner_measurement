@@ -107,7 +107,11 @@ The following example sends a brief notification to a remote HTTP endpoint
 
 
     class NotifyCommand(CommandPlugin):
-        """Send a JSON notification to a configurable HTTP endpoint."""
+        """Send a JSON notification to a configurable HTTP endpoint.
+
+        Evaluates ``message_expr`` against the engine namespace and POSTs the
+        resulting string as JSON to ``endpoint``.
+        """
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -255,15 +259,12 @@ the full GUI:
         print(ep.name, "→", ep.value)
 
 This should list your new entry-points alongside the built-in ones.
-Alternatively, use the ``importlib.metadata`` command-line tool:
+Save the snippet to a file (e.g. ``check_plugins.py``) and run it
+as a script if a multi-statement shell command is inconvenient:
 
 .. code-block:: bash
 
-    python -c "
-    import importlib.metadata
-    for ep in importlib.metadata.entry_points(group='stoner_measurement.plugins'):
-        print(ep.name, '->', ep.value)
-    "
+    python check_plugins.py
 
 Once installed, launch the application normally:
 
@@ -295,7 +296,10 @@ can reference them directly:
      - Every name exported by NumPy (e.g. ``sin``, ``sqrt``, ``linspace``,
        ``array``) is available without a ``np.`` prefix.
    * - ``log``
-     - A :class:`logging.Logger` named ``stoner_measurement.sequence``.
+     - A :class:`logging.Logger` named ``stoner_measurement.sequence``,
+       seeded into the namespace so that sequence scripts can call
+       ``log.info(…)`` directly.  Inside a plugin method the same logger
+       is also available as ``self.log`` for convenience.
        Records are forwarded to the application's log viewer.
    * - ``_traces``
      - Mapping of ``"{instance_name}:{channel}"`` to
