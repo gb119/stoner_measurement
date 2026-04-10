@@ -1195,7 +1195,8 @@ class SequenceEngine(QObject):
 
         lines.append("# Connect and initialise all plugins.")
         for plugin in ordered_plugins:
-            lines.append(f"{plugin.instance_name}.connect()")
+            if plugin.has_lifecycle:
+                lines.append(f"{plugin.instance_name}.connect()")
         lines.append("")
 
         # ------------------------------------------------------------------
@@ -1204,7 +1205,8 @@ class SequenceEngine(QObject):
 
         lines.append("# Configure all plugins.")
         for plugin in ordered_plugins:
-            lines.append(f"{plugin.instance_name}.configure()")
+            if plugin.has_lifecycle:
+                lines.append(f"{plugin.instance_name}.configure()")
         lines.append("")
 
         # ------------------------------------------------------------------
@@ -1266,7 +1268,8 @@ class SequenceEngine(QObject):
         lines.extend(action_lines)
         lines.append("finally:")
         for plugin in reversed(ordered_plugins):
-            lines.append(f"    {plugin.instance_name}.disconnect()")
+            if plugin.has_lifecycle:
+                lines.append(f"    {plugin.instance_name}.disconnect()")
         lines.append("")
 
         code = "\n".join(lines)
