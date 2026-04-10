@@ -11,27 +11,33 @@ import math
 from collections.abc import Generator
 from typing import Any
 
-from PyQt6.QtWidgets import QDoubleSpinBox, QFormLayout, QWidget
+import numpy as np
+
+from PyQt6.QtWidgets import QDoubleSpinBox, QFormLayout, QLineEdit, QWidget
 
 from stoner_measurement.plugins.trace import TracePlugin, TraceStatus
 
 
 class DummyPlugin(TracePlugin):
-    """A built-in demo plugin that generates RSJ model I-V data.
+    """A built-in demo plugin that generates RSJ model I-V data with optional noise.
 
     Scan points are read from the active
     :attr:`~stoner_measurement.plugins.trace.TracePlugin.scan_generator` and
     interpreted as applied current values *I* (in A).  The corresponding
     voltage is computed using the DC I-V characteristic of the resistively
-    shunted Josephson junction (RSJ) model:
+    shunted Josephson junction (RSJ) model and then perturbed by Gaussian noise:
 
     * ``V = 0`` when ``|I| < I_c``
     * ``V = sign(I) × R_n × √(I² − I_c²)`` when ``|I| ≥ I_c``
+    * ``V += N(0, V_n)`` — independent Gaussian noise added to every sample
 
-    where *I_c* is the critical current and *R_n* is the normal-state
-    resistance.  Both parameters are configurable on the *Settings* tab or
-    can be overridden per measurement via the ``parameters`` dict passed to
-    :meth:`execute`.
+    where *I_c* is the critical current, *R_n* is the normal-state resistance,
+    and *V_n* is the noise standard deviation.  All three parameters are
+    configurable on the *Settings* tab or can be overridden per measurement via
+    the ``parameters`` dict passed to :meth:`execute`.  *V_n* is stored and
+    entered as a Python expression string so that it can reference variables or
+    numpy functions available in the sequence engine namespace (e.g.
+    ``"1e-3 * sqrt(R_n)"``).
 
     Keyword Parameters:
         parent (QObject | None):
@@ -43,6 +49,7 @@ class DummyPlugin(TracePlugin):
         super().__init__(parent)
         self._critical_current: float = 1.0
         self._normal_resistance: float = 1.0
+        self._noise_level: str = "0.0"
 
     @property
     def name(self) -> str:
@@ -144,17 +151,47 @@ class DummyPlugin(TracePlugin):
         """
         self._set_status(TraceStatus.IDLE)
 
+    def _eval_noise_level(self, expr: str) -> float:
+        """Evaluate *expr* as a float noise-level expression.
+
+        If the plugin is currently attached to a sequence engine, the
+        expression is evaluated using :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`
+        so that numpy functions and engine variables are available.
+        Otherwise (e.g. in standalone tests) a plain :func:`float` conversion
+        is used, which handles simple numeric literals such as ``"0.0"`` or
+        ``"1e-3"``.
+
+        Args:
+            expr (str):
+                Python expression that evaluates to a non-negative float.
+
+        Returns:
+            (float):
+                The evaluated noise standard deviation.
+        """
+        try:
+            return float(self.eval(str(expr)))
+        except RuntimeError:
+            return float(expr)
+
     def execute(
         self, parameters: dict[str, Any]
     ) -> Generator[tuple[float, float]]:
-        """Yield RSJ I-V data points driven by the active scan generator.
+        """Yield RSJ I-V data points with optional Gaussian noise.
 
         Iterates over the scan generator, treating each scan-point value as an
-        applied current *I*, and yields ``(I, V)`` for every point whose
-        *measure* flag is ``True``.  The voltage is computed as:
+        applied current *I*, and collects ``(I, V)`` for every point whose
+        *measure* flag is ``True``.  The noiseless voltage is:
 
         * ``V = 0`` when ``|I| < I_c``
         * ``V = sign(I) × R_n × √(I² − I_c²)`` when ``|I| ≥ I_c``
+
+        After all points are collected, independent Gaussian noise is added to
+        the full voltage array:
+
+        * ``V += np.random.normal(0, V_n, V.size)``
+
+        The noisy ``(I, V)`` pairs are then yielded in scan order.
 
         Args:
             parameters (dict[str, Any]):
@@ -165,6 +202,10 @@ class DummyPlugin(TracePlugin):
                 * ``"R_n"`` *(float)* — normal-state resistance in Ω.
                   Defaults to the value set on the *Settings* tab (initially
                   ``1.0``).
+                * ``"V_n"`` *(str | float)* — noise standard deviation in V,
+                  as a Python expression string.  Defaults to the expression
+                  set on the *Settings* tab (initially ``"0.0"``).  Set to
+                  ``"0.0"`` (or ``0.0``) for noiseless output.
 
         Yields:
             (tuple[float, float]):
@@ -186,6 +227,10 @@ class DummyPlugin(TracePlugin):
         """
         i_c = float(parameters.get("I_c", self._critical_current))
         r_n = float(parameters.get("R_n", self._normal_resistance))
+        v_n_expr = str(parameters.get("V_n", self._noise_level))
+
+        currents: list[float] = []
+        voltages: list[float] = []
         for _ix, current, measure in self.scan_generator:
             if measure:
                 abs_i = abs(current)
@@ -193,15 +238,26 @@ class DummyPlugin(TracePlugin):
                     voltage = 0.0
                 else:
                     voltage = math.copysign(r_n * math.sqrt(abs_i**2 - i_c**2), current)
-                yield current, voltage
+                currents.append(current)
+                voltages.append(voltage)
+
+        v_arr = np.array(voltages)
+        v_n = self._eval_noise_level(v_n_expr)
+        if v_n > 0.0:
+            v_arr = v_arr + np.random.normal(0, v_n, v_arr.size)
+
+        yield from zip(currents, v_arr.tolist())
 
     def _plugin_config_tabs(self) -> QWidget:
-        """Return a settings widget with spin boxes for *I_c* and *R_n*.
+        """Return a settings widget with controls for *I_c*, *R_n*, and *V_n*.
 
-        Creates a :class:`~PyQt6.QtWidgets.QFormLayout` with two
-        :class:`~PyQt6.QtWidgets.QDoubleSpinBox` widgets that are
-        bound to :attr:`_critical_current` and :attr:`_normal_resistance`
-        respectively.
+        Creates a :class:`~PyQt6.QtWidgets.QFormLayout` with:
+
+        * Two :class:`~PyQt6.QtWidgets.QDoubleSpinBox` widgets bound to
+          :attr:`_critical_current` and :attr:`_normal_resistance`.
+        * One :class:`~PyQt6.QtWidgets.QLineEdit` bound to
+          :attr:`_noise_level`, accepting any Python expression that evaluates
+          to a non-negative float (e.g. ``"1e-3"`` or ``"0.0"``).
 
         Returns:
             (QWidget):
@@ -229,17 +285,28 @@ class DummyPlugin(TracePlugin):
         r_n_spin.setSuffix(" \u03a9")
         r_n_spin.setValue(self._normal_resistance)
 
+        v_n_edit = QLineEdit(self._noise_level)
+        v_n_edit.setToolTip(
+            "Noise standard deviation in V, as a Python expression "
+            "(e.g. '1e-3' or '0.0' for noiseless output)."
+        )
+
         def _update_i_c(val: float) -> None:
             self._critical_current = val
 
         def _update_r_n(val: float) -> None:
             self._normal_resistance = val
 
+        def _update_v_n() -> None:
+            self._noise_level = v_n_edit.text().strip()
+
         i_c_spin.valueChanged.connect(_update_i_c)
         r_n_spin.valueChanged.connect(_update_r_n)
+        v_n_edit.editingFinished.connect(_update_v_n)
 
         layout.addRow("Critical current I_c:", i_c_spin)
         layout.addRow("Normal resistance R_n:", r_n_spin)
+        layout.addRow("Noise level V_n:", v_n_edit)
         return widget
 
     def _about_html(self) -> str:
@@ -259,7 +326,8 @@ class DummyPlugin(TracePlugin):
         return (
             "<h3>Dummy Plugin \u2013 RSJ Model</h3>"
             "<p><i>Simulates the DC I-V characteristic of a resistively "
-            "shunted Josephson junction. No hardware is required.</i></p>"
+            "shunted Josephson junction with optional Gaussian noise. "
+            "No hardware is required.</i></p>"
             "<p>Configure the scan generator on the <b>Scan</b> tab to set "
             "the applied current values at which voltages are computed.</p>"
             "<p>The voltage at each current point <i>I</i> is:</p>"
@@ -269,8 +337,12 @@ class DummyPlugin(TracePlugin):
             "<li><code>V = sign(I) &times; R<sub>n</sub> &times; "
             "&radic;(I&sup2; &minus; I<sub>c</sub>&sup2;)</code> "
             "when <code>|I| &ge; I<sub>c</sub></code></li>"
+            "<li><code>V += N(0, V<sub>n</sub>)</code> &mdash; "
+            "independent Gaussian noise added to every sample</li>"
             "</ul>"
-            "<p>Set <code>I<sub>c</sub></code> (critical current) and "
-            "<code>R<sub>n</sub></code> (normal-state resistance) on the "
-            "<b>Settings</b> tab.</p>"
+            "<p>Set <code>I<sub>c</sub></code> (critical current), "
+            "<code>R<sub>n</sub></code> (normal-state resistance), and "
+            "<code>V<sub>n</sub></code> (noise standard deviation, as a "
+            "Python expression) on the <b>Settings</b> tab. "
+            "Use <code>V<sub>n</sub> = 0.0</code> for noiseless output.</p>"
         )

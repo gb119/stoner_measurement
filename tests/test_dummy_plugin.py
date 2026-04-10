@@ -240,8 +240,54 @@ class TestDummyPlugin:
     def test_y_label(self, qapp):
         assert DummyPlugin().y_label == "V"
 
-    def test_default_critical_current(self, qapp):
-        assert DummyPlugin()._critical_current == 1.0
+    def test_default_noise_level(self, qapp):
+        assert DummyPlugin()._noise_level == "0.0"
+
+    def test_execute_zero_noise_is_exact(self, qapp):
+        """V_n=0.0 must give exact RSJ values (no noise added)."""
+        plugin = DummyPlugin()
+        gen = SteppedScanGenerator(
+            start=0.0, stages=[(2.0, 1.0, True)], parent=plugin
+        )
+        plugin.scan_generator = gen
+        data = list(plugin.execute({"I_c": 1.0, "R_n": 1.0, "V_n": "0.0"}))
+        v_vals = [v for _i, v in data]
+        assert abs(v_vals[0]) < 1e-9       # I=0  → V=0
+        assert abs(v_vals[1]) < 1e-9       # I=1  → V=0 (at I_c)
+        assert abs(v_vals[2] - math.sqrt(3)) < 1e-9  # I=2 → sqrt(3)
+
+    def test_execute_noise_shifts_voltages(self, qapp):
+        """Non-zero V_n should produce voltages that differ from the noiseless values."""
+        plugin = DummyPlugin()
+        gen = SteppedScanGenerator(
+            start=2.0, stages=[(2.0, 1.0, True)], parent=plugin
+        )
+        plugin.scan_generator = gen
+        noiseless = list(plugin.execute({"I_c": 0.0, "R_n": 1.0, "V_n": "0.0"}))
+
+        np.random.seed(0)
+        noisy = list(plugin.execute({"I_c": 0.0, "R_n": 1.0, "V_n": "1.0"}))
+
+        # With noise scale=1.0 (much larger than typical RSJ voltages) the
+        # noisy and noiseless voltages should almost certainly differ.
+        assert any(
+            abs(nv - v) > 1e-12 for (_, nv), (_, v) in zip(noisy, noiseless)
+        )
+
+    def test_execute_noise_uses_v_n_parameter(self, qapp):
+        """V_n passed in parameters overrides _noise_level attribute."""
+        plugin = DummyPlugin()
+        plugin._noise_level = "0.0"  # default noiseless
+        gen = SteppedScanGenerator(
+            start=2.0, stages=[(2.0, 1.0, True)], parent=plugin
+        )
+        plugin.scan_generator = gen
+        np.random.seed(1)
+        noisy = list(plugin.execute({"I_c": 0.0, "R_n": 1.0, "V_n": "100.0"}))
+        # With V_n=100 V the noise dominates; voltages should not all be
+        # exactly equal to the noiseless RSJ value (I=2 → V=2 for I_c=0).
+        noiseless_v = 2.0
+        assert any(abs(v - noiseless_v) > 1e-6 for _i, v in noisy)
 
     def test_default_normal_resistance(self, qapp):
         assert DummyPlugin()._normal_resistance == 1.0
