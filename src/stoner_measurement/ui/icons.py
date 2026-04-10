@@ -1,9 +1,9 @@
 """Icon factories for the Stoner Measurement UI.
 
 Provides functions that create :class:`~PyQt6.QtGui.QIcon` objects used
-throughout the application.  Icons are rendered programmatically so that
-no external image files are required, with the exception of the application
-logo which is loaded from the package data.
+throughout the application.  Most icons are rendered programmatically so that
+no external image files are required; the application logo is loaded from
+bundled package data.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ def make_generate_icon(size: int = 32) -> QIcon:
 def make_app_icon() -> QIcon:
     """Create the application icon from the bundled logo image.
 
-    Loads ``StonerLogo2.png`` from the ``stoner_measurement.ui`` package data
+    Loads `StonerLogo2.png` from the `stoner_measurement.ui` package data
     and returns it as a :class:`~PyQt6.QtGui.QIcon`.  Falls back to a null
     icon if the resource cannot be found.
 
