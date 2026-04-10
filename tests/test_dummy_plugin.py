@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+import pytest
+
 from stoner_measurement.plugins.dummy import DummyPlugin
 from stoner_measurement.plugins.trace import TraceStatus
 from stoner_measurement.scan import SteppedScanGenerator
@@ -60,24 +63,31 @@ class TestDummyPlugin:
     def test_execute_amplitude(self, qapp):
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.4, step=0.1)
-        data = list(plugin.execute({"amplitude": 2.0}))
-        for _x, y in data:
-            assert abs(y) <= 2.0 + 1e-9
+        # Default I_c=1.0 > all scan points (0…0.4), so all V must be 0
+        data = list(plugin.execute({}))
+        for _i, v in data:
+            assert v == 0.0
 
-    def test_execute_sine_values(self, qapp):
+    def test_execute_rsj_values(self, qapp):
         plugin = DummyPlugin()
-        # x = 0, π/2, π  → sin values: 0, 1, ≈0
+        # I_c=1.0, R_n=1.0; scan: 0, 1, 2  (start=0, stage end=2, step=1)
         gen = SteppedScanGenerator(
             start=0.0,
-            stages=[(math.pi, math.pi / 2, True)],
+            stages=[(2.0, 1.0, True)],
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({}))
+        data = list(plugin.execute({"I_c": 1.0, "R_n": 1.0}))
         assert len(data) == 3
-        assert abs(data[0][1]) < 1e-9  # sin(0) = 0
-        assert abs(data[1][1] - 1.0) < 1e-9  # sin(π/2) = 1
-        assert abs(data[-1][1]) < 1e-9  # sin(π) ≈ 0
+        i_vals = [i for i, _v in data]
+        v_vals = [v for _i, v in data]
+        # I=0: |0|<1 → V=0
+        assert abs(v_vals[0]) < 1e-9
+        # I=1: |1|==I_c → V=sign(1)*1*sqrt(1-1)=0
+        assert abs(v_vals[1]) < 1e-9
+        # I=2: |2|>1 → V=1*sqrt(4-1)=sqrt(3)
+        assert abs(v_vals[2] - math.sqrt(3)) < 1e-9
+        assert i_vals == pytest.approx([0.0, 1.0, 2.0])
 
     def test_config_tabs_returns_three_tabs(self, qapp):
         plugin = DummyPlugin()
@@ -140,9 +150,10 @@ class TestDummyPlugin:
         assert isinstance(html, str)
         assert "<h3>" in html
 
-    def test_plugin_config_tabs_returns_none(self, qapp):
+    def test_plugin_config_tabs_returns_widget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
         plugin = DummyPlugin()
-        assert plugin._plugin_config_tabs() is None
+        assert isinstance(plugin._plugin_config_tabs(), QWidget)
 
     def test_set_scan_generator_class(self, qapp):
         from stoner_measurement.scan import FunctionScanGenerator
@@ -211,14 +222,54 @@ class TestDummyPlugin:
         assert DummyPlugin().num_traces == 1
 
     def test_trace_title(self, qapp):
-        assert DummyPlugin().trace_title == "Dummy"
+        assert DummyPlugin().trace_title == "RSJ I-V"
 
     def test_x_units(self, qapp):
-        assert DummyPlugin().x_units == ""
+        assert DummyPlugin().x_units == "A"
 
     def test_y_units(self, qapp):
-        assert DummyPlugin().y_units == ""
+        assert DummyPlugin().y_units == "V"
 
     def test_trace_scan_is_scan_generator(self, qapp):
         plugin = DummyPlugin()
         assert plugin.trace_scan is plugin.scan_generator
+
+    def test_x_label(self, qapp):
+        assert DummyPlugin().x_label == "I"
+
+    def test_y_label(self, qapp):
+        assert DummyPlugin().y_label == "V"
+
+    def test_default_critical_current(self, qapp):
+        assert DummyPlugin()._critical_current == 1.0
+
+    def test_default_normal_resistance(self, qapp):
+        assert DummyPlugin()._normal_resistance == 1.0
+
+    def test_execute_negative_current_rsj(self, qapp):
+        """RSJ output for negative currents should have negative voltage."""
+        plugin = DummyPlugin()
+        gen = SteppedScanGenerator(
+            start=-2.0,
+            stages=[(-0.0, 1.0, True)],
+            parent=plugin,
+        )
+        plugin.scan_generator = gen
+        data = list(plugin.execute({"I_c": 1.0, "R_n": 1.0}))
+        # I=-2: V = -sqrt(4-1) = -sqrt(3)
+        i_neg2 = next((v for i, v in data if abs(i - (-2.0)) < 1e-9), None)
+        assert i_neg2 is not None
+        assert abs(i_neg2 - (-math.sqrt(3))) < 1e-9
+
+    def test_execute_rsj_r_n_scaling(self, qapp):
+        """Doubling R_n should double the voltage above I_c."""
+        plugin = DummyPlugin()
+        gen = SteppedScanGenerator(
+            start=2.0,
+            stages=[(2.0, 1.0, True)],
+            parent=plugin,
+        )
+        plugin.scan_generator = gen
+        data1 = list(plugin.execute({"I_c": 1.0, "R_n": 1.0}))
+        data2 = list(plugin.execute({"I_c": 1.0, "R_n": 2.0}))
+        assert abs(data2[0][1] - 2.0 * data1[0][1]) < 1e-9
