@@ -176,11 +176,6 @@ class MeasurementApp(QMainWindow):
         self._act_save_as.setShortcut(QKeySequence.StandardKey.SaveAs)
         self._act_save_as.triggered.connect(self._on_save_as)
 
-        # Connect tab changes so action labels/tips stay current --------
-        self._main_window.tabs.currentChanged.connect(self._on_tab_changed)
-        # Initialise labels for the default (Measurement) tab -----------
-        self._on_tab_changed(self._main_window.tabs.currentIndex())
-
         self._act_exit = QAction("E&xit", self)
         self._act_exit.setShortcut(QKeySequence.StandardKey.Quit)
         self._act_exit.setStatusTip("Exit the application")
@@ -237,6 +232,13 @@ class MeasurementApp(QMainWindow):
         self._act_about = QAction("&About", self)
         self._act_about.setStatusTip("Show information about this application")
         self._act_about.triggered.connect(self._on_about)
+
+        # Connect tab changes so action labels/tips stay current.
+        # Must be done after all actions are created so _on_tab_changed can
+        # safely reference self._act_run and self._act_generate.
+        self._main_window.tabs.currentChanged.connect(self._on_tab_changed)
+        # Initialise labels for the default (Measurement) tab -----------
+        self._on_tab_changed(self._main_window.tabs.currentIndex())
 
     # ------------------------------------------------------------------
     # Menu bar
