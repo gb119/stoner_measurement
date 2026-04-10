@@ -229,11 +229,17 @@ class DummyPlugin(TracePlugin):
         r_n_spin.setSuffix(" \u03a9")
         r_n_spin.setValue(self._normal_resistance)
 
-        i_c_spin.valueChanged.connect(lambda val: setattr(self, "_critical_current", val))
-        r_n_spin.valueChanged.connect(lambda val: setattr(self, "_normal_resistance", val))
+        def _update_i_c(val: float) -> None:
+            self._critical_current = val
 
-        layout.addRow("Critical current I\u2099:", i_c_spin)
-        layout.addRow("Normal resistance R\u2099:", r_n_spin)
+        def _update_r_n(val: float) -> None:
+            self._normal_resistance = val
+
+        i_c_spin.valueChanged.connect(_update_i_c)
+        r_n_spin.valueChanged.connect(_update_r_n)
+
+        layout.addRow("Critical current I_c:", i_c_spin)
+        layout.addRow("Normal resistance R_n:", r_n_spin)
         return widget
 
     def _about_html(self) -> str:
