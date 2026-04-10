@@ -6,37 +6,95 @@ Plugin modules
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: stoner_measurement.plugins.sequence_plugin
+Sequence sub-package
+--------------------
+
+.. automodule:: stoner_measurement.plugins.sequence
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. automodule:: stoner_measurement.plugins.sequence.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Trace sub-package
+-----------------
 
 .. automodule:: stoner_measurement.plugins.trace
    :members:
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: stoner_measurement.plugins.trace.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: stoner_measurement.plugins.trace.dummy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+State-control sub-package
+--------------------------
+
 .. automodule:: stoner_measurement.plugins.state_control
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. automodule:: stoner_measurement.plugins.state_control.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: stoner_measurement.plugins.state_control.counter
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Monitor sub-package
+-------------------
 
 .. automodule:: stoner_measurement.plugins.monitor
    :members:
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: stoner_measurement.plugins.monitor.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Transform sub-package
+---------------------
+
 .. automodule:: stoner_measurement.plugins.transform
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: stoner_measurement.plugins.counter
+.. automodule:: stoner_measurement.plugins.transform.base
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: stoner_measurement.plugins.dummy
+Command sub-package
+-------------------
+
+.. automodule:: stoner_measurement.plugins.command
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: stoner_measurement.plugins.command.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: stoner_measurement.plugins.command.save
    :members:
    :undoc-members:
    :show-inheritance:
@@ -59,7 +117,7 @@ sub-types:
   controls experimental state (field, temperature, motor position, etc.) and
   acts as a scan loop over a
   :class:`~stoner_measurement.scan.BaseScanGenerator`.  Inherits from
-  :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` so that
+  :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin` so that
   other steps can be nested beneath it in the sequence tree.
 * :class:`~stoner_measurement.plugins.monitor.MonitorPlugin` — passively
   records auxiliary quantities (temperature, pressure, etc.) by polling
@@ -67,7 +125,7 @@ sub-types:
 * :class:`~stoner_measurement.plugins.transform.TransformPlugin` — performs
   pure-computation transforms or reductions on collected data without accessing
   hardware.
-* :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` —
+* :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin` —
   abstract base for any plugin that acts as a container in the sequence tree.
   :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
   inherits from this class.
@@ -226,7 +284,7 @@ commands hardware to move to a series of set-points defined by a
 
 Because :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
 inherits from
-:class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`, it can
+:class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`, it can
 act as a branch node in the sequence tree and hold nested sub-steps.
 
 Implementing a state-control plugin
@@ -355,18 +413,18 @@ Optionally override:
 SequencePlugin
 --------------
 
-:class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` is an
+:class:`~stoner_measurement.plugins.sequence.base.SequencePlugin` is an
 abstract base class for any plugin that acts as a container (branch node) in
 the sequence tree.  Concrete subclasses must implement
 :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name` (inherited from
 :class:`~stoner_measurement.plugins.base_plugin.BasePlugin`) and
-:meth:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin.execute_sequence`.
+:meth:`~stoner_measurement.plugins.sequence.base.SequencePlugin.execute_sequence`.
 
-:class:`~stoner_measurement.plugins.sequence_plugin.TopLevelSequence` is the
+:class:`~stoner_measurement.plugins.sequence.base.TopLevelSequence` is the
 concrete root container for the entire measurement sequence.  It transparently
 passes through all nested sub-steps without any additional action.
 
 :class:`~stoner_measurement.plugins.state_control.StateControlPlugin` inherits
-from :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` to
+from :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin` to
 gain sub-sequence container behaviour while retaining its full instrument
 lifecycle API.

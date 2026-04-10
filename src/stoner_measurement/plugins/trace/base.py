@@ -17,6 +17,8 @@ engine:
 Status during these operations is reported via the :attr:`~TracePlugin.status`
 property and the :attr:`~TracePlugin.status_changed` signal using the
 :class:`TraceStatus` enum.
+
+This module is part of the :mod:`stoner_measurement.plugins.trace` sub-package.
 """
 
 from __future__ import annotations

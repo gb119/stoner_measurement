@@ -7,6 +7,8 @@ background subtraction, smoothing, FFT analysis, and unit conversion.
 A :class:`TransformPlugin` is chained after trace acquisition: the sequence
 engine passes the collected data dict through the transform pipeline and stores
 the resulting outputs alongside the raw traces.
+
+This module is part of the :mod:`stoner_measurement.plugins.transform` sub-package.
 """
 
 from __future__ import annotations

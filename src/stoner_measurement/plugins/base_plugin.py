@@ -13,12 +13,12 @@ A plugin must:
    widget to the left dock panel.
 
 Concrete plugin behaviour is added by subclassing one of the six specialised
-sub-types: :class:`~stoner_measurement.plugins.trace.TracePlugin`,
-:class:`~stoner_measurement.plugins.state_control.StateControlPlugin`,
-:class:`~stoner_measurement.plugins.monitor.MonitorPlugin`,
-:class:`~stoner_measurement.plugins.transform.TransformPlugin`,
-:class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`, or
-:class:`~stoner_measurement.plugins.command.CommandPlugin`.
+sub-types: :class:`~stoner_measurement.plugins.trace.base.TracePlugin`,
+:class:`~stoner_measurement.plugins.state_control.base.StateControlPlugin`,
+:class:`~stoner_measurement.plugins.monitor.base.MonitorPlugin`,
+:class:`~stoner_measurement.plugins.transform.base.TransformPlugin`,
+:class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`, or
+:class:`~stoner_measurement.plugins.command.base.CommandPlugin`.
 """
 
 from __future__ import annotations
@@ -35,6 +35,20 @@ from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
+
+#: Maps old (pre-restructure) plugin module paths to their new locations so that
+#: JSON files serialised before the plugins package was split into sub-packages
+#: can still be deserialised correctly by :meth:`BasePlugin.from_json`.
+_MODULE_REMAP: dict[str, str] = {
+    "stoner_measurement.plugins.command": "stoner_measurement.plugins.command.base",
+    "stoner_measurement.plugins.counter": "stoner_measurement.plugins.state_control.counter",
+    "stoner_measurement.plugins.dummy": "stoner_measurement.plugins.trace.dummy",
+    "stoner_measurement.plugins.monitor": "stoner_measurement.plugins.monitor.base",
+    "stoner_measurement.plugins.sequence_plugin": "stoner_measurement.plugins.sequence.base",
+    "stoner_measurement.plugins.state_control": "stoner_measurement.plugins.state_control.base",
+    "stoner_measurement.plugins.trace": "stoner_measurement.plugins.trace.base",
+    "stoner_measurement.plugins.transform": "stoner_measurement.plugins.transform.base",
+}
 
 
 class _ABCQObjectMeta(type(QObject), ABCMeta):
@@ -59,7 +73,7 @@ class BasePlugin(ABC):
       records auxiliary quantities.
     * :class:`~stoner_measurement.plugins.transform.TransformPlugin` — performs
       pure-computation transforms on collected data.
-    * :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` —
+    * :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin` —
       acts as a branch node in the sequence tree, containing nested sub-steps.
     * :class:`~stoner_measurement.plugins.command.CommandPlugin` — executes a
       single action in the sequence without instrument lifecycle steps.
@@ -385,6 +399,7 @@ class BasePlugin(ABC):
         """
         class_path = data["class"]
         module_name, class_name = class_path.rsplit(":", 1)
+        module_name = _MODULE_REMAP.get(module_name, module_name)
         module = importlib.import_module(module_name)
         plugin_cls = getattr(module, class_name)
         try:
