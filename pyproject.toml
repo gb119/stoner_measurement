@@ -57,6 +57,9 @@ save = "stoner_measurement.plugins.command.save:SaveCommand"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"stoner_measurement.ui" = ["*.png"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"

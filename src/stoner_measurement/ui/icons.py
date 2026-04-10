@@ -2,11 +2,13 @@
 
 Provides functions that create :class:`~PyQt6.QtGui.QIcon` objects used
 throughout the application.  Icons are rendered programmatically so that
-no external image files are required.
+no external image files are required, with the exception of the application
+logo which is loaded from the package data.
 """
 
 from __future__ import annotations
 
+import importlib.resources
 import math
 
 from PyQt6.QtCore import QPointF, Qt
@@ -62,6 +64,31 @@ def make_generate_icon(size: int = 32) -> QIcon:
 
     painter.end()
     return QIcon(QPixmap.fromImage(img))
+
+
+def make_app_icon() -> QIcon:
+    """Create the application icon from the bundled logo image.
+
+    Loads ``StonerLogo2.png`` from the ``stoner_measurement.ui`` package data
+    and returns it as a :class:`~PyQt6.QtGui.QIcon`.  Falls back to a null
+    icon if the resource cannot be found.
+
+    Returns:
+        (QIcon):
+            The application logo icon, or a null icon on failure.
+
+    Examples:
+        >>> icon = make_app_icon()
+        >>> isinstance(icon, QIcon)
+        True
+    """
+    try:
+        pkg = importlib.resources.files("stoner_measurement.ui")
+        resource = pkg.joinpath("StonerLogo2.png")
+        with importlib.resources.as_file(resource) as path:
+            return QIcon(str(path))
+    except (FileNotFoundError, ModuleNotFoundError):
+        return QIcon()
 
 
 def make_log_icon(size: int = 32) -> QIcon:
