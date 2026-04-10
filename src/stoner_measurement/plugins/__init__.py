@@ -24,7 +24,7 @@ from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.monitor import MonitorPlugin
 from stoner_measurement.plugins.sequence_plugin import SequencePlugin, TopLevelSequence
 from stoner_measurement.plugins.state_control import StateControlPlugin
-from stoner_measurement.plugins.trace import TracePlugin
+from stoner_measurement.plugins.trace import TraceData, TracePlugin
 from stoner_measurement.plugins.transform import TransformPlugin
 
 __all__ = [
@@ -33,6 +33,7 @@ __all__ = [
     "SequencePlugin",
     "StateControlPlugin",
     "TopLevelSequence",
+    "TraceData",
     "TracePlugin",
     "TransformPlugin",
 ]

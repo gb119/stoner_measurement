@@ -21,10 +21,11 @@ property and the :attr:`~TracePlugin.status_changed` signal using the
 
 from __future__ import annotations
 
+import dataclasses
 import enum
 from abc import abstractmethod
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 
 import numpy as np
 
@@ -45,6 +46,121 @@ from stoner_measurement.scan import BaseScanGenerator, FunctionScanGenerator, St
 
 if TYPE_CHECKING:
     pass
+
+
+def _empty_array() -> np.ndarray:
+    """Return an empty one-dimensional float array (dataclass field default factory)."""
+    return np.array([], dtype=float)
+
+
+def _default_names() -> dict[str, str]:
+    """Return the default attribute-name → friendly-name mapping."""
+    return {"x": "x", "y": "y", "d": "", "e": ""}
+
+
+def _default_units() -> dict[str, str]:
+    """Return the default attribute-name → unit mapping."""
+    return {"x": "", "y": "", "d": "", "e": ""}
+
+
+@dataclasses.dataclass
+class TraceData:
+    """Container for a single measurement trace with optional error bars and metadata.
+
+    Each :class:`TraceData` instance corresponds to one named channel produced by a
+    :class:`TracePlugin`.  The four array attributes store the data values; the two
+    mapping attributes provide human-readable labels and physical units for each axis.
+
+    Attributes:
+        x (np.ndarray):
+            One-dimensional array of x-axis (independent variable) values.
+        y (np.ndarray):
+            One-dimensional array of y-axis (dependent variable) values.
+        d (np.ndarray):
+            One-dimensional array of x-axis error bars.  Empty by default.
+        e (np.ndarray):
+            One-dimensional array of y-axis error bars.  Empty by default.
+        names (dict[str, str]):
+            Mapping from attribute name (``"x"``, ``"y"``, ``"d"``, ``"e"``) to a
+            user-friendly display name.  For example ``{"x": "Current", "y": "Voltage"}``.
+        units (dict[str, str]):
+            Mapping from attribute name to physical unit string.  For example
+            ``{"x": "A", "y": "V"}``.
+
+    Examples:
+        >>> import numpy as np
+        >>> td = TraceData(x=np.array([0.0, 1.0]), y=np.array([0.0, 2.0]))
+        >>> float(td.x[1])
+        1.0
+        >>> float(td.y[1])
+        2.0
+        >>> len(td.d)
+        0
+        >>> x_arr, y_arr = td  # backward-compatible unpacking
+        >>> float(x_arr[0])
+        0.0
+        >>> td[0] is td.x
+        True
+    """
+
+    x: np.ndarray = dataclasses.field(default_factory=_empty_array)
+    y: np.ndarray = dataclasses.field(default_factory=_empty_array)
+    d: np.ndarray = dataclasses.field(default_factory=_empty_array)
+    e: np.ndarray = dataclasses.field(default_factory=_empty_array)
+    names: dict[str, str] = dataclasses.field(default_factory=_default_names)
+    units: dict[str, str] = dataclasses.field(default_factory=_default_units)
+
+    def __iter__(self) -> Iterator[np.ndarray]:
+        """Yield ``x`` then ``y`` to support two-element tuple unpacking.
+
+        This provides backward compatibility with code that previously used
+        ``x_arr, y_arr = trace_data[channel]``.
+
+        Yields:
+            (np.ndarray):
+                ``x`` — the independent-variable array.
+            (np.ndarray):
+                ``y`` — the dependent-variable array.
+
+        Examples:
+            >>> import numpy as np
+            >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
+            >>> a, b = td
+            >>> float(a[0])
+            1.0
+            >>> float(b[0])
+            2.0
+        """
+        yield self.x
+        yield self.y
+
+    def __getitem__(self, index: int) -> np.ndarray:
+        """Return the array at *index* (0 → x, 1 → y, 2 → d, 3 → e).
+
+        Args:
+            index (int):
+                0 for ``x``, 1 for ``y``, 2 for ``d``, 3 for ``e``.
+
+        Returns:
+            (np.ndarray):
+                The requested array.
+
+        Raises:
+            IndexError:
+                If *index* is out of the range 0–3.
+
+        Examples:
+            >>> import numpy as np
+            >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
+            >>> float(td[0][0])
+            1.0
+            >>> float(td[1][0])
+            2.0
+        """
+        arrays = (self.x, self.y, self.d, self.e)
+        if not 0 <= index < len(arrays):
+            raise IndexError(f"TraceData index {index!r} out of range 0–3")
+        return arrays[index]
 
 
 class TraceStatus(enum.Enum):
@@ -255,10 +371,13 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             :attr:`scan_generator_changed` emitted) when
             :meth:`set_scan_generator_class` is called.  Also accessible as
             :attr:`trace_scan`.
-        data (dict[str, tuple[np.ndarray, np.ndarray]]):
+        data (dict[str, TraceData]):
             Most recently acquired trace data, populated by :meth:`measure`.
-            Maps each channel name to a ``(x_array, y_array)`` pair of
-            one-dimensional NumPy arrays.  Empty until the first successful
+            Maps each channel name to a :class:`TraceData` instance whose
+            ``x`` and ``y`` attributes hold the measured arrays.  The
+            ``names`` and ``units`` dicts are populated from the plugin's
+            :attr:`x_label`, :attr:`y_label`, :attr:`x_units`, and
+            :attr:`y_units` properties.  Empty until the first successful
             call to :meth:`measure`.
         status_changed (pyqtSignal[object]):
             Emitted with the new :class:`TraceStatus` value whenever
@@ -317,7 +436,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         super().__init__(parent)
         self.scan_generator: BaseScanGenerator = self._scan_generator_class(parent=self)
         self._status: TraceStatus = TraceStatus.IDLE
-        self.data: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self.data: dict[str, TraceData] = {}
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
@@ -500,7 +619,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
     def measure(
         self, parameters: dict[str, Any]
-    ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    ) -> dict[str, TraceData]:
         """Trigger acquisition and return all trace data keyed by channel name.
 
         This is the primary measurement entry point for the sequence engine.
@@ -523,10 +642,12 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 :meth:`execute_multichannel` (and thence to :meth:`execute`).
 
         Returns:
-            (dict[str, tuple[np.ndarray, np.ndarray]]):
-                Mapping of channel name to a ``(x_array, y_array)`` pair of
-                one-dimensional NumPy arrays.  The same dict is stored as
-                :attr:`data`.
+            (dict[str, TraceData]):
+                Mapping of channel name to a :class:`TraceData` instance
+                containing the measured ``x`` and ``y`` arrays together with
+                ``names`` and ``units`` metadata derived from :attr:`x_label`,
+                :attr:`y_label`, :attr:`x_units`, and :attr:`y_units`.  The
+                same dict is stored as :attr:`data`.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -541,10 +662,14 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> list(result.keys())
             ['Dummy']
             >>> import numpy as np
-            >>> isinstance(result['Dummy'][0], np.ndarray)
+            >>> isinstance(result['Dummy'].x, np.ndarray)
             True
-            >>> len(result['Dummy'][0])
+            >>> len(result['Dummy'].x)
             5
+            >>> result['Dummy'].names['x']
+            'I'
+            >>> result['Dummy'].units['y']
+            'V'
             >>> plugin.status is TraceStatus.DATA_AVAILABLE
             True
             >>> plugin.data is result
@@ -554,6 +679,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         started_channels: set[str] = set()
         xs: dict[str, list[float]] = {}
         ys: dict[str, list[float]] = {}
+        names = {"x": self.x_label, "y": self.y_label, "d": "", "e": ""}
+        units = {"x": self.x_units, "y": self.y_units, "d": "", "e": ""}
         try:
             for channel, x, y in self.execute_multichannel(parameters):
                 if channel not in started_channels:
@@ -568,7 +695,15 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             for channel in started_channels:
                 self.trace_complete.emit(channel)
             self._set_status(TraceStatus.DATA_AVAILABLE)
-        self.data = {ch: (np.array(xs[ch]), np.array(ys[ch])) for ch in xs}
+        self.data = {
+            ch: TraceData(
+                x=np.array(xs[ch]),
+                y=np.array(ys[ch]),
+                names=names,
+                units=units,
+            )
+            for ch in xs
+        }
         return self.data
 
     def disconnect(self) -> None:

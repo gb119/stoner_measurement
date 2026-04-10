@@ -202,11 +202,11 @@ class TestDummyPlugin:
         result = plugin.measure({})
         assert isinstance(result, dict)
         assert list(result.keys()) == ["Dummy"]
-        x_arr, y_arr = result["Dummy"]
-        assert isinstance(x_arr, np.ndarray)
-        assert isinstance(y_arr, np.ndarray)
-        assert len(x_arr) == 5
-        assert len(y_arr) == 5
+        td = result["Dummy"]
+        assert isinstance(td.x, np.ndarray)
+        assert isinstance(td.y, np.ndarray)
+        assert len(td.x) == 5
+        assert len(td.y) == 5
 
     def test_measure_status_data_available_after_completion(self, qapp):
         plugin = DummyPlugin()
