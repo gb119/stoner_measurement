@@ -250,7 +250,7 @@ class TestDummyPlugin:
             start=0.0, stages=[(2.0, 1.0, True)], parent=plugin
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": 1.0, "R_n": 1.0, "V_n": "0.0"}))
+        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0"}))
         v_vals = [v for _i, v in data]
         assert abs(v_vals[0]) < 1e-9       # I=0  → V=0
         assert abs(v_vals[1]) < 1e-9       # I=1  → V=0 (at I_c)

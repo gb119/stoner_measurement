@@ -246,7 +246,9 @@ class DummyPlugin(TracePlugin):
                 if abs_i < i_c:
                     voltage = 0.0
                 else:
-                    voltage = math.copysign(r_n * math.sqrt(abs_i**2 - i_c**2), current)
+                    voltage = math.copysign(
+                        r_n * math.sqrt(max(0.0, abs_i**2 - i_c**2)), current
+                    )
                 currents.append(current)
                 voltages.append(voltage)
 
@@ -283,20 +285,20 @@ class DummyPlugin(TracePlugin):
         widget = QWidget()
         layout = QFormLayout(widget)
 
-        _tooltip = (
+        tooltip = (
             "Python expression evaluated in the sequence engine namespace. "
             "Simple numeric literals (e.g. '1.0', '1e-3') and numpy functions "
             "are supported."
         )
 
         i_c_edit = QLineEdit(self._critical_current)
-        i_c_edit.setToolTip(_tooltip)
+        i_c_edit.setToolTip(tooltip)
 
         r_n_edit = QLineEdit(self._normal_resistance)
-        r_n_edit.setToolTip(_tooltip)
+        r_n_edit.setToolTip(tooltip)
 
         v_n_edit = QLineEdit(self._noise_level)
-        v_n_edit.setToolTip(_tooltip + " Use '0.0' for noiseless output.")
+        v_n_edit.setToolTip(tooltip + " Use '0.0' for noiseless output.")
 
         def _update_i_c() -> None:
             self._critical_current = i_c_edit.text().strip()
