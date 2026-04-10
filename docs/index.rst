@@ -7,6 +7,7 @@ Stoner Measurement
 
    installation
    usage
+   third_party_plugins
    api/index
    contributing
 
