@@ -438,11 +438,11 @@ class TestExceptionReporting:
 
 
 # ---------------------------------------------------------------------------
-# Data catalogues (_traces / _values)
+# Data catalogs (_traces / _values)
 # ---------------------------------------------------------------------------
 
 
-class TestDataCatalogues:
+class TestDataCatalogs:
     def test_traces_catalog_empty_before_plugins(self, engine):
         assert engine.traces_catalog == {}
 

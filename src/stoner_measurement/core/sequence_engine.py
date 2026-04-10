@@ -619,7 +619,7 @@ class SequenceEngine(QObject):
             ns[func_name] = getattr(np, func_name)
         # Seed the logger *after* numpy names so it is not shadowed by numpy.log.
         ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
-        # Master catalogues — populated by _rebuild_data_catalogs() as plugins are registered.
+        # Master catalogs — populated by _rebuild_data_catalogs() as plugins are registered.
         ns["_traces"] = {}
         ns["_values"] = {}
         return ns
@@ -755,11 +755,11 @@ class SequenceEngine(QObject):
         Iterates over every plugin currently registered with this engine and merges
         their :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_traces`
         and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_values`
-        dictionaries into two master catalogues which are then stored in the live
+        dictionaries into two master catalogs which are then stored in the live
         namespace as ``_traces`` and ``_values`` respectively.
 
         This method is called automatically by :meth:`add_plugin`,
-        :meth:`remove_plugin`, and :meth:`rename_plugin` so that the catalogues
+        :meth:`remove_plugin`, and :meth:`rename_plugin` so that the catalogs
         always reflect the current set of registered plugins.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -776,21 +776,21 @@ class SequenceEngine(QObject):
 
     @property
     def traces_catalog(self) -> dict[str, str]:
-        """Master catalogue of all trace data produced by registered plugins.
+        """Master catalog of all trace data produced by registered plugins.
 
         Returns a snapshot of the ``_traces`` dict in the engine namespace.
         Each entry maps a human-readable name (``"{instance_name}:{channel_name}"``)
         to the Python expression that retrieves the corresponding
         ``(x_array, y_array)`` tuple from the namespace.
 
-        The catalogue is rebuilt automatically whenever a plugin is added,
+        The catalog is rebuilt automatically whenever a plugin is added,
         removed, or renamed.  It is also available directly inside sequence
         scripts and plugin :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`
         calls as the variable ``_traces``.
 
         Returns:
             (dict[str, str]):
-                Snapshot copy of the traces catalogue.
+                Snapshot copy of the traces catalog.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -809,21 +809,21 @@ class SequenceEngine(QObject):
 
     @property
     def values_catalog(self) -> dict[str, str]:
-        """Master catalogue of all scalar data values produced by registered plugins.
+        """Master catalog of all scalar data values produced by registered plugins.
 
         Returns a snapshot of the ``_values`` dict in the engine namespace.
         Each entry maps a human-readable name (``"{instance_name}:{value_name}"``)
         to the Python expression that retrieves the corresponding scalar value from
         the namespace.
 
-        The catalogue is rebuilt automatically whenever a plugin is added,
+        The catalog is rebuilt automatically whenever a plugin is added,
         removed, or renamed.  It is also available directly inside sequence
         scripts and plugin :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`
         calls as the variable ``_values``.
 
         Returns:
             (dict[str, str]):
-                Snapshot copy of the values catalogue.
+                Snapshot copy of the values catalog.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
