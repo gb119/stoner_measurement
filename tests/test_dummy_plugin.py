@@ -77,7 +77,7 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": 1.0, "R_n": 1.0}))
+        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0"}))
         assert len(data) == 3
         i_vals = [i for i, _v in data]
         v_vals = [v for _i, v in data]
@@ -290,7 +290,7 @@ class TestDummyPlugin:
         assert any(abs(v - noiseless_v) > 1e-6 for _i, v in noisy)
 
     def test_default_normal_resistance(self, qapp):
-        assert DummyPlugin()._normal_resistance == 1.0
+        assert DummyPlugin()._normal_resistance == "1.0"
 
     def test_execute_negative_current_rsj(self, qapp):
         """RSJ output for negative currents should have negative voltage."""
@@ -301,7 +301,7 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": 1.0, "R_n": 1.0}))
+        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0"}))
         # I=-2: V = -sqrt(4-1) = -sqrt(3)
         i_neg2 = next((v for i, v in data if abs(i - (-2.0)) < 1e-9), None)
         assert i_neg2 is not None
@@ -316,6 +316,26 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data1 = list(plugin.execute({"I_c": 1.0, "R_n": 1.0}))
-        data2 = list(plugin.execute({"I_c": 1.0, "R_n": 2.0}))
+        data1 = list(plugin.execute({"I_c": "1.0", "R_n": "1.0"}))
+        data2 = list(plugin.execute({"I_c": "1.0", "R_n": "2.0"}))
         assert abs(data2[0][1] - 2.0 * data1[0][1]) < 1e-9
+
+    def test_eval_expr_uses_engine_when_attached(self, qapp):
+        """When attached to a SequenceEngine, _eval_expr goes through self.eval()."""
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        plugin = DummyPlugin()
+        engine = SequenceEngine()
+        engine.add_plugin("dummy", plugin)
+        try:
+            # The engine namespace has numpy functions; 'sqrt(4.0)' should give 2.0
+            assert abs(plugin._eval_expr("sqrt(4.0)") - 2.0) < 1e-9
+            # A plain numeric string also works
+            assert abs(plugin._eval_expr("1e-3") - 0.001) < 1e-9
+        finally:
+            engine.shutdown()
+
+    def test_eval_expr_fallback_to_float_when_detached(self, qapp):
+        """When not attached to an engine, _eval_expr falls back to float()."""
+        plugin = DummyPlugin()
+        assert abs(plugin._eval_expr("1.5") - 1.5) < 1e-9
+        assert abs(plugin._eval_expr("1e-3") - 0.001) < 1e-9

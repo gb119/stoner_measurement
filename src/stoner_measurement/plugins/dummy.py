@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from PyQt6.QtWidgets import QDoubleSpinBox, QFormLayout, QLineEdit, QWidget
+from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
 
 from stoner_measurement.plugins.trace import TracePlugin, TraceStatus
 
@@ -32,12 +32,13 @@ class DummyPlugin(TracePlugin):
     * ``V += N(0, V_n)`` — independent Gaussian noise added to every sample
 
     where *I_c* is the critical current, *R_n* is the normal-state resistance,
-    and *V_n* is the noise standard deviation.  All three parameters are
-    configurable on the *Settings* tab or can be overridden per measurement via
-    the ``parameters`` dict passed to :meth:`execute`.  *V_n* is stored and
-    entered as a Python expression string so that it can reference variables or
-    numpy functions available in the sequence engine namespace (e.g.
-    ``"1e-3 * sqrt(R_n)"``).
+    and *V_n* is the noise standard deviation.  All three parameters are stored
+    as Python expression strings and evaluated via the sequence engine's
+    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` method, so
+    they can reference any variable or numpy function in the engine namespace
+    (e.g. ``"I_start * 2"`` or ``"1e-3 * sqrt(R_n)"``).  They are configurable
+    on the *Settings* tab or can be overridden per measurement via the
+    ``parameters`` dict passed to :meth:`execute`.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -47,8 +48,8 @@ class DummyPlugin(TracePlugin):
     def __init__(self, parent=None) -> None:
         """Initialise the plugin with default RSJ parameters."""
         super().__init__(parent)
-        self._critical_current: float = 1.0
-        self._normal_resistance: float = 1.0
+        self._critical_current: str = "1.0"
+        self._normal_resistance: str = "1.0"
         self._noise_level: str = "0.0"
 
     @property
@@ -151,23 +152,25 @@ class DummyPlugin(TracePlugin):
         """
         self._set_status(TraceStatus.IDLE)
 
-    def _eval_noise_level(self, expr: str) -> float:
-        """Evaluate *expr* as a float noise-level expression.
+    def _eval_expr(self, expr: str) -> float:
+        """Evaluate *expr* as a float using the sequence engine namespace.
 
         If the plugin is currently attached to a sequence engine, the
-        expression is evaluated using :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`
-        so that numpy functions and engine variables are available.
-        Otherwise (e.g. in standalone tests) a plain :func:`float` conversion
-        is used, which handles simple numeric literals such as ``"0.0"`` or
-        ``"1e-3"``.
+        expression is evaluated using
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` so that
+        numpy functions and all engine variables are available (e.g.
+        ``"sqrt(R_n)"`` or ``"1e-3 * I_max"``).  When not attached to an
+        engine (e.g. in standalone tests), a plain :func:`float` conversion is
+        used as a fallback, which handles simple numeric literals such as
+        ``"1.0"`` or ``"1e-3"``.
 
         Args:
             expr (str):
-                Python expression that evaluates to a non-negative float.
+                Python expression that evaluates to a float.
 
         Returns:
             (float):
-                The evaluated noise standard deviation.
+                The evaluated result.
         """
         try:
             return float(self.eval(str(expr)))
@@ -193,19 +196,25 @@ class DummyPlugin(TracePlugin):
 
         The noisy ``(I, V)`` pairs are then yielded in scan order.
 
+        All three parameters are evaluated as Python expressions via
+        :meth:`_eval_expr`, which delegates to the sequence engine's
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` method
+        when the plugin is attached to an engine.
+
         Args:
             parameters (dict[str, Any]):
                 Step-specific configuration.  Recognised keys:
 
-                * ``"I_c"`` *(float)* — critical current in A.  Defaults to
-                  the value set on the *Settings* tab (initially ``1.0``).
-                * ``"R_n"`` *(float)* — normal-state resistance in Ω.
-                  Defaults to the value set on the *Settings* tab (initially
-                  ``1.0``).
-                * ``"V_n"`` *(str | float)* — noise standard deviation in V,
-                  as a Python expression string.  Defaults to the expression
-                  set on the *Settings* tab (initially ``"0.0"``).  Set to
-                  ``"0.0"`` (or ``0.0``) for noiseless output.
+                * ``"I_c"`` *(str | float)* — critical current expression in A.
+                  Defaults to the expression set on the *Settings* tab
+                  (initially ``"1.0"``).
+                * ``"R_n"`` *(str | float)* — normal-state resistance expression
+                  in Ω.  Defaults to the expression set on the *Settings* tab
+                  (initially ``"1.0"``).
+                * ``"V_n"`` *(str | float)* — noise standard deviation
+                  expression in V.  Defaults to the expression set on the
+                  *Settings* tab (initially ``"0.0"``).  Set to ``"0.0"`` for
+                  noiseless output.
 
         Yields:
             (tuple[float, float]):
@@ -225,8 +234,8 @@ class DummyPlugin(TracePlugin):
             >>> isinstance(pts[0], tuple) and len(pts[0]) == 2
             True
         """
-        i_c = float(parameters.get("I_c", self._critical_current))
-        r_n = float(parameters.get("R_n", self._normal_resistance))
+        i_c = self._eval_expr(str(parameters.get("I_c", self._critical_current)))
+        r_n = self._eval_expr(str(parameters.get("R_n", self._normal_resistance)))
         v_n_expr = str(parameters.get("V_n", self._noise_level))
 
         currents: list[float] = []
@@ -242,22 +251,23 @@ class DummyPlugin(TracePlugin):
                 voltages.append(voltage)
 
         v_arr = np.array(voltages)
-        v_n = self._eval_noise_level(v_n_expr)
+        v_n = self._eval_expr(v_n_expr)
         if v_n > 0.0:
             v_arr = v_arr + np.random.normal(0, v_n, v_arr.size)
 
         yield from zip(currents, v_arr.tolist())
 
     def _plugin_config_tabs(self) -> QWidget:
-        """Return a settings widget with controls for *I_c*, *R_n*, and *V_n*.
+        """Return a settings widget with expression-string controls for *I_c*, *R_n*, and *V_n*.
 
-        Creates a :class:`~PyQt6.QtWidgets.QFormLayout` with:
+        Creates a :class:`~PyQt6.QtWidgets.QFormLayout` with three
+        :class:`~PyQt6.QtWidgets.QLineEdit` widgets, each accepting a Python
+        expression string that will be evaluated via the sequence engine
+        namespace at measurement time:
 
-        * Two :class:`~PyQt6.QtWidgets.QDoubleSpinBox` widgets bound to
-          :attr:`_critical_current` and :attr:`_normal_resistance`.
-        * One :class:`~PyQt6.QtWidgets.QLineEdit` bound to
-          :attr:`_noise_level`, accepting any Python expression that evaluates
-          to a non-negative float (e.g. ``"1e-3"`` or ``"0.0"``).
+        * **I_c** — critical current in A (default ``"1.0"``).
+        * **R_n** — normal-state resistance in Ω (default ``"1.0"``).
+        * **V_n** — noise standard deviation in V (default ``"0.0"``).
 
         Returns:
             (QWidget):
@@ -273,40 +283,37 @@ class DummyPlugin(TracePlugin):
         widget = QWidget()
         layout = QFormLayout(widget)
 
-        i_c_spin = QDoubleSpinBox()
-        i_c_spin.setRange(0.0, 1e9)
-        i_c_spin.setDecimals(6)
-        i_c_spin.setSuffix(" A")
-        i_c_spin.setValue(self._critical_current)
-
-        r_n_spin = QDoubleSpinBox()
-        r_n_spin.setRange(0.0, 1e9)
-        r_n_spin.setDecimals(6)
-        r_n_spin.setSuffix(" \u03a9")
-        r_n_spin.setValue(self._normal_resistance)
-
-        v_n_edit = QLineEdit(self._noise_level)
-        v_n_edit.setToolTip(
-            "Noise standard deviation in V, as a Python expression "
-            "(e.g. '1e-3' or '0.0' for noiseless output)."
+        _tooltip = (
+            "Python expression evaluated in the sequence engine namespace. "
+            "Simple numeric literals (e.g. '1.0', '1e-3') and numpy functions "
+            "are supported."
         )
 
-        def _update_i_c(val: float) -> None:
-            self._critical_current = val
+        i_c_edit = QLineEdit(self._critical_current)
+        i_c_edit.setToolTip(_tooltip)
 
-        def _update_r_n(val: float) -> None:
-            self._normal_resistance = val
+        r_n_edit = QLineEdit(self._normal_resistance)
+        r_n_edit.setToolTip(_tooltip)
+
+        v_n_edit = QLineEdit(self._noise_level)
+        v_n_edit.setToolTip(_tooltip + " Use '0.0' for noiseless output.")
+
+        def _update_i_c() -> None:
+            self._critical_current = i_c_edit.text().strip()
+
+        def _update_r_n() -> None:
+            self._normal_resistance = r_n_edit.text().strip()
 
         def _update_v_n() -> None:
             self._noise_level = v_n_edit.text().strip()
 
-        i_c_spin.valueChanged.connect(_update_i_c)
-        r_n_spin.valueChanged.connect(_update_r_n)
+        i_c_edit.editingFinished.connect(_update_i_c)
+        r_n_edit.editingFinished.connect(_update_r_n)
         v_n_edit.editingFinished.connect(_update_v_n)
 
-        layout.addRow("Critical current I_c:", i_c_spin)
-        layout.addRow("Normal resistance R_n:", r_n_spin)
-        layout.addRow("Noise level V_n:", v_n_edit)
+        layout.addRow("Critical current I_c (A):", i_c_edit)
+        layout.addRow("Normal resistance R_n (\u03a9):", r_n_edit)
+        layout.addRow("Noise level V_n (V):", v_n_edit)
         return widget
 
     def _about_html(self) -> str:
