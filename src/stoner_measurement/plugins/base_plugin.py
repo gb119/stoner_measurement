@@ -13,12 +13,12 @@ A plugin must:
    widget to the left dock panel.
 
 Concrete plugin behaviour is added by subclassing one of the six specialised
-sub-types: :class:`~stoner_measurement.plugins.trace.TracePlugin`,
-:class:`~stoner_measurement.plugins.state_control.StateControlPlugin`,
-:class:`~stoner_measurement.plugins.monitor.MonitorPlugin`,
-:class:`~stoner_measurement.plugins.transform.TransformPlugin`,
-:class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`, or
-:class:`~stoner_measurement.plugins.command.CommandPlugin`.
+sub-types: :class:`~stoner_measurement.plugins.trace.base.TracePlugin`,
+:class:`~stoner_measurement.plugins.state_control.base.StateControlPlugin`,
+:class:`~stoner_measurement.plugins.monitor.base.MonitorPlugin`,
+:class:`~stoner_measurement.plugins.transform.base.TransformPlugin`,
+:class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`, or
+:class:`~stoner_measurement.plugins.command.base.CommandPlugin`.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
+
 
 
 class _ABCQObjectMeta(type(QObject), ABCMeta):
@@ -59,7 +60,7 @@ class BasePlugin(ABC):
       records auxiliary quantities.
     * :class:`~stoner_measurement.plugins.transform.TransformPlugin` — performs
       pure-computation transforms on collected data.
-    * :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` —
+    * :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin` —
       acts as a branch node in the sequence tree, containing nested sub-steps.
     * :class:`~stoner_measurement.plugins.command.CommandPlugin` — executes a
       single action in the sequence without instrument lifecycle steps.
@@ -117,7 +118,7 @@ class BasePlugin(ABC):
                 The live interpreter namespace dict, or ``{}`` when detached.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> plugin.engine_namespace   # detached — returns empty dict
             {}
@@ -153,7 +154,7 @@ class BasePlugin(ABC):
                 A :class:`logging.Logger` instance.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> import logging
             >>> isinstance(plugin.log, logging.Logger)
@@ -204,7 +205,7 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
             >>> engine = SequenceEngine()
             >>> plugin = DummyPlugin()
@@ -251,7 +252,7 @@ class BasePlugin(ABC):
                 A valid Python identifier.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> plugin.instance_name
             'dummy'
@@ -322,7 +323,7 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> d = plugin.to_json()
             >>> d["type"]
@@ -374,7 +375,7 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> original = DummyPlugin()
             >>> original.instance_name = "my_dummy"
             >>> restored = BasePlugin.from_json(original.to_json())
@@ -488,7 +489,7 @@ class BasePlugin(ABC):
                 which overrides this to return ``False``.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> DummyPlugin().has_lifecycle
             True
         """
@@ -513,7 +514,7 @@ class BasePlugin(ABC):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> widget = plugin.config_widget()
             >>> widget is not None
@@ -578,7 +579,7 @@ class BasePlugin(ABC):
                 docstring is available.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> tooltip = plugin.tooltip()
             >>> isinstance(tooltip, str)
@@ -612,7 +613,7 @@ class BasePlugin(ABC):
                 A monitoring widget, or ``None`` if the plugin provides none.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> plugin.monitor_widget() is None
             True
@@ -654,7 +655,7 @@ class BasePlugin(ABC):
                 implement this plugin's action phase.
 
         Examples:
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
             >>> lines = plugin.generate_action_code(1, [], lambda s, i: [])
             >>> "dummy.measure" in "\\n".join(lines)

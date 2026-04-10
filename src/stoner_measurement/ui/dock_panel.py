@@ -4,7 +4,7 @@ Provides instrument listing, sequence building controls, a run button,
 and a monitoring section where plugins can display live status widgets.
 The sequence list is a tree widget that supports drag-and-drop reordering
 and arbitrarily deep sub-sequence nesting for
-:class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin` items
+:class:`~stoner_measurement.plugins.sequence.base.SequencePlugin` items
 (including :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`),
 enabling multi-dimensional measurement scans.
 """
@@ -70,15 +70,15 @@ class _SequenceTreeWidget(QTreeWidget):
 
     * **Reordering** — drag a step above or below another to reorder.
     * **Sub-sequencing** — drag any step *onto* a
-      :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+      :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
       item to nest it as a sub-step.  This includes dragging one
-      :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+      :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
       onto another, enabling arbitrarily deep nesting for multi-dimensional
       measurement scans.  Nested items are shown with indentation.
     * **Promotion** — drag a sub-step above or below any top-level item to
       move it back up the hierarchy.
 
-    :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+    :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
     items are displayed in bold to indicate that they may accept nested
     steps.  A tooltip explains the drag-onto behaviour.
 
@@ -117,7 +117,7 @@ class _SequenceTreeWidget(QTreeWidget):
     @staticmethod
     def _is_sequence_plugin_instance(plugin: BasePlugin) -> bool:
         """Return ``True`` if *plugin* is a SequencePlugin instance."""
-        from stoner_measurement.plugins.sequence_plugin import SequencePlugin
+        from stoner_measurement.plugins.sequence import SequencePlugin
 
         return isinstance(plugin, SequencePlugin)
 
@@ -149,7 +149,7 @@ class _SequenceTreeWidget(QTreeWidget):
     def make_item(self, plugin: BasePlugin, text: str, ep_name: str = "") -> QTreeWidgetItem:
         """Create a styled :class:`QTreeWidgetItem` for *plugin*.
 
-        :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+        :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
         items are displayed in bold and carry a tooltip that explains the
         drag-onto behaviour.
 
@@ -310,7 +310,7 @@ class DockPanel(QWidget):
 
     * Drag a step above or below another to reorder.
     * Drag any step *onto* a
-      :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+      :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
       item (e.g. a
       :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`)
       to nest it as a sub-step (shown with indentation).  This includes
@@ -323,7 +323,7 @@ class DockPanel(QWidget):
             The current sequence steps as a recursive structure.  Each element
             is either a plugin instance (for a leaf step with no sub-steps) or
             a ``(plugin_instance, [sub-steps…])`` tuple for a
-            :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+            :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
             that has nested children.  The inner list follows the same
             ``_SequenceStep`` structure, so nesting may be arbitrarily deep.
 
@@ -596,7 +596,7 @@ class DockPanel(QWidget):
 
         * a plugin instance for a step that has no sub-steps, or
         * a ``(plugin_instance, [sub-steps…])`` tuple for a
-          :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+          :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
           step that has at least one nested child.  The inner list follows the
           same structure recursively, allowing arbitrarily deep nesting for
           multi-dimensional measurement scans.
@@ -649,7 +649,7 @@ class DockPanel(QWidget):
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> pm = PluginManager()
             >>> panel = DockPanel(plugin_manager=pm)
             >>> plugin = DummyPlugin()
@@ -674,7 +674,7 @@ class DockPanel(QWidget):
         """Insert a single *step* into the tree under *parent_item*.
 
         Recursively processes sub-steps for
-        :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+        :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
         steps.
 
         Args:

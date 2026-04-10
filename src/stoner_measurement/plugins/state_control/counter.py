@@ -10,11 +10,13 @@ instantaneous there is no settling delay; :meth:`is_at_target` always returns
 This plugin is intended as a worked example showing how to implement a
 :class:`~stoner_measurement.plugins.state_control.StateControlPlugin` from
 scratch.
+
+sub-package.
 """
 
 from __future__ import annotations
 
-from stoner_measurement.plugins.state_control import StateControlPlugin
+from stoner_measurement.plugins.state_control.base import StateControlPlugin
 
 
 class CounterPlugin(StateControlPlugin):

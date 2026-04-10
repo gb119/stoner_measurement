@@ -6,7 +6,7 @@ embeds the application version number so that files can be identified
 and forward-compatibility checks can be added in the future.
 
 Each step in the tree is represented by a ``{"plugin": {...}}`` dict;
-steps that are :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+steps that are :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
 containers with children also carry a ``"sub_steps"`` list that follows
 the same recursive structure.
 """
@@ -54,7 +54,7 @@ def sequence_to_json(steps: list[_SequenceStep]) -> dict[str, Any]:
     Examples:
         >>> from PyQt6.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.dummy import DummyPlugin
+        >>> from stoner_measurement.plugins.trace import DummyPlugin
         >>> plugin = DummyPlugin()
         >>> data = sequence_to_json([plugin])
         >>> "version" in data
@@ -109,7 +109,7 @@ def sequence_from_json(data: dict[str, Any]) -> list[_SequenceStep]:
     Examples:
         >>> from PyQt6.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.dummy import DummyPlugin
+        >>> from stoner_measurement.plugins.trace import DummyPlugin
         >>> plugin = DummyPlugin()
         >>> plugin.instance_name = "test_dummy"
         >>> data = sequence_to_json([plugin])

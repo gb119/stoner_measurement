@@ -112,7 +112,7 @@ class ConfigPanel(QWidget):
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
-            >>> from stoner_measurement.plugins.dummy import DummyPlugin
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> pm = PluginManager()
             >>> panel = ConfigPanel(plugin_manager=pm)
             >>> plugin = DummyPlugin()

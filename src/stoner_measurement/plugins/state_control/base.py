@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-from stoner_measurement.plugins.sequence_plugin import SequencePlugin
+from stoner_measurement.plugins.sequence.base import SequencePlugin
 from stoner_measurement.scan import BaseScanGenerator, FunctionScanGenerator, SteppedScanGenerator
 
 
@@ -149,7 +149,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     must implement :attr:`name`, :attr:`state_name`, :attr:`units`,
     :meth:`set_state`, :meth:`get_state`, and :meth:`is_at_target`.
 
-    Inheriting from :class:`~stoner_measurement.plugins.sequence_plugin.SequencePlugin`
+    Inheriting from :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
     means that a :class:`StateControlPlugin` item in the sequence tree may act
     as a branch node: other steps can be nested beneath it and will be executed
     via :meth:`execute_sequence` at the appropriate point in the ramp lifecycle.
@@ -300,7 +300,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
             >>> plugin = CounterPlugin()
             >>> d = plugin.to_json()
             >>> d["type"]
@@ -353,7 +353,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
             >>> plugin = CounterPlugin()
             >>> from stoner_measurement.scan import SteppedScanGenerator
             >>> plugin.set_scan_generator_class(SteppedScanGenerator)
@@ -396,7 +396,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
             >>> plugin = CounterPlugin()
             >>> tabs = plugin.config_tabs()
             >>> tabs[0][0]
@@ -442,7 +442,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
             >>> CounterPlugin()._plugin_config_tabs() is None
             True
         """
@@ -462,7 +462,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.counter import CounterPlugin
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
             >>> CounterPlugin()._about_html() is None
             True
         """

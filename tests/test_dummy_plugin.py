@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from stoner_measurement.plugins.dummy import DummyPlugin
+from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.plugins.trace import TraceStatus
 from stoner_measurement.scan import SteppedScanGenerator
 

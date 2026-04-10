@@ -15,7 +15,7 @@ import numpy as np
 
 from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
 
-from stoner_measurement.plugins.trace import TracePlugin, TraceStatus
+from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
 
 
 class DummyPlugin(TracePlugin):
