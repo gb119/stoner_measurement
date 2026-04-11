@@ -2,7 +2,7 @@
 
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://gb119.github.io/stoner_measurement/)
 [![PyPI](https://img.shields.io/pypi/v/stoner_measurement)](https://pypi.org/project/stoner_measurement/)
-[![Python](https://img.shields.io/pypi/pyversions/stoner_measurement)](https://pypi.org/project/stoner_measurement/)
+[![Run Tests](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml/badge.svg)](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml)
 
 A Python Qt6 desktop application for carrying out scientific measurements by
 communicating with laboratory instruments over USB, Serial, GPIB, and Ethernet
