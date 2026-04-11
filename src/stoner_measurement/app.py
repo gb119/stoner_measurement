@@ -145,6 +145,26 @@ class MeasurementApp(QMainWindow):
         This makes the trace catalogue available to configuration widgets (e.g.
         :class:`~stoner_measurement.plugins.command.PlotTraceCommand`) which
         read ``engine_namespace["_traces"]`` to populate their dropdowns.
+
+        Notes:
+            The catalog is built in two phases:
+
+            1. **Base plugins** — plugins registered with the engine via
+               :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.add_plugin`
+               (the plugin-manager instances) are iterated first.  Their
+               :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_traces`
+               and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_values`
+               contributions seed the initial catalog.
+            2. **Step plugins** — plugin instances created for each sequence step
+               in the dock panel are traversed recursively (depth-first through
+               sub-steps).  Any step plugin that is not yet attached to the engine
+               has its ``sequence_engine`` set so that ``engine_namespace`` becomes
+               functional.  Its trace and value contributions are then merged into
+               the catalog, overwriting any base-plugin entry with the same key.
+
+            The final catalog is written directly to the engine namespace as
+            ``_traces`` and ``_values``, making it immediately visible to any
+            plugin whose ``engine_namespace`` references this engine.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
