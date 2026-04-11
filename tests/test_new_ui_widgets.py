@@ -118,6 +118,55 @@ class TestConsoleWidget:
         console._submit()
         assert "my_command" in console._history
 
+    def test_submit_print_output_shown_without_engine(self, qapp):
+        """print() in the REPL without an engine should appear in the output area."""
+        console = ConsoleWidget()
+        console._input.setText("print('hello stdout')")
+        console._submit()
+        text = console._output.toPlainText()
+        assert "hello stdout" in text
+
+    def test_write_output_no_extra_blank_lines(self, qapp):
+        """write_output should not add a spurious newline after each chunk."""
+        console = ConsoleWidget()
+        # Simulate how CPython's print() writes: text then "\n" as two calls.
+        console.write_output("Hello World")
+        console.write_output("\n")
+        lines = [ln for ln in console._output.toPlainText().splitlines() if ln]
+        assert lines == ["Hello World"]
+
+    def test_write_output_does_not_merge_with_subsequent_write(self, qapp):
+        """A status message written after raw output starts on its own line."""
+        console = ConsoleWidget()
+        console.write_output("partial")  # no trailing newline
+        console.write("Status message")
+        text = console._output.toPlainText()
+        lines = text.splitlines()
+        assert any("partial" in ln for ln in lines)
+        assert not any("partial" in ln and "Status message" in ln for ln in lines)
+
+    def test_submit_print_output_with_engine(self, qapp, engine):
+        """print() executed via the engine should appear in the console output area."""
+        import time
+
+        console = ConsoleWidget()
+        console.connect_engine(engine)
+
+        console._input.setText("print('engine output')")
+        console._submit()
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+            if not engine.is_running:
+                break
+            time.sleep(0.01)
+        time.sleep(0.05)
+        qapp.processEvents()
+
+        text = console._output.toPlainText()
+        assert "engine output" in text
+
 
 class TestScriptTab:
     def test_creates_widget(self, qapp):
