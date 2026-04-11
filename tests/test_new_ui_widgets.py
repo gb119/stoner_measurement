@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from stoner_measurement.app import MeasurementApp
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
@@ -310,4 +312,60 @@ class TestMeasurementApp:
         assert len(text) > 0
         app._engine.shutdown()
 
+    def test_sync_sequence_steps_dummy_traces_visible_to_plot_trace(self, qapp):
+        """PlotTraceCommand config widget should see traces from a preceding DummyPlugin step.
+
+        Regression test for: plot_trace and dummy plugin combination does not recognise
+        any traces.  The root cause was that sequence-step plugin instances did not have
+        ``sequence_engine`` set, so ``engine_namespace`` returned ``{}`` and ``_traces``
+        was empty when ``config_widget()`` was built.
+        """
+        from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        app = MeasurementApp()
+        dock = app._main_window.dock_panel
+
+        # Load a DummyPlugin step and a PlotTraceCommand step via the dock panel.
+        dummy_step = DummyPlugin()
+        plot_step = PlotTraceCommand()
+        dock.load_sequence([dummy_step, plot_step])
+
+        # Sync step plugins into the engine namespace.
+        app._sync_sequence_steps_to_engine()
+
+        # After sync, the plot_step should have sequence_engine set.
+        assert plot_step.sequence_engine is app._engine
+
+        # The engine namespace _traces should include the dummy step's trace.
+        traces = app._engine._namespace.get("_traces", {})
+        assert any("Dummy" in key for key in traces), (
+            f"Expected a 'Dummy' trace in _traces, got: {list(traces.keys())}"
+        )
+
+        app._engine.shutdown()
+
+    def test_on_plugin_selected_for_config_syncs_and_shows(self, qapp):
+        """_on_plugin_selected_for_config shows plugin config with traces populated."""
+        from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        app = MeasurementApp()
+        dock = app._main_window.dock_panel
+
+        dummy_step = DummyPlugin()
+        plot_step = PlotTraceCommand()
+        dock.load_sequence([dummy_step, plot_step])
+
+        # Calling the selection handler should not raise and should display config.
+        app._on_plugin_selected_for_config(plot_step)
+
+        # The config panel should now show the PlotTraceCommand's tabs.
+        assert app._main_window.config_panel.tabs.count() > 0
+
+        # _traces in the engine namespace should contain the dummy step's trace.
+        traces = app._engine._namespace.get("_traces", {})
+        assert any("Dummy" in key for key in traces)
+
+        app._engine.shutdown()
 
