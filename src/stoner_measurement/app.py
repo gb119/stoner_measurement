@@ -179,6 +179,7 @@ class MeasurementApp(QMainWindow):
 
         # Collect traces and values from step plugins in the current sequence.
         def _process(steps: list) -> None:
+            """Recursively attach unregistered step plugins to the engine and accumulate their catalogs."""
             for step in steps:
                 if isinstance(step, tuple):
                     step_plugin, sub_steps = step

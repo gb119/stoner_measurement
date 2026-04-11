@@ -623,6 +623,7 @@ class DockPanel(QWidget):
         names: set[str] = set()
 
         def _collect(item: QTreeWidgetItem) -> None:
+            """Recursively add the instance name of each tree item's plugin to *names*, skipping *exclude_plugin*."""
             plugin: BasePlugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
             if plugin is not None and plugin is not exclude_plugin:
                 names.add(plugin.instance_name)

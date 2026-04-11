@@ -472,13 +472,13 @@ class BasePlugin(ABC):
                 except (TypeError, RuntimeError):
                     pass
 
-            def _sync_name_edit(old: str, new: str) -> None:  # noqa: ARG001
-                # Read the authoritative value rather than trusting `new`.
+            def _sync_name_edit(_old: str, _new: str) -> None:  # noqa: ARG001
+                # Read the authoritative value rather than trusting `_new`.
                 # When a rename is reverted (due to a collision), the revert
                 # fires a nested instance_name_changed before this outer
                 # handler returns.  By the time this callback runs, the
                 # authoritative instance_name may already have been reset to
-                # the reverted value; using `new` would show stale text.
+                # the reverted value; using `_new` would show stale text.
                 current = self.instance_name
                 try:
                     name_edit.setText(current)
