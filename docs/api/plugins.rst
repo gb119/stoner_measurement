@@ -99,6 +99,11 @@ Command sub-package
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: stoner_measurement.plugins.command.plot_trace
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Plugin type overview
 --------------------
 
@@ -205,20 +210,22 @@ four-step lifecycle:
    identity.
 2. **configure()** — push plugin settings to the instrument.
 3. **measure(parameters)** — trigger and collect the complete multipoint trace,
-   returning all ``(channel, x, y)`` data points as a list.  The default
+   returning a dict mapping channel names to
+   :class:`~stoner_measurement.plugins.trace.TraceData` objects.  The default
    implementation delegates to
    :meth:`~stoner_measurement.plugins.trace.TracePlugin.execute_multichannel`
    (and thence to
-   :meth:`~stoner_measurement.plugins.trace.TracePlugin.execute`) and emits the
-   :attr:`~stoner_measurement.plugins.trace.TracePlugin.trace_started`,
-   :attr:`~stoner_measurement.plugins.trace.TracePlugin.trace_point`, and
-   :attr:`~stoner_measurement.plugins.trace.TracePlugin.trace_complete` signals.
+   :meth:`~stoner_measurement.plugins.trace.TracePlugin.execute`).
 4. **disconnect()** — cleanly release all reserved resources.
 
 Status during these operations is reported via the
 :attr:`~stoner_measurement.plugins.trace.TracePlugin.status` property (a
 :class:`~stoner_measurement.plugins.trace.TraceStatus` value) and the
 :attr:`~stoner_measurement.plugins.trace.TracePlugin.status_changed` signal.
+
+Plotting acquired trace data is the responsibility of
+:class:`~stoner_measurement.plugins.command.PlotTraceCommand`; add it as a
+command step in the sequence immediately after a trace step.
 
 Implementing a trace plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

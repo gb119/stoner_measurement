@@ -140,27 +140,6 @@ class TestTracePlugin:
         assert all(ch == "SimpleTrace" for ch, _, _ in pts)
         assert [(x, y) for _, x, y in pts] == [(0.0, 0.0), (1.0, 1.0), (2.0, 4.0)]
 
-    def test_trace_started_signal(self, qapp):
-        p = _SimpleTrace()
-        received = []
-        p.trace_started.connect(received.append)
-        p.trace_started.emit("SimpleTrace")
-        assert received == ["SimpleTrace"]
-
-    def test_trace_point_signal(self, qapp):
-        p = _SimpleTrace()
-        received = []
-        p.trace_point.connect(lambda ch, x, y: received.append((ch, x, y)))
-        p.trace_point.emit("ch1", 1.0, 2.0)
-        assert received == [("ch1", 1.0, 2.0)]
-
-    def test_trace_complete_signal(self, qapp):
-        p = _SimpleTrace()
-        received = []
-        p.trace_complete.connect(received.append)
-        p.trace_complete.emit("SimpleTrace")
-        assert received == ["SimpleTrace"]
-
     def test_config_widget_default(self, qapp):
         from PyQt6.QtWidgets import QWidget
         p = _SimpleTrace()
@@ -309,36 +288,17 @@ class TestTracePlugin:
 
     def test_measure_status_is_measuring_during_acquisition(self, qapp):
         p = _SimpleTrace()
-        statuses_during = []
-        p.trace_point.connect(lambda ch, x, y: statuses_during.append(p.status))
+        statuses_during: list = []
+        p.status_changed.connect(statuses_during.append)
         p.measure({"n": 2})
-        assert all(s is TraceStatus.MEASURING for s in statuses_during)
+        # status_changed is emitted with MEASURING at the start and
+        # DATA_AVAILABLE at the end, so the first emitted status must be MEASURING.
+        assert statuses_during[0] is TraceStatus.MEASURING
 
     def test_measure_status_data_available_after_completion(self, qapp):
         p = _SimpleTrace()
         p.measure({"n": 2})
         assert p.status is TraceStatus.DATA_AVAILABLE
-
-    def test_measure_emits_trace_started(self, qapp):
-        p = _SimpleTrace()
-        started = []
-        p.trace_started.connect(started.append)
-        p.measure({"n": 3})
-        assert started == ["SimpleTrace"]
-
-    def test_measure_emits_trace_point_for_each_point(self, qapp):
-        p = _SimpleTrace()
-        points = []
-        p.trace_point.connect(lambda ch, x, y: points.append((ch, x, y)))
-        p.measure({"n": 3})
-        assert len(points) == 3
-
-    def test_measure_emits_trace_complete(self, qapp):
-        p = _SimpleTrace()
-        completed = []
-        p.trace_complete.connect(completed.append)
-        p.measure({"n": 3})
-        assert completed == ["SimpleTrace"]
 
     def test_measure_returns_complete_list(self, qapp):
         """measure() must return a dict mapping channel to TraceData, not a generator."""

@@ -23,7 +23,8 @@ The plugin classes are organised into type-specific sub-packages:
 * :mod:`stoner_measurement.plugins.command` — executes a single action in the
   sequence without instrument lifecycle steps
   (:class:`~stoner_measurement.plugins.command.base.CommandPlugin`,
-  :class:`~stoner_measurement.plugins.command.save.SaveCommand`).
+  :class:`~stoner_measurement.plugins.command.save.SaveCommand`,
+  :class:`~stoner_measurement.plugins.command.plot_trace.PlotTraceCommand`).
 
 Built-in example plugins:
 
@@ -34,7 +35,7 @@ Built-in example plugins:
 """
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
-from stoner_measurement.plugins.command import CommandPlugin, SaveCommand
+from stoner_measurement.plugins.command import CommandPlugin, PlotTraceCommand, SaveCommand
 from stoner_measurement.plugins.monitor import MonitorPlugin
 from stoner_measurement.plugins.sequence import SequencePlugin, TopLevelSequence
 from stoner_measurement.plugins.state_control import StateControlPlugin
@@ -45,6 +46,7 @@ __all__ = [
     "BasePlugin",
     "CommandPlugin",
     "MonitorPlugin",
+    "PlotTraceCommand",
     "SaveCommand",
     "SequencePlugin",
     "StateControlPlugin",
