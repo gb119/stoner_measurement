@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
+from io import StringIO
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, pyqtSlot
@@ -131,11 +133,13 @@ class ConsoleWidget(QWidget):
     def write_output(self, text: str) -> None:
         """Append raw *text* (no timestamp) in the default colour.
 
-        Useful for forwarding stdout produced by runner code.
+        The text is inserted verbatim — no trailing newline is added — so that
+        multi-chunk writes from :func:`print` (text chunk followed by a
+        separate ``"\\n"`` chunk) are rendered without extra blank lines.
 
         Args:
             text (str):
-                Raw output text.
+                Raw output text, as produced by ``sys.stdout.write``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -143,7 +147,7 @@ class ConsoleWidget(QWidget):
             >>> console = ConsoleWidget()
             >>> console.write_output("raw output line")
         """
-        self._append_text(text, color=None)
+        self._append_raw_text(text)
 
     def clear(self) -> None:
         """Clear all text from the output area.
@@ -208,6 +212,11 @@ class ConsoleWidget(QWidget):
     def _append_text(self, text: str, color: QColor | None) -> None:
         """Append *text* to the output widget, optionally coloured.
 
+        Always starts on a new line: if the cursor is mid-line (e.g. because
+        raw stdout from :meth:`write_output` did not end with a newline),
+        a newline is inserted first so that timestamped messages and error
+        lines are never merged onto the same line as preceding raw output.
+
         Args:
             text (str):
                 Line of text to add.
@@ -216,6 +225,9 @@ class ConsoleWidget(QWidget):
         """
         cursor = self._output.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
+        # Ensure we're at the start of a new block/line.
+        if cursor.positionInBlock() > 0:
+            cursor.insertText("\n")
         if color is not None:
             fmt = QTextCharFormat()
             fmt.setForeground(color)
@@ -223,6 +235,26 @@ class ConsoleWidget(QWidget):
         cursor.insertText(text + "\n")
         # Reset to default colour
         cursor.setCharFormat(QTextCharFormat())
+        self._output.setTextCursor(cursor)
+        self._output.ensureCursorVisible()
+
+    def _append_raw_text(self, text: str) -> None:
+        """Insert *text* verbatim into the output area without any extra newline.
+
+        Used by :meth:`write_output` to forward raw ``sys.stdout`` chunks from
+        running scripts.  Unlike :meth:`_append_text`, no trailing ``"\\n"`` is
+        appended, so each :func:`print` call is rendered as a single line
+        regardless of how many ``write`` calls CPython uses internally.
+
+        Args:
+            text (str):
+                Text to insert as-is.
+        """
+        if not text:
+            return
+        cursor = self._output.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text)
         self._output.setTextCursor(cursor)
         self._output.ensureCursorVisible()
 
@@ -250,7 +282,9 @@ class ConsoleWidget(QWidget):
         has been connected via :meth:`connect_engine`, the command is forwarded
         to the engine's background thread; output will arrive asynchronously
         via the engine's signals.  Without a connected engine the command is
-        evaluated locally (useful for standalone testing).
+        evaluated locally (useful for standalone testing), with ``sys.stdout``
+        and ``sys.stderr`` redirected to the console so that :func:`print`
+        output appears in the output area rather than on the terminal.
 
         Args:
             command (str):
@@ -267,17 +301,32 @@ class ConsoleWidget(QWidget):
             self._engine.execute_command(command)
             return
 
+        out = StringIO()
+        err = StringIO()
+        exc_messages: list[str] = []
         try:
-            result = eval(command, self._local_ns)  # noqa: S307
-            if result is not None:
-                self._append_text(repr(result), color=None)
-        except SyntaxError:
-            try:
-                exec(command, self._local_ns)  # noqa: S102
-            except Exception as exc:
-                self.write_error(str(exc))
+            with redirect_stdout(out), redirect_stderr(err):
+                try:
+                    result = eval(command, self._local_ns)  # noqa: S307
+                    if result is not None:
+                        out.write(repr(result) + "\n")
+                except SyntaxError:
+                    try:
+                        exec(command, self._local_ns)  # noqa: S102
+                    except Exception as exc:
+                        exc_messages.append(str(exc))
+                except Exception as exc:
+                    exc_messages.append(str(exc))
         except Exception as exc:
-            self.write_error(str(exc))
+            exc_messages.append(str(exc))
+        stdout_text = out.getvalue()
+        if stdout_text:
+            self.write_output(stdout_text)
+        stderr_text = err.getvalue()
+        if stderr_text:
+            self.write_error(stderr_text)
+        for msg in exc_messages:
+            self.write_error(msg)
 
     def _history_up(self) -> None:
         """Navigate one step back in command history."""
