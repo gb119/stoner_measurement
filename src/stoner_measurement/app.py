@@ -320,13 +320,13 @@ class MeasurementApp(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         """Update action labels and status tips when the active tab changes."""
         if index == self._TAB_MEASUREMENT:
-            self._act_new.setText("&New Measurement")
+            self._act_new.setText("&New Sequence")
             self._act_new.setStatusTip("Clear the measurement sequence and start a new one")
-            self._act_open.setText("&Open Measurement…")
+            self._act_open.setText("&Open Sequence…")
             self._act_open.setStatusTip("Open a saved measurement sequence from disk")
-            self._act_save.setText("&Save Measurement")
+            self._act_save.setText("&Save Sequence")
             self._act_save.setStatusTip("Save the current measurement sequence")
-            self._act_save_as.setText("Save Measurement &As…")
+            self._act_save_as.setText("Save Sequence &As…")
             self._act_save_as.setStatusTip("Save the current measurement sequence to a new file")
             self._act_run.setStatusTip(
                 "Convert the measurement sequence to a script and execute it"
@@ -336,13 +336,13 @@ class MeasurementApp(QMainWindow):
                 " (without switching tabs)"
             )
         elif index == self._TAB_EDITOR:
-            self._act_new.setText("&New Sequence")
+            self._act_new.setText("&New Script")
             self._act_new.setStatusTip("Clear the sequence editor and start a new script")
-            self._act_open.setText("&Open Sequence…")
+            self._act_open.setText("&Open Script…")
             self._act_open.setStatusTip("Open a Python sequence script from disk")
-            self._act_save.setText("&Save Sequence")
+            self._act_save.setText("&Save Script")
             self._act_save.setStatusTip("Save the current sequence script")
-            self._act_save_as.setText("Save Sequence &As…")
+            self._act_save_as.setText("Save Script &As…")
             self._act_save_as.setStatusTip("Save the current sequence script to a new file")
             self._act_run.setStatusTip("Execute the sequence script in the editor")
             self._act_generate.setStatusTip(
@@ -412,7 +412,7 @@ class MeasurementApp(QMainWindow):
         )
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Open Measurement Sequence",
+            "Open Sequence",
             start_dir,
             "JSON Files (*.json);;All Files (*)",
         )
@@ -425,7 +425,7 @@ class MeasurementApp(QMainWindow):
         except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError) as exc:
             QMessageBox.critical(
                 self,
-                "Open Measurement",
+                "Open Sequence",
                 f"Could not load sequence from {file_path.name!r}:\n{exc}",
             )
             return
@@ -458,7 +458,7 @@ class MeasurementApp(QMainWindow):
         )
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Measurement Sequence",
+            "Save Sequence",
             start_dir,
             "JSON Files (*.json);;All Files (*)",
         )
@@ -492,7 +492,7 @@ class MeasurementApp(QMainWindow):
         except (OSError, TypeError, ValueError) as exc:
             QMessageBox.critical(
                 self,
-                "Save Measurement",
+                "Save Sequence",
                 f"Could not save sequence to {path.name!r}:\n{exc}",
             )
             return False
@@ -540,7 +540,7 @@ class MeasurementApp(QMainWindow):
         start = str(pane.path) if pane and pane.path else "sequence.py"
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Sequence Script",
+            "Save Script",
             start,
             "Python Files (*.py);;All Files (*)",
         )
