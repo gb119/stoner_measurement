@@ -340,6 +340,64 @@ class TestCodeGeneration:
         assert plugin_a in attributed_plugins
         assert plugin_b in attributed_plugins
 
+    def test_phase0_instantiation_imports_emitted(self, engine):
+        """Phase 0 should include the json and BasePlugin imports."""
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code = engine.generate_sequence_code(["dummy"], plugins)
+        assert "import json as _json" in code
+        assert "from stoner_measurement.plugins.base_plugin import BasePlugin as _BasePlugin" in code
+
+    def test_phase0_instantiation_conditional_guard(self, engine):
+        """Phase 0 should use a globals() guard for each plugin."""
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code = engine.generate_sequence_code(["dummy"], plugins)
+        assert "if 'dummy' not in globals():" in code
+
+    def test_phase0_instantiation_uses_from_json(self, engine):
+        """Phase 0 should reconstruct the plugin via _BasePlugin.from_json."""
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code = engine.generate_sequence_code(["dummy"], plugins)
+        assert "_BasePlugin.from_json" in code
+        assert "_json.loads" in code
+
+    def test_phase0_instantiation_embeds_class_path(self, engine):
+        """Phase 0 JSON payload must include the plugin class path."""
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code = engine.generate_sequence_code(["dummy"], plugins)
+        # The class path comes from BasePlugin.to_json() "class" key.
+        cls = type(plugin)
+        expected_class = f"{cls.__module__}:{cls.__qualname__}"
+        assert expected_class in code
+
+    def test_phase0_precedes_connect_phase(self, engine):
+        """The instantiation block must appear before the connect() calls."""
+        plugin = DummyPlugin()
+        plugins = {"dummy": plugin}
+        code = engine.generate_sequence_code(["dummy"], plugins)
+        instantiation_pos = code.index("if 'dummy' not in globals():")
+        connect_pos = code.index("dummy.connect()")
+        assert instantiation_pos < connect_pos
+
+    def test_phase0_multiple_plugins_each_have_guard(self, engine):
+        """Every plugin in the sequence should have its own instantiation guard."""
+        plugin_a = DummyPlugin()
+        plugin_a._instance_name = "alpha"
+        plugin_b = DummyPlugin()
+        plugin_b._instance_name = "beta"
+        plugins = {"alpha": plugin_a, "beta": plugin_b}
+        code = engine.generate_sequence_code(["alpha", "beta"], plugins)
+        assert "if 'alpha' not in globals():" in code
+        assert "if 'beta' not in globals():" in code
+
+    def test_phase0_not_emitted_for_empty_steps(self, engine):
+        """The instantiation block should not appear when there are no steps."""
+        code = engine.generate_sequence_code([], {})
+        assert "_BasePlugin.from_json" not in code
+
 
 # ---------------------------------------------------------------------------
 # Exception reporting

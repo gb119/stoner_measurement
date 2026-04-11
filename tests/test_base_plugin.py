@@ -123,3 +123,49 @@ class TestBasePluginEval:
         assert abs(result - 3.0) < 1e-12
         engine.shutdown()
 
+
+class TestGenerateInstantiationCode:
+    def test_returns_list_of_strings(self):
+        plugin = _MinimalPlugin()
+        lines = plugin.generate_instantiation_code()
+        assert isinstance(lines, list)
+        assert all(isinstance(line, str) for line in lines)
+
+    def test_guard_uses_instance_name(self):
+        plugin = _MinimalPlugin()
+        lines = plugin.generate_instantiation_code()
+        assert lines[0] == "if 'minimal' not in globals():"
+
+    def test_guard_uses_custom_instance_name(self):
+        plugin = _MinimalPlugin()
+        plugin.instance_name = "my_plugin"
+        lines = plugin.generate_instantiation_code()
+        assert lines[0] == "if 'my_plugin' not in globals():"
+
+    def test_reconstruction_uses_base_plugin_from_json(self):
+        plugin = _MinimalPlugin()
+        lines = plugin.generate_instantiation_code()
+        assert "_BasePlugin.from_json" in lines[1]
+
+    def test_reconstruction_uses_json_loads(self):
+        plugin = _MinimalPlugin()
+        lines = plugin.generate_instantiation_code()
+        assert "_json.loads" in lines[1]
+
+    def test_json_payload_contains_class_path(self):
+        plugin = _MinimalPlugin()
+        lines = plugin.generate_instantiation_code()
+        cls = type(plugin)
+        expected_class = f"{cls.__module__}:{cls.__qualname__}"
+        assert expected_class in lines[1]
+
+    def test_json_payload_contains_instance_name(self):
+        plugin = _MinimalPlugin()
+        lines = plugin.generate_instantiation_code()
+        assert '"minimal"' in lines[1]
+
+    def test_ends_with_blank_separator(self):
+        plugin = _MinimalPlugin()
+        lines = plugin.generate_instantiation_code()
+        assert lines[-1] == ""
+

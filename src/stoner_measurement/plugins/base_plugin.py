@@ -24,6 +24,7 @@ sub-types: :class:`~stoner_measurement.plugins.trace.base.TracePlugin`,
 from __future__ import annotations
 
 import importlib
+import json
 import logging
 from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Callable
@@ -664,6 +665,55 @@ class BasePlugin(ABC):
         prefix = "    " * indent
         return [
             f"{prefix}# {self.instance_name}: unknown plugin type",
+            "",
+        ]
+
+    def generate_instantiation_code(self) -> list[str]:
+        """Return Python code lines that conditionally instantiate this plugin from its config.
+
+        The generated code checks whether the plugin's
+        :attr:`instance_name` variable already exists in ``globals()`` (i.e. was
+        injected into the namespace by the sequence engine) and, only if it does
+        not, recreates the plugin from its serialised configuration using
+        :meth:`from_json`.
+
+        This ensures that a saved script is self-contained: when run outside
+        the app (e.g. loaded from a file into a fresh Python session), the plugin
+        is reconstructed from the configuration that was current at the time the
+        script was generated.  When the script is run by the app with the
+        plugin already registered in the engine namespace, the existing instance
+        is kept unchanged so that live engine state (such as the
+        :attr:`sequence_engine` back-reference) is preserved.
+
+        The caller (:meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.generate_sequence_code`)
+        is responsible for emitting the following one-time imports before calling
+        this method for any plugin::
+
+            import json as _json
+            from stoner_measurement.plugins.base_plugin import BasePlugin as _BasePlugin
+
+        Returns:
+            (list[str]):
+                Lines of Python source code (without trailing newlines).
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
+            >>> plugin = DummyPlugin()
+            >>> lines = plugin.generate_instantiation_code()
+            >>> lines[0]
+            "if 'dummy' not in globals():"
+            >>> '_BasePlugin.from_json' in lines[1]
+            True
+            >>> '_json.loads' in lines[1]
+            True
+        """
+        var_name = self.instance_name
+        config_json = json.dumps(self.to_json())
+        return [
+            f"if {var_name!r} not in globals():",
+            f"    {var_name} = _BasePlugin.from_json(_json.loads({config_json!r}))",
             "",
         ]
 
