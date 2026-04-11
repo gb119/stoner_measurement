@@ -709,6 +709,34 @@ class TestPlotWidget:
         widget = PlotWidget()
         assert widget.y_data("nonexistent") == []
 
+    def test_set_default_axis_labels_updates_bottom_axis(self, qapp):
+        widget = PlotWidget()
+        widget.set_default_axis_labels("Current (A)", "")
+        label_text = widget._pg_widget.getPlotItem().getAxis("bottom").labelText
+        assert label_text == "Current (A)"
+
+    def test_set_default_axis_labels_updates_left_axis(self, qapp):
+        widget = PlotWidget()
+        widget.set_default_axis_labels("", "Voltage (V)")
+        label_text = widget._pg_widget.getPlotItem().getAxis("left").labelText
+        assert label_text == "Voltage (V)"
+
+    def test_set_default_axis_labels_both(self, qapp):
+        widget = PlotWidget()
+        widget.set_default_axis_labels("Current (A)", "Voltage (V)")
+        assert widget._pg_widget.getPlotItem().getAxis("bottom").labelText == "Current (A)"
+        assert widget._pg_widget.getPlotItem().getAxis("left").labelText == "Voltage (V)"
+
+    def test_set_default_axis_labels_empty_strings_no_change(self, qapp):
+        widget = PlotWidget()
+        # Default labels set in __init__
+        original_bottom = widget._pg_widget.getPlotItem().getAxis("bottom").labelText
+        original_left = widget._pg_widget.getPlotItem().getAxis("left").labelText
+        widget.set_default_axis_labels("", "")
+        # Labels should be unchanged
+        assert widget._pg_widget.getPlotItem().getAxis("bottom").labelText == original_bottom
+        assert widget._pg_widget.getPlotItem().getAxis("left").labelText == original_left
+
 
 class TestConfigPanel:
     def test_creates_widget(self, plugin_manager):

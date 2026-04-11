@@ -433,3 +433,140 @@ class TestPlotTraceCommand:
         assert cmd.y_expr == ""
         cmd.config_widget()
         assert cmd.y_expr in ("dummy.data['Dummy'].x", "dummy.data['Dummy'].y")
+
+    # ------------------------------------------------------------------
+    # sequence_engine property — auto-connection tests
+    # ------------------------------------------------------------------
+
+    def test_sequence_engine_property_returns_none_initially(self, qapp):
+        """sequence_engine is None before attaching to an engine."""
+        cmd = PlotTraceCommand()
+        assert cmd.sequence_engine is None
+
+    def test_sequence_engine_property_set_via_add_plugin(self, qapp, engine):
+        """add_plugin() must cause sequence_engine to point at the engine."""
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        assert cmd.sequence_engine is engine
+
+    def test_sequence_engine_cleared_via_remove_plugin(self, qapp, engine):
+        """remove_plugin() must clear sequence_engine back to None."""
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine.remove_plugin("plot_trace")
+        assert cmd.sequence_engine is None
+
+    def test_plot_trace_auto_connects_when_engine_has_plot_widget(self, qapp):
+        """plot_trace signal is auto-connected to plot_widget.set_trace when engine is attached."""
+        from unittest.mock import MagicMock
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        try:
+            mock_pw = MagicMock()
+            mock_pw.set_trace = MagicMock()
+            mock_pw.set_default_axis_labels = MagicMock()
+            engine.plot_widget = mock_pw
+
+            cmd = PlotTraceCommand()
+            engine.add_plugin("plot_trace", cmd)
+
+            # plot_trace should now be connected to mock_pw.set_trace
+            received: list[tuple] = []
+            cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+            engine._namespace["px"] = np.array([1.0, 2.0])
+            engine._namespace["py"] = np.array([3.0, 4.0])
+            cmd.advanced_mode = True
+            cmd.x_expr = "px"
+            cmd.y_expr = "py"
+            cmd.title_expr = "'auto'"
+            cmd.execute()
+
+            assert len(received) == 1
+            assert received[0][0] == "auto"
+            # The mock slot is called from the same thread so call_count > 0
+            assert mock_pw.set_trace.call_count == 1
+        finally:
+            engine.shutdown()
+
+    def test_plot_trace_disconnects_on_engine_change(self, qapp):
+        """plot_trace signal is disconnected from old plot_widget when engine changes."""
+        from unittest.mock import MagicMock
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        try:
+            mock_pw = MagicMock()
+            mock_pw.set_trace = MagicMock()
+            mock_pw.set_default_axis_labels = MagicMock()
+            engine.plot_widget = mock_pw
+
+            cmd = PlotTraceCommand()
+            engine.add_plugin("plot_trace", cmd)
+            # Now detach
+            engine.remove_plugin("plot_trace")
+            assert cmd.sequence_engine is None
+            # The plot_trace signal should no longer call mock_pw.set_trace
+            engine._namespace["px"] = np.array([1.0])
+            engine._namespace["py"] = np.array([2.0])
+        finally:
+            engine.shutdown()
+
+    def test_plot_axis_labels_emitted_in_simple_mode(self, qapp, engine):
+        """execute() emits plot_axis_labels in simple mode with TraceData metadata."""
+        from stoner_measurement.plugins.trace.base import TraceData
+
+        td = TraceData(
+            x=np.array([0.0, 1.0]),
+            y=np.array([2.0, 3.0]),
+            names={"x": "Current", "y": "Voltage", "d": "", "e": ""},
+            units={"x": "A", "y": "V", "d": "", "e": ""},
+        )
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"dummy:Ch": "td"}
+        cmd.trace_key = "dummy:Ch"
+
+        labels: list[tuple[str, str]] = []
+        cmd.plot_axis_labels.connect(lambda x, y: labels.append((x, y)))
+        cmd.execute()
+
+        assert len(labels) == 1
+        assert labels[0] == ("Current (A)", "Voltage (V)")
+
+    def test_plot_axis_labels_not_emitted_in_advanced_mode(self, qapp, engine):
+        """execute() does not emit plot_axis_labels in advanced mode."""
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["px"] = np.array([1.0])
+        engine._namespace["py"] = np.array([2.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "px"
+        cmd.y_expr = "py"
+
+        labels: list = []
+        cmd.plot_axis_labels.connect(lambda x, y: labels.append((x, y)))
+        cmd.execute()
+
+        assert labels == []
+
+    def test_plot_axis_labels_not_emitted_when_names_empty(self, qapp, engine):
+        """execute() does not emit plot_axis_labels when TraceData has no names."""
+        from stoner_measurement.plugins.trace.base import TraceData
+
+        td = TraceData(x=np.array([0.0]), y=np.array([1.0]))
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"dummy:Ch": "td"}
+        cmd.trace_key = "dummy:Ch"
+
+        labels: list = []
+        cmd.plot_axis_labels.connect(lambda x, y: labels.append((x, y)))
+        cmd.execute()
+
+        assert labels == []

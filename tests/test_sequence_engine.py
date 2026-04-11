@@ -597,6 +597,26 @@ class TestDataCatalogs:
         assert len(engine.traces_catalog) > 0
         assert len(engine.values_catalog) > 0
 
+    def test_plot_widget_initially_none(self, engine):
+        """plot_widget is None before being set by the application."""
+        assert engine.plot_widget is None
+
+    def test_plot_widget_can_be_set_and_read(self, engine):
+        """plot_widget stores the reference assigned to it."""
+        from unittest.mock import MagicMock
+
+        mock_pw = MagicMock()
+        engine.plot_widget = mock_pw
+        assert engine.plot_widget is mock_pw
+
+    def test_plot_widget_can_be_cleared(self, engine):
+        """plot_widget can be reset to None."""
+        from unittest.mock import MagicMock
+
+        engine.plot_widget = MagicMock()
+        engine.plot_widget = None
+        assert engine.plot_widget is None
+
 
 
 

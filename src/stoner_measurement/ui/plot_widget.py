@@ -183,6 +183,35 @@ class PlotWidget(QWidget):
         self._trace_data[trace_name] = (xs, ys)
         curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
 
+    def set_default_axis_labels(self, x_label: str, y_label: str) -> None:
+        """Update the default bottom and left axis labels.
+
+        Called by :class:`~stoner_measurement.plugins.command.PlotTraceCommand`
+        when trace metadata (names and units from
+        :class:`~stoner_measurement.plugins.trace.TraceData`) is available so
+        that the plot axes reflect the physical quantities being displayed.
+
+        Args:
+            x_label (str):
+                Label for the bottom (x) axis.  If empty the axis label is
+                left unchanged.
+            y_label (str):
+                Label for the left (y) axis.  If empty the axis label is left
+                unchanged.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> widget = PlotWidget()
+            >>> widget.set_default_axis_labels("Current (A)", "Voltage (V)")
+            >>> widget._pg_widget.getPlotItem().getAxis("bottom").labelText
+            'Current (A)'
+        """
+        if x_label:
+            self._pg_widget.setLabel("bottom", x_label)
+        if y_label:
+            self._pg_widget.setLabel("left", y_label)
+
     def remove_trace(self, trace_name: str) -> None:
         """Remove a named trace and all its data.
 

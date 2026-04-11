@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.plugins.command import PlotTraceCommand
 from stoner_measurement.ui.icons import make_generate_icon, make_log_icon
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
@@ -65,6 +64,10 @@ class MeasurementApp(QMainWindow):
         # Central widget -------------------------------------------------------
         self._main_window = MainWindow(plugin_manager=self._plugin_manager)
         self.setCentralWidget(self._main_window)
+
+        # Wire the engine to the plot widget so that PlotTraceCommand instances
+        # can deliver data regardless of how they were added to the sequence.
+        self._engine.plot_widget = self._main_window.plot_widget
 
         # Log viewer (created before actions so actions can reference it) ------
         self._log_viewer = LogViewerWindow(parent=None)
@@ -200,7 +203,7 @@ class MeasurementApp(QMainWindow):
         self._engine._namespace["_values"] = values  # noqa: SLF001
 
     def _on_plugins_changed(self) -> None:
-        """Synchronise the engine namespace and plot connections with the current plugins."""
+        """Synchronise the engine namespace with the current plugins."""
         current = self._plugin_manager.plugins
 
         # Remove plugins that are no longer registered ----------------------
@@ -208,13 +211,6 @@ class MeasurementApp(QMainWindow):
             if ep_name not in current:
                 old_plugin = self._engine_plugins.pop(ep_name)
                 self._engine.remove_plugin(ep_name)
-                if isinstance(old_plugin, PlotTraceCommand):
-                    try:
-                        old_plugin.plot_trace.disconnect(
-                            self._main_window.plot_widget.set_trace
-                        )
-                    except (TypeError, RuntimeError):
-                        pass
                 if hasattr(old_plugin, "instance_name_changed"):
                     try:
                         old_plugin.instance_name_changed.disconnect()
@@ -226,10 +222,6 @@ class MeasurementApp(QMainWindow):
             if ep_name not in self._engine_plugins:
                 self._engine.add_plugin(ep_name, plugin)
                 self._engine_plugins[ep_name] = plugin
-                if isinstance(plugin, PlotTraceCommand):
-                    plugin.plot_trace.connect(
-                        self._main_window.plot_widget.set_trace
-                    )
                 if hasattr(plugin, "instance_name_changed"):
                     plugin.instance_name_changed.connect(
                         lambda _, new, ep=ep_name: self._engine.rename_plugin(ep, new)
@@ -748,6 +740,13 @@ class MeasurementApp(QMainWindow):
         dock = self._main_window.dock_panel
         steps = dock.sequence_steps
         plugins = self._plugin_manager.plugins
+
+        # Sync step plugins into the engine namespace so that sequence_engine
+        # is set on all step plugins (including PlotTraceCommand instances) and
+        # the _traces/_values catalogs are up to date before code generation.
+        # This ensures PlotTraceCommand step plugins have their plot signals
+        # connected to the plot widget before the script runs.
+        self._sync_sequence_steps_to_engine()
 
         # Inject per-step plugin instances into the engine namespace so the
         # generated script can reference them by their instance_name variable.
