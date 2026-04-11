@@ -56,6 +56,21 @@ def _format_axis_label(name: str, unit: str) -> str:
     return name
 
 
+def _safe_disconnect(signal: Any, slot: Any) -> None:
+    """Disconnect *signal* from *slot*, silently ignoring errors if not connected.
+
+    Args:
+        signal (Any):
+            The PyQt signal from which to disconnect.
+        slot (Any):
+            The callable slot to disconnect.
+    """
+    try:
+        signal.disconnect(slot)
+    except (TypeError, RuntimeError):
+        pass
+
+
 class PlotTraceCommand(CommandPlugin):
     """Command plugin that plots trace data to the main plot window.
 
@@ -143,8 +158,8 @@ class PlotTraceCommand(CommandPlugin):
     def __init__(self, parent=None) -> None:
         """Initialise with default configuration."""
         super().__init__(parent)
-        # Private backing store for the sequence_engine property override.
-        # Shadows the class-level attribute defined in BasePlugin.
+        # Backing store for the sequence_engine property that overrides the
+        # class-level attribute from BasePlugin.
         self._sequence_engine_ref: SequenceEngine | None = None
         self.trace_key: str = ""
         self.advanced_mode: bool = False
@@ -202,14 +217,8 @@ class PlotTraceCommand(CommandPlugin):
         if self._sequence_engine_ref is not None:
             old_pw = getattr(self._sequence_engine_ref, "plot_widget", None)
             if old_pw is not None:
-                try:
-                    self.plot_trace.disconnect(old_pw.set_trace)
-                except (TypeError, RuntimeError):
-                    pass
-                try:
-                    self.plot_axis_labels.disconnect(old_pw.set_default_axis_labels)
-                except (TypeError, RuntimeError):
-                    pass
+                _safe_disconnect(self.plot_trace, old_pw.set_trace)
+                _safe_disconnect(self.plot_axis_labels, old_pw.set_default_axis_labels)
 
         self._sequence_engine_ref = engine
 

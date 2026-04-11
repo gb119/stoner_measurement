@@ -460,9 +460,9 @@ class TestPlotTraceCommand:
         """plot_trace signal is auto-connected to plot_widget.set_trace when engine is attached."""
         from unittest.mock import MagicMock
 
-        engine = __import__(
-            "stoner_measurement.core.sequence_engine", fromlist=["SequenceEngine"]
-        ).SequenceEngine()
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
         try:
             mock_pw = MagicMock()
             mock_pw.set_trace = MagicMock()
