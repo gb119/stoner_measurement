@@ -85,8 +85,10 @@ class MeasurementApp(QMainWindow):
         self._plugin_manager.plugins_changed.connect(self._on_plugins_changed)
 
         # Wire sequence step selection → config panel -------------------------
+        # Use an intermediate slot so step plugins are synced into the engine
+        # namespace (and _traces rebuilt) before the config widget is shown.
         self._main_window.dock_panel.plugin_selected.connect(
-            self._main_window.config_panel.show_plugin
+            self._on_plugin_selected_for_config
         )
 
         # Build the UI before discovering plugins (so signals are in place) ---
@@ -107,6 +109,95 @@ class MeasurementApp(QMainWindow):
     # ------------------------------------------------------------------
     # Plugin synchronisation
     # ------------------------------------------------------------------
+
+    def _on_plugin_selected_for_config(self, plugin: object) -> None:
+        """Sync sequence-step plugins into the engine namespace, then show config.
+
+        This intermediate slot is wired to
+        :attr:`~stoner_measurement.ui.dock_panel.DockPanel.plugin_selected`.
+        Before delegating to :meth:`~stoner_measurement.ui.config_panel.ConfigPanel.show_plugin`
+        it calls :meth:`_sync_sequence_steps_to_engine` so that the ``_traces``
+        and ``_values`` catalogs in the engine namespace reflect the current
+        sequence steps.  This ensures that command-plugin configuration widgets
+        (such as :class:`~stoner_measurement.plugins.command.PlotTraceCommand`)
+        can populate their dropdowns from the live trace catalogue even before
+        a sequence has been run.
+
+        Args:
+            plugin (object):
+                The plugin instance selected in the sequence editor, or ``None``
+                when the selection is cleared.
+        """
+        self._sync_sequence_steps_to_engine()
+        self._main_window.config_panel.show_plugin(plugin)  # type: ignore[arg-type]
+
+    def _sync_sequence_steps_to_engine(self) -> None:
+        """Inject sequence-step plugins into the engine namespace and rebuild catalogs.
+
+        Traverses every step in the current sequence (including nested sub-steps)
+        and, for each plugin instance that is not yet attached to the engine,
+        sets its :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+        to this application's engine.  The ``_traces`` and ``_values`` entries
+        in the engine namespace are then rebuilt from both the base plugins
+        (registered via :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.add_plugin`)
+        and the step plugins discovered here.
+
+        This makes the trace catalogue available to configuration widgets (e.g.
+        :class:`~stoner_measurement.plugins.command.PlotTraceCommand`) which
+        read ``engine_namespace["_traces"]`` to populate their dropdowns.
+
+        Notes:
+            The catalog is built in two phases:
+
+            1. **Base plugins** — plugins registered with the engine via
+               :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.add_plugin`
+               (the plugin-manager instances) are iterated first.  Their
+               :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_traces`
+               and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_values`
+               contributions seed the initial catalog.
+            2. **Step plugins** — plugin instances created for each sequence step
+               in the dock panel are traversed recursively (depth-first through
+               sub-steps).  Any step plugin that is not yet attached to the engine
+               has its ``sequence_engine`` set so that ``engine_namespace`` becomes
+               functional.  Its trace and value contributions are then merged into
+               the catalog, overwriting any base-plugin entry with the same key.
+
+            The final catalog is written directly to the engine namespace as
+            ``_traces`` and ``_values``, making it immediately visible to any
+            plugin whose ``engine_namespace`` references this engine.
+        """
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        # Collect traces and values from base plugins already in the engine.
+        traces: dict[str, str] = {}
+        values: dict[str, str] = {}
+        for var_name in self._engine._plugin_var_names.values():  # noqa: SLF001
+            base_plugin = self._engine._namespace.get(var_name)  # noqa: SLF001
+            if isinstance(base_plugin, BasePlugin):
+                traces.update(base_plugin.reported_traces())
+                values.update(base_plugin.reported_values())
+
+        # Collect traces and values from step plugins in the current sequence.
+        def _process(steps: list) -> None:
+            """Recursively attach unregistered step plugins to the engine and accumulate their catalogs."""
+            for step in steps:
+                if isinstance(step, tuple):
+                    step_plugin, sub_steps = step
+                    _process(sub_steps)
+                else:
+                    step_plugin = step
+                if isinstance(step_plugin, BasePlugin):
+                    # Attach to the engine so engine_namespace works in config widgets.
+                    if step_plugin.sequence_engine is None:
+                        step_plugin.sequence_engine = self._engine
+                    traces.update(step_plugin.reported_traces())
+                    values.update(step_plugin.reported_values())
+
+        _process(self._main_window.dock_panel.sequence_steps)
+
+        # Update the live namespace so config widgets see the full catalogue.
+        self._engine._namespace["_traces"] = traces  # noqa: SLF001
+        self._engine._namespace["_values"] = values  # noqa: SLF001
 
     def _on_plugins_changed(self) -> None:
         """Synchronise the engine namespace and plot connections with the current plugins."""

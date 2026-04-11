@@ -456,6 +456,44 @@ class BasePlugin(ABC):
                 name_edit.setText(self.instance_name)
 
         name_edit.editingFinished.connect(_apply)
+
+        # Keep the name field in sync with the authoritative instance_name
+        # so that an external revert (e.g. collision detected by the dock
+        # panel) is immediately visible to the user.  Only plugins that
+        # sub-class QObject carry the instance_name_changed signal.
+        if hasattr(self, "instance_name_changed"):
+            # Disconnect any stale sync callback left by a previous call
+            # (relevant when config_tabs() recreates the widget on every
+            # selection rather than caching it).
+            prev_sync = getattr(self, "_name_edit_sync", None)
+            if prev_sync is not None:
+                try:
+                    self.instance_name_changed.disconnect(prev_sync)  # type: ignore[attr-defined]
+                except (TypeError, RuntimeError):
+                    pass
+
+            def _sync_name_edit(_old: str, _new: str) -> None:  # noqa: ARG001
+                # Read the authoritative value rather than trusting `_new`.
+                # When a rename is reverted (due to a collision), the revert
+                # fires a nested instance_name_changed before this outer
+                # handler returns.  By the time this callback runs, the
+                # authoritative instance_name may already have been reset to
+                # the reverted value; using `_new` would show stale text.
+                current = self.instance_name
+                try:
+                    name_edit.setText(current)
+                    name_edit.setStyleSheet("")
+                except RuntimeError:
+                    # The underlying C++ widget has been destroyed; remove
+                    # this stale connection.
+                    try:
+                        self.instance_name_changed.disconnect(_sync_name_edit)  # type: ignore[attr-defined]
+                    except (TypeError, RuntimeError):
+                        pass
+
+            self.instance_name_changed.connect(_sync_name_edit)  # type: ignore[attr-defined]
+            self._name_edit_sync = _sync_name_edit  # type: ignore[attr-defined]
+
         layout.addRow("Instance name:", name_edit)
         layout.addRow("Plugin type:", QLabel(self.plugin_type, widget))
         widget.setLayout(layout)
