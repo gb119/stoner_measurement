@@ -661,6 +661,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             True
         """
         self._set_status(TraceStatus.MEASURING)
+        # xs/ys keys also serve as the set of channels seen so far.
         xs: dict[str, list[float]] = {}
         ys: dict[str, list[float]] = {}
         names = {"x": self.x_label, "y": self.y_label, "d": "", "e": ""}

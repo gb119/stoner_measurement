@@ -210,7 +210,8 @@ four-step lifecycle:
    identity.
 2. **configure()** — push plugin settings to the instrument.
 3. **measure(parameters)** — trigger and collect the complete multipoint trace,
-   returning all ``(channel, x, y)`` data points as a dict.  The default
+   returning a dict mapping channel names to
+   :class:`~stoner_measurement.plugins.trace.TraceData` objects.  The default
    implementation delegates to
    :meth:`~stoner_measurement.plugins.trace.TracePlugin.execute_multichannel`
    (and thence to

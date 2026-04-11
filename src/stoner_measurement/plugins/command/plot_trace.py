@@ -192,8 +192,16 @@ class PlotTraceCommand(CommandPlugin):
                 return
             trace_expr = traces[self.trace_key]
             trace_data = self.eval(trace_expr)
-            x_data = trace_data.x
-            y_data = trace_data.y
+            try:
+                x_data = trace_data.x
+                y_data = trace_data.y
+            except AttributeError:
+                self.log.warning(
+                    "PlotTrace: expression for trace %r did not return an object "
+                    "with .x/.y attributes — skipping plot.",
+                    self.trace_key,
+                )
+                return
             title = self.trace_key
 
         self.plot_trace.emit(
@@ -252,7 +260,9 @@ class PlotTraceCommand(CommandPlugin):
         trace_keys = list(traces.keys())
 
         # Build a mapping of display-name → expression for individual
-        # x/y data arrays across all trace channels.
+        # x/y data arrays across all trace channels.  Expressions are derived
+        # from the catalogue values (e.g. "dummy.data['Dummy']") by appending
+        # ".x" or ".y" — these are valid Python attribute accesses on TraceData.
         channel_items: dict[str, str] = {}
         for key, expr in traces.items():
             channel_items[f"{key} (x)"] = f"{expr}.x"
