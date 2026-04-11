@@ -154,6 +154,36 @@ class TestReplExecution:
         _wait_for_script_finished(engine, qapp)
         assert engine.namespace.get("_seq_result") == 100
 
+    def test_print_still_captured_after_script_using_plugin_eval(self, engine, qapp):
+        """print() output must arrive via engine.output even after running a script
+        that calls plugin.eval().
+
+        Regression test for the bug where asteval.Interpreter.__init__ permanently
+        injected its own ``_printer`` into the engine namespace, causing all
+        subsequent print() calls to write to the terminal instead of the console.
+        """
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+
+        # Generate and run the sequence script (DummyPlugin.measure() calls eval).
+        code = engine.generate_sequence_code(["dummy"], {"dummy": plugin})
+        engine.run_script(code, customised=False)
+        _wait_for_script_finished(engine, qapp)
+
+        # After the generated script, print() via execute_command must still be
+        # captured by the engine's output signal.
+        received: list[str] = []
+        engine.output.connect(lambda s: received.append(s))
+        engine.execute_command("print('hello_after_eval')")
+        _wait_for_idle(engine, qapp)
+
+        assert any("hello_after_eval" in s for s in received), (
+            "print() output was not captured after running a script that used plugin.eval(). "
+            "Likely asteval.Interpreter polluted the engine namespace with its own _printer."
+        )
+
 
 # ---------------------------------------------------------------------------
 # Script execution
