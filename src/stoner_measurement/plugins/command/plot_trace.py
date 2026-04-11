@@ -275,6 +275,11 @@ class PlotTraceCommand(CommandPlugin):
             trace_combo.addItems(trace_keys)
             if self.trace_key in trace_keys:
                 trace_combo.setCurrentText(self.trace_key)
+            else:
+                # trace_key not yet set (or no longer valid); adopt the combo's
+                # default first item so the plugin state matches what is shown
+                # without requiring user interaction.
+                self.trace_key = trace_keys[0]
         else:
             trace_combo.addItem("(no traces available)")
 
@@ -286,7 +291,11 @@ class PlotTraceCommand(CommandPlugin):
         x_combo = QComboBox(widget)
         if channel_names:
             x_combo.addItems(channel_names)
-            _set_combo_to_expr(x_combo, channel_items, self.x_expr)
+            if not _set_combo_to_expr(x_combo, channel_items, self.x_expr):
+                # x_expr not yet set (or no longer valid); adopt the default first item.
+                first_name = channel_names[0]
+                self.x_expr = channel_items[first_name]
+                x_combo.setCurrentText(first_name)
         else:
             x_combo.addItem("(no channels available)")
 
@@ -294,7 +303,11 @@ class PlotTraceCommand(CommandPlugin):
         y_combo = QComboBox(widget)
         if channel_names:
             y_combo.addItems(channel_names)
-            _set_combo_to_expr(y_combo, channel_items, self.y_expr)
+            if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
+                # y_expr not yet set (or no longer valid); adopt the default first item.
+                first_name = channel_names[0]
+                self.y_expr = channel_items[first_name]
+                y_combo.setCurrentText(first_name)
         else:
             y_combo.addItem("(no channels available)")
 
@@ -411,7 +424,7 @@ def _set_combo_to_expr(
     combo: QComboBox,
     items: dict[str, str],
     expr: str,
-) -> None:
+) -> bool:
     """Set *combo* to the entry whose value in *items* matches *expr*.
 
     If no match is found the combo selection is left unchanged.
@@ -423,8 +436,14 @@ def _set_combo_to_expr(
             Mapping of display name to expression string.
         expr (str):
             Expression string to search for.
+
+    Returns:
+        (bool):
+            ``True`` if a matching entry was found and the combo was updated,
+            ``False`` otherwise.
     """
     for display_name, item_expr in items.items():
         if item_expr == expr:
             combo.setCurrentText(display_name)
-            return
+            return True
+    return False

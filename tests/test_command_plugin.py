@@ -382,3 +382,54 @@ class TestPlotTraceCommand:
 
     def test_reported_values_empty(self, qapp):
         assert PlotTraceCommand().reported_values() == {}
+
+    def test_config_widget_initialises_trace_key_from_first_available_trace(self, qapp, engine):
+        """config_widget() must sync trace_key to the combo's default item.
+
+        When trace_key is empty and there is at least one trace in the engine
+        catalogue, opening the config widget (without the user touching the
+        combo) should update trace_key to the first available trace key so that
+        the subsequent code generation is not left with an empty trace_key.
+        """
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["_traces"] = {
+            "dummy:Dummy": "dummy.data['Dummy']",
+        }
+        assert cmd.trace_key == ""
+        cmd.config_widget()
+        assert cmd.trace_key == "dummy:Dummy"
+
+    def test_config_widget_preserves_existing_trace_key(self, qapp, engine):
+        """config_widget() must not overwrite a trace_key that is already valid."""
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["_traces"] = {
+            "dummy:Dummy": "dummy.data['Dummy']",
+            "other:Chan": "other.data['Chan']",
+        }
+        cmd.trace_key = "other:Chan"
+        cmd.config_widget()
+        assert cmd.trace_key == "other:Chan"
+
+    def test_config_widget_initialises_x_expr_from_first_available_channel(self, qapp, engine):
+        """config_widget() must sync x_expr to the first channel when x_expr is empty."""
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["_traces"] = {
+            "dummy:Dummy": "dummy.data['Dummy']",
+        }
+        assert cmd.x_expr == ""
+        cmd.config_widget()
+        assert cmd.x_expr in ("dummy.data['Dummy'].x", "dummy.data['Dummy'].y")
+
+    def test_config_widget_initialises_y_expr_from_first_available_channel(self, qapp, engine):
+        """config_widget() must sync y_expr to the first channel when y_expr is empty."""
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["_traces"] = {
+            "dummy:Dummy": "dummy.data['Dummy']",
+        }
+        assert cmd.y_expr == ""
+        cmd.config_widget()
+        assert cmd.y_expr in ("dummy.data['Dummy'].x", "dummy.data['Dummy'].y")
