@@ -1,13 +1,14 @@
-"""Tests for CommandPlugin and SaveCommand."""
+"""Tests for CommandPlugin, SaveCommand, and PlotTraceCommand."""
 
 from __future__ import annotations
 
 import json
 import pathlib
 
+import numpy as np
 import pytest
 
-from stoner_measurement.plugins.command import CommandPlugin, SaveCommand
+from stoner_measurement.plugins.command import CommandPlugin, PlotTraceCommand, SaveCommand
 
 
 # ---------------------------------------------------------------------------
@@ -217,3 +218,167 @@ class TestSaveCommand:
         cmd = SaveCommand()
         lines = cmd.generate_action_code(1, [], lambda s, i: [])
         assert lines[0] == "    save()"
+
+
+# ---------------------------------------------------------------------------
+# PlotTraceCommand
+# ---------------------------------------------------------------------------
+
+
+class TestPlotTraceCommand:
+    def test_name(self, qapp):
+        assert PlotTraceCommand().name == "Plot Trace"
+
+    def test_plugin_type(self, qapp):
+        assert PlotTraceCommand().plugin_type == "command"
+
+    def test_has_lifecycle_false(self, qapp):
+        assert PlotTraceCommand().has_lifecycle is False
+
+    def test_default_attributes(self, qapp):
+        cmd = PlotTraceCommand()
+        assert cmd.trace_key == ""
+        assert cmd.advanced_mode is False
+        assert cmd.x_expr == ""
+        assert cmd.y_expr == ""
+        assert cmd.title_expr == "'plot'"
+
+    def test_to_json_includes_fields(self, qapp):
+        cmd = PlotTraceCommand()
+        d = cmd.to_json()
+        assert d["type"] == "command"
+        assert "trace_key" in d
+        assert "advanced_mode" in d
+        assert "x_expr" in d
+        assert "y_expr" in d
+        assert "title_expr" in d
+
+    def test_restore_from_json_round_trip(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        cmd = PlotTraceCommand()
+        cmd.trace_key = "dummy:Dummy"
+        cmd.advanced_mode = True
+        cmd.x_expr = "dummy.data['Dummy'].x"
+        cmd.y_expr = "dummy.data['Dummy'].y"
+        cmd.title_expr = "'my plot'"
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, PlotTraceCommand)
+        assert restored.trace_key == "dummy:Dummy"
+        assert restored.advanced_mode is True
+        assert restored.x_expr == "dummy.data['Dummy'].x"
+        assert restored.y_expr == "dummy.data['Dummy'].y"
+        assert restored.title_expr == "'my plot'"
+
+    def test_config_widget_returns_widget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+
+        assert isinstance(PlotTraceCommand().config_widget(), QWidget)
+
+    def test_config_widget_has_trace_combo(self, qapp):
+        from PyQt6.QtWidgets import QComboBox
+
+        widget = PlotTraceCommand().config_widget()
+        combos = widget.findChildren(QComboBox)
+        assert len(combos) >= 1
+
+    def test_config_widget_has_advanced_checkbox(self, qapp):
+        from PyQt6.QtWidgets import QCheckBox
+
+        widget = PlotTraceCommand().config_widget()
+        checkboxes = widget.findChildren(QCheckBox)
+        assert len(checkboxes) == 1
+
+    def test_config_widget_has_title_lineedit(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        widget = PlotTraceCommand().config_widget()
+        edits = widget.findChildren(QLineEdit)
+        assert len(edits) == 1
+
+    def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
+        from PyQt6.QtWidgets import QCheckBox
+
+        cmd = PlotTraceCommand()
+        cmd.advanced_mode = False
+        widget = cmd.config_widget()
+        checkbox = widget.findChildren(QCheckBox)[0]
+        checkbox.setChecked(True)
+        assert cmd.advanced_mode is True
+        checkbox.setChecked(False)
+        assert cmd.advanced_mode is False
+
+    def test_config_title_edit_updates_title_expr(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = PlotTraceCommand()
+        widget = cmd.config_widget()
+        edit = widget.findChildren(QLineEdit)[0]
+        edit.setText("'new title'")
+        edit.editingFinished.emit()
+        assert cmd.title_expr == "'new title'"
+
+    def test_execute_advanced_mode_emits_plot_trace(self, qapp, engine):
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0, 2.0, 3.0])
+        engine._namespace["my_y"] = np.array([4.0, 5.0, 6.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'test trace'"
+
+        received: list[tuple] = []
+        cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        cmd.execute()
+
+        assert len(received) == 1
+        title, x_data, y_data = received[0]
+        assert title == "test trace"
+        np.testing.assert_array_equal(x_data, [1.0, 2.0, 3.0])
+        np.testing.assert_array_equal(y_data, [4.0, 5.0, 6.0])
+
+    def test_execute_advanced_mode_missing_expr_logs_warning(self, qapp, engine):
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        cmd.advanced_mode = True
+        cmd.x_expr = ""  # empty — should warn and not emit
+        cmd.y_expr = "some_y"
+
+        received: list = []
+        cmd.plot_trace.connect(lambda t, x, y: received.append(1))
+        cmd.execute()
+
+        assert received == []
+
+    def test_execute_simple_mode_missing_trace_key_logs_warning(self, qapp, engine):
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        cmd.advanced_mode = False
+        cmd.trace_key = "nonexistent:channel"
+
+        received: list = []
+        cmd.plot_trace.connect(lambda t, x, y: received.append(1))
+        cmd.execute()
+
+        assert received == []
+
+    def test_execute_raises_when_detached(self, qapp):
+        cmd = PlotTraceCommand()
+        cmd.advanced_mode = True
+        cmd.x_expr = "x"
+        cmd.y_expr = "y"
+        cmd.title_expr = "'t'"
+        with pytest.raises(RuntimeError):
+            cmd.execute()
+
+    def test_generate_action_code(self, qapp):
+        cmd = PlotTraceCommand()
+        lines = cmd.generate_action_code(1, [], lambda s, i: [])
+        assert lines[0] == "    plot_trace()"
+
+    def test_reported_traces_empty(self, qapp):
+        assert PlotTraceCommand().reported_traces() == {}
+
+    def test_reported_values_empty(self, qapp):
+        assert PlotTraceCommand().reported_values() == {}

@@ -88,7 +88,7 @@ class PlotTraceCommand(CommandPlugin):
         >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
         >>> cmd = PlotTraceCommand()
         >>> cmd.name
-        'PlotTrace'
+        'Plot Trace'
         >>> cmd.plugin_type
         'command'
         >>> cmd.has_lifecycle
@@ -113,16 +113,16 @@ class PlotTraceCommand(CommandPlugin):
 
         Returns:
             (str):
-                ``"PlotTrace"``.
+                ``"Plot Trace"``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
             >>> PlotTraceCommand().name
-            'PlotTrace'
+            'Plot Trace'
         """
-        return "PlotTrace"
+        return "Plot Trace"
 
     # ------------------------------------------------------------------
     # Execute

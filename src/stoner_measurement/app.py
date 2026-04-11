@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.plugins.trace import TracePlugin
+from stoner_measurement.plugins.command import PlotTraceCommand
 from stoner_measurement.ui.icons import make_generate_icon, make_log_icon
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
@@ -41,9 +41,9 @@ class MeasurementApp(QMainWindow):
     When plugins are loaded, instances are automatically injected into the
     engine namespace under sanitised variable names (e.g. the ``"dummy"``
     entry-point plugin becomes ``dummy`` in the script namespace).
-    :class:`~stoner_measurement.plugins.trace.TracePlugin` instances have their
-    ``trace_point`` signals wired to the plot widget so that data appears
-    automatically while a script runs.
+    :class:`~stoner_measurement.plugins.command.PlotTraceCommand` instances
+    have their ``plot_trace`` signals wired to the plot widget so that data
+    can be sent to the plot from within a sequence.
     """
 
     def __init__(self) -> None:
@@ -117,10 +117,10 @@ class MeasurementApp(QMainWindow):
             if ep_name not in current:
                 old_plugin = self._engine_plugins.pop(ep_name)
                 self._engine.remove_plugin(ep_name)
-                if isinstance(old_plugin, TracePlugin):
+                if isinstance(old_plugin, PlotTraceCommand):
                     try:
-                        old_plugin.trace_point.disconnect(
-                            self._main_window.plot_widget.append_point
+                        old_plugin.plot_trace.disconnect(
+                            self._main_window.plot_widget.set_trace
                         )
                     except (TypeError, RuntimeError):
                         pass
@@ -135,9 +135,9 @@ class MeasurementApp(QMainWindow):
             if ep_name not in self._engine_plugins:
                 self._engine.add_plugin(ep_name, plugin)
                 self._engine_plugins[ep_name] = plugin
-                if isinstance(plugin, TracePlugin):
-                    plugin.trace_point.connect(
-                        self._main_window.plot_widget.append_point
+                if isinstance(plugin, PlotTraceCommand):
+                    plugin.plot_trace.connect(
+                        self._main_window.plot_widget.set_trace
                     )
                 if hasattr(plugin, "instance_name_changed"):
                     plugin.instance_name_changed.connect(
