@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -495,6 +496,10 @@ class DockPanel(QWidget):
         plugin's class so that multiple steps of the same plugin type each have
         independent configuration.  The new instance is assigned a unique
         ``instance_name`` (e.g. ``counter``, ``counter_2``, ``counter_3`` …).
+
+        Uniqueness is guaranteed by scanning all instance names that are
+        currently in the sequence tree, so the generated name will not collide
+        even when earlier steps have been manually renamed or removed.
         """
         current = self._instrument_list.currentItem()
         if current is None:
@@ -507,12 +512,12 @@ class DockPanel(QWidget):
         # Create a new, independent instance of the same plugin class.
         new_plugin: BasePlugin = type(base_plugin)()
 
-        # Assign a unique instance name.
-        count = self._step_counts.get(ep_name, 0)
-        self._step_counts[ep_name] = count + 1
-        if count > 0:
-            # Subsequent instances: append a numeric suffix.
-            new_plugin.instance_name = f"{base_plugin.instance_name}_{count + 1}"
+        # Assign a unique instance name, guaranteed not to clash with any
+        # step already in the tree.
+        self._step_counts[ep_name] = self._step_counts.get(ep_name, 0) + 1
+        unique_name = self._unique_step_name(base_plugin.instance_name)
+        if unique_name != new_plugin.instance_name:
+            new_plugin.instance_name = unique_name
 
         # Wire instance_name_changed so the label in the tree stays in sync.
         if hasattr(new_plugin, "instance_name_changed"):
@@ -552,20 +557,38 @@ class DockPanel(QWidget):
         self.plugin_selected.emit(plugin)
 
     def _on_plugin_renamed(self, old_name: str, new_name: str) -> None:
-        """Update sequence step labels when a plugin's instance name changes.
+        """Validate uniqueness and update sequence step labels when a plugin's instance name changes.
 
         This slot is connected to the ``instance_name_changed(old, new)``
         signal on each per-step plugin instance.  It uses ``self.sender()``
-        to identify which plugin was renamed and updates only the matching
-        tree item(s).
+        to identify which plugin was renamed.
+
+        If *new_name* is already used by a **different** step the rename is
+        rejected: the plugin's :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.instance_name`
+        is reverted to *old_name* and a warning dialog is shown.  Otherwise
+        the matching tree item label is updated to reflect the new name.
 
         Args:
             old_name (str):
-                Previous instance name (used for logging context).
+                Previous instance name.
             new_name (str):
-                New instance name to display.
+                Requested new instance name.
         """
         renamed_plugin = self.sender()
+
+        # Reject the rename if the requested name is already taken by a
+        # different step in the current sequence.
+        if new_name in self._current_instance_names(exclude_plugin=renamed_plugin):
+            # Revert to the previous name before showing the warning so that
+            # any connected QLineEdit is updated first (via instance_name_changed).
+            renamed_plugin.instance_name = old_name  # type: ignore[union-attr]
+            QMessageBox.warning(
+                self,
+                "Instance Name Conflict",
+                f"The name {new_name!r} is already used by another step in the sequence.\n"
+                f"The name has been reverted to {old_name!r}.",
+            )
+            return
 
         def _update_subtree(item: QTreeWidgetItem) -> None:
             """Recursively update text for the item whose plugin was renamed."""
@@ -577,6 +600,77 @@ class DockPanel(QWidget):
 
         for i in range(self._sequence_tree.topLevelItemCount()):
             _update_subtree(self._sequence_tree.topLevelItem(i))
+
+    # ------------------------------------------------------------------
+    # Instance-name uniqueness helpers
+    # ------------------------------------------------------------------
+
+    def _current_instance_names(
+        self, exclude_plugin: BasePlugin | None = None
+    ) -> set[str]:
+        """Return instance names of all step plugins currently in the tree.
+
+        Args:
+            exclude_plugin (BasePlugin | None):
+                If provided, this plugin's name is *not* included in the
+                returned set.  Pass the plugin that is about to be renamed so
+                its *current* name is not treated as a collision with itself.
+
+        Returns:
+            (set[str]):
+                Set of instance name strings.
+        """
+        names: set[str] = set()
+
+        def _collect(item: QTreeWidgetItem) -> None:
+            plugin: BasePlugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+            if plugin is not None and plugin is not exclude_plugin:
+                names.add(plugin.instance_name)
+            for i in range(item.childCount()):
+                _collect(item.child(i))
+
+        for i in range(self._sequence_tree.topLevelItemCount()):
+            _collect(self._sequence_tree.topLevelItem(i))
+        return names
+
+    def _unique_step_name(self, base_name: str) -> str:
+        """Return a name derived from *base_name* that is unique in the current sequence.
+
+        If *base_name* is not yet taken it is returned unchanged.  Otherwise a
+        numeric suffix is appended (``_2``, ``_3``, …) until a free name is
+        found.
+
+        Args:
+            base_name (str):
+                Preferred name, typically the plugin's default
+                :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.instance_name`.
+
+        Returns:
+            (str):
+                A name that does not clash with any step currently in the tree.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
+            >>> pm = PluginManager()
+            >>> pm.register("Dummy", DummyPlugin())
+            >>> panel = DockPanel(plugin_manager=pm)
+            >>> panel._unique_step_name("dummy")
+            'dummy'
+            >>> panel._instrument_list.setCurrentRow(0)
+            >>> panel._add_step()
+            >>> panel._unique_step_name("dummy")
+            'dummy_2'
+        """
+        existing = self._current_instance_names()
+        if base_name not in existing:
+            return base_name
+        count = 2
+        while f"{base_name}_{count}" in existing:
+            count += 1
+        return f"{base_name}_{count}"
 
     def _update_monitor_visibility(self) -> None:
         """Show or hide the monitoring section depending on whether any widgets are present."""
