@@ -1075,8 +1075,18 @@ class SequenceEngine(QObject):
     ) -> str | tuple[str, dict[int, BasePlugin]]:
         """Generate executable Python code from the sequence tree.
 
-        Produces a three-phase script from *steps*:
+        Produces a four-phase script from *steps*:
 
+        0. **Instantiate** — for each unique plugin a conditional block is
+           emitted that recreates the plugin from its current configuration
+           (using :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.generate_instantiation_code`)
+           **only** when the variable is not already present in ``globals()``.
+           This makes the generated script self-contained: when it is saved to
+           a file and later executed outside the app the plugins will be
+           reconstructed from the configuration that was in force at generation
+           time, while running the script directly in the app (where the plugins
+           are already in the namespace) leaves the live engine instances
+           untouched.
         1. **Connect/initialise** — ``connect()`` is called for every unique
            plugin instance found in the tree, in depth-first order.
         2. **Configure** — ``configure()`` is called for every unique plugin
@@ -1108,7 +1118,7 @@ class SequenceEngine(QObject):
                 numbers in the returned script to the plugin instance whose
                 generated action code occupies that line.  Only action lines
                 (inside the ``try:`` block) are mapped; infrastructure lines
-                (connect/configure/disconnect) are not included.
+                (instantiate/connect/configure/disconnect) are not included.
 
         Returns:
             (str):
@@ -1130,6 +1140,8 @@ class SequenceEngine(QObject):
             >>> "measure" in code
             True
             >>> "disconnect" in code
+            True
+            >>> "_BasePlugin.from_json" in code
             True
             >>> code2, lmap = engine.generate_sequence_code(
             ...     ["dummy"], {"dummy": plugin}, return_line_map=True
@@ -1154,7 +1166,7 @@ class SequenceEngine(QObject):
             return (code, {}) if return_line_map else code
 
         # ------------------------------------------------------------------
-        # Phase 0: collect all unique plugin instances (depth-first order).
+        # Collect all unique plugin instances (depth-first order).
         # ------------------------------------------------------------------
 
         ordered_plugins: list[BasePlugin] = []
@@ -1188,6 +1200,17 @@ class SequenceEngine(QObject):
             return (code, {}) if return_line_map else code
 
         lines: list[str] = list(header)
+
+        # ------------------------------------------------------------------
+        # Phase 0: instantiate plugins from their saved configuration.
+        # ------------------------------------------------------------------
+
+        lines.append("# Instantiate plugins from saved configuration (if not already present).")
+        lines.append("import json as _json")
+        lines.append("from stoner_measurement.plugins.base_plugin import BasePlugin as _BasePlugin")
+        lines.append("")
+        for plugin in ordered_plugins:
+            lines.extend(plugin.generate_instantiation_code())
 
         # ------------------------------------------------------------------
         # Phase 1: connect/initialise all plugins.
