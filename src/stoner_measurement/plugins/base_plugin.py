@@ -228,8 +228,26 @@ class BasePlugin(ABC):
         # cannot leak into subsequent calls.  The engine namespace dict is
         # passed by reference, so the Interpreter always sees the current live
         # variable state without copying.
-        interp = asteval.Interpreter(symtable=self.engine_namespace, use_numpy=False)
-        return interp.eval(expr, raise_errors=True)
+        #
+        # asteval.Interpreter.__init__ unconditionally injects its own
+        # ``_printer`` method into the symtable under the key ``'print'``.
+        # If the engine namespace is passed directly, this permanently
+        # overwrites the built-in ``print``, causing subsequent ``print()``
+        # calls in scripts and REPL commands to bypass the redirected
+        # ``sys.stdout`` and write to the terminal instead of the console
+        # widget.  Save and restore the ``'print'`` entry so that the
+        # engine namespace is not polluted by asteval's injection.
+        ns = self.engine_namespace
+        _sentinel = object()
+        saved_print = ns.get("print", _sentinel)
+        try:
+            interp = asteval.Interpreter(symtable=ns, use_numpy=False)
+            return interp.eval(expr, raise_errors=True)
+        finally:
+            if saved_print is _sentinel:
+                ns.pop("print", None)
+            else:
+                ns["print"] = saved_print
 
     @property
     @abstractmethod

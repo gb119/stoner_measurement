@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from stoner_measurement.plugins.base_plugin import BasePlugin
 
 
@@ -106,6 +107,7 @@ class TestBasePluginEval:
 
     def test_eval_numpy_sin_with_engine(self, qapp):
         import numpy as np
+
         from stoner_measurement.core.sequence_engine import SequenceEngine
         engine = SequenceEngine()
         plugin = _MinimalPlugin()
@@ -121,6 +123,49 @@ class TestBasePluginEval:
         engine.add_plugin("minimal", plugin)
         result = plugin.eval("sqrt(9.0)")
         assert abs(result - 3.0) < 1e-12
+        engine.shutdown()
+
+    def test_eval_does_not_pollute_namespace_with_print(self, qapp):
+        """eval() must not permanently overwrite 'print' in the engine namespace.
+
+        asteval.Interpreter.__init__ unconditionally injects its own ``_printer``
+        into the supplied symtable.  Without the save/restore guard in
+        ``BasePlugin.eval()``, all subsequent ``print()`` calls in the engine
+        namespace would use asteval's writer (the terminal) instead of the
+        redirected ``sys.stdout``.
+        """
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+
+        assert "print" not in engine.namespace, "namespace should not have 'print' before eval"
+        plugin.eval("1 + 1")
+        assert "print" not in engine.namespace, "eval() must not leave 'print' in the namespace"
+
+        engine.shutdown()
+
+    def test_eval_preserves_user_defined_print_in_namespace(self, qapp):
+        """eval() must restore a user-set 'print' after asteval overwrites it."""
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+
+        def custom_print(*a, **kw):
+            pass
+        # Use the live namespace dict (engine.namespace returns a copy).
+        plugin.engine_namespace["print"] = custom_print
+
+        plugin.eval("1 + 1")
+
+        assert plugin.engine_namespace.get("print") is custom_print, (
+            "eval() must restore a pre-existing 'print' to the namespace"
+        )
+
         engine.shutdown()
 
 
