@@ -580,12 +580,54 @@ class SequenceEngine(QObject):
         self._namespace = self._make_namespace()
         self._plugin_var_names: dict[str, str] = {}  # ep_name → var_name in namespace
 
+        # Reference to the main plot widget; set by the application after startup.
+        # Used by PlotTraceCommand to deliver data directly without manual signal wiring.
+        self._plot_widget: Any = None
+
         self._thread = _EngineThread(namespace=self._namespace, parent=self)
         self._thread.output.connect(self.output)
         self._thread.error_output.connect(self.error_output)
         self._thread.status_changed.connect(self.status_changed)
         self._thread.script_finished.connect(self.script_finished)
         self._thread.start()
+
+    # ------------------------------------------------------------------
+    # Plot widget reference
+    # ------------------------------------------------------------------
+
+    @property
+    def plot_widget(self) -> Any:
+        """Reference to the main plot widget for displaying trace data.
+
+        The application sets this attribute after startup so that
+        :class:`~stoner_measurement.plugins.command.PlotTraceCommand` instances
+        can wire their ``plot_trace`` signal to the widget without requiring
+        the application to manually manage signal connections for every step
+        plugin.
+
+        Returns:
+            (Any):
+                The plot widget, or ``None`` if not yet set.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> engine = SequenceEngine()
+            >>> engine.plot_widget is None
+            True
+            >>> engine.shutdown()
+        """
+        return self._plot_widget
+
+    @plot_widget.setter
+    def plot_widget(self, widget: Any) -> None:
+        """Set the plot widget reference.
+
+        Args:
+            widget (Any):
+                The plot widget to attach, or ``None`` to detach.
+        """
+        self._plot_widget = widget
 
     # ------------------------------------------------------------------
     # Namespace management

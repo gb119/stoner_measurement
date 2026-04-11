@@ -18,7 +18,7 @@ Two operating modes are supported:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PyQt6.QtCore import pyqtSignal
@@ -33,6 +33,28 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 
+if TYPE_CHECKING:
+    from stoner_measurement.core.sequence_engine import SequenceEngine
+
+
+def _format_axis_label(name: str, unit: str) -> str:
+    """Build an axis label string from a name and unit.
+
+    Args:
+        name (str):
+            Human-readable name of the axis variable (e.g. ``"Current"``).
+        unit (str):
+            Physical unit string (e.g. ``"A"``).
+
+    Returns:
+        (str):
+            ``"{name} ({unit})"`` when both are non-empty, ``"{name}"`` when
+            only the name is provided, or ``""`` when both are empty.
+    """
+    if name and unit:
+        return f"{name} ({unit})"
+    return name
+
 
 class PlotTraceCommand(CommandPlugin):
     """Command plugin that plots trace data to the main plot window.
@@ -42,16 +64,22 @@ class PlotTraceCommand(CommandPlugin):
     * **Simple mode** — choose a single trace from the sequence's trace
       catalogue.  The ``x`` and ``y`` arrays of the corresponding
       :class:`~stoner_measurement.plugins.trace.TraceData` are used and the
-      trace key becomes the plot title.
+      trace key becomes the plot title.  Axis labels are also updated from the
+      :attr:`~stoner_measurement.plugins.trace.TraceData.names` and
+      :attr:`~stoner_measurement.plugins.trace.TraceData.units` metadata.
     * **Advanced mode** — independently specify Python expressions for the
       x data, y data, and plot title.  This allows x and y data to be taken
       from different trace channels.  The title expression is evaluated via
       :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`.
 
     At runtime :meth:`execute` emits the :attr:`plot_trace` signal with the
-    resolved title string and the x/y NumPy arrays.  The application wires
-    this signal to :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace`
-    so that the data appears in the main plot window.
+    resolved title string and the x/y NumPy arrays.  The
+    :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+    setter automatically wires this signal (and the :attr:`plot_axis_labels`
+    signal) to the engine's
+    :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.plot_widget`
+    so that the data appears in the main plot window without any manual signal
+    management in the application code.
 
     Attributes:
         trace_key (str):
@@ -75,8 +103,20 @@ class PlotTraceCommand(CommandPlugin):
             ``"'plot'"``.
         plot_trace (pyqtSignal[str, object, object]):
             Emitted by :meth:`execute` with ``(title, x_array, y_array)``.
-            The application connects this signal to
-            :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace`.
+            Automatically connected to
+            :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace`
+            when the plugin is attached to a
+            :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`
+            whose
+            :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.plot_widget`
+            is set.
+        plot_axis_labels (pyqtSignal[str, str]):
+            Emitted by :meth:`execute` in simple mode with
+            ``(x_label, y_label)`` derived from
+            :class:`~stoner_measurement.plugins.trace.TraceData` metadata.
+            Automatically connected to
+            :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_default_axis_labels`
+            when the plugin is attached to an engine with a plot widget.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -97,15 +137,88 @@ class PlotTraceCommand(CommandPlugin):
 
     #: Signal emitted by execute() — (title, x_array, y_array).
     plot_trace = pyqtSignal(str, object, object)
+    #: Signal emitted by execute() in simple mode — (x_label, y_label).
+    plot_axis_labels = pyqtSignal(str, str)
 
     def __init__(self, parent=None) -> None:
         """Initialise with default configuration."""
         super().__init__(parent)
+        # Private backing store for the sequence_engine property override.
+        # Shadows the class-level attribute defined in BasePlugin.
+        self._sequence_engine_ref: SequenceEngine | None = None
         self.trace_key: str = ""
         self.advanced_mode: bool = False
         self.x_expr: str = ""
         self.y_expr: str = ""
         self.title_expr: str = "'plot'"
+
+    # ------------------------------------------------------------------
+    # sequence_engine property — auto-wires plot signals to the plot widget
+    # ------------------------------------------------------------------
+
+    @property  # type: ignore[override]
+    def sequence_engine(self) -> SequenceEngine | None:
+        """Active sequence engine, or ``None`` when the plugin is detached.
+
+        Overrides the class-level attribute defined in
+        :class:`~stoner_measurement.plugins.base_plugin.BasePlugin` with a
+        full property so that the setter can automatically connect the
+        :attr:`plot_trace` and :attr:`plot_axis_labels` signals to the engine's
+        :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.plot_widget`
+        whenever the engine reference changes.
+
+        Returns:
+            (SequenceEngine | None):
+                The owning engine, or ``None`` if not attached.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> engine = SequenceEngine()
+            >>> cmd = PlotTraceCommand()
+            >>> cmd.sequence_engine is None
+            True
+            >>> engine.add_plugin("plot_trace", cmd)
+            >>> cmd.sequence_engine is engine
+            True
+            >>> engine.shutdown()
+        """
+        return self._sequence_engine_ref
+
+    @sequence_engine.setter
+    def sequence_engine(self, engine: SequenceEngine | None) -> None:
+        """Set the owning engine, wiring plot signals to its plot widget.
+
+        Disconnects signals from the old engine's plot widget (if any), then
+        connects them to the new engine's plot widget (if any).
+
+        Args:
+            engine (SequenceEngine | None):
+                New owning engine, or ``None`` to detach.
+        """
+        # Disconnect from the old engine's plot widget.
+        if self._sequence_engine_ref is not None:
+            old_pw = getattr(self._sequence_engine_ref, "plot_widget", None)
+            if old_pw is not None:
+                try:
+                    self.plot_trace.disconnect(old_pw.set_trace)
+                except (TypeError, RuntimeError):
+                    pass
+                try:
+                    self.plot_axis_labels.disconnect(old_pw.set_default_axis_labels)
+                except (TypeError, RuntimeError):
+                    pass
+
+        self._sequence_engine_ref = engine
+
+        # Connect to the new engine's plot widget.
+        if engine is not None:
+            new_pw = getattr(engine, "plot_widget", None)
+            if new_pw is not None:
+                self.plot_trace.connect(new_pw.set_trace)
+                self.plot_axis_labels.connect(new_pw.set_default_axis_labels)
 
     @property
     def name(self) -> str:
@@ -203,6 +316,18 @@ class PlotTraceCommand(CommandPlugin):
                 )
                 return
             title = self.trace_key
+
+            # Emit axis labels derived from TraceData metadata (names and units).
+            x_label = _format_axis_label(
+                getattr(trace_data, "names", {}).get("x", ""),
+                getattr(trace_data, "units", {}).get("x", ""),
+            )
+            y_label = _format_axis_label(
+                getattr(trace_data, "names", {}).get("y", ""),
+                getattr(trace_data, "units", {}).get("y", ""),
+            )
+            if x_label or y_label:
+                self.plot_axis_labels.emit(x_label, y_label)
 
         self.plot_trace.emit(
             title,
