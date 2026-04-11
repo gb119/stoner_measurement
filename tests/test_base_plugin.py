@@ -155,7 +155,8 @@ class TestBasePluginEval:
         plugin = _MinimalPlugin()
         engine.add_plugin("minimal", plugin)
 
-        custom_print = lambda *a, **kw: None  # noqa: E731
+        def custom_print(*a, **kw):
+            pass
         # Use the live namespace dict (engine.namespace returns a copy).
         plugin.engine_namespace["print"] = custom_print
 
