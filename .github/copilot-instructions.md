@@ -1,6 +1,6 @@
 # Copilot general instructions
 
-##  Project Context
+## Project Context
 
 This is an application for carrying out scientific measurements by communicating with lab instruments via USB/Serial/GPIB/Ethernet interfaces.
 It should provide user interface to set configuration settings epecific for particular measuements (e.g. intrsuments, communications addresses, instrument specific
