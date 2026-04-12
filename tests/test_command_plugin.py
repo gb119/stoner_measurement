@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import json
-import pathlib
-
 import numpy as np
 import pytest
 
 from stoner_measurement.plugins.command import CommandPlugin, PlotTraceCommand, SaveCommand
-
 
 # ---------------------------------------------------------------------------
 # Minimal concrete implementation used across tests
@@ -110,10 +106,6 @@ class TestCommandPlugin:
 
     def test_execute_called_via_sequence(self, qapp, engine):
         """CommandPlugin.execute() is called when the sequence script runs."""
-        import time
-
-        from PyQt6.QtWidgets import QApplication
-
         p = _Noop()
         p.executed = []
         engine.add_plugin("noop", p)
@@ -150,22 +142,22 @@ class TestSaveCommand:
         assert SaveCommand().has_lifecycle is False
 
     def test_default_path_expr(self, qapp):
-        assert SaveCommand().path_expr == "'data/output.json'"
+        assert SaveCommand().path_expr == "'data/output.txt'"
 
     def test_to_json_includes_path_expr(self, qapp):
         cmd = SaveCommand()
-        cmd.path_expr = "'my/path.json'"
+        cmd.path_expr = "'my/path.txt'"
         d = cmd.to_json()
-        assert d["path_expr"] == "'my/path.json'"
+        assert d["path_expr"] == "'my/path.txt'"
 
     def test_restore_from_json(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
         cmd = SaveCommand()
-        cmd.path_expr = "'run/output.json'"
+        cmd.path_expr = "'run/output.txt'"
         restored = BasePlugin.from_json(cmd.to_json())
         assert isinstance(restored, SaveCommand)
-        assert restored.path_expr == "'run/output.json'"
+        assert restored.path_expr == "'run/output.txt'"
 
     def test_config_widget_returns_widget(self, qapp):
         from PyQt6.QtWidgets import QWidget
@@ -179,25 +171,127 @@ class TestSaveCommand:
         widget = cmd.config_widget()
         line_edits = widget.findChildren(QLineEdit)
         assert line_edits, "Config widget should have a QLineEdit"
-        line_edits[0].setText("'new/path.json'")
+        line_edits[0].setText("'new/path.txt'")
         line_edits[0].editingFinished.emit()
-        assert cmd.path_expr == "'new/path.json'"
+        assert cmd.path_expr == "'new/path.txt'"
 
-    def test_execute_writes_json_file(self, qapp, engine, tmp_path):
+    def test_execute_writes_tdi_file(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
-        out_file = tmp_path / "out.json"
+        out_file = tmp_path / "out.txt"
         cmd.path_expr = repr(str(out_file))
         cmd.execute()
         assert out_file.exists()
-        data = json.loads(out_file.read_text())
-        assert "traces" in data
-        assert "values" in data
+        first_line = out_file.read_text().splitlines()[0]
+        assert first_line.startswith("TDI Format 2.0")
+
+    def test_execute_tdi_tab_delimited(self, qapp, engine, tmp_path):
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        plugin.measure({})
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd.execute()
+
+        lines = out_file.read_text().splitlines()
+        # All rows must be tab-separated with the same number of columns.
+        assert all("\t" in line for line in lines if line)
+
+    def test_execute_tdi_column_headers(self, qapp, engine, tmp_path):
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        plugin.measure({})
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd.execute()
+
+        header = out_file.read_text().splitlines()[0].split("\t")
+        # First cell is "TDI Format 2.0"; remaining cells are channel headers.
+        assert header[0] == "TDI Format 2.0"
+        # At minimum the x and y channels of the Dummy trace must appear.
+        assert any("dummy:Dummy" in h for h in header[1:])
+
+    def test_execute_tdi_metadata_in_column_zero(self, qapp, engine, tmp_path):
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd.execute()
+
+        lines = out_file.read_text().splitlines()
+        # Rows after the header must have metadata entries in column 0.
+        meta_cells = [line.split("\t")[0] for line in lines[1:] if line]
+        assert any("{" in cell and "}" in cell and "=" in cell for cell in meta_cells)
+
+    def test_execute_tdi_plugin_state_flattened(self, qapp, engine, tmp_path):
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd.execute()
+
+        text = out_file.read_text()
+        # The save plugin's instance_name should appear in flattened metadata.
+        assert "save.instance_name{str}='save'" in text
+
+    def test_execute_tdi_values_in_metadata(self, qapp, engine, tmp_path):
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        # Set a fake scalar value *after* add_plugin so _rebuild_data_catalogs
+        # does not overwrite it.
+        engine._namespace["_values"] = {"test:reading": "42.0"}  # noqa: SLF001
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd.execute()
+
+        text = out_file.read_text()
+        assert "test:reading" in text
+
+    def test_execute_tdi_numerical_data_rows(self, qapp, engine, tmp_path):
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        result = plugin.measure({})
+        n_points = len(result["Dummy"].x)
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd.execute()
+
+        lines = out_file.read_text().splitlines()
+        data_rows = lines[1:]  # skip header
+        # There must be at least as many rows as data points.
+        assert len(data_rows) >= n_points
 
     def test_execute_creates_parent_dirs(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
-        out_file = tmp_path / "subdir" / "nested" / "out.json"
+        out_file = tmp_path / "subdir" / "nested" / "out.txt"
         cmd.path_expr = repr(str(out_file))
         cmd.execute()
         assert out_file.exists()
