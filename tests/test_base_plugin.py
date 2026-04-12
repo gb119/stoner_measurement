@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.base_plugin import (
+    BasePlugin,
+    _docstring_to_html,
+    _inline_format,
+    _render_section_items,
+    _rst_role_to_short,
+)
 
 
 class _MinimalPlugin(BasePlugin):
@@ -22,6 +28,188 @@ class _DocumentedPlugin(BasePlugin):
     def name(self) -> str:
         return "Documented"
 
+
+# ---------------------------------------------------------------------------
+# Tests for the docstring-to-HTML helper functions
+# ---------------------------------------------------------------------------
+
+
+class TestRstRoleToShort:
+    """Unit tests for the _rst_role_to_short helper."""
+
+    def _match(self, text: str):
+        import re
+        pattern = re.compile(r":[a-z]+:`([^`]*)`")
+        return pattern.search(text)
+
+    def test_simple_name(self):
+        m = self._match(":meth:`execute`")
+        import re
+        class _FakeMatch:
+            def group(self, n):
+                return "execute"
+        assert _rst_role_to_short(_FakeMatch()) == "execute"
+
+    def test_tilde_strips_module_prefix(self):
+        import re
+        pattern = re.compile(r":[a-z]+:`([^`]*)`")
+        text = ":meth:`~foo.bar.Baz.method`"
+        m = pattern.search(text)
+        assert _rst_role_to_short(m) == "method"
+
+    def test_dotted_name_keeps_last(self):
+        import re
+        pattern = re.compile(r":[a-z]+:`([^`]*)`")
+        m = pattern.search(":class:`stoner_measurement.plugins.base_plugin.BasePlugin`")
+        assert _rst_role_to_short(m) == "BasePlugin"
+
+    def test_no_tilde_no_dots_unchanged(self):
+        import re
+        pattern = re.compile(r":[a-z]+:`([^`]*)`")
+        m = pattern.search(":attr:`name`")
+        assert _rst_role_to_short(m) == "name"
+
+
+class TestInlineFormat:
+    """Unit tests for _inline_format."""
+
+    def test_plain_text_escaped(self):
+        assert _inline_format("a < b & c > d") == "a &lt; b &amp; c &gt; d"
+
+    def test_double_backtick_to_code(self):
+        assert _inline_format("use ``foo``") == "use <code>foo</code>"
+
+    def test_bold_to_b(self):
+        assert _inline_format("**bold**") == "<b>bold</b>"
+
+    def test_italic_to_em(self):
+        assert _inline_format("*italic*") == "<em>italic</em>"
+
+    def test_single_backtick_to_code(self):
+        assert _inline_format("`code`") == "<code>code</code>"
+
+    def test_rst_role_stripped_to_short_name(self):
+        html = _inline_format(":meth:`~foo.bar.execute`")
+        assert html == "execute"
+
+    def test_rst_role_in_sentence(self):
+        html = _inline_format("call :meth:`run` now")
+        assert html == "call run now"
+
+    def test_code_content_html_escaped(self):
+        html = _inline_format("``a < b``")
+        assert html == "<code>a &lt; b</code>"
+
+    def test_multiple_markup_tokens(self):
+        html = _inline_format("``x`` and **bold** and *em*")
+        assert "<code>x</code>" in html
+        assert "<b>bold</b>" in html
+        assert "<em>em</em>" in html
+
+
+class TestRenderSectionItems:
+    """Unit tests for _render_section_items."""
+
+    def test_single_item_no_description(self):
+        lines = ["    foo (str):"]
+        html = _render_section_items(lines)
+        assert "<dl>" in html
+        assert "foo (str)" in html
+
+    def test_item_with_description(self):
+        lines = ["    delay (float):", "        Seconds to wait."]
+        html = _render_section_items(lines)
+        assert "<dt>" in html
+        assert "<dd>" in html
+        assert "Seconds to wait." in html
+
+    def test_multiple_items(self):
+        lines = [
+            "    alpha (float):",
+            "        First.",
+            "    beta (int):",
+            "        Second.",
+        ]
+        html = _render_section_items(lines)
+        assert "alpha (float)" in html
+        assert "beta (int)" in html
+
+    def test_empty_lines_ignored(self):
+        lines = ["", "    item (str):", ""]
+        html = _render_section_items(lines)
+        assert "item (str)" in html
+
+    def test_empty_input_returns_empty(self):
+        assert _render_section_items([]) == ""
+
+    def test_all_blank_returns_empty(self):
+        assert _render_section_items(["   ", "  "]) == ""
+
+
+class TestDocstringToHtml:
+    """Unit tests for _docstring_to_html."""
+
+    def test_heading_uses_plugin_name(self):
+        html = _docstring_to_html("MyPlugin", "A simple plugin.")
+        assert "<h3>MyPlugin</h3>" in html
+
+    def test_summary_wrapped_in_paragraph(self):
+        html = _docstring_to_html("P", "A simple plugin.")
+        assert "<p>" in html
+        assert "A simple plugin." in html
+
+    def test_developer_sections_omitted(self):
+        doc = "Summary.\n\nExamples:\n    >>> pass\n"
+        html = _docstring_to_html("P", doc)
+        assert ">>> pass" not in html
+        assert "Examples" not in html
+
+    def test_keyword_parameters_omitted(self):
+        doc = "Summary.\n\nKeyword Parameters:\n    parent (QObject):\n        The parent.\n"
+        html = _docstring_to_html("P", doc)
+        assert "parent" not in html
+
+    def test_attributes_section_shown(self):
+        doc = "Summary.\n\nAttributes:\n    value (int):\n        The value.\n"
+        html = _docstring_to_html("P", doc)
+        assert "value" in html
+        assert "<h4>" in html
+
+    def test_notes_section_shown(self):
+        doc = "Summary.\n\nNotes:\n    An important note.\n"
+        html = _docstring_to_html("P", doc)
+        assert "Notes" in html
+
+    def test_code_block_after_double_colon(self):
+        doc = "Example::\n\n    result = foo()\n"
+        html = _docstring_to_html("P", doc)
+        assert "<pre><code>" in html
+        assert "result = foo()" in html
+
+    def test_bullet_list_rendered_as_ul(self):
+        doc = "Features:\n\n* First item\n* Second item\n"
+        html = _docstring_to_html("P", doc)
+        assert "<ul>" in html
+        assert "<li>" in html
+        assert "First item" in html
+
+    def test_inline_code_in_paragraph(self):
+        doc = "Use ``delay_expr`` to set the delay."
+        html = _docstring_to_html("P", doc)
+        assert "<code>delay_expr</code>" in html
+
+    def test_sentence_ending_in_colon_not_section(self):
+        doc = "The class provides:\n\n* Feature one\n"
+        html = _docstring_to_html("P", doc)
+        # "The class provides:" should be a paragraph, not a section header
+        assert "<p>" in html
+        assert "<h4>" not in html or "The class provides" not in html
+
+    def test_html_special_chars_escaped(self):
+        doc = "Use a < b for comparison."
+        html = _docstring_to_html("P", doc)
+        assert "&lt;" in html
+        assert "<b>" not in html or "a" not in html  # no spurious bold
 
 class TestBasePluginDefaults:
     def test_config_widget_returns_label(self, qapp):
