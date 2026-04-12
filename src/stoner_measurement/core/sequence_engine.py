@@ -105,7 +105,7 @@ class _QtLogHandler(logging.Handler, QObject):
             # application shutdown) before the Python logging atexit handler
             # runs.  Silently ignore in that case.
             pass
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             self.handleError(record)
 
 
@@ -297,7 +297,7 @@ class _EngineThread(QThread):
         stop_event = self._stop_event
         pause_event = self._pause_event
 
-        def _tracer(frame, event, arg):  # noqa: ANN001, ANN202
+        def _tracer(frame, event, arg):  # noqa: ANN001, ANN202  # pylint: disable=unused-argument
             """Trace function called by CPython at every line/call/return boundary.
 
             Called by the Python interpreter for each ``"call"``, ``"line"``,
@@ -358,7 +358,7 @@ class _EngineThread(QThread):
             sys.settrace(self._make_tracer())
             try:
                 with redirect_stdout(out_stream), redirect_stderr(err_stream):
-                    exec(compiled, self._namespace)  # noqa: S102
+                    exec(compiled, self._namespace)  # noqa: S102  # nosec B102  # pylint: disable=exec-used
             finally:
                 sys.settrace(old_tracer)
             self.status_changed.emit("Idle")
@@ -368,7 +368,7 @@ class _EngineThread(QThread):
         except SyntaxError as exc:
             self.error_output.emit(f"Syntax error: {exc}")
             self.status_changed.emit("Error")
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             exc_type, exc_value, exc_tb = sys.exc_info()
             self._emit_script_error(exc_type, exc_value, exc_tb, code_str, customised, line_map)
             self.status_changed.emit("Error")
@@ -484,12 +484,12 @@ class _EngineThread(QThread):
         try:
             with redirect_stdout(out_stream), redirect_stderr(err_stream):
                 try:
-                    result = eval(source, self._namespace)  # noqa: S307
+                    result = eval(source, self._namespace)  # noqa: S307  # nosec B307  # pylint: disable=eval-used
                     if result is not None:
                         out_stream.write(repr(result) + "\n")
                 except SyntaxError:
-                    exec(source, self._namespace)  # noqa: S102
-        except Exception:
+                    exec(source, self._namespace)  # noqa: S102  # nosec B102  # pylint: disable=exec-used
+        except Exception:  # pylint: disable=broad-exception-caught
             self.error_output.emit(traceback.format_exc().rstrip())
 
 

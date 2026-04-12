@@ -116,7 +116,7 @@ def _inline_format(raw: str) -> str:
     parts: list[str] = []
     last_end = 0
     for m in _INLINE_RE.finditer(raw):
-        parts.append(_html_mod.escape(raw[last_end : m.start()]))
+        parts.append(_html_mod.escape(raw[last_end:m.start()]))
         if m.group("dbl") is not None:
             parts.append(f"<code>{_html_mod.escape(m.group('dbl_text'))}</code>")
         elif m.group("bold") is not None:
@@ -332,6 +332,8 @@ class BasePlugin(ABC):
 
     #: Reference to the owning SequenceEngine; set by add_plugin / remove_plugin.
     sequence_engine: SequenceEngine | None = None
+    #: Sync callback connecting instance_name_changed to the config widget name field.
+    _name_edit_sync: Callable | None = None
 
     @property
     def engine_namespace(self) -> dict:
@@ -741,11 +743,15 @@ class BasePlugin(ABC):
                     # The underlying C++ widget has been destroyed; remove
                     # this stale connection.
                     try:
-                        self.instance_name_changed.disconnect(_sync_name_edit)  # type: ignore[attr-defined]
+                        self.instance_name_changed.disconnect(  # type: ignore[attr-defined]
+                            _sync_name_edit  # pylint: disable=no-member
+                        )
                     except (TypeError, RuntimeError):
                         pass
 
-            self.instance_name_changed.connect(_sync_name_edit)  # type: ignore[attr-defined]
+            self.instance_name_changed.connect(  # type: ignore[attr-defined]  # pylint: disable=no-member
+                _sync_name_edit
+            )
             self._name_edit_sync = _sync_name_edit  # type: ignore[attr-defined]
 
         layout.addRow("Instance name:", name_edit)
@@ -968,7 +974,7 @@ class BasePlugin(ABC):
                 return stripped
         return ""
 
-    def monitor_widget(self, parent: QWidget | None = None) -> QWidget | None:
+    def monitor_widget(self, parent: QWidget | None = None) -> QWidget | None:  # pylint: disable=unused-argument
         """Return an optional live-status widget for the left dock panel.
 
         The widget will be displayed in the monitoring section of the
@@ -995,8 +1001,8 @@ class BasePlugin(ABC):
     def generate_action_code(
         self,
         indent: int,
-        sub_steps: list,
-        render_sub_step: Callable,
+        sub_steps: list,  # pylint: disable=unused-argument
+        render_sub_step: Callable,  # pylint: disable=unused-argument
     ) -> list[str]:
         """Return the action code lines for this plugin at the given indentation level.
 

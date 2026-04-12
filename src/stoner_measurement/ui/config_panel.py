@@ -185,4 +185,3 @@ class ConfigPanel(QWidget):
         focused = QApplication.focusWidget()
         if focused is not None and self._tabs.isAncestorOf(focused):
             focused.clearFocus()
-

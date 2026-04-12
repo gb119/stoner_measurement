@@ -17,10 +17,10 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
-
 # ---------------------------------------------------------------------------
 # Syntax highlighter
 # ---------------------------------------------------------------------------
+
 
 class PythonHighlighter(QSyntaxHighlighter):
     """Syntax highlighter for Python source code.

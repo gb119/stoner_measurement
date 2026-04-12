@@ -156,7 +156,7 @@ class LogViewerWindow(QWidget):
         level_name = record.levelname
         try:
             message = record.getMessage()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             message = str(record.msg)
         text = f"[{timestamp}] {level_name:8s} {message}"
 

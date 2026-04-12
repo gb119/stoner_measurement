@@ -379,10 +379,8 @@ class SaveCommand(CommandPlugin):
             try:
                 val = self.eval(expr)
                 metadata.extend(_flatten_to_metadata(val, key))
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 self.log.debug("Failed to evaluate value %r: %s", key, exc)
-
-        # ------------------------------------------------------------------
         # Build data columns (trace mode or data mode).
         # ------------------------------------------------------------------
 
@@ -428,10 +426,8 @@ class SaveCommand(CommandPlugin):
                         label = (trace_data.names or {}).get(channel_attr) or channel_attr
                         units = (trace_data.units or {}).get(channel_attr, "")
                         columns.append((f"{channel_name}:{label} ({units})", arr))
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                     self.log.debug("Failed to evaluate trace %r: %s", trace_key, exc)
-
-        # ------------------------------------------------------------------
         # Assemble and write the TDI Format 2.0 table.
         # ------------------------------------------------------------------
 

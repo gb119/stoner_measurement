@@ -1637,4 +1637,3 @@ class DockPanel(QWidget):
         act_paste.triggered.connect(self.paste_step)
 
         menu.exec(self._sequence_tree.viewport().mapToGlobal(pos))
-

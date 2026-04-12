@@ -409,7 +409,7 @@ class PlotWidget(QWidget):
             raise KeyError(f"Unknown y-axis: {y_axis!r}")
 
         curve = self._traces[trace_name]
-        old_x_ax, old_y_ax = self._trace_axes[trace_name]
+        _old_x_ax, old_y_ax = self._trace_axes[trace_name]
         old_vb = self._view_boxes.get(old_y_ax, self._plot_item.vb)
         new_vb = self._view_boxes[y_axis]
 

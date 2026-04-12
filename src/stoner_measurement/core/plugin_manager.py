@@ -44,7 +44,7 @@ class PluginManager(QObject):
         group = "stoner_measurement.plugins"
         try:
             eps = importlib.metadata.entry_points(group=group)
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover  # pylint: disable=broad-exception-caught
             logger.warning("Could not load entry-points: %s", exc)
             eps = []
 
@@ -54,7 +54,7 @@ class PluginManager(QObject):
                 instance = plugin_cls()
                 self._plugins[ep.name] = instance
                 logger.debug("Loaded plugin %r from %s", ep.name, ep.value)
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:  # pragma: no cover  # pylint: disable=broad-exception-caught
                 logger.warning("Failed to load plugin %r: %s", ep.name, exc)
 
         logger.info("Discovered %d plugin(s)", len(self._plugins))

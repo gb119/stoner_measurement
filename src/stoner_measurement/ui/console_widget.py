@@ -307,17 +307,17 @@ class ConsoleWidget(QWidget):
         try:
             with redirect_stdout(out), redirect_stderr(err):
                 try:
-                    result = eval(command, self._local_ns)  # noqa: S307
+                    result = eval(command, self._local_ns)  # noqa: S307  # nosec B307  # pylint: disable=eval-used
                     if result is not None:
                         out.write(repr(result) + "\n")
                 except SyntaxError:
                     try:
-                        exec(command, self._local_ns)  # noqa: S102
-                    except Exception as exc:
+                        exec(command, self._local_ns)  # noqa: S102  # nosec B102  # pylint: disable=exec-used
+                    except Exception as exc:  # pylint: disable=broad-exception-caught
                         exc_messages.append(str(exc))
-                except Exception as exc:
+                except Exception as exc:  # pylint: disable=broad-exception-caught
                     exc_messages.append(str(exc))
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             exc_messages.append(str(exc))
         stdout_text = out.getvalue()
         if stdout_text:

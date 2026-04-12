@@ -152,4 +152,3 @@ def make_log_icon(size: int = 32) -> QIcon:
 
     painter.end()
     return QIcon(QPixmap.fromImage(img))
-
