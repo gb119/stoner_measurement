@@ -16,6 +16,8 @@ dependencies:
   - pip
   - setuptools>=61
   # Runtime dependencies
+  - asteval>=1.0
+  - pandas>=2.0
   - pyqt>=6.7
   - pyqtgraph>=0.13
   - numpy>=2.0
