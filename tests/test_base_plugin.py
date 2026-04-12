@@ -8,11 +8,19 @@ from stoner_measurement.plugins.base_plugin import BasePlugin
 
 
 class _MinimalPlugin(BasePlugin):
-    """Concrete minimal plugin used only for testing BasePlugin defaults."""
+    # No docstring — exercises the no-About-tab code path.
 
     @property
     def name(self) -> str:
         return "Minimal"
+
+
+class _DocumentedPlugin(BasePlugin):
+    """A well-documented test plugin for verifying About-tab generation."""
+
+    @property
+    def name(self) -> str:
+        return "Documented"
 
 
 class TestBasePluginDefaults:
@@ -42,6 +50,28 @@ class TestBasePluginDefaults:
         plugin = _MinimalPlugin()
         tabs = plugin.config_tabs()
         assert tabs[-1][0] == "General"
+
+    def test_about_html_returns_none_for_undocumented_plugin(self, qapp):
+        plugin = _MinimalPlugin()
+        assert plugin._about_html() is None
+
+    def test_about_html_returns_string_for_documented_plugin(self, qapp):
+        plugin = _DocumentedPlugin()
+        html = plugin._about_html()
+        assert isinstance(html, str)
+        assert "<h3>" in html
+        assert "Documented" in html
+
+    def test_config_tabs_includes_about_tab_for_documented_plugin(self, qapp):
+        plugin = _DocumentedPlugin()
+        tabs = plugin.config_tabs()
+        tab_titles = [t[0] for t in tabs]
+        assert any("About" in t for t in tab_titles)
+
+    def test_config_tabs_about_tab_is_last_for_documented_plugin(self, qapp):
+        plugin = _DocumentedPlugin()
+        tabs = plugin.config_tabs()
+        assert "About" in tabs[-1][0]
 
     def test_monitor_widget_returns_none(self):
         plugin = _MinimalPlugin()
