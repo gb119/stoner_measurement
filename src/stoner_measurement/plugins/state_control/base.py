@@ -15,10 +15,12 @@ import math
 import time
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 
+import pandas as pd
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
@@ -140,6 +142,61 @@ class _StateControlScanPage(QWidget):
         scan_container = _StateControlScanTabContainer(plugin, parent=self)
         layout.addWidget(scan_container)
 
+        # --- Horizontal separator before data-collection settings ---
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(sep2)
+
+        # --- Data-collection settings ---
+        data_form = QFormLayout()
+
+        collect_check = QCheckBox()
+        collect_check.setChecked(plugin.collect_data)
+        collect_check.setToolTip("Enable data collection at each iteration step.")
+
+        clear_check = QCheckBox()
+        clear_check.setChecked(plugin.clear_on_start)
+        clear_check.setToolTip("Clear the collected data when the scan loop starts.")
+
+        collect_filter_edit = QLineEdit(plugin.collect_filter)
+        collect_filter_edit.setToolTip(
+            "Python expression evaluated to decide whether to collect a data point. "
+            f"Default: {plugin.instance_name}.meas_flag"
+        )
+
+        clear_filter_edit = QLineEdit(plugin.clear_filter)
+        clear_filter_edit.setToolTip(
+            "Python expression evaluated to decide whether to clear the data. "
+            "Default: True"
+        )
+
+        data_form.addRow("Collect data:", collect_check)
+        data_form.addRow("Clear on start:", clear_check)
+        data_form.addRow("Collect filter:", collect_filter_edit)
+        data_form.addRow("Clear filter:", clear_filter_edit)
+
+        def _apply_collect(state: int) -> None:
+            plugin.collect_data = bool(state)
+
+        def _apply_clear(state: int) -> None:
+            plugin.clear_on_start = bool(state)
+
+        def _apply_collect_filter() -> None:
+            plugin.collect_filter = collect_filter_edit.text().strip() or f"{plugin.instance_name}.meas_flag"
+
+        def _apply_clear_filter() -> None:
+            plugin.clear_filter = clear_filter_edit.text().strip() or "True"
+
+        collect_check.stateChanged.connect(_apply_collect)
+        clear_check.stateChanged.connect(_apply_clear)
+        collect_filter_edit.editingFinished.connect(_apply_collect_filter)
+        clear_filter_edit.editingFinished.connect(_apply_clear_filter)
+
+        data_widget = QWidget()
+        data_widget.setLayout(data_form)
+        layout.addWidget(data_widget)
+
 
 class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     """Abstract base class for plugins that control experimental state.
@@ -178,6 +235,11 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
       :meth:`execute_sequence` iterates over the scan generator set-points,
       calling :meth:`ramp_to` for each and invoking all sub-step callables
       at every set-point, then disconnects in a ``finally`` block.
+    * **Data collection** — :meth:`collect` appends a row of the current
+      output values to an internal :class:`~pandas.DataFrame` (keyed by the
+      iterator index) when the :attr:`collect_filter` expression evaluates to
+      ``True``.  :meth:`clear_data` resets the DataFrame when
+      :attr:`clear_filter` evaluates to ``True``.
 
     Attributes:
         _scan_generator_class (type[BaseScanGenerator]):
@@ -204,6 +266,27 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             Whether the current set-point should be recorded as a measurement.
             Updated on each iteration step alongside :attr:`ix` and
             :attr:`value`.
+        collect_data (bool):
+            When ``True``, :meth:`collect` is called (subject to
+            :attr:`collect_filter`) at the end of each iteration step.
+            Defaults to ``False``.
+        clear_on_start (bool):
+            When ``True``, :meth:`clear_data` is called (subject to
+            :attr:`clear_filter`) before the scan loop begins.
+            Defaults to ``True``.
+        collect_filter (str):
+            Python expression evaluated by :meth:`collect` to decide whether
+            a data point should be stored.  Defaults to
+            ``"{instance_name}.meas_flag"``.
+        clear_filter (str):
+            Python expression evaluated by :meth:`clear_data` to decide
+            whether the collected data should be cleared.  Defaults to
+            ``"True"``.
+        data (pandas.DataFrame):
+            Accumulated measurement data.  The index is the iterator index
+            (:attr:`ix`); the first column is the plugin's current
+            :attr:`value`; subsequent columns are the evaluated outputs from
+            the sequence engine's values catalogue.
         state_changed (pyqtSignal[float]):
             Emitted continuously with the current measured value while the
             hardware ramps towards its target.
@@ -265,10 +348,145 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.ix: int = 0
         self.value: float = 0.0
         self.meas_flag: bool = False
+        self.collect_data: bool = False
+        self.clear_on_start: bool = True
+        self.collect_filter: str = f"{self.instance_name}.meas_flag"
+        self.clear_filter: str = "True"
+        self._data: pd.DataFrame = pd.DataFrame()
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
         self.instance_name_changed.emit(old_name, new_name)
+
+    # ------------------------------------------------------------------
+    # Data collection
+    # ------------------------------------------------------------------
+
+    @property
+    def data(self) -> pd.DataFrame:
+        """Accumulated measurement data collected during the scan loop.
+
+        The :class:`~pandas.DataFrame` index is the iterator index
+        (:attr:`ix`).  The first column is the plugin's :attr:`value` at the
+        time of collection; subsequent columns contain the evaluated outputs
+        from the sequence engine's values catalogue.
+
+        The DataFrame is populated by :meth:`collect` and reset by
+        :meth:`clear_data`.
+
+        Returns:
+            (pandas.DataFrame):
+                The accumulated data, or an empty DataFrame if no data has
+                been collected or the data has been cleared.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
+            >>> p = CounterPlugin()
+            >>> import pandas as pd
+            >>> isinstance(p.data, pd.DataFrame)
+            True
+            >>> p.data.empty
+            True
+        """
+        return self._data
+
+    def clear_data(self) -> None:
+        """Clear the collected data if :attr:`clear_filter` evaluates to ``True``.
+
+        Evaluates :attr:`clear_filter` in the sequence engine namespace via
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`.  If the
+        result is truthy, :attr:`data` is reset to an empty
+        :class:`~pandas.DataFrame`.  If the plugin is not attached to an
+        engine the data is always cleared unconditionally.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
+            >>> import pandas as pd
+            >>> p = CounterPlugin()
+            >>> p._data = pd.DataFrame([{"value": 1.0}])
+            >>> p.clear_data()
+            >>> p.data.empty
+            True
+        """
+        try:
+            should_clear = bool(self.eval(self.clear_filter))
+        except RuntimeError:
+            # Not attached to an engine — clear unconditionally.
+            should_clear = True
+        if should_clear:
+            self._data = pd.DataFrame()
+
+    def collect(self, outputs: list[str] | None = None) -> None:
+        """Append a row of current output values to :attr:`data`.
+
+        Evaluates :attr:`collect_filter` in the sequence engine namespace.  If
+        the result is truthy, a row is appended to :attr:`data` with the
+        current iterator index (:attr:`ix`) as the index label.  The row
+        contains :attr:`value` as its first entry, followed by the evaluated
+        outputs from either *outputs* (if supplied) or the full sequence
+        engine values catalogue.
+
+        If the plugin is not attached to a sequence engine this method is a
+        no-op.
+
+        Keyword Parameters:
+            outputs (list[str] | None):
+                Optional list of output names from the values catalogue to
+                include as columns.  Each name must be a key in
+                ``_values`` (the engine values catalogue).  When ``None`` all
+                catalogue entries are included.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_control import CounterPlugin
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> engine = SequenceEngine()
+            >>> p = CounterPlugin()
+            >>> engine.add_plugin("counter", p)
+            >>> p.collect_filter = "True"
+            >>> p.ix = 0
+            >>> p.value = 1.5
+            >>> p.collect()
+            >>> p.data.index.tolist()
+            [0]
+            >>> p.data["value"].iloc[0]
+            1.5
+            >>> engine.shutdown()
+        """
+        if self.sequence_engine is None:
+            return
+        try:
+            should_collect = bool(self.eval(self.collect_filter))
+        except Exception:
+            should_collect = False
+        if not should_collect:
+            return
+
+        ns = self.engine_namespace
+        values_cat: dict[str, str] = ns.get("_values", {})
+        if outputs is not None:
+            keys = [k for k in outputs if k in values_cat]
+        else:
+            keys = list(values_cat.keys())
+
+        row: dict[str, Any] = {"value": self.value}
+        for key in keys:
+            expr = values_cat[key]
+            try:
+                row[key] = self.eval(expr)
+            except Exception:
+                row[key] = None
+
+        new_row = pd.DataFrame([row], index=[self.ix])
+        if self._data.empty:
+            self._data = new_row
+        else:
+            self._data = pd.concat([self._data, new_row])
 
     @property
     def plugin_type(self) -> str:
@@ -289,13 +507,15 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
         Extends the base :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
         dict with a ``"scan_generator"`` key containing the serialised
-        :attr:`scan_generator` state.
+        :attr:`scan_generator` state, plus the data-collection settings.
 
         Returns:
             (dict):
                 A JSON-serialisable dictionary with at least the keys produced
                 by :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-                plus ``"scan_generator"``.
+                plus ``"scan_generator"``, ``"collect_data"``,
+                ``"clear_on_start"``, ``"collect_filter"``, and
+                ``"clear_filter"``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -309,18 +529,27 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             True
             >>> d["scan_generator"]["type"]
             'SteppedScanGenerator'
+            >>> d["collect_data"]
+            False
+            >>> d["clear_on_start"]
+            True
         """
         data = super().to_json()
         data["scan_generator"] = self.scan_generator.to_json()
+        data["collect_data"] = self.collect_data
+        data["clear_on_start"] = self.clear_on_start
+        data["collect_filter"] = self.collect_filter
+        data["clear_filter"] = self.clear_filter
         return data
 
     def _restore_from_json(self, data: dict) -> None:
-        """Restore the scan generator from *data*.
+        """Restore the scan generator and data-collection settings from *data*.
 
         Called by :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.from_json`
         after construction.  Reconstructs the :attr:`scan_generator` and emits
         :attr:`scan_generator_changed` so that any already-connected widgets
-        can update their content.
+        can update their content.  Also restores the data-collection
+        configuration attributes if present.
 
         Args:
             data (dict):
@@ -332,6 +561,14 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             gen = BaseScanGenerator.from_json(data["scan_generator"], parent=self)
             self.scan_generator = gen
             self.scan_generator_changed.emit()
+        if "collect_data" in data:
+            self.collect_data = bool(data["collect_data"])
+        if "clear_on_start" in data:
+            self.clear_on_start = bool(data["clear_on_start"])
+        if "collect_filter" in data:
+            self.collect_filter = str(data["collect_filter"])
+        if "clear_filter" in data:
+            self.clear_filter = str(data["clear_filter"])
 
     # ------------------------------------------------------------------
     # Scan generator management
@@ -757,7 +994,10 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
         Emits a ``for`` loop that iterates over the scan generator's set-points,
         calls :meth:`ramp_to` for each, and recursively renders any nested
-        sub-steps inside the loop body.
+        sub-steps inside the loop body.  If :attr:`clear_on_start` is ``True``,
+        a :meth:`clear_data` call is emitted before the loop.  If
+        :attr:`collect_data` is ``True``, a :meth:`collect` call is appended
+        at the end of each loop iteration (after all sub-steps).
 
         Args:
             indent (int):
@@ -790,17 +1030,30 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> lines = p.generate_action_code(1, [], lambda s, i: [])
             >>> any("for s.ix, s.value, s.meas_flag in s.scan_generator:" in line for line in lines)
             True
+            >>> p.clear_on_start = True
+            >>> lines2 = p.generate_action_code(1, [], lambda s, i: [])
+            >>> any("s.clear_data()" in line for line in lines2)
+            True
+            >>> p.collect_data = True
+            >>> lines3 = p.generate_action_code(1, [], lambda s, i: [])
+            >>> any("s.collect()" in line for line in lines3)
+            True
         """
         prefix = "    " * indent
         loop_prefix = "    " * (indent + 1)
         var_name = self.instance_name
-        lines: list[str] = [
+        lines: list[str] = []
+        if self.clear_on_start:
+            lines.append(f"{prefix}{var_name}.clear_data()")
+        lines += [
             f"{prefix}for {var_name}.ix, {var_name}.value, {var_name}.meas_flag in {var_name}.scan_generator:",
             f"{loop_prefix}{var_name}.ramp_to(float({var_name}.value))",
             f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.get_state():.4g}} {self.units}")',
         ]
         for sub_step in sub_steps:
             lines.extend(render_sub_step(sub_step, indent + 1))
+        if self.collect_data:
+            lines.append(f"{loop_prefix}{var_name}.collect()")
         lines.append("")
         return lines
 

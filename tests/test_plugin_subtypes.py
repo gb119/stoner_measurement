@@ -767,3 +767,171 @@ class TestReportedTraces:
 
     def test_transform_plugin_data_empty_before_run(self, qapp):
         assert _ScaleTransform().data == {}
+
+
+# ---------------------------------------------------------------------------
+# StateControlPlugin data collection tests
+# ---------------------------------------------------------------------------
+
+
+class TestStateControlDataCollection:
+    """Tests for the data-collection capabilities of StateControlPlugin."""
+
+    def test_data_initially_empty(self, qapp):
+        p = _InstantState()
+        import pandas as pd
+        assert isinstance(p.data, pd.DataFrame)
+        assert p.data.empty
+
+    def test_default_config_values(self, qapp):
+        p = _InstantState()
+        assert p.collect_data is False
+        assert p.clear_on_start is True
+        assert "meas_flag" in p.collect_filter
+        assert p.clear_filter == "True"
+
+    def test_clear_data_resets_dataframe(self, qapp):
+        import pandas as pd
+        p = _InstantState()
+        p._data = pd.DataFrame([{"value": 1.0}])
+        p.clear_data()
+        assert p.data.empty
+
+    def test_clear_data_obeys_clear_filter_false(self, qapp):
+        import pandas as pd
+        p = _InstantState()
+        p._data = pd.DataFrame([{"value": 1.0}])
+        p.clear_filter = "False"
+        p.clear_data()
+        # Data should NOT be cleared because filter is False (not attached to engine)
+        # When detached, RuntimeError → unconditional clear
+        assert p.data.empty
+
+    def test_collect_noop_when_detached(self, qapp):
+        p = _InstantState()
+        p.collect_filter = "True"
+        p.collect()  # should silently do nothing when not attached
+        assert p.data.empty
+
+    def test_collect_appends_row(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        engine = SequenceEngine()
+        p = _InstantState()
+        engine.add_plugin("instantstate", p)
+        p.collect_filter = "True"
+        p.ix = 0
+        p.value = 3.5
+        p.collect()
+        assert not p.data.empty
+        assert p.data.index.tolist() == [0]
+        assert p.data["value"].iloc[0] == 3.5
+        engine.shutdown()
+
+    def test_collect_skips_when_filter_false(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        engine = SequenceEngine()
+        p = _InstantState()
+        engine.add_plugin("instantstate", p)
+        p.collect_filter = "False"
+        p.ix = 0
+        p.value = 1.0
+        p.collect()
+        assert p.data.empty
+        engine.shutdown()
+
+    def test_collect_multiple_rows(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        engine = SequenceEngine()
+        p = _InstantState()
+        engine.add_plugin("instantstate", p)
+        p.collect_filter = "True"
+        for i in range(3):
+            p.ix = i
+            p.value = float(i)
+            p.collect()
+        assert len(p.data) == 3
+        assert p.data.index.tolist() == [0, 1, 2]
+        engine.shutdown()
+
+    def test_collect_with_outputs_filter(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        engine = SequenceEngine()
+        p = _InstantState()
+        counter = CounterPlugin()
+        engine.add_plugin("instantstate", p)
+        engine.add_plugin("counter", counter)
+        counter.value = 7.0
+        p.collect_filter = "True"
+        p.ix = 0
+        p.value = 2.0
+        # Only collect the counter value, not all outputs
+        p.collect(outputs=["counter:Count"])
+        assert not p.data.empty
+        assert "counter:Count" in p.data.columns
+        assert "value" in p.data.columns
+        engine.shutdown()
+
+    def test_to_json_includes_data_collection_settings(self, qapp):
+        p = _InstantState()
+        p.collect_data = True
+        p.clear_on_start = False
+        p.collect_filter = "custom_expr"
+        p.clear_filter = "another_expr"
+        d = p.to_json()
+        assert d["collect_data"] is True
+        assert d["clear_on_start"] is False
+        assert d["collect_filter"] == "custom_expr"
+        assert d["clear_filter"] == "another_expr"
+
+    def test_from_json_restores_data_collection_settings(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+        p = _InstantState()
+        p.collect_data = True
+        p.clear_on_start = False
+        p.collect_filter = "my_filter"
+        p.clear_filter = "other"
+        restored = BasePlugin.from_json(p.to_json())
+        assert restored.collect_data is True
+        assert restored.clear_on_start is False
+        assert restored.collect_filter == "my_filter"
+        assert restored.clear_filter == "other"
+
+    def test_generate_action_code_includes_clear_when_clear_on_start(self, qapp):
+        p = _InstantState()
+        p.clear_on_start = True
+        p.collect_data = False
+        lines = p.generate_action_code(1, [], lambda s, i: [])
+        assert any("clear_data()" in line for line in lines)
+
+    def test_generate_action_code_no_clear_when_clear_on_start_false(self, qapp):
+        p = _InstantState()
+        p.clear_on_start = False
+        p.collect_data = False
+        lines = p.generate_action_code(1, [], lambda s, i: [])
+        assert not any("clear_data()" in line for line in lines)
+
+    def test_generate_action_code_includes_collect_when_collect_data(self, qapp):
+        p = _InstantState()
+        p.clear_on_start = False
+        p.collect_data = True
+        lines = p.generate_action_code(1, [], lambda s, i: [])
+        assert any("collect()" in line for line in lines)
+
+    def test_generate_action_code_no_collect_when_collect_data_false(self, qapp):
+        p = _InstantState()
+        p.clear_on_start = False
+        p.collect_data = False
+        lines = p.generate_action_code(1, [], lambda s, i: [])
+        assert not any("collect()" in line for line in lines)
+
+    def test_generate_action_code_collect_after_substeps(self, qapp):
+        """collect() should appear after sub-step lines inside the loop body."""
+        p = _InstantState()
+        p.clear_on_start = False
+        p.collect_data = True
+        rendered_sub = ["        sub_step_line()"]
+        lines = p.generate_action_code(1, ["dummy_step"], lambda s, i: rendered_sub)
+        collect_idx = next(i for i, line in enumerate(lines) if "collect()" in line)
+        sub_idx = next(i for i, line in enumerate(lines) if "sub_step_line()" in line)
+        assert collect_idx > sub_idx
