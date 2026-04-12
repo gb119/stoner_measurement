@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QTabWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from stoner_measurement.core.plugin_manager import PluginManager
 
@@ -157,4 +157,32 @@ class ConfigPanel(QWidget):
         placeholder = QLabel("Select a sequence step to configure.")
         placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._tabs.addTab(placeholder, "Configuration")
+
+    def commit_pending_changes(self) -> None:
+        """Commit any pending edits in the currently displayed configuration tabs.
+
+        Some input widgets (e.g. :class:`~PyQt6.QtWidgets.QLineEdit`) only
+        apply their value to the plugin when the widget loses focus or the user
+        presses Return.  Toolbar and menu actions that do not take keyboard
+        focus (the default Qt behaviour for toolbar buttons) would otherwise
+        bypass this mechanism, so unsaved text would not reach the plugin before
+        the action executes.
+
+        This method inspects the application-wide focus widget.  If it is a
+        descendant of this panel's tab widget it is explicitly cleared of focus,
+        which causes Qt to emit the ``editingFinished`` signal on any focused
+        :class:`~PyQt6.QtWidgets.QLineEdit` and flush the edit to the plugin
+        before the action proceeds.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> pm = PluginManager()
+            >>> panel = ConfigPanel(plugin_manager=pm)
+            >>> panel.commit_pending_changes()  # no-op when nothing is focused
+        """
+        focused = QApplication.focusWidget()
+        if focused is not None and self._tabs.isAncestorOf(focused):
+            focused.clearFocus()
 
