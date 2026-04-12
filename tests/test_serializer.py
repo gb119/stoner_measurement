@@ -179,7 +179,7 @@ class TestTracePluginJson:
         plugin = DummyPlugin()
         d = plugin.to_json()
         assert "scan_generator" in d
-        assert d["scan_generator"]["type"] == "FunctionScanGenerator"
+        assert d["scan_generator"]["type"] == "SteppedScanGenerator"
 
     def test_round_trip_preserves_scan_generator_type(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin

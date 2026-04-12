@@ -16,6 +16,7 @@ import numpy as np
 from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
 
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
+from stoner_measurement.scan import SteppedScanGenerator
 
 
 class DummyPlugin(TracePlugin):
@@ -51,6 +52,7 @@ class DummyPlugin(TracePlugin):
         self._critical_current: str = "1.0"
         self._normal_resistance: str = "1.0"
         self._noise_level: str = "0.0"
+        self.scan_generator = SteppedScanGenerator(start=0.0, stages=[], parent=self)
 
     @property
     def name(self) -> str:
