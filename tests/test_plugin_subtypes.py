@@ -787,7 +787,7 @@ class TestStateControlDataCollection:
         p = _InstantState()
         assert p.collect_data is False
         assert p.clear_on_start is True
-        assert "meas_flag" in p.collect_filter
+        assert p.collect_filter == f"{p.instance_name}.meas_flag"
         assert p.clear_filter == "True"
 
     def test_clear_data_resets_dataframe(self, qapp):

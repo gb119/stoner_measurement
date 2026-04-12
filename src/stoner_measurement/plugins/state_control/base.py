@@ -431,7 +431,11 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         engine values catalogue.
 
         If the plugin is not attached to a sequence engine this method is a
-        no-op.
+        **no-op** — it returns immediately without modifying :attr:`data`.
+        This is intentionally different from :meth:`clear_data`, which clears
+        unconditionally when detached because clearing is always safe to do.
+        Collecting without an engine namespace would produce meaningless output
+        values, so the call is skipped entirely.
 
         Keyword Parameters:
             outputs (list[str] | None):
@@ -462,7 +466,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             return
         try:
             should_collect = bool(self.eval(self.collect_filter))
-        except Exception:
+        except (RuntimeError, SyntaxError, ValueError):
             should_collect = False
         if not should_collect:
             return
@@ -479,7 +483,8 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             expr = values_cat[key]
             try:
                 row[key] = self.eval(expr)
-            except Exception:
+            except (RuntimeError, SyntaxError, ValueError, NameError, AttributeError) as exc:
+                self.log.warning("collect(): failed to evaluate %r: %s", expr, exc)
                 row[key] = None
 
         new_row = pd.DataFrame([row], index=[self.ix])
