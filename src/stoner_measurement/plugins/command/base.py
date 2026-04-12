@@ -180,7 +180,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     def config_tabs(
         self, parent: QWidget | None = None
     ) -> list[tuple[str, QWidget]]:
-        """Return a single configuration tab combining general and plugin-specific settings.
+        """Return configuration tabs combining general and plugin-specific settings.
 
         Overrides the base-class implementation so that command plugins present
         a single tab rather than separate *General* and plugin-specific tabs.
@@ -188,6 +188,9 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         (from :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._general_config_widget`),
         followed by a horizontal separator and then the plugin-specific widget
         returned by :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_widget`.
+        An optional *About* tab is appended when
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._about_html` returns
+        non-``None`` content.
 
         Keyword Parameters:
             parent (QWidget | None):
@@ -195,7 +198,8 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
         Returns:
             (list[tuple[str, QWidget]]):
-                A one-element list containing ``(self.name, combined_widget)``.
+                A list containing ``(self.name, combined_widget)`` and
+                optionally an *About* tab.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -222,7 +226,11 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         layout.addWidget(self.config_widget())
         layout.addStretch()
         combined.setLayout(layout)
-        return [(self.name, combined)]
+        tabs = [(self.name, combined)]
+        about_tab = self._make_about_tab()
+        if about_tab is not None:
+            tabs.append(about_tab)
+        return tabs
 
     def generate_action_code(
         self,
