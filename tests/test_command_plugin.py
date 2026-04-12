@@ -391,17 +391,14 @@ class TestSaveCommand:
         cmd.path_expr = repr(str(out_file))
         cmd.no_overwrite = False
 
-        cmd.execute()
-        mtime1 = out_file.stat().st_mtime_ns
+        # Write an initial sentinel string to the file.
+        out_file.write_text("sentinel content\n", encoding="utf-8")
 
-        # Small sleep to ensure a new mtime is possible, then overwrite.
-        import time
-        time.sleep(0.05)
+        # Execute should overwrite with TDI content.
         cmd.execute()
-        mtime2 = out_file.stat().st_mtime_ns
-
-        # File is overwritten, so mtime should have changed.
-        assert mtime2 >= mtime1
+        text = out_file.read_text(encoding="utf-8")
+        assert "TDI Format 2.0" in text
+        assert "sentinel" not in text
 
     # ------------------------------------------------------------------
     # Trace selection

@@ -482,13 +482,9 @@ class SaveCommand(CommandPlugin):
             for trace_key in traces_catalog:
                 cb = QCheckBox(trace_key, traces_container)
                 cb.setChecked(self.trace_selection.get(trace_key, True))
-
-                def _make_handler(key: str):
-                    def _handler(state: int) -> None:
-                        self.trace_selection[key] = bool(state)
-                    return _handler
-
-                cb.stateChanged.connect(_make_handler(trace_key))
+                cb.stateChanged.connect(
+                    lambda state, k=trace_key: self.trace_selection.update({k: bool(state)})
+                )
                 traces_layout.addWidget(cb)
         else:
             traces_layout.addWidget(QLabel("<i>No traces available.</i>", traces_container))
@@ -522,7 +518,8 @@ class SaveCommand(CommandPlugin):
                 self.data_source = state_plugins[0]
 
             def _apply_source(index: int) -> None:
-                self.data_source = source_combo.itemText(index)
+                if index >= 0:
+                    self.data_source = source_combo.itemText(index)
 
             source_combo.currentIndexChanged.connect(_apply_source)
             data_form.addRow("Data source:", source_combo)
