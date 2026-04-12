@@ -782,13 +782,14 @@ class DockPanel(QWidget):
         # Only remove items that do not have a selected ancestor: removing a
         # parent automatically removes its children, so operating on a child
         # that has already been deleted would cause a crash.
-        selected_set = set(items)
+        # Use id() because QTreeWidgetItem is not hashable in PyQt6.
+        selected_ids = {id(item) for item in items}
 
         def _has_selected_ancestor(item: QTreeWidgetItem) -> bool:
             """Return True if any ancestor of item is also in the selection."""
             parent = item.parent()
             while parent is not None:
-                if parent in selected_set:
+                if id(parent) in selected_ids:
                     return True
                 parent = parent.parent()
             return False

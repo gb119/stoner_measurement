@@ -327,14 +327,19 @@ class PlotTraceCommand(CommandPlugin):
             title = self.trace_key
 
             # Emit axis labels derived from TraceData metadata (names and units).
-            x_label = _format_axis_label(
-                getattr(trace_data, "names", {}).get("x", ""),
-                getattr(trace_data, "units", {}).get("x", ""),
-            )
-            y_label = _format_axis_label(
-                getattr(trace_data, "names", {}).get("y", ""),
-                getattr(trace_data, "units", {}).get("y", ""),
-            )
+            names = getattr(trace_data, "names", {})
+            units = getattr(trace_data, "units", {})
+            x_name = names.get("x", "")
+            y_name = names.get("y", "")
+            x_unit = units.get("x", "")
+            y_unit = units.get("y", "")
+            # Treat default placeholder names ("x"/"y" with no units) as empty.
+            if x_name.strip().lower() == "x" and not x_unit:
+                x_name = ""
+            if y_name.strip().lower() == "y" and not y_unit:
+                y_name = ""
+            x_label = _format_axis_label(x_name, x_unit)
+            y_label = _format_axis_label(y_name, y_unit)
             if x_label or y_label:
                 self.plot_axis_labels.emit(x_label, y_label)
 
