@@ -103,10 +103,10 @@ class TestCommandPlugin:
 
         assert isinstance(_Noop().config_widget(), QWidget)
 
-    def test_config_tabs_has_general_tab(self, qapp):
+    def test_config_tabs_single_tab(self, qapp):
         tabs = _Noop().config_tabs()
-        tab_names = [t[0] for t in tabs]
-        assert "General" in tab_names
+        assert len(tabs) == 1
+        assert tabs[0][0] == "Noop"
 
     def test_execute_called_via_sequence(self, qapp, engine):
         """CommandPlugin.execute() is called when the sequence script runs."""
