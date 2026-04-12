@@ -23,9 +23,12 @@ sub-types: :class:`~stoner_measurement.plugins.trace.base.TracePlugin`,
 
 from __future__ import annotations
 
+import html as _html_mod
 import importlib
+import inspect
 import json
 import logging
+import re
 from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -37,6 +40,239 @@ from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QTextBrowser, QWidge
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
+
+# ---------------------------------------------------------------------------
+# Docstring-to-HTML helper
+# ---------------------------------------------------------------------------
+
+#: Section names (lower-cased) that are omitted from the About-tab HTML because
+#: they are developer-facing rather than user-facing.
+_DEVELOPER_SECTIONS: frozenset[str] = frozenset(
+    {
+        "args",
+        "arguments",
+        "keyword parameters",
+        "keyword args",
+        "parameters",
+        "returns",
+        "return",
+        "raises",
+        "raise",
+        "examples",
+        "example",
+    }
+)
+
+#: All recognised Google-style section names (both developer and user-facing).
+#: Only lines matching one of these names are treated as section headers, which
+#: avoids false positives such as "The class provides:".
+_ALL_KNOWN_SECTIONS: frozenset[str] = _DEVELOPER_SECTIONS | frozenset(
+    {
+        "attributes",
+        "notes",
+        "note",
+        "todo",
+        "see also",
+        "yields",
+        "yield",
+        "warning",
+        "warnings",
+    }
+)
+
+#: Compiled regex for RST cross-reference roles such as ``:meth:`foo```.
+_RST_ROLE_RE = re.compile(r":[a-z]+:`([^`]*)`")
+
+#: Compiled regex that matches all RST inline markup tokens in one pass.
+_INLINE_RE = re.compile(
+    r"(?P<dbl>``(?P<dbl_text>[^`]*)``)"
+    r"|(?P<bold>\*\*(?P<bold_text>[^*]+)\*\*)"
+    r"|(?P<italic>\*(?P<italic_text>[^*]+)\*)"
+    r"|(?P<sgl>`(?P<sgl_text>[^`]+)`)"
+)
+
+
+def _rst_role_to_short(match: re.Match) -> str:
+    """Return the short display name for an RST cross-reference role match."""
+    ref = match.group(1).lstrip("~")
+    return ref.split(".")[-1]
+
+
+def _inline_format(raw: str) -> str:
+    """Convert RST inline markup in *raw* to HTML, escaping plain text.
+
+    Handles:
+
+    * RST cross-reference roles (``:meth:`...```, ``:class:`...```, etc.)
+    * Double-backtick literals (````code```` → ``<code>code</code>``)
+    * ``**bold**`` → ``<b>bold</b>``
+    * ``*italic*`` → ``<em>italic</em>``
+    * Single-backtick code (`` `code` ``) → ``<code>code</code>``
+    """
+    # Strip RST roles first (replacing with their short display name), working
+    # on the raw string so that subsequent markup is still intact.
+    raw = _RST_ROLE_RE.sub(_rst_role_to_short, raw)
+
+    parts: list[str] = []
+    last_end = 0
+    for m in _INLINE_RE.finditer(raw):
+        parts.append(_html_mod.escape(raw[last_end : m.start()]))
+        if m.group("dbl") is not None:
+            parts.append(f"<code>{_html_mod.escape(m.group('dbl_text'))}</code>")
+        elif m.group("bold") is not None:
+            parts.append(f"<b>{_html_mod.escape(m.group('bold_text'))}</b>")
+        elif m.group("italic") is not None:
+            parts.append(f"<em>{_html_mod.escape(m.group('italic_text'))}</em>")
+        elif m.group("sgl") is not None:
+            parts.append(f"<code>{_html_mod.escape(m.group('sgl_text'))}</code>")
+        last_end = m.end()
+    parts.append(_html_mod.escape(raw[last_end:]))
+    return "".join(parts)
+
+
+#: Pattern matching a Google-style section header: a capitalised word or phrase
+#: followed immediately by a colon and optional trailing whitespace.
+_SECTION_HEADER_RE = re.compile(r"^([A-Z][A-Za-z ]+):\s*$")
+
+
+def _render_section_items(lines: list[str]) -> str:
+    """Render indented Google-style section items as an HTML definition list.
+
+    Each item starts with a line indented by four spaces whose content ends
+    with a colon (the *term*).  Subsequent lines indented by eight or more
+    spaces form the *definition*.
+    """
+    items: list[tuple[str, list[str]]] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        stripped4 = line[4:] if line.startswith("    ") else line
+        if stripped4 and not stripped4.startswith(" "):
+            # New item header — strip trailing colon if present
+            term = stripped4.rstrip(":").rstrip()
+            items.append((term, []))
+        elif items:
+            items[-1][1].append(stripped4.lstrip())
+    if not items:
+        return ""
+    parts = ["<dl>"]
+    for term, desc_lines in items:
+        desc = " ".join(desc_lines).strip()
+        parts.append(f"  <dt><code>{_html_mod.escape(term)}</code></dt>")
+        if desc:
+            parts.append(f"  <dd>{_inline_format(desc)}</dd>")
+    parts.append("</dl>")
+    return "\n".join(parts)
+
+
+def _docstring_to_html(plugin_name: str, doc: str) -> str:
+    """Convert a cleaned Google-style class docstring to HTML for the *About* tab.
+
+    Paragraphs are separated by blank lines.  Section headers matching
+    ``Word(s):`` control rendering:
+
+    * Developer-only sections (``Args``, ``Returns``, ``Raises``,
+      ``Examples``, ``Keyword Parameters``) are omitted entirely.
+    * ``Attributes`` and ``Notes`` sections are rendered with an ``<h4>``
+      heading followed by a definition list or paragraph.
+
+    RST inline markup (roles, backticks, bold, italic) is converted to the
+    equivalent HTML.  Code blocks introduced by ``::`` at the end of a
+    paragraph are rendered inside ``<pre><code>``.
+    """
+    # Split into raw paragraph blocks (separated by one or more blank lines).
+    blocks = re.split(r"\n{2,}", doc.strip())
+
+    html_parts: list[str] = [f"<h3>{_html_mod.escape(plugin_name)}</h3>"]
+    skip_section = False
+    next_is_code = False
+
+    for block in blocks:
+        block = block.rstrip()
+        if not block.strip():
+            continue
+
+        lines = block.split("\n")
+        first_line = lines[0].rstrip()
+
+        # ---- Section header detection ----------------------------------------
+        section_m = _SECTION_HEADER_RE.match(first_line)
+        if section_m and section_m.group(1).lower() in _ALL_KNOWN_SECTIONS:
+            section_key = section_m.group(1).lower()
+            if section_key in _DEVELOPER_SECTIONS:
+                skip_section = True
+            else:
+                skip_section = False
+                html_parts.append(
+                    f"<h4>{_html_mod.escape(section_m.group(1))}</h4>"
+                )
+            next_is_code = False
+            if len(lines) == 1:
+                continue
+            # Items follow on subsequent lines in the same block.
+            if not skip_section:
+                rendered = _render_section_items(lines[1:])
+                if rendered:
+                    html_parts.append(rendered)
+            continue
+
+        if skip_section:
+            continue
+
+        # ---- Code block (introduced by previous ``::`` paragraph) -----------
+        if next_is_code:
+            # Strip the common 4-space indent and render as preformatted text.
+            code_lines = [
+                line[4:] if line.startswith("    ") else line for line in lines
+            ]
+            code = "\n".join(code_lines).strip()
+            html_parts.append(
+                f"<pre><code>{_html_mod.escape(code)}</code></pre>"
+            )
+            next_is_code = False
+            continue
+
+        # ---- All-indented block — standalone code block ----------------------
+        if all(line.startswith("    ") or not line.strip() for line in lines):
+            code_lines = [
+                line[4:] if line.startswith("    ") else "" for line in lines
+            ]
+            code = "\n".join(code_lines).strip()
+            html_parts.append(
+                f"<pre><code>{_html_mod.escape(code)}</code></pre>"
+            )
+            continue
+
+        # ---- Bullet list -----------------------------------------------------
+        if any(re.match(r"^\s*[*\-]\s", line) for line in lines):
+            # Collect list items, merging wrapped continuation lines.
+            items_text: list[str] = []
+            for line in lines:
+                bullet_m = re.match(r"^\s*[*\-]\s+(.*)", line)
+                if bullet_m:
+                    items_text.append(bullet_m.group(1).strip())
+                elif items_text:
+                    # Continuation line — append to the previous item.
+                    items_text[-1] += " " + line.strip()
+            li_tags = "".join(
+                f"<li>{_inline_format(item)}</li>" for item in items_text if item
+            )
+            html_parts.append(f"<ul>{li_tags}</ul>")
+            continue
+
+        # ---- Regular paragraph (possibly ending with ``::`` for code block) --
+        full_text = " ".join(line.strip() for line in lines if line.strip())
+        if full_text.endswith("::"):
+            # The ``::`` signals an upcoming code block.  Strip it (or keep
+            # a trailing colon if there is text before it).
+            prose = full_text[:-2].rstrip()
+            if prose:
+                html_parts.append(f"<p>{_inline_format(prose)}:</p>")
+            next_is_code = True
+        else:
+            html_parts.append(f"<p>{_inline_format(full_text)}</p>")
+
+    return "\n".join(html_parts)
 
 
 class _ABCQObjectMeta(type(QObject), ABCMeta):
@@ -582,12 +818,19 @@ class BasePlugin(ABC):
         return label
 
     def _about_html(self) -> str | None:
-        """Return an HTML string for the *About* tab, or ``None`` to omit the tab.
+        """Return HTML generated from the concrete class docstring for the *About* tab.
 
-        The default implementation returns ``None`` so that no *About* tab is
-        shown.  Override in a subclass to provide plugin-specific documentation
-        or instructions rendered in a
-        :class:`~PyQt6.QtWidgets.QTextBrowser`.
+        The default implementation uses the docstring defined directly on the
+        concrete class (i.e. the class's own ``__doc__``, not an inherited one).
+        The docstring is cleaned with :func:`inspect.cleandoc` and converted to
+        HTML by :func:`_docstring_to_html`.
+
+        If the concrete class does not define its own docstring, ``None`` is
+        returned and no *About* tab is shown.
+
+        Override in a subclass to provide fully custom HTML instead of the
+        auto-generated version.  Return ``None`` explicitly to suppress the
+        *About* tab entirely.
 
         Returns:
             (str | None):
@@ -601,8 +844,23 @@ class BasePlugin(ABC):
             ...     def name(self): return "Minimal"
             >>> _Minimal()._about_html() is None
             True
+            >>> class _Documented(BasePlugin):
+            ...     '''A well-documented plugin.'''
+            ...     @property
+            ...     def name(self): return "Documented"
+            >>> html = _Documented()._about_html()
+            >>> html is not None
+            True
+            >>> "Documented" in html
+            True
         """
-        return None
+        raw = type(self).__dict__.get("__doc__")
+        if not raw:
+            return None
+        doc = inspect.cleandoc(raw)
+        if not doc:
+            return None
+        return _docstring_to_html(self.name, doc)
 
     def _make_about_tab(self) -> tuple[str, QWidget] | None:
         """Return an *About* tab tuple if :meth:`_about_html` returns content, else ``None``.

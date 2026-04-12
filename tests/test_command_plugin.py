@@ -21,7 +21,7 @@ from stoner_measurement.plugins.command import (
 
 
 class _Noop(CommandPlugin):
-    """CommandPlugin that does nothing."""
+    # No docstring — test helper only.
 
     executed: list[int]
 
