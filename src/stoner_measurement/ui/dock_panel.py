@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, QMimeData, pyqtSignal
+from PyQt6.QtCore import QMimeData, Qt, pyqtSignal
 from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -101,6 +101,10 @@ class _PluginListWidget(QListWidget):
     def mimeData(self, items: list[QListWidgetItem]) -> QMimeData:  # type: ignore[override]
         """Return MIME data for *items*, adding the plugin entry-point name.
 
+        The ``# type: ignore[override]`` suppresses a mypy error because
+        ``QListWidget.mimeData`` is annotated to return ``Optional[QMimeData]``
+        in some stubs while we always return a concrete ``QMimeData`` instance.
+
         The standard ``application/x-qabstractitemmodeldatalist`` payload from
         the base class is preserved so that the sequence tree's Qt-internal
         drop-indicator code recognises the drag as acceptable and shows the
@@ -162,8 +166,6 @@ class _SequenceTreeWidget(QTreeWidget):
     ) -> None:
         super().__init__(parent)
         self._plugin_manager = plugin_manager
-        # Factory called when a plugin is dropped from the available-plugins
-        # list.  Signature: (ep_name: str) -> QTreeWidgetItem | None.
         self._new_item_factory: Callable[[str], QTreeWidgetItem | None] | None = None
         self.setHeaderHidden(True)
         self.setRootIsDecorated(True)

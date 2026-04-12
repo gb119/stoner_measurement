@@ -634,10 +634,13 @@ class TestDockPanel:
 
     def test_set_new_item_factory_can_be_replaced(self, plugin_manager):
         """set_new_item_factory replaces the factory callable."""
+
+        def _null_factory(ep: str) -> None:
+            return None
+
         panel = DockPanel(plugin_manager=plugin_manager)
-        sentinel = lambda ep: None  # noqa: E731
-        panel._sequence_tree.set_new_item_factory(sentinel)
-        assert panel._sequence_tree._new_item_factory is sentinel
+        panel._sequence_tree.set_new_item_factory(_null_factory)
+        assert panel._sequence_tree._new_item_factory is _null_factory
 
     def test_external_drop_appends_to_empty_tree(self, plugin_manager):
         """Dropping a plugin onto an empty tree adds a top-level step via the factory."""
