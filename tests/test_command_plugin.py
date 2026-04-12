@@ -1,11 +1,19 @@
-"""Tests for CommandPlugin, SaveCommand, and PlotTraceCommand."""
+"""Tests for CommandPlugin, SaveCommand, PlotTraceCommand, WaitCommand,
+StatusCommand, and AlertCommand."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from stoner_measurement.plugins.command import CommandPlugin, PlotTraceCommand, SaveCommand
+from stoner_measurement.plugins.command import (
+    AlertCommand,
+    CommandPlugin,
+    PlotTraceCommand,
+    SaveCommand,
+    StatusCommand,
+    WaitCommand,
+)
 
 # ---------------------------------------------------------------------------
 # Minimal concrete implementation used across tests
@@ -664,3 +672,333 @@ class TestPlotTraceCommand:
         cmd.execute()
 
         assert labels == []
+
+
+# ---------------------------------------------------------------------------
+# WaitCommand
+# ---------------------------------------------------------------------------
+
+
+class TestWaitCommand:
+    def test_name(self, qapp):
+        assert WaitCommand().name == "Wait"
+
+    def test_plugin_type(self, qapp):
+        assert WaitCommand().plugin_type == "command"
+
+    def test_has_lifecycle_false(self, qapp):
+        assert WaitCommand().has_lifecycle is False
+
+    def test_default_delay_expr(self, qapp):
+        assert WaitCommand().delay_expr == "1.0"
+
+    def test_to_json_includes_delay_expr(self, qapp):
+        cmd = WaitCommand()
+        cmd.delay_expr = "0.5"
+        d = cmd.to_json()
+        assert d["delay_expr"] == "0.5"
+
+    def test_restore_from_json(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        cmd = WaitCommand()
+        cmd.delay_expr = "2.5"
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, WaitCommand)
+        assert restored.delay_expr == "2.5"
+
+    def test_config_widget_returns_widget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+
+        assert isinstance(WaitCommand().config_widget(), QWidget)
+
+    def test_config_widget_has_lineedit(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        widget = WaitCommand().config_widget()
+        edits = widget.findChildren(QLineEdit)
+        assert len(edits) >= 1
+
+    def test_config_widget_updates_delay_expr(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = WaitCommand()
+        widget = cmd.config_widget()
+        edit = widget.findChildren(QLineEdit)[0]
+        edit.setText("3.0")
+        edit.editingFinished.emit()
+        assert cmd.delay_expr == "3.0"
+
+    def test_execute_with_explicit_delay_sleeps(self, qapp):
+        import time
+
+        cmd = WaitCommand()
+        t0 = time.monotonic()
+        cmd.execute(delay=0.01)
+        elapsed = time.monotonic() - t0
+        assert elapsed >= 0.01
+
+    def test_call_with_explicit_delay_sleeps(self, qapp):
+        import time
+
+        cmd = WaitCommand()
+        t0 = time.monotonic()
+        cmd(delay=0.01)
+        elapsed = time.monotonic() - t0
+        assert elapsed >= 0.01
+
+    def test_execute_uses_delay_expr_when_attached(self, qapp, engine):
+        import time
+
+        cmd = WaitCommand()
+        cmd.delay_expr = "0.01"
+        engine.add_plugin("wait", cmd)
+        t0 = time.monotonic()
+        cmd.execute()
+        elapsed = time.monotonic() - t0
+        assert elapsed >= 0.01
+
+    def test_execute_raises_when_detached_and_no_kwarg(self, qapp):
+        cmd = WaitCommand()
+        with pytest.raises(RuntimeError):
+            cmd.execute()
+
+    def test_generate_action_code(self, qapp):
+        cmd = WaitCommand()
+        lines = cmd.generate_action_code(1, [], lambda s, i: [])
+        assert lines[0] == "    wait()"
+
+    def test_reported_traces_empty(self, qapp):
+        assert WaitCommand().reported_traces() == {}
+
+    def test_reported_values_empty(self, qapp):
+        assert WaitCommand().reported_values() == {}
+
+
+# ---------------------------------------------------------------------------
+# StatusCommand
+# ---------------------------------------------------------------------------
+
+
+class TestStatusCommand:
+    def test_name(self, qapp):
+        assert StatusCommand().name == "Status"
+
+    def test_plugin_type(self, qapp):
+        assert StatusCommand().plugin_type == "command"
+
+    def test_has_lifecycle_false(self, qapp):
+        assert StatusCommand().has_lifecycle is False
+
+    def test_default_status_expr(self, qapp):
+        assert StatusCommand().status_expr == "'Ready'"
+
+    def test_to_json_includes_status_expr(self, qapp):
+        cmd = StatusCommand()
+        cmd.status_expr = "'Running step 1'"
+        d = cmd.to_json()
+        assert d["status_expr"] == "'Running step 1'"
+
+    def test_restore_from_json(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        cmd = StatusCommand()
+        cmd.status_expr = "'Done'"
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, StatusCommand)
+        assert restored.status_expr == "'Done'"
+
+    def test_config_widget_returns_widget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+
+        assert isinstance(StatusCommand().config_widget(), QWidget)
+
+    def test_config_widget_has_lineedit(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        widget = StatusCommand().config_widget()
+        edits = widget.findChildren(QLineEdit)
+        assert len(edits) >= 1
+
+    def test_config_widget_updates_status_expr(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = StatusCommand()
+        widget = cmd.config_widget()
+        edit = widget.findChildren(QLineEdit)[0]
+        edit.setText("'new status'")
+        edit.editingFinished.emit()
+        assert cmd.status_expr == "'new status'"
+
+    def test_execute_with_explicit_status_emits_signal(self, qapp):
+        cmd = StatusCommand()
+        received: list[str] = []
+        cmd.status_message.connect(received.append)
+        cmd.execute(status="hello")
+        assert received == ["hello"]
+
+    def test_call_with_explicit_status_emits_signal(self, qapp):
+        cmd = StatusCommand()
+        received: list[str] = []
+        cmd.status_message.connect(received.append)
+        cmd(status="world")
+        assert received == ["world"]
+
+    def test_execute_uses_status_expr_when_attached(self, qapp, engine):
+        cmd = StatusCommand()
+        cmd.status_expr = "'engine ready'"
+        engine.add_plugin("status", cmd)
+        received: list[str] = []
+        cmd.status_message.connect(received.append)
+        cmd.execute()
+        assert received == ["engine ready"]
+
+    def test_execute_raises_when_detached_and_no_kwarg(self, qapp):
+        cmd = StatusCommand()
+        with pytest.raises(RuntimeError):
+            cmd.execute()
+
+    def test_status_message_forwarded_to_engine_status_changed(self, qapp, engine):
+        cmd = StatusCommand()
+        engine.add_plugin("status", cmd)
+        engine_statuses: list[str] = []
+        engine.status_changed.connect(engine_statuses.append)
+        cmd.execute(status="custom message")
+        assert "custom message" in engine_statuses
+
+    def test_sequence_engine_property_none_initially(self, qapp):
+        assert StatusCommand().sequence_engine is None
+
+    def test_sequence_engine_set_via_add_plugin(self, qapp, engine):
+        cmd = StatusCommand()
+        engine.add_plugin("status", cmd)
+        assert cmd.sequence_engine is engine
+
+    def test_sequence_engine_cleared_via_remove_plugin(self, qapp, engine):
+        cmd = StatusCommand()
+        engine.add_plugin("status", cmd)
+        engine.remove_plugin("status")
+        assert cmd.sequence_engine is None
+
+    def test_generate_action_code(self, qapp):
+        cmd = StatusCommand()
+        lines = cmd.generate_action_code(1, [], lambda s, i: [])
+        assert lines[0] == "    status()"
+
+    def test_reported_traces_empty(self, qapp):
+        assert StatusCommand().reported_traces() == {}
+
+    def test_reported_values_empty(self, qapp):
+        assert StatusCommand().reported_values() == {}
+
+
+# ---------------------------------------------------------------------------
+# AlertCommand
+# ---------------------------------------------------------------------------
+
+
+class TestAlertCommand:
+    def test_name(self, qapp):
+        assert AlertCommand().name == "Alert"
+
+    def test_plugin_type(self, qapp):
+        assert AlertCommand().plugin_type == "command"
+
+    def test_has_lifecycle_false(self, qapp):
+        assert AlertCommand().has_lifecycle is False
+
+    def test_default_message_expr(self, qapp):
+        assert AlertCommand().message_expr == "'Alert'"
+
+    def test_to_json_includes_message_expr(self, qapp):
+        cmd = AlertCommand()
+        cmd.message_expr = "'Check instrument'"
+        d = cmd.to_json()
+        assert d["message_expr"] == "'Check instrument'"
+
+    def test_restore_from_json(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        cmd = AlertCommand()
+        cmd.message_expr = "'Step complete'"
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, AlertCommand)
+        assert restored.message_expr == "'Step complete'"
+
+    def test_config_widget_returns_widget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+
+        assert isinstance(AlertCommand().config_widget(), QWidget)
+
+    def test_config_widget_has_lineedit(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        widget = AlertCommand().config_widget()
+        edits = widget.findChildren(QLineEdit)
+        assert len(edits) >= 1
+
+    def test_config_widget_updates_message_expr(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = AlertCommand()
+        widget = cmd.config_widget()
+        edit = widget.findChildren(QLineEdit)[0]
+        edit.setText("'new message'")
+        edit.editingFinished.emit()
+        assert cmd.message_expr == "'new message'"
+
+    def test_execute_raises_when_detached_and_no_kwarg(self, qapp):
+        cmd = AlertCommand()
+        with pytest.raises(RuntimeError):
+            cmd.execute()
+
+    def test_execute_with_explicit_message_emits_signal(self, qapp, monkeypatch):
+        """execute(message=...) emits show_alert with the provided message."""
+        from unittest.mock import patch
+
+        cmd = AlertCommand()
+        received: list[str] = []
+
+        # Disconnect the BlockingQueuedConnection so we can test without
+        # a running event loop in the main thread blocking the test.
+        cmd.show_alert.disconnect(cmd._display_alert)
+        cmd.show_alert.connect(received.append)
+
+        with patch.object(cmd, "_display_alert", lambda msg: None):
+            cmd.execute(message="test msg")
+
+        assert received == ["test msg"]
+
+    def test_call_with_explicit_message_emits_signal(self, qapp):
+        """__call__(message=...) delegates to execute(message=...)."""
+        cmd = AlertCommand()
+        received: list[str] = []
+
+        cmd.show_alert.disconnect(cmd._display_alert)
+        cmd.show_alert.connect(received.append)
+
+        cmd(message="call test")
+        assert received == ["call test"]
+
+    def test_execute_uses_message_expr_when_attached(self, qapp, engine):
+        cmd = AlertCommand()
+        cmd.message_expr = "'engine alert'"
+        engine.add_plugin("alert", cmd)
+        received: list[str] = []
+
+        cmd.show_alert.disconnect(cmd._display_alert)
+        cmd.show_alert.connect(received.append)
+
+        cmd.execute()
+        assert received == ["engine alert"]
+
+    def test_generate_action_code(self, qapp):
+        cmd = AlertCommand()
+        lines = cmd.generate_action_code(1, [], lambda s, i: [])
+        assert lines[0] == "    alert()"
+
+    def test_reported_traces_empty(self, qapp):
+        assert AlertCommand().reported_traces() == {}
+
+    def test_reported_values_empty(self, qapp):
+        assert AlertCommand().reported_values() == {}
