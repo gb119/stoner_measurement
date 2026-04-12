@@ -567,6 +567,222 @@ class TestSaveCommand:
         # At least one combobox for mode selection.
         assert len(combos) >= 1
 
+    # ------------------------------------------------------------------
+    # execute / __call__ keyword parameter overrides
+    # ------------------------------------------------------------------
+
+    def test_execute_trace_kwarg_filters_to_single_trace(self, qapp, engine, tmp_path):
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        plugin.measure({})
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.no_overwrite = False
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        # Pass the trace key explicitly; trace_selection is irrelevant.
+        cmd.execute(trace="dummy:Dummy")
+        header = out_file.read_text().splitlines()[0].split("\t")
+        assert any("Dummy:" in h for h in header[1:])
+
+    def test_execute_trace_kwarg_as_list(self, qapp, engine, tmp_path):
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        plugin.measure({})
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.no_overwrite = False
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        # List with a single valid trace key.
+        cmd.execute(trace=["dummy:Dummy"])
+        header = out_file.read_text().splitlines()[0].split("\t")
+        assert any("Dummy:" in h for h in header[1:])
+
+    def test_execute_trace_kwarg_excludes_unspecified_traces(self, qapp, engine, tmp_path):
+        """When trace kwarg is given, only the listed traces should appear."""
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        plugin.measure({})
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.no_overwrite = False
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        # Pass an empty list — no traces should be saved.
+        cmd.execute(trace=[])
+        header = out_file.read_text().splitlines()[0].split("\t")
+        assert header == ["TDI Format 2.0"]
+
+    def test_execute_trace_kwarg_overrides_trace_selection(self, qapp, engine, tmp_path):
+        """trace kwarg should override trace_selection config."""
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        plugin.measure({})
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.no_overwrite = False
+        # Config says: save NO traces.
+        cmd.trace_selection = {"dummy:Dummy": False}
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        # But kwarg overrides the config and explicitly asks for dummy:Dummy.
+        cmd.execute(trace="dummy:Dummy")
+        header = out_file.read_text().splitlines()[0].split("\t")
+        assert any("Dummy:" in h for h in header[1:])
+
+    def test_execute_data_kwarg_overrides_data_source(self, qapp, engine, tmp_path):
+        import pandas as pd
+
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        counter = CounterPlugin()
+        engine.add_plugin("counter", counter)
+        counter._data = pd.DataFrame(  # noqa: SLF001
+            [{"value": 1.0, "x": 10.0}, {"value": 2.0, "x": 20.0}]
+        )
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.no_overwrite = False
+        # Configured for trace mode with no data source.
+        cmd.save_mode = "traces"
+        cmd.data_source = ""
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        # kwarg should switch to data mode and use 'counter'.
+        cmd.execute(data="counter")
+        lines = out_file.read_text().splitlines()
+        header = lines[0].split("\t")
+        assert any("value" in h for h in header[1:])
+
+    def test_execute_no_overwrite_kwarg_overrides_config(self, qapp, engine, tmp_path):
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "out.txt"
+        # Configured to overwrite.
+        cmd.no_overwrite = False
+        cmd.path_expr = repr(str(out_file))
+
+        # Write sentinel content, then call with no_overwrite=True.
+        out_file.write_text("sentinel\n", encoding="utf-8")
+        cmd.execute(no_overwrite=True)
+
+        # Original file should be intact; a versioned file should exist.
+        assert out_file.read_text(encoding="utf-8") == "sentinel\n"
+        versioned = tmp_path / "out_001.txt"
+        assert versioned.exists()
+
+    def test_execute_no_overwrite_false_kwarg_overrides_config(self, qapp, engine, tmp_path):
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "out.txt"
+        # Configured to never overwrite.
+        cmd.no_overwrite = True
+        cmd.path_expr = repr(str(out_file))
+
+        # Write sentinel, then call with no_overwrite=False → should overwrite.
+        out_file.write_text("sentinel\n", encoding="utf-8")
+        cmd.execute(no_overwrite=False)
+        text = out_file.read_text(encoding="utf-8")
+        assert "TDI Format 2.0" in text
+
+    def test_execute_trace_and_data_kwarg_raises(self, qapp, engine):
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            cmd.execute(trace="dummy:Dummy", data="counter")
+
+    def test_call_trace_kwarg_forwarded(self, qapp, engine, tmp_path):
+        """__call__ should forward kwargs to execute."""
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        plugin.measure({})
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.no_overwrite = False
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        cmd(trace="dummy:Dummy")
+        header = out_file.read_text().splitlines()[0].split("\t")
+        assert any("Dummy:" in h for h in header[1:])
+
+    def test_call_no_args_uses_config(self, qapp, engine, tmp_path):
+        """__call__() with no args should behave identically to execute()."""
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.no_overwrite = False
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd()
+        assert out_file.exists()
+        assert out_file.read_text(encoding="utf-8").startswith("TDI Format 2.0")
+
+    def test_execute_trace_kwarg_does_not_mutate_trace_selection(self, qapp, engine, tmp_path):
+        """Passing the trace kwarg must not modify self.trace_selection."""
+        from stoner_measurement.plugins.trace import DummyPlugin
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        plugin = DummyPlugin()
+        plugin.scan_generator = SteppedScanGenerator(
+            start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
+        )
+        engine.add_plugin("dummy", plugin)
+        plugin.measure({})
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.no_overwrite = False
+        original_selection = {}
+        cmd.trace_selection = original_selection
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        cmd.execute(trace="dummy:Dummy")
+        assert cmd.trace_selection is original_selection
+        assert cmd.trace_selection == {}
+
 
 # ---------------------------------------------------------------------------
 # PlotTraceCommand

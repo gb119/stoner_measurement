@@ -195,30 +195,47 @@ class SaveCommand(CommandPlugin):
         """
         return "Save"
 
-    def execute(self) -> None:
+    def execute(
+        self,
+        *,
+        trace: str | list[str] | None = None,
+        data: str | None = None,
+        no_overwrite: bool | None = None,
+    ) -> None:
         """Evaluate :attr:`path_expr` and write data to disc.
 
         Evaluates :attr:`path_expr` in the sequence engine namespace to obtain
         the output file path, creates any required parent directories, and
         writes a TDI Format 2.0 tab-delimited text file.
 
-        When :attr:`no_overwrite` is ``True`` and the resolved path already
-        exists, a numeric suffix (``_001``, ``_002``, …) is appended before
-        the file extension until a free filename is found.
+        The keyword parameters allow per-call overrides of the configured
+        settings without permanently modifying the plugin:
+
+        * ``trace`` and ``data`` are mutually exclusive — supplying both raises
+          :exc:`ValueError`.
+        * Supplying ``trace`` implies trace mode for this call; supplying
+          ``data`` implies data mode.
+        * ``no_overwrite`` overrides :attr:`no_overwrite` for this call only.
+
+        When the effective no-overwrite flag is ``True`` and the resolved path
+        already exists, a numeric suffix (``_001``, ``_002``, …) is appended
+        before the file extension until a free filename is found.
 
         **Trace mode** (``save_mode == "traces"``)
 
         Each non-empty channel (``x``, ``y``, ``d``, ``e``) of every selected
-        trace contributes one column.  A trace is selected when its key is
-        absent from :attr:`trace_selection` *or* maps to ``True``.  Column
-        headers have the form ``"{channel_name}:{axis_label} ({axis_units})"``.
+        trace contributes one column.  Without the ``trace`` kwarg the selection
+        is driven by :attr:`trace_selection` (absent key → enabled).  When
+        ``trace`` is supplied it must be a trace catalogue key or a list of
+        trace catalogue keys; only those traces are saved.  Column headers have
+        the form ``"{channel_name}:{axis_label} ({axis_units})"``.
 
         **Data mode** (``save_mode == "data"``)
 
         The accumulated :class:`~pandas.DataFrame` from the
         :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
-        instance named by :attr:`data_source` is saved.  DataFrame column
-        names are used directly as column headers.
+        instance named by :attr:`data_source` (or the ``data`` kwarg) is saved.
+        DataFrame column names are used directly as column headers.
 
         The file layout is:
 
@@ -230,7 +247,29 @@ class SaveCommand(CommandPlugin):
           current scalar readings from the ``_values`` catalog.
         * **Remaining cells** — numerical data from each data column.
 
+        Keyword Parameters:
+            trace (str | list[str] | None):
+                One or more trace catalogue keys
+                (``"{instance_name}:{channel_name}"`` format) to save.  When
+                supplied, only the listed traces are saved regardless of
+                :attr:`trace_selection`, and the save mode for this call
+                becomes ``"traces"``.  May not be combined with *data*.
+                Defaults to ``None`` (use configured :attr:`trace_selection`).
+            data (str | None):
+                Instance name of the
+                :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+                whose DataFrame to save.  When supplied the save mode for
+                this call becomes ``"data"`` and the value overrides
+                :attr:`data_source`.  May not be combined with *trace*.
+                Defaults to ``None`` (use configured :attr:`data_source`).
+            no_overwrite (bool | None):
+                When ``True``, prevent overwriting an existing file (see
+                :attr:`no_overwrite`).  ``None`` (default) uses the configured
+                :attr:`no_overwrite` attribute.
+
         Raises:
+            ValueError:
+                If both *trace* and *data* are supplied.
             RuntimeError:
                 If the plugin is not attached to a sequence engine.
             TypeError:
@@ -262,6 +301,38 @@ class SaveCommand(CommandPlugin):
 
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
+        # ------------------------------------------------------------------
+        # Validate and resolve per-call overrides.
+        # ------------------------------------------------------------------
+
+        if trace is not None and data is not None:
+            raise ValueError("SaveCommand.execute(): 'trace' and 'data' are mutually exclusive")
+
+        # Effective save mode: kwarg wins over configured attribute.
+        if trace is not None:
+            _save_mode = "traces"
+        elif data is not None:
+            _save_mode = "data"
+        else:
+            _save_mode = self.save_mode
+
+        # Effective no-overwrite flag.
+        _no_overwrite = self.no_overwrite if no_overwrite is None else no_overwrite
+
+        # Effective trace filter: kwarg wins over configured trace_selection.
+        # When 'trace' kwarg is given, normalise to a set of allowed keys.
+        if trace is not None:
+            _trace_keys: set[str] | None = {trace} if isinstance(trace, str) else set(trace)
+        else:
+            _trace_keys = None  # fall back to trace_selection per-key logic
+
+        # Effective data source: kwarg wins over configured data_source.
+        _data_source = data if data is not None else self.data_source
+
+        # ------------------------------------------------------------------
+        # Resolve file path.
+        # ------------------------------------------------------------------
+
         path_val = self.eval(self.path_expr)
         if not isinstance(path_val, str):
             raise TypeError(
@@ -274,7 +345,7 @@ class SaveCommand(CommandPlugin):
         # Honour no_overwrite: find a free filename if the path already exists.
         # ------------------------------------------------------------------
 
-        if self.no_overwrite and dest.exists():
+        if _no_overwrite and dest.exists():
             stem = dest.stem
             suffix = dest.suffix
             parent_dir = dest.parent
@@ -318,21 +389,21 @@ class SaveCommand(CommandPlugin):
         # Each entry: (header_string, 1-D numpy array)
         columns: list[tuple[str, np.ndarray]] = []
 
-        if self.save_mode == "data":
+        if _save_mode == "data":
             # Data mode: use a StateControlPlugin's accumulated DataFrame.
-            if not self.data_source:
+            if not _data_source:
                 self.log.warning("SaveCommand: no data_source configured for data mode")
                 return
-            source_plugin = ns.get(self.data_source)
+            source_plugin = ns.get(_data_source)
             if source_plugin is None:
-                self.log.warning("SaveCommand: data_source %r not found in namespace", self.data_source)
+                self.log.warning("SaveCommand: data_source %r not found in namespace", _data_source)
                 return
             df = getattr(source_plugin, "data", None)
             if df is None:
-                self.log.warning("SaveCommand: plugin %r has no 'data' attribute", self.data_source)
+                self.log.warning("SaveCommand: plugin %r has no 'data' attribute", _data_source)
                 return
             if df.empty:
-                self.log.debug("SaveCommand: plugin %r data is empty — writing headers only", self.data_source)
+                self.log.debug("SaveCommand: plugin %r data is empty — writing headers only", _data_source)
             for col_name in df.columns:
                 arr = df[col_name].to_numpy(dtype=float, na_value=float("nan"))
                 columns.append((str(col_name), arr))
@@ -340,8 +411,11 @@ class SaveCommand(CommandPlugin):
             # Trace mode: use selected entries from the _traces catalog.
             traces_catalog: dict[str, str] = ns.get("_traces", {})
             for trace_key, expr in traces_catalog.items():
-                # Skip traces explicitly disabled in trace_selection.
-                if not self.trace_selection.get(trace_key, True):
+                # Apply filter: kwarg whitelist takes priority, then trace_selection.
+                if _trace_keys is not None:
+                    if trace_key not in _trace_keys:
+                        continue
+                elif not self.trace_selection.get(trace_key, True):
                     continue
                 try:
                     trace_data = self.eval(expr)
@@ -375,6 +449,55 @@ class SaveCommand(CommandPlugin):
         content = "\n".join("\t".join(row) for row in rows) + "\n"
         dest.write_text(content, encoding="utf-8")
         self.log.info("Data saved to %s", dest)
+
+    def __call__(
+        self,
+        *,
+        trace: str | list[str] | None = None,
+        data: str | None = None,
+        no_overwrite: bool | None = None,
+    ) -> None:
+        """Invoke :meth:`execute`, forwarding any keyword-parameter overrides.
+
+        The generated sequence script calls ``{instance_name}()`` (no args),
+        which uses all configured defaults.  Passing keyword arguments allows
+        callers to override trace selection, data source, or the no-overwrite
+        flag for a single invocation without changing the plugin configuration.
+
+        Keyword Parameters:
+            trace (str | list[str] | None):
+                Trace catalogue key(s) to save for this call.  See
+                :meth:`execute` for full semantics.
+            data (str | None):
+                Instance name of the state-control plugin whose DataFrame to
+                save for this call.  See :meth:`execute` for full semantics.
+            no_overwrite (bool | None):
+                Per-call no-overwrite override.  ``None`` uses the configured
+                :attr:`no_overwrite` attribute.
+
+        Raises:
+            ValueError:
+                If both *trace* and *data* are supplied.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.command import SaveCommand
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> import tempfile, os
+            >>> engine = SequenceEngine()
+            >>> cmd = SaveCommand()
+            >>> engine.add_plugin("save", cmd)
+            >>> with tempfile.TemporaryDirectory() as tmp:
+            ...     path = os.path.join(tmp, "out2.txt")
+            ...     cmd.path_expr = repr(path)
+            ...     cmd(no_overwrite=False)
+            ...     first_line = open(path).readline().rstrip("\\n")
+            >>> first_line.startswith("TDI Format 2.0")
+            True
+            >>> engine.shutdown()
+        """
+        self.execute(trace=trace, data=data, no_overwrite=no_overwrite)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a settings widget for the save command.
