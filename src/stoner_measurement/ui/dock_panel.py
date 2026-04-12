@@ -179,7 +179,7 @@ class _SequenceTreeWidget(QTreeWidget):
         self.setHeaderHidden(True)
         self.setRootIsDecorated(True)
         self.setIndentation(20)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -564,8 +564,9 @@ class DockPanel(QWidget):
         []
     """
 
-    #: Emitted with the plugin instance when a sequence step is selected, or
-    #: ``None`` when the selection is cleared.
+    #: Emitted with the plugin instance when exactly one sequence step is
+    #: selected, or ``None`` when the selection is cleared or multiple steps
+    #: are selected simultaneously.
     plugin_selected = pyqtSignal(object)
 
     def __init__(
@@ -639,7 +640,7 @@ class DockPanel(QWidget):
         # Connect signals
         self._add_step_btn.clicked.connect(self._add_step)
         self._remove_step_btn.clicked.connect(self._remove_step)
-        self._sequence_tree.currentItemChanged.connect(self._on_step_selected)
+        self._sequence_tree.itemSelectionChanged.connect(self._on_selection_changed)
         self._instrument_list.itemDoubleClicked.connect(self._on_instrument_double_clicked)
         self._instrument_filter.textChanged.connect(self._filter_instruments)
 
@@ -774,29 +775,50 @@ class DockPanel(QWidget):
         return self._sequence_tree.make_item(new_plugin, text, ep_name=ep_name)
 
     def _remove_step(self) -> None:
-        """Remove the currently selected sequence step (or sub-step)."""
-        item = self._sequence_tree.currentItem()
-        if item is None:
+        """Remove all currently selected sequence steps (and sub-steps)."""
+        items = self._sequence_tree.selectedItems()
+        if not items:
             return
-        # Release strong references for the item and all nested children.
-        self._release_step_plugins(item)
-        parent = item.parent()
-        if parent is not None:
-            parent.removeChild(item)
-        else:
-            idx = self._sequence_tree.indexOfTopLevelItem(item)
-            if idx >= 0:
-                self._sequence_tree.takeTopLevelItem(idx)
+        # Only remove items that do not have a selected ancestor: removing a
+        # parent automatically removes its children, so operating on a child
+        # that has already been deleted would cause a crash.
+        selected_set = set(items)
 
-    def _on_step_selected(
-        self, current: QTreeWidgetItem | None, previous: QTreeWidgetItem | None
-    ) -> None:
-        """Emit :attr:`plugin_selected` when the sequence-step selection changes."""
-        if current is None:
+        def _has_selected_ancestor(item: QTreeWidgetItem) -> bool:
+            """Return True if any ancestor of item is also in the selection."""
+            parent = item.parent()
+            while parent is not None:
+                if parent in selected_set:
+                    return True
+                parent = parent.parent()
+            return False
+
+        for item in items:
+            if _has_selected_ancestor(item):
+                continue
+            self._release_step_plugins(item)
+            parent = item.parent()
+            if parent is not None:
+                parent.removeChild(item)
+            else:
+                idx = self._sequence_tree.indexOfTopLevelItem(item)
+                if idx >= 0:
+                    self._sequence_tree.takeTopLevelItem(idx)
+
+    def _on_selection_changed(self) -> None:
+        """Emit :attr:`plugin_selected` when the sequence-step selection changes.
+
+        Emits the plugin instance when exactly one step is selected.  Emits
+        ``None`` when the selection is empty or when more than one step is
+        selected (in the latter case the configuration panel is hidden so that
+        the panel cannot show ambiguous settings for multiple different plugins).
+        """
+        selected = self._sequence_tree.selectedItems()
+        if len(selected) == 1:
+            plugin = selected[0].data(0, _PLUGIN_INSTANCE_ROLE)
+            self.plugin_selected.emit(plugin)
+        else:
             self.plugin_selected.emit(None)
-            return
-        plugin = current.data(0, _PLUGIN_INSTANCE_ROLE)
-        self.plugin_selected.emit(plugin)
 
     def _on_plugin_renamed(self, old_name: str, new_name: str) -> None:
         """Validate uniqueness and update sequence step labels when a plugin's instance name changes.
@@ -1255,15 +1277,18 @@ class DockPanel(QWidget):
     # ------------------------------------------------------------------
 
     def copy_selected_step(self) -> bool:
-        """Copy the currently selected sequence step to the internal clipboard.
+        """Copy the currently selected sequence step(s) to the internal clipboard.
 
-        The step (including any sub-steps) is serialised to JSON and stored in
-        :attr:`_clipboard_step_json`.  Returns ``False`` when no step is
-        selected.
+        All selected steps (including any sub-steps) are serialised to JSON
+        and stored in :attr:`_clipboard_step_json`.  When a selected item's
+        parent is also selected the child is omitted — its data is already
+        captured inside the parent's serialised sub-steps.  Returns ``False``
+        when nothing is selected.
 
         Returns:
             (bool):
-                ``True`` if a step was copied, ``False`` if nothing was selected.
+                ``True`` if at least one step was copied, ``False`` if nothing
+                was selected.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -1281,23 +1306,39 @@ class DockPanel(QWidget):
         """
         from stoner_measurement.core.serializer import sequence_to_json
 
-        item = self._sequence_tree.currentItem()
-        if item is None:
+        items = self._sequence_tree.selectedItems()
+        if not items:
             return False
-        step = self._item_to_step(item)
-        self._clipboard_step_json = json.dumps(sequence_to_json([step]))
+
+        # Omit items whose parent is also selected (parent serialisation
+        # already captures the sub-step).
+        selected_set = set(items)
+
+        def _has_selected_ancestor(item: QTreeWidgetItem) -> bool:
+            """Return True if any ancestor of item is also in the selection."""
+            parent = item.parent()
+            while parent is not None:
+                if parent in selected_set:
+                    return True
+                parent = parent.parent()
+            return False
+
+        root_items = [item for item in items if not _has_selected_ancestor(item)]
+        steps = [self._item_to_step(item) for item in root_items]
+        self._clipboard_step_json = json.dumps(sequence_to_json(steps))
         return True
 
     def cut_selected_step(self) -> bool:
-        """Cut the currently selected sequence step to the internal clipboard.
+        """Cut the currently selected sequence step(s) to the internal clipboard.
 
-        Equivalent to :meth:`copy_selected_step` followed by removing the
-        selected step from the tree.  Returns ``False`` when no step is
+        Equivalent to :meth:`copy_selected_step` followed by removing all
+        selected steps from the tree.  Returns ``False`` when nothing is
         selected.
 
         Returns:
             (bool):
-                ``True`` if a step was cut, ``False`` if nothing was selected.
+                ``True`` if at least one step was cut, ``False`` if nothing was
+                selected.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -1319,17 +1360,19 @@ class DockPanel(QWidget):
         return True
 
     def paste_step(self) -> bool:
-        """Paste the step from the internal clipboard into the sequence tree.
+        """Paste step(s) from the internal clipboard into the sequence tree.
 
-        The pasted step is inserted immediately after the currently selected
-        item (at the same level of nesting).  When nothing is selected the step
-        is appended at the top level.  Instance names are adjusted using
-        :meth:`_compute_paste_name` to avoid collisions with existing names.
+        All steps in the clipboard are inserted immediately after the current
+        item (at the same level of nesting), preserving their original order.
+        When nothing is selected every step is appended at the top level.
+        Instance names are adjusted using :meth:`_compute_paste_name` to avoid
+        collisions with existing names.  All newly inserted items are selected
+        after the paste.
 
         Returns:
             (bool):
-                ``True`` if a step was pasted, ``False`` when the clipboard is
-                empty.
+                ``True`` if at least one step was pasted, ``False`` when the
+                clipboard is empty.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -1356,26 +1399,40 @@ class DockPanel(QWidget):
         steps = sequence_from_json(data)
         if not steps:
             return False
-        step = steps[0]
 
-        # Adjust all instance names to avoid collisions.
+        # Adjust all instance names to avoid collisions; share a single
+        # allocated set so names across multiple pasted steps don't collide
+        # with each other either.
         allocated: set[str] = set()
-        step = self._paste_adjust_names(step, allocated)
+        steps = [self._paste_adjust_names(step, allocated) for step in steps]
 
-        # Determine where to insert: after the currently selected item.
-        current = self._sequence_tree.currentItem()
-        if current is None:
-            new_item = self._load_step(step, parent_item=None)
+        # Determine the insertion anchor: after the current item.
+        anchor = self._sequence_tree.currentItem()
+        new_items: list[QTreeWidgetItem] = []
+        if anchor is None:
+            for step in steps:
+                new_items.append(self._load_step(step, parent_item=None))
         else:
-            parent = current.parent()
+            parent = anchor.parent()
             if parent is None:
-                idx = self._sequence_tree.indexOfTopLevelItem(current)
-                new_item = self._load_step(step, parent_item=None, insert_index=idx + 1)
+                base_idx = self._sequence_tree.indexOfTopLevelItem(anchor)
+                for i, step in enumerate(steps):
+                    new_items.append(
+                        self._load_step(step, parent_item=None, insert_index=base_idx + 1 + i)
+                    )
             else:
-                idx = parent.indexOfChild(current)
-                new_item = self._load_step(step, parent_item=parent, insert_index=idx + 1)
+                base_idx = parent.indexOfChild(anchor)
+                for i, step in enumerate(steps):
+                    new_items.append(
+                        self._load_step(step, parent_item=parent, insert_index=base_idx + 1 + i)
+                    )
 
-        self._sequence_tree.setCurrentItem(new_item)
+        # Select all newly pasted items so the user can see what was inserted.
+        self._sequence_tree.clearSelection()
+        for item in new_items:
+            item.setSelected(True)
+        if new_items:
+            self._sequence_tree.setCurrentItem(new_items[-1])
         return True
 
     # ------------------------------------------------------------------
@@ -1406,27 +1463,36 @@ class DockPanel(QWidget):
         The menu provides **Copy Step**, **Cut Step** and **Paste Step**
         entries that mirror the application-level Edit-menu actions.
 
+        If the right-click lands on an item that is **not** already part of
+        the current selection, the selection is cleared and only that item is
+        selected before the menu is shown.  Right-clicking on an already-selected
+        item preserves the existing multi-selection so that the menu can act on
+        all selected items.
+
         Args:
             pos (QPoint):
                 Position (in viewport coordinates) where the right-click
                 occurred.
         """
-        # Make the item under the cursor the current item so that copy/cut
-        # operate on what the user clicked, not the previous selection.
         item = self._sequence_tree.itemAt(pos)
-        if item is not None:
+        if item is not None and not item.isSelected():
+            # Right-click on an unselected item: replace the selection.
+            self._sequence_tree.clearSelection()
+            item.setSelected(True)
             self._sequence_tree.setCurrentItem(item)
+
+        has_selection = bool(self._sequence_tree.selectedItems())
 
         menu = QMenu(self)
 
         act_copy = menu.addAction("&Copy Step")
         act_copy.setShortcut(QKeySequence.StandardKey.Copy)
-        act_copy.setEnabled(item is not None)
+        act_copy.setEnabled(has_selection)
         act_copy.triggered.connect(self.copy_selected_step)
 
         act_cut = menu.addAction("Cu&t Step")
         act_cut.setShortcut(QKeySequence.StandardKey.Cut)
-        act_cut.setEnabled(item is not None)
+        act_cut.setEnabled(has_selection)
         act_cut.triggered.connect(self.cut_selected_step)
 
         act_paste = menu.addAction("&Paste Step")
