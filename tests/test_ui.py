@@ -47,8 +47,12 @@ class TestDockPanel:
 
     def test_instrument_list_populated(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
-        assert panel._instrument_list.count() == 1
-        assert panel._instrument_list.item(0).text() == "Dummy"
+        # "Dummy" is a TracePlugin so it appears under a "Trace" category node.
+        assert panel._instrument_list.topLevelItemCount() == 1
+        category = panel._instrument_list.topLevelItem(0)
+        assert category.text(0) == "Trace"
+        assert category.childCount() == 1
+        assert category.child(0).text(0) == "Dummy"
 
     def test_sequence_steps_empty_initially(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
@@ -56,7 +60,7 @@ class TestDockPanel:
 
     def test_add_step(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
         steps = panel.sequence_steps
         assert len(steps) == 1
@@ -64,7 +68,7 @@ class TestDockPanel:
 
     def test_remove_step(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
         panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
         panel._remove_step()
@@ -73,10 +77,11 @@ class TestDockPanel:
     def test_refresh_on_plugin_registration(self, qapp):
         pm = PluginManager()
         panel = DockPanel(plugin_manager=pm)
-        assert panel._instrument_list.count() == 0
+        assert panel._instrument_list.topLevelItemCount() == 0
 
         pm.register("Dummy", DummyPlugin())
-        assert panel._instrument_list.count() == 1
+        assert panel._instrument_list.topLevelItemCount() == 1
+        assert panel._instrument_list.topLevelItem(0).childCount() == 1
 
     # --- Monitoring widget tests ---
 
@@ -157,7 +162,7 @@ class TestDockPanel:
         received = []
         panel.plugin_selected.connect(lambda p: received.append(p))
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
         panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
 
@@ -171,7 +176,7 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
         panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
 
@@ -188,7 +193,7 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
 
         item = panel._sequence_tree.topLevelItem(0)
@@ -202,7 +207,7 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
 
         from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
@@ -218,9 +223,9 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -233,9 +238,9 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -267,9 +272,9 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add two PlotTraceCommand steps.
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("PlotTrace")
         panel._add_step()
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("PlotTrace")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -302,7 +307,7 @@ class TestDockPanel:
         pm.register("ep_key", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("ep_key")
         panel._add_step()
 
         item = panel._sequence_tree.topLevelItem(0)
@@ -313,8 +318,6 @@ class TestDockPanel:
         steps = panel.sequence_steps
         assert len(steps) == 1
         assert steps[0] is step_plugin
-
-    # --- Sub-step / nesting tests ---
 
     def _find_item(self, panel: DockPanel, ep_name: str) -> QTreeWidgetItem:
         """Return the top-level tree item whose ep_name data matches *ep_name*."""
@@ -336,9 +339,9 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add both as top-level steps
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("state")
         panel._add_step()
-        panel._instrument_list.setCurrentRow(1)
+        panel._instrument_list.select_plugin("trace")
         panel._add_step()
 
         # Manually nest the trace item under the state item
@@ -362,9 +365,9 @@ class TestDockPanel:
         pm.register("trace", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("state")
         panel._add_step()
-        panel._instrument_list.setCurrentRow(1)
+        panel._instrument_list.select_plugin("trace")
         panel._add_step()
 
         state_item = panel._sequence_tree.topLevelItem(0)
@@ -389,7 +392,7 @@ class TestDockPanel:
         pm.register("state", _FakeStatePlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("state")
         panel._add_step()
 
         item = panel._sequence_tree.topLevelItem(0)
@@ -403,9 +406,9 @@ class TestDockPanel:
         pm.register("trace", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("state")
         panel._add_step()
-        panel._instrument_list.setCurrentRow(1)
+        panel._instrument_list.select_plugin("trace")
         panel._add_step()
 
         state_item = panel._sequence_tree.topLevelItem(0)
@@ -434,8 +437,8 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add all three as top-level steps
-        for row in range(3):
-            panel._instrument_list.setCurrentRow(row)
+        for ep_name in ("outer", "inner", "trace"):
+            panel._instrument_list.select_plugin(ep_name)
             panel._add_step()
 
         # Locate items by ep_name (plugin_names is sorted, so positions may vary)
@@ -473,8 +476,8 @@ class TestDockPanel:
         pm.register("trace", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        for row in range(3):
-            panel._instrument_list.setCurrentRow(row)
+        for ep_name in ("outer", "inner", "trace"):
+            panel._instrument_list.select_plugin(ep_name)
             panel._add_step()
 
         outer_item = self._find_item(panel, "outer")
@@ -506,9 +509,9 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add the same plugin twice.
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -528,14 +531,14 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add first step and rename it so the default slot is occupied.
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
         steps = panel.sequence_steps
         steps[0].instance_name = "my_sensor"
 
         # Adding a second step must not reuse "dummy" (now occupied by my_sensor
         # after initial rename) or clash with "my_sensor".
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
         steps = panel.sequence_steps
         assert steps[0].instance_name != steps[1].instance_name
@@ -548,7 +551,7 @@ class TestDockPanel:
 
         # Add three Dummy steps (names: "dummy", "dummy_2", "dummy_3").
         for _ in range(3):
-            panel._instrument_list.setCurrentRow(0)
+            panel._instrument_list.select_plugin("Dummy")
             panel._add_step()
 
         # The next unique name should be "dummy_4".
@@ -560,9 +563,9 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
-        panel._instrument_list.setCurrentRow(0)
+        panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -573,14 +576,14 @@ class TestDockPanel:
 
     # --- Plugin-list drag-and-drop tests ---
 
-    def test_instrument_list_is_plugin_list_widget(self, plugin_manager):
-        """DockPanel._instrument_list is a _PluginListWidget (drag-enabled)."""
+    def test_instrument_list_is_plugin_tree_widget(self, plugin_manager):
+        """DockPanel._instrument_list is a _PluginTreeWidget (drag-enabled)."""
         from PyQt6.QtWidgets import QAbstractItemView
 
-        from stoner_measurement.ui.dock_panel import _PluginListWidget
+        from stoner_measurement.ui.dock_panel import _PluginTreeWidget
 
         panel = DockPanel(plugin_manager=plugin_manager)
-        assert isinstance(panel._instrument_list, _PluginListWidget)
+        assert isinstance(panel._instrument_list, _PluginTreeWidget)
         assert panel._instrument_list.dragEnabled()
         assert (
             panel._instrument_list.dragDropMode()
@@ -588,15 +591,43 @@ class TestDockPanel:
         )
 
     def test_plugin_list_mime_data_includes_ep_name(self, plugin_manager):
-        """_PluginListWidget.mimeData includes the custom MIME type with the ep name."""
-        from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
+        """_PluginTreeWidget.mimeData includes the custom MIME type with the ep name."""
+        from stoner_measurement.ui.dock_panel import _EP_NAME_ROLE, _PLUGIN_EP_MIME_TYPE
 
         panel = DockPanel(plugin_manager=plugin_manager)
-        items = [panel._instrument_list.item(0)]
-        mime = panel._instrument_list.mimeData(items)
+        # Get the "Dummy" leaf item under the first category.
+        category = panel._instrument_list.topLevelItem(0)
+        leaf = category.child(0)
+        assert leaf.data(0, _EP_NAME_ROLE) == "Dummy"
+        mime = panel._instrument_list.mimeData([leaf])
         assert mime.hasFormat(_PLUGIN_EP_MIME_TYPE)
         ep_name = bytes(mime.data(_PLUGIN_EP_MIME_TYPE)).decode()
         assert ep_name == "Dummy"
+
+    def test_category_nodes_not_draggable(self, plugin_manager):
+        """Category header nodes do not carry a drag-enabled flag."""
+        from PyQt6.QtCore import Qt
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+        category = panel._instrument_list.topLevelItem(0)
+        assert not (category.flags() & Qt.ItemFlag.ItemIsDragEnabled)
+
+    def test_category_mime_data_excludes_ep_mime_type(self, plugin_manager):
+        """mimeData for a category node does not include _PLUGIN_EP_MIME_TYPE."""
+        from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+        category = panel._instrument_list.topLevelItem(0)
+        mime = panel._instrument_list.mimeData([category])
+        assert not mime.hasFormat(_PLUGIN_EP_MIME_TYPE)
+
+    def test_add_step_ignores_category_node(self, plugin_manager):
+        """Selecting a category node and clicking Add Step does not add a sequence step."""
+        panel = DockPanel(plugin_manager=plugin_manager)
+        category = panel._instrument_list.topLevelItem(0)
+        panel._instrument_list.setCurrentItem(category)
+        panel._add_step()
+        assert panel.sequence_steps == []
 
     def test_make_new_step_item_returns_item(self, plugin_manager):
         """_make_new_step_item creates a QTreeWidgetItem for a valid ep_name."""
