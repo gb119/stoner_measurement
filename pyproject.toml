@@ -54,6 +54,9 @@ counter = "stoner_measurement.plugins.state_control.counter:CounterPlugin"
 dummy = "stoner_measurement.plugins.trace.dummy:DummyPlugin"
 plot_trace = "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand"
 save = "stoner_measurement.plugins.command.save:SaveCommand"
+wait = "stoner_measurement.plugins.command.wait:WaitCommand"
+status = "stoner_measurement.plugins.command.status:StatusCommand"
+alert = "stoner_measurement.plugins.command.alert:AlertCommand"
 
 [tool.setuptools.packages.find]
 where = ["src"]
