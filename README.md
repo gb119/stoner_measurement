@@ -3,6 +3,7 @@
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://gb119.github.io/stoner_measurement/)
 [![PyPI](https://img.shields.io/pypi/v/stoner_measurement)](https://pypi.org/project/stoner_measurement/)
 [![Run Tests](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml/badge.svg)](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e)](https://app.codacy.com/gh/gb119/stoner_measurement/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 A Python Qt6 desktop application for carrying out scientific measurements by
 communicating with laboratory instruments over USB, Serial, GPIB, and Ethernet
