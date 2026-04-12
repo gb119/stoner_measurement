@@ -24,8 +24,6 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -59,6 +57,19 @@ type _SequenceStep = BasePlugin | tuple[BasePlugin, list[_SequenceStep]]
 # identifiers.
 _PASTE_SUFFIX_RE = re.compile(r"^(.*)_(\d+)$")
 
+# Ordered list of (plugin_type_key, display_label) pairs that define the tree
+# categories shown in the available-plugins panel.  The order determines how
+# categories appear from top to bottom.  Only categories that contain at least
+# one registered plugin are shown.
+_PLUGIN_TYPE_CATEGORIES: list[tuple[str, str]] = [
+    ("trace", "Trace"),
+    ("state", "State Control"),
+    ("monitor", "Monitor"),
+    ("transform", "Transform"),
+    ("command", "Command"),
+    ("sequence", "Sequence"),
+]
+
 # QSS stylesheet for the sequence tree widget to ensure consistent branch
 # indicators (expand/collapse markers and lead lines) across platforms.
 # The style uses simple solid lines for lead lines and relies on Qt's
@@ -81,13 +92,19 @@ QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {
 """
 
 
-class _PluginListWidget(QListWidget):
-    """Plugin list widget that supports dragging plugins into the sequence tree.
+class _PluginTreeWidget(QTreeWidget):
+    """Plugin tree widget that organises available plugins by type category.
 
-    Each list item carries both the standard Qt item-model MIME payload (so
-    that the sequence tree's drop-indicator machinery works correctly) and a
-    custom :data:`_PLUGIN_EP_MIME_TYPE` payload carrying the entry-point
-    registry key as a UTF-8–encoded byte string.
+    Concrete plugins are shown as leaf nodes grouped under non-interactive
+    category headers that correspond to the abstract plugin base types (trace,
+    state control, monitor, transform, command, sequence).  Only concrete
+    plugin leaf nodes carry an entry-point registry key and may be dragged into
+    the sequence tree; category header nodes cannot be dragged or added as
+    sequence steps.
+
+    Each leaf item stores the entry-point registry key in :data:`_EP_NAME_ROLE`
+    so that :class:`_SequenceTreeWidget` can look up and instantiate the correct
+    plugin when a leaf is dropped.
 
     The widget is configured for *drag-only* mode — items may be dragged out
     but nothing may be dropped onto it.
@@ -102,27 +119,32 @@ class _PluginListWidget(QListWidget):
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
         self.setDefaultDropAction(Qt.DropAction.CopyAction)
+        self.setHeaderHidden(True)
+        self.setRootIsDecorated(True)
 
     # ------------------------------------------------------------------
     # Drag support
     # ------------------------------------------------------------------
 
-    def mimeData(self, items: list[QListWidgetItem]) -> QMimeData:  # type: ignore[override]
+    def mimeData(self, items: list[QTreeWidgetItem]) -> QMimeData:  # type: ignore[override]
         """Return MIME data for *items*, adding the plugin entry-point name.
 
         The ``# type: ignore[override]`` suppresses a mypy error because
-        ``QListWidget.mimeData`` is annotated to return ``Optional[QMimeData]``
+        ``QTreeWidget.mimeData`` is annotated to return ``Optional[QMimeData]``
         in some stubs while we always return a concrete ``QMimeData`` instance.
 
         The standard ``application/x-qabstractitemmodeldatalist`` payload from
         the base class is preserved so that the sequence tree's Qt-internal
         drop-indicator code recognises the drag as acceptable and shows the
-        insertion line.  An additional :data:`_PLUGIN_EP_MIME_TYPE` entry
-        carries the entry-point name so that :class:`_SequenceTreeWidget` can
-        look up and instantiate the correct plugin.
+        insertion line.  An additional :data:`_PLUGIN_EP_MIME_TYPE` entry is
+        added when the dragged item is a plugin leaf (i.e. it carries a
+        non-empty entry-point name in :data:`_EP_NAME_ROLE`).  Category header
+        items do not carry an entry-point name and are therefore never given the
+        custom MIME payload, preventing them from being dropped into the
+        sequence tree.
 
         Args:
-            items (list[QListWidgetItem]):
+            items (list[QTreeWidgetItem]):
                 The items being dragged (typically a single-element list).
 
         Returns:
@@ -131,8 +153,52 @@ class _PluginListWidget(QListWidget):
         """
         data = super().mimeData(items)
         if items:
-            data.setData(_PLUGIN_EP_MIME_TYPE, items[0].text().encode())
+            ep_name: str = items[0].data(0, _EP_NAME_ROLE) or ""
+            if ep_name:
+                data.setData(_PLUGIN_EP_MIME_TYPE, ep_name.encode())
         return data
+
+    # ------------------------------------------------------------------
+    # Public helpers
+    # ------------------------------------------------------------------
+
+    def select_plugin(self, ep_name: str) -> bool:
+        """Select the leaf item whose entry-point name is *ep_name*.
+
+        Iterates over all category nodes and their children to find the plugin
+        leaf that carries *ep_name* in :data:`_EP_NAME_ROLE`.
+
+        Args:
+            ep_name (str):
+                Entry-point registry key to search for.
+
+        Returns:
+            (bool):
+                ``True`` if the item was found and selected; ``False``
+                otherwise.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
+            >>> pm = PluginManager()
+            >>> from stoner_measurement.ui.dock_panel import DockPanel
+            >>> panel = DockPanel(plugin_manager=pm)
+            >>> pm.register("Dummy", DummyPlugin())
+            >>> panel._instrument_list.select_plugin("Dummy")
+            True
+            >>> panel._instrument_list.select_plugin("NoSuchPlugin")
+            False
+        """
+        for i in range(self.topLevelItemCount()):
+            category = self.topLevelItem(i)
+            for j in range(category.childCount()):
+                child = category.child(j)
+                if child.data(0, _EP_NAME_ROLE) == ep_name:
+                    self.setCurrentItem(child)
+                    return True
+        return False
 
 
 class _SequenceTreeWidget(QTreeWidget):
@@ -150,7 +216,7 @@ class _SequenceTreeWidget(QTreeWidget):
     * **Promotion** — drag a sub-step above or below any top-level item to
       move it back up the hierarchy.
     * **New steps from the plugin list** — drag a plugin from the
-      *Available sequence commands* :class:`_PluginListWidget` and drop it
+      *Available sequence commands* :class:`_PluginTreeWidget` and drop it
       above, below or onto an existing step (or onto the empty area) to
       insert a brand-new step instance at that position.
 
@@ -293,7 +359,7 @@ class _SequenceTreeWidget(QTreeWidget):
         """Accept drags from the plugin list as well as internal tree reorders.
 
         Drops carrying :data:`_PLUGIN_EP_MIME_TYPE` originate from
-        :class:`_PluginListWidget` and represent requests to insert a new
+        :class:`_PluginTreeWidget` and represent requests to insert a new
         plugin instance into the sequence.
 
         Args:
@@ -597,7 +663,7 @@ class DockPanel(QWidget):
         self._instrument_filter.setPlaceholderText("Filter plugins...")
         self._instrument_filter.setClearButtonEnabled(True)
         layout.addWidget(self._instrument_filter)
-        self._instrument_list = _PluginListWidget()
+        self._instrument_list = _PluginTreeWidget()
         self._instrument_list.setObjectName("instrumentList")
         layout.addWidget(self._instrument_list)
 
@@ -641,7 +707,9 @@ class DockPanel(QWidget):
         self._add_step_btn.clicked.connect(self._add_step)
         self._remove_step_btn.clicked.connect(self._remove_step)
         self._sequence_tree.itemSelectionChanged.connect(self._on_selection_changed)
-        self._instrument_list.itemDoubleClicked.connect(self._on_instrument_double_clicked)
+        self._instrument_list.itemDoubleClicked.connect(
+            lambda item, col: self._on_instrument_double_clicked()
+        )
         self._instrument_filter.textChanged.connect(self._filter_instruments)
 
         # Populate instrument list and monitoring widgets
@@ -655,12 +723,62 @@ class DockPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _refresh_instruments(self) -> None:
-        """Reload the instrument list from the plugin manager."""
+        """Reload the instrument list from the plugin manager, grouped by plugin type.
+
+        Plugins are organised under category header nodes in the order defined
+        by :data:`_PLUGIN_TYPE_CATEGORIES`.  Categories with no registered
+        plugins are omitted.  Leaf plugin items are sorted alphabetically
+        within each category.  After rebuilding the tree the current filter
+        text is re-applied.
+        """
         self._instrument_list.clear()
-        for name, plugin in self._plugin_manager.plugins.items():
-            item = QListWidgetItem(name)
-            item.setToolTip(plugin.tooltip())
-            self._instrument_list.addItem(item)
+        plugins = self._plugin_manager.plugins
+
+        # Group plugins by their type key.
+        by_type: dict[str, list[tuple[str, BasePlugin]]] = {}
+        for ep_name, plugin in plugins.items():
+            by_type.setdefault(plugin.plugin_type, []).append((ep_name, plugin))
+
+        # Build tree in the canonical category order.
+        for type_key, label in _PLUGIN_TYPE_CATEGORIES:
+            entries = by_type.get(type_key)
+            if not entries:
+                continue
+            category_item = QTreeWidgetItem([label])
+            category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self._instrument_list.addTopLevelItem(category_item)
+            for ep_name, plugin in sorted(entries):
+                leaf = QTreeWidgetItem([ep_name])
+                leaf.setData(0, _EP_NAME_ROLE, ep_name)
+                leaf.setToolTip(0, plugin.tooltip())
+                leaf.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsDragEnabled
+                )
+                category_item.addChild(leaf)
+            category_item.setExpanded(True)
+
+        # Handle any plugin types not listed in _PLUGIN_TYPE_CATEGORIES.
+        known_types = {t for t, _ in _PLUGIN_TYPE_CATEGORIES}
+        for type_key, entries in sorted(by_type.items()):
+            if type_key in known_types:
+                continue
+            category_item = QTreeWidgetItem([type_key.capitalize()])
+            category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self._instrument_list.addTopLevelItem(category_item)
+            for ep_name, plugin in sorted(entries):
+                leaf = QTreeWidgetItem([ep_name])
+                leaf.setData(0, _EP_NAME_ROLE, ep_name)
+                leaf.setToolTip(0, plugin.tooltip())
+                leaf.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsDragEnabled
+                )
+                category_item.addChild(leaf)
+            category_item.setExpanded(True)
+
         self._filter_instruments(self._instrument_filter.text())
 
     def _refresh_monitors(self) -> None:
@@ -682,19 +800,27 @@ class DockPanel(QWidget):
         self._add_step()
 
     def _filter_instruments(self, text: str) -> None:
-        """Show only instrument list items whose name contains *text*.
+        """Show only plugin leaf items whose name contains *text*.
 
         The filter is case-insensitive.  An empty *text* shows all items.
+        Category header nodes are hidden when all of their children are hidden
+        by the filter.
 
         Args:
             text (str):
                 The filter string typed into the filter box.
         """
         text_lower = text.lower()
-        for i in range(self._instrument_list.count()):
-            item = self._instrument_list.item(i)
-            if item is not None:
-                item.setHidden(text_lower not in item.text().lower())
+        for i in range(self._instrument_list.topLevelItemCount()):
+            category = self._instrument_list.topLevelItem(i)
+            has_visible = False
+            for j in range(category.childCount()):
+                child = category.child(j)
+                match = text_lower in child.text(0).lower()
+                child.setHidden(not match)
+                if match:
+                    has_visible = True
+            category.setHidden(not has_visible)
 
     def _release_step_plugins(self, item: QTreeWidgetItem) -> None:
         """Remove the strong reference to the plugin in *item* (and all children).
@@ -717,13 +843,21 @@ class DockPanel(QWidget):
     def _add_step(self) -> None:
         """Add the selected instrument as a top-level sequence step.
 
+        Reads the entry-point name from the currently selected leaf item's
+        :data:`_EP_NAME_ROLE` data.  Category header nodes do not carry an
+        entry-point name and are silently ignored, preventing abstract plugin
+        types from being added to the sequence.
+
         Delegates to :meth:`_make_new_step_item` to create the item, then
         appends it at the top level of the sequence tree.
         """
         current = self._instrument_list.currentItem()
         if current is None:
             return
-        item = self._make_new_step_item(current.text())
+        ep_name: str = current.data(0, _EP_NAME_ROLE) or ""
+        if not ep_name:
+            return
+        item = self._make_new_step_item(ep_name)
         if item is None:
             return
         self._sequence_tree.addTopLevelItem(item)
@@ -925,7 +1059,8 @@ class DockPanel(QWidget):
             >>> panel = DockPanel(plugin_manager=pm)
             >>> panel._unique_step_name("dummy")
             'dummy'
-            >>> panel._instrument_list.setCurrentRow(0)
+            >>> panel._instrument_list.select_plugin("Dummy")
+            True
             >>> panel._add_step()
             >>> panel._unique_step_name("dummy")
             'dummy_2'
