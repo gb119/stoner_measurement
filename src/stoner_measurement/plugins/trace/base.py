@@ -24,11 +24,10 @@ from __future__ import annotations
 import dataclasses
 import enum
 from abc import abstractmethod
-from collections.abc import Generator
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator
+from collections.abc import Generator, Iterator
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
-
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -41,7 +40,12 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
-from stoner_measurement.scan import BaseScanGenerator, FunctionScanGenerator, SteppedScanGenerator
+from stoner_measurement.scan import (
+    BaseScanGenerator,
+    FunctionScanGenerator,
+    ListScanGenerator,
+    SteppedScanGenerator,
+)
 
 if TYPE_CHECKING:
     pass
@@ -407,10 +411,11 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         'Dummy'
     """
 
-    _scan_generator_class: ClassVar[type[BaseScanGenerator]] = SteppedScanGenerator
+    _scan_generator_class: ClassVar[type[BaseScanGenerator]] = FunctionScanGenerator
     _scan_generator_classes: ClassVar[list[type[BaseScanGenerator]]] = [
-        SteppedScanGenerator,
         FunctionScanGenerator,
+        SteppedScanGenerator,
+        ListScanGenerator,
     ]
 
     scan_generator_changed = pyqtSignal()

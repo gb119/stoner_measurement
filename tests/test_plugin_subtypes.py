@@ -150,9 +150,9 @@ class TestTracePlugin:
         assert _SimpleTrace().monitor_widget() is None
 
     def test_scan_generator_attribute(self, qapp):
-        from stoner_measurement.scan import SteppedScanGenerator
+        from stoner_measurement.scan import FunctionScanGenerator
         p = _SimpleTrace()
-        assert isinstance(p.scan_generator, SteppedScanGenerator)
+        assert isinstance(p.scan_generator, FunctionScanGenerator)
 
     def test_config_tabs_scan_tab_is_first(self, qapp):
         p = _SimpleTrace()
@@ -172,9 +172,9 @@ class TestTracePlugin:
         p = _SimpleTrace()
         tabs = p.config_tabs()
         scan_page = tabs[0][1]
-        # Find a combo box within the scan page
+        # Find combo boxes within the scan page — at least one is the type selector.
         combos = scan_page.findChildren(QComboBox)
-        assert len(combos) == 1
+        assert len(combos) >= 1
 
     def test_config_tabs_scan_widget_is_qwidget(self, qapp):
         from PyQt6.QtWidgets import QWidget
@@ -183,27 +183,27 @@ class TestTracePlugin:
         assert isinstance(tabs[0][1], QWidget)
 
     def test_set_scan_generator_class(self, qapp):
-        from stoner_measurement.scan import FunctionScanGenerator
+        from stoner_measurement.scan import SteppedScanGenerator
         p = _SimpleTrace()
-        p.set_scan_generator_class(FunctionScanGenerator)
-        assert isinstance(p.scan_generator, FunctionScanGenerator)
+        p.set_scan_generator_class(SteppedScanGenerator)
+        assert isinstance(p.scan_generator, SteppedScanGenerator)
 
     def test_scan_generator_changed_emitted(self, qapp):
-        from stoner_measurement.scan import FunctionScanGenerator
+        from stoner_measurement.scan import SteppedScanGenerator
         p = _SimpleTrace()
         received = []
         p.scan_generator_changed.connect(lambda: received.append(True))
-        p.set_scan_generator_class(FunctionScanGenerator)
+        p.set_scan_generator_class(SteppedScanGenerator)
         assert len(received) == 1
 
     def test_scan_tab_container_refreshes_on_change(self, qapp):
         from PyQt6.QtWidgets import QWidget
 
         from stoner_measurement.plugins.trace import _ScanTabContainer
-        from stoner_measurement.scan import FunctionScanGenerator
+        from stoner_measurement.scan import SteppedScanGenerator
         p = _SimpleTrace()
         container = _ScanTabContainer(p)
-        p.set_scan_generator_class(FunctionScanGenerator)
+        p.set_scan_generator_class(SteppedScanGenerator)
         # Container should still be a QWidget and its content updated
         assert isinstance(container, QWidget)
 

@@ -32,7 +32,12 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
 from stoner_measurement.plugins.sequence.base import SequencePlugin
-from stoner_measurement.scan import BaseScanGenerator, FunctionScanGenerator, SteppedScanGenerator
+from stoner_measurement.scan import (
+    BaseScanGenerator,
+    FunctionScanGenerator,
+    ListScanGenerator,
+    SteppedScanGenerator,
+)
 
 
 class _StateControlScanTabContainer(QWidget):
@@ -323,15 +328,16 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         (-inf, inf)
         >>> p.settle_timeout
         60.0
-        >>> from stoner_measurement.scan import SteppedScanGenerator
-        >>> isinstance(p.scan_generator, SteppedScanGenerator)
+        >>> from stoner_measurement.scan import FunctionScanGenerator
+        >>> isinstance(p.scan_generator, FunctionScanGenerator)
         True
     """
 
-    _scan_generator_class: ClassVar[type[BaseScanGenerator]] = SteppedScanGenerator
+    _scan_generator_class: ClassVar[type[BaseScanGenerator]] = FunctionScanGenerator
     _scan_generator_classes: ClassVar[list[type[BaseScanGenerator]]] = [
-        SteppedScanGenerator,
         FunctionScanGenerator,
+        SteppedScanGenerator,
+        ListScanGenerator,
     ]
 
     state_changed = pyqtSignal(float)
