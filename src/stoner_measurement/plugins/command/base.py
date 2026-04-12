@@ -23,6 +23,7 @@ from abc import abstractmethod
 from collections.abc import Callable
 
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 
@@ -38,10 +39,11 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
     Subclasses must implement :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`
     and :meth:`execute`.  They may optionally override
-    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_widget` or
-    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_tabs` to
-    provide a settings UI, and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-    / :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._restore_from_json`
+    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_widget` to provide
+    a settings UI — the instance-name editor and plugin-type label are added automatically
+    at the top of the single configuration tab.  They may also override
+    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json` and
+    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._restore_from_json`
     to persist configuration across sessions.
 
     Attributes:
@@ -174,6 +176,53 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> p()  # calls execute()
         """
         self.execute()
+
+    def config_tabs(
+        self, parent: QWidget | None = None
+    ) -> list[tuple[str, QWidget]]:
+        """Return a single configuration tab combining general and plugin-specific settings.
+
+        Overrides the base-class implementation so that command plugins present
+        a single tab rather than separate *General* and plugin-specific tabs.
+        The tab shows the instance-name editor and plugin-type label at the top
+        (from :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._general_config_widget`),
+        followed by a horizontal separator and then the plugin-specific widget
+        returned by :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_widget`.
+
+        Keyword Parameters:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (list[tuple[str, QWidget]]):
+                A one-element list containing ``(self.name, combined_widget)``.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.command import CommandPlugin
+            >>> class _Noop(CommandPlugin):
+            ...     @property
+            ...     def name(self): return "Noop"
+            ...     def execute(self): pass
+            >>> tabs = _Noop().config_tabs()
+            >>> len(tabs)
+            1
+            >>> tabs[0][0]
+            'Noop'
+        """
+        combined = QWidget(parent)
+        layout = QVBoxLayout(combined)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._general_config_widget())
+        separator = QFrame(combined)
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+        layout.addWidget(self.config_widget())
+        layout.addStretch()
+        combined.setLayout(layout)
+        return [(self.name, combined)]
 
     def generate_action_code(
         self,

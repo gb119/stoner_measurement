@@ -254,10 +254,10 @@ class TestDockPanel:
         assert steps[0].instance_name == name_before
 
     def test_name_edit_reverts_in_general_config_widget(self, qapp, monkeypatch):
-        """The General-tab QLineEdit reflects the reverted name after a collision.
+        """The config-tab QLineEdit reflects the reverted name after a collision.
 
-        CommandPlugin uses BasePlugin.config_tabs() which includes the *General*
-        tab with the instance-name editor.  When a collision is detected and
+        :meth:`CommandPlugin.config_tabs` returns a single tab containing the
+        instance-name editor at the top.  When a collision is detected and
         reverted, the instance_name_changed signal must update the QLineEdit.
         """
         from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
@@ -281,11 +281,12 @@ class TestDockPanel:
             lambda *args, **kwargs: None,
         )
 
-        # Build the General config widget so _sync_name_edit is wired up.
+        # Build the config widget so _sync_name_edit is wired up.
         tabs = steps[0].config_tabs()
-        general_widget = next(w for title, w in tabs if title == "General")
+        # Command plugins now have a single combined tab.
+        combined_widget = tabs[0][1]
         from PyQt6.QtWidgets import QLineEdit
-        name_edit = general_widget.findChild(QLineEdit)
+        name_edit = combined_widget.findChild(QLineEdit)
         assert name_edit is not None
 
         # Force collision — should revert and update the QLineEdit via the signal.
