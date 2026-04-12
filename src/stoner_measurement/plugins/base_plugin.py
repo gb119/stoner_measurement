@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 import asteval
 from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
+from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QTextBrowser, QWidget
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -581,6 +581,58 @@ class BasePlugin(ABC):
         label.setParent(parent)
         return label
 
+    def _about_html(self) -> str | None:
+        """Return an HTML string for the *About* tab, or ``None`` to omit the tab.
+
+        The default implementation returns ``None`` so that no *About* tab is
+        shown.  Override in a subclass to provide plugin-specific documentation
+        or instructions rendered in a
+        :class:`~PyQt6.QtWidgets.QTextBrowser`.
+
+        Returns:
+            (str | None):
+                HTML-formatted documentation string, or ``None`` to omit the
+                *About* tab entirely.
+
+        Examples:
+            >>> from stoner_measurement.plugins.base_plugin import BasePlugin
+            >>> class _Minimal(BasePlugin):
+            ...     @property
+            ...     def name(self): return "Minimal"
+            >>> _Minimal()._about_html() is None
+            True
+        """
+        return None
+
+    def _make_about_tab(self) -> tuple[str, QWidget] | None:
+        """Return an *About* tab tuple if :meth:`_about_html` returns content, else ``None``.
+
+        Builds a ``(title, widget)`` pair for the *About* tab using the HTML
+        returned by :meth:`_about_html`.  The widget is a
+        :class:`~PyQt6.QtWidgets.QTextBrowser` pre-loaded with the HTML.
+
+        Returns:
+            (tuple[str, QWidget] | None):
+                ``(tab_title, QTextBrowser)`` when :meth:`_about_html` returns
+                a non-``None`` string; ``None`` when there is no About content.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.base_plugin import BasePlugin
+            >>> class _Minimal(BasePlugin):
+            ...     @property
+            ...     def name(self): return "Minimal"
+            >>> _Minimal()._make_about_tab() is None
+            True
+        """
+        about_html = self._about_html()
+        if about_html is None:
+            return None
+        about_widget = QTextBrowser()
+        about_widget.setHtml(about_html)
+        return (f"{self.name} \u2013 About", about_widget)
+
     def config_tabs(
         self, parent: QWidget | None = None
     ) -> list[tuple[str, QWidget]]:
@@ -588,8 +640,9 @@ class BasePlugin(ABC):
 
         Each pair contributes one tab to the right-hand configuration panel.
         The default implementation wraps :meth:`config_widget` in a list using
-        :attr:`name` as the tab title, and appends a *General* tab containing
-        the instance-name editor.
+        :attr:`name` as the tab title, appends a *General* tab containing
+        the instance-name editor, and optionally appends an *About* tab whose
+        HTML content is provided by :meth:`_about_html`.
 
         Override this method when a plugin needs to contribute more than one
         tab, or when a custom tab title is desired.
@@ -618,10 +671,14 @@ class BasePlugin(ABC):
             >>> tabs[1][0]
             'General'
         """
-        return [
+        tabs = [
             (self.name, self.config_widget(parent=parent)),
             ("General", self._general_config_widget(parent=parent)),
         ]
+        about_tab = self._make_about_tab()
+        if about_tab is not None:
+            tabs.append(about_tab)
+        return tabs
 
     def tooltip(self) -> str:
         """Return a short tooltip description for this plugin.

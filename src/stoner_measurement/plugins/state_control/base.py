@@ -26,7 +26,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QLineEdit,
-    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -658,11 +657,9 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             settings_widget = QWidget()
         tabs.append((f"{self.name} \u2013 Settings", settings_widget))
 
-        about_html = self._about_html()
-        if about_html is not None:
-            about_widget = QTextBrowser()
-            about_widget.setHtml(about_html)
-            tabs.append((f"{self.name} \u2013 About", about_widget))
+        about_tab = self._make_about_tab()
+        if about_tab is not None:
+            tabs.append(about_tab)
 
         self._cached_config_tabs = tabs
         return self._cached_config_tabs
@@ -686,26 +683,6 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_control import CounterPlugin
             >>> CounterPlugin()._plugin_config_tabs() is None
-            True
-        """
-        return None
-
-    def _about_html(self) -> str | None:
-        """Return an HTML string for the *About* tab, or ``None`` to omit the tab.
-
-        The default implementation returns ``None`` so that no *About* tab is
-        shown.  Override in a subclass to provide plugin-specific documentation.
-
-        Returns:
-            (str | None):
-                HTML-formatted documentation string, or ``None`` to omit the
-                *About* tab entirely.
-
-        Examples:
-            >>> from PyQt6.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.state_control import CounterPlugin
-            >>> CounterPlugin()._about_html() is None
             True
         """
         return None
