@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import QLabel, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.plugins.state_control import StateControlPlugin
+from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
 from stoner_measurement.ui.main_window import MainWindow
@@ -569,6 +569,175 @@ class TestDockPanel:
         tabs0 = steps[0].config_tabs()
         tabs1 = steps[1].config_tabs()
         assert tabs0[0][1] is not tabs1[0][1]
+
+    # --- Plugin-list drag-and-drop tests ---
+
+    def test_instrument_list_is_plugin_list_widget(self, plugin_manager):
+        """DockPanel._instrument_list is a _PluginListWidget (drag-enabled)."""
+        from PyQt6.QtWidgets import QAbstractItemView
+
+        from stoner_measurement.ui.dock_panel import _PluginListWidget
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+        assert isinstance(panel._instrument_list, _PluginListWidget)
+        assert panel._instrument_list.dragEnabled()
+        assert (
+            panel._instrument_list.dragDropMode()
+            == QAbstractItemView.DragDropMode.DragOnly
+        )
+
+    def test_plugin_list_mime_data_includes_ep_name(self, plugin_manager):
+        """_PluginListWidget.mimeData includes the custom MIME type with the ep name."""
+        from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+        items = [panel._instrument_list.item(0)]
+        mime = panel._instrument_list.mimeData(items)
+        assert mime.hasFormat(_PLUGIN_EP_MIME_TYPE)
+        ep_name = bytes(mime.data(_PLUGIN_EP_MIME_TYPE)).decode()
+        assert ep_name == "Dummy"
+
+    def test_make_new_step_item_returns_item(self, plugin_manager):
+        """_make_new_step_item creates a QTreeWidgetItem for a valid ep_name."""
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+        item = panel._make_new_step_item("Dummy")
+        assert item is not None
+        step_plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+        assert isinstance(step_plugin, DummyPlugin)
+
+    def test_make_new_step_item_returns_none_for_unknown(self, plugin_manager):
+        """_make_new_step_item returns None for an unregistered entry-point name."""
+        panel = DockPanel(plugin_manager=plugin_manager)
+        assert panel._make_new_step_item("NoSuchPlugin") is None
+
+    def test_make_new_step_item_assigns_unique_name(self, plugin_manager):
+        """Each call to _make_new_step_item assigns a unique instance name."""
+        panel = DockPanel(plugin_manager=plugin_manager)
+        item1 = panel._make_new_step_item("Dummy")
+        assert item1 is not None
+        panel._sequence_tree.addTopLevelItem(item1)
+        item2 = panel._make_new_step_item("Dummy")
+        assert item2 is not None
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+
+        plugin1 = item1.data(0, _PLUGIN_INSTANCE_ROLE)
+        plugin2 = item2.data(0, _PLUGIN_INSTANCE_ROLE)
+        assert plugin1.instance_name != plugin2.instance_name
+
+    def test_sequence_tree_factory_wired(self, plugin_manager):
+        """DockPanel wires _make_new_step_item as the tree's new-item factory."""
+        panel = DockPanel(plugin_manager=plugin_manager)
+        # Bound methods compare equal when they wrap the same function and instance.
+        assert panel._sequence_tree._new_item_factory == panel._make_new_step_item
+
+    def test_set_new_item_factory_can_be_replaced(self, plugin_manager):
+        """set_new_item_factory replaces the factory callable."""
+        panel = DockPanel(plugin_manager=plugin_manager)
+        sentinel = lambda ep: None  # noqa: E731
+        panel._sequence_tree.set_new_item_factory(sentinel)
+        assert panel._sequence_tree._new_item_factory is sentinel
+
+    def test_external_drop_appends_to_empty_tree(self, plugin_manager):
+        """Dropping a plugin onto an empty tree adds a top-level step via the factory."""
+        from PyQt6.QtCore import QMimeData, QPointF, Qt
+        from PyQt6.QtGui import QDropEvent
+
+        from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+        assert panel._sequence_tree.topLevelItemCount() == 0
+
+        mime = QMimeData()
+        mime.setData(_PLUGIN_EP_MIME_TYPE, b"Dummy")
+        # Also add standard list MIME so Qt's internal canDrop returns True.
+        mime.setData("application/x-qabstractitemmodeldatalist", b"")
+
+        event = QDropEvent(
+            QPointF(5, 5),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        panel._sequence_tree._handle_external_plugin_drop(event)
+
+        assert panel._sequence_tree.topLevelItemCount() == 1
+        steps = panel.sequence_steps
+        assert len(steps) == 1
+        assert isinstance(steps[0], DummyPlugin)
+
+    def test_external_drop_ignored_when_no_factory(self, plugin_manager):
+        """_handle_external_plugin_drop ignores the event when no factory is set."""
+        from PyQt6.QtCore import QMimeData, QPointF, Qt
+        from PyQt6.QtGui import QDropEvent
+
+        from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+        panel._sequence_tree.set_new_item_factory(None)
+
+        mime = QMimeData()
+        mime.setData(_PLUGIN_EP_MIME_TYPE, b"Dummy")
+
+        event = QDropEvent(
+            QPointF(5, 5),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        panel._sequence_tree._handle_external_plugin_drop(event)
+
+        assert panel._sequence_tree.topLevelItemCount() == 0
+
+    def test_external_drop_ignored_for_unknown_ep_name(self, plugin_manager):
+        """_handle_external_plugin_drop ignores the event for an unknown ep name."""
+        from PyQt6.QtCore import QMimeData, QPointF, Qt
+        from PyQt6.QtGui import QDropEvent
+
+        from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+
+        mime = QMimeData()
+        mime.setData(_PLUGIN_EP_MIME_TYPE, b"NoSuchPlugin")
+
+        event = QDropEvent(
+            QPointF(5, 5),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        panel._sequence_tree._handle_external_plugin_drop(event)
+
+        assert panel._sequence_tree.topLevelItemCount() == 0
+
+    def test_external_drop_plugin_kept_alive(self, plugin_manager):
+        """Plugins added via external drop are held in _step_plugins (not GC'd)."""
+        from PyQt6.QtCore import QMimeData, QPointF, Qt
+        from PyQt6.QtGui import QDropEvent
+
+        from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
+
+        panel = DockPanel(plugin_manager=plugin_manager)
+
+        mime = QMimeData()
+        mime.setData(_PLUGIN_EP_MIME_TYPE, b"Dummy")
+
+        event = QDropEvent(
+            QPointF(5, 5),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        panel._sequence_tree._handle_external_plugin_drop(event)
+
+        assert len(panel._step_plugins) == 1
+        assert isinstance(panel._step_plugins[0], DummyPlugin)
 
 
         """_SequenceTreeWidget._is_ancestor returns correct values for parent/child/unrelated."""
