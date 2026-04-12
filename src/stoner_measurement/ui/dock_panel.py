@@ -1205,13 +1205,45 @@ class DockPanel(QWidget):
             (_SequenceStep):
                 The same *step* object with adjusted instance names.
         """
+        # Snapshot the current tree names once; the tree does not change
+        # during this adjustment pass, so re-reading it per-recursion is
+        # redundant and wasteful for deeply nested sequences.
         existing = self._current_instance_names()
+        return self._paste_adjust_names_inner(step, allocated, existing)
+
+    def _paste_adjust_names_inner(
+        self,
+        step: _SequenceStep,
+        allocated: set[str],
+        existing: set[str],
+    ) -> _SequenceStep:
+        """Inner recursive worker for :meth:`_paste_adjust_names`.
+
+        Receives the pre-computed *existing* set so it is not re-fetched on
+        every recursive call.
+
+        Args:
+            step (_SequenceStep):
+                The step (or sub-step) whose names to adjust.
+            allocated (set[str]):
+                Set of names already allocated in this paste operation.
+                Updated in place as each name is confirmed.
+            existing (set[str]):
+                Snapshot of instance names already in the tree, taken before
+                the paste operation began.
+
+        Returns:
+            (_SequenceStep):
+                The same *step* object with adjusted instance names.
+        """
         if isinstance(step, tuple):
             plugin, sub_steps = step
             new_name = self._compute_paste_name(plugin.instance_name, existing | allocated)
             plugin.instance_name = new_name
             allocated.add(new_name)
-            new_sub = [self._paste_adjust_names(s, allocated) for s in sub_steps]
+            new_sub = [
+                self._paste_adjust_names_inner(s, allocated, existing) for s in sub_steps
+            ]
             return (plugin, new_sub)
         new_name = self._compute_paste_name(step.instance_name, existing | allocated)
         step.instance_name = new_name

@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMainWindow,
     QMessageBox,
-    QPlainTextEdit,
     QStatusBar,
     QStyle,
     QToolBar,
@@ -511,10 +510,9 @@ class MeasurementApp(QMainWindow):
             self._main_window.dock_panel.cut_selected_step()
         else:
             widget = QApplication.focusWidget()
-            if isinstance(widget, (QPlainTextEdit,)) and not widget.isReadOnly():
-                widget.cut()
-            elif hasattr(widget, "cut"):
-                widget.cut()
+            cut = getattr(widget, "cut", None)
+            if callable(cut):
+                cut()
 
     def _on_copy(self) -> None:
         """Dispatch the Copy action to the appropriate handler for the active tab.
@@ -527,8 +525,9 @@ class MeasurementApp(QMainWindow):
             self._main_window.dock_panel.copy_selected_step()
         else:
             widget = QApplication.focusWidget()
-            if hasattr(widget, "copy"):
-                widget.copy()
+            copy = getattr(widget, "copy", None)
+            if callable(copy):
+                copy()
 
     def _on_paste(self) -> None:
         """Dispatch the Paste action to the appropriate handler for the active tab.
@@ -542,8 +541,9 @@ class MeasurementApp(QMainWindow):
             self._main_window.dock_panel.paste_step()
         else:
             widget = QApplication.focusWidget()
-            if hasattr(widget, "paste"):
-                widget.paste()
+            paste = getattr(widget, "paste", None)
+            if callable(paste):
+                paste()
 
     # ------------------------------------------------------------------
     # Measurement-tab actions
