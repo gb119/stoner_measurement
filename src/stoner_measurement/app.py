@@ -387,7 +387,6 @@ class MeasurementApp(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._act_about)
 
-
     # ------------------------------------------------------------------
     # Toolbar
     # ------------------------------------------------------------------

@@ -107,7 +107,7 @@ class SteppedScanGenerator(BaseScanGenerator):
 
     @stages.setter
     def stages(self, value: list[tuple[float, float, bool]]) -> None:
-        for i, (target, step, _measure) in enumerate(value):
+        for i, (_target, step, _measure) in enumerate(value):
             if step <= 0:
                 raise ValueError(
                     f"Step size must be positive; stage {i} has step={step!r}."

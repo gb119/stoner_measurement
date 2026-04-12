@@ -139,7 +139,7 @@ class LakeshoreProtocol(BaseProtocol):
         return raw.decode("ascii", errors="replace").strip()
 
     def check_error(self, response: str, *, command: str | None = None) -> None:
-        """Raise :exc:`~stoner_measurement.instruments.errors.InstrumentError` if *response* indicates a Lakeshore error.
+        """Raise :exc:`~stoner_measurement.instruments.errors.InstrumentError` if *response* indicates an error.
 
         Some Lakeshore models return ``"?"`` or a ``"?"``-prefixed string for
         unrecognised commands.

@@ -421,4 +421,3 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         var = self.instance_name
         return {f"{var}:{name}": f"{var}.data['{name}']" for name in self.output_value_names}
-

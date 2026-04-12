@@ -253,7 +253,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             reading = self.read()
             self._last_reading = reading
             self.data_available.emit(reading)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             self.read_error.emit(str(exc))
 
     def generate_action_code(
@@ -335,4 +335,3 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         var = self.instance_name
         return {f"{var}:{qty}": f"{var}.last_reading['{qty}']" for qty in self.quantity_names}
-

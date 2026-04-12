@@ -10,10 +10,10 @@ from PyQt6.QtWidgets import QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWi
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget
 
-
 # ---------------------------------------------------------------------------
 # Per-script pane
 # ---------------------------------------------------------------------------
+
 
 class _ScriptPane(QWidget):
     """Single script editor pane with associated file-state tracking.

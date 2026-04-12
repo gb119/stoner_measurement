@@ -358,6 +358,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.collect_filter: str = f"{self.instance_name}.meas_flag"
         self.clear_filter: str = "True"
         self._data: pd.DataFrame = pd.DataFrame()
+        self._cached_config_tabs: list | None = None
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
@@ -566,8 +567,6 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 Serialised plugin dict as produced by :meth:`to_json`.
         """
         if "scan_generator" in data:
-            from stoner_measurement.scan.base import BaseScanGenerator
-
             gen = BaseScanGenerator.from_json(data["scan_generator"], parent=self)
             self.scan_generator = gen
             self.scan_generator_changed.emit()
@@ -651,16 +650,14 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> tabs[1][0]
             'Counter \u2013 Settings'
         """
-        if hasattr(self, "_cached_config_tabs"):
+        if self._cached_config_tabs is not None:
             return self._cached_config_tabs
 
         tabs: list[tuple[str, QWidget]] = [
             (f"{self.name} \u2013 Scan", _StateControlScanPage(self)),
         ]
 
-        settings_widget = self._plugin_config_tabs()
-        if settings_widget is None:
-            settings_widget = QWidget()
+        settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
         tabs.append((f"{self.name} \u2013 Settings", settings_widget))
 
         about_tab = self._make_about_tab()
@@ -1079,4 +1076,3 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         """
         var = self.instance_name
         return {f"{var}:{self.state_name}": f"{var}.value"}
-
