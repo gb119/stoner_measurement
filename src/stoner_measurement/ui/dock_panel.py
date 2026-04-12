@@ -6,15 +6,18 @@ The sequence list is a tree widget that supports drag-and-drop reordering
 and arbitrarily deep sub-sequence nesting for
 :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin` items
 (including :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`),
-enabling multi-dimensional measurement scans.
+enabling multi-dimensional measurement scans.  Plugins may also be dragged
+directly from the *Available sequence commands* list into the sequence tree to
+insert new steps at any position or into a sub-sequence.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QDragMoveEvent, QDropEvent
+from PyQt6.QtCore import QMimeData, Qt, pyqtSignal
+from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QLabel,
@@ -36,6 +39,11 @@ if TYPE_CHECKING:
 
 _EP_NAME_ROLE = Qt.ItemDataRole.UserRole
 _PLUGIN_INSTANCE_ROLE = Qt.ItemDataRole.UserRole + 1
+
+# Custom MIME type used when dragging a plugin entry-point from the available
+# plugins list into the sequence tree.  The payload is the UTF-8–encoded
+# entry-point name (plugin registry key).
+_PLUGIN_EP_MIME_TYPE = "application/x-stoner-plugin-ep"
 
 # Recursive type alias describing one element of the sequence_steps list.
 # A leaf step is a plugin instance; a sequence-plugin step with sub-steps is a
@@ -64,6 +72,60 @@ QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {
 """
 
 
+class _PluginListWidget(QListWidget):
+    """Plugin list widget that supports dragging plugins into the sequence tree.
+
+    Each list item carries both the standard Qt item-model MIME payload (so
+    that the sequence tree's drop-indicator machinery works correctly) and a
+    custom :data:`_PLUGIN_EP_MIME_TYPE` payload carrying the entry-point
+    registry key as a UTF-8–encoded byte string.
+
+    The widget is configured for *drag-only* mode — items may be dragged out
+    but nothing may be dropped onto it.
+
+    Keyword Parameters:
+        parent (QWidget | None):
+            Optional Qt parent widget.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setDragEnabled(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+        self.setDefaultDropAction(Qt.DropAction.CopyAction)
+
+    # ------------------------------------------------------------------
+    # Drag support
+    # ------------------------------------------------------------------
+
+    def mimeData(self, items: list[QListWidgetItem]) -> QMimeData:  # type: ignore[override]
+        """Return MIME data for *items*, adding the plugin entry-point name.
+
+        The ``# type: ignore[override]`` suppresses a mypy error because
+        ``QListWidget.mimeData`` is annotated to return ``Optional[QMimeData]``
+        in some stubs while we always return a concrete ``QMimeData`` instance.
+
+        The standard ``application/x-qabstractitemmodeldatalist`` payload from
+        the base class is preserved so that the sequence tree's Qt-internal
+        drop-indicator code recognises the drag as acceptable and shows the
+        insertion line.  An additional :data:`_PLUGIN_EP_MIME_TYPE` entry
+        carries the entry-point name so that :class:`_SequenceTreeWidget` can
+        look up and instantiate the correct plugin.
+
+        Args:
+            items (list[QListWidgetItem]):
+                The items being dragged (typically a single-element list).
+
+        Returns:
+            (QMimeData):
+                Extended MIME data object.
+        """
+        data = super().mimeData(items)
+        if items:
+            data.setData(_PLUGIN_EP_MIME_TYPE, items[0].text().encode())
+        return data
+
+
 class _SequenceTreeWidget(QTreeWidget):
     """Tree widget for sequence steps with drag-and-drop support.
 
@@ -78,6 +140,10 @@ class _SequenceTreeWidget(QTreeWidget):
       measurement scans.  Nested items are shown with indentation.
     * **Promotion** — drag a sub-step above or below any top-level item to
       move it back up the hierarchy.
+    * **New steps from the plugin list** — drag a plugin from the
+      *Available sequence commands* :class:`_PluginListWidget` and drop it
+      above, below or onto an existing step (or onto the empty area) to
+      insert a brand-new step instance at that position.
 
     :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
     items are displayed in bold to indicate that they may accept nested
@@ -100,6 +166,7 @@ class _SequenceTreeWidget(QTreeWidget):
     ) -> None:
         super().__init__(parent)
         self._plugin_manager = plugin_manager
+        self._new_item_factory: Callable[[str], QTreeWidgetItem | None] | None = None
         self.setHeaderHidden(True)
         self.setRootIsDecorated(True)
         self.setIndentation(20)
@@ -114,6 +181,23 @@ class _SequenceTreeWidget(QTreeWidget):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def set_new_item_factory(
+        self, factory: Callable[[str], QTreeWidgetItem | None] | None
+    ) -> None:
+        """Register *factory* as the callable used to create new tree items.
+
+        The factory is invoked when a plugin is dragged from the
+        *Available sequence commands* list and dropped onto the sequence tree.
+
+        Args:
+            factory (Callable[[str], QTreeWidgetItem | None] | None):
+                A callable that accepts an entry-point name string and returns
+                a newly created :class:`QTreeWidgetItem` ready for insertion,
+                or ``None`` if the plugin cannot be found.  Pass ``None`` to
+                disable plugin-list drops.
+        """
+        self._new_item_factory = factory
 
     @staticmethod
     def _is_sequence_plugin_instance(plugin: BasePlugin) -> bool:
@@ -196,12 +280,51 @@ class _SequenceTreeWidget(QTreeWidget):
     # Drag-and-drop overrides
     # ------------------------------------------------------------------
 
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        """Accept drags from the plugin list as well as internal tree reorders.
+
+        Drops carrying :data:`_PLUGIN_EP_MIME_TYPE` originate from
+        :class:`_PluginListWidget` and represent requests to insert a new
+        plugin instance into the sequence.
+
+        Args:
+            event (QDragEnterEvent):
+                The incoming drag-enter event.
+        """
+        if event.mimeData().hasFormat(_PLUGIN_EP_MIME_TYPE):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        """Reject drops *onto* non-SequencePlugin items or onto descendants."""
+        """Reject drops *onto* non-SequencePlugin items or onto descendants.
+
+        For drops originating from the plugin list (detected via
+        :data:`_PLUGIN_EP_MIME_TYPE`), the ancestor-cycle check is skipped
+        because the dragged item does not yet exist in the tree.
+
+        Args:
+            event (QDragMoveEvent):
+                The incoming drag-move event.
+        """
+        is_external = event.mimeData().hasFormat(_PLUGIN_EP_MIME_TYPE)
         pos_point = event.position().toPoint()
         target = self.itemAt(pos_point)
-        pos = self.dropIndicatorPosition()
 
+        # For external drops call super() first so Qt can update
+        # dropIndicatorPosition() before we read it.
+        if is_external:
+            super().dragMoveEvent(event)
+            pos = self.dropIndicatorPosition()
+            if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
+                target_plugin = target.data(0, _PLUGIN_INSTANCE_ROLE)
+                if not self._is_sequence_plugin_instance(target_plugin):
+                    event.ignore()
+                    return
+            event.acceptProposedAction()
+            return
+
+        pos = self.dropIndicatorPosition()
         if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem:
             # Only SequencePlugin items may accept children.
             target_plugin = target.data(0, _PLUGIN_INSTANCE_ROLE)
@@ -217,7 +340,22 @@ class _SequenceTreeWidget(QTreeWidget):
         super().dragMoveEvent(event)
 
     def dropEvent(self, event: QDropEvent) -> None:
-        """Handle reorder and nest-as-sub-step drops."""
+        """Handle reorder, nest-as-sub-step, and new-plugin drops.
+
+        Drops carrying :data:`_PLUGIN_EP_MIME_TYPE` create a new plugin
+        instance at the drop position.  All other drops are internal
+        reorder/nesting moves.
+
+        Args:
+            event (QDropEvent):
+                The incoming drop event.
+        """
+        # -- External drop: new plugin from the available-plugins list --
+        if event.mimeData().hasFormat(_PLUGIN_EP_MIME_TYPE):
+            self._handle_external_plugin_drop(event)
+            return
+
+        # -- Internal drop: reorder or nest existing tree items --
         pos_point = event.position().toPoint()
         target = self.itemAt(pos_point)
         pos = self.dropIndicatorPosition()
@@ -293,6 +431,69 @@ class _SequenceTreeWidget(QTreeWidget):
         event.setDropAction(Qt.DropAction.CopyAction)
         event.accept()
 
+    def _handle_external_plugin_drop(self, event: QDropEvent) -> None:
+        """Insert a brand-new plugin step at the location indicated by *event*.
+
+        Called from :meth:`dropEvent` when the MIME data carries
+        :data:`_PLUGIN_EP_MIME_TYPE`, indicating that the user dragged a
+        plugin from the *Available sequence commands* list.
+
+        A new plugin instance is created via :attr:`_new_item_factory`.  If no
+        factory has been registered the event is ignored.
+
+        Args:
+            event (QDropEvent):
+                The incoming drop event; must contain :data:`_PLUGIN_EP_MIME_TYPE`.
+        """
+        if self._new_item_factory is None:
+            event.ignore()
+            return
+
+        ep_name = bytes(event.mimeData().data(_PLUGIN_EP_MIME_TYPE)).decode()
+        new_item = self._new_item_factory(ep_name)
+        if new_item is None:
+            event.ignore()
+            return
+
+        pos_point = event.position().toPoint()
+        target = self.itemAt(pos_point)
+        pos = self.dropIndicatorPosition()
+
+        if target is None:
+            self.addTopLevelItem(new_item)
+        elif pos == QAbstractItemView.DropIndicatorPosition.OnItem:
+            target_plugin = target.data(0, _PLUGIN_INSTANCE_ROLE)
+            if not self._is_sequence_plugin_instance(target_plugin):
+                event.ignore()
+                return
+            target.addChild(new_item)
+            target.setExpanded(True)
+        elif pos == QAbstractItemView.DropIndicatorPosition.AboveItem:
+            target_parent = target.parent()
+            idx = (
+                target_parent.indexOfChild(target)
+                if target_parent is not None
+                else self.indexOfTopLevelItem(target)
+            )
+            if target_parent is not None:
+                target_parent.insertChild(idx, new_item)
+            else:
+                self.insertTopLevelItem(idx, new_item)
+        else:  # BelowItem or OnViewport with non-None target
+            target_parent = target.parent()
+            idx = (
+                target_parent.indexOfChild(target)
+                if target_parent is not None
+                else self.indexOfTopLevelItem(target)
+            )
+            if target_parent is not None:
+                target_parent.insertChild(idx + 1, new_item)
+            else:
+                self.insertTopLevelItem(idx + 1, new_item)
+
+        self.setCurrentItem(new_item)
+        event.acceptProposedAction()
+
 
 class DockPanel(QWidget):
     """Left panel containing instrument, sequence controls, and monitoring widgets.
@@ -318,6 +519,11 @@ class DockPanel(QWidget):
       dragging one sequence-plugin step onto another, enabling multi-dimensional
       measurement scans at arbitrary depth.
     * Drag a sub-step to the top level to promote it.
+    * Drag a plugin from the *Available sequence commands* list and drop it
+      above, below, or onto any existing step (or onto the empty area below all
+      steps) to insert a brand-new step instance at that position.  Dropping
+      onto a :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
+      item adds the new step as the last child of that sub-sequence.
 
     Attributes:
         sequence_steps (list[_SequenceStep]):
@@ -379,7 +585,7 @@ class DockPanel(QWidget):
         self._instrument_filter.setPlaceholderText("Filter plugins...")
         self._instrument_filter.setClearButtonEnabled(True)
         layout.addWidget(self._instrument_filter)
-        self._instrument_list = QListWidget()
+        self._instrument_list = _PluginListWidget()
         self._instrument_list.setObjectName("instrumentList")
         layout.addWidget(self._instrument_list)
 
@@ -388,6 +594,8 @@ class DockPanel(QWidget):
         self._sequence_tree = _SequenceTreeWidget(plugin_manager=plugin_manager)
         self._sequence_tree.setObjectName("sequenceTree")
         layout.addWidget(self._sequence_tree)
+        # Wire the factory so that plugin-list drops create new step items.
+        self._sequence_tree.set_new_item_factory(self._make_new_step_item)
 
         # --- Control buttons ---
         self._add_step_btn = QPushButton("Add Step")
@@ -492,22 +700,41 @@ class DockPanel(QWidget):
     def _add_step(self) -> None:
         """Add the selected instrument as a top-level sequence step.
 
-        Each invocation creates a **new** plugin instance from the selected
-        plugin's class so that multiple steps of the same plugin type each have
-        independent configuration.  The new instance is assigned a unique
-        ``instance_name`` (e.g. ``counter``, ``counter_2``, ``counter_3`` …).
-
-        Uniqueness is guaranteed by scanning all instance names that are
-        currently in the sequence tree, so the generated name will not collide
-        even when earlier steps have been manually renamed or removed.
+        Delegates to :meth:`_make_new_step_item` to create the item, then
+        appends it at the top level of the sequence tree.
         """
         current = self._instrument_list.currentItem()
         if current is None:
             return
-        ep_name = current.text()
+        item = self._make_new_step_item(current.text())
+        if item is None:
+            return
+        self._sequence_tree.addTopLevelItem(item)
+
+    def _make_new_step_item(self, ep_name: str) -> QTreeWidgetItem | None:
+        """Create a new sequence-step tree item for the plugin *ep_name*.
+
+        A fresh plugin instance is created from the registered class, assigned
+        a unique :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.instance_name`
+        (e.g. ``counter``, ``counter_2``, ``counter_3`` …), wired to the
+        rename-validation handler, and kept alive in :attr:`_step_plugins`.
+
+        This method is used both by :meth:`_add_step` (button / double-click)
+        and by :class:`_SequenceTreeWidget`'s drop handler when a plugin is
+        dragged from the *Available sequence commands* list.
+
+        Args:
+            ep_name (str):
+                Entry-point registry key identifying the plugin to instantiate.
+
+        Returns:
+            (QTreeWidgetItem | None):
+                A new tree item ready for insertion into the sequence tree, or
+                ``None`` if *ep_name* is not found in the plugin manager.
+        """
         base_plugin = self._plugin_manager.plugins.get(ep_name)
         if base_plugin is None:
-            return
+            return None
 
         # Create a new, independent instance of the same plugin class.
         new_plugin: BasePlugin = type(base_plugin)()
@@ -528,8 +755,7 @@ class DockPanel(QWidget):
         self._step_plugins.append(new_plugin)
 
         text = f"{new_plugin.instance_name} ({new_plugin.name})"
-        item = self._sequence_tree.make_item(new_plugin, text, ep_name=ep_name)
-        self._sequence_tree.addTopLevelItem(item)
+        return self._sequence_tree.make_item(new_plugin, text, ep_name=ep_name)
 
     def _remove_step(self) -> None:
         """Remove the currently selected sequence step (or sub-step)."""
