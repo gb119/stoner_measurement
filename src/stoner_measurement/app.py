@@ -303,6 +303,19 @@ class MeasurementApp(QMainWindow):
         )
         self._act_generate.triggered.connect(self._on_load_to_editor)
 
+        # Edit actions
+        self._act_cut = QAction("Cu&t", self)
+        self._act_cut.setShortcut(QKeySequence.StandardKey.Cut)
+        self._act_cut.triggered.connect(self._on_cut)
+
+        self._act_copy = QAction("&Copy", self)
+        self._act_copy.setShortcut(QKeySequence.StandardKey.Copy)
+        self._act_copy.triggered.connect(self._on_copy)
+
+        self._act_paste = QAction("&Paste", self)
+        self._act_paste.setShortcut(QKeySequence.StandardKey.Paste)
+        self._act_paste.triggered.connect(self._on_paste)
+
         # View actions
         self._act_view_measurement = QAction("&Measurement", self)
         self._act_view_measurement.setStatusTip("Switch to the Measurement tab")
@@ -349,6 +362,12 @@ class MeasurementApp(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction(self._act_exit)
 
+        # Edit menu
+        edit_menu = menu_bar.addMenu("&Edit")
+        edit_menu.addAction(self._act_cut)
+        edit_menu.addAction(self._act_copy)
+        edit_menu.addAction(self._act_paste)
+
         # Sequence menu
         seq_menu = menu_bar.addMenu("&Sequence")
         seq_menu.addAction(self._act_run)
@@ -367,6 +386,7 @@ class MeasurementApp(QMainWindow):
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._act_about)
+
 
     # ------------------------------------------------------------------
     # Toolbar
@@ -418,6 +438,12 @@ class MeasurementApp(QMainWindow):
                 "Render the current sequence steps as Python code in the editor"
                 " (without switching tabs)"
             )
+            self._act_cut.setText("Cu&t Step")
+            self._act_cut.setStatusTip("Cut the selected sequence step to the clipboard")
+            self._act_copy.setText("&Copy Step")
+            self._act_copy.setStatusTip("Copy the selected sequence step to the clipboard")
+            self._act_paste.setText("&Paste Step")
+            self._act_paste.setStatusTip("Paste the sequence step from the clipboard")
         elif index == self._TAB_EDITOR:
             self._act_new.setText("&New Script")
             self._act_new.setStatusTip("Clear the sequence editor and start a new script")
@@ -431,6 +457,12 @@ class MeasurementApp(QMainWindow):
             self._act_generate.setStatusTip(
                 "Render the current sequence steps as Python code in the editor"
             )
+            self._act_cut.setText("Cu&t")
+            self._act_cut.setStatusTip("Cut the selected text")
+            self._act_copy.setText("&Copy")
+            self._act_copy.setStatusTip("Copy the selected text")
+            self._act_paste.setText("&Paste")
+            self._act_paste.setStatusTip("Paste text from the clipboard")
 
     # ------------------------------------------------------------------
     # Dispatcher — delegates to the correct handler for the active tab
@@ -465,6 +497,53 @@ class MeasurementApp(QMainWindow):
             self._on_save_as_measurement()
         elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
             self._on_save_as_script()
+
+    def _on_cut(self) -> None:
+        """Dispatch the Cut action to the appropriate handler for the active tab.
+
+        On the *Measurement* tab the selected sequence step is cut to the
+        internal JSON clipboard.  On the *Script Editor* tab, the standard
+        ``cut()`` method is called on whichever focusable text widget currently
+        has keyboard focus (i.e. the script editor or the REPL command line).
+        """
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._main_window.dock_panel.cut_selected_step()
+        else:
+            widget = QApplication.focusWidget()
+            cut = getattr(widget, "cut", None)
+            if callable(cut):
+                cut()
+
+    def _on_copy(self) -> None:
+        """Dispatch the Copy action to the appropriate handler for the active tab.
+
+        On the *Measurement* tab the selected sequence step is copied to the
+        internal JSON clipboard.  On the *Script Editor* tab, the standard
+        ``copy()`` method is called on the focused text widget.
+        """
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._main_window.dock_panel.copy_selected_step()
+        else:
+            widget = QApplication.focusWidget()
+            copy = getattr(widget, "copy", None)
+            if callable(copy):
+                copy()
+
+    def _on_paste(self) -> None:
+        """Dispatch the Paste action to the appropriate handler for the active tab.
+
+        On the *Measurement* tab the step stored in the internal JSON clipboard
+        is inserted into the sequence tree after the currently selected item.
+        On the *Script Editor* tab, the standard ``paste()`` method is called
+        on the focused text widget.
+        """
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._main_window.dock_panel.paste_step()
+        else:
+            widget = QApplication.focusWidget()
+            paste = getattr(widget, "paste", None)
+            if callable(paste):
+                paste()
 
     # ------------------------------------------------------------------
     # Measurement-tab actions
