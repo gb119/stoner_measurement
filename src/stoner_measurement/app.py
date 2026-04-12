@@ -452,6 +452,7 @@ class MeasurementApp(QMainWindow):
 
     def _on_save(self) -> None:
         """Dispatch the Save action to the appropriate handler for the active tab."""
+        self._main_window.config_panel.commit_pending_changes()
         if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
             self._on_save_measurement()
         elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
@@ -459,6 +460,7 @@ class MeasurementApp(QMainWindow):
 
     def _on_save_as(self) -> None:
         """Dispatch the Save As action to the appropriate handler for the active tab."""
+        self._main_window.config_panel.commit_pending_changes()
         if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
             self._on_save_as_measurement()
         elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
@@ -652,6 +654,7 @@ class MeasurementApp(QMainWindow):
         converted to a script first and executed without switching away from
         the Measurement tab.
         """
+        self._main_window.config_panel.commit_pending_changes()
         if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
             self._on_run_from_measurement()
         else:
@@ -709,6 +712,7 @@ class MeasurementApp(QMainWindow):
         background without switching away from the Measurement tab.  When called
         from the *Script Editor* tab the editor tab is brought to the front.
         """
+        self._main_window.config_panel.commit_pending_changes()
         on_measurement = self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT
         self._generate_to_script_tab(switch_to_editor=not on_measurement)
 
