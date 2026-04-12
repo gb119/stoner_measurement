@@ -42,7 +42,7 @@ def _flatten_to_metadata(obj: Any, prefix: str = "") -> list[str]:
 
     Examples:
         >>> _flatten_to_metadata({"a": {"b": 1}, "c": [{"A": 2.0}, {"B": 4}]})
-        ["a.b{int}=1", "c[0].A{float}=2.0", "c[1].B{int}=4"]
+        ['a.b{int}=1', 'c[0].A{float}=2.0', 'c[1].B{int}=4']
         >>> _flatten_to_metadata(42, "x")
         ['x{int}=42']
         >>> _flatten_to_metadata("hello", "s")
@@ -227,8 +227,8 @@ class SaveCommand(CommandPlugin):
             try:
                 val = self.eval(expr)
                 metadata.extend(_flatten_to_metadata(val, key))
-            except Exception:  # noqa: BLE001
-                pass  # Skip values that cannot be evaluated at this point.
+            except Exception as exc:  # noqa: BLE001
+                self.log.debug("Failed to evaluate value %r: %s", key, exc)
 
         # ------------------------------------------------------------------
         # Build trace-data columns.
@@ -247,8 +247,8 @@ class SaveCommand(CommandPlugin):
                     label = (trace_data.names or {}).get(channel_attr) or channel_attr
                     units = (trace_data.units or {}).get(channel_attr, "")
                     columns.append((f"{trace_key}:{label} ({units})", arr))
-            except Exception:  # noqa: BLE001
-                pass  # Skip traces that cannot be evaluated.
+            except Exception as exc:  # noqa: BLE001
+                self.log.debug("Failed to evaluate trace %r: %s", trace_key, exc)
 
         # ------------------------------------------------------------------
         # Assemble and write the TDI Format 2.0 table.

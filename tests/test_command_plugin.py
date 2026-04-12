@@ -106,8 +106,6 @@ class TestCommandPlugin:
 
     def test_execute_called_via_sequence(self, qapp, engine):
         """CommandPlugin.execute() is called when the sequence script runs."""
-
-
         p = _Noop()
         p.executed = []
         engine.add_plugin("noop", p)
