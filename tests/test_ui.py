@@ -941,6 +941,32 @@ class TestPlotWidget:
         assert widget._pg_widget.getPlotItem().getAxis("bottom").labelText == original_bottom
         assert widget._pg_widget.getPlotItem().getAxis("left").labelText == original_left
 
+    def test_legend_exists_after_init(self, qapp):
+        widget = PlotWidget()
+        assert widget._legend is not None
+
+    def test_legend_has_entry_after_trace_created(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("my_trace", 1.0, 2.0)
+        legend_items = widget._legend.items
+        labels = [item[1].text for item in legend_items]
+        assert "my_trace" in labels
+
+    def test_legend_entry_removed_on_remove_trace(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("my_trace", 1.0, 2.0)
+        widget.remove_trace("my_trace")
+        legend_items = widget._legend.items
+        labels = [item[1].text for item in legend_items]
+        assert "my_trace" not in labels
+
+    def test_legend_cleared_on_clear_all(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("a", 1.0, 2.0)
+        widget.append_point("b", 3.0, 4.0)
+        widget.clear_all()
+        assert widget._legend.items == []
+
 
 class TestConfigPanel:
     def test_creates_widget(self, plugin_manager):

@@ -1,5 +1,5 @@
 """Tests for CommandPlugin, SaveCommand, PlotTraceCommand, WaitCommand,
-StatusCommand, and AlertCommand."""
+StatusCommand, AlertCommand, PlotPointsCommand, and PlotClearCommand."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ import pytest
 from stoner_measurement.plugins.command import (
     AlertCommand,
     CommandPlugin,
+    PlotClearCommand,
+    PlotPointsCommand,
     PlotTraceCommand,
     SaveCommand,
     StatusCommand,
@@ -1633,3 +1635,265 @@ class TestDetailsCommand:
         from stoner_measurement.plugins.command.details import DetailsCommand
 
         assert DetailsCommand().reported_values() == {}
+
+
+# ---------------------------------------------------------------------------
+# PlotClearCommand
+# ---------------------------------------------------------------------------
+
+
+class TestPlotClearCommand:
+    def test_name(self, qapp):
+        assert PlotClearCommand().name == "Plot Clear"
+
+    def test_plugin_type(self, qapp):
+        assert PlotClearCommand().plugin_type == "command"
+
+    def test_has_lifecycle_false(self, qapp):
+        assert PlotClearCommand().has_lifecycle is False
+
+    def test_config_widget_returns_widget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+
+        assert isinstance(PlotClearCommand().config_widget(), QWidget)
+
+    def test_execute_emits_plot_clear_signal(self, qapp, engine):
+        cmd = PlotClearCommand()
+        engine.add_plugin("plot_clear", cmd)
+        cleared = []
+        cmd.plot_clear.connect(lambda: cleared.append(True))
+        cmd.execute()
+        assert cleared == [True]
+
+    def test_execute_emits_once_per_call(self, qapp, engine):
+        cmd = PlotClearCommand()
+        engine.add_plugin("plot_clear", cmd)
+        count = []
+        cmd.plot_clear.connect(lambda: count.append(1))
+        cmd.execute()
+        cmd.execute()
+        assert len(count) == 2
+
+    def test_generate_action_code(self, qapp):
+        cmd = PlotClearCommand()
+        lines = cmd.generate_action_code(1, [], lambda s, i: [])
+        assert lines[0] == "    plot_clear()"
+
+    def test_reported_traces_empty(self, qapp):
+        assert PlotClearCommand().reported_traces() == {}
+
+    def test_reported_values_empty(self, qapp):
+        assert PlotClearCommand().reported_values() == {}
+
+    def test_to_json_type_field(self, qapp):
+        d = PlotClearCommand().to_json()
+        assert d["type"] == "command"
+
+    def test_restore_from_json_round_trip(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        cmd = PlotClearCommand()
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, PlotClearCommand)
+
+    def test_sequence_engine_wires_to_plot_widget(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+        cmd = PlotClearCommand()
+        engine.add_plugin("plot_clear", cmd)
+        # After attach, signal should be connected — appending then clearing
+        # should result in no traces.
+        pw.append_point("trace_a", 1.0, 2.0)
+        assert "trace_a" in pw.trace_names
+        cmd.execute()
+        assert pw.trace_names == []
+
+    def test_sequence_engine_disconnects_on_detach(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+        cmd = PlotClearCommand()
+        engine.add_plugin("plot_clear", cmd)
+        # Detach
+        cmd.sequence_engine = None
+        # Now execute should not reach the plot widget
+        pw.append_point("trace_b", 1.0, 2.0)
+        cmd.execute()  # should not raise; plot_clear emitted but not connected to pw
+        assert "trace_b" in pw.trace_names
+
+
+# ---------------------------------------------------------------------------
+# PlotPointsCommand
+# ---------------------------------------------------------------------------
+
+
+class TestPlotPointsCommand:
+    def test_name(self, qapp):
+        assert PlotPointsCommand().name == "Plot Points"
+
+    def test_plugin_type(self, qapp):
+        assert PlotPointsCommand().plugin_type == "command"
+
+    def test_has_lifecycle_false(self, qapp):
+        assert PlotPointsCommand().has_lifecycle is False
+
+    def test_default_attributes(self, qapp):
+        cmd = PlotPointsCommand()
+        assert cmd.x_key == ""
+        assert cmd.y_entries == []
+
+    def test_to_json_includes_fields(self, qapp):
+        cmd = PlotPointsCommand()
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
+        d = cmd.to_json()
+        assert d["type"] == "command"
+        assert d["x_key"] == "p:x"
+        assert d["y_entries"] == [{"key": "p:y", "label": "My Y"}]
+
+    def test_restore_from_json_round_trip(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        cmd = PlotPointsCommand()
+        cmd.x_key = "sensor:temp"
+        cmd.y_entries = [{"key": "sensor:voltage", "label": "Voltage (V)"}]
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, PlotPointsCommand)
+        assert restored.x_key == "sensor:temp"
+        assert restored.y_entries == [{"key": "sensor:voltage", "label": "Voltage (V)"}]
+
+    def test_config_widget_returns_widget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+
+        assert isinstance(PlotPointsCommand().config_widget(), QWidget)
+
+    def test_config_widget_has_x_combo(self, qapp, engine):
+        from PyQt6.QtWidgets import QComboBox
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        widget = cmd.config_widget()
+        combos = widget.findChildren(QComboBox)
+        assert len(combos) >= 1
+
+    def test_execute_emits_plot_point_for_each_y_series(self, qapp, engine):
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x_val", "p:y0": "p_y0_val", "p:y1": "p_y1_val"}
+        engine._namespace["p_x_val"] = 3.0
+        engine._namespace["p_y0_val"] = 10.0
+        engine._namespace["p_y1_val"] = 20.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [
+            {"key": "p:y0", "label": "Series 0"},
+            {"key": "p:y1", "label": "Series 1"},
+        ]
+        received: list[tuple] = []
+        cmd.plot_point.connect(lambda lbl, x, y: received.append((lbl, x, y)))
+        cmd.execute()
+        assert len(received) == 2
+        assert received[0] == ("Series 0", 3.0, 10.0)
+        assert received[1] == ("Series 1", 3.0, 20.0)
+
+    def test_execute_skips_missing_x_key(self, qapp, engine):
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {}
+        cmd.x_key = "missing:x"
+        cmd.y_entries = [{"key": "p:y", "label": "Y"}]
+        received: list = []
+        cmd.plot_point.connect(lambda _l, _x, _y: received.append(1))
+        cmd.execute()
+        assert received == []
+
+    def test_execute_skips_when_x_key_empty(self, qapp, engine):
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "1.0"}
+        cmd.x_key = ""
+        received: list = []
+        cmd.plot_point.connect(lambda _l, _x, _y: received.append(1))
+        cmd.execute()
+        assert received == []
+
+    def test_execute_skips_when_no_y_entries(self, qapp, engine):
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "1.0"}
+        engine._namespace["1.0"] = 1.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = []
+        received: list = []
+        cmd.plot_point.connect(lambda _l, _x, _y: received.append(1))
+        cmd.execute()
+        assert received == []
+
+    def test_execute_skips_missing_y_key(self, qapp, engine):
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x_val"}
+        engine._namespace["p_x_val"] = 1.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y_missing", "label": "Y"}]
+        received: list = []
+        cmd.plot_point.connect(lambda _l, _x, _y: received.append(1))
+        cmd.execute()
+        assert received == []
+
+    def test_execute_skips_when_detached_no_values(self, qapp):
+        cmd = PlotPointsCommand()
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "Y"}]
+        # When detached, engine_namespace returns {} so _values is empty
+        received: list = []
+        cmd.plot_point.connect(lambda _l, _x, _y: received.append(1))
+        cmd.execute()
+        assert received == []
+
+    def test_generate_action_code(self, qapp):
+        cmd = PlotPointsCommand()
+        lines = cmd.generate_action_code(1, [], lambda s, i: [])
+        assert lines[0] == "    plot_points()"
+
+    def test_reported_traces_empty(self, qapp):
+        assert PlotPointsCommand().reported_traces() == {}
+
+    def test_reported_values_empty(self, qapp):
+        assert PlotPointsCommand().reported_values() == {}
+
+    def test_sequence_engine_wires_to_plot_widget(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
+        cmd.execute()
+        assert pw.x_data("My Y") == [1.0]
+        assert pw.y_data("My Y") == [5.0]
+
+    def test_sequence_engine_disconnects_on_detach(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
+        # Detach
+        cmd.sequence_engine = None
+        cmd.execute()  # should not raise; plot_point emitted but not connected to pw
+        assert pw.trace_names == []
