@@ -5,6 +5,10 @@ function supplied as Python source code.  Parameter names, bounds, and initial
 values are configured via the UI.  Fitted parameter values and their
 uncertainties (sqrt of covariance matrix diagonal) are reported as plugin
 outputs.
+
+Notes:
+    The fit-function code entered by the user is executed with Python's built-in
+    :func:`exec`.  Only load and run configuration files from trusted sources.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ import textwrap
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -142,7 +146,11 @@ class _ParamTableWidget(QWidget):
         param_settings (dict[str, dict[str, float | None]]):
             Mapping of parameter name → ``{"min": …, "initial": …, "max": …}``.
             ``None`` means the value was not specified by the user.
+        settings_changed (pyqtSignal):
+            Emitted whenever the user edits a cell in the table.
     """
+
+    settings_changed = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialise the parameter table."""
@@ -167,6 +175,7 @@ class _ParamTableWidget(QWidget):
             "Leave Min/Initial/Max blank to use defaults.\n"
             "Min/Max constrain the curve fit; Initial sets p0."
         )
+        self._table.itemChanged.connect(self.settings_changed)
         layout.addWidget(self._table)
 
         note = QLabel(
@@ -866,7 +875,7 @@ class CurveFitPlugin(TransformPlugin):
         def _on_table_changed() -> None:
             self.param_settings.update(param_widget.read_settings())
 
-        param_widget._table.itemChanged.connect(_on_table_changed)  # noqa: SLF001
+        param_widget.settings_changed.connect(_on_table_changed)
 
         return fit_widget, param_widget
 
