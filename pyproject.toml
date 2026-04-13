@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "asteval>=1.0",
+    "black>=24.1",
     "pandas>=2.0",
     "PyQt6>=6.7",
     "pyqtgraph>=0.13",
