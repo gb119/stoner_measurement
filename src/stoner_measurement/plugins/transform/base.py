@@ -300,13 +300,40 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         self.transform_complete.emit(result)
         return result
 
+    @property
+    def has_lifecycle(self) -> bool:
+        """Transform plugins have no instrument lifecycle.
+
+        Returns:
+            (bool):
+                Always ``False``.  The sequence engine therefore omits
+                ``connect()``, ``configure()``, and ``disconnect()`` calls
+                for transform plugins when generating sequence code.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.transform import TransformPlugin
+            >>> class _T(TransformPlugin):
+            ...     @property
+            ...     def name(self): return "T"
+            ...     @property
+            ...     def required_inputs(self): return []
+            ...     @property
+            ...     def output_names(self): return []
+            ...     def transform(self, data): return {}
+            >>> _T().has_lifecycle
+            False
+        """
+        return False
+
     def generate_action_code(
         self,
         indent: int,
         sub_steps: list,
         render_sub_step: Callable,
     ) -> list[str]:
-        """Return a commented action stub for this transform plugin.
+        """Return action code lines that run this transform plugin.
 
         Args:
             indent (int):
@@ -318,7 +345,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
         Returns:
             (list[str]):
-                A single commented-out ``run(data)`` call.
+                Lines calling ``run({})`` on the plugin instance.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -334,13 +361,13 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             ...     def transform(self, data): return {}
             >>> t = _T()
             >>> lines = t.generate_action_code(1, [], lambda s, i: [])
-            >>> "# result = t.run(data)" in lines
+            >>> "    t.run({})" in lines
             True
         """
         prefix = "    " * indent
         var_name = self.instance_name
         return [
-            f"{prefix}# result = {var_name}.run(data)",
+            f"{prefix}{var_name}.run({{}})",
             "",
         ]
 
