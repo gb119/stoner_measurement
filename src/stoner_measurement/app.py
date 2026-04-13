@@ -22,6 +22,12 @@ from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.ui.icons import make_generate_icon, make_log_icon
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
+from stoner_measurement.ui.settings_dialog import (
+    KEY_DEFAULT_DATA_DIR,
+    KEY_DEFAULT_SEQUENCE_TEMPLATE,
+    SettingsDialog,
+    make_app_settings,
+)
 
 
 class MeasurementApp(QMainWindow):
@@ -108,6 +114,9 @@ class MeasurementApp(QMainWindow):
 
         # Discover plugins (emits plugins_changed → _on_plugins_changed) ------
         self._plugin_manager.discover()
+
+        # Load the template sequence (or empty sequence if none configured) ----
+        self._load_template_sequence()
 
     # ------------------------------------------------------------------
     # Plugin synchronisation
@@ -316,6 +325,12 @@ class MeasurementApp(QMainWindow):
         self._act_paste.setShortcut(QKeySequence.StandardKey.Paste)
         self._act_paste.triggered.connect(self._on_paste)
 
+        self._act_settings = QAction("&Preferences…", self)
+        self._act_settings.setShortcut(QKeySequence.StandardKey.Preferences)
+        self._act_settings.setStatusTip("Configure application preferences")
+        self._act_settings.setMenuRole(QAction.MenuRole.PreferencesRole)
+        self._act_settings.triggered.connect(self._on_settings)
+
         # View actions
         self._act_view_measurement = QAction("&Measurement", self)
         self._act_view_measurement.setStatusTip("Switch to the Measurement tab")
@@ -367,6 +382,8 @@ class MeasurementApp(QMainWindow):
         edit_menu.addAction(self._act_cut)
         edit_menu.addAction(self._act_copy)
         edit_menu.addAction(self._act_paste)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self._act_settings)
 
         # Sequence menu
         seq_menu = menu_bar.addMenu("&Sequence")
@@ -548,13 +565,40 @@ class MeasurementApp(QMainWindow):
     # Measurement-tab actions
     # ------------------------------------------------------------------
 
+    def _load_template_sequence(self) -> None:
+        """Load the default sequence template, or an empty sequence if none is set.
+
+        Reads the ``app/default_sequence_template`` setting from the application
+        preferences INI file.  If the path is non-empty and the file exists the
+        sequence is deserialised and loaded into the dock panel.  In all other
+        cases (no path configured, file missing, or parse error) an empty
+        sequence is loaded instead.
+        """
+        from stoner_measurement.core.serializer import sequence_from_json
+
+        settings = make_app_settings()
+        template_str = settings.value(KEY_DEFAULT_SEQUENCE_TEMPLATE, "", type=str)
+        if template_str:
+            template_path = Path(template_str)
+            if template_path.exists():
+                try:
+                    data = json.loads(template_path.read_text(encoding="utf-8"))
+                    steps = sequence_from_json(data)
+                    self._main_window.dock_panel.load_sequence(steps)
+                    return
+                except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError):
+                    pass
+        self._main_window.dock_panel.load_sequence([])
+
     def _on_new_measurement(self) -> None:
         """Clear the measurement sequence and start a new one.
 
         Asks the user to confirm discarding the current sequence, then clears
-        the sequence tree and resets the current file path.
+        the sequence tree and resets the current file path.  If a default
+        sequence template is configured in the application preferences and the
+        file exists, that template is loaded instead of an empty sequence.
         """
-        self._main_window.dock_panel.load_sequence([])
+        self._load_template_sequence()
         self._current_measurement_path = None
         self._update_window_title()
 
@@ -571,7 +615,7 @@ class MeasurementApp(QMainWindow):
         start_dir = (
             str(self._current_measurement_path.parent)
             if self._current_measurement_path
-            else ""
+            else make_app_settings().value(KEY_DEFAULT_DATA_DIR, "", type=str)
         )
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -617,7 +661,7 @@ class MeasurementApp(QMainWindow):
         start_dir = (
             str(self._current_measurement_path.parent)
             if self._current_measurement_path
-            else ""
+            else make_app_settings().value(KEY_DEFAULT_DATA_DIR, "", type=str)
         )
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -674,7 +718,11 @@ class MeasurementApp(QMainWindow):
     def _on_open_script(self) -> None:
         """Prompt the user to open a Python sequence file in a new tab."""
         pane = self._main_window.script_tab.current_pane()
-        start_dir = str(pane.path.parent) if pane and pane.path else ""
+        start_dir = (
+            str(pane.path.parent)
+            if pane and pane.path
+            else make_app_settings().value(KEY_DEFAULT_DATA_DIR, "", type=str)
+        )
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Sequence Script",
@@ -700,7 +748,13 @@ class MeasurementApp(QMainWindow):
     def _on_save_as_script(self) -> None:
         """Prompt the user for a save path and write the active tab's editor contents."""
         pane = self._main_window.script_tab.current_pane()
-        start = str(pane.path) if pane and pane.path else "sequence.py"
+        default_dir = make_app_settings().value(KEY_DEFAULT_DATA_DIR, "", type=str)
+        if pane and pane.path:
+            start = str(pane.path)
+        elif default_dir:
+            start = str(Path(default_dir) / "sequence.py")
+        else:
+            start = "sequence.py"
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Script",
@@ -869,6 +923,11 @@ class MeasurementApp(QMainWindow):
             "scientific instruments via USB, Serial, GPIB and Ethernet.<br/><br/>"
             "© University of Leeds",
         )
+
+    def _on_settings(self) -> None:
+        """Open the Preferences dialogue."""
+        dlg = SettingsDialog(parent=self)
+        dlg.exec()
 
     def _on_show_log(self) -> None:
         """Show the log viewer window, bringing it to the front if already open."""
