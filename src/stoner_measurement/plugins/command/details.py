@@ -197,7 +197,17 @@ class DetailsCommand(CommandPlugin):
         inst = self.instance_name
 
         def _quoted(value: str) -> str:
-            """Return *value* as a Python string literal, escaping backslashes and quotes."""
+            """Return *value* as a Python string literal, escaping backslashes and quotes.
+
+            Args:
+                value (str):
+                    The raw string to encode.
+
+            Returns:
+                (str):
+                    A double-quoted Python string literal with internal
+                    backslashes and double-quotes escaped.
+            """
             escaped = value.replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
 
@@ -245,6 +255,7 @@ class DetailsCommand(CommandPlugin):
         user_edit.setPlaceholderText("Operator name")
 
         def _apply_user() -> None:
+            """Copy the current text of *user_edit* to :attr:`user`."""
             self.user = user_edit.text()
 
         user_edit.editingFinished.connect(_apply_user)
@@ -255,6 +266,7 @@ class DetailsCommand(CommandPlugin):
         sample_edit.setPlaceholderText("Sample identifier")
 
         def _apply_sample() -> None:
+            """Copy the current text of *sample_edit* to :attr:`sample`."""
             self.sample = sample_edit.text()
 
         sample_edit.editingFinished.connect(_apply_sample)
@@ -270,6 +282,7 @@ class DetailsCommand(CommandPlugin):
         project_combo.setCurrentText(self.project)
 
         def _apply_project() -> None:
+            """Copy the current text of *project_combo* to :attr:`project`."""
             self.project = project_combo.currentText()
 
         project_combo.currentTextChanged.connect(_apply_project)
@@ -281,6 +294,7 @@ class DetailsCommand(CommandPlugin):
         notes_edit.setMinimumHeight(80)
 
         def _apply_notes() -> None:
+            """Copy the plain text of *notes_edit* to :attr:`notes`."""
             self.notes = notes_edit.toPlainText()
 
         notes_edit.textChanged.connect(_apply_notes)
