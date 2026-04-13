@@ -100,6 +100,9 @@ class PlotWidget(QWidget):
         self._axis_items["left"] = plot_item.getAxis("left")
         self._axis_items["bottom"] = plot_item.getAxis("bottom")
 
+        # Legend — items are registered manually when traces are created.
+        self._legend = self._plot_item.addLegend()
+
         layout.addWidget(self._pg_widget)
         self.setLayout(layout)
 
@@ -118,6 +121,7 @@ class PlotWidget(QWidget):
             self._traces[trace_name] = curve
             self._trace_data[trace_name] = ([], [])
             self._trace_axes[trace_name] = ("bottom", "left")
+            self._legend.addItem(curve, trace_name)
         return self._traces[trace_name]
 
     # ------------------------------------------------------------------
@@ -237,6 +241,7 @@ class PlotWidget(QWidget):
         _x_ax, y_ax = self._trace_axes.pop(trace_name, ("bottom", "left"))
         vb = self._view_boxes.get(y_ax, self._plot_item.vb)
         vb.removeItem(curve)
+        self._legend.removeItem(curve)
         del self._trace_data[trace_name]
 
     def clear_all(self) -> None:
