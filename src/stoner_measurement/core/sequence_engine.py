@@ -43,6 +43,7 @@ import builtins
 import linecache
 import logging
 import queue
+import re
 import sys
 import threading
 import traceback
@@ -58,6 +59,13 @@ if TYPE_CHECKING:
 
 #: Logger name used for all sequence-engine and plugin log messages.
 SEQUENCE_LOGGER_NAME = "stoner_measurement.sequence"
+
+#: Regex that matches (and removes) the ``# __SM_{n}__`` line-map marker comments
+#: embedded in generated sequence code before Black formatting.
+_SM_MARKER_STRIP_RE = re.compile(r"\s*#\s*__SM_\d+__")
+
+#: Regex that captures the marker index from a ``# __SM_{n}__`` comment.
+_SM_MARKER_FIND_RE = re.compile(r"#\s*__SM_(\d+)__")
 
 
 class _QtLogHandler(logging.Handler, QObject):
@@ -1326,10 +1334,18 @@ class SequenceEngine(QObject):
             action_lines.pop()
 
         lines.append("try:")
-        # Record where in 'lines' the action lines start (0-based).
-        # action_lines[i] will be at lines[action_lines_start + i],
-        # which is 1-based line number (action_lines_start + i + 1).
-        action_lines_start = len(lines)
+
+        if return_line_map:
+            # Embed unique markers in action lines so the line_map can be
+            # rebuilt after black reformatting.  Markers are inline comments of
+            # the form ``# __SM_{idx}__`` appended to the relevant line.  We
+            # strip them from the final output after reconstructing the map.
+            # The bounds check guards against trailing blank lines that were
+            # trimmed from action_lines after _action_line_owner was built.
+            for idx in _action_line_owner:
+                if idx < len(action_lines) and action_lines[idx].strip():
+                    action_lines[idx] = action_lines[idx] + f"  # __SM_{idx}__"
+
         lines.extend(action_lines)
         lines.append("finally:")
         for plugin in reversed(ordered_plugins):
@@ -1339,14 +1355,35 @@ class SequenceEngine(QObject):
 
         code = "\n".join(lines)
 
+        # ------------------------------------------------------------------
+        # Format the generated code with black for human readability.
+        # ------------------------------------------------------------------
+        try:
+            import black
+
+            code = black.format_str(code, mode=black.Mode(line_length=199))
+        except ImportError:
+            pass  # black is not installed; fall back to unformatted output.
+        except Exception:
+            logging.getLogger(SEQUENCE_LOGGER_NAME).warning(
+                "black formatting failed; using unformatted code", exc_info=True
+            )
+
         if not return_line_map:
             return code
 
-        # Build the line_map: 1-based line number → plugin.
-        # Only include indices that survived the trailing-blank trim.
+        # Rebuild the line_map using the embedded markers.  Black preserves
+        # inline comments, so markers survive formatting even if line numbers
+        # shift.  We then strip the markers from the final code string.
         line_map: dict[int, BasePlugin] = {}
-        for idx, lm_plugin in _action_line_owner.items():
-            if idx < len(action_lines):
-                line_map[action_lines_start + idx + 1] = lm_plugin
+        code_lines = code.splitlines()
+        for lineno_0, line_content in enumerate(code_lines):
+            m = _SM_MARKER_FIND_RE.search(line_content)
+            if m:
+                orig_idx = int(m.group(1))
+                if orig_idx in _action_line_owner:
+                    line_map[lineno_0 + 1] = _action_line_owner[orig_idx]
+
+        code = _SM_MARKER_STRIP_RE.sub("", code)
 
         return code, line_map

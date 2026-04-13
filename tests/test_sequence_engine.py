@@ -383,7 +383,7 @@ class TestCodeGeneration:
         plugin = DummyPlugin()
         plugins = {"dummy": plugin}
         code = engine.generate_sequence_code(["dummy"], plugins)
-        assert "if 'dummy' not in globals():" in code
+        assert 'if "dummy" not in globals():' in code
 
     def test_phase0_instantiation_uses_from_json(self, engine):
         """Phase 0 should reconstruct the plugin via _BasePlugin.from_json."""
@@ -408,7 +408,7 @@ class TestCodeGeneration:
         plugin = DummyPlugin()
         plugins = {"dummy": plugin}
         code = engine.generate_sequence_code(["dummy"], plugins)
-        instantiation_pos = code.index("if 'dummy' not in globals():")
+        instantiation_pos = code.index('if "dummy" not in globals():')
         connect_pos = code.index("dummy.connect()")
         assert instantiation_pos < connect_pos
 
@@ -420,8 +420,8 @@ class TestCodeGeneration:
         plugin_b._instance_name = "beta"
         plugins = {"alpha": plugin_a, "beta": plugin_b}
         code = engine.generate_sequence_code(["alpha", "beta"], plugins)
-        assert "if 'alpha' not in globals():" in code
-        assert "if 'beta' not in globals():" in code
+        assert 'if "alpha" not in globals():' in code
+        assert 'if "beta" not in globals():' in code
 
     def test_phase0_not_emitted_for_empty_steps(self, engine):
         """The instantiation block should not appear when there are no steps."""
