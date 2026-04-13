@@ -308,8 +308,9 @@ class CurveFitPlugin(TransformPlugin):
     Fits a user-defined function to a data trace selected from the sequence
     engine.  The plugin provides three configuration tabs:
 
-    * **Data** — select the trace to fit.  In *simple mode* choose a single
-      trace; the ``x`` and ``y`` arrays are taken from the
+    * **Data** — contains the instance-name editor at the top, followed by
+      data-selection controls.  In *simple mode* choose a single trace; the
+      ``x`` and ``y`` arrays are taken from the
       :class:`~stoner_measurement.plugins.trace.TraceData` object.  In
       *advanced mode* supply independent Python expressions for ``x``, ``y``,
       and an optional ``y``-uncertainty array (used as ``sigma``).
@@ -784,12 +785,14 @@ class CurveFitPlugin(TransformPlugin):
     def config_tabs(
         self, parent: QWidget | None = None
     ) -> list[tuple[str, QWidget]]:
-        """Return the three configuration tabs for this plugin.
+        """Return the configuration tabs for this plugin.
 
-        Returns a *Data* tab for trace / expression selection, a *Fit
-        Function* tab containing a Python code editor, a *Parameters* tab
-        with the per-parameter bounds table, plus the shared *General* and
-        optional *About* tabs.
+        Produces a *Data* tab (with the instance-name editor at the top,
+        followed by trace / expression selection controls), a *Fit Function*
+        tab containing a Python code editor, a *Parameters* tab with the
+        per-parameter bounds table, and an optional *About* tab.  The separate
+        *General* tab is intentionally omitted — its controls are embedded
+        at the top of the *Data* tab.
 
         Keyword Parameters:
             parent (QWidget | None):
@@ -806,21 +809,17 @@ class CurveFitPlugin(TransformPlugin):
             >>> tabs = p.config_tabs()
             >>> [t for t, _ in tabs[:3]]
             ['Data', 'Fit Function', 'Parameters']
+            >>> 'General' not in [t for t, _ in tabs]
+            True
         """
-        data_tab = self._build_data_tab(parent)
+        tabs = super().config_tabs(parent)
         fit_tab, param_tab = self._build_fit_and_param_tabs(parent)
-        tabs: list[tuple[str, QWidget]] = [
-            ("Data", data_tab),
-            ("Fit Function", fit_tab),
-            ("Parameters", param_tab),
-            ("General", self._general_config_widget(parent=parent)),
-        ]
-        about_tab = self._make_about_tab()
-        if about_tab is not None:
-            tabs.append(about_tab)
+        # Insert Fit Function and Parameters after the Data tab (index 0).
+        tabs.insert(1, ("Parameters", param_tab))
+        tabs.insert(1, ("Fit Function", fit_tab))
         return tabs
 
-    def _build_data_tab(self, parent: QWidget | None) -> QWidget:
+    def _build_data_tab(self, parent: QWidget | None = None) -> QWidget:
         """Build the *Data* selection tab widget.
 
         Args:
