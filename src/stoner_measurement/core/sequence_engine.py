@@ -1328,13 +1328,15 @@ class SequenceEngine(QObject):
 
         lines.append("try:")
 
-        # Embed unique markers in action lines so the line_map can be rebuilt
-        # after black reformatting.  Markers are inline comments of the form
-        # ``# __SM_{idx}__`` appended to the relevant line.  We strip them
-        # from the final output after the line_map is reconstructed.
-        _MARKER_RE = re.compile(r"\s*#\s*__SM_\d+__")
         if return_line_map:
-            for idx, owner in _action_line_owner.items():
+            # Embed unique markers in action lines so the line_map can be
+            # rebuilt after black reformatting.  Markers are inline comments of
+            # the form ``# __SM_{idx}__`` appended to the relevant line.  We
+            # strip them from the final output after reconstructing the map.
+            # The bounds check guards against trailing blank lines that were
+            # trimmed from action_lines after _action_line_owner was built.
+            _MARKER_RE = re.compile(r"\s*#\s*__SM_\d+__")
+            for idx in _action_line_owner:
                 if idx < len(action_lines) and action_lines[idx].strip():
                     action_lines[idx] = action_lines[idx] + f"  # __SM_{idx}__"
 
@@ -1354,8 +1356,12 @@ class SequenceEngine(QObject):
             import black
 
             code = black.format_str(code, mode=black.Mode(line_length=199))
+        except ImportError:
+            pass  # black is not installed; fall back to unformatted output.
         except Exception:
-            pass  # Fall back to unformatted code if black is unavailable.
+            logging.getLogger(SEQUENCE_LOGGER_NAME).warning(
+                "black formatting failed; using unformatted code", exc_info=True
+            )
 
         if not return_line_map:
             return code
