@@ -1464,3 +1464,172 @@ class TestAlertCommand:
 
     def test_reported_values_empty(self, qapp):
         assert AlertCommand().reported_values() == {}
+
+
+# ---------------------------------------------------------------------------
+# DetailsCommand
+# ---------------------------------------------------------------------------
+
+
+class TestDetailsCommand:
+    def test_name(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        assert DetailsCommand().name == "Details"
+
+    def test_plugin_type(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        assert DetailsCommand().plugin_type == "command"
+
+    def test_has_lifecycle_false(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        assert DetailsCommand().has_lifecycle is False
+
+    def test_default_fields_empty(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        assert cmd.user == ""
+        assert cmd.sample == ""
+        assert cmd.project == ""
+        assert cmd.notes == ""
+
+    def test_generate_action_code_assignments(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        cmd.user = "Alice"
+        cmd.sample = "Nb_001"
+        cmd.project = "NbSC"
+        cmd.notes = "Cooled overnight"
+        lines = cmd.generate_action_code(0, [], lambda s, i: [])
+        assert lines[0] == 'details.user = "Alice"'
+        assert lines[1] == 'details.sample = "Nb_001"'
+        assert lines[2] == 'details.project = "NbSC"'
+        assert lines[3] == 'details.notes = "Cooled overnight"'
+        assert lines[4] == ""
+
+    def test_generate_action_code_indentation(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        lines = cmd.generate_action_code(2, [], lambda s, i: [])
+        for line in lines[:-1]:
+            assert line.startswith("        ")
+
+    def test_generate_action_code_no_execute_call(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        lines = cmd.generate_action_code(0, [], lambda s, i: [])
+        assert not any("()" in line for line in lines)
+
+    def test_generate_action_code_escapes_special_chars(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        cmd.user = 'Bob "The Builder"'
+        lines = cmd.generate_action_code(0, [], lambda s, i: [])
+        assert '\\"' in lines[0]
+
+    def test_to_json_fields(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        cmd.user = "Alice"
+        cmd.sample = "S1"
+        cmd.project = "P1"
+        cmd.notes = "notes"
+        d = cmd.to_json()
+        assert d["type"] == "command"
+        assert d["user"] == "Alice"
+        assert d["sample"] == "S1"
+        assert d["project"] == "P1"
+        assert d["notes"] == "notes"
+
+    def test_restore_from_json(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        cmd.user = "Alice"
+        cmd.sample = "S1"
+        cmd.project = "P1"
+        cmd.notes = "notes text"
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, DetailsCommand)
+        assert restored.user == "Alice"
+        assert restored.sample == "S1"
+        assert restored.project == "P1"
+        assert restored.notes == "notes text"
+
+    def test_config_widget_returns_widget(self, qapp):
+        from PyQt6.QtWidgets import QWidget
+
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        assert isinstance(DetailsCommand().config_widget(), QWidget)
+
+    def test_config_widget_user_field(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        cmd.user = "Alice"
+        widget = cmd.config_widget()
+        line_edits = widget.findChildren(QLineEdit)
+        assert any(le.text() == "Alice" for le in line_edits)
+
+    def test_config_widget_updates_user(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        widget = cmd.config_widget()
+        line_edits = widget.findChildren(QLineEdit)
+        user_edit = line_edits[0]
+        user_edit.setText("Bob")
+        user_edit.editingFinished.emit()
+        assert cmd.user == "Bob"
+
+    def test_config_widget_project_combobox(self, qapp):
+        from PyQt6.QtWidgets import QComboBox
+
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        widget = DetailsCommand().config_widget()
+        combos = widget.findChildren(QComboBox)
+        assert len(combos) == 1
+
+    def test_config_widget_notes_updates(self, qapp):
+        from PyQt6.QtWidgets import QPlainTextEdit
+
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        widget = cmd.config_widget()
+        notes_edit = widget.findChildren(QPlainTextEdit)[0]
+        notes_edit.setPlainText("new notes")
+        assert cmd.notes == "new notes"
+
+    def test_execute_is_noop(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        cmd.user = "Alice"
+        cmd.execute()
+        assert cmd.user == "Alice"
+
+    def test_reported_traces_empty(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        assert DetailsCommand().reported_traces() == {}
+
+    def test_reported_values_empty(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        assert DetailsCommand().reported_values() == {}

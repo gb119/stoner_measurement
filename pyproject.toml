@@ -58,6 +58,7 @@ save = "stoner_measurement.plugins.command.save:SaveCommand"
 wait = "stoner_measurement.plugins.command.wait:WaitCommand"
 status = "stoner_measurement.plugins.command.status:StatusCommand"
 alert = "stoner_measurement.plugins.command.alert:AlertCommand"
+details = "stoner_measurement.plugins.command.details:DetailsCommand"
 
 [tool.setuptools.packages.find]
 where = ["src"]
