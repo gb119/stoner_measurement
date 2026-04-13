@@ -600,8 +600,11 @@ class CurveFitPlugin(TransformPlugin):
         result: dict[str, Any] = {}
         if self.show_initial_trace:
             try:
+                # _build_p0 returns None when all initial values are blank; fall
+                # back to 1.0 for each parameter so the trace can still be drawn.
                 p0_vals = p0 if p0 is not None else [1.0] * len(self.param_names)
                 y_initial = fit_func(x_arr, *p0_vals)
+                # Ensure float array regardless of what fit_func returns.
                 result[_INITIAL_TRACE_KEY] = TraceData(x=x_arr, y=np.asarray(y_initial, dtype=float))
             except Exception as exc:
                 self.log.warning("CurveFit: failed to compute initial trace — %s", exc)
@@ -640,6 +643,7 @@ class CurveFitPlugin(TransformPlugin):
         if self.show_best_fit_trace:
             try:
                 y_best = fit_func(x_arr, *popt)
+                # Ensure float array regardless of what fit_func returns.
                 result[_BEST_FIT_TRACE_KEY] = TraceData(x=x_arr, y=np.asarray(y_best, dtype=float))
             except Exception as exc:
                 self.log.warning("CurveFit: failed to compute best-fit trace — %s", exc)
@@ -1012,8 +1016,14 @@ class CurveFitPlugin(TransformPlugin):
         param_widget.settings_changed.connect(_on_table_changed)
 
         # ---- Wire trace checkboxes to attributes -----------------------
-        initial_check.toggled.connect(lambda checked: setattr(self, "show_initial_trace", checked))
-        best_fit_check.toggled.connect(lambda checked: setattr(self, "show_best_fit_trace", checked))
+        def _on_initial_toggled(checked: bool) -> None:
+            self.show_initial_trace = checked
+
+        def _on_best_fit_toggled(checked: bool) -> None:
+            self.show_best_fit_trace = checked
+
+        initial_check.toggled.connect(_on_initial_toggled)
+        best_fit_check.toggled.connect(_on_best_fit_toggled)
 
         return fit_widget, param_container
 
