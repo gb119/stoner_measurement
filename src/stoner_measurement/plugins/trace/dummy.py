@@ -260,6 +260,58 @@ class DummyPlugin(TracePlugin):
 
         yield from zip(currents, v_arr.tolist())
 
+    def to_json(self) -> dict[str, Any]:
+        """Serialise this plugin's configuration, including RSJ model parameters.
+
+        Extends the base :meth:`~stoner_measurement.plugins.trace.base.TracePlugin.to_json`
+        dict with ``"critical_current"``, ``"normal_resistance"``, and
+        ``"noise_level"`` keys containing the expression strings configured on
+        the *Settings* tab.
+
+        Returns:
+            (dict[str, Any]):
+                A JSON-serialisable dictionary with at least the keys produced
+                by :meth:`~stoner_measurement.plugins.trace.base.TracePlugin.to_json`
+                plus ``"critical_current"``, ``"normal_resistance"``, and
+                ``"noise_level"``.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> plugin = DummyPlugin()
+            >>> d = plugin.to_json()
+            >>> d["critical_current"]
+            '1.0'
+            >>> d["normal_resistance"]
+            '1.0'
+            >>> d["noise_level"]
+            '0.0'
+        """
+        data = super().to_json()
+        data["critical_current"] = self._critical_current
+        data["normal_resistance"] = self._normal_resistance
+        data["noise_level"] = self._noise_level
+        return data
+
+    def _restore_from_json(self, data: dict[str, Any]) -> None:
+        """Restore RSJ model parameters from *data*.
+
+        Calls the base implementation to restore the scan generator, then
+        restores the ``_critical_current``, ``_normal_resistance``, and
+        ``_noise_level`` expression strings if present in *data*.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised plugin dict as produced by :meth:`to_json`.
+        """
+        super()._restore_from_json(data)
+        if "critical_current" in data:
+            self._critical_current = data["critical_current"]
+        if "normal_resistance" in data:
+            self._normal_resistance = data["normal_resistance"]
+        if "noise_level" in data:
+            self._noise_level = data["noise_level"]
+
     def _plugin_config_tabs(self) -> QWidget:
         """Return a settings widget with expression-string controls for *I_c*, *R_n*, and *V_n*.
 

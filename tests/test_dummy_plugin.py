@@ -339,3 +339,52 @@ class TestDummyPlugin:
         plugin = DummyPlugin()
         assert abs(plugin._eval_expr("1.5") - 1.5) < 1e-9
         assert abs(plugin._eval_expr("1e-3") - 0.001) < 1e-9
+
+    # ------------------------------------------------------------------
+    # JSON serialisation — settings tab
+    # ------------------------------------------------------------------
+
+    def test_to_json_includes_settings(self, qapp):
+        plugin = DummyPlugin()
+        d = plugin.to_json()
+        assert d["critical_current"] == "1.0"
+        assert d["normal_resistance"] == "1.0"
+        assert d["noise_level"] == "0.0"
+
+    def test_to_json_reflects_changed_settings(self, qapp):
+        plugin = DummyPlugin()
+        plugin._critical_current = "2.5"
+        plugin._normal_resistance = "0.5"
+        plugin._noise_level = "1e-3"
+        d = plugin.to_json()
+        assert d["critical_current"] == "2.5"
+        assert d["normal_resistance"] == "0.5"
+        assert d["noise_level"] == "1e-3"
+
+    def test_round_trip_restores_settings(self, qapp):
+        import json
+
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        plugin = DummyPlugin()
+        plugin._critical_current = "2.5"
+        plugin._normal_resistance = "0.5"
+        plugin._noise_level = "1e-3"
+
+        restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
+        assert isinstance(restored, DummyPlugin)
+        assert restored._critical_current == "2.5"
+        assert restored._normal_resistance == "0.5"
+        assert restored._noise_level == "1e-3"
+
+    def test_round_trip_default_settings(self, qapp):
+        import json
+
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        plugin = DummyPlugin()
+        restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
+        assert isinstance(restored, DummyPlugin)
+        assert restored._critical_current == "1.0"
+        assert restored._normal_resistance == "1.0"
+        assert restored._noise_level == "0.0"
