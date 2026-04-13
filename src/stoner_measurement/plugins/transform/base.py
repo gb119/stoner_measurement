@@ -16,6 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 
@@ -448,3 +449,106 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         var = self.instance_name
         return {f"{var}:{name}": f"{var}.data['{name}']" for name in self.output_value_names}
+
+    # ------------------------------------------------------------------
+    # Configuration tabs
+    # ------------------------------------------------------------------
+
+    def _build_data_tab(self, parent: QWidget | None = None) -> QWidget:
+        """Build the *Data* selection widget for this transform plugin.
+
+        The default implementation returns an empty :class:`QWidget`.
+        Subclasses should override this method to add data-selection controls
+        relevant to the specific transform they implement.  The widget returned
+        here is embedded at the bottom of the combined *Data* tab produced by
+        :meth:`config_tabs`; the instance-name editor from
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._general_config_widget`
+        is always placed above it.
+
+        Keyword Parameters:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (QWidget):
+                Widget containing data-selection controls.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.transform import TransformPlugin
+            >>> class _T(TransformPlugin):
+            ...     @property
+            ...     def name(self): return "T"
+            ...     @property
+            ...     def required_inputs(self): return []
+            ...     @property
+            ...     def output_names(self): return []
+            ...     def transform(self, data): return {}
+            >>> w = _T()._build_data_tab()
+            >>> w is not None
+            True
+        """
+        return QWidget(parent)
+
+    def config_tabs(
+        self, parent: QWidget | None = None
+    ) -> list[tuple[str, QWidget]]:
+        """Return configuration tabs for this transform plugin.
+
+        Produces a single *Data* tab that places the instance-name editor
+        (from :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._general_config_widget`)
+        at the top, followed by a horizontal separator and the data-selection
+        widget returned by :meth:`_build_data_tab`.  An optional *About* tab is
+        appended when :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._about_html`
+        returns non-``None`` content.
+
+        Subclasses that need additional tabs (e.g. a *Fit Function* or
+        *Parameters* tab) should call ``super().config_tabs(parent)`` to obtain
+        the base *Data* tab and then insert their extra tabs before the optional
+        *About* tab.
+
+        Keyword Parameters:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (list[tuple[str, QWidget]]):
+                List of ``(tab_title, widget)`` pairs starting with the
+                combined *Data* tab.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.transform import TransformPlugin
+            >>> class _T(TransformPlugin):
+            ...     @property
+            ...     def name(self): return "T"
+            ...     @property
+            ...     def required_inputs(self): return []
+            ...     @property
+            ...     def output_names(self): return []
+            ...     def transform(self, data): return {}
+            >>> tabs = _T().config_tabs()
+            >>> tabs[0][0]
+            'Data'
+            >>> 'General' not in [t for t, _ in tabs]
+            True
+        """
+        outer = QWidget(parent)
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.addWidget(self._general_config_widget(parent=outer))
+        separator = QFrame(outer)
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        outer_layout.addWidget(separator)
+        outer_layout.addWidget(self._build_data_tab(parent=outer))
+        outer_layout.addStretch()
+        outer.setLayout(outer_layout)
+
+        tabs: list[tuple[str, QWidget]] = [("Data", outer)]
+        about_tab = self._make_about_tab()
+        if about_tab is not None:
+            tabs.append(about_tab)
+        return tabs

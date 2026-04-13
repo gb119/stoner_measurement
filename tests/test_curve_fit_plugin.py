@@ -360,11 +360,23 @@ class TestCurveFitConfigTabs:
         assert "Fit Function" in tab_titles
         assert "Parameters" in tab_titles
 
-    def test_general_tab_present(self, qapp):
+    def test_general_tab_not_present(self, qapp):
         p = CurveFitPlugin()
         tabs = p.config_tabs()
         tab_titles = [t for t, _ in tabs]
-        assert "General" in tab_titles
+        assert "General" not in tab_titles
+
+    def test_data_tab_contains_instance_name_editor(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        p = CurveFitPlugin()
+        tabs = p.config_tabs()
+        data_widget = dict(tabs)["Data"]
+        # The Data tab must embed the instance-name editor from _general_config_widget.
+        line_edits = data_widget.findChildren(QLineEdit)
+        # At least one QLineEdit whose text matches the current instance_name.
+        instance_name_edits = [w for w in line_edits if w.text() == p.instance_name]
+        assert len(instance_name_edits) >= 1
 
     def test_first_tab_is_data(self, qapp):
         p = CurveFitPlugin()
