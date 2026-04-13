@@ -8,11 +8,14 @@ Exports :class:`CommandPlugin` (abstract base) from
 :mod:`stoner_measurement.plugins.command.plot_trace`,
 :class:`WaitCommand` from :mod:`stoner_measurement.plugins.command.wait`,
 :class:`StatusCommand` from :mod:`stoner_measurement.plugins.command.status`,
-and :class:`AlertCommand` from :mod:`stoner_measurement.plugins.command.alert`.
+:class:`AlertCommand` from :mod:`stoner_measurement.plugins.command.alert`,
+and :class:`DetailsCommand` from
+:mod:`stoner_measurement.plugins.command.details`.
 """
 
 from stoner_measurement.plugins.command.alert import AlertCommand
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
 from stoner_measurement.plugins.command.save import SaveCommand
 from stoner_measurement.plugins.command.status import StatusCommand
@@ -21,6 +24,7 @@ from stoner_measurement.plugins.command.wait import WaitCommand
 __all__ = [
     "AlertCommand",
     "CommandPlugin",
+    "DetailsCommand",
     "PlotTraceCommand",
     "SaveCommand",
     "StatusCommand",
