@@ -258,6 +258,8 @@ class PlotWidget(QWidget):
         """
         for name in list(self._traces.keys()):
             self.remove_trace(name)
+        # Explicitly clear legend to guard against any residual items.
+        self._legend.clear()
 
     def clear_data(self) -> None:
         """Clear all plotted data.
