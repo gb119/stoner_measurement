@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.plugins.trace.base import TraceData
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.ui.editor_widget import EditorWidget
 
@@ -297,6 +298,10 @@ class _ParamTableWidget(QWidget):
 # ---------------------------------------------------------------------------
 
 
+_INITIAL_TRACE_KEY = "initial_fit"
+_BEST_FIT_TRACE_KEY = "best_fit"
+
+
 class CurveFitPlugin(TransformPlugin):
     """Curve-fitting transform plugin using scipy.optimize.curve_fit.
 
@@ -316,6 +321,12 @@ class CurveFitPlugin(TransformPlugin):
       taken from the Parameters table.
     * **Parameters** — a table with one row per detected parameter.  Each row
       allows an optional minimum bound, initial value, and maximum bound.
+      Two optional trace outputs can be enabled:
+
+      * *Initial fit trace* — the fitting function evaluated at the x data
+        using the initial parameter estimates (``p0``).
+      * *Best fit trace* — the fitting function evaluated at the x data using
+        the optimal parameters found by the fit.
 
     Attributes:
         trace_key (str):
@@ -341,6 +352,14 @@ class CurveFitPlugin(TransformPlugin):
             Per-parameter bounds and initial value.  Each entry maps a
             parameter name to ``{"min": …, "initial": …, "max": …}`` where
             ``None`` means *unconstrained / auto*.
+        show_initial_trace (bool):
+            When ``True``, the transform stores an ``"initial_fit"`` trace
+            in :attr:`data` containing the fitting function evaluated at the
+            x data with the initial parameter estimates.
+        show_best_fit_trace (bool):
+            When ``True``, the transform stores a ``"best_fit"`` trace in
+            :attr:`data` containing the fitting function evaluated at the x
+            data with the optimal parameters.
     """
 
     def __init__(self, parent=None) -> None:
@@ -358,6 +377,9 @@ class CurveFitPlugin(TransformPlugin):
         self.param_names: list[str] = _parse_fit_params(self.fit_code)
         # Per-parameter bounds/initial settings
         self.param_settings: dict[str, dict[str, float | None]] = {}
+        # Optional trace outputs
+        self.show_initial_trace: bool = False
+        self.show_best_fit_trace: bool = False
 
     # ------------------------------------------------------------------
     # BasePlugin / TransformPlugin abstract interface
@@ -400,11 +422,79 @@ class CurveFitPlugin(TransformPlugin):
 
     @property
     def output_names(self) -> list[str]:
-        """Names of scalar outputs produced by this plugin.
+        """Names of all outputs produced by this plugin.
 
         One value and one uncertainty output are reported for each detected
-        fit parameter.  For a fit function ``fit(x, a, b)`` the output names
-        are ``["a", "a_err", "b", "b_err"]``.
+        fit parameter.  For a fit function ``fit(x, a, b)`` the base output
+        names are ``["a", "a_err", "b", "b_err"]``.  Optional trace outputs
+        ``"initial_fit"`` and ``"best_fit"`` are appended when
+        :attr:`show_initial_trace` and :attr:`show_best_fit_trace` are enabled.
+
+        Returns:
+            (list[str]):
+                Alternating ``"{param}"`` and ``"{param}_err"`` names, followed
+                by any enabled trace output names.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> p = CurveFitPlugin()
+            >>> p.param_names = ["a", "b"]
+            >>> p.output_names
+            ['a', 'a_err', 'b', 'b_err']
+            >>> p.show_initial_trace = True
+            >>> p.show_best_fit_trace = True
+            >>> p.output_names
+            ['a', 'a_err', 'b', 'b_err', 'initial_fit', 'best_fit']
+        """
+        names: list[str] = []
+        for pname in self.param_names:
+            names.append(pname)
+            names.append(f"{pname}_err")
+        if self.show_initial_trace:
+            names.append(_INITIAL_TRACE_KEY)
+        if self.show_best_fit_trace:
+            names.append(_BEST_FIT_TRACE_KEY)
+        return names
+
+    @property
+    def output_trace_names(self) -> list[str]:
+        """Subset of :attr:`output_names` that are (x, y) trace arrays.
+
+        Returns the keys for any enabled optional trace outputs.
+
+        Returns:
+            (list[str]):
+                ``["initial_fit"]`` if :attr:`show_initial_trace` is enabled,
+                ``["best_fit"]`` if :attr:`show_best_fit_trace` is enabled,
+                or both, or an empty list if neither is enabled.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> p = CurveFitPlugin()
+            >>> p.output_trace_names
+            []
+            >>> p.show_initial_trace = True
+            >>> p.output_trace_names
+            ['initial_fit']
+            >>> p.show_best_fit_trace = True
+            >>> p.output_trace_names
+            ['initial_fit', 'best_fit']
+        """
+        traces: list[str] = []
+        if self.show_initial_trace:
+            traces.append(_INITIAL_TRACE_KEY)
+        if self.show_best_fit_trace:
+            traces.append(_BEST_FIT_TRACE_KEY)
+        return traces
+
+    @property
+    def output_value_names(self) -> list[str]:
+        """Subset of :attr:`output_names` that are scalar values.
+
+        Returns the parameter value and uncertainty names, explicitly excluding
+        any trace output names.
 
         Returns:
             (list[str]):
@@ -415,7 +505,9 @@ class CurveFitPlugin(TransformPlugin):
             >>> _ = QApplication.instance() or QApplication([])
             >>> p = CurveFitPlugin()
             >>> p.param_names = ["a", "b"]
-            >>> p.output_names
+            >>> p.show_initial_trace = True
+            >>> p.show_best_fit_trace = True
+            >>> p.output_value_names
             ['a', 'a_err', 'b', 'b_err']
         """
         names: list[str] = []
@@ -472,7 +564,7 @@ class CurveFitPlugin(TransformPlugin):
             True
             >>> engine.shutdown()
         """
-        nan_result = {n: _NAN for n in self.output_names}
+        nan_result = {n: _NAN for n in self.output_value_names}
 
         # ---- 1. Retrieve x / y / sigma from the engine namespace ---------
         try:
@@ -504,7 +596,20 @@ class CurveFitPlugin(TransformPlugin):
         p0 = self._build_p0(p0_func, x_arr, y_arr)
         bounds = self._build_bounds()
 
-        # ---- 4. Run curve_fit --------------------------------------------
+        # ---- 4. Optionally compute the initial-parameter trace -----------
+        result: dict[str, Any] = {}
+        if self.show_initial_trace:
+            try:
+                # _build_p0 returns None when all initial values are blank; fall
+                # back to 1.0 for each parameter so the trace can still be drawn.
+                p0_vals = p0 if p0 is not None else [1.0] * len(self.param_names)
+                y_initial = fit_func(x_arr, *p0_vals)
+                # Ensure float array regardless of what fit_func returns.
+                result[_INITIAL_TRACE_KEY] = TraceData(x=x_arr, y=np.asarray(y_initial, dtype=float))
+            except Exception as exc:
+                self.log.warning("CurveFit: failed to compute initial trace — %s", exc)
+
+        # ---- 5. Run curve_fit --------------------------------------------
         try:
             from scipy.optimize import curve_fit  # noqa: PLC0415
 
@@ -528,12 +633,21 @@ class CurveFitPlugin(TransformPlugin):
             self.log.error("CurveFit: curve_fit failed — %s", exc)
             return nan_result
 
-        # ---- 5. Build result dict ----------------------------------------
+        # ---- 6. Build scalar result dict ---------------------------------
         perr = np.sqrt(np.diag(pcov))
-        result: dict[str, Any] = {}
         for i, pname in enumerate(self.param_names):
             result[pname] = float(popt[i]) if i < len(popt) else _NAN
             result[f"{pname}_err"] = float(perr[i]) if i < len(perr) else _NAN
+
+        # ---- 7. Optionally compute the best-fit trace --------------------
+        if self.show_best_fit_trace:
+            try:
+                y_best = fit_func(x_arr, *popt)
+                # Ensure float array regardless of what fit_func returns.
+                result[_BEST_FIT_TRACE_KEY] = TraceData(x=x_arr, y=np.asarray(y_best, dtype=float))
+            except Exception as exc:
+                self.log.warning("CurveFit: failed to compute best-fit trace — %s", exc)
+
         return result
 
     # ------------------------------------------------------------------
@@ -828,6 +942,8 @@ class CurveFitPlugin(TransformPlugin):
 
         The two widgets share a connection: when the editor contents change the
         parameter names are re-extracted and the parameter table is updated.
+        The *Parameters* tab also contains checkboxes for the optional trace
+        outputs (:attr:`show_initial_trace` and :attr:`show_best_fit_trace`).
 
         Args:
             parent (QWidget | None):
@@ -856,8 +972,30 @@ class CurveFitPlugin(TransformPlugin):
         fit_widget.setLayout(fit_layout)
 
         # ---- Parameters tab ---------------------------------------------
-        param_widget = _ParamTableWidget(parent)
+        param_container = QWidget(parent)
+        param_layout = QVBoxLayout(param_container)
+
+        param_widget = _ParamTableWidget(param_container)
         param_widget.load_settings(self.param_settings, self.param_names)
+        param_layout.addWidget(param_widget)
+
+        # Optional trace output checkboxes.
+        initial_check = QCheckBox("Calculate initial-parameter trace", param_container)
+        initial_check.setChecked(self.show_initial_trace)
+        initial_check.setToolTip(
+            "When enabled, stores a trace of the fitting function evaluated "
+            "with the initial parameter values (p0)."
+        )
+        param_layout.addWidget(initial_check)
+
+        best_fit_check = QCheckBox("Calculate best-fit trace", param_container)
+        best_fit_check.setChecked(self.show_best_fit_trace)
+        best_fit_check.setToolTip(
+            "When enabled, stores a trace of the fitting function evaluated "
+            "with the optimal parameters found by the fit."
+        )
+        param_layout.addWidget(best_fit_check)
+        param_container.setLayout(param_layout)
 
         # ---- Wire code changes to parameter detection -------------------
         def _on_code_changed() -> None:
@@ -877,7 +1015,17 @@ class CurveFitPlugin(TransformPlugin):
 
         param_widget.settings_changed.connect(_on_table_changed)
 
-        return fit_widget, param_widget
+        # ---- Wire trace checkboxes to attributes -----------------------
+        def _on_initial_toggled(checked: bool) -> None:
+            self.show_initial_trace = checked
+
+        def _on_best_fit_toggled(checked: bool) -> None:
+            self.show_best_fit_trace = checked
+
+        initial_check.toggled.connect(_on_initial_toggled)
+        best_fit_check.toggled.connect(_on_best_fit_toggled)
+
+        return fit_widget, param_container
 
     # ------------------------------------------------------------------
     # JSON serialisation
@@ -890,7 +1038,8 @@ class CurveFitPlugin(TransformPlugin):
             (dict[str, Any]):
                 Base dict extended with ``"trace_key"``, ``"advanced_mode"``,
                 ``"x_expr"``, ``"y_expr"``, ``"y_error_expr"``, ``"fit_code"``,
-                ``"param_names"``, and ``"param_settings"``.
+                ``"param_names"``, ``"param_settings"``, ``"show_initial_trace"``,
+                and ``"show_best_fit_trace"``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -900,6 +1049,8 @@ class CurveFitPlugin(TransformPlugin):
             >>> d["type"]
             'transform'
             >>> "fit_code" in d and "param_settings" in d
+            True
+            >>> "show_initial_trace" in d and "show_best_fit_trace" in d
             True
         """
         d = super().to_json()
@@ -911,6 +1062,8 @@ class CurveFitPlugin(TransformPlugin):
         d["fit_code"] = self.fit_code
         d["param_names"] = self.param_names
         d["param_settings"] = self.param_settings
+        d["show_initial_trace"] = self.show_initial_trace
+        d["show_best_fit_trace"] = self.show_best_fit_trace
         return d
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -935,6 +1088,8 @@ class CurveFitPlugin(TransformPlugin):
             }
             for name, entry in raw_settings.items()
         }
+        self.show_initial_trace = data.get("show_initial_trace", False)
+        self.show_best_fit_trace = data.get("show_best_fit_trace", False)
 
 
 # ---------------------------------------------------------------------------

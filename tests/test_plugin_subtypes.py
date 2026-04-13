@@ -574,6 +574,9 @@ class TestTransformPlugin:
     def test_plugin_type(self, qapp):
         assert _ScaleTransform().plugin_type == "transform"
 
+    def test_has_lifecycle_false(self, qapp):
+        assert _ScaleTransform().has_lifecycle is False
+
     def test_required_inputs(self, qapp):
         assert _ScaleTransform().required_inputs == ["y"]
 
@@ -582,6 +585,18 @@ class TestTransformPlugin:
 
     def test_description_default(self, qapp):
         assert _ScaleTransform().description == ""
+
+    def test_generate_action_code_calls_run(self, qapp):
+        p = _ScaleTransform()
+        p.instance_name = "scale"
+        lines = p.generate_action_code(1, [], lambda s, i: [])
+        assert any("scale.run({})" in ln for ln in lines)
+
+    def test_generate_action_code_not_commented(self, qapp):
+        p = _ScaleTransform()
+        lines = p.generate_action_code(1, [], lambda s, i: [])
+        code_lines = [ln for ln in lines if ln.strip()]
+        assert all(not ln.strip().startswith("#") for ln in code_lines)
 
     def test_transform_returns_dict(self, qapp):
         p = _ScaleTransform()
