@@ -1,0 +1,978 @@
+"""CurveFitPlugin — transform plugin that fits data to a user-defined function.
+
+Performs scipy.optimize.curve_fit on a selected data trace using a fitting
+function supplied as Python source code.  Parameter names, bounds, and initial
+values are configured via the UI.  Fitted parameter values and their
+uncertainties (sqrt of covariance matrix diagonal) are reported as plugin
+outputs.
+
+Notes:
+    The fit-function code entered by the user is executed with Python's built-in
+    :func:`exec`.  Only load and run configuration files from trusted sources.
+"""
+
+from __future__ import annotations
+
+import ast
+import textwrap
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from stoner_measurement.plugins.transform.base import TransformPlugin
+from stoner_measurement.ui.editor_widget import EditorWidget
+
+if TYPE_CHECKING:
+    pass
+
+# ---------------------------------------------------------------------------
+# Default fit-function source code shown in a new plugin instance
+# ---------------------------------------------------------------------------
+
+_DEFAULT_FIT_CODE = textwrap.dedent(
+    """\
+    def fit(x, a, b):
+        \"\"\"Linear fit: y = a*x + b.\"\"\"
+        return a * x + b
+
+
+    # Optional: define p0(x, y) to compute initial parameter estimates.
+    # def p0(x, y):
+    #     return (1.0, 0.0)
+    """
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_fit_params(code: str) -> list[str]:
+    """Return parameter names from the ``fit`` function in *code*.
+
+    Parses *code* with :mod:`ast` and locates the function definition named
+    ``fit``.  Returns the names of all arguments after the first (the ``x``
+    argument), preserving their source order.  Returns an empty list if no
+    ``fit`` function is found or if *code* contains a syntax error.
+
+    Args:
+        code (str):
+            Python source code that may contain a ``fit(x, ...)`` function.
+
+    Returns:
+        (list[str]):
+            Ordered parameter names, e.g. ``["a", "b"]`` for
+            ``def fit(x, a, b): ...``.
+
+    Examples:
+        >>> _parse_fit_params("def fit(x, a, b): return a*x + b")
+        ['a', 'b']
+        >>> _parse_fit_params("def fit(x): return x")
+        []
+        >>> _parse_fit_params("not valid python !!!")
+        []
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "fit":
+            return [arg.arg for arg in node.args.args[1:]]
+    return []
+
+
+def _has_p0_function(code: str) -> bool:
+    """Return ``True`` if *code* defines a function named ``p0``.
+
+    Args:
+        code (str):
+            Python source code to inspect.
+
+    Returns:
+        (bool):
+            ``True`` if a ``def p0(...)`` statement is present and not inside
+            a comment block.
+
+    Examples:
+        >>> _has_p0_function("def p0(x, y): return (1.0,)")
+        True
+        >>> _has_p0_function("def fit(x, a): return a * x")
+        False
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "p0":
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Parameter table widget
+# ---------------------------------------------------------------------------
+
+_INF = float("inf")
+_NAN = float("nan")
+
+
+class _ParamTableWidget(QWidget):
+    """Table widget for configuring per-parameter bounds and initial values.
+
+    Displays one row per parameter detected in the fit function.  Each row
+    has four columns: parameter name (read-only), minimum bound, initial
+    value, and maximum bound.  Empty cells mean "unconstrained / auto".
+
+    Args:
+        parent (QWidget | None):
+            Optional Qt parent widget.
+
+    Attributes:
+        param_settings (dict[str, dict[str, float | None]]):
+            Mapping of parameter name → ``{"min": …, "initial": …, "max": …}``.
+            ``None`` means the value was not specified by the user.
+        settings_changed (pyqtSignal):
+            Emitted whenever the user edits a cell in the table.
+    """
+
+    settings_changed = pyqtSignal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Initialise the parameter table."""
+        super().__init__(parent)
+        self._build_ui()
+        self.param_settings: dict[str, dict[str, float | None]] = {}
+
+    def _build_ui(self) -> None:
+        """Build the table widget and surrounding layout."""
+        layout = QVBoxLayout(self)
+
+        self._table = QTableWidget(0, 4, self)
+        self._table.setHorizontalHeaderLabels(["Parameter", "Min", "Initial", "Max"])
+        self._table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        for col in (1, 2, 3):
+            self._table.horizontalHeader().setSectionResizeMode(
+                col, QHeaderView.ResizeMode.Stretch
+            )
+        self._table.setToolTip(
+            "Leave Min/Initial/Max blank to use defaults.\n"
+            "Min/Max constrain the curve fit; Initial sets p0."
+        )
+        self._table.itemChanged.connect(self.settings_changed)
+        layout.addWidget(self._table)
+
+        note = QLabel(
+            "<i>Blank fields use scipy defaults (unbounded, p0=1).  "
+            "If a <code>p0</code> function is defined in the fit code, "
+            "the Initial column is ignored.</i>",
+            self,
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self.setLayout(layout)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def set_parameters(self, param_names: list[str]) -> None:
+        """Repopulate the table for the given parameter names.
+
+        Existing values for parameters that are still present are preserved;
+        rows for removed parameters are discarded; new rows are added with
+        blank cells.
+
+        Args:
+            param_names (list[str]):
+                Ordered parameter names as extracted from the fit function.
+        """
+        old_settings = self._read_table()
+
+        self._table.setRowCount(0)
+        for name in param_names:
+            row = self._table.rowCount()
+            self._table.insertRow(row)
+
+            # Column 0: name (read-only)
+            name_item = QTableWidgetItem(name)
+            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self._table.setItem(row, 0, name_item)
+
+            prev = old_settings.get(name, {})
+            for col, key in ((1, "min"), (2, "initial"), (3, "max")):
+                val = prev.get(key)
+                text = "" if val is None else str(val)
+                self._table.setItem(row, col, QTableWidgetItem(text))
+
+    def read_settings(self) -> dict[str, dict[str, float | None]]:
+        """Read current table values and return a settings dict.
+
+        Returns:
+            (dict[str, dict[str, float | None]]):
+                ``{param_name: {"min": …, "initial": …, "max": …}}``
+                where ``None`` means the cell was blank.
+        """
+        self.param_settings = self._read_table()
+        return self.param_settings
+
+    def load_settings(
+        self, settings: dict[str, dict[str, float | None]], param_names: list[str]
+    ) -> None:
+        """Populate the table from *settings* for the given *param_names*.
+
+        Args:
+            settings (dict[str, dict[str, float | None]]):
+                Settings dict as returned by :meth:`read_settings`.
+            param_names (list[str]):
+                Ordered parameter names to show.
+        """
+        self.param_settings = settings
+        self._fill_table(param_names, settings)
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _read_table(self) -> dict[str, dict[str, float | None]]:
+        """Read values from the table and return a settings dict."""
+        result: dict[str, dict[str, float | None]] = {}
+        for row in range(self._table.rowCount()):
+            name_item = self._table.item(row, 0)
+            if name_item is None:
+                continue
+            name = name_item.text()
+            row_settings: dict[str, float | None] = {}
+            for col, key in ((1, "min"), (2, "initial"), (3, "max")):
+                item = self._table.item(row, col)
+                text = item.text().strip() if item else ""
+                if text:
+                    try:
+                        row_settings[key] = float(text)
+                    except ValueError:
+                        row_settings[key] = None
+                else:
+                    row_settings[key] = None
+            result[name] = row_settings
+        return result
+
+    def _fill_table(
+        self,
+        param_names: list[str],
+        settings: dict[str, dict[str, float | None]],
+    ) -> None:
+        """Fill the table from *param_names* and *settings*."""
+        self._table.setRowCount(0)
+        for name in param_names:
+            row = self._table.rowCount()
+            self._table.insertRow(row)
+            name_item = QTableWidgetItem(name)
+            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self._table.setItem(row, 0, name_item)
+            vals = settings.get(name, {})
+            for col, key in ((1, "min"), (2, "initial"), (3, "max")):
+                val = vals.get(key)
+                text = "" if val is None else str(val)
+                self._table.setItem(row, col, QTableWidgetItem(text))
+
+
+# ---------------------------------------------------------------------------
+# Main plugin
+# ---------------------------------------------------------------------------
+
+
+class CurveFitPlugin(TransformPlugin):
+    """Curve-fitting transform plugin using scipy.optimize.curve_fit.
+
+    Fits a user-defined function to a data trace selected from the sequence
+    engine.  The plugin provides three configuration tabs:
+
+    * **Data** — select the trace to fit.  In *simple mode* choose a single
+      trace; the ``x`` and ``y`` arrays are taken from the
+      :class:`~stoner_measurement.plugins.trace.TraceData` object.  In
+      *advanced mode* supply independent Python expressions for ``x``, ``y``,
+      and an optional ``y``-uncertainty array (used as ``sigma``).
+    * **Fit Function** — write the fitting function as Python source code.
+      The function must be named ``fit`` and its first argument must be the
+      independent variable ``x``; subsequent arguments become the free
+      parameters.  An optional ``p0(x, y)`` function may also be defined to
+      compute initial parameter estimates; if absent the initial values are
+      taken from the Parameters table.
+    * **Parameters** — a table with one row per detected parameter.  Each row
+      allows an optional minimum bound, initial value, and maximum bound.
+
+    Attributes:
+        trace_key (str):
+            Key in the ``_traces`` catalogue used in simple mode.
+        advanced_mode (bool):
+            When ``True``, ``x_expr``, ``y_expr``, and ``y_error_expr`` are
+            used to select data instead of ``trace_key``.
+        x_expr (str):
+            Python expression for the x data array (advanced mode).
+        y_expr (str):
+            Python expression for the y data array (advanced mode).
+        y_error_expr (str):
+            Python expression for the y-uncertainty array (advanced mode).
+            When non-empty the array is passed as ``sigma`` with
+            ``absolute_sigma=True``.
+        fit_code (str):
+            Python source code defining the ``fit(x, …)`` function and
+            optionally a ``p0(x, y)`` function.
+        param_names (list[str]):
+            Parameter names extracted from the ``fit`` function signature.
+            Updated automatically whenever :attr:`fit_code` changes.
+        param_settings (dict[str, dict[str, float | None]]):
+            Per-parameter bounds and initial value.  Each entry maps a
+            parameter name to ``{"min": …, "initial": …, "max": …}`` where
+            ``None`` means *unconstrained / auto*.
+    """
+
+    def __init__(self, parent=None) -> None:
+        """Initialise the curve-fit plugin with default configuration."""
+        super().__init__(parent)
+        # Data selection (mirrors PlotTraceCommand)
+        self.trace_key: str = ""
+        self.advanced_mode: bool = False
+        self.x_expr: str = ""
+        self.y_expr: str = ""
+        self.y_error_expr: str = ""
+        # Fit function source code
+        self.fit_code: str = _DEFAULT_FIT_CODE
+        # Detected parameter names (derived from fit_code)
+        self.param_names: list[str] = _parse_fit_params(self.fit_code)
+        # Per-parameter bounds/initial settings
+        self.param_settings: dict[str, dict[str, float | None]] = {}
+
+    # ------------------------------------------------------------------
+    # BasePlugin / TransformPlugin abstract interface
+    # ------------------------------------------------------------------
+
+    @property
+    def name(self) -> str:
+        """Unique identifier for this plugin.
+
+        Returns:
+            (str):
+                ``"Curve Fit"``.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> CurveFitPlugin().name
+            'Curve Fit'
+        """
+        return "Curve Fit"
+
+    @property
+    def required_inputs(self) -> list[str]:
+        """Required input keys.
+
+        The plugin retrieves its own data from the engine namespace using
+        the configured expressions, so no external inputs are required.
+
+        Returns:
+            (list[str]):
+                Always an empty list.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> CurveFitPlugin().required_inputs
+            []
+        """
+        return []
+
+    @property
+    def output_names(self) -> list[str]:
+        """Names of scalar outputs produced by this plugin.
+
+        One value and one uncertainty output are reported for each detected
+        fit parameter.  For a fit function ``fit(x, a, b)`` the output names
+        are ``["a", "a_err", "b", "b_err"]``.
+
+        Returns:
+            (list[str]):
+                Alternating ``"{param}"`` and ``"{param}_err"`` names.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> p = CurveFitPlugin()
+            >>> p.param_names = ["a", "b"]
+            >>> p.output_names
+            ['a', 'a_err', 'b', 'b_err']
+        """
+        names: list[str] = []
+        for pname in self.param_names:
+            names.append(pname)
+            names.append(f"{pname}_err")
+        return names
+
+    # ------------------------------------------------------------------
+    # Transform implementation
+    # ------------------------------------------------------------------
+
+    def transform(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Fit the selected data and return optimal parameters and uncertainties.
+
+        Retrieves x/y (and optional y-uncertainty) data from the engine
+        namespace, compiles the user-supplied fit function, and calls
+        ``scipy.optimize.curve_fit``.  Returns a dict whose keys are the
+        parameter names and their ``_err`` counterparts.
+
+        If curve fitting fails (e.g. convergence failure, missing scipy) the
+        method logs an error and returns a dict of ``NaN`` values so that
+        downstream code can still run.
+
+        Args:
+            data (dict[str, Any]):
+                Ignored; the plugin retrieves its own data from the engine
+                namespace.
+
+        Returns:
+            (dict[str, Any]):
+                Mapping of parameter name → optimal value and
+                ``"{name}_err"`` → 1-sigma uncertainty.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.sequence_engine import SequenceEngine
+            >>> import numpy as np
+            >>> engine = SequenceEngine()
+            >>> plugin = CurveFitPlugin()
+            >>> engine.add_plugin("curve_fit", plugin)
+            >>> engine._namespace["_xdata"] = np.linspace(0, 1, 20)
+            >>> engine._namespace["_ydata"] = 2.0 * np.linspace(0, 1, 20) + 0.5
+            >>> plugin.advanced_mode = True
+            >>> plugin.x_expr = "_xdata"
+            >>> plugin.y_expr = "_ydata"
+            >>> plugin.fit_code = "def fit(x, a, b): return a * x + b"
+            >>> plugin.param_names = ["a", "b"]
+            >>> result = plugin.transform({})
+            >>> abs(result["a"] - 2.0) < 1e-6
+            True
+            >>> abs(result["b"] - 0.5) < 1e-6
+            True
+            >>> engine.shutdown()
+        """
+        nan_result = {n: _NAN for n in self.output_names}
+
+        # ---- 1. Retrieve x / y / sigma from the engine namespace ---------
+        try:
+            x_data, y_data, sigma = self._get_data_arrays()
+        except Exception as exc:
+            self.log.error("CurveFit: failed to retrieve data — %s", exc)
+            return nan_result
+
+        if x_data is None or y_data is None:
+            self.log.warning("CurveFit: x or y data is None — skipping fit.")
+            return nan_result
+
+        x_arr = np.asarray(x_data, dtype=float)
+        y_arr = np.asarray(y_data, dtype=float)
+        sigma_arr = np.asarray(sigma, dtype=float) if sigma is not None else None
+
+        # ---- 2. Compile the user code ------------------------------------
+        try:
+            fit_func, p0_func = self._compile_fit_code()
+        except Exception as exc:
+            self.log.error("CurveFit: error compiling fit code — %s", exc)
+            return nan_result
+
+        if fit_func is None:
+            self.log.error("CurveFit: no function named 'fit' found in fit code.")
+            return nan_result
+
+        # ---- 3. Build p0 and bounds --------------------------------------
+        p0 = self._build_p0(p0_func, x_arr, y_arr)
+        bounds = self._build_bounds()
+
+        # ---- 4. Run curve_fit --------------------------------------------
+        try:
+            from scipy.optimize import curve_fit  # noqa: PLC0415
+
+            kwargs: dict[str, Any] = {}
+            if sigma_arr is not None:
+                kwargs["sigma"] = sigma_arr
+                kwargs["absolute_sigma"] = True
+            if bounds is not None:
+                kwargs["bounds"] = bounds
+            if p0 is not None:
+                kwargs["p0"] = p0
+
+            popt, pcov = curve_fit(fit_func, x_arr, y_arr, **kwargs)
+        except ImportError:
+            self.log.error(
+                "CurveFit: scipy is not installed.  "
+                "Install scipy to use the curve-fit plugin."
+            )
+            return nan_result
+        except Exception as exc:
+            self.log.error("CurveFit: curve_fit failed — %s", exc)
+            return nan_result
+
+        # ---- 5. Build result dict ----------------------------------------
+        perr = np.sqrt(np.diag(pcov))
+        result: dict[str, Any] = {}
+        for i, pname in enumerate(self.param_names):
+            result[pname] = float(popt[i]) if i < len(popt) else _NAN
+            result[f"{pname}_err"] = float(perr[i]) if i < len(perr) else _NAN
+        return result
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _get_data_arrays(
+        self,
+    ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+        """Retrieve x, y and sigma arrays from the engine namespace.
+
+        Returns:
+            (tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]):
+                ``(x_data, y_data, sigma)`` where *sigma* may be ``None``.
+        """
+        sigma = None
+        if self.advanced_mode:
+            if not self.x_expr or not self.y_expr:
+                raise ValueError("x_expr and y_expr must be set in advanced mode.")
+            x_data = self.eval(self.x_expr)
+            y_data = self.eval(self.y_expr)
+            if self.y_error_expr:
+                sigma = self.eval(self.y_error_expr)
+        else:
+            traces = self.engine_namespace.get("_traces", {})
+            if not self.trace_key or self.trace_key not in traces:
+                raise ValueError(
+                    f"Trace {self.trace_key!r} not found in _traces catalogue."
+                )
+            trace_expr = traces[self.trace_key]
+            trace_data = self.eval(trace_expr)
+            x_data = trace_data.x
+            y_data = trace_data.y
+            e = getattr(trace_data, "e", None)
+            if e is not None and len(e) == len(y_data) and np.any(e != 0):
+                sigma = e
+        return x_data, y_data, sigma
+
+    def _compile_fit_code(self):
+        """Compile the fit code and return ``(fit_func, p0_func)``.
+
+        Returns:
+            (tuple[callable | None, callable | None]):
+                The compiled ``fit`` and optional ``p0`` callables.
+        """
+        ns: dict[str, Any] = {"__builtins__": __builtins__}
+        try:
+            import numpy as _np  # noqa: PLC0415
+
+            ns["np"] = _np
+            ns["numpy"] = _np
+        except ImportError:
+            pass
+        exec(compile(self.fit_code, "<fit_code>", "exec"), ns)  # noqa: S102
+        fit_func = ns.get("fit")
+        p0_func = ns.get("p0")
+        return fit_func, p0_func
+
+    def _build_p0(self, p0_func, x_arr: np.ndarray, y_arr: np.ndarray):
+        """Build the p0 initial-parameter vector.
+
+        Uses the ``p0`` function if defined; otherwise uses the Initial values
+        from the parameter table.
+
+        Args:
+            p0_func:
+                The compiled ``p0(x, y)`` callable, or ``None``.
+            x_arr (np.ndarray):
+                x data array.
+            y_arr (np.ndarray):
+                y data array.
+
+        Returns:
+            (list[float] | None):
+                Initial parameter values, or ``None`` if all entries are blank.
+        """
+        if p0_func is not None:
+            try:
+                result = p0_func(x_arr, y_arr)
+                return list(result)
+            except Exception as exc:
+                self.log.warning(
+                    "CurveFit: p0 function raised %s — using table values.", exc
+                )
+
+        initials = []
+        all_none = True
+        for pname in self.param_names:
+            val = self.param_settings.get(pname, {}).get("initial")
+            initials.append(1.0 if val is None else val)
+            if val is not None:
+                all_none = False
+        return None if all_none else initials
+
+    def _build_bounds(self):
+        """Build the bounds tuple for scipy.optimize.curve_fit.
+
+        Returns:
+            (tuple[list, list] | None):
+                ``(lower_bounds, upper_bounds)`` or ``None`` if no bounds are
+                configured.
+        """
+        lower: list[float] = []
+        upper: list[float] = []
+        has_bounds = False
+        for pname in self.param_names:
+            s = self.param_settings.get(pname, {})
+            lo = s.get("min")
+            hi = s.get("max")
+            lower.append(-_INF if lo is None else lo)
+            upper.append(_INF if hi is None else hi)
+            if lo is not None or hi is not None:
+                has_bounds = True
+        if not has_bounds:
+            return None
+        return (lower, upper)
+
+    def _update_param_names(self, code: str) -> None:
+        """Update :attr:`param_names` by introspecting *code*.
+
+        Args:
+            code (str):
+                Fit function source code.
+        """
+        self.fit_code = code
+        new_names = _parse_fit_params(code)
+        if new_names != self.param_names:
+            self.param_names = new_names
+
+    # ------------------------------------------------------------------
+    # Configuration tabs
+    # ------------------------------------------------------------------
+
+    def config_tabs(
+        self, parent: QWidget | None = None
+    ) -> list[tuple[str, QWidget]]:
+        """Return the three configuration tabs for this plugin.
+
+        Returns a *Data* tab for trace / expression selection, a *Fit
+        Function* tab containing a Python code editor, a *Parameters* tab
+        with the per-parameter bounds table, plus the shared *General* and
+        optional *About* tabs.
+
+        Keyword Parameters:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (list[tuple[str, QWidget]]):
+                List of ``(tab_title, widget)`` pairs.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> p = CurveFitPlugin()
+            >>> tabs = p.config_tabs()
+            >>> [t for t, _ in tabs[:3]]
+            ['Data', 'Fit Function', 'Parameters']
+        """
+        data_tab = self._build_data_tab(parent)
+        fit_tab, param_tab = self._build_fit_and_param_tabs(parent)
+        tabs: list[tuple[str, QWidget]] = [
+            ("Data", data_tab),
+            ("Fit Function", fit_tab),
+            ("Parameters", param_tab),
+            ("General", self._general_config_widget(parent=parent)),
+        ]
+        about_tab = self._make_about_tab()
+        if about_tab is not None:
+            tabs.append(about_tab)
+        return tabs
+
+    def _build_data_tab(self, parent: QWidget | None) -> QWidget:
+        """Build the *Data* selection tab widget.
+
+        Args:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (QWidget):
+                Configured data selection widget.
+        """
+        widget = QWidget(parent)
+        layout = QFormLayout(widget)
+
+        traces: dict[str, str] = self.engine_namespace.get("_traces", {})
+        trace_keys = list(traces.keys())
+
+        # Build per-channel x/y display entries.
+        channel_items: dict[str, str] = {}
+        for key, expr in traces.items():
+            channel_items[f"{key} (x)"] = f"{expr}.x"
+            channel_items[f"{key} (y)"] = f"{expr}.y"
+        channel_names = list(channel_items.keys())
+
+        # --- Simple mode trace dropdown ---
+        trace_combo = QComboBox(widget)
+        if trace_keys:
+            trace_combo.addItems(trace_keys)
+            if self.trace_key in trace_keys:
+                trace_combo.setCurrentText(self.trace_key)
+            else:
+                self.trace_key = trace_keys[0]
+        else:
+            trace_combo.addItem("(no traces available)")
+
+        # --- Advanced mode checkbox ---
+        advanced_check = QCheckBox(widget)
+        advanced_check.setChecked(self.advanced_mode)
+
+        # --- X data dropdown (advanced) ---
+        x_combo = QComboBox(widget)
+        if channel_names:
+            x_combo.addItems(channel_names)
+            if not _set_combo_to_expr(x_combo, channel_items, self.x_expr):
+                self.x_expr = channel_items[channel_names[0]]
+                x_combo.setCurrentIndex(0)
+        else:
+            x_combo.addItem("(no channels available)")
+
+        # --- Y data dropdown (advanced) ---
+        y_combo = QComboBox(widget)
+        if channel_names:
+            y_combo.addItems(channel_names)
+            if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
+                self.y_expr = channel_items[channel_names[0]]
+                y_combo.setCurrentIndex(0)
+        else:
+            y_combo.addItem("(no channels available)")
+
+        # --- Y uncertainty expression (advanced) ---
+        y_error_edit = QLineEdit(self.y_error_expr, widget)
+        y_error_edit.setToolTip(
+            "Python expression for y-uncertainty (sigma).  "
+            "Leave blank to fit without uncertainties."
+        )
+
+        layout.addRow("Trace:", trace_combo)
+        layout.addRow("Advanced mode:", advanced_check)
+        layout.addRow("X data:", x_combo)
+        layout.addRow("Y data:", y_combo)
+        layout.addRow("Y uncertainty:", y_error_edit)
+        layout.addRow(
+            QLabel(
+                "<i>In advanced mode expressions are evaluated against the "
+                "engine namespace at runtime.</i>",
+                widget,
+            )
+        )
+        widget.setLayout(layout)
+
+        def _update_enabled(advanced: bool) -> None:
+            trace_combo.setEnabled(not advanced)
+            x_combo.setEnabled(advanced)
+            y_combo.setEnabled(advanced)
+            y_error_edit.setEnabled(advanced)
+
+        _update_enabled(self.advanced_mode)
+        advanced_check.toggled.connect(_update_enabled)
+
+        def _apply_trace(text: str) -> None:
+            if text != "(no traces available)":
+                self.trace_key = text
+
+        def _apply_advanced(checked: bool) -> None:
+            self.advanced_mode = checked
+
+        def _apply_x(text: str) -> None:
+            if text != "(no channels available)":
+                self.x_expr = channel_items.get(text, self.x_expr)
+
+        def _apply_y(text: str) -> None:
+            if text != "(no channels available)":
+                self.y_expr = channel_items.get(text, self.y_expr)
+
+        def _apply_y_error() -> None:
+            self.y_error_expr = y_error_edit.text().strip()
+
+        trace_combo.currentTextChanged.connect(_apply_trace)
+        advanced_check.toggled.connect(_apply_advanced)
+        x_combo.currentTextChanged.connect(_apply_x)
+        y_combo.currentTextChanged.connect(_apply_y)
+        y_error_edit.editingFinished.connect(_apply_y_error)
+
+        return widget
+
+    def _build_fit_and_param_tabs(
+        self, parent: QWidget | None
+    ) -> tuple[QWidget, QWidget]:
+        """Build the *Fit Function* and *Parameters* tab widgets.
+
+        The two widgets share a connection: when the editor contents change the
+        parameter names are re-extracted and the parameter table is updated.
+
+        Args:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (tuple[QWidget, QWidget]):
+                ``(fit_function_widget, parameters_widget)``
+        """
+        # ---- Fit Function tab -------------------------------------------
+        fit_widget = QWidget(parent)
+        fit_layout = QVBoxLayout(fit_widget)
+
+        hint_label = QLabel(
+            "<b>Define a <code>fit(x, p1, p2, …)</code> function.</b>  "
+            "Optionally define <code>p0(x, y)</code> to compute initial "
+            "parameter estimates; if absent the Parameters table is used.",
+            fit_widget,
+        )
+        hint_label.setWordWrap(True)
+        fit_layout.addWidget(hint_label)
+
+        editor = EditorWidget(fit_widget)
+        editor.set_text(self.fit_code)
+        fit_layout.addWidget(editor)
+        fit_widget.setLayout(fit_layout)
+
+        # ---- Parameters tab ---------------------------------------------
+        param_widget = _ParamTableWidget(parent)
+        param_widget.load_settings(self.param_settings, self.param_names)
+
+        # ---- Wire code changes to parameter detection -------------------
+        def _on_code_changed() -> None:
+            code = editor.text()
+            old_names = list(self.param_names)
+            self._update_param_names(code)
+            # Flush current table values into param_settings.
+            self.param_settings.update(param_widget.read_settings())
+            if self.param_names != old_names:
+                param_widget.set_parameters(self.param_names)
+
+        editor.textChanged.connect(_on_code_changed)
+
+        # ---- Wire table changes back to param_settings ------------------
+        def _on_table_changed() -> None:
+            self.param_settings.update(param_widget.read_settings())
+
+        param_widget.settings_changed.connect(_on_table_changed)
+
+        return fit_widget, param_widget
+
+    # ------------------------------------------------------------------
+    # JSON serialisation
+    # ------------------------------------------------------------------
+
+    def to_json(self) -> dict[str, Any]:
+        """Serialise the curve-fit configuration to a JSON-compatible dict.
+
+        Returns:
+            (dict[str, Any]):
+                Base dict extended with ``"trace_key"``, ``"advanced_mode"``,
+                ``"x_expr"``, ``"y_expr"``, ``"y_error_expr"``, ``"fit_code"``,
+                ``"param_names"``, and ``"param_settings"``.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> p = CurveFitPlugin()
+            >>> d = p.to_json()
+            >>> d["type"]
+            'transform'
+            >>> "fit_code" in d and "param_settings" in d
+            True
+        """
+        d = super().to_json()
+        d["trace_key"] = self.trace_key
+        d["advanced_mode"] = self.advanced_mode
+        d["x_expr"] = self.x_expr
+        d["y_expr"] = self.y_expr
+        d["y_error_expr"] = self.y_error_expr
+        d["fit_code"] = self.fit_code
+        d["param_names"] = self.param_names
+        d["param_settings"] = self.param_settings
+        return d
+
+    def _restore_from_json(self, data: dict[str, Any]) -> None:
+        """Restore configuration from a serialised dict.
+
+        Args:
+            data (dict[str, Any]):
+                Dict as produced by :meth:`to_json`.
+        """
+        self.trace_key = data.get("trace_key", "")
+        self.advanced_mode = data.get("advanced_mode", False)
+        self.x_expr = data.get("x_expr", "")
+        self.y_expr = data.get("y_expr", "")
+        self.y_error_expr = data.get("y_error_expr", "")
+        self.fit_code = data.get("fit_code", _DEFAULT_FIT_CODE)
+        self.param_names = data.get("param_names", _parse_fit_params(self.fit_code))
+        raw_settings = data.get("param_settings", {})
+        self.param_settings = {
+            name: {
+                k: (float(v) if v is not None else None)
+                for k, v in entry.items()
+            }
+            for name, entry in raw_settings.items()
+        }
+
+
+# ---------------------------------------------------------------------------
+# Module-level helper (mirrors plot_trace.py)
+# ---------------------------------------------------------------------------
+
+
+def _set_combo_to_expr(
+    combo: QComboBox,
+    items: dict[str, str],
+    expr: str,
+) -> bool:
+    """Set *combo* current item to the entry in *items* whose value matches *expr*.
+
+    Args:
+        combo (QComboBox):
+            Combo box to update.
+        items (dict[str, str]):
+            Mapping of display name → expression.
+        expr (str):
+            Expression to search for.
+
+    Returns:
+        (bool):
+            ``True`` if a match was found and the combo was updated.
+
+    Examples:
+        >>> from PyQt6.QtWidgets import QApplication, QComboBox
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> combo = QComboBox()
+        >>> combo.addItems(["a", "b"])
+        >>> _set_combo_to_expr(combo, {"a": "expr_a", "b": "expr_b"}, "expr_b")
+        True
+        >>> combo.currentText()
+        'b'
+    """
+    for display_name, item_expr in items.items():
+        if item_expr == expr:
+            combo.setCurrentText(display_name)
+            return True
+    return False
