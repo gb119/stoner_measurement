@@ -27,6 +27,7 @@ dependencies = [
     "PyQt6>=6.7",
     "pyqtgraph>=0.13",
     "numpy>=2.0",
+    "scipy>=1.10",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +53,7 @@ stoner-measurement = "stoner_measurement.main:main"
 
 [project.entry-points."stoner_measurement.plugins"]
 counter = "stoner_measurement.plugins.state_control.counter:CounterPlugin"
+curve_fit = "stoner_measurement.plugins.transform.curve_fit:CurveFitPlugin"
 dummy = "stoner_measurement.plugins.trace.dummy:DummyPlugin"
 plot_trace = "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand"
 save = "stoner_measurement.plugins.command.save:SaveCommand"
