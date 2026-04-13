@@ -60,6 +60,13 @@ if TYPE_CHECKING:
 #: Logger name used for all sequence-engine and plugin log messages.
 SEQUENCE_LOGGER_NAME = "stoner_measurement.sequence"
 
+#: Regex that matches (and removes) the ``# __SM_{n}__`` line-map marker comments
+#: embedded in generated sequence code before Black formatting.
+_SM_MARKER_STRIP_RE = re.compile(r"\s*#\s*__SM_\d+__")
+
+#: Regex that captures the marker index from a ``# __SM_{n}__`` comment.
+_SM_MARKER_FIND_RE = re.compile(r"#\s*__SM_(\d+)__")
+
 
 class _QtLogHandler(logging.Handler, QObject):
     """A :class:`logging.Handler` that forwards log records via a Qt signal.
@@ -1335,7 +1342,6 @@ class SequenceEngine(QObject):
             # strip them from the final output after reconstructing the map.
             # The bounds check guards against trailing blank lines that were
             # trimmed from action_lines after _action_line_owner was built.
-            _MARKER_RE = re.compile(r"\s*#\s*__SM_\d+__")
             for idx in _action_line_owner:
                 if idx < len(action_lines) and action_lines[idx].strip():
                     action_lines[idx] = action_lines[idx] + f"  # __SM_{idx}__"
@@ -1372,12 +1378,12 @@ class SequenceEngine(QObject):
         line_map: dict[int, BasePlugin] = {}
         code_lines = code.splitlines()
         for lineno_0, line_content in enumerate(code_lines):
-            m = re.search(r"#\s*__SM_(\d+)__", line_content)
+            m = _SM_MARKER_FIND_RE.search(line_content)
             if m:
                 orig_idx = int(m.group(1))
                 if orig_idx in _action_line_owner:
                     line_map[lineno_0 + 1] = _action_line_owner[orig_idx]
 
-        code = _MARKER_RE.sub("", code)
+        code = _SM_MARKER_STRIP_RE.sub("", code)
 
         return code, line_map
