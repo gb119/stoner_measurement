@@ -640,7 +640,7 @@ class _SequenceTreeWidget(QTreeWidget):
 
         Returns:
             (list[QTreeWidgetItem]):
-                Selected items whose no ancestor is also selected.
+                Selected items whose ancestors are not also selected.
         """
         items = self.selectedItems()
         if not items:

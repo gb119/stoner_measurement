@@ -777,14 +777,37 @@ class TestDockPanel:
     # --- Keyboard navigation tests ---
 
     def _add_dummy_steps(self, panel: DockPanel, count: int) -> list:
-        """Add *count* DummyPlugin steps to *panel* and return the top-level items."""
+        """Add *count* DummyPlugin steps to *panel* and return the top-level items.
+
+        Args:
+            panel (DockPanel):
+                The dock panel to add steps to.
+            count (int):
+                Number of DummyPlugin steps to add.
+
+        Returns:
+            (list):
+                List of the newly added top-level :class:`QTreeWidgetItem` objects.
+        """
         for _ in range(count):
             panel._instrument_list.select_plugin("Dummy")
             panel._add_step()
         return [panel._sequence_tree.topLevelItem(i) for i in range(count)]
 
     def _send_key(self, tree, key, modifiers=None):
-        """Simulate a key press on *tree*."""
+        """Simulate a key press on *tree*.
+
+        Args:
+            tree (_SequenceTreeWidget):
+                The tree widget that receives the key event.
+            key (Qt.Key):
+                The key to press.
+
+        Keyword Parameters:
+            modifiers (Qt.KeyboardModifier | None):
+                Keyboard modifiers to apply.  Defaults to
+                :attr:`Qt.KeyboardModifier.ControlModifier`.
+        """
         from PyQt6.QtCore import Qt
         from PyQt6.QtGui import QKeyEvent
 
