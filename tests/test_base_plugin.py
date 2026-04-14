@@ -425,7 +425,7 @@ class TestGenerateInstantiationCode:
     def test_json_payload_contains_instance_name(self):
         plugin = _MinimalPlugin()
         lines = plugin.generate_instantiation_code()
-        assert "minimal" in lines[1]
+        assert "'instance_name': 'minimal'" in lines[1]
 
     def test_ends_with_blank_separator(self):
         plugin = _MinimalPlugin()

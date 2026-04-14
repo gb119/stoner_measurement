@@ -1086,10 +1086,10 @@ class BasePlugin(ABC):
             False
         """
         var_name = self.instance_name
-        config_dict = repr(self.to_json())
+        config_dict_repr = repr(self.to_json())
         return [
             f"if {var_name!r} not in globals():",
-            f"    {var_name} = _BasePlugin.from_json({config_dict})",
+            f"    {var_name} = _BasePlugin.from_json({config_dict_repr})",
             "",
         ]
 
