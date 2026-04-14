@@ -2014,8 +2014,8 @@ class DockPanel(QWidget):
             return "Disable Plugin"
         plural = len(plugins) > 1
         if all(getattr(p, "disabled", False) for p in plugins):
-            return "Enable Plugin(s)" if plural else "Enable Plugin"
-        return "Disable Plugin(s)" if plural else "Disable Plugin"
+            return "Enable Plugins" if plural else "Enable Plugin"
+        return "Disable Plugins" if plural else "Disable Plugin"
 
     def toggle_disable_selected_steps(self) -> None:
         """Toggle the disabled state of all currently selected sequence steps.
@@ -2051,11 +2051,12 @@ class DockPanel(QWidget):
         plugins_valid = [p for p in plugins if p is not None]
         if not plugins_valid:
             return
-        # If any plugin is enabled, disable all; otherwise enable all.
-        new_state = not all(getattr(p, "disabled", False) for p in plugins_valid)
+        # Determine target state: disable all if any are currently enabled;
+        # re-enable all only when every selected plugin is already disabled.
+        should_disable = not all(getattr(p, "disabled", False) for p in plugins_valid)
         for item in items:
             plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
             if plugin is None:
                 continue
-            plugin.disabled = new_state
-            _apply_disabled_appearance(item, new_state)
+            plugin.disabled = should_disable
+            _apply_disabled_appearance(item, should_disable)
