@@ -233,6 +233,8 @@ class _SequenceTreeWidget(QTreeWidget):
       * :kbd:`Ctrl+Left` — promote selected step(s) out of their
         sub-sequence to the parent sequence, inserted immediately after the
         container item.
+      * :kbd:`Delete` / :kbd:`Backspace` — remove the selected step(s) from
+        the sequence.
 
     :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
     items are displayed in bold to indicate that they may accept nested
@@ -247,6 +249,8 @@ class _SequenceTreeWidget(QTreeWidget):
         parent (QWidget | None):
             Optional Qt parent widget.
     """
+
+    delete_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -599,6 +603,8 @@ class _SequenceTreeWidget(QTreeWidget):
         item immediately above them (if one exists).  Ctrl+Left promotes
         selected step(s) out of a sub-sequence to the level of their
         parent, inserting them immediately after the container item.
+        Delete or Backspace emits :attr:`delete_requested` to remove the
+        selected step(s).
 
         All other key presses are forwarded to the base class.
 
@@ -628,6 +634,10 @@ class _SequenceTreeWidget(QTreeWidget):
             return
         if ctrl and not shift and key == Qt.Key.Key_Left:
             self._move_selected_out()
+            return
+        if not ctrl and not shift and key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            if self.selectedItems():
+                self.delete_requested.emit()
             return
 
         super().keyPressEvent(event)
@@ -999,6 +1009,7 @@ class DockPanel(QWidget):
         # Connect signals
         self._add_step_btn.clicked.connect(self._add_step)
         self._remove_step_btn.clicked.connect(self._remove_step)
+        self._sequence_tree.delete_requested.connect(self._remove_step)
         self._sequence_tree.itemSelectionChanged.connect(self._on_selection_changed)
         self._instrument_list.itemDoubleClicked.connect(
             lambda item, col: self._on_instrument_double_clicked()
@@ -1929,5 +1940,12 @@ class DockPanel(QWidget):
         act_paste.setShortcut(QKeySequence.StandardKey.Paste)
         act_paste.setEnabled(self._clipboard_step_json is not None)
         act_paste.triggered.connect(self.paste_step)
+
+        menu.addSeparator()
+
+        act_delete = menu.addAction("&Delete Step")
+        act_delete.setShortcut(QKeySequence(Qt.Key.Key_Delete))
+        act_delete.setEnabled(has_selection)
+        act_delete.triggered.connect(self._remove_step)
 
         menu.exec(self._sequence_tree.viewport().mapToGlobal(pos))
