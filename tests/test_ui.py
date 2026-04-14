@@ -774,8 +774,410 @@ class TestDockPanel:
         assert len(panel._step_plugins) == 1
         assert isinstance(panel._step_plugins[0], DummyPlugin)
 
+    # --- Keyboard navigation tests ---
 
-        """_SequenceTreeWidget._is_ancestor returns correct values for parent/child/unrelated."""
+    def _add_dummy_steps(self, panel: DockPanel, count: int) -> list:
+        """Add *count* DummyPlugin steps to *panel* and return the top-level items.
+
+        Args:
+            panel (DockPanel):
+                The dock panel to add steps to.
+            count (int):
+                Number of DummyPlugin steps to add.
+
+        Returns:
+            (list):
+                List of the newly added top-level :class:`QTreeWidgetItem` objects.
+        """
+        for _ in range(count):
+            panel._instrument_list.select_plugin("Dummy")
+            panel._add_step()
+        return [panel._sequence_tree.topLevelItem(i) for i in range(count)]
+
+    def _send_key(self, tree, key, modifiers=None):
+        """Simulate a key press on *tree*.
+
+        Args:
+            tree (_SequenceTreeWidget):
+                The tree widget that receives the key event.
+            key (Qt.Key):
+                The key to press.
+
+        Keyword Parameters:
+            modifiers (Qt.KeyboardModifier | None):
+                Keyboard modifiers to apply.  Defaults to
+                :attr:`Qt.KeyboardModifier.ControlModifier`.
+        """
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QKeyEvent
+
+        if modifiers is None:
+            modifiers = Qt.KeyboardModifier.ControlModifier
+        event = QKeyEvent(QKeyEvent.Type.KeyPress, key, modifiers)
+        tree.keyPressEvent(event)
+
+    def test_ctrl_up_moves_step_up(self, qapp):
+        """Ctrl+Up moves the selected step up one position."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 3)
+
+        # Select the second item (index 1) and move it up.
+        panel._sequence_tree.setCurrentItem(items[1])
+        items[1].setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Up)
+
+        # items[1] should now be at index 0.
+        assert panel._sequence_tree.indexOfTopLevelItem(items[1]) == 0
+        assert panel._sequence_tree.indexOfTopLevelItem(items[0]) == 1
+
+    def test_ctrl_up_noop_at_top(self, qapp):
+        """Ctrl+Up does nothing when the selected step is already at the top."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 3)
+
+        panel._sequence_tree.setCurrentItem(items[0])
+        items[0].setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Up)
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[0]) == 0
+
+    def test_ctrl_down_moves_step_down(self, qapp):
+        """Ctrl+Down moves the selected step down one position."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 3)
+
+        panel._sequence_tree.setCurrentItem(items[1])
+        items[1].setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Down)
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[1]) == 2
+        assert panel._sequence_tree.indexOfTopLevelItem(items[2]) == 1
+
+    def test_ctrl_down_noop_at_bottom(self, qapp):
+        """Ctrl+Down does nothing when the selected step is already at the bottom."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 3)
+
+        panel._sequence_tree.setCurrentItem(items[2])
+        items[2].setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Down)
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[2]) == 2
+
+    def test_ctrl_shift_up_moves_to_start(self, qapp):
+        """Ctrl+Shift+Up moves the selected step to the start of the sequence."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 4)
+
+        panel._sequence_tree.setCurrentItem(items[3])
+        items[3].setSelected(True)
+        self._send_key(
+            panel._sequence_tree,
+            Qt.Key.Key_Up,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[3]) == 0
+
+    def test_ctrl_shift_down_moves_to_end(self, qapp):
+        """Ctrl+Shift+Down moves the selected step to the end of the sequence."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 4)
+
+        panel._sequence_tree.setCurrentItem(items[0])
+        items[0].setSelected(True)
+        self._send_key(
+            panel._sequence_tree,
+            Qt.Key.Key_Down,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[0]) == 3
+
+    def test_ctrl_right_moves_into_sequence_above(self, qapp):
+        """Ctrl+Right moves selected step into the sub-sequence of the SequencePlugin above."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("state", _FakeStatePlugin())
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        # Add state (index 0) then dummy (index 1).
+        panel._instrument_list.select_plugin("state")
+        panel._add_step()
+        panel._instrument_list.select_plugin("Dummy")
+        panel._add_step()
+
+        dummy_item = panel._sequence_tree.topLevelItem(1)
+        state_item = panel._sequence_tree.topLevelItem(0)
+        panel._sequence_tree.setCurrentItem(dummy_item)
+        dummy_item.setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Right)
+
+        # dummy should now be a child of state.
+        assert panel._sequence_tree.topLevelItemCount() == 1
+        assert state_item.childCount() == 1
+        assert state_item.child(0) is dummy_item
+
+    def test_ctrl_right_noop_if_above_is_not_sequence(self, qapp):
+        """Ctrl+Right does nothing when the item above is not a SequencePlugin."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 2)
+
+        panel._sequence_tree.setCurrentItem(items[1])
+        items[1].setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Right)
+
+        # Nothing should have changed.
+        assert panel._sequence_tree.topLevelItemCount() == 2
+
+    def test_ctrl_right_noop_at_top(self, qapp):
+        """Ctrl+Right does nothing when the selected step is the topmost item."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("state", _FakeStatePlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.select_plugin("state")
+        panel._add_step()
+        state_item = panel._sequence_tree.topLevelItem(0)
+        state_item.setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Right)
+
+        assert panel._sequence_tree.topLevelItemCount() == 1
+        assert state_item.childCount() == 0
+
+    def test_ctrl_left_promotes_step_out_of_subsequence(self, qapp):
+        """Ctrl+Left moves selected step from a sub-sequence to the parent, after the container."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("state", _FakeStatePlugin())
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.select_plugin("state")
+        panel._add_step()
+        panel._instrument_list.select_plugin("Dummy")
+        panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        dummy_item = panel._sequence_tree.topLevelItem(1)
+        # Nest dummy under state.
+        panel._sequence_tree.takeTopLevelItem(1)
+        state_item.addChild(dummy_item)
+
+        # Promote dummy out of state.
+        panel._sequence_tree.setCurrentItem(dummy_item)
+        dummy_item.setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Left)
+
+        # dummy should be back at the top level, after state.
+        assert panel._sequence_tree.topLevelItemCount() == 2
+        assert panel._sequence_tree.indexOfTopLevelItem(state_item) == 0
+        assert panel._sequence_tree.indexOfTopLevelItem(dummy_item) == 1
+        assert state_item.childCount() == 0
+
+    def test_ctrl_left_noop_at_top_level(self, qapp):
+        """Ctrl+Left does nothing when the selected step is already at the top level."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 2)
+
+        panel._sequence_tree.setCurrentItem(items[0])
+        items[0].setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Left)
+
+        assert panel._sequence_tree.topLevelItemCount() == 2
+
+    def test_ctrl_up_moves_multiple_steps_together(self, qapp):
+        """Ctrl+Up moves a contiguous group of selected steps up as a unit."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 4)
+
+        # Select items[1] and items[2] together.
+        items[1].setSelected(True)
+        items[2].setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Up)
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[1]) == 0
+        assert panel._sequence_tree.indexOfTopLevelItem(items[2]) == 1
+        assert panel._sequence_tree.indexOfTopLevelItem(items[0]) == 2
+
+    def test_ctrl_down_moves_multiple_steps_together(self, qapp):
+        """Ctrl+Down moves a contiguous group of selected steps down as a unit."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 4)
+
+        # Select items[1] and items[2] together.
+        items[1].setSelected(True)
+        items[2].setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Down)
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[1]) == 2
+        assert panel._sequence_tree.indexOfTopLevelItem(items[2]) == 3
+        assert panel._sequence_tree.indexOfTopLevelItem(items[3]) == 1
+
+    def test_ctrl_shift_up_multiple_steps(self, qapp):
+        """Ctrl+Shift+Up moves a group of selected steps to the start preserving order."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 4)
+
+        items[2].setSelected(True)
+        items[3].setSelected(True)
+        self._send_key(
+            panel._sequence_tree,
+            Qt.Key.Key_Up,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[2]) == 0
+        assert panel._sequence_tree.indexOfTopLevelItem(items[3]) == 1
+
+    def test_ctrl_shift_down_multiple_steps(self, qapp):
+        """Ctrl+Shift+Down moves a group of selected steps to the end preserving order."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        items = self._add_dummy_steps(panel, 4)
+
+        items[0].setSelected(True)
+        items[1].setSelected(True)
+        self._send_key(
+            panel._sequence_tree,
+            Qt.Key.Key_Down,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
+
+        assert panel._sequence_tree.indexOfTopLevelItem(items[0]) == 2
+        assert panel._sequence_tree.indexOfTopLevelItem(items[1]) == 3
+
+    def test_ctrl_right_multiple_steps_into_sequence(self, qapp):
+        """Ctrl+Right moves multiple selected steps into the SequencePlugin above."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("state", _FakeStatePlugin())
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.select_plugin("state")
+        panel._add_step()
+        for _ in range(2):
+            panel._instrument_list.select_plugin("Dummy")
+            panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        dummy0 = panel._sequence_tree.topLevelItem(1)
+        dummy1 = panel._sequence_tree.topLevelItem(2)
+
+        dummy0.setSelected(True)
+        dummy1.setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Right)
+
+        assert panel._sequence_tree.topLevelItemCount() == 1
+        assert state_item.childCount() == 2
+
+    def test_ctrl_left_multiple_steps_out_of_sequence(self, qapp):
+        """Ctrl+Left promotes multiple sub-steps to the parent level after the container."""
+        from PyQt6.QtCore import Qt
+
+        pm = PluginManager()
+        pm.register("state", _FakeStatePlugin())
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._instrument_list.select_plugin("state")
+        panel._add_step()
+        for _ in range(2):
+            panel._instrument_list.select_plugin("Dummy")
+            panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        dummy0 = panel._sequence_tree.topLevelItem(1)
+        dummy1 = panel._sequence_tree.topLevelItem(2)
+
+        panel._sequence_tree.takeTopLevelItem(2)
+        panel._sequence_tree.takeTopLevelItem(1)
+        state_item.addChild(dummy0)
+        state_item.addChild(dummy1)
+
+        dummy0.setSelected(True)
+        dummy1.setSelected(True)
+        self._send_key(panel._sequence_tree, Qt.Key.Key_Left)
+
+        assert panel._sequence_tree.topLevelItemCount() == 3
+        assert state_item.childCount() == 0
+        assert panel._sequence_tree.indexOfTopLevelItem(state_item) == 0
+        assert panel._sequence_tree.indexOfTopLevelItem(dummy0) == 1
+        assert panel._sequence_tree.indexOfTopLevelItem(dummy1) == 2
+
+    def test_non_ctrl_key_not_intercepted(self, qapp):
+        """Non-Ctrl key presses are forwarded to the base class (not intercepted)."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QKeyEvent
+
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+        self._add_dummy_steps(panel, 2)
+
+        # Up arrow without Ctrl should not move anything.
+        items_before = [
+            panel._sequence_tree.topLevelItem(i) for i in range(2)
+        ]
+        event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+        panel._sequence_tree.keyPressEvent(event)
+
+        assert panel._sequence_tree.topLevelItem(0) is items_before[0]
+        assert panel._sequence_tree.topLevelItem(1) is items_before[1]
         from stoner_measurement.ui.dock_panel import _SequenceTreeWidget
 
         pm = PluginManager()
