@@ -1448,13 +1448,14 @@ class DockPanel(QWidget):
 
         # Omit items whose parent is also selected (parent serialisation
         # already captures the sub-step).
-        selected_set = set(items)
+        # Use id() because QTreeWidgetItem is not hashable in PyQt6.
+        selected_ids = {id(item) for item in items}
 
         def _has_selected_ancestor(item: QTreeWidgetItem) -> bool:
             """Return True if any ancestor of item is also in the selection."""
             parent = item.parent()
             while parent is not None:
-                if parent in selected_set:
+                if id(parent) in selected_ids:
                     return True
                 parent = parent.parent()
             return False
