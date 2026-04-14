@@ -19,7 +19,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QMimeData, QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence
+from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QLabel,
@@ -202,7 +202,7 @@ class _PluginTreeWidget(QTreeWidget):
 
 
 class _SequenceTreeWidget(QTreeWidget):
-    """Tree widget for sequence steps with drag-and-drop support.
+    """Tree widget for sequence steps with drag-and-drop and keyboard navigation support.
 
     Supports:
 
@@ -219,6 +219,20 @@ class _SequenceTreeWidget(QTreeWidget):
       *Available sequence commands* :class:`_PluginTreeWidget` and drop it
       above, below or onto an existing step (or onto the empty area) to
       insert a brand-new step instance at that position.
+    * **Keyboard navigation** — with the tree focused:
+
+      * :kbd:`Ctrl+Up` — move selected step(s) up one position.
+      * :kbd:`Ctrl+Down` — move selected step(s) down one position.
+      * :kbd:`Ctrl+Shift+Up` — move selected step(s) to the start of their
+        sequence.
+      * :kbd:`Ctrl+Shift+Down` — move selected step(s) to the end of their
+        sequence.
+      * :kbd:`Ctrl+Right` — move selected step(s) into the sub-sequence of
+        the :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
+        item immediately above them (if one exists).
+      * :kbd:`Ctrl+Left` — promote selected step(s) out of their
+        sub-sequence to the parent sequence, inserted immediately after the
+        container item.
 
     :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
     items are displayed in bold to indicate that they may accept nested
@@ -568,6 +582,285 @@ class _SequenceTreeWidget(QTreeWidget):
 
         self.setCurrentItem(new_item)
         event.acceptProposedAction()
+
+    # ------------------------------------------------------------------
+    # Keyboard navigation
+    # ------------------------------------------------------------------
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore[override]
+        """Handle keyboard shortcuts for moving sequence steps.
+
+        Ctrl+Up moves selected step(s) up one position within their parent
+        sequence.  Ctrl+Down moves them down.  Ctrl+Shift+Up jumps the
+        selected step(s) to the start of their parent sequence;
+        Ctrl+Shift+Down jumps them to the end.  Ctrl+Right moves the
+        selected step(s) into the sub-sequence of the
+        :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
+        item immediately above them (if one exists).  Ctrl+Left promotes
+        selected step(s) out of a sub-sequence to the level of their
+        parent, inserting them immediately after the container item.
+
+        All other key presses are forwarded to the base class.
+
+        Args:
+            event (QKeyEvent):
+                The incoming key-press event.
+        """
+        modifiers = event.modifiers()
+        ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        key = event.key()
+
+        if ctrl and key == Qt.Key.Key_Up:
+            if shift:
+                self._move_selected_to_start()
+            else:
+                self._move_selected_up()
+            return
+        if ctrl and key == Qt.Key.Key_Down:
+            if shift:
+                self._move_selected_to_end()
+            else:
+                self._move_selected_down()
+            return
+        if ctrl and not shift and key == Qt.Key.Key_Right:
+            self._move_selected_into_above()
+            return
+        if ctrl and not shift and key == Qt.Key.Key_Left:
+            self._move_selected_out()
+            return
+
+        super().keyPressEvent(event)
+
+    def _selected_roots(self) -> list[QTreeWidgetItem]:
+        """Return selected items that do not have a selected ancestor.
+
+        When a parent and one of its children are both selected, only the
+        parent is returned (the child is implicitly included via the parent).
+
+        Returns:
+            (list[QTreeWidgetItem]):
+                Selected items whose no ancestor is also selected.
+        """
+        items = self.selectedItems()
+        if not items:
+            return []
+        selected_ids = {id(item) for item in items}
+        result = []
+        for item in items:
+            parent = item.parent()
+            has_selected_ancestor = False
+            while parent is not None:
+                if id(parent) in selected_ids:
+                    has_selected_ancestor = True
+                    break
+                parent = parent.parent()
+            if not has_selected_ancestor:
+                result.append(item)
+        return result
+
+    def _item_index(self, item: QTreeWidgetItem) -> int:
+        """Return the current index of *item* within its parent (or top level).
+
+        Args:
+            item (QTreeWidgetItem):
+                The item whose index is requested.
+
+        Returns:
+            (int):
+                Zero-based position of *item* among its siblings.
+        """
+        parent = item.parent()
+        if parent is not None:
+            return parent.indexOfChild(item)
+        return self.indexOfTopLevelItem(item)
+
+    def _item_sibling_count(self, item: QTreeWidgetItem) -> int:
+        """Return the total number of items at *item*'s level (including itself).
+
+        Args:
+            item (QTreeWidgetItem):
+                The reference item.
+
+        Returns:
+            (int):
+                Number of children of *item*'s parent, or the top-level item
+                count when *item* has no parent.
+        """
+        parent = item.parent()
+        if parent is not None:
+            return parent.childCount()
+        return self.topLevelItemCount()
+
+    def _move_item(self, item: QTreeWidgetItem, new_index: int) -> None:
+        """Relocate *item* to *new_index* within its current parent.
+
+        *new_index* is the desired position in the **final** list after the
+        move (identical semantics to :meth:`list.insert`).  The item's
+        selected state is explicitly restored after reinsertion because Qt
+        clears it when the item is detached.
+
+        Args:
+            item (QTreeWidgetItem):
+                The item to move.
+            new_index (int):
+                Target position (0-based) in the same parent list.
+        """
+        parent = item.parent()
+        if parent is not None:
+            old_idx = parent.indexOfChild(item)
+            parent.takeChild(old_idx)
+            parent.insertChild(new_index, item)
+        else:
+            old_idx = self.indexOfTopLevelItem(item)
+            self.takeTopLevelItem(old_idx)
+            self.insertTopLevelItem(new_index, item)
+        item.setSelected(True)
+
+    def _move_selected_up(self) -> None:
+        """Move each group of selected steps up one position in their parent sequence.
+
+        Items whose topmost sibling in the selection is already at index 0
+        are left in place (the group cannot move further up).
+        """
+        roots = self._selected_roots()
+        if not roots:
+            return
+        by_parent: dict[int, list[QTreeWidgetItem]] = {}
+        for item in roots:
+            by_parent.setdefault(id(item.parent()), []).append(item)
+        for group in by_parent.values():
+            group.sort(key=self._item_index)
+            if self._item_index(group[0]) == 0:
+                continue
+            for item in group:
+                self._move_item(item, self._item_index(item) - 1)
+
+    def _move_selected_down(self) -> None:
+        """Move each group of selected steps down one position in their parent sequence.
+
+        Items whose bottommost sibling in the selection is already at the
+        last position are left in place.
+        """
+        roots = self._selected_roots()
+        if not roots:
+            return
+        by_parent: dict[int, list[QTreeWidgetItem]] = {}
+        for item in roots:
+            by_parent.setdefault(id(item.parent()), []).append(item)
+        for group in by_parent.values():
+            group.sort(key=self._item_index, reverse=True)
+            total = self._item_sibling_count(group[0])
+            if self._item_index(group[0]) >= total - 1:
+                continue
+            for item in group:
+                self._move_item(item, self._item_index(item) + 1)
+
+    def _move_selected_to_start(self) -> None:
+        """Move each group of selected steps to the start of their parent sequence.
+
+        Relative order among the selected items is preserved.
+        """
+        roots = self._selected_roots()
+        if not roots:
+            return
+        by_parent: dict[int, list[QTreeWidgetItem]] = {}
+        for item in roots:
+            by_parent.setdefault(id(item.parent()), []).append(item)
+        for group in by_parent.values():
+            group.sort(key=self._item_index)
+            for i, item in enumerate(group):
+                self._move_item(item, i)
+
+    def _move_selected_to_end(self) -> None:
+        """Move each group of selected steps to the end of their parent sequence.
+
+        Relative order among the selected items is preserved.
+        """
+        roots = self._selected_roots()
+        if not roots:
+            return
+        by_parent: dict[int, list[QTreeWidgetItem]] = {}
+        for item in roots:
+            by_parent.setdefault(id(item.parent()), []).append(item)
+        for group in by_parent.values():
+            total = self._item_sibling_count(group[0])
+            group.sort(key=self._item_index, reverse=True)
+            for i, item in enumerate(group):
+                self._move_item(item, total - 1 - i)
+
+    def _move_selected_into_above(self) -> None:
+        """Move selected steps into the sub-sequence of the item immediately above.
+
+        For each group of selected items sharing the same parent, the item
+        immediately above the topmost selected item is inspected.  If that
+        item is a
+        :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`,
+        all items in the group are appended to its children and the item is
+        expanded.  The operation is silently skipped when the topmost item is
+        already at position 0, or when the item above is not a
+        :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`.
+        """
+        roots = self._selected_roots()
+        if not roots:
+            return
+        by_parent: dict[int, list[QTreeWidgetItem]] = {}
+        for item in roots:
+            by_parent.setdefault(id(item.parent()), []).append(item)
+        for group in by_parent.values():
+            group.sort(key=self._item_index)
+            top_idx = self._item_index(group[0])
+            if top_idx == 0:
+                continue
+            parent = group[0].parent()
+            above_idx = top_idx - 1
+            above_item = parent.child(above_idx) if parent is not None else self.topLevelItem(above_idx)
+            above_plugin = above_item.data(0, _PLUGIN_INSTANCE_ROLE)
+            if not self._is_sequence_plugin_instance(above_plugin):
+                continue
+            for item in group:
+                cur_parent = item.parent()
+                if cur_parent is not None:
+                    cur_parent.takeChild(cur_parent.indexOfChild(item))
+                else:
+                    self.takeTopLevelItem(self.indexOfTopLevelItem(item))
+                above_item.addChild(item)
+                item.setSelected(True)
+            above_item.setExpanded(True)
+
+    def _move_selected_out(self) -> None:
+        """Promote selected steps from a sub-sequence to their grandparent sequence.
+
+        Each selected item that is currently inside a sub-sequence is moved
+        to the grandparent list, inserted immediately after the container
+        item.  Items already at the top level are silently ignored.  Relative
+        order within each group is preserved.
+        """
+        roots = self._selected_roots()
+        if not roots:
+            return
+        nested = [item for item in roots if item.parent() is not None]
+        if not nested:
+            return
+        by_parent: dict[int, list[QTreeWidgetItem]] = {}
+        for item in nested:
+            by_parent.setdefault(id(item.parent()), []).append(item)
+        for group in by_parent.values():
+            parent_item = group[0].parent()
+            grandparent = parent_item.parent()
+            if grandparent is not None:
+                insert_after = grandparent.indexOfChild(parent_item)
+            else:
+                insert_after = self.indexOfTopLevelItem(parent_item)
+            group.sort(key=self._item_index)
+            for i, item in enumerate(group):
+                parent_item.takeChild(parent_item.indexOfChild(item))
+                target_idx = insert_after + 1 + i
+                if grandparent is not None:
+                    grandparent.insertChild(target_idx, item)
+                else:
+                    self.insertTopLevelItem(target_idx, item)
+                item.setSelected(True)
 
 
 class DockPanel(QWidget):
