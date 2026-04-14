@@ -12,20 +12,59 @@ tab-delimited text file.  Two save modes are supported:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+
+#: Regex matching the start of a Python string literal (with optional prefix).
+_STRING_EXPR_RE = re.compile(r'^[fFrRbBuU]*["\']')
+
+
+def _ensure_string_expr(text: str) -> str:
+    """Wrap *text* in quotes if it does not already look like a Python string expression.
+
+    If *text* begins with an optional string prefix (``f``, ``r``, ``b``, ``u``)
+    followed by a quote character it is returned unchanged.  Otherwise the text
+    is passed through :func:`repr` so that it becomes a valid Python string
+    literal that will evaluate back to the original text.
+
+    Args:
+        text (str):
+            Raw text from a UI text field.
+
+    Returns:
+        (str):
+            A Python string-expression that evaluates to the same value as
+            *text*, guaranteed to start and end with quote characters.
+
+    Examples:
+        >>> _ensure_string_expr("'already/quoted.txt'")
+        "'already/quoted.txt'"
+        >>> _ensure_string_expr("plain/path.txt")
+        "'plain/path.txt'"
+        >>> _ensure_string_expr("f'dynamic/{name}.txt'")
+        "f'dynamic/{name}.txt'"
+        >>> _ensure_string_expr("")
+        ''
+    """
+    if not text or _STRING_EXPR_RE.match(text):
+        return text
+    return repr(text)
 
 
 def _flatten_to_metadata(obj: Any, prefix: str = "") -> list[str]:
@@ -128,7 +167,11 @@ class SaveCommand(CommandPlugin):
     Attributes:
         path_expr (str):
             Python expression string that evaluates to the file path.
-            Defaults to ``"'data/output.txt'"``.
+            Defaults to ``"'data/output.txt'"``.  When the expression evaluates
+            to a relative path it is resolved against the default data directory
+            configured in the application settings.  If no default data
+            directory is set the path is relative to the current working
+            directory.
         save_mode (str):
             Either ``"traces"`` (default) or ``"data"``.  Selects whether
             trace channels or a state-control plugin's DataFrame are saved.
@@ -339,6 +382,16 @@ class SaveCommand(CommandPlugin):
                 f"SaveCommand.path_expr must evaluate to a str, got {type(path_val).__name__!r}"
             )
         dest = pathlib.Path(path_val)
+        if not dest.is_absolute():
+            from stoner_measurement.ui.settings_dialog import (
+                KEY_DEFAULT_DATA_DIR,
+                make_app_settings,
+            )
+
+            settings = make_app_settings()
+            data_dir = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
+            if data_dir:
+                dest = pathlib.Path(data_dir) / dest
         dest.parent.mkdir(parents=True, exist_ok=True)
 
         # ------------------------------------------------------------------
@@ -543,10 +596,54 @@ class SaveCommand(CommandPlugin):
         )
 
         def _apply_path() -> None:
-            self.path_expr = path_edit.text().strip()
+            text = path_edit.text().strip()
+            text = _ensure_string_expr(text)
+            if text != path_edit.text():
+                path_edit.setText(text)
+            self.path_expr = text
 
         path_edit.editingFinished.connect(_apply_path)
-        form.addRow("Path expression:", path_edit)
+
+        def _browse_path() -> None:
+            import pathlib
+
+            from stoner_measurement.ui.settings_dialog import (
+                KEY_DEFAULT_DATA_DIR,
+                make_app_settings,
+            )
+
+            settings = make_app_settings()
+            data_dir = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
+            start_dir = data_dir if data_dir else ""
+            path, _ = QFileDialog.getSaveFileName(
+                widget,
+                "Save Data File",
+                start_dir,
+                "Text Files (*.txt);;All Files (*)",
+            )
+            if path:
+                p = pathlib.Path(path)
+                if data_dir:
+                    try:
+                        rel = p.relative_to(data_dir)
+                        expr = repr(str(rel))
+                    except ValueError:
+                        expr = repr(str(p))
+                else:
+                    expr = repr(str(p))
+                path_edit.setText(expr)
+                self.path_expr = expr
+
+        browse_btn = QPushButton("Browse…", widget)
+        browse_btn.setFixedWidth(80)
+        browse_btn.setToolTip("Open a file dialog to choose the save path.")
+        browse_btn.clicked.connect(_browse_path)
+
+        path_row = QHBoxLayout()
+        path_row.setContentsMargins(0, 0, 0, 0)
+        path_row.addWidget(path_edit)
+        path_row.addWidget(browse_btn)
+        form.addRow("Path expression:", path_row)
 
         # --- No-overwrite checkbox ---
         no_overwrite_check = QCheckBox(widget)

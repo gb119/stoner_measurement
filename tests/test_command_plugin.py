@@ -569,6 +569,99 @@ class TestSaveCommand:
         # At least one combobox for mode selection.
         assert len(combos) >= 1
 
+    def test_config_widget_has_browse_button(self, qapp):
+        from PyQt6.QtWidgets import QPushButton
+
+        cmd = SaveCommand()
+        widget = cmd.config_widget()
+        buttons = widget.findChildren(QPushButton)
+        assert any("Browse" in btn.text() for btn in buttons)
+
+    def test_apply_path_wraps_unquoted_string(self, qapp):
+        """Typing a plain path without quotes should auto-add single quotes."""
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = SaveCommand()
+        widget = cmd.config_widget()
+        line_edits = widget.findChildren(QLineEdit)
+        assert line_edits, "Config widget should have a QLineEdit"
+        line_edits[0].setText("data/plain_path.txt")
+        line_edits[0].editingFinished.emit()
+        assert cmd.path_expr == repr("data/plain_path.txt")
+
+    def test_apply_path_leaves_quoted_string_unchanged(self, qapp):
+        """Text already starting with a quote should not be double-quoted."""
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = SaveCommand()
+        widget = cmd.config_widget()
+        line_edits = widget.findChildren(QLineEdit)
+        line_edits[0].setText("'data/output.txt'")
+        line_edits[0].editingFinished.emit()
+        assert cmd.path_expr == "'data/output.txt'"
+
+    def test_apply_path_leaves_fstring_unchanged(self, qapp):
+        """An f-string expression should not be modified."""
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = SaveCommand()
+        widget = cmd.config_widget()
+        line_edits = widget.findChildren(QLineEdit)
+        line_edits[0].setText("f'data/run_{index}.txt'")
+        line_edits[0].editingFinished.emit()
+        assert cmd.path_expr == "f'data/run_{index}.txt'"
+
+    # ------------------------------------------------------------------
+    # execute — default data directory resolution
+    # ------------------------------------------------------------------
+
+    def test_execute_resolves_relative_path_against_data_directory(
+        self, qapp, engine, tmp_path
+    ):
+        """Relative path_expr should be resolved against KEY_DEFAULT_DATA_DIR."""
+        from unittest.mock import patch
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.path_expr = "'subdir/out.txt'"
+
+        data_dir = str(tmp_path)
+
+        class _MockSettings:
+            def value(self, key, default="", **_kwargs):
+                return data_dir
+
+        with patch(
+            "stoner_measurement.ui.settings_dialog.make_app_settings",
+            return_value=_MockSettings(),
+        ):
+            cmd.execute()
+
+        expected = tmp_path / "subdir" / "out.txt"
+        assert expected.exists()
+
+    def test_execute_absolute_path_ignores_data_directory(self, qapp, engine, tmp_path):
+        """An absolute path_expr must not be prefixed with the data directory."""
+        from unittest.mock import patch
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "absolute_out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        # Even if data_dir is set, the absolute path should be used as-is.
+        class _MockSettings:
+            def value(self, key, default="", **_kwargs):
+                return "/some/other/dir"
+
+        with patch(
+            "stoner_measurement.ui.settings_dialog.make_app_settings",
+            return_value=_MockSettings(),
+        ):
+            cmd.execute()
+
+        assert out_file.exists()
+
     # ------------------------------------------------------------------
     # execute / __call__ keyword parameter overrides
     # ------------------------------------------------------------------
