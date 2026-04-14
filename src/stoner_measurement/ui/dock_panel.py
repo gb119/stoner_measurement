@@ -19,7 +19,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QMimeData, QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QKeySequence
+from PyQt6.QtGui import QBrush, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QLabel,
@@ -90,6 +90,28 @@ QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {
     border-bottom: 1px solid gray;
 }
 """
+
+
+def _apply_disabled_appearance(item: QTreeWidgetItem, disabled: bool) -> None:
+    """Apply or remove the greyed-out/italic appearance that marks a disabled plugin.
+
+    Preserves any other font properties already set on *item* (e.g. bold for
+    sequence-plugin container items).
+
+    Args:
+        item (QTreeWidgetItem):
+            The tree item whose appearance is to be updated.
+        disabled (bool):
+            ``True`` to apply the disabled appearance; ``False`` to restore
+            the normal appearance.
+    """
+    font = item.font(0)
+    font.setItalic(disabled)
+    item.setFont(0, font)
+    if disabled:
+        item.setForeground(0, QBrush(Qt.GlobalColor.gray))
+    else:
+        item.setForeground(0, QBrush())
 
 
 class _PluginTreeWidget(QTreeWidget):
@@ -367,6 +389,8 @@ class _SequenceTreeWidget(QTreeWidget):
                 "Drag other steps onto this item to nest them as sub-steps.",
             )
         item.setFlags(flags)
+        if getattr(plugin, "disabled", False):
+            _apply_disabled_appearance(item, True)
         return item
 
     # ------------------------------------------------------------------
@@ -1943,9 +1967,96 @@ class DockPanel(QWidget):
 
         menu.addSeparator()
 
+        disable_label = self.disabled_action_label()
+        act_disable = menu.addAction(disable_label)
+        act_disable.setEnabled(has_selection)
+        act_disable.triggered.connect(self.toggle_disable_selected_steps)
+
+        menu.addSeparator()
+
         act_delete = menu.addAction("&Delete Step")
         act_delete.setShortcut(QKeySequence(Qt.Key.Key_Delete))
         act_delete.setEnabled(has_selection)
         act_delete.triggered.connect(self._remove_step)
 
         menu.exec(self._sequence_tree.viewport().mapToGlobal(pos))
+
+    # ------------------------------------------------------------------
+    # Disable / enable selected steps
+    # ------------------------------------------------------------------
+
+    def disabled_action_label(self) -> str:
+        """Return the appropriate label for the disable/enable toggle action.
+
+        Inspects the currently selected sequence steps and returns
+        ``"Enable Plugin(s)"`` when all selected plugins are disabled, or
+        ``"Disable Plugin(s)"`` otherwise (including when the selection is
+        empty).  The plural suffix is omitted when exactly one item is
+        selected.
+
+        Returns:
+            (str):
+                The action label to display in the context menu or Edit menu.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> pm = PluginManager()
+            >>> panel = DockPanel(plugin_manager=pm)
+            >>> panel.disabled_action_label()
+            'Disable Plugin'
+        """
+        items = self._sequence_tree.selectedItems()
+        plugins = [item.data(0, _PLUGIN_INSTANCE_ROLE) for item in items]
+        plugins = [p for p in plugins if p is not None]
+        if not plugins:
+            return "Disable Plugin"
+        plural = len(plugins) > 1
+        if all(getattr(p, "disabled", False) for p in plugins):
+            return "Enable Plugins" if plural else "Enable Plugin"
+        return "Disable Plugins" if plural else "Disable Plugin"
+
+    def toggle_disable_selected_steps(self) -> None:
+        """Toggle the disabled state of all currently selected sequence steps.
+
+        If any selected plugin is currently enabled, all selected plugins are
+        disabled.  If all selected plugins are already disabled, they are all
+        re-enabled.  The visual appearance of each affected tree item is
+        updated immediately to reflect the new state.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.core.plugin_manager import PluginManager
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
+            >>> pm = PluginManager()
+            >>> panel = DockPanel(plugin_manager=pm)
+            >>> plugin = DummyPlugin()
+            >>> panel.load_sequence([plugin])
+            >>> panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
+            >>> plugin.disabled
+            False
+            >>> panel.toggle_disable_selected_steps()
+            >>> plugin.disabled
+            True
+            >>> panel.toggle_disable_selected_steps()
+            >>> plugin.disabled
+            False
+        """
+        items = self._sequence_tree.selectedItems()
+        if not items:
+            return
+        plugins = [item.data(0, _PLUGIN_INSTANCE_ROLE) for item in items]
+        plugins_valid = [p for p in plugins if p is not None]
+        if not plugins_valid:
+            return
+        # Determine target state: disable all if any are currently enabled;
+        # re-enable all only when every selected plugin is already disabled.
+        should_disable = not all(getattr(p, "disabled", False) for p in plugins_valid)
+        for item in items:
+            plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+            if plugin is None:
+                continue
+            plugin.disabled = should_disable
+            _apply_disabled_appearance(item, should_disable)

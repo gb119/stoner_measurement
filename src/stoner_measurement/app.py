@@ -142,6 +142,7 @@ class MeasurementApp(QMainWindow):
         """
         self._sync_sequence_steps_to_engine()
         self._main_window.config_panel.show_plugin(plugin)  # type: ignore[arg-type]
+        self._update_disable_action(plugin)
 
     def _sync_sequence_steps_to_engine(self) -> None:
         """Inject sequence-step plugins into the engine namespace and rebuild catalogs.
@@ -237,6 +238,44 @@ class MeasurementApp(QMainWindow):
                     )
 
     # ------------------------------------------------------------------
+    # Disable / enable action helpers
+    # ------------------------------------------------------------------
+
+    def _update_disable_action(self, plugin: object) -> None:
+        """Update the toggle-disable action label and enabled state.
+
+        Called whenever the sequence-step selection changes (via
+        :attr:`~stoner_measurement.ui.dock_panel.DockPanel.plugin_selected`).
+        When *plugin* is a
+        :class:`~stoner_measurement.plugins.base_plugin.BasePlugin` instance
+        (single-item selection) the action is enabled and its label reflects
+        the plugin's current :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.disabled`
+        state.  Otherwise the action is disabled.
+
+        Args:
+            plugin (object):
+                The selected plugin, or ``None`` when nothing is selected or
+                multiple steps are selected.
+        """
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        if isinstance(plugin, BasePlugin):
+            self._act_toggle_disable.setEnabled(True)
+            label = "Enable Plugin" if plugin.disabled else "Disable Plugin"
+            self._act_toggle_disable.setText(label)
+        else:
+            self._act_toggle_disable.setEnabled(False)
+            self._act_toggle_disable.setText("Disable Plugin")
+
+    def _on_toggle_disable(self) -> None:
+        """Toggle the disabled state of the selected sequence step(s).
+
+        Delegates to
+        :meth:`~stoner_measurement.ui.dock_panel.DockPanel.toggle_disable_selected_steps`.
+        """
+        self._main_window.dock_panel.toggle_disable_selected_steps()
+
+    # ------------------------------------------------------------------
     # Action construction
     # ------------------------------------------------------------------
 
@@ -325,6 +364,13 @@ class MeasurementApp(QMainWindow):
         self._act_paste.setShortcut(QKeySequence.StandardKey.Paste)
         self._act_paste.triggered.connect(self._on_paste)
 
+        self._act_toggle_disable = QAction("Disable Plugin", self)
+        self._act_toggle_disable.setStatusTip(
+            "Disable or re-enable the selected sequence step"
+        )
+        self._act_toggle_disable.setEnabled(False)
+        self._act_toggle_disable.triggered.connect(self._on_toggle_disable)
+
         self._act_settings = QAction("&Preferences…", self)
         self._act_settings.setShortcut(QKeySequence.StandardKey.Preferences)
         self._act_settings.setStatusTip("Configure application preferences")
@@ -382,6 +428,7 @@ class MeasurementApp(QMainWindow):
         edit_menu.addAction(self._act_cut)
         edit_menu.addAction(self._act_copy)
         edit_menu.addAction(self._act_paste)
+        edit_menu.addAction(self._act_toggle_disable)
         edit_menu.addSeparator()
         edit_menu.addAction(self._act_settings)
 
