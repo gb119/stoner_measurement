@@ -1256,7 +1256,6 @@ class SequenceEngine(QObject):
         # ------------------------------------------------------------------
 
         lines.append("# Instantiate plugins from saved configuration (if not already present).")
-        lines.append("import json as _json")
         lines.append("from stoner_measurement.plugins.base_plugin import BasePlugin as _BasePlugin")
         lines.append("")
         for plugin in ordered_plugins:

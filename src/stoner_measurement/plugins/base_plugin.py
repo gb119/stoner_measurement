@@ -1063,10 +1063,9 @@ class BasePlugin(ABC):
         :attr:`sequence_engine` back-reference) is preserved.
 
         The caller (:meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.generate_sequence_code`)
-        is responsible for emitting the following one-time imports before calling
+        is responsible for emitting the following one-time import before calling
         this method for any plugin::
 
-            import json as _json
             from stoner_measurement.plugins.base_plugin import BasePlugin as _BasePlugin
 
         Returns:
@@ -1084,13 +1083,13 @@ class BasePlugin(ABC):
             >>> '_BasePlugin.from_json' in lines[1]
             True
             >>> '_json.loads' in lines[1]
-            True
+            False
         """
         var_name = self.instance_name
-        config_json = json.dumps(self.to_json())
+        config_dict_repr = repr(self.to_json())
         return [
             f"if {var_name!r} not in globals():",
-            f"    {var_name} = _BasePlugin.from_json(_json.loads({config_json!r}))",
+            f"    {var_name} = _BasePlugin.from_json({config_dict_repr})",
             "",
         ]
 
