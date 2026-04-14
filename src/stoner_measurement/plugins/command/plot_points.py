@@ -372,7 +372,8 @@ class PlotPointsCommand(CommandPlugin):
 
         scroll_area = QScrollArea(outer)
         scroll_area.setWidgetResizable(True)
-        scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        scroll_area.setMinimumHeight(150)
 
         series_container = QWidget()
         series_layout = QGridLayout(series_container)
