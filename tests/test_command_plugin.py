@@ -1700,6 +1700,36 @@ class TestDetailsCommand:
         combos = widget.findChildren(QComboBox)
         assert len(combos) == 1
 
+    def test_config_widget_project_populated_from_settings(self, qapp, tmp_path):
+        """Project combo box should list top-level subdirs of the settings data directory."""
+        from PyQt6.QtWidgets import QComboBox
+
+        from stoner_measurement.plugins.command.details import DetailsCommand
+        from stoner_measurement.ui.settings_dialog import KEY_DEFAULT_DATA_DIR, make_app_settings
+
+        # Create subdirectories that should appear in the combo box.
+        (tmp_path / "ProjectAlpha").mkdir()
+        (tmp_path / "ProjectBeta").mkdir()
+        (tmp_path / "ProjectGamma").mkdir()
+        # A file should NOT appear.
+        (tmp_path / "not_a_dir.txt").write_text("ignored")
+
+        # Point the settings at tmp_path.
+        settings = make_app_settings()
+        original = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
+        settings.setValue(KEY_DEFAULT_DATA_DIR, str(tmp_path))
+        settings.sync()
+
+        try:
+            widget = DetailsCommand().config_widget()
+            combo = widget.findChildren(QComboBox)[0]
+            items = [combo.itemText(i) for i in range(combo.count())]
+            # _top_level_dirs returns a sorted list; verify items match sorted subdirectory names.
+            assert items == sorted(["ProjectAlpha", "ProjectBeta", "ProjectGamma"])
+        finally:
+            settings.setValue(KEY_DEFAULT_DATA_DIR, original)
+            settings.sync()
+
     def test_config_widget_notes_updates(self, qapp):
         from PyQt6.QtWidgets import QPlainTextEdit
 

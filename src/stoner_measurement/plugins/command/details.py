@@ -8,8 +8,9 @@ configured values directly to the plugin instance in the engine namespace,
 making them accessible to downstream sequence steps and data-saving plugins.
 
 The *project* combo box is pre-populated with the top-level subdirectories of
-the application default data directory (``Path.home()`` by default; this will
-be overridden once the application ini file is introduced).
+the application default data directory, as configured in the application
+settings (``app/default_data_directory``).  Falls back to the user's home
+directory if no setting has been saved yet.
 """
 
 from __future__ import annotations
@@ -28,9 +29,26 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 
-#: Default data root used to populate the project combo box.
-#: Will be replaced by a configurable ini-file setting in a future release.
-_DEFAULT_DATA_ROOT = Path.home()
+
+def _get_data_root() -> Path:
+    """Return the configured default data directory, falling back to the home directory.
+
+    Reads the ``app/default_data_directory`` key from the application settings
+    (see :func:`~stoner_measurement.ui.settings_dialog.make_app_settings`).
+    If the key is absent or the path is empty, :func:`pathlib.Path.home` is
+    returned instead.
+
+    Returns:
+        (Path):
+            The path to use as the root when listing project subdirectories.
+    """
+    from stoner_measurement.ui.settings_dialog import KEY_DEFAULT_DATA_DIR, make_app_settings
+
+    settings = make_app_settings()
+    data_dir = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
+    if data_dir:
+        return Path(data_dir)
+    return Path.home()
 
 
 def _top_level_dirs(root: Path) -> list[str]:
@@ -79,7 +97,7 @@ class DetailsCommand(CommandPlugin):
         project (str):
             Project name.  The configuration combo box is pre-populated with
             the top-level subdirectories of the application default data
-            directory.
+            directory (as configured in the application settings).
         notes (str):
             Free-form notes about the measurement.
 
@@ -276,7 +294,7 @@ class DetailsCommand(CommandPlugin):
         project_combo = QComboBox(widget)
         project_combo.setEditable(True)
         project_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        for dir_name in _top_level_dirs(_DEFAULT_DATA_ROOT):
+        for dir_name in _top_level_dirs(_get_data_root()):
             project_combo.addItem(dir_name)
         # Set current text to the stored project value
         project_combo.setCurrentText(self.project)
