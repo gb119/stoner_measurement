@@ -371,11 +371,11 @@ class TestCodeGeneration:
         assert plugin_b in attributed_plugins
 
     def test_phase0_instantiation_imports_emitted(self, engine):
-        """Phase 0 should include the json and BasePlugin imports."""
+        """Phase 0 should include the BasePlugin import."""
         plugin = DummyPlugin()
         plugins = {"dummy": plugin}
         code = engine.generate_sequence_code(["dummy"], plugins)
-        assert "import json as _json" in code
+        assert "import json as _json" not in code
         assert "from stoner_measurement.plugins.base_plugin import BasePlugin as _BasePlugin" in code
 
     def test_phase0_instantiation_conditional_guard(self, engine):
@@ -391,7 +391,7 @@ class TestCodeGeneration:
         plugins = {"dummy": plugin}
         code = engine.generate_sequence_code(["dummy"], plugins)
         assert "_BasePlugin.from_json" in code
-        assert "_json.loads" in code
+        assert "_json.loads" not in code
 
     def test_phase0_instantiation_embeds_class_path(self, engine):
         """Phase 0 JSON payload must include the plugin class path."""
