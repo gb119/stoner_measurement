@@ -1223,7 +1223,11 @@ class SequenceEngine(QObject):
         seen_ids: set[int] = set()
 
         def _collect_plugins(step: object) -> None:
-            """Recursively collect unique plugins from the step tree."""
+            """Recursively collect unique plugins from the step tree.
+
+            Disabled plugins are skipped entirely (including their sub-steps)
+            so that no code is generated for them.
+            """
             if isinstance(step, tuple):
                 plugin_or_name, sub_steps = step
             else:
@@ -1234,6 +1238,9 @@ class SequenceEngine(QObject):
                 plugin: BasePlugin | None = plugin_or_name
             else:
                 plugin = plugins.get(plugin_or_name)  # type: ignore[arg-type]
+
+            if plugin is not None and getattr(plugin, "disabled", False):
+                return
 
             if plugin is not None and id(plugin) not in seen_ids:
                 ordered_plugins.append(plugin)
@@ -1309,6 +1316,9 @@ class SequenceEngine(QObject):
 
             if plugin is None:
                 return [f"{prefix}# {plugin_or_name}: plugin not found"]
+
+            if getattr(plugin, "disabled", False):
+                return []
 
             return plugin.generate_action_code(indent, sub_steps, _render_action)
 

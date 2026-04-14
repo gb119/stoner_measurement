@@ -26,7 +26,6 @@ from __future__ import annotations
 import html as _html_mod
 import importlib
 import inspect
-import json
 import logging
 import re
 from abc import ABC, ABCMeta, abstractmethod
@@ -334,6 +333,8 @@ class BasePlugin(ABC):
     sequence_engine: SequenceEngine | None = None
     #: Sync callback connecting instance_name_changed to the config widget name field.
     _name_edit_sync: Callable | None = None
+    #: When ``True`` this plugin is disabled and will not contribute generated code.
+    disabled: bool = False
 
     @property
     def engine_namespace(self) -> dict:
@@ -591,11 +592,14 @@ class BasePlugin(ABC):
             True
         """
         cls = type(self)
-        return {
+        d: dict[str, Any] = {
             "type": self.plugin_type,
             "class": f"{cls.__module__}:{cls.__qualname__}",
             "instance_name": self.instance_name,
         }
+        if self.disabled:
+            d["disabled"] = True
+        return d
 
     @classmethod
     def from_json(
@@ -651,6 +655,7 @@ class BasePlugin(ABC):
             instance = plugin_cls()
         if "instance_name" in data:
             instance.instance_name = data["instance_name"]
+        instance.disabled = bool(data.get("disabled", False))
         instance._restore_from_json(data)  # noqa: SLF001
         return instance
 
