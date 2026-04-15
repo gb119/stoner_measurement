@@ -470,9 +470,17 @@ class PlotWidget(QWidget):
         """
         curve = self._get_or_create_trace(trace_name)
         if line_style not in _LINE_STYLES:
-            raise ValueError(f"Unknown line style: {line_style!r}")
+            valid_line_styles = ", ".join(_LINE_STYLES)
+            raise ValueError(
+                f"Unknown line style: {line_style!r}. "
+                f"Valid options are: {valid_line_styles}."
+            )
         if point_style not in _POINT_STYLES:
-            raise ValueError(f"Unknown point style: {point_style!r}")
+            valid_point_styles = ", ".join(_POINT_STYLES)
+            raise ValueError(
+                f"Unknown point style: {point_style!r}. "
+                f"Valid options are: {valid_point_styles}."
+            )
 
         style = self._trace_style[trace_name]
         if colour is not None:
