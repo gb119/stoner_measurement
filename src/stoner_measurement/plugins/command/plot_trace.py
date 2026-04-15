@@ -350,9 +350,10 @@ class PlotTraceCommand(CommandPlugin):
             np.asarray(x_data, dtype=float),
             np.asarray(y_data, dtype=float),
         )
-        plot_widget = None
         if self.sequence_engine is not None:
             plot_widget = getattr(self.sequence_engine, "plot_widget", None)
+        else:
+            plot_widget = None
         if plot_widget is not None:
             try:
                 plot_widget.assign_trace_axes(
@@ -639,7 +640,18 @@ def _set_combo_to_expr(
 
 
 def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list[str]]:
-    """Return available x and y axis names from the current plot widget."""
+    """Return available x-axis and y-axis names from the current plot widget.
+
+    Args:
+        engine (SequenceEngine | None):
+            Owning sequence engine for this command plugin.
+
+    Returns:
+        (tuple[list[str], list[str]]):
+            A pair ``(x_axes, y_axes)`` where each entry is a sorted list of
+            available axis names. Defaults to ``(["bottom"], ["left"])`` when
+            no plot widget (or axis orientation map) is available.
+    """
     if engine is None:
         return ["bottom"], ["left"]
 
