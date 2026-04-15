@@ -14,7 +14,7 @@ from typing import Literal
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -466,6 +466,7 @@ class PlotWidget(QWidget):
     # Public API — trace management
     # ------------------------------------------------------------------
 
+    @pyqtSlot(str, float, float)
     def append_point(self, trace_name: str, x: float, y: float) -> None:
         """Append a single (x, y) data point to the named trace.
 
@@ -493,6 +494,7 @@ class PlotWidget(QWidget):
         ys.append(float(y))
         curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
 
+    @pyqtSlot(str, object, object)
     def set_trace(
         self,
         trace_name: str,
@@ -525,6 +527,7 @@ class PlotWidget(QWidget):
         self._trace_data[trace_name] = (xs, ys)
         curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
 
+    @pyqtSlot(str, str)
     def set_default_axis_labels(self, x_label: str, y_label: str) -> None:
         """Update the default bottom and left axis labels.
 
@@ -817,6 +820,7 @@ class PlotWidget(QWidget):
         self._view_boxes[name] = self._create_pair_view_box(name, "left")
         self._refresh_trace_and_axis_controls()
 
+    @pyqtSlot(str, str, str)
     def assign_trace_axes(
         self,
         trace_name: str,

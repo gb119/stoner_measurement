@@ -1134,6 +1134,7 @@ class TestPlotTraceCommand:
             mock_pw = MagicMock()
             mock_pw.set_trace = MagicMock()
             mock_pw.set_default_axis_labels = MagicMock()
+            mock_pw.assign_trace_axes = MagicMock()
             engine.plot_widget = mock_pw
 
             cmd = PlotTraceCommand()
@@ -1154,6 +1155,7 @@ class TestPlotTraceCommand:
             assert received[0][0] == "auto"
             # The mock slot is called from the same thread so call_count > 0
             assert mock_pw.set_trace.call_count == 1
+            assert mock_pw.assign_trace_axes.call_count == 1
         finally:
             engine.shutdown()
 
@@ -1168,6 +1170,7 @@ class TestPlotTraceCommand:
             mock_pw = MagicMock()
             mock_pw.set_trace = MagicMock()
             mock_pw.set_default_axis_labels = MagicMock()
+            mock_pw.assign_trace_axes = MagicMock()
             engine.plot_widget = mock_pw
 
             cmd = PlotTraceCommand()
@@ -1260,6 +1263,27 @@ class TestPlotTraceCommand:
         cmd.execute()
 
         assert pw._trace_axes["test trace"] == ("freq", "temp")
+
+    def test_execute_skips_axis_assignment_when_configured_axis_missing(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0, 2.0])
+        engine._namespace["my_y"] = np.array([4.0, 5.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'test trace'"
+        cmd.x_axis_name = "missing_x_axis"
+        cmd.y_axis_name = "left"
+
+        cmd.execute()
+
+        assert pw._trace_axes["test trace"] == ("bottom", "left")
 
 
 # ---------------------------------------------------------------------------

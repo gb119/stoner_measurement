@@ -132,6 +132,11 @@ class PlotTraceCommand(CommandPlugin):
             Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_default_axis_labels`
             when the plugin is attached to an engine with a plot widget.
+        plot_trace_axes (pyqtSignal[str, str, str]):
+            Emitted by :meth:`execute` with ``(trace_name, x_axis_name, y_axis_name)``
+            when the configured axes are available. Automatically connected to
+            :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.assign_trace_axes`
+            when attached to an engine with a plot widget.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -154,6 +159,8 @@ class PlotTraceCommand(CommandPlugin):
     plot_trace = pyqtSignal(str, object, object)
     #: Signal emitted by execute() in simple mode — (x_label, y_label).
     plot_axis_labels = pyqtSignal(str, str)
+    #: Signal emitted by execute() — (trace_name, x_axis_name, y_axis_name).
+    plot_trace_axes = pyqtSignal(str, str, str)
 
     def __init__(self, parent=None) -> None:
         """Initialise with default configuration."""
@@ -219,8 +226,15 @@ class PlotTraceCommand(CommandPlugin):
         if self._sequence_engine_ref is not None:
             old_pw = getattr(self._sequence_engine_ref, "plot_widget", None)
             if old_pw is not None:
-                _safe_disconnect(self.plot_trace, old_pw.set_trace)
-                _safe_disconnect(self.plot_axis_labels, old_pw.set_default_axis_labels)
+                old_set_trace = getattr(old_pw, "set_trace", None)
+                if old_set_trace is not None:
+                    _safe_disconnect(self.plot_trace, old_set_trace)
+                old_set_labels = getattr(old_pw, "set_default_axis_labels", None)
+                if old_set_labels is not None:
+                    _safe_disconnect(self.plot_axis_labels, old_set_labels)
+                old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
+                if old_assign_axes is not None:
+                    _safe_disconnect(self.plot_trace_axes, old_assign_axes)
 
         self._sequence_engine_ref = engine
 
@@ -228,8 +242,15 @@ class PlotTraceCommand(CommandPlugin):
         if engine is not None:
             new_pw = getattr(engine, "plot_widget", None)
             if new_pw is not None:
-                self.plot_trace.connect(new_pw.set_trace)
-                self.plot_axis_labels.connect(new_pw.set_default_axis_labels)
+                new_set_trace = getattr(new_pw, "set_trace", None)
+                if new_set_trace is not None:
+                    self.plot_trace.connect(new_set_trace)
+                new_set_labels = getattr(new_pw, "set_default_axis_labels", None)
+                if new_set_labels is not None:
+                    self.plot_axis_labels.connect(new_set_labels)
+                new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
+                if new_assign_axes is not None:
+                    self.plot_trace_axes.connect(new_assign_axes)
 
     @property
     def name(self) -> str:
@@ -350,23 +371,15 @@ class PlotTraceCommand(CommandPlugin):
             np.asarray(x_data, dtype=float),
             np.asarray(y_data, dtype=float),
         )
-        if self.sequence_engine is not None:
-            plot_widget = getattr(self.sequence_engine, "plot_widget", None)
+        x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
+        if self.x_axis_name in x_axis_names and self.y_axis_name in y_axis_names:
+            self.plot_trace_axes.emit(title, self.x_axis_name, self.y_axis_name)
         else:
-            plot_widget = None
-        if plot_widget is not None:
-            try:
-                plot_widget.assign_trace_axes(
-                    title,
-                    x_axis=self.x_axis_name,
-                    y_axis=self.y_axis_name,
-                )
-            except KeyError:
-                self.log.warning(
-                    "PlotTrace: configured axes (%s, %s) are not available; using defaults.",
-                    self.x_axis_name,
-                    self.y_axis_name,
-                )
+            self.log.warning(
+                "PlotTrace: configured axes (%s, %s) are not available; using defaults.",
+                self.x_axis_name,
+                self.y_axis_name,
+            )
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
 
     # ------------------------------------------------------------------
