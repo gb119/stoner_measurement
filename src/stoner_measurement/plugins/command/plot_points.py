@@ -333,7 +333,7 @@ class PlotPointsCommand(CommandPlugin):
             self.plot_point.emit(label, x_val, y_val)
             if plot_widget is not None:
                 # Auto-create the y-axis if it doesn't exist yet.
-                if y_axis not in ("left",):
+                if y_axis not in plot_widget.axis_names:
                     plot_widget.ensure_y_axis(y_axis)
                 try:
                     plot_widget.assign_trace_axes(
