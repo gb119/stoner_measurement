@@ -17,6 +17,10 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
+_SYNTAX_MARKER_MIN_SIZE = 6
+_SYNTAX_MARKER_MAX_SIZE = 10
+_SYNTAX_MARKER_INNER_PADDING = 2
+
 # ---------------------------------------------------------------------------
 # Syntax highlighter
 # ---------------------------------------------------------------------------
@@ -119,6 +123,7 @@ class _LineNumberArea(QWidget):
     def __init__(self, editor: EditorWidget) -> None:
         super().__init__(editor)
         self._editor = editor
+        self.setMouseTracking(True)
 
     def sizeHint(self) -> QSize:
         """Return the required width for the current document."""
@@ -127,6 +132,34 @@ class _LineNumberArea(QWidget):
     def paintEvent(self, event) -> None:  # type: ignore[override]
         """Delegate painting to the editor."""
         self._editor.paint_line_numbers(event)
+
+    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+        """Show syntax-error tooltip when hovering the marked line.
+
+        Args:
+            event:
+                Mouse-move event fired while the cursor is inside the gutter.
+        """
+        line_number = self._editor.line_number_for_y(int(event.position().y()))
+        if (
+            line_number is not None
+            and line_number == self._editor.syntax_error_line
+            and self._editor.syntax_error_message
+        ):
+            self.setToolTip(self._editor.syntax_error_message)
+        else:
+            self.setToolTip("")
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:  # type: ignore[override]
+        """Clear any line-gutter tooltip when the cursor leaves the gutter.
+
+        Args:
+            event:
+                Leave event fired when the cursor exits the gutter widget.
+        """
+        self.setToolTip("")
+        super().leaveEvent(event)
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +201,8 @@ class EditorWidget(QPlainTextEdit):
 
         self._line_number_area = _LineNumberArea(self)
         self.highlighter = PythonHighlighter(self.document())
+        self._syntax_error_line: int | None = None
+        self._syntax_error_message: str = ""
 
         self.blockCountChanged.connect(self._update_line_number_area_width)
         self.updateRequest.connect(self._update_line_number_area)
@@ -235,6 +270,8 @@ class EditorWidget(QPlainTextEdit):
 
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
+                if self._syntax_error_line == block_number + 1:
+                    self._draw_syntax_error_marker(painter, top, line_height, fm.height())
                 number = str(block_number + 1)
                 painter.drawText(
                     0,
@@ -248,6 +285,35 @@ class EditorWidget(QPlainTextEdit):
             block_number += 1
             top = bottom
             bottom = top + line_height
+
+    def _draw_syntax_error_marker(
+        self,
+        painter: QPainter,
+        top: int,
+        line_height: int,
+        font_height: int,
+    ) -> None:
+        """Draw the red syntax-error marker in the line-number gutter.
+
+        Args:
+            painter (QPainter):
+                Active painter targeting the gutter area.
+            top (int):
+                Top pixel of the current visible text block.
+            line_height (int):
+                Height in pixels of the current visible text block.
+            font_height (int):
+                Current editor font height used to size the marker.
+        """
+        marker_size = max(
+            _SYNTAX_MARKER_MIN_SIZE,
+            min(font_height - _SYNTAX_MARKER_INNER_PADDING, _SYNTAX_MARKER_MAX_SIZE),
+        )
+        marker_y = top + max(0, (line_height - marker_size) // 2)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#d32f2f"))
+        painter.drawEllipse(1, marker_y, marker_size, marker_size)
+        painter.setPen(QColor("#808080"))
 
     def _highlight_current_line(self) -> None:
         """Highlight the line that contains the text cursor."""
@@ -263,6 +329,35 @@ class EditorWidget(QPlainTextEdit):
             selection.cursor.clearSelection()
             extra.append(selection)
         self.setExtraSelections(extra)
+
+    def line_number_for_y(self, y_pos: int) -> int | None:
+        """Return the 1-based line number for a y position in the gutter.
+
+        Args:
+            y_pos (int):
+                Vertical pixel position within the line-number gutter.
+
+        Returns:
+            (int | None):
+                1-based line number at the given position, or ``None`` when the
+                position does not map to a visible text block.
+        """
+        block = self.firstVisibleBlock()
+        block_number = block.blockNumber()
+        offset = self.contentOffset()
+        top = int(self.blockBoundingGeometry(block).translated(offset).top())
+        bottom = top + int(self.blockBoundingRect(block).height())
+
+        while block.isValid():
+            if block.isVisible() and top <= y_pos <= bottom:
+                return block_number + 1
+            if top > y_pos:
+                break
+            block = block.next()
+            block_number += 1
+            top = bottom
+            bottom = top + int(self.blockBoundingRect(block).height())
+        return None
 
     # ------------------------------------------------------------------
     # Key-press overrides
@@ -324,3 +419,36 @@ class EditorWidget(QPlainTextEdit):
             'y = 2'
         """
         self.setPlainText(text)
+
+    @property
+    def syntax_error_line(self) -> int | None:
+        """Return the currently marked syntax-error line, if any."""
+        return self._syntax_error_line
+
+    @property
+    def syntax_error_message(self) -> str:
+        """Return the current syntax-error message shown in the gutter tooltip."""
+        return self._syntax_error_message
+
+    def set_syntax_error(self, line_number: int | None, message: str) -> None:
+        """Mark a syntax-error line in the gutter and attach a tooltip message.
+
+        Args:
+            line_number (int | None):
+                1-based source line to mark.  ``None`` clears the marker.
+            message (str):
+                Tooltip text shown for the marked line.
+        """
+        if line_number is None or line_number < 1 or not message.strip():
+            self.clear_syntax_error()
+            return
+        self._syntax_error_line = line_number
+        self._syntax_error_message = message.strip()
+        self._line_number_area.update()
+
+    def clear_syntax_error(self) -> None:
+        """Clear any syntax-error marker and tooltip from the gutter."""
+        self._syntax_error_line = None
+        self._syntax_error_message = ""
+        self._line_number_area.setToolTip("")
+        self._line_number_area.update()

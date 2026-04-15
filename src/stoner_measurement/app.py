@@ -203,6 +203,15 @@ class MeasurementApp(QMainWindow):
                     # Attach to the engine so engine_namespace works in config widgets.
                     if step_plugin.sequence_engine is None:
                         step_plugin.sequence_engine = self._engine
+                    prefix = f"{step_plugin.instance_name}:"
+                    for key in list(traces):
+                        if not key.startswith(prefix):
+                            continue
+                        traces.pop(key, None)
+                    for key in list(values):
+                        if not key.startswith(prefix):
+                            continue
+                        values.pop(key, None)
                     traces.update(step_plugin.reported_traces())
                     values.update(step_plugin.reported_values())
 

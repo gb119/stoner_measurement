@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from stoner_measurement.app import MeasurementApp
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
@@ -46,6 +44,15 @@ class TestEditorWidget:
         )
         editor.keyPressEvent(event)
         assert editor.text() == "    "
+
+    def test_set_and_clear_syntax_error(self, qapp):
+        editor = EditorWidget()
+        editor.set_syntax_error(2, "invalid syntax")
+        assert editor.syntax_error_line == 2
+        assert editor.syntax_error_message == "invalid syntax"
+        editor.clear_syntax_error()
+        assert editor.syntax_error_line is None
+        assert editor.syntax_error_message == ""
 
 
 class TestPythonHighlighter:
@@ -418,3 +425,21 @@ class TestMeasurementApp:
 
         app._engine.shutdown()
 
+    def test_sync_drops_stale_curve_fit_values_on_deselect(self, qapp):
+        from stoner_measurement.plugins.transform import CurveFitPlugin
+
+        app = MeasurementApp()
+        dock = app._main_window.dock_panel
+        curve_step = CurveFitPlugin()
+        dock.load_sequence([curve_step])
+
+        curve_step.param_names = ["slope", "offset"]
+        app._on_plugin_selected_for_config(None)
+
+        values = app._engine._namespace.get("_values", {})
+        assert "curve_fit:slope" in values
+        assert "curve_fit:offset" in values
+        assert "curve_fit:a" not in values
+        assert "curve_fit:b" not in values
+
+        app._engine.shutdown()
