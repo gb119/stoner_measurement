@@ -832,10 +832,10 @@ class CurveFitPlugin(TransformPlugin):
             current_param_names (list[str]):
                 Parameter names currently managed by the fit-function table.
         """
-        preserved = {
+        auxiliary_settings = {
             key: value for key, value in self.param_settings.items() if key not in current_param_names
         }
-        self.param_settings = {**preserved, **table_settings}
+        self.param_settings = {**auxiliary_settings, **table_settings}
 
     # ------------------------------------------------------------------
     # Configuration tabs
@@ -1025,7 +1025,7 @@ class CurveFitPlugin(TransformPlugin):
         fit_layout.addWidget(hint_label)
         namespace_label = QLabel(
             "<i>Runtime namespace includes Python built-ins and "
-            "<code>numpy</code> under aliases <code>np</code> and <code>numpy</code>.</i>",
+            "<code>numpy</code> available as <code>np</code> and <code>numpy</code>.</i>",
             fit_widget,
         )
         namespace_label.setWordWrap(True)

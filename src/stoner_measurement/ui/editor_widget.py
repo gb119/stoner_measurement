@@ -293,7 +293,18 @@ class EditorWidget(QPlainTextEdit):
         line_height: int,
         font_height: int,
     ) -> None:
-        """Draw the red syntax-error marker in the line-number gutter."""
+        """Draw the red syntax-error marker in the line-number gutter.
+
+        Args:
+            painter (QPainter):
+                Active painter targeting the gutter area.
+            top (int):
+                Top pixel of the current visible text block.
+            line_height (int):
+                Height in pixels of the current visible text block.
+            font_height (int):
+                Current editor font height used to size the marker.
+        """
         marker_size = max(
             _SYNTAX_MARKER_MIN_SIZE,
             min(font_height - _SYNTAX_MARKER_INNER_PADDING, _SYNTAX_MARKER_MAX_SIZE),
