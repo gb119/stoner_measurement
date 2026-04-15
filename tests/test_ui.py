@@ -12,7 +12,7 @@ from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
 from stoner_measurement.ui.main_window import MainWindow
-from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.plot_widget import _MAX_VISIBLE_TRACE_ROWS, _POINT_PICTOGRAMS, PlotWidget
 
 
 class _FakeStatePlugin(StateControlPlugin, metaclass=_ABCQObjectMeta):
@@ -1369,6 +1369,12 @@ class TestPlotWidget:
         with pytest.raises(ValueError, match="Point size"):
             widget.set_trace_style("sig", point_size=0)
 
+    def test_set_trace_style_rejects_invalid_colour(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        with pytest.raises(ValueError, match="Invalid colour"):
+            widget.set_trace_style("sig", colour="not-a-colour")
+
     def test_x_data_unknown_trace_returns_empty(self, qapp):
         widget = PlotWidget()
         assert widget.x_data("nonexistent") == []
@@ -1430,12 +1436,12 @@ class TestPlotWidget:
 
     def test_trace_table_height_shows_three_rows_before_scroll(self, qapp):
         widget = PlotWidget()
-        for index in range(4):
-            widget.append_point(f"trace_{index}", float(index), float(index))
+        for trace_id in range(4):
+            widget.append_point(f"trace_{trace_id}", float(trace_id), float(trace_id))
 
         expected_height = (
             widget._trace_table.horizontalHeader().height()
-            + (3 * widget._trace_table.verticalHeader().defaultSectionSize())
+            + (_MAX_VISIBLE_TRACE_ROWS * widget._trace_table.verticalHeader().defaultSectionSize())
             + (2 * widget._trace_table.frameWidth())
         )
         assert widget._trace_table.height() == expected_height
@@ -1455,9 +1461,10 @@ class TestPlotWidget:
         widget.append_point("my_trace", 1.0, 2.0)
         point_selector = widget._trace_table.cellWidget(0, 5)
 
-        assert point_selector.itemText(0) == "·"
-        assert point_selector.itemData(0) == "none"
-        assert point_selector.itemText(1) == "○"
+        none_index = point_selector.findData("none")
+        circle_index = point_selector.findData("circle")
+        assert point_selector.itemText(none_index) == _POINT_PICTOGRAMS["none"]
+        assert point_selector.itemText(circle_index) == _POINT_PICTOGRAMS["circle"]
 
     def test_colour_selector_uses_qt_named_palette(self, qapp):
         widget = PlotWidget()
@@ -1465,6 +1472,8 @@ class TestPlotWidget:
         colour_selector = widget._trace_table.cellWidget(0, 2)
 
         assert colour_selector.findText("aliceblue") >= 0
+        assert colour_selector.findText("red") >= 0
+        assert colour_selector.count() == len(widget._qt_colour_names)
 
     def test_line_width_and_point_size_controls_update_trace(self, qapp):
         widget = PlotWidget()
