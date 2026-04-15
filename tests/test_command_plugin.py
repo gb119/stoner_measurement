@@ -901,6 +901,8 @@ class TestPlotTraceCommand:
         assert cmd.x_expr == ""
         assert cmd.y_expr == ""
         assert cmd.title_expr == "'plot'"
+        assert cmd.x_axis_name == "bottom"
+        assert cmd.y_axis_name == "left"
 
     def test_to_json_includes_fields(self, qapp):
         cmd = PlotTraceCommand()
@@ -911,6 +913,8 @@ class TestPlotTraceCommand:
         assert "x_expr" in d
         assert "y_expr" in d
         assert "title_expr" in d
+        assert "x_axis_name" in d
+        assert "y_axis_name" in d
 
     def test_restore_from_json_round_trip(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -921,6 +925,8 @@ class TestPlotTraceCommand:
         cmd.x_expr = "dummy.data['Dummy'].x"
         cmd.y_expr = "dummy.data['Dummy'].y"
         cmd.title_expr = "'my plot'"
+        cmd.x_axis_name = "freq"
+        cmd.y_axis_name = "temp"
         restored = BasePlugin.from_json(cmd.to_json())
         assert isinstance(restored, PlotTraceCommand)
         assert restored.trace_key == "dummy:Dummy"
@@ -928,6 +934,8 @@ class TestPlotTraceCommand:
         assert restored.x_expr == "dummy.data['Dummy'].x"
         assert restored.y_expr == "dummy.data['Dummy'].y"
         assert restored.title_expr == "'my plot'"
+        assert restored.x_axis_name == "freq"
+        assert restored.y_axis_name == "temp"
 
     def test_config_widget_returns_widget(self, qapp):
         from PyQt6.QtWidgets import QWidget
@@ -1229,6 +1237,29 @@ class TestPlotTraceCommand:
         cmd.execute()
 
         assert labels == []
+
+    def test_execute_assigns_trace_to_configured_axes(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        pw.add_x_axis("freq", "Frequency (Hz)")
+        pw.add_y_axis("temp", "Temperature (K)")
+        engine.plot_widget = pw
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0, 2.0])
+        engine._namespace["my_y"] = np.array([4.0, 5.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'test trace'"
+        cmd.x_axis_name = "freq"
+        cmd.y_axis_name = "temp"
+
+        cmd.execute()
+
+        assert pw._trace_axes["test trace"] == ("freq", "temp")
 
 
 # ---------------------------------------------------------------------------
@@ -1867,6 +1898,8 @@ class TestPlotPointsCommand:
         cmd = PlotPointsCommand()
         assert cmd.x_key == ""
         assert cmd.y_entries == []
+        assert cmd.x_axis_name == "bottom"
+        assert cmd.y_axis_name == "left"
 
     def test_to_json_includes_fields(self, qapp):
         cmd = PlotPointsCommand()
@@ -1876,6 +1909,8 @@ class TestPlotPointsCommand:
         assert d["type"] == "command"
         assert d["x_key"] == "p:x"
         assert d["y_entries"] == [{"key": "p:y", "label": "My Y"}]
+        assert d["x_axis_name"] == "bottom"
+        assert d["y_axis_name"] == "left"
 
     def test_restore_from_json_round_trip(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -1883,10 +1918,14 @@ class TestPlotPointsCommand:
         cmd = PlotPointsCommand()
         cmd.x_key = "sensor:temp"
         cmd.y_entries = [{"key": "sensor:voltage", "label": "Voltage (V)"}]
+        cmd.x_axis_name = "freq"
+        cmd.y_axis_name = "temp"
         restored = BasePlugin.from_json(cmd.to_json())
         assert isinstance(restored, PlotPointsCommand)
         assert restored.x_key == "sensor:temp"
         assert restored.y_entries == [{"key": "sensor:voltage", "label": "Voltage (V)"}]
+        assert restored.x_axis_name == "freq"
+        assert restored.y_axis_name == "temp"
 
     def test_config_widget_returns_widget(self, qapp):
         from PyQt6.QtWidgets import QWidget
@@ -2020,3 +2059,25 @@ class TestPlotPointsCommand:
         cmd.sequence_engine = None
         cmd.execute()  # should not raise; plot_point emitted but not connected to pw
         assert pw.trace_names == []
+
+    def test_execute_assigns_points_to_configured_axes(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        pw.add_x_axis("freq", "Frequency (Hz)")
+        pw.add_y_axis("temp", "Temperature (K)")
+        engine.plot_widget = pw
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
+        cmd.x_axis_name = "freq"
+        cmd.y_axis_name = "temp"
+
+        cmd.execute()
+
+        assert pw._trace_axes["My Y"] == ("freq", "temp")

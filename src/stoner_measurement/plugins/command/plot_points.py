@@ -149,6 +149,8 @@ class PlotPointsCommand(CommandPlugin):
         self._sequence_engine_ref: SequenceEngine | None = None
         self.x_key: str = ""
         self.y_entries: list[dict[str, str]] = []
+        self.x_axis_name: str = "bottom"
+        self.y_axis_name: str = "left"
 
     # ------------------------------------------------------------------
     # sequence_engine property — auto-wires plot_point signal
@@ -308,6 +310,22 @@ class PlotPointsCommand(CommandPlugin):
                 )
                 continue
             self.plot_point.emit(label, x_val, y_val)
+            plot_widget = None
+            if self.sequence_engine is not None:
+                plot_widget = getattr(self.sequence_engine, "plot_widget", None)
+            if plot_widget is not None:
+                try:
+                    plot_widget.assign_trace_axes(
+                        label,
+                        x_axis=self.x_axis_name,
+                        y_axis=self.y_axis_name,
+                    )
+                except KeyError:
+                    self.log.warning(
+                        "PlotPoints: configured axes (%s, %s) are not available; using defaults.",
+                        self.x_axis_name,
+                        self.y_axis_name,
+                    )
             self.log.debug("PlotPoints: emitted point (%s, %g, %g)", label, x_val, y_val)
 
     # ------------------------------------------------------------------
@@ -344,6 +362,7 @@ class PlotPointsCommand(CommandPlugin):
         ns = self.engine_namespace
         values: dict[str, str] = ns.get("_values", {})
         value_keys = list(values.keys())
+        x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
 
         outer = QWidget(parent)
         outer_layout = QFormLayout(outer)
@@ -366,6 +385,24 @@ class PlotPointsCommand(CommandPlugin):
 
         x_combo.currentTextChanged.connect(_apply_x)
         outer_layout.addRow("X value:", x_combo)
+
+        x_axis_combo = QComboBox(outer)
+        x_axis_combo.addItems(x_axis_names)
+        if self.x_axis_name in x_axis_names:
+            x_axis_combo.setCurrentText(self.x_axis_name)
+        else:
+            self.x_axis_name = x_axis_names[0]
+            x_axis_combo.setCurrentText(self.x_axis_name)
+        outer_layout.addRow("X axis:", x_axis_combo)
+
+        y_axis_combo = QComboBox(outer)
+        y_axis_combo.addItems(y_axis_names)
+        if self.y_axis_name in y_axis_names:
+            y_axis_combo.setCurrentText(self.y_axis_name)
+        else:
+            self.y_axis_name = y_axis_names[0]
+            y_axis_combo.setCurrentText(self.y_axis_name)
+        outer_layout.addRow("Y axis:", y_axis_combo)
 
         # --- Y series area ---
         outer_layout.addRow(QLabel("<b>Y series:</b>", outer))
@@ -468,6 +505,8 @@ class PlotPointsCommand(CommandPlugin):
             _rebuild_rows()
 
         add_btn.clicked.connect(_add_series)
+        x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
+        y_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "y_axis_name", text))
         outer_layout.addRow(add_btn)
         outer.setLayout(outer_layout)
         return outer
@@ -498,6 +537,8 @@ class PlotPointsCommand(CommandPlugin):
         d = super().to_json()
         d["x_key"] = self.x_key
         d["y_entries"] = [dict(e) for e in self.y_entries]
+        d["x_axis_name"] = self.x_axis_name
+        d["y_axis_name"] = self.y_axis_name
         return d
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -509,3 +550,20 @@ class PlotPointsCommand(CommandPlugin):
         """
         self.x_key = data.get("x_key", "")
         self.y_entries = [dict(e) for e in data.get("y_entries", [])]
+        self.x_axis_name = data.get("x_axis_name", "bottom")
+        self.y_axis_name = data.get("y_axis_name", "left")
+
+
+def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list[str]]:
+    """Return available x and y axis names from the current plot widget."""
+    if engine is None:
+        return ["bottom"], ["left"]
+
+    plot_widget = getattr(engine, "plot_widget", None)
+    orientations = getattr(plot_widget, "_axis_orientations", None)
+    if not isinstance(orientations, dict):
+        return ["bottom"], ["left"]
+
+    x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
+    y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
+    return x_axes or ["bottom"], y_axes or ["left"]
