@@ -1041,16 +1041,29 @@ class CurveFitPlugin(TransformPlugin):
             else:
                 editor.clear_syntax_error()
             # Flush current table values into param_settings.
-            self.param_settings = param_widget.read_settings()
+            table_settings = param_widget.read_settings()
+            preserved = {
+                key: value
+                for key, value in self.param_settings.items()
+                if key not in old_names and key not in self.param_names
+            }
+            self.param_settings = {**preserved, **table_settings}
             if self.param_names != old_names:
                 param_widget.set_parameters(self.param_names)
-                self.param_settings = param_widget.read_settings()
+                table_settings = param_widget.read_settings()
+                self.param_settings = {**preserved, **table_settings}
 
         editor.textChanged.connect(_on_code_changed)
 
         # ---- Wire table changes back to param_settings ------------------
         def _on_table_changed() -> None:
-            self.param_settings = param_widget.read_settings()
+            table_settings = param_widget.read_settings()
+            preserved = {
+                key: value
+                for key, value in self.param_settings.items()
+                if key not in self.param_names
+            }
+            self.param_settings = {**preserved, **table_settings}
 
         param_widget.settings_changed.connect(_on_table_changed)
 

@@ -131,7 +131,7 @@ class _LineNumberArea(QWidget):
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
         """Show syntax-error tooltip when hovering the marked line."""
-        line_number = self._editor._line_number_for_y(int(event.position().y()))  # noqa: SLF001
+        line_number = self._editor.line_number_for_y(int(event.position().y()))
         if (
             line_number is not None
             and line_number == self._editor.syntax_error_line
@@ -292,7 +292,7 @@ class EditorWidget(QPlainTextEdit):
             extra.append(selection)
         self.setExtraSelections(extra)
 
-    def _line_number_for_y(self, y_pos: int) -> int | None:
+    def line_number_for_y(self, y_pos: int) -> int | None:
         """Return the 1-based line number for a y position in the gutter."""
         block = self.firstVisibleBlock()
         block_number = block.blockNumber()
