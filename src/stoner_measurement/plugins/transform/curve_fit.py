@@ -93,7 +93,17 @@ def _parse_fit_params(code: str) -> list[str]:
 
 
 def _parse_fit_tree(code: str) -> tuple[ast.AST | None, SyntaxError | None]:
-    """Parse *code* and return ``(ast_tree, syntax_error)``."""
+    """Parse fit source code into an AST tree.
+
+    Args:
+        code (str):
+            Python source code entered for the fit function.
+
+    Returns:
+        (tuple[ast.AST | None, SyntaxError | None]):
+            ``(tree, None)`` when parsing succeeds, or
+            ``(None, syntax_error)`` when parsing fails.
+    """
     try:
         return ast.parse(code), None
     except SyntaxError as exc:
@@ -101,7 +111,16 @@ def _parse_fit_tree(code: str) -> tuple[ast.AST | None, SyntaxError | None]:
 
 
 def _fit_param_names_from_tree(tree: ast.AST) -> list[str]:
-    """Return parameter names from a parsed AST defining ``fit(x, ...)``."""
+    """Return parameter names from a parsed AST defining ``fit(x, ...)``.
+
+    Args:
+        tree (ast.AST):
+            Parsed Python AST to inspect.
+
+    Returns:
+        (list[str]):
+            Ordered parameter names after ``x`` from ``fit(x, ...)``.
+    """
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "fit":
             return [arg.arg for arg in node.args.args[1:]]
@@ -1006,7 +1025,7 @@ class CurveFitPlugin(TransformPlugin):
         fit_layout.addWidget(hint_label)
         namespace_label = QLabel(
             "<i>Runtime namespace includes Python built-ins and "
-            "<code>numpy</code> as <code>np</code> and <code>numpy</code>.</i>",
+            "<code>numpy</code> under aliases <code>np</code> and <code>numpy</code>.</i>",
             fit_widget,
         )
         namespace_label.setWordWrap(True)

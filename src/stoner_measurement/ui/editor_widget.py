@@ -134,7 +134,12 @@ class _LineNumberArea(QWidget):
         self._editor.paint_line_numbers(event)
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-        """Show syntax-error tooltip when hovering the marked line."""
+        """Show syntax-error tooltip when hovering the marked line.
+
+        Args:
+            event:
+                Mouse-move event fired while the cursor is inside the gutter.
+        """
         line_number = self._editor.line_number_for_y(int(event.position().y()))
         if (
             line_number is not None
@@ -147,7 +152,12 @@ class _LineNumberArea(QWidget):
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event) -> None:  # type: ignore[override]
-        """Clear any line-gutter tooltip when the cursor leaves the gutter."""
+        """Clear any line-gutter tooltip when the cursor leaves the gutter.
+
+        Args:
+            event:
+                Leave event fired when the cursor exits the gutter widget.
+        """
         self.setToolTip("")
         super().leaveEvent(event)
 
@@ -310,7 +320,17 @@ class EditorWidget(QPlainTextEdit):
         self.setExtraSelections(extra)
 
     def line_number_for_y(self, y_pos: int) -> int | None:
-        """Return the 1-based line number for a y position in the gutter."""
+        """Return the 1-based line number for a y position in the gutter.
+
+        Args:
+            y_pos (int):
+                Vertical pixel position within the line-number gutter.
+
+        Returns:
+            (int | None):
+                1-based line number at the given position, or ``None`` when the
+                position does not map to a visible text block.
+        """
         block = self.firstVisibleBlock()
         block_number = block.blockNumber()
         offset = self.contentOffset()
