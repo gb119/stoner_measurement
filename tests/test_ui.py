@@ -1307,6 +1307,40 @@ class TestPlotWidget:
         with pytest.raises(KeyError, match="no_such"):
             widget.assign_trace_axes("sig", y_axis="no_such")
 
+    def test_assign_trace_axes_unknown_x_axis_raises(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        with pytest.raises(KeyError, match="no_such_x"):
+            widget.assign_trace_axes("sig", x_axis="no_such_x", y_axis="left")
+
+    def test_assign_trace_axes_supports_independent_x_and_y_axes(self, qapp):
+        widget = PlotWidget()
+        widget.add_x_axis("freq", "Frequency (Hz)")
+        widget.add_y_axis("temp", "Temperature (K)")
+        widget.append_point("sig", 0.0, 1.0)
+        widget.assign_trace_axes("sig", x_axis="freq", y_axis="temp")
+        assert widget._trace_axes["sig"] == ("freq", "temp")
+
+    def test_set_trace_style_updates_trace_style(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        widget.set_trace_style("sig", colour="#123456", line_style="dash", point_style="circle")
+        assert widget._trace_style["sig"] == {
+            "colour": "#123456",
+            "line": "dash",
+            "point": "circle",
+        }
+
+    def test_set_trace_style_rejects_unknown_line_style(self, qapp):
+        widget = PlotWidget()
+        with pytest.raises(ValueError, match="line style"):
+            widget.set_trace_style("sig", line_style="wiggly")
+
+    def test_set_trace_style_rejects_unknown_point_style(self, qapp):
+        widget = PlotWidget()
+        with pytest.raises(ValueError, match="point style"):
+            widget.set_trace_style("sig", point_style="hexagon")
+
     def test_x_data_unknown_trace_returns_empty(self, qapp):
         widget = PlotWidget()
         assert widget.x_data("nonexistent") == []
