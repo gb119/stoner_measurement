@@ -261,15 +261,7 @@ class EditorWidget(QPlainTextEdit):
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 if self._syntax_error_line == block_number + 1:
-                    marker_size = max(
-                        _SYNTAX_MARKER_MIN_SIZE,
-                        min(fm.height() - _SYNTAX_MARKER_INNER_PADDING, _SYNTAX_MARKER_MAX_SIZE),
-                    )
-                    marker_y = top + max(0, (line_height - marker_size) // 2)
-                    painter.setPen(Qt.PenStyle.NoPen)
-                    painter.setBrush(QColor("#d32f2f"))
-                    painter.drawEllipse(1, marker_y, marker_size, marker_size)
-                    painter.setPen(QColor("#808080"))
+                    self._draw_syntax_error_marker(painter, top, line_height, fm.height())
                 number = str(block_number + 1)
                 painter.drawText(
                     0,
@@ -283,6 +275,24 @@ class EditorWidget(QPlainTextEdit):
             block_number += 1
             top = bottom
             bottom = top + line_height
+
+    def _draw_syntax_error_marker(
+        self,
+        painter: QPainter,
+        top: int,
+        line_height: int,
+        font_height: int,
+    ) -> None:
+        """Draw the red syntax-error marker in the line-number gutter."""
+        marker_size = max(
+            _SYNTAX_MARKER_MIN_SIZE,
+            min(font_height - _SYNTAX_MARKER_INNER_PADDING, _SYNTAX_MARKER_MAX_SIZE),
+        )
+        marker_y = top + max(0, (line_height - marker_size) // 2)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#d32f2f"))
+        painter.drawEllipse(1, marker_y, marker_size, marker_size)
+        painter.setPen(QColor("#808080"))
 
     def _highlight_current_line(self) -> None:
         """Highlight the line that contains the text cursor."""

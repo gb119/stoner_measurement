@@ -805,7 +805,14 @@ class CurveFitPlugin(TransformPlugin):
         table_settings: dict[str, dict[str, float | None]],
         current_param_names: list[str],
     ) -> None:
-        """Merge table settings while preserving non-parameter auxiliary keys."""
+        """Merge table settings while preserving non-parameter auxiliary keys.
+
+        Args:
+            table_settings (dict[str, dict[str, float | None]]):
+                Parameter settings read from the UI table.
+            current_param_names (list[str]):
+                Parameter names currently managed by the fit-function table.
+        """
         preserved = {
             key: value for key, value in self.param_settings.items() if key not in current_param_names
         }
@@ -1053,11 +1060,10 @@ class CurveFitPlugin(TransformPlugin):
                 editor.clear_syntax_error()
             # Flush current table values into param_settings.
             table_settings = param_widget.read_settings()
-            self._merge_param_settings(table_settings, old_names + self.param_names)
             if self.param_names != old_names:
                 param_widget.set_parameters(self.param_names)
                 table_settings = param_widget.read_settings()
-                self._merge_param_settings(table_settings, old_names + self.param_names)
+            self._merge_param_settings(table_settings, old_names + self.param_names)
 
         editor.textChanged.connect(_on_code_changed)
 
