@@ -86,14 +86,21 @@ def _parse_fit_params(code: str) -> list[str]:
         >>> _parse_fit_params("not valid python !!!")
         []
     """
-    try:
-        tree = ast.parse(code)
-    except SyntaxError:
+    tree, _ = _parse_fit_tree(code)
+    if tree is None:
         return []
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "fit":
             return [arg.arg for arg in node.args.args[1:]]
     return []
+
+
+def _parse_fit_tree(code: str) -> tuple[ast.AST | None, SyntaxError | None]:
+    """Parse *code* and return ``(ast_tree, syntax_error)``."""
+    try:
+        return ast.parse(code), None
+    except SyntaxError as exc:
+        return None, exc
 
 
 def _has_p0_function(code: str) -> bool:
@@ -114,9 +121,8 @@ def _has_p0_function(code: str) -> bool:
         >>> _has_p0_function("def fit(x, a): return a * x")
         False
     """
-    try:
-        tree = ast.parse(code)
-    except SyntaxError:
+    tree, _ = _parse_fit_tree(code)
+    if tree is None:
         return False
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "p0":
@@ -381,6 +387,9 @@ class CurveFitPlugin(TransformPlugin):
         # Optional trace outputs
         self.show_initial_trace: bool = False
         self.show_best_fit_trace: bool = False
+        # Latest syntax error state for fit_code (for UI feedback).
+        self.fit_code_syntax_error_line: int | None = None
+        self.fit_code_syntax_error_message: str = ""
 
     # ------------------------------------------------------------------
     # BasePlugin / TransformPlugin abstract interface
@@ -774,7 +783,20 @@ class CurveFitPlugin(TransformPlugin):
                 Fit function source code.
         """
         self.fit_code = code
-        new_names = _parse_fit_params(code)
+        tree, syntax_error = _parse_fit_tree(code)
+        if syntax_error is None:
+            self.fit_code_syntax_error_line = None
+            self.fit_code_syntax_error_message = ""
+            new_names = []
+            if tree is not None:
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.FunctionDef) and node.name == "fit":
+                        new_names = [arg.arg for arg in node.args.args[1:]]
+                        break
+        else:
+            self.fit_code_syntax_error_line = syntax_error.lineno
+            self.fit_code_syntax_error_message = str(syntax_error)
+            new_names = []
         if new_names != self.param_names:
             self.param_names = new_names
 
@@ -964,9 +986,20 @@ class CurveFitPlugin(TransformPlugin):
         )
         hint_label.setWordWrap(True)
         fit_layout.addWidget(hint_label)
+        namespace_label = QLabel(
+            "<i>Runtime namespace includes Python built-ins and "
+            "<code>numpy</code> as <code>np</code> and <code>numpy</code>.</i>",
+            fit_widget,
+        )
+        namespace_label.setWordWrap(True)
+        fit_layout.addWidget(namespace_label)
 
         editor = EditorWidget(fit_widget)
         editor.set_text(self.fit_code)
+        if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
+            editor.set_syntax_error(
+                self.fit_code_syntax_error_line, self.fit_code_syntax_error_message
+            )
         fit_layout.addWidget(editor)
         fit_widget.setLayout(fit_layout)
 
@@ -1001,16 +1034,23 @@ class CurveFitPlugin(TransformPlugin):
             code = editor.text()
             old_names = list(self.param_names)
             self._update_param_names(code)
+            if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
+                editor.set_syntax_error(
+                    self.fit_code_syntax_error_line, self.fit_code_syntax_error_message
+                )
+            else:
+                editor.clear_syntax_error()
             # Flush current table values into param_settings.
-            self.param_settings.update(param_widget.read_settings())
+            self.param_settings = param_widget.read_settings()
             if self.param_names != old_names:
                 param_widget.set_parameters(self.param_names)
+                self.param_settings = param_widget.read_settings()
 
         editor.textChanged.connect(_on_code_changed)
 
         # ---- Wire table changes back to param_settings ------------------
         def _on_table_changed() -> None:
-            self.param_settings.update(param_widget.read_settings())
+            self.param_settings = param_widget.read_settings()
 
         param_widget.settings_changed.connect(_on_table_changed)
 

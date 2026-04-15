@@ -410,6 +410,29 @@ class TestCurveFitConfigTabs:
         editors = fit_widget.findChildren(EditorWidget)
         assert len(editors) == 1
 
+    def test_fit_function_tab_shows_runtime_namespace_hint(self, qapp):
+        from PyQt6.QtWidgets import QLabel
+
+        p = CurveFitPlugin()
+        tabs = p.config_tabs()
+        fit_widget = dict(tabs)["Fit Function"]
+        labels = [lbl.text().lower() for lbl in fit_widget.findChildren(QLabel)]
+        assert any("numpy" in text and "np" in text for text in labels)
+
+    def test_fit_function_editor_marks_syntax_error_line(self, qapp):
+        from stoner_measurement.ui.editor_widget import EditorWidget
+
+        p = CurveFitPlugin()
+        tabs = p.config_tabs()
+        fit_widget = dict(tabs)["Fit Function"]
+        editor = fit_widget.findChildren(EditorWidget)[0]
+        editor.set_text("def fit(x a):\n    return a")
+        assert editor.syntax_error_line == 1
+        assert editor.syntax_error_message
+        editor.set_text("def fit(x, a):\n    return a")
+        assert editor.syntax_error_line is None
+        assert editor.syntax_error_message == ""
+
     def test_parameters_tab_is_qwidget_with_param_table(self, qapp):
         from PyQt6.QtWidgets import QWidget
 
