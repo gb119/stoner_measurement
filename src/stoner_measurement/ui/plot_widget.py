@@ -15,29 +15,33 @@ from typing import Literal
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
+    QHeaderView,
     QInputDialog,
-    QLabel,
-    QLineEdit,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 # Colour palette used when automatically assigning colours to new traces.
 _TRACE_COLOURS = [
-    "#1f77b4",  # blue
-    "#ff7f0e",  # orange
-    "#2ca02c",  # green
-    "#d62728",  # red
-    "#9467bd",  # purple
-    "#8c564b",  # brown
-    "#e377c2",  # pink
-    "#7f7f7f",  # grey
-    "#bcbd22",  # yellow-green
-    "#17becf",  # cyan
+    "royalblue",
+    "darkorange",
+    "forestgreen",
+    "firebrick",
+    "mediumpurple",
+    "saddlebrown",
+    "deeppink",
+    "dimgray",
+    "olive",
+    "teal",
 ]
 
 _LINE_STYLES: dict[str, Qt.PenStyle] = {
@@ -56,6 +60,16 @@ _POINT_STYLES: dict[str, str | None] = {
     "diamond": "d",
     "plus": "+",
     "cross": "x",
+}
+
+_POINT_PICTOGRAMS: dict[str, str] = {
+    "none": "·",
+    "circle": "○",
+    "square": "□",
+    "triangle": "△",
+    "diamond": "◇",
+    "plus": "+",
+    "cross": "×",
 }
 
 
@@ -102,8 +116,13 @@ class PlotWidget(QWidget):
         self._trace_axes: dict[str, tuple[str, str]] = {}
         # Per-trace style: name → {"colour": str, "line": str, "point": str}
         self._trace_style: dict[str, dict[str, str]] = {}
+        self._trace_line_width: dict[str, float] = {}
+        self._trace_point_size: dict[str, float] = {}
+        self._trace_visible: dict[str, bool] = {}
+        self._updating_trace_controls = False
         # Colour cycle for auto-assignment
         self._colour_cycle = cycle(_TRACE_COLOURS)
+        self._qt_colour_names = QColor.colorNames()
 
         # ViewBox registry: axis_name → ViewBox for backwards compatibility.
         self._view_boxes: dict[str, pg.ViewBox] = {}
@@ -118,39 +137,6 @@ class PlotWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("Trace:", self))
-        self._trace_selector = QComboBox(self)
-        self._trace_selector.currentTextChanged.connect(self._on_selected_trace_changed)
-        controls.addWidget(self._trace_selector)
-
-        controls.addWidget(QLabel("Colour:", self))
-        self._colour_editor = QLineEdit(self)
-        self._colour_editor.setPlaceholderText("#1f77b4")
-        self._colour_editor.editingFinished.connect(self._on_style_changed)
-        controls.addWidget(self._colour_editor)
-
-        controls.addWidget(QLabel("Line:", self))
-        self._line_selector = QComboBox(self)
-        self._line_selector.addItems(list(_LINE_STYLES))
-        self._line_selector.currentTextChanged.connect(self._on_style_changed)
-        controls.addWidget(self._line_selector)
-
-        controls.addWidget(QLabel("Points:", self))
-        self._point_selector = QComboBox(self)
-        self._point_selector.addItems(list(_POINT_STYLES))
-        self._point_selector.currentTextChanged.connect(self._on_style_changed)
-        controls.addWidget(self._point_selector)
-
-        controls.addWidget(QLabel("X axis:", self))
-        self._x_axis_selector = QComboBox(self)
-        self._x_axis_selector.currentTextChanged.connect(self._on_axis_selection_changed)
-        controls.addWidget(self._x_axis_selector)
-
-        controls.addWidget(QLabel("Y axis:", self))
-        self._y_axis_selector = QComboBox(self)
-        self._y_axis_selector.currentTextChanged.connect(self._on_axis_selection_changed)
-        controls.addWidget(self._y_axis_selector)
-
         self._add_x_axis_button = QPushButton("+X Axis", self)
         self._add_x_axis_button.clicked.connect(self._prompt_add_x_axis)
         controls.addWidget(self._add_x_axis_button)
@@ -159,6 +145,28 @@ class PlotWidget(QWidget):
         controls.addWidget(self._add_y_axis_button)
         controls.addStretch(1)
         layout.addLayout(controls)
+
+        self._trace_table = QTableWidget(self)
+        self._trace_table.setColumnCount(9)
+        self._trace_table.setHorizontalHeaderLabels(
+            ["Show", "Trace", "Colour", "Line", "Width", "Points", "Point Size", "X axis", "Y axis"]
+        )
+        self._trace_table.verticalHeader().setVisible(False)
+        self._trace_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._trace_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self._trace_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._trace_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        header = self._trace_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self._trace_table)
 
         # Create the pyqtgraph plot widget
         self._pg_widget = pg.PlotWidget()
@@ -179,8 +187,6 @@ class PlotWidget(QWidget):
         self._axis_orientations["left"] = "y"
         self._axis_orientations["bottom"] = "x"
 
-        # Legend — items are registered manually when traces are created.
-        self._legend = self._plot_item.addLegend()
         self._plot_item.vb.sigResized.connect(self._sync_view_box_geometry)
 
         layout.addWidget(self._pg_widget)
@@ -212,83 +218,181 @@ class PlotWidget(QWidget):
         )
 
     def _refresh_trace_and_axis_controls(self) -> None:
-        """Refresh combo-box entries after trace/axis changes."""
-        current_trace = self._trace_selector.currentText()
-        self._trace_selector.blockSignals(True)
-        self._trace_selector.clear()
-        self._trace_selector.addItems(self.trace_names)
-        if current_trace and current_trace in self.trace_names:
-            self._trace_selector.setCurrentText(current_trace)
-        self._trace_selector.blockSignals(False)
+        """Refresh table rows after trace or axis changes."""
+        x_axes = self._x_axis_names()
+        y_axes = self._y_axis_names()
+        for row in range(self._trace_table.rowCount()):
+            for column in range(self._trace_table.columnCount()):
+                widget = self._trace_table.cellWidget(row, column)
+                if widget is not None:
+                    widget.blockSignals(True)
 
-        current_x = self._x_axis_selector.currentText()
-        self._x_axis_selector.blockSignals(True)
-        self._x_axis_selector.clear()
-        self._x_axis_selector.addItems(self._x_axis_names())
-        if current_x and current_x in self._x_axis_names():
-            self._x_axis_selector.setCurrentText(current_x)
-        self._x_axis_selector.blockSignals(False)
+        self._updating_trace_controls = True
+        try:
+            self._trace_table.clearContents()
+            self._trace_table.setRowCount(len(self.trace_names))
+            for row, trace_name in enumerate(self.trace_names):
+                style = self._trace_style[trace_name]
+                x_axis, y_axis = self._trace_axes.get(trace_name, ("bottom", "left"))
 
-        current_y = self._y_axis_selector.currentText()
-        self._y_axis_selector.blockSignals(True)
-        self._y_axis_selector.clear()
-        self._y_axis_selector.addItems(self._y_axis_names())
-        if current_y and current_y in self._y_axis_names():
-            self._y_axis_selector.setCurrentText(current_y)
-        self._y_axis_selector.blockSignals(False)
+                visible_checkbox = QCheckBox(self._trace_table)
+                visible_checkbox.setChecked(self._trace_visible.get(trace_name, True))
+                visible_checkbox.setProperty("trace_name", trace_name)
+                visible_checkbox.toggled.connect(self._on_trace_visibility_toggled)
+                self._trace_table.setCellWidget(row, 0, visible_checkbox)
 
-        self._on_selected_trace_changed(self._trace_selector.currentText())
+                trace_item = QTableWidgetItem(trace_name)
+                trace_item.setFlags(trace_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self._trace_table.setItem(row, 1, trace_item)
 
-    def _on_selected_trace_changed(self, trace_name: str) -> None:
-        """Update style/axis editors to match the selected trace."""
-        style = self._trace_style.get(trace_name)
-        axes = self._trace_axes.get(trace_name)
+                colour_selector = QComboBox(self._trace_table)
+                colour_selector.addItems(self._qt_colour_names)
+                if style["colour"] not in self._qt_colour_names:
+                    colour_selector.insertItem(0, style["colour"])
+                colour_selector.setCurrentText(style["colour"])
+                colour_selector.setProperty("trace_name", trace_name)
+                colour_selector.currentTextChanged.connect(self._on_trace_colour_changed)
+                self._trace_table.setCellWidget(row, 2, colour_selector)
 
-        self._colour_editor.blockSignals(True)
-        self._line_selector.blockSignals(True)
-        self._point_selector.blockSignals(True)
-        self._x_axis_selector.blockSignals(True)
-        self._y_axis_selector.blockSignals(True)
-        if style is None:
-            self._colour_editor.setText("")
-            self._line_selector.setCurrentText("solid")
-            self._point_selector.setCurrentText("none")
-        else:
-            self._colour_editor.setText(style["colour"])
-            self._line_selector.setCurrentText(style["line"])
-            self._point_selector.setCurrentText(style["point"])
-        if axes is None:
-            self._x_axis_selector.setCurrentText("bottom")
-            self._y_axis_selector.setCurrentText("left")
-        else:
-            self._x_axis_selector.setCurrentText(axes[0])
-            self._y_axis_selector.setCurrentText(axes[1])
-        self._colour_editor.blockSignals(False)
-        self._line_selector.blockSignals(False)
-        self._point_selector.blockSignals(False)
-        self._x_axis_selector.blockSignals(False)
-        self._y_axis_selector.blockSignals(False)
+                line_selector = QComboBox(self._trace_table)
+                line_selector.addItems(list(_LINE_STYLES))
+                line_selector.setCurrentText(style["line"])
+                line_selector.setProperty("trace_name", trace_name)
+                line_selector.currentTextChanged.connect(self._on_trace_line_style_changed)
+                self._trace_table.setCellWidget(row, 3, line_selector)
 
-    def _on_style_changed(self, *_args: object) -> None:
-        """Apply style editor values to the selected trace."""
-        trace_name = self._trace_selector.currentText()
-        if not trace_name:
-            return
-        self.set_trace_style(
-            trace_name=trace_name,
-            colour=self._colour_editor.text().strip() or None,
-            line_style=self._line_selector.currentText(),
-            point_style=self._point_selector.currentText(),
+                line_width = QDoubleSpinBox(self._trace_table)
+                line_width.setRange(0.1, 20.0)
+                line_width.setSingleStep(0.5)
+                line_width.setValue(self._trace_line_width.get(trace_name, 2.0))
+                line_width.setProperty("trace_name", trace_name)
+                line_width.valueChanged.connect(self._on_trace_line_width_changed)
+                self._trace_table.setCellWidget(row, 4, line_width)
+
+                point_selector = QComboBox(self._trace_table)
+                point_names = list(_POINT_STYLES)
+                for point_name in point_names:
+                    point_selector.addItem(_POINT_PICTOGRAMS[point_name], point_name)
+                point_selector.setCurrentIndex(point_selector.findData(style["point"]))
+                point_selector.setProperty("trace_name", trace_name)
+                point_selector.currentIndexChanged.connect(self._on_trace_point_style_changed)
+                self._trace_table.setCellWidget(row, 5, point_selector)
+
+                point_size = QDoubleSpinBox(self._trace_table)
+                point_size.setRange(1.0, 30.0)
+                point_size.setSingleStep(1.0)
+                point_size.setValue(self._trace_point_size.get(trace_name, 8.0))
+                point_size.setProperty("trace_name", trace_name)
+                point_size.valueChanged.connect(self._on_trace_point_size_changed)
+                self._trace_table.setCellWidget(row, 6, point_size)
+
+                x_axis_selector = QComboBox(self._trace_table)
+                x_axis_selector.addItems(x_axes)
+                x_axis_selector.setCurrentText(x_axis)
+                x_axis_selector.setProperty("trace_name", trace_name)
+                x_axis_selector.setProperty("axis", "x")
+                x_axis_selector.currentTextChanged.connect(self._on_trace_axis_changed)
+                self._trace_table.setCellWidget(row, 7, x_axis_selector)
+
+                y_axis_selector = QComboBox(self._trace_table)
+                y_axis_selector.addItems(y_axes)
+                y_axis_selector.setCurrentText(y_axis)
+                y_axis_selector.setProperty("trace_name", trace_name)
+                y_axis_selector.setProperty("axis", "y")
+                y_axis_selector.currentTextChanged.connect(self._on_trace_axis_changed)
+                self._trace_table.setCellWidget(row, 8, y_axis_selector)
+        finally:
+            self._updating_trace_controls = False
+
+        self._update_trace_table_height()
+
+    def _update_trace_table_height(self) -> None:
+        """Limit visible trace rows to three before scrolling."""
+        visible_rows = max(1, min(3, self._trace_table.rowCount()))
+        height = (
+            self._trace_table.horizontalHeader().height()
+            + (visible_rows * self._trace_table.verticalHeader().defaultSectionSize())
+            + (2 * self._trace_table.frameWidth())
         )
+        self._trace_table.setFixedHeight(height)
 
-    def _on_axis_selection_changed(self, *_args: object) -> None:
-        """Apply selected axis pair to the selected trace."""
-        trace_name = self._trace_selector.currentText()
-        if not trace_name:
+    def _set_trace_visibility(self, trace_name: str, visible: bool) -> None:
+        """Show or hide a specific trace."""
+        if self._updating_trace_controls:
             return
-        x_axis = self._x_axis_selector.currentText() or "bottom"
-        y_axis = self._y_axis_selector.currentText() or "left"
-        self.assign_trace_axes(trace_name=trace_name, x_axis=x_axis, y_axis=y_axis)
+        if trace_name not in self._traces:
+            return
+        self._trace_visible[trace_name] = visible
+        self._traces[trace_name].setVisible(visible)
+
+    def _on_trace_visibility_toggled(self, visible: bool) -> None:
+        """Handle trace visibility checkbox changes."""
+        sender = self.sender()
+        if sender is None:
+            return
+        self._set_trace_visibility(str(sender.property("trace_name")), visible)
+
+    def _on_trace_colour_changed(self, colour: str) -> None:
+        """Update trace colour from a table control."""
+        if self._updating_trace_controls:
+            return
+        sender = self.sender()
+        if sender is None:
+            return
+        self.set_trace_style(trace_name=str(sender.property("trace_name")), colour=colour)
+
+    def _on_trace_line_style_changed(self, line_style: str) -> None:
+        """Update trace line style from a table control."""
+        if self._updating_trace_controls:
+            return
+        sender = self.sender()
+        if sender is None:
+            return
+        self.set_trace_style(trace_name=str(sender.property("trace_name")), line_style=line_style)
+
+    def _on_trace_line_width_changed(self, line_width: float) -> None:
+        """Update trace line width from a table control."""
+        if self._updating_trace_controls:
+            return
+        sender = self.sender()
+        if sender is None:
+            return
+        self.set_trace_style(trace_name=str(sender.property("trace_name")), line_width=line_width)
+
+    def _on_trace_point_style_changed(self, index: int) -> None:
+        """Update trace point style from a table control."""
+        if self._updating_trace_controls:
+            return
+        sender = self.sender()
+        if sender is None:
+            return
+        point_style = str(sender.itemData(index))
+        self.set_trace_style(trace_name=str(sender.property("trace_name")), point_style=point_style)
+
+    def _on_trace_point_size_changed(self, point_size: float) -> None:
+        """Update trace point size from a table control."""
+        if self._updating_trace_controls:
+            return
+        sender = self.sender()
+        if sender is None:
+            return
+        self.set_trace_style(trace_name=str(sender.property("trace_name")), point_size=point_size)
+
+    def _on_trace_axis_changed(self, axis_name: str) -> None:
+        """Update trace axis assignment from a table control."""
+        if self._updating_trace_controls:
+            return
+        sender = self.sender()
+        if sender is None:
+            return
+        trace_name = str(sender.property("trace_name"))
+        axis_kind = str(sender.property("axis"))
+        current_x, current_y = self._trace_axes.get(trace_name, ("bottom", "left"))
+        self.assign_trace_axes(
+            trace_name=trace_name,
+            x_axis=axis_name if axis_kind == "x" else current_x,
+            y_axis=axis_name if axis_kind == "y" else current_y,
+        )
 
     def _prompt_add_x_axis(self) -> None:
         """Prompt for a new x-axis name/label and add it."""
@@ -344,7 +448,9 @@ class PlotWidget(QWidget):
                 "line": "solid",
                 "point": "none",
             }
-            self._legend.addItem(curve, trace_name)
+            self._trace_line_width[trace_name] = 2.0
+            self._trace_point_size[trace_name] = 8.0
+            self._trace_visible[trace_name] = True
             self._refresh_trace_and_axis_controls()
         return self._traces[trace_name]
 
@@ -446,8 +552,10 @@ class PlotWidget(QWidget):
         colour: str | None = None,
         line_style: str = "solid",
         point_style: str = "none",
+        line_width: float | None = None,
+        point_size: float | None = None,
     ) -> None:
-        """Set colour, line style, and point style for a trace.
+        """Set visual style properties for a trace.
 
         Args:
             trace_name (str):
@@ -463,6 +571,12 @@ class PlotWidget(QWidget):
             point_style (str):
                 One of ``"none"``, ``"circle"``, ``"square"``, ``"triangle"``,
                 ``"diamond"``, ``"plus"``, or ``"cross"``.
+            line_width (float | None):
+                Width of the plotted line. If ``None`` the existing width is
+                preserved.
+            point_size (float | None):
+                Size of plotted points. If ``None`` the existing size is
+                preserved.
 
         Raises:
             ValueError:
@@ -481,13 +595,26 @@ class PlotWidget(QWidget):
                 f"Unknown point style: {point_style!r}. "
                 f"Valid options are: {valid_point_styles}."
             )
+        if line_width is not None and line_width <= 0:
+            raise ValueError("Line width must be greater than zero.")
+        if point_size is not None and point_size <= 0:
+            raise ValueError("Point size must be greater than zero.")
 
         style = self._trace_style[trace_name]
         if colour is not None:
             style["colour"] = colour
         style["line"] = line_style
         style["point"] = point_style
-        pen = pg.mkPen(color=style["colour"], width=2, style=_LINE_STYLES[line_style])
+        if line_width is not None:
+            self._trace_line_width[trace_name] = line_width
+        if point_size is not None:
+            self._trace_point_size[trace_name] = point_size
+
+        pen = pg.mkPen(
+            color=style["colour"],
+            width=self._trace_line_width.get(trace_name, 2.0),
+            style=_LINE_STYLES[line_style],
+        )
         curve.setPen(pen)
         symbol = _POINT_STYLES[point_style]
         curve.setSymbol(symbol)
@@ -497,9 +624,7 @@ class PlotWidget(QWidget):
         else:
             curve.setSymbolBrush(style["colour"])
             curve.setSymbolPen(pen)
-
-        if self._trace_selector.currentText() == trace_name:
-            self._on_selected_trace_changed(trace_name)
+        curve.setSymbolSize(self._trace_point_size.get(trace_name, 8.0))
 
     def remove_trace(self, trace_name: str) -> None:
         """Remove a named trace and all its data.
@@ -526,9 +651,11 @@ class PlotWidget(QWidget):
         x_ax, y_ax = self._trace_axes.pop(trace_name, ("bottom", "left"))
         vb = self._pair_view_boxes.get((x_ax, y_ax), self._plot_item.vb)
         vb.removeItem(curve)
-        self._legend.removeItem(curve)
         del self._trace_data[trace_name]
         self._trace_style.pop(trace_name, None)
+        self._trace_line_width.pop(trace_name, None)
+        self._trace_point_size.pop(trace_name, None)
+        self._trace_visible.pop(trace_name, None)
         self._refresh_trace_and_axis_controls()
 
     def clear_all(self) -> None:
@@ -545,8 +672,6 @@ class PlotWidget(QWidget):
         """
         for name in list(self._traces.keys()):
             self.remove_trace(name)
-        # Explicitly clear legend to guard against any residual items.
-        self._legend.clear()
 
     def clear_data(self) -> None:
         """Clear all plotted data.
@@ -705,8 +830,7 @@ class PlotWidget(QWidget):
             new_vb.addItem(curve)
 
         self._trace_axes[trace_name] = (x_axis, y_axis)
-        if self._trace_selector.currentText() == trace_name:
-            self._on_selected_trace_changed(trace_name)
+        self._refresh_trace_and_axis_controls()
 
     # ------------------------------------------------------------------
     # Public API — data accessors

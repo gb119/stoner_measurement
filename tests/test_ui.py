@@ -1324,15 +1324,26 @@ class TestPlotWidget:
     def test_set_trace_style_updates_trace_style(self, qapp):
         widget = PlotWidget()
         widget.append_point("sig", 0.0, 1.0)
-        widget.set_trace_style("sig", colour="#123456", line_style="dash", point_style="circle")
+        widget.set_trace_style(
+            "sig",
+            colour="#123456",
+            line_style="dash",
+            point_style="circle",
+            line_width=3.5,
+            point_size=11.0,
+        )
         assert widget._trace_style["sig"] == {
             "colour": "#123456",
             "line": "dash",
             "point": "circle",
         }
+        assert widget._trace_line_width["sig"] == 3.5
+        assert widget._trace_point_size["sig"] == 11.0
         curve = widget._traces["sig"]
         assert curve.opts["symbol"] == "o"
         assert curve.opts["pen"].color().name().lower() == "#123456"
+        assert curve.opts["pen"].widthF() == pytest.approx(3.5)
+        assert curve.opts["symbolSize"] == pytest.approx(11.0)
 
     def test_set_trace_style_rejects_unknown_line_style(self, qapp):
         widget = PlotWidget()
@@ -1345,6 +1356,18 @@ class TestPlotWidget:
         widget.append_point("sig", 0.0, 1.0)
         with pytest.raises(ValueError, match="point style"):
             widget.set_trace_style("sig", point_style="hexagon")
+
+    def test_set_trace_style_rejects_non_positive_line_width(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        with pytest.raises(ValueError, match="Line width"):
+            widget.set_trace_style("sig", line_width=0)
+
+    def test_set_trace_style_rejects_non_positive_point_size(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        with pytest.raises(ValueError, match="Point size"):
+            widget.set_trace_style("sig", point_size=0)
 
     def test_x_data_unknown_trace_returns_empty(self, qapp):
         widget = PlotWidget()
@@ -1382,31 +1405,78 @@ class TestPlotWidget:
         assert widget._pg_widget.getPlotItem().getAxis("bottom").labelText == original_bottom
         assert widget._pg_widget.getPlotItem().getAxis("left").labelText == original_left
 
-    def test_legend_exists_after_init(self, qapp):
+    def test_trace_table_exists_after_init(self, qapp):
         widget = PlotWidget()
-        assert widget._legend is not None
+        assert widget._trace_table is not None
 
-    def test_legend_has_entry_after_trace_created(self, qapp):
+    def test_trace_table_has_row_after_trace_created(self, qapp):
         widget = PlotWidget()
         widget.append_point("my_trace", 1.0, 2.0)
-        legend_items = widget._legend.items
-        labels = [item[1].text for item in legend_items]
-        assert "my_trace" in labels
+        assert widget._trace_table.rowCount() == 1
+        assert widget._trace_table.item(0, 1).text() == "my_trace"
 
-    def test_legend_entry_removed_on_remove_trace(self, qapp):
+    def test_trace_table_row_removed_on_remove_trace(self, qapp):
         widget = PlotWidget()
         widget.append_point("my_trace", 1.0, 2.0)
         widget.remove_trace("my_trace")
-        legend_items = widget._legend.items
-        labels = [item[1].text for item in legend_items]
-        assert "my_trace" not in labels
+        assert widget._trace_table.rowCount() == 0
 
-    def test_legend_cleared_on_clear_all(self, qapp):
+    def test_trace_table_cleared_on_clear_all(self, qapp):
         widget = PlotWidget()
         widget.append_point("a", 1.0, 2.0)
         widget.append_point("b", 3.0, 4.0)
         widget.clear_all()
-        assert widget._legend.items == []
+        assert widget._trace_table.rowCount() == 0
+
+    def test_trace_table_height_shows_three_rows_before_scroll(self, qapp):
+        widget = PlotWidget()
+        for index in range(4):
+            widget.append_point(f"trace_{index}", float(index), float(index))
+
+        expected_height = (
+            widget._trace_table.horizontalHeader().height()
+            + (3 * widget._trace_table.verticalHeader().defaultSectionSize())
+            + (2 * widget._trace_table.frameWidth())
+        )
+        assert widget._trace_table.height() == expected_height
+
+    def test_trace_visibility_checkbox_hides_trace(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("my_trace", 1.0, 2.0)
+        visible_checkbox = widget._trace_table.cellWidget(0, 0)
+
+        visible_checkbox.setChecked(False)
+
+        assert not widget._traces["my_trace"].isVisible()
+        assert widget._trace_visible["my_trace"] is False
+
+    def test_point_selector_uses_pictograms(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("my_trace", 1.0, 2.0)
+        point_selector = widget._trace_table.cellWidget(0, 5)
+
+        assert point_selector.itemText(0) == "·"
+        assert point_selector.itemData(0) == "none"
+        assert point_selector.itemText(1) == "○"
+
+    def test_colour_selector_uses_qt_named_palette(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("my_trace", 1.0, 2.0)
+        colour_selector = widget._trace_table.cellWidget(0, 2)
+
+        assert colour_selector.findText("aliceblue") >= 0
+
+    def test_line_width_and_point_size_controls_update_trace(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("my_trace", 1.0, 2.0)
+
+        line_width = widget._trace_table.cellWidget(0, 4)
+        point_size = widget._trace_table.cellWidget(0, 6)
+        line_width.setValue(4.0)
+        point_size.setValue(12.0)
+
+        assert widget._trace_line_width["my_trace"] == pytest.approx(4.0)
+        assert widget._trace_point_size["my_trace"] == pytest.approx(12.0)
 
 
 class TestConfigPanel:
