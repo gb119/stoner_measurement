@@ -1899,33 +1899,49 @@ class TestPlotPointsCommand:
         assert cmd.x_key == ""
         assert cmd.y_entries == []
         assert cmd.x_axis_name == "bottom"
-        assert cmd.y_axis_name == "left"
 
     def test_to_json_includes_fields(self, qapp):
         cmd = PlotPointsCommand()
         cmd.x_key = "p:x"
-        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
+        cmd.y_entries = [{"key": "p:y", "label": "My Y", "y_axis": "left"}]
         d = cmd.to_json()
         assert d["type"] == "command"
         assert d["x_key"] == "p:x"
-        assert d["y_entries"] == [{"key": "p:y", "label": "My Y"}]
         assert d["x_axis_name"] == "bottom"
-        assert d["y_axis_name"] == "left"
+        assert d["y_entries"] == [{"key": "p:y", "label": "My Y", "y_axis": "left"}]
 
     def test_restore_from_json_round_trip(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
         cmd = PlotPointsCommand()
         cmd.x_key = "sensor:temp"
-        cmd.y_entries = [{"key": "sensor:voltage", "label": "Voltage (V)"}]
+        cmd.y_entries = [{"key": "sensor:voltage", "label": "Voltage (V)", "y_axis": "temp"}]
         cmd.x_axis_name = "freq"
-        cmd.y_axis_name = "temp"
         restored = BasePlugin.from_json(cmd.to_json())
         assert isinstance(restored, PlotPointsCommand)
         assert restored.x_key == "sensor:temp"
-        assert restored.y_entries == [{"key": "sensor:voltage", "label": "Voltage (V)"}]
         assert restored.x_axis_name == "freq"
-        assert restored.y_axis_name == "temp"
+        assert restored.y_entries == [
+            {"key": "sensor:voltage", "label": "Voltage (V)", "y_axis": "temp"}
+        ]
+
+    def test_restore_from_json_backward_compat_global_y_axis(self, qapp):
+        """Old JSON with a global 'y_axis_name' migrates to per-entry 'y_axis'."""
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        old_json = {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_points:PlotPointsCommand",
+            "instance_name": "plot_points",
+            "x_key": "p:x",
+            "x_axis_name": "bottom",
+            "y_axis_name": "temp",
+            "y_entries": [{"key": "p:y", "label": "Y"}],
+        }
+        restored = BasePlugin.from_json(old_json)
+        assert isinstance(restored, PlotPointsCommand)
+        # per-entry y_axis should be migrated from legacy global
+        assert restored.y_entries[0]["y_axis"] == "temp"
 
     def test_config_widget_returns_widget(self, qapp):
         from PyQt6.QtWidgets import QWidget
@@ -2074,10 +2090,57 @@ class TestPlotPointsCommand:
         engine._namespace["p_x"] = 1.0
         engine._namespace["p_y"] = 5.0
         cmd.x_key = "p:x"
-        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
         cmd.x_axis_name = "freq"
-        cmd.y_axis_name = "temp"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y", "y_axis": "temp"}]
 
         cmd.execute()
 
         assert pw._trace_axes["My Y"] == ("freq", "temp")
+
+    def test_execute_different_series_on_different_y_axes(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        pw.add_y_axis("temp", "Temperature (K)")
+        engine.plot_widget = pw
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {
+            "p:x": "p_x",
+            "p:v": "p_v",
+            "p:t": "p_t",
+        }
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_v"] = 5.0
+        engine._namespace["p_t"] = 300.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [
+            {"key": "p:v", "label": "Voltage", "y_axis": "left"},
+            {"key": "p:t", "label": "Temp", "y_axis": "temp"},
+        ]
+
+        cmd.execute()
+
+        assert pw._trace_axes["Voltage"] == ("bottom", "left")
+        assert pw._trace_axes["Temp"] == ("bottom", "temp")
+
+    def test_execute_auto_creates_missing_y_axis(self, qapp, engine):
+        """execute() creates a new y-axis on the plot widget if it doesn't exist."""
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y", "y_axis": "brand_new_axis"}]
+
+        assert "brand_new_axis" not in pw.axis_names
+        cmd.execute()
+        assert "brand_new_axis" in pw.axis_names
+        assert pw._trace_axes["My Y"] == ("bottom", "brand_new_axis")
