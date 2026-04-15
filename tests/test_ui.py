@@ -1321,6 +1321,30 @@ class TestPlotWidget:
         widget.assign_trace_axes("sig", x_axis="freq", y_axis="temp")
         assert widget._trace_axes["sig"] == ("freq", "temp")
 
+    def test_ensure_y_axis_creates_new_axis(self, qapp):
+        widget = PlotWidget()
+        assert "new_axis" not in widget.axis_names
+        widget.ensure_y_axis("new_axis", "New Axis (units)")
+        assert "new_axis" in widget.axis_names
+
+    def test_ensure_y_axis_is_idempotent(self, qapp):
+        widget = PlotWidget()
+        widget.ensure_y_axis("dup", "Duplicate")
+        widget.ensure_y_axis("dup", "Duplicate")
+        assert widget.axis_names.count("dup") == 1
+
+    def test_ensure_y_axis_uses_name_as_label_fallback(self, qapp):
+        widget = PlotWidget()
+        widget.ensure_y_axis("my_axis")
+        assert "my_axis" in widget.axis_names
+
+    def test_ensure_y_axis_noop_for_default_left(self, qapp):
+        """ensure_y_axis on the built-in 'left' axis leaves axis count unchanged."""
+        widget = PlotWidget()
+        initial = sorted(widget.axis_names)
+        widget.ensure_y_axis("left")
+        assert sorted(widget.axis_names) == initial
+
     def test_set_trace_style_updates_trace_style(self, qapp):
         widget = PlotWidget()
         widget.append_point("sig", 0.0, 1.0)

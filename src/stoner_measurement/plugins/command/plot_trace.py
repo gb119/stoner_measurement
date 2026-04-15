@@ -166,6 +166,8 @@ class PlotTraceCommand(CommandPlugin):
         self.x_expr: str = ""
         self.y_expr: str = ""
         self.title_expr: str = "'plot'"
+        self.x_axis_name: str = "bottom"
+        self.y_axis_name: str = "left"
 
     # ------------------------------------------------------------------
     # sequence_engine property — auto-wires plot signals to the plot widget
@@ -348,6 +350,23 @@ class PlotTraceCommand(CommandPlugin):
             np.asarray(x_data, dtype=float),
             np.asarray(y_data, dtype=float),
         )
+        if self.sequence_engine is not None:
+            plot_widget = getattr(self.sequence_engine, "plot_widget", None)
+        else:
+            plot_widget = None
+        if plot_widget is not None:
+            try:
+                plot_widget.assign_trace_axes(
+                    title,
+                    x_axis=self.x_axis_name,
+                    y_axis=self.y_axis_name,
+                )
+            except KeyError:
+                self.log.warning(
+                    "PlotTrace: configured axes (%s, %s) are not available; using defaults.",
+                    self.x_axis_name,
+                    self.y_axis_name,
+                )
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
 
     # ------------------------------------------------------------------
@@ -397,6 +416,7 @@ class PlotTraceCommand(CommandPlugin):
         # Build trace lists from the engine namespace.
         traces: dict[str, str] = self.engine_namespace.get("_traces", {})
         trace_keys = list(traces.keys())
+        x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
 
         # Build a mapping of display-name → expression for individual
         # x/y data arrays across all trace channels.  Expressions are derived
@@ -457,12 +477,31 @@ class PlotTraceCommand(CommandPlugin):
             "Must produce a string.  Example: f'Run {run_index}'"
         )
 
+        # --- Target plot axes ---
+        x_axis_combo = QComboBox(widget)
+        x_axis_combo.addItems(x_axis_names)
+        if self.x_axis_name in x_axis_names:
+            x_axis_combo.setCurrentText(self.x_axis_name)
+        else:
+            self.x_axis_name = x_axis_names[0]
+            x_axis_combo.setCurrentText(self.x_axis_name)
+
+        y_axis_combo = QComboBox(widget)
+        y_axis_combo.addItems(y_axis_names)
+        if self.y_axis_name in y_axis_names:
+            y_axis_combo.setCurrentText(self.y_axis_name)
+        else:
+            self.y_axis_name = y_axis_names[0]
+            y_axis_combo.setCurrentText(self.y_axis_name)
+
         # Populate form layout.
         layout.addRow("Trace:", trace_combo)
         layout.addRow("Advanced mode:", advanced_check)
         layout.addRow("X data:", x_combo)
         layout.addRow("Y data:", y_combo)
         layout.addRow("Title expression:", title_edit)
+        layout.addRow("X axis:", x_axis_combo)
+        layout.addRow("Y axis:", y_axis_combo)
         layout.addRow(
             QLabel(
                 "<i>In advanced mode, x/y data and title expressions are "
@@ -501,11 +540,19 @@ class PlotTraceCommand(CommandPlugin):
         def _apply_title() -> None:
             self.title_expr = title_edit.text().strip()
 
+        def _apply_x_axis(text: str) -> None:
+            self.x_axis_name = text
+
+        def _apply_y_axis(text: str) -> None:
+            self.y_axis_name = text
+
         trace_combo.currentTextChanged.connect(_apply_trace)
         advanced_check.toggled.connect(_apply_advanced)
         x_combo.currentTextChanged.connect(_apply_x)
         y_combo.currentTextChanged.connect(_apply_y)
         title_edit.editingFinished.connect(_apply_title)
+        x_axis_combo.currentTextChanged.connect(_apply_x_axis)
+        y_axis_combo.currentTextChanged.connect(_apply_y_axis)
 
         return widget
 
@@ -538,6 +585,8 @@ class PlotTraceCommand(CommandPlugin):
         d["x_expr"] = self.x_expr
         d["y_expr"] = self.y_expr
         d["title_expr"] = self.title_expr
+        d["x_axis_name"] = self.x_axis_name
+        d["y_axis_name"] = self.y_axis_name
         return d
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -552,6 +601,8 @@ class PlotTraceCommand(CommandPlugin):
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")
         self.title_expr = data.get("title_expr", "'plot'")
+        self.x_axis_name = data.get("x_axis_name", "bottom")
+        self.y_axis_name = data.get("y_axis_name", "left")
 
 
 # ---------------------------------------------------------------------------
@@ -586,3 +637,29 @@ def _set_combo_to_expr(
             combo.setCurrentText(display_name)
             return True
     return False
+
+
+def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list[str]]:
+    """Return available x-axis and y-axis names from the current plot widget.
+
+    Args:
+        engine (SequenceEngine | None):
+            Owning sequence engine for this command plugin.
+
+    Returns:
+        (tuple[list[str], list[str]]):
+            A pair ``(x_axes, y_axes)`` where each entry is a sorted list of
+            available axis names. Defaults to ``(["bottom"], ["left"])`` when
+            no plot widget (or axis orientation map) is available.
+    """
+    if engine is None:
+        return ["bottom"], ["left"]
+
+    plot_widget = getattr(engine, "plot_widget", None)
+    orientations = getattr(plot_widget, "_axis_orientations", None)
+    if not isinstance(orientations, dict):
+        return ["bottom"], ["left"]
+
+    x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
+    y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
+    return x_axes or ["bottom"], y_axes or ["left"]

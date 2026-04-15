@@ -8,8 +8,13 @@ live view of measured data points as a function of a swept parameter.
 The x value is taken from a single entry in the sequence engine's ``_values``
 catalogue and any number of y values may be added, each mapped to a
 separately named plot trace.  Each y series may be given a custom label
-(which becomes the trace name in the plot legend); the default label is
-derived from the value's human-readable name and units.
+(which becomes the trace name in the plot legend), a y-axis name to control
+which axis the series is plotted against, and a default label is derived from
+the value's human-readable name and units.
+
+If a y-axis name that does not yet exist on the plot widget is specified for a
+series, it is created automatically (on the right-hand side) when
+:meth:`~PlotPointsCommand.execute` runs.
 """
 
 from __future__ import annotations
@@ -102,12 +107,17 @@ class PlotPointsCommand(CommandPlugin):
     :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.append_point` so
     that the data appears in real-time in the main plot window.
 
+    Each y-series entry can independently target a different y-axis on the
+    plot widget.  If the specified y-axis does not yet exist it is created
+    automatically (on the right-hand side) when :meth:`execute` runs.
+
     The configuration UI lets the user:
 
     * Select an **x value** from the ``_values`` catalogue.
+    * Select the **X axis** (shared for all series).
     * Add one or more **y series**, each with its own value from the
-      catalogue and a customisable label (default
-      ``"{quantity name} ({units})"``).
+      catalogue, a customisable label, and an independently selectable
+      **y axis**.
 
     Attributes:
         x_key (str):
@@ -115,8 +125,12 @@ class PlotPointsCommand(CommandPlugin):
             ``"{instance_name}:{quantity_name}"``.
         y_entries (list[dict[str, str]]):
             Ordered list of y-series definitions.  Each entry is a dict with
-            keys ``"key"`` (catalogue key) and ``"label"`` (trace name shown
-            in the legend).
+            keys ``"key"`` (catalogue key), ``"label"`` (trace name shown
+            in the legend), and ``"y_axis"`` (y-axis name; defaults to
+            ``"left"`` when absent).
+        x_axis_name (str):
+            Name of the x-axis shared by all y series.  Defaults to
+            ``"bottom"``.
         plot_point (pyqtSignal[str, float, float]):
             Emitted once per y series by :meth:`execute` as
             ``(label, x_value, y_value)``.  Automatically connected to
@@ -149,6 +163,7 @@ class PlotPointsCommand(CommandPlugin):
         self._sequence_engine_ref: SequenceEngine | None = None
         self.x_key: str = ""
         self.y_entries: list[dict[str, str]] = []
+        self.x_axis_name: str = "bottom"
 
     # ------------------------------------------------------------------
     # sequence_engine property — auto-wires plot_point signal
@@ -230,7 +245,10 @@ class PlotPointsCommand(CommandPlugin):
         For each entry in :attr:`y_entries`, the x value (from :attr:`x_key`)
         and the y value (from the entry's ``"key"``) are evaluated against the
         engine namespace and :attr:`plot_point` is emitted as
-        ``(label, x_value, y_value)``.
+        ``(label, x_value, y_value)``.  The trace is then assigned to the
+        axes specified by :attr:`x_axis_name` and the entry's ``"y_axis"``
+        field.  If the specified y-axis does not yet exist on the plot widget
+        it is created automatically (on the right-hand side).
 
         Missing or unconfigured keys are logged as warnings and the
         corresponding series is skipped.
@@ -286,9 +304,14 @@ class PlotPointsCommand(CommandPlugin):
             )
             return
 
+        plot_widget = None
+        if self.sequence_engine is not None:
+            plot_widget = getattr(self.sequence_engine, "plot_widget", None)
+
         for entry in self.y_entries:
             y_key = entry.get("key", "")
             label = entry.get("label", y_key)
+            y_axis = entry.get("y_axis", "left")
             if not y_key:
                 continue
             if y_key not in values:
@@ -308,6 +331,23 @@ class PlotPointsCommand(CommandPlugin):
                 )
                 continue
             self.plot_point.emit(label, x_val, y_val)
+            if plot_widget is not None:
+                # Auto-create the y-axis if it doesn't exist yet.
+                if y_axis not in plot_widget.axis_names:
+                    plot_widget.ensure_y_axis(y_axis)
+                try:
+                    plot_widget.assign_trace_axes(
+                        label,
+                        x_axis=self.x_axis_name,
+                        y_axis=y_axis,
+                    )
+                except KeyError:
+                    self.log.warning(
+                        "PlotPoints: could not assign axes (%s, %s) for series %r.",
+                        self.x_axis_name,
+                        y_axis,
+                        label,
+                    )
             self.log.debug("PlotPoints: emitted point (%s, %g, %g)", label, x_val, y_val)
 
     # ------------------------------------------------------------------
@@ -320,9 +360,11 @@ class PlotPointsCommand(CommandPlugin):
         The widget contains:
 
         * An **X value** dropdown populated from the ``_values`` catalogue.
+        * An **X axis** dropdown for the shared x-axis.
         * A scrollable list of **Y series** rows, each with a value
           dropdown, a label line-edit (defaulting to
-          ``"{quantity name} ({units})"``) and a **Remove** button.
+          ``"{quantity name} ({units})"``) an editable **Y axis** dropdown,
+          and a **Remove** button.
         * An **Add Y series** button that appends a new row.
 
         Keyword Parameters:
@@ -344,6 +386,7 @@ class PlotPointsCommand(CommandPlugin):
         ns = self.engine_namespace
         values: dict[str, str] = ns.get("_values", {})
         value_keys = list(values.keys())
+        x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
 
         outer = QWidget(parent)
         outer_layout = QFormLayout(outer)
@@ -367,6 +410,17 @@ class PlotPointsCommand(CommandPlugin):
         x_combo.currentTextChanged.connect(_apply_x)
         outer_layout.addRow("X value:", x_combo)
 
+        # --- Shared X axis dropdown ---
+        x_axis_combo = QComboBox(outer)
+        x_axis_combo.addItems(x_axis_names)
+        if self.x_axis_name in x_axis_names:
+            x_axis_combo.setCurrentText(self.x_axis_name)
+        else:
+            self.x_axis_name = x_axis_names[0]
+            x_axis_combo.setCurrentText(self.x_axis_name)
+        x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
+        outer_layout.addRow("X axis:", x_axis_combo)
+
         # --- Y series area ---
         outer_layout.addRow(QLabel("<b>Y series:</b>", outer))
 
@@ -382,19 +436,21 @@ class PlotPointsCommand(CommandPlugin):
         # Header row
         series_layout.addWidget(QLabel("<b>Value</b>"), 0, 0)
         series_layout.addWidget(QLabel("<b>Label</b>"), 0, 1)
+        series_layout.addWidget(QLabel("<b>Y axis</b>"), 0, 2)
 
         scroll_area.setWidget(series_container)
         outer_layout.addRow(scroll_area)
 
         # Track current row widgets so we can rebuild on add/remove.
-        row_widgets: list[tuple[QComboBox, QLineEdit, QPushButton]] = []
+        row_widgets: list[tuple[QComboBox, QLineEdit, QComboBox, QPushButton]] = []
 
         def _rebuild_rows() -> None:
             """Clear and re-populate the y-series grid from self.y_entries."""
             # Remove all widgets except the header (row 0).
-            for _combo, _edit, _btn in row_widgets:
+            for _combo, _edit, _yax, _btn in row_widgets:
                 _combo.setParent(None)
                 _edit.setParent(None)
+                _yax.setParent(None)
                 _btn.setParent(None)
             row_widgets.clear()
 
@@ -414,13 +470,26 @@ class PlotPointsCommand(CommandPlugin):
 
                 label_edit = QLineEdit(entry.get("label", ""), series_container)
 
+                # Editable y-axis combo: pre-populated with known axes but
+                # allows the user to type a new name that is auto-created on
+                # execute().
+                y_axis_entry = QComboBox(series_container)
+                y_axis_entry.setEditable(True)
+                y_axis_entry.addItems(y_axis_names)
+                entry_y_axis = entry.get("y_axis", "left")
+                if entry_y_axis in y_axis_names:
+                    y_axis_entry.setCurrentText(entry_y_axis)
+                else:
+                    y_axis_entry.setEditText(entry_y_axis)
+
                 remove_btn = QPushButton("✕", series_container)
                 remove_btn.setFixedWidth(28)
 
                 series_layout.addWidget(combo, grid_row, 0)
                 series_layout.addWidget(label_edit, grid_row, 1)
-                series_layout.addWidget(remove_btn, grid_row, 2)
-                row_widgets.append((combo, label_edit, remove_btn))
+                series_layout.addWidget(y_axis_entry, grid_row, 2)
+                series_layout.addWidget(remove_btn, grid_row, 3)
+                row_widgets.append((combo, label_edit, y_axis_entry, remove_btn))
 
                 # Capture index in closures.
                 def _make_key_handler(idx: int) -> Any:
@@ -445,6 +514,12 @@ class PlotPointsCommand(CommandPlugin):
 
                     return _apply_label
 
+                def _make_y_axis_handler(idx: int) -> Any:
+                    def _apply_y_axis(text: str, _idx: int = idx) -> None:
+                        self.y_entries[_idx]["y_axis"] = text.strip() or "left"
+
+                    return _apply_y_axis
+
                 def _make_remove_handler(idx: int) -> Any:
                     def _remove(_idx: int = idx) -> None:
                         del self.y_entries[_idx]
@@ -454,6 +529,7 @@ class PlotPointsCommand(CommandPlugin):
 
                 combo.currentTextChanged.connect(_make_key_handler(i))
                 label_edit.editingFinished.connect(_make_label_handler(i))
+                y_axis_entry.currentTextChanged.connect(_make_y_axis_handler(i))
                 remove_btn.clicked.connect(_make_remove_handler(i))
 
         _rebuild_rows()
@@ -464,7 +540,7 @@ class PlotPointsCommand(CommandPlugin):
         def _add_series() -> None:
             default_key = value_keys[0] if value_keys else ""
             default_label = _default_label(default_key, ns) if default_key else ""
-            self.y_entries.append({"key": default_key, "label": default_label})
+            self.y_entries.append({"key": default_key, "label": default_label, "y_axis": "left"})
             _rebuild_rows()
 
         add_btn.clicked.connect(_add_series)
@@ -483,7 +559,8 @@ class PlotPointsCommand(CommandPlugin):
             (dict[str, Any]):
                 Base dict from
                 :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-                extended with ``"x_key"`` and ``"y_entries"``.
+                extended with ``"x_key"``, ``"x_axis_name"``, and
+                ``"y_entries"`` (each entry includes a ``"y_axis"`` field).
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -497,15 +574,55 @@ class PlotPointsCommand(CommandPlugin):
         """
         d = super().to_json()
         d["x_key"] = self.x_key
+        d["x_axis_name"] = self.x_axis_name
         d["y_entries"] = [dict(e) for e in self.y_entries]
         return d
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
         """Restore configuration from a serialised dict.
 
+        Handles backward compatibility: old configs with a top-level
+        ``"y_axis_name"`` (before per-entry y-axis was added) migrate that
+        value into each restored y-entry when no ``"y_axis"`` key is present.
+
         Args:
             data (dict[str, Any]):
                 Serialised dict as produced by :meth:`to_json`.
         """
         self.x_key = data.get("x_key", "")
-        self.y_entries = [dict(e) for e in data.get("y_entries", [])]
+        self.x_axis_name = data.get("x_axis_name", "bottom")
+        # Backward-compat: old format stored a global y_axis_name.
+        legacy_y_axis = data.get("y_axis_name", "left")
+        raw_entries = data.get("y_entries", [])
+        self.y_entries = []
+        for e in raw_entries:
+            entry = dict(e)
+            if "y_axis" not in entry:
+                entry["y_axis"] = legacy_y_axis
+            self.y_entries.append(entry)
+
+
+def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list[str]]:
+    """Return available x-axis and y-axis names from the current plot widget.
+
+    Args:
+        engine (SequenceEngine | None):
+            Owning sequence engine for this command plugin.
+
+    Returns:
+        (tuple[list[str], list[str]]):
+            A pair ``(x_axes, y_axes)`` where each entry is a sorted list of
+            available axis names. Defaults to ``(["bottom"], ["left"])`` when
+            no plot widget (or axis orientation map) is available.
+    """
+    if engine is None:
+        return ["bottom"], ["left"]
+
+    plot_widget = getattr(engine, "plot_widget", None)
+    orientations = getattr(plot_widget, "_axis_orientations", None)
+    if not isinstance(orientations, dict):
+        return ["bottom"], ["left"]
+
+    x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
+    y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
+    return x_axes or ["bottom"], y_axes or ["left"]

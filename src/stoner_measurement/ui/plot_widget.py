@@ -741,6 +741,42 @@ class PlotWidget(QWidget):
         self._view_boxes[name] = self._create_pair_view_box("bottom", name)
         self._refresh_trace_and_axis_controls()
 
+    def ensure_y_axis(self, name: str, label: str = "") -> None:
+        """Ensure a y-axis with *name* exists, creating it on the right if absent.
+
+        If the axis already exists this is a no-op.  If it does not exist a new
+        right-hand y-axis is added using :meth:`add_y_axis`, with *label* as
+        the displayed axis label (falling back to *name* when *label* is empty).
+
+        This is intended for use by command plugins that direct trace data to a
+        named axis — they call this method before :meth:`assign_trace_axes` so
+        that axes are created on demand without requiring the user to add them
+        manually first.
+
+        Args:
+            name (str):
+                Identifier for the y-axis.  One of the default ``"left"``
+                axis names or a custom name.
+
+        Keyword Parameters:
+            label (str):
+                Text label shown on the axis.  Defaults to *name* when empty.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> widget = PlotWidget()
+            >>> widget.ensure_y_axis("temp", "Temperature (K)")
+            >>> "temp" in widget.axis_names
+            True
+            >>> widget.ensure_y_axis("temp")  # idempotent
+            >>> widget.axis_names.count("temp")
+            1
+        """
+        if name in self._axis_items:
+            return
+        self.add_y_axis(name, label or name)
+
     def add_x_axis(
         self,
         name: str,
