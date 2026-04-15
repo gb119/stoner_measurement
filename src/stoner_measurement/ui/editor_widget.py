@@ -17,6 +17,10 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
+_SYNTAX_MARKER_MIN_SIZE = 6
+_SYNTAX_MARKER_MAX_SIZE = 10
+_SYNTAX_MARKER_INNER_PADDING = 2
+
 # ---------------------------------------------------------------------------
 # Syntax highlighter
 # ---------------------------------------------------------------------------
@@ -257,7 +261,10 @@ class EditorWidget(QPlainTextEdit):
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 if self._syntax_error_line == block_number + 1:
-                    marker_size = max(6, min(fm.height() - 2, 10))
+                    marker_size = max(
+                        _SYNTAX_MARKER_MIN_SIZE,
+                        min(fm.height() - _SYNTAX_MARKER_INNER_PADDING, _SYNTAX_MARKER_MAX_SIZE),
+                    )
                     marker_y = top + max(0, (line_height - marker_size) // 2)
                     painter.setPen(Qt.PenStyle.NoPen)
                     painter.setBrush(QColor("#d32f2f"))

@@ -89,10 +89,7 @@ def _parse_fit_params(code: str) -> list[str]:
     tree, _ = _parse_fit_tree(code)
     if tree is None:
         return []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "fit":
-            return [arg.arg for arg in node.args.args[1:]]
-    return []
+    return _fit_param_names_from_tree(tree)
 
 
 def _parse_fit_tree(code: str) -> tuple[ast.AST | None, SyntaxError | None]:
@@ -101,6 +98,14 @@ def _parse_fit_tree(code: str) -> tuple[ast.AST | None, SyntaxError | None]:
         return ast.parse(code), None
     except SyntaxError as exc:
         return None, exc
+
+
+def _fit_param_names_from_tree(tree: ast.AST) -> list[str]:
+    """Return parameter names from a parsed AST defining ``fit(x, ...)``."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "fit":
+            return [arg.arg for arg in node.args.args[1:]]
+    return []
 
 
 def _has_p0_function(code: str) -> bool:
@@ -787,18 +792,24 @@ class CurveFitPlugin(TransformPlugin):
         if syntax_error is None:
             self.fit_code_syntax_error_line = None
             self.fit_code_syntax_error_message = ""
-            new_names = []
-            if tree is not None:
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.FunctionDef) and node.name == "fit":
-                        new_names = [arg.arg for arg in node.args.args[1:]]
-                        break
+            new_names = _fit_param_names_from_tree(tree) if tree is not None else []
         else:
             self.fit_code_syntax_error_line = syntax_error.lineno
             self.fit_code_syntax_error_message = str(syntax_error)
             new_names = []
         if new_names != self.param_names:
             self.param_names = new_names
+
+    def _merge_param_settings(
+        self,
+        table_settings: dict[str, dict[str, float | None]],
+        current_param_names: list[str],
+    ) -> None:
+        """Merge table settings while preserving non-parameter auxiliary keys."""
+        preserved = {
+            key: value for key, value in self.param_settings.items() if key not in current_param_names
+        }
+        self.param_settings = {**preserved, **table_settings}
 
     # ------------------------------------------------------------------
     # Configuration tabs
@@ -1042,28 +1053,18 @@ class CurveFitPlugin(TransformPlugin):
                 editor.clear_syntax_error()
             # Flush current table values into param_settings.
             table_settings = param_widget.read_settings()
-            preserved = {
-                key: value
-                for key, value in self.param_settings.items()
-                if key not in old_names and key not in self.param_names
-            }
-            self.param_settings = {**preserved, **table_settings}
+            self._merge_param_settings(table_settings, old_names + self.param_names)
             if self.param_names != old_names:
                 param_widget.set_parameters(self.param_names)
                 table_settings = param_widget.read_settings()
-                self.param_settings = {**preserved, **table_settings}
+                self._merge_param_settings(table_settings, old_names + self.param_names)
 
         editor.textChanged.connect(_on_code_changed)
 
         # ---- Wire table changes back to param_settings ------------------
         def _on_table_changed() -> None:
             table_settings = param_widget.read_settings()
-            preserved = {
-                key: value
-                for key, value in self.param_settings.items()
-                if key not in self.param_names
-            }
-            self.param_settings = {**preserved, **table_settings}
+            self._merge_param_settings(table_settings, self.param_names)
 
         param_widget.settings_changed.connect(_on_table_changed)
 
