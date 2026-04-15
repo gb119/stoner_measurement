@@ -1330,14 +1330,19 @@ class TestPlotWidget:
             "line": "dash",
             "point": "circle",
         }
+        curve = widget._traces["sig"]
+        assert curve.opts["symbol"] == "o"
+        assert curve.opts["pen"].color().name().lower() == "#123456"
 
     def test_set_trace_style_rejects_unknown_line_style(self, qapp):
         widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
         with pytest.raises(ValueError, match="line style"):
             widget.set_trace_style("sig", line_style="wiggly")
 
     def test_set_trace_style_rejects_unknown_point_style(self, qapp):
         widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
         with pytest.raises(ValueError, match="point style"):
             widget.set_trace_style("sig", point_style="hexagon")
 
