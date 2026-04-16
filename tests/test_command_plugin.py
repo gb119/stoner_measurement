@@ -2001,6 +2001,32 @@ class TestPlotPointsCommand:
         assert received[0] == ("Series 0", 3.0, 10.0)
         assert received[1] == ("Series 1", 3.0, 20.0)
 
+    def test_execute_emits_axis_signals_for_each_y_series(self, qapp, engine):
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x_val", "p:y0": "p_y0_val", "p:y1": "p_y1_val"}
+        engine._namespace["p_x_val"] = 3.0
+        engine._namespace["p_y0_val"] = 10.0
+        engine._namespace["p_y1_val"] = 20.0
+        cmd.x_key = "p:x"
+        cmd.x_axis_name = "freq"
+        cmd.y_entries = [
+            {"key": "p:y0", "label": "Series 0", "y_axis": "left"},
+            {"key": "p:y1", "label": "Series 1", "y_axis": "temp"},
+        ]
+
+        ensured_axes: list[tuple[str, str]] = []
+        assigned_trace_axes: list[tuple[str, str, str]] = []
+        cmd.plot_ensure_y_axis.connect(lambda axis, label: ensured_axes.append((axis, label)))
+        cmd.plot_trace_axes.connect(
+            lambda trace, x_axis, y_axis: assigned_trace_axes.append((trace, x_axis, y_axis))
+        )
+
+        cmd.execute()
+
+        assert ensured_axes == [("left", "left"), ("temp", "temp")]
+        assert assigned_trace_axes == [("Series 0", "freq", "left"), ("Series 1", "freq", "temp")]
+
     def test_execute_skips_missing_x_key(self, qapp, engine):
         cmd = PlotPointsCommand()
         engine.add_plugin("plot_points", cmd)
