@@ -159,6 +159,10 @@ class PlotTraceCommand(CommandPlugin):
     plot_trace = pyqtSignal(str, object, object)
     #: Signal emitted by execute() in simple mode — (x_label, y_label).
     plot_axis_labels = pyqtSignal(str, str)
+    #: Signal emitted by execute() to ensure x-axis exists — (axis_name, axis_label).
+    plot_ensure_x_axis = pyqtSignal(str, str)
+    #: Signal emitted by execute() to ensure y-axis exists — (axis_name, axis_label).
+    plot_ensure_y_axis = pyqtSignal(str, str)
     #: Signal emitted by execute() — (trace_name, x_axis_name, y_axis_name).
     plot_trace_axes = pyqtSignal(str, str, str)
 
@@ -235,6 +239,12 @@ class PlotTraceCommand(CommandPlugin):
                 old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
                 if old_assign_axes is not None:
                     _safe_disconnect(self.plot_trace_axes, old_assign_axes)
+                old_ensure_x_axis = getattr(old_pw, "ensure_x_axis", None)
+                if old_ensure_x_axis is not None:
+                    _safe_disconnect(self.plot_ensure_x_axis, old_ensure_x_axis)
+                old_ensure_y_axis = getattr(old_pw, "ensure_y_axis", None)
+                if old_ensure_y_axis is not None:
+                    _safe_disconnect(self.plot_ensure_y_axis, old_ensure_y_axis)
 
         self._sequence_engine_ref = engine
 
@@ -251,6 +261,12 @@ class PlotTraceCommand(CommandPlugin):
                 new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
                 if new_assign_axes is not None:
                     self.plot_trace_axes.connect(new_assign_axes)
+                new_ensure_x_axis = getattr(new_pw, "ensure_x_axis", None)
+                if new_ensure_x_axis is not None:
+                    self.plot_ensure_x_axis.connect(new_ensure_x_axis)
+                new_ensure_y_axis = getattr(new_pw, "ensure_y_axis", None)
+                if new_ensure_y_axis is not None:
+                    self.plot_ensure_y_axis.connect(new_ensure_y_axis)
 
     @property
     def name(self) -> str:
@@ -366,20 +382,16 @@ class PlotTraceCommand(CommandPlugin):
             if x_label or y_label:
                 self.plot_axis_labels.emit(x_label, y_label)
 
+        x_axis = self.x_axis_name or "bottom"
+        y_axis = self.y_axis_name or "left"
+        self.plot_ensure_x_axis.emit(x_axis, x_axis)
+        self.plot_ensure_y_axis.emit(y_axis, y_axis)
         self.plot_trace.emit(
             title,
             np.asarray(x_data, dtype=float),
             np.asarray(y_data, dtype=float),
         )
-        x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
-        if self.x_axis_name in x_axis_names and self.y_axis_name in y_axis_names:
-            self.plot_trace_axes.emit(title, self.x_axis_name, self.y_axis_name)
-        else:
-            self.log.warning(
-                "PlotTrace: configured axes (%s, %s) are not available; using defaults.",
-                self.x_axis_name,
-                self.y_axis_name,
-            )
+        self.plot_trace_axes.emit(title, x_axis, y_axis)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
 
     # ------------------------------------------------------------------

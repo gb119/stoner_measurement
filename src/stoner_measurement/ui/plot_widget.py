@@ -8,7 +8,6 @@ independent x- and y-axes implemented via linked
 from __future__ import annotations
 
 import threading
-import warnings
 from collections.abc import Sequence
 from itertools import cycle
 from typing import Literal
@@ -19,6 +18,7 @@ from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
@@ -73,7 +73,6 @@ _POINT_PICTOGRAMS: dict[str, str] = {
     "cross": "×",
 }
 
-_QT_COLOUR_NAMES = QColor.colorNames()
 _MAX_VISIBLE_TRACE_ROWS = 3
 _MIN_LINE_WIDTH = 0.1
 _MAX_LINE_WIDTH = 20.0
@@ -83,6 +82,8 @@ _MAX_POINT_SIZE = 30.0
 _POINT_SIZE_STEP = 1.0
 _DEFAULT_LINE_WIDTH = 2.0
 _DEFAULT_POINT_SIZE = 8.0
+_COLOUR_COLUMN_WIDTH = 90
+_AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
 
@@ -138,8 +139,6 @@ class PlotWidget(QWidget):
         self._updating_trace_controls = False
         # Colour cycle for auto-assignment
         self._colour_cycle = cycle(_TRACE_COLOURS)
-        self._qt_colour_names = _QT_COLOUR_NAMES
-        self._qt_colour_name_set = set(self._qt_colour_names)
 
         # ViewBox registry: axis_name → ViewBox for backwards compatibility.
         self._view_boxes: dict[str, pg.ViewBox] = {}
@@ -176,13 +175,16 @@ class PlotWidget(QWidget):
         header = self._trace_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed)
+        self._trace_table.setColumnWidth(2, _COLOUR_COLUMN_WIDTH)
+        self._trace_table.setColumnWidth(7, _AXIS_COLUMN_WIDTH)
+        self._trace_table.setColumnWidth(8, _AXIS_COLUMN_WIDTH)
         layout.addWidget(self._trace_table)
 
         # Create the pyqtgraph plot widget
@@ -256,14 +258,11 @@ class PlotWidget(QWidget):
                 trace_item.setFlags(trace_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self._trace_table.setItem(row, 1, trace_item)
 
-                colour_selector = QComboBox(self._trace_table)
-                colour_selector.addItems(self._qt_colour_names)
-                if style["colour"] not in self._qt_colour_name_set:
-                    colour_selector.addItem(style["colour"])
-                colour_selector.setCurrentText(style["colour"])
-                colour_selector.setProperty(_TRACE_NAME_PROPERTY, trace_name)
-                colour_selector.currentTextChanged.connect(self._on_trace_colour_changed)
-                self._trace_table.setCellWidget(row, 2, colour_selector)
+                colour_button = QPushButton(self._trace_table)
+                colour_button.setProperty(_TRACE_NAME_PROPERTY, trace_name)
+                self._update_colour_button(colour_button, style["colour"])
+                colour_button.clicked.connect(self._on_trace_colour_button_clicked)
+                self._trace_table.setCellWidget(row, 2, colour_button)
 
                 line_selector = QComboBox(self._trace_table)
                 line_selector.addItems(list(_LINE_STYLES))
@@ -343,14 +342,32 @@ class PlotWidget(QWidget):
             return
         self._set_trace_visibility(str(sender.property(_TRACE_NAME_PROPERTY)), visible)
 
-    def _on_trace_colour_changed(self, colour: str) -> None:
-        """Update trace colour from a table control."""
+    def _update_colour_button(self, button: QPushButton, colour: str) -> None:
+        """Apply swatch styling and text to a trace-colour button."""
+        if not QColor(colour).isValid():
+            return
+        hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
+        button.setText(hex_colour)
+        button.setStyleSheet(f"QPushButton {{ background-color: {hex_colour}; }}")
+
+    def _on_trace_colour_button_clicked(self) -> None:
+        """Open a colour picker dialog and apply the chosen trace colour."""
         if self._updating_trace_controls:
             return
         sender = self.sender()
         if sender is None:
             return
-        self.set_trace_style(trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), colour=colour)
+        trace_name = str(sender.property(_TRACE_NAME_PROPERTY))
+        current_colour = self._trace_style.get(trace_name, {}).get("colour", "black")
+        selected = QColorDialog.getColor(
+            QColor(current_colour),
+            self,
+            f"Select colour for {trace_name}",
+            QColorDialog.ColorDialogOption.DontUseNativeDialog,
+        )
+        if not selected.isValid():
+            return
+        self.set_trace_style(trace_name=trace_name, colour=selected.name(QColor.NameFormat.HexRgb))
 
     def _on_trace_line_style_changed(self, line_style: str) -> None:
         """Update trace line style from a table control."""
@@ -710,20 +727,7 @@ class PlotWidget(QWidget):
         """
         for name in list(self._traces.keys()):
             self.remove_trace(name)
-
-    def clear_data(self) -> None:
-        """Clear all plotted data.
-
-        .. deprecated::
-            Use :meth:`clear_all` instead.  This method is kept for
-            backward compatibility and simply delegates to :meth:`clear_all`.
-        """
-        warnings.warn(
-            "clear_data() is deprecated; use clear_all() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.clear_all()
+        self._colour_cycle = cycle(_TRACE_COLOURS)
 
     # ------------------------------------------------------------------
     # Public API — axis management
@@ -844,6 +848,22 @@ class PlotWidget(QWidget):
         self._axis_orientations[name] = "x"
         self._view_boxes[name] = self._create_pair_view_box(name, "left")
         self._refresh_trace_and_axis_controls()
+
+    def ensure_x_axis(self, name: str, label: str = "") -> None:
+        """Ensure an x-axis with *name* exists, creating it at the top if absent.
+
+        Args:
+            name (str):
+                Identifier for the x-axis. One of the default ``"bottom"``
+                axis names or a custom name.
+
+        Keyword Parameters:
+            label (str):
+                Text label shown on the axis. Defaults to *name* when empty.
+        """
+        if name in self._axis_items:
+            return
+        self.add_x_axis(name, label or name)
 
     @pyqtSlot(str, str, str)
     def assign_trace_axes(
@@ -984,31 +1004,6 @@ class PlotWidget(QWidget):
             ['bottom', 'left']
         """
         return sorted(self._axis_items)
-
-    # ------------------------------------------------------------------
-    # Backward-compatibility shims
-    # ------------------------------------------------------------------
-
-    def append_data(self, x: float, y: float) -> None:
-        """Append a data point to the default trace.
-
-        .. deprecated::
-            Use :meth:`append_point` with an explicit trace name instead.
-            This method is kept for backward compatibility and delegates to
-            ``append_point("default", x, y)``.
-
-        Args:
-            x (float):
-                Horizontal axis value.
-            y (float):
-                Vertical axis value.
-        """
-        warnings.warn(
-            "append_data() is deprecated; use append_point(trace_name, x, y) instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.append_point("default", x, y)
 
     @property
     def pg_widget(self) -> pg.PlotWidget:
