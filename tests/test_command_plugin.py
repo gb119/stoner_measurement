@@ -2015,15 +2015,17 @@ class TestPlotPointsCommand:
             {"key": "p:y1", "label": "Series 1", "y_axis": "temp"},
         ]
 
-        ensured: list[tuple[str, str]] = []
-        assigned: list[tuple[str, str, str]] = []
-        cmd.plot_ensure_y_axis.connect(lambda axis, label: ensured.append((axis, label)))
-        cmd.plot_trace_axes.connect(lambda trace, x_axis, y_axis: assigned.append((trace, x_axis, y_axis)))
+        ensured_axes: list[tuple[str, str]] = []
+        assigned_trace_axes: list[tuple[str, str, str]] = []
+        cmd.plot_ensure_y_axis.connect(lambda axis, label: ensured_axes.append((axis, label)))
+        cmd.plot_trace_axes.connect(
+            lambda trace, x_axis, y_axis: assigned_trace_axes.append((trace, x_axis, y_axis))
+        )
 
         cmd.execute()
 
-        assert ensured == [("left", "left"), ("temp", "temp")]
-        assert assigned == [("Series 0", "freq", "left"), ("Series 1", "freq", "temp")]
+        assert ensured_axes == [("left", "left"), ("temp", "temp")]
+        assert assigned_trace_axes == [("Series 0", "freq", "left"), ("Series 1", "freq", "temp")]
 
     def test_execute_skips_missing_x_key(self, qapp, engine):
         cmd = PlotPointsCommand()
