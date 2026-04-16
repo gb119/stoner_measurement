@@ -39,6 +39,9 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
+_DEFAULT_X_AXIS = "bottom"
+_DEFAULT_Y_AXIS = "left"
+
 
 def _safe_disconnect(signal: Any, slot: Any) -> None:
     """Disconnect *signal* from *slot*, silently ignoring errors if not connected.
@@ -158,6 +161,8 @@ class PlotPointsCommand(CommandPlugin):
     plot_point = pyqtSignal(str, float, float)
     #: Signal emitted by execute() before each queued point update.
     plot_update_queued = pyqtSignal()
+    #: Signal emitted by execute() to ensure x-axis exists — (axis_name, axis_label).
+    plot_ensure_x_axis = pyqtSignal(str, str)
     #: Signal emitted by execute() to ensure y-axis exists — (axis_name, axis_label).
     plot_ensure_y_axis = pyqtSignal(str, str)
     #: Signal emitted by execute() to assign trace axes — (trace_name, x_axis, y_axis).
@@ -169,7 +174,7 @@ class PlotPointsCommand(CommandPlugin):
         self._sequence_engine_ref: SequenceEngine | None = None
         self.x_key: str = ""
         self.y_entries: list[dict[str, str]] = []
-        self.x_axis_name: str = "bottom"
+        self.x_axis_name: str = _DEFAULT_X_AXIS
 
     # ------------------------------------------------------------------
     # sequence_engine property — auto-wires plot_point signal
@@ -224,6 +229,9 @@ class PlotPointsCommand(CommandPlugin):
                 old_ensure_y_axis = getattr(old_pw, "ensure_y_axis", None)
                 if old_ensure_y_axis is not None:
                     _safe_disconnect(self.plot_ensure_y_axis, old_ensure_y_axis)
+                old_ensure_x_axis = getattr(old_pw, "ensure_x_axis", None)
+                if old_ensure_x_axis is not None:
+                    _safe_disconnect(self.plot_ensure_x_axis, old_ensure_x_axis)
                 old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
                 if old_assign_axes is not None:
                     _safe_disconnect(self.plot_trace_axes, old_assign_axes)
@@ -242,6 +250,9 @@ class PlotPointsCommand(CommandPlugin):
                 new_ensure_y_axis = getattr(new_pw, "ensure_y_axis", None)
                 if new_ensure_y_axis is not None:
                     self.plot_ensure_y_axis.connect(new_ensure_y_axis)
+                new_ensure_x_axis = getattr(new_pw, "ensure_x_axis", None)
+                if new_ensure_x_axis is not None:
+                    self.plot_ensure_x_axis.connect(new_ensure_x_axis)
                 new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
                 if new_assign_axes is not None:
                     self.plot_trace_axes.connect(new_assign_axes)
@@ -335,7 +346,8 @@ class PlotPointsCommand(CommandPlugin):
         for entry in self.y_entries:
             y_key = entry.get("key", "")
             label = entry.get("label", y_key)
-            y_axis = entry.get("y_axis", "left")
+            x_axis = self.x_axis_name or _DEFAULT_X_AXIS
+            y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS) or _DEFAULT_Y_AXIS
             if not y_key:
                 continue
             if y_key not in values:
@@ -354,10 +366,11 @@ class PlotPointsCommand(CommandPlugin):
                     exc,
                 )
                 continue
+            self.plot_ensure_x_axis.emit(x_axis, x_axis)
+            self.plot_ensure_y_axis.emit(y_axis, y_axis)
             self.plot_update_queued.emit()
             self.plot_point.emit(label, x_val, y_val)
-            self.plot_ensure_y_axis.emit(y_axis, y_axis)
-            self.plot_trace_axes.emit(label, self.x_axis_name, y_axis)
+            self.plot_trace_axes.emit(label, x_axis, y_axis)
             self.log.debug("PlotPoints: emitted point (%s, %g, %g)", label, x_val, y_val)
 
     # ------------------------------------------------------------------
@@ -486,7 +499,7 @@ class PlotPointsCommand(CommandPlugin):
                 y_axis_entry = QComboBox(series_container)
                 y_axis_entry.setEditable(True)
                 y_axis_entry.addItems(y_axis_names)
-                entry_y_axis = entry.get("y_axis", "left")
+                entry_y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS)
                 if entry_y_axis in y_axis_names:
                     y_axis_entry.setCurrentText(entry_y_axis)
                 else:
@@ -526,7 +539,7 @@ class PlotPointsCommand(CommandPlugin):
 
                 def _make_y_axis_handler(idx: int) -> Any:
                     def _apply_y_axis(text: str, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["y_axis"] = text.strip() or "left"
+                        self.y_entries[_idx]["y_axis"] = text.strip() or _DEFAULT_Y_AXIS
 
                     return _apply_y_axis
 
@@ -550,7 +563,9 @@ class PlotPointsCommand(CommandPlugin):
         def _add_series() -> None:
             default_key = value_keys[0] if value_keys else ""
             default_label = _default_label(default_key, ns) if default_key else ""
-            self.y_entries.append({"key": default_key, "label": default_label, "y_axis": "left"})
+            self.y_entries.append(
+                {"key": default_key, "label": default_label, "y_axis": _DEFAULT_Y_AXIS}
+            )
             _rebuild_rows()
 
         add_btn.clicked.connect(_add_series)
@@ -600,9 +615,9 @@ class PlotPointsCommand(CommandPlugin):
                 Serialised dict as produced by :meth:`to_json`.
         """
         self.x_key = data.get("x_key", "")
-        self.x_axis_name = data.get("x_axis_name", "bottom")
+        self.x_axis_name = data.get("x_axis_name", _DEFAULT_X_AXIS)
         # Backward-compat: old format stored a global y_axis_name.
-        legacy_y_axis = data.get("y_axis_name", "left")
+        legacy_y_axis = data.get("y_axis_name", _DEFAULT_Y_AXIS)
         raw_entries = data.get("y_entries", [])
         self.y_entries = []
         for e in raw_entries:
@@ -626,13 +641,13 @@ def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list
             no plot widget (or axis orientation map) is available.
     """
     if engine is None:
-        return ["bottom"], ["left"]
+        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     plot_widget = getattr(engine, "plot_widget", None)
     orientations = getattr(plot_widget, "_axis_orientations", None)
     if not isinstance(orientations, dict):
-        return ["bottom"], ["left"]
+        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
     y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
-    return x_axes or ["bottom"], y_axes or ["left"]
+    return x_axes or [_DEFAULT_X_AXIS], y_axes or [_DEFAULT_Y_AXIS]

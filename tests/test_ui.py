@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtWidgets import QLabel, QTreeWidgetItem
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QHeaderView, QLabel, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
@@ -1251,18 +1252,17 @@ class TestPlotWidget:
         widget.clear_all()
         assert widget.trace_names == []
 
-    def test_clear_data_deprecated(self, qapp):
+    def test_clear_all_resets_auto_colour_cycle(self, qapp):
         widget = PlotWidget()
-        widget.append_point("default", 1.0, 2.0)
-        with pytest.warns(DeprecationWarning):
-            widget.clear_data()
-        assert widget.trace_names == []
-
-    def test_append_data_deprecated(self, qapp):
-        widget = PlotWidget()
-        with pytest.warns(DeprecationWarning):
-            widget.append_data(1.0, 2.0)
-        assert widget.x_data("default") == [1.0]
+        widget.append_point("trace_a", 0.0, 1.0)
+        widget.append_point("trace_b", 1.0, 2.0)
+        first_colour = widget._trace_style["trace_a"]["colour"]
+        second_colour = widget._trace_style["trace_b"]["colour"]
+        widget.clear_all()
+        widget.append_point("trace_c", 0.0, 1.0)
+        widget.append_point("trace_d", 1.0, 2.0)
+        assert widget._trace_style["trace_c"]["colour"] == first_colour
+        assert widget._trace_style["trace_d"]["colour"] == second_colour
 
     def test_pg_widget_exists(self, qapp):
         widget = PlotWidget()
@@ -1343,6 +1343,24 @@ class TestPlotWidget:
         widget = PlotWidget()
         initial = sorted(widget.axis_names)
         widget.ensure_y_axis("left")
+        assert sorted(widget.axis_names) == initial
+
+    def test_ensure_x_axis_creates_new_axis(self, qapp):
+        widget = PlotWidget()
+        assert "new_x_axis" not in widget.axis_names
+        widget.ensure_x_axis("new_x_axis", "New X Axis (units)")
+        assert "new_x_axis" in widget.axis_names
+
+    def test_ensure_x_axis_is_idempotent(self, qapp):
+        widget = PlotWidget()
+        widget.ensure_x_axis("dup_x", "Duplicate X")
+        widget.ensure_x_axis("dup_x", "Duplicate X")
+        assert widget.axis_names.count("dup_x") == 1
+
+    def test_ensure_x_axis_noop_for_default_bottom(self, qapp):
+        widget = PlotWidget()
+        initial = sorted(widget.axis_names)
+        widget.ensure_x_axis("bottom")
         assert sorted(widget.axis_names) == initial
 
     def test_set_trace_style_updates_trace_style(self, qapp):
@@ -1490,14 +1508,25 @@ class TestPlotWidget:
         assert point_selector.itemText(none_index) == _POINT_PICTOGRAMS["none"]
         assert point_selector.itemText(circle_index) == _POINT_PICTOGRAMS["circle"]
 
-    def test_colour_selector_uses_qt_named_palette(self, qapp):
+    def test_colour_picker_button_updates_trace_style(self, qapp, monkeypatch):
         widget = PlotWidget()
         widget.append_point("my_trace", 1.0, 2.0)
-        colour_selector = widget._trace_table.cellWidget(0, 2)
+        colour_button = widget._trace_table.cellWidget(0, 2)
 
-        assert colour_selector.findText("aliceblue") >= 0
-        assert colour_selector.findText("red") >= 0
-        assert colour_selector.count() == len(widget._qt_colour_names)
+        def _pick_colour(*_args, **_kwargs):
+            return QColor("#123456")
+
+        monkeypatch.setattr("stoner_measurement.ui.plot_widget.QColorDialog.getColor", _pick_colour)
+        colour_button.click()
+        assert widget._trace_style["my_trace"]["colour"] == "#123456"
+
+    def test_axis_columns_have_fixed_width(self, qapp):
+        x_axis_column = 7
+        y_axis_column = 8
+        widget = PlotWidget()
+        header = widget._trace_table.horizontalHeader()
+        assert header.sectionResizeMode(x_axis_column) == QHeaderView.ResizeMode.Fixed
+        assert header.sectionResizeMode(y_axis_column) == QHeaderView.ResizeMode.Fixed
 
     def test_line_width_and_point_size_controls_update_trace(self, qapp):
         widget = PlotWidget()

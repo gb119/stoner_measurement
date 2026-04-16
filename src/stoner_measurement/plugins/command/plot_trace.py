@@ -36,6 +36,9 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
+_DEFAULT_X_AXIS = "bottom"
+_DEFAULT_Y_AXIS = "left"
+
 
 def _format_axis_label(name: str, unit: str) -> str:
     """Build an axis label string from a name and unit.
@@ -159,6 +162,10 @@ class PlotTraceCommand(CommandPlugin):
     plot_trace = pyqtSignal(str, object, object)
     #: Signal emitted by execute() in simple mode — (x_label, y_label).
     plot_axis_labels = pyqtSignal(str, str)
+    #: Signal emitted by execute() to ensure x-axis exists — (axis_name, axis_label).
+    plot_ensure_x_axis = pyqtSignal(str, str)
+    #: Signal emitted by execute() to ensure y-axis exists — (axis_name, axis_label).
+    plot_ensure_y_axis = pyqtSignal(str, str)
     #: Signal emitted by execute() — (trace_name, x_axis_name, y_axis_name).
     plot_trace_axes = pyqtSignal(str, str, str)
 
@@ -173,8 +180,8 @@ class PlotTraceCommand(CommandPlugin):
         self.x_expr: str = ""
         self.y_expr: str = ""
         self.title_expr: str = "'plot'"
-        self.x_axis_name: str = "bottom"
-        self.y_axis_name: str = "left"
+        self.x_axis_name: str = _DEFAULT_X_AXIS
+        self.y_axis_name: str = _DEFAULT_Y_AXIS
 
     # ------------------------------------------------------------------
     # sequence_engine property — auto-wires plot signals to the plot widget
@@ -235,6 +242,12 @@ class PlotTraceCommand(CommandPlugin):
                 old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
                 if old_assign_axes is not None:
                     _safe_disconnect(self.plot_trace_axes, old_assign_axes)
+                old_ensure_x_axis = getattr(old_pw, "ensure_x_axis", None)
+                if old_ensure_x_axis is not None:
+                    _safe_disconnect(self.plot_ensure_x_axis, old_ensure_x_axis)
+                old_ensure_y_axis = getattr(old_pw, "ensure_y_axis", None)
+                if old_ensure_y_axis is not None:
+                    _safe_disconnect(self.plot_ensure_y_axis, old_ensure_y_axis)
 
         self._sequence_engine_ref = engine
 
@@ -251,6 +264,12 @@ class PlotTraceCommand(CommandPlugin):
                 new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
                 if new_assign_axes is not None:
                     self.plot_trace_axes.connect(new_assign_axes)
+                new_ensure_x_axis = getattr(new_pw, "ensure_x_axis", None)
+                if new_ensure_x_axis is not None:
+                    self.plot_ensure_x_axis.connect(new_ensure_x_axis)
+                new_ensure_y_axis = getattr(new_pw, "ensure_y_axis", None)
+                if new_ensure_y_axis is not None:
+                    self.plot_ensure_y_axis.connect(new_ensure_y_axis)
 
     @property
     def name(self) -> str:
@@ -366,20 +385,16 @@ class PlotTraceCommand(CommandPlugin):
             if x_label or y_label:
                 self.plot_axis_labels.emit(x_label, y_label)
 
+        x_axis = self.x_axis_name or _DEFAULT_X_AXIS
+        y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
+        self.plot_ensure_x_axis.emit(x_axis, x_axis)
+        self.plot_ensure_y_axis.emit(y_axis, y_axis)
         self.plot_trace.emit(
             title,
             np.asarray(x_data, dtype=float),
             np.asarray(y_data, dtype=float),
         )
-        x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
-        if self.x_axis_name in x_axis_names and self.y_axis_name in y_axis_names:
-            self.plot_trace_axes.emit(title, self.x_axis_name, self.y_axis_name)
-        else:
-            self.log.warning(
-                "PlotTrace: configured axes (%s, %s) are not available; using defaults.",
-                self.x_axis_name,
-                self.y_axis_name,
-            )
+        self.plot_trace_axes.emit(title, x_axis, y_axis)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
 
     # ------------------------------------------------------------------
@@ -614,8 +629,8 @@ class PlotTraceCommand(CommandPlugin):
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")
         self.title_expr = data.get("title_expr", "'plot'")
-        self.x_axis_name = data.get("x_axis_name", "bottom")
-        self.y_axis_name = data.get("y_axis_name", "left")
+        self.x_axis_name = data.get("x_axis_name", _DEFAULT_X_AXIS)
+        self.y_axis_name = data.get("y_axis_name", _DEFAULT_Y_AXIS)
 
 
 # ---------------------------------------------------------------------------
@@ -666,13 +681,13 @@ def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list
             no plot widget (or axis orientation map) is available.
     """
     if engine is None:
-        return ["bottom"], ["left"]
+        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     plot_widget = getattr(engine, "plot_widget", None)
     orientations = getattr(plot_widget, "_axis_orientations", None)
     if not isinstance(orientations, dict):
-        return ["bottom"], ["left"]
+        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
     y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
-    return x_axes or ["bottom"], y_axes or ["left"]
+    return x_axes or [_DEFAULT_X_AXIS], y_axes or [_DEFAULT_Y_AXIS]

@@ -1264,7 +1264,7 @@ class TestPlotTraceCommand:
 
         assert pw._trace_axes["test trace"] == ("freq", "temp")
 
-    def test_execute_skips_axis_assignment_when_configured_axis_missing(self, qapp, engine):
+    def test_execute_creates_missing_axes_when_configured_axis_missing(self, qapp, engine):
         from stoner_measurement.ui.plot_widget import PlotWidget
 
         pw = PlotWidget()
@@ -1279,11 +1279,13 @@ class TestPlotTraceCommand:
         cmd.y_expr = "my_y"
         cmd.title_expr = "'test trace'"
         cmd.x_axis_name = "missing_x_axis"
-        cmd.y_axis_name = "left"
+        cmd.y_axis_name = "missing_y_axis"
 
         cmd.execute()
 
-        assert pw._trace_axes["test trace"] == ("bottom", "left")
+        assert "missing_x_axis" in pw.axis_names
+        assert "missing_y_axis" in pw.axis_names
+        assert pw._trace_axes["test trace"] == ("missing_x_axis", "missing_y_axis")
 
 
 # ---------------------------------------------------------------------------
@@ -2195,3 +2197,23 @@ class TestPlotPointsCommand:
         cmd.execute()
         assert "brand_new_axis" in pw.axis_names
         assert pw._trace_axes["My Y"] == ("bottom", "brand_new_axis")
+
+    def test_execute_auto_creates_missing_x_axis(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        cmd.x_key = "p:x"
+        cmd.x_axis_name = "brand_new_x_axis"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y", "y_axis": "left"}]
+
+        assert "brand_new_x_axis" not in pw.axis_names
+        cmd.execute()
+        assert "brand_new_x_axis" in pw.axis_names
+        assert pw._trace_axes["My Y"] == ("brand_new_x_axis", "left")
