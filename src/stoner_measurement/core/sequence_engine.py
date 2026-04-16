@@ -46,6 +46,7 @@ import queue
 import re
 import sys
 import threading
+import time
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from io import TextIOBase
@@ -66,6 +67,8 @@ _SM_MARKER_STRIP_RE = re.compile(r"\s*#\s*__SM_\d+__")
 
 #: Regex that captures the marker index from a ``# __SM_{n}__`` comment.
 _SM_MARKER_FIND_RE = re.compile(r"#\s*__SM_(\d+)__")
+_DEFAULT_PLOT_READY_TIMEOUT_SECONDS = 5.0
+_DEFAULT_PLOT_READY_POLL_SECONDS = 0.01
 
 
 class _QtLogHandler(logging.Handler, QObject):
@@ -586,6 +589,7 @@ class SequenceEngine(QObject):
         logger.addHandler(self._log_handler)
 
         self._namespace = self._make_namespace()
+        self._namespace["wait_for_plot_ready"] = self.wait_for_plot_ready
         self._plugin_var_names: dict[str, str] = {}  # ep_name → var_name in namespace
 
         # Reference to the main plot widget; set by the application after startup.
@@ -636,6 +640,48 @@ class SequenceEngine(QObject):
                 The plot widget to attach, or ``None`` to detach.
         """
         self._plot_widget = widget
+
+    def wait_for_plot_ready(
+        self,
+        timeout: float = _DEFAULT_PLOT_READY_TIMEOUT_SECONDS,
+        poll_interval: float = _DEFAULT_PLOT_READY_POLL_SECONDS,
+    ) -> bool:
+        """Block until the plot widget reports that it can accept more data.
+
+        This helper is injected into the sequence namespace as
+        ``wait_for_plot_ready`` and is intended for use inside generated
+        state-control loops.
+
+        Keyword Parameters:
+            timeout (float):
+                Maximum time to wait in seconds.  Values ``<= 0`` perform a
+                single non-blocking readiness check.
+            poll_interval (float):
+                Delay between readiness checks while waiting.
+
+        Returns:
+            (bool):
+                ``True`` when the plot is ready (or no plot widget is attached);
+                ``False`` if the timeout expires first.
+        """
+        plot_widget = self._plot_widget
+        if plot_widget is None:
+            return True
+
+        is_busy = getattr(plot_widget, "is_busy_for_data", None)
+        if not callable(is_busy):
+            return True
+
+        if timeout <= 0:
+            return not bool(is_busy())
+
+        deadline = time.monotonic() + timeout
+        sleep_for = max(float(poll_interval), 0.001)
+        while bool(is_busy()):
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(sleep_for)
+        return True
 
     # ------------------------------------------------------------------
     # Namespace management

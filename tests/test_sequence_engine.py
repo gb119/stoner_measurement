@@ -55,6 +55,11 @@ class TestSequenceEngineLifecycle:
         assert "sqrt" in ns
         assert "linspace" in ns
 
+    def test_namespace_injects_wait_for_plot_ready(self, engine):
+        ns = engine.namespace
+        assert "wait_for_plot_ready" in ns
+        assert callable(ns["wait_for_plot_ready"])
+
     def test_shutdown_is_idempotent(self, qapp):
         eng = SequenceEngine()
         eng.shutdown()
@@ -616,6 +621,22 @@ class TestDataCatalogs:
         engine.plot_widget = MagicMock()
         engine.plot_widget = None
         assert engine.plot_widget is None
+
+    def test_wait_for_plot_ready_returns_true_when_plot_idle(self, engine):
+        class _IdlePlotWidget:
+            def is_busy_for_data(self) -> bool:
+                return False
+
+        engine.plot_widget = _IdlePlotWidget()
+        assert engine.wait_for_plot_ready(timeout=0.01, poll_interval=0.001) is True
+
+    def test_wait_for_plot_ready_times_out_when_plot_busy(self, engine):
+        class _BusyPlotWidget:
+            def is_busy_for_data(self) -> bool:
+                return True
+
+        engine.plot_widget = _BusyPlotWidget()
+        assert engine.wait_for_plot_ready(timeout=0.01, poll_interval=0.001) is False
 
 
 

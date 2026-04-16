@@ -2108,6 +2108,7 @@ class TestPlotPointsCommand:
         cmd.execute()
         assert pw.x_data("My Y") == [1.0]
         assert pw.y_data("My Y") == [5.0]
+        assert pw.is_busy_for_data() is False
 
     def test_sequence_engine_disconnects_on_detach(self, qapp, engine):
         from stoner_measurement.ui.plot_widget import PlotWidget
