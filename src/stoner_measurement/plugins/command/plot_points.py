@@ -156,6 +156,8 @@ class PlotPointsCommand(CommandPlugin):
 
     #: Signal emitted by execute() — (trace_label, x_value, y_value).
     plot_point = pyqtSignal(str, float, float)
+    #: Signal emitted by execute() before each queued point update.
+    plot_update_queued = pyqtSignal()
     #: Signal emitted by execute() to ensure y-axis exists — (axis_name, axis_label).
     plot_ensure_y_axis = pyqtSignal(str, str)
     #: Signal emitted by execute() to assign trace axes — (trace_name, x_axis, y_axis).
@@ -216,6 +218,9 @@ class PlotPointsCommand(CommandPlugin):
                 old_append_point = getattr(old_pw, "append_point", None)
                 if old_append_point is not None:
                     _safe_disconnect(self.plot_point, old_append_point)
+                old_mark_queued = getattr(old_pw, "mark_data_update_queued", None)
+                if old_mark_queued is not None:
+                    _safe_disconnect(self.plot_update_queued, old_mark_queued)
                 old_ensure_y_axis = getattr(old_pw, "ensure_y_axis", None)
                 if old_ensure_y_axis is not None:
                     _safe_disconnect(self.plot_ensure_y_axis, old_ensure_y_axis)
@@ -231,6 +236,9 @@ class PlotPointsCommand(CommandPlugin):
                 new_append_point = getattr(new_pw, "append_point", None)
                 if new_append_point is not None:
                     self.plot_point.connect(new_append_point)
+                new_mark_queued = getattr(new_pw, "mark_data_update_queued", None)
+                if new_mark_queued is not None:
+                    self.plot_update_queued.connect(new_mark_queued)
                 new_ensure_y_axis = getattr(new_pw, "ensure_y_axis", None)
                 if new_ensure_y_axis is not None:
                     self.plot_ensure_y_axis.connect(new_ensure_y_axis)
@@ -346,6 +354,7 @@ class PlotPointsCommand(CommandPlugin):
                     exc,
                 )
                 continue
+            self.plot_update_queued.emit()
             self.plot_point.emit(label, x_val, y_val)
             self.plot_ensure_y_axis.emit(y_axis, y_axis)
             self.plot_trace_axes.emit(label, self.x_axis_name, y_axis)

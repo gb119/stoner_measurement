@@ -950,3 +950,10 @@ class TestStateControlDataCollection:
         collect_idx = next(i for i, line in enumerate(lines) if "collect()" in line)
         sub_idx = next(i for i, line in enumerate(lines) if "sub_step_line()" in line)
         assert collect_idx > sub_idx
+
+    def test_generate_action_code_waits_for_plot_ready_before_ramp(self, qapp):
+        p = _InstantState()
+        lines = p.generate_action_code(1, [], lambda s, i: [])
+        wait_idx = next(i for i, line in enumerate(lines) if "wait_for_plot_ready()" in line)
+        ramp_idx = next(i for i, line in enumerate(lines) if ".ramp_to(float(" in line)
+        assert wait_idx < ramp_idx

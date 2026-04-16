@@ -1032,6 +1032,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             lines.append(f"{prefix}{var_name}.clear_data()")
         lines += [
             f"{prefix}for {var_name}.ix, {var_name}.value, {var_name}.meas_flag in {var_name}.scan_generator:",
+            f"{loop_prefix}wait_for_plot_ready()",
             f"{loop_prefix}{var_name}.ramp_to(float({var_name}.value))",
             f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.get_state():.4g}} {self.units}")',
         ]

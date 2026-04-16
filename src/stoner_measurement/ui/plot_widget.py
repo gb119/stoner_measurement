@@ -7,6 +7,7 @@ independent x- and y-axes implemented via linked
 
 from __future__ import annotations
 
+import threading
 import warnings
 from collections.abc import Sequence
 from itertools import cycle
@@ -132,6 +133,8 @@ class PlotWidget(QWidget):
         self._trace_line_width: dict[str, float] = {}
         self._trace_point_size: dict[str, float] = {}
         self._trace_visible: dict[str, bool] = {}
+        self._pending_data_updates: int = 0
+        self._pending_data_updates_lock = threading.Lock()
         self._updating_trace_controls = False
         # Colour cycle for auto-assignment
         self._colour_cycle = cycle(_TRACE_COLOURS)
@@ -488,11 +491,14 @@ class PlotWidget(QWidget):
             >>> widget.x_data("sig")
             [0.0]
         """
-        curve = self._get_or_create_trace(trace_name)
-        xs, ys = self._trace_data[trace_name]
-        xs.append(float(x))
-        ys.append(float(y))
-        curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+        try:
+            curve = self._get_or_create_trace(trace_name)
+            xs, ys = self._trace_data[trace_name]
+            xs.append(float(x))
+            ys.append(float(y))
+            curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+        finally:
+            self._mark_data_update_processed()
 
     @pyqtSlot(str, object, object)
     def set_trace(
@@ -521,11 +527,30 @@ class PlotWidget(QWidget):
             >>> widget.y_data("sig")
             [2.0, 3.0]
         """
-        curve = self._get_or_create_trace(trace_name)
-        xs = list(map(float, x_data))
-        ys = list(map(float, y_data))
-        self._trace_data[trace_name] = (xs, ys)
-        curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+        try:
+            curve = self._get_or_create_trace(trace_name)
+            xs = list(map(float, x_data))
+            ys = list(map(float, y_data))
+            self._trace_data[trace_name] = (xs, ys)
+            curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+        finally:
+            self._mark_data_update_processed()
+
+    @pyqtSlot()
+    def mark_data_update_queued(self) -> None:
+        """Record that a plot data update has been queued for processing."""
+        with self._pending_data_updates_lock:
+            self._pending_data_updates += 1
+
+    def _mark_data_update_processed(self) -> None:
+        """Record completion of one previously queued plot data update."""
+        with self._pending_data_updates_lock:
+            self._pending_data_updates = max(0, self._pending_data_updates - 1)
+
+    def is_busy_for_data(self) -> bool:
+        """Return ``True`` when queued plot data updates are still pending."""
+        with self._pending_data_updates_lock:
+            return self._pending_data_updates > 0
 
     @pyqtSlot(str, str)
     def set_default_axis_labels(self, x_label: str, y_label: str) -> None:
