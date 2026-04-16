@@ -538,17 +538,17 @@ class PlotWidget(QWidget):
 
     @pyqtSlot()
     def mark_data_update_queued(self) -> None:
-        """Record that a plot-data update has been queued for processing."""
+        """Record that a plot data update has been queued for processing."""
         with self._pending_data_updates_lock:
             self._pending_data_updates += 1
 
     def _mark_data_update_processed(self) -> None:
-        """Record completion of one previously queued plot-data update."""
+        """Record completion of one previously queued plot data update."""
         with self._pending_data_updates_lock:
             self._pending_data_updates = max(0, self._pending_data_updates - 1)
 
     def is_busy_for_data(self) -> bool:
-        """Return ``True`` when queued plot-data updates are still pending."""
+        """Return ``True`` when queued plot data updates are still pending."""
         with self._pending_data_updates_lock:
             return self._pending_data_updates > 0
 
