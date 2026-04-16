@@ -156,6 +156,10 @@ class PlotPointsCommand(CommandPlugin):
 
     #: Signal emitted by execute() — (trace_label, x_value, y_value).
     plot_point = pyqtSignal(str, float, float)
+    #: Signal emitted by execute() to ensure y-axis exists — (axis_name, axis_label).
+    plot_ensure_y_axis = pyqtSignal(str, str)
+    #: Signal emitted by execute() to assign trace axes — (trace_name, x_axis, y_axis).
+    plot_trace_axes = pyqtSignal(str, str, str)
 
     def __init__(self, parent=None) -> None:
         """Initialise with default configuration."""
@@ -209,14 +213,30 @@ class PlotPointsCommand(CommandPlugin):
         if self._sequence_engine_ref is not None:
             old_pw = getattr(self._sequence_engine_ref, "plot_widget", None)
             if old_pw is not None:
-                _safe_disconnect(self.plot_point, old_pw.append_point)
+                old_append_point = getattr(old_pw, "append_point", None)
+                if old_append_point is not None:
+                    _safe_disconnect(self.plot_point, old_append_point)
+                old_ensure_y_axis = getattr(old_pw, "ensure_y_axis", None)
+                if old_ensure_y_axis is not None:
+                    _safe_disconnect(self.plot_ensure_y_axis, old_ensure_y_axis)
+                old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
+                if old_assign_axes is not None:
+                    _safe_disconnect(self.plot_trace_axes, old_assign_axes)
 
         self._sequence_engine_ref = engine
 
         if engine is not None:
             new_pw = getattr(engine, "plot_widget", None)
             if new_pw is not None:
-                self.plot_point.connect(new_pw.append_point)
+                new_append_point = getattr(new_pw, "append_point", None)
+                if new_append_point is not None:
+                    self.plot_point.connect(new_append_point)
+                new_ensure_y_axis = getattr(new_pw, "ensure_y_axis", None)
+                if new_ensure_y_axis is not None:
+                    self.plot_ensure_y_axis.connect(new_ensure_y_axis)
+                new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
+                if new_assign_axes is not None:
+                    self.plot_trace_axes.connect(new_assign_axes)
 
     @property
     def name(self) -> str:
@@ -304,10 +324,6 @@ class PlotPointsCommand(CommandPlugin):
             )
             return
 
-        plot_widget = None
-        if self.sequence_engine is not None:
-            plot_widget = getattr(self.sequence_engine, "plot_widget", None)
-
         for entry in self.y_entries:
             y_key = entry.get("key", "")
             label = entry.get("label", y_key)
@@ -331,23 +347,8 @@ class PlotPointsCommand(CommandPlugin):
                 )
                 continue
             self.plot_point.emit(label, x_val, y_val)
-            if plot_widget is not None:
-                # Auto-create the y-axis if it doesn't exist yet.
-                if y_axis not in plot_widget.axis_names:
-                    plot_widget.ensure_y_axis(y_axis)
-                try:
-                    plot_widget.assign_trace_axes(
-                        label,
-                        x_axis=self.x_axis_name,
-                        y_axis=y_axis,
-                    )
-                except KeyError:
-                    self.log.warning(
-                        "PlotPoints: could not assign axes (%s, %s) for series %r.",
-                        self.x_axis_name,
-                        y_axis,
-                        label,
-                    )
+            self.plot_ensure_y_axis.emit(y_axis, y_axis)
+            self.plot_trace_axes.emit(label, self.x_axis_name, y_axis)
             self.log.debug("PlotPoints: emitted point (%s, %g, %g)", label, x_val, y_val)
 
     # ------------------------------------------------------------------
