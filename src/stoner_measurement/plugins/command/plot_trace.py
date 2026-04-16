@@ -36,6 +36,9 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
+_DEFAULT_X_AXIS = "bottom"
+_DEFAULT_Y_AXIS = "left"
+
 
 def _format_axis_label(name: str, unit: str) -> str:
     """Build an axis label string from a name and unit.
@@ -177,8 +180,8 @@ class PlotTraceCommand(CommandPlugin):
         self.x_expr: str = ""
         self.y_expr: str = ""
         self.title_expr: str = "'plot'"
-        self.x_axis_name: str = "bottom"
-        self.y_axis_name: str = "left"
+        self.x_axis_name: str = _DEFAULT_X_AXIS
+        self.y_axis_name: str = _DEFAULT_Y_AXIS
 
     # ------------------------------------------------------------------
     # sequence_engine property — auto-wires plot signals to the plot widget
@@ -382,8 +385,8 @@ class PlotTraceCommand(CommandPlugin):
             if x_label or y_label:
                 self.plot_axis_labels.emit(x_label, y_label)
 
-        x_axis = self.x_axis_name or "bottom"
-        y_axis = self.y_axis_name or "left"
+        x_axis = self.x_axis_name or _DEFAULT_X_AXIS
+        y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
         self.plot_ensure_x_axis.emit(x_axis, x_axis)
         self.plot_ensure_y_axis.emit(y_axis, y_axis)
         self.plot_trace.emit(
@@ -626,8 +629,8 @@ class PlotTraceCommand(CommandPlugin):
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")
         self.title_expr = data.get("title_expr", "'plot'")
-        self.x_axis_name = data.get("x_axis_name", "bottom")
-        self.y_axis_name = data.get("y_axis_name", "left")
+        self.x_axis_name = data.get("x_axis_name", _DEFAULT_X_AXIS)
+        self.y_axis_name = data.get("y_axis_name", _DEFAULT_Y_AXIS)
 
 
 # ---------------------------------------------------------------------------
@@ -678,13 +681,13 @@ def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list
             no plot widget (or axis orientation map) is available.
     """
     if engine is None:
-        return ["bottom"], ["left"]
+        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     plot_widget = getattr(engine, "plot_widget", None)
     orientations = getattr(plot_widget, "_axis_orientations", None)
     if not isinstance(orientations, dict):
-        return ["bottom"], ["left"]
+        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
     y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
-    return x_axes or ["bottom"], y_axes or ["left"]
+    return x_axes or [_DEFAULT_X_AXIS], y_axes or [_DEFAULT_Y_AXIS]

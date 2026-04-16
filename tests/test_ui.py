@@ -1255,10 +1255,14 @@ class TestPlotWidget:
     def test_clear_all_resets_auto_colour_cycle(self, qapp):
         widget = PlotWidget()
         widget.append_point("trace_a", 0.0, 1.0)
+        widget.append_point("trace_b", 1.0, 2.0)
         first_colour = widget._trace_style["trace_a"]["colour"]
+        second_colour = widget._trace_style["trace_b"]["colour"]
         widget.clear_all()
-        widget.append_point("trace_b", 0.0, 1.0)
-        assert widget._trace_style["trace_b"]["colour"] == first_colour
+        widget.append_point("trace_c", 0.0, 1.0)
+        widget.append_point("trace_d", 1.0, 2.0)
+        assert widget._trace_style["trace_c"]["colour"] == first_colour
+        assert widget._trace_style["trace_d"]["colour"] == second_colour
 
     def test_pg_widget_exists(self, qapp):
         widget = PlotWidget()
@@ -1517,10 +1521,12 @@ class TestPlotWidget:
         assert widget._trace_style["my_trace"]["colour"] == "#123456"
 
     def test_axis_columns_have_fixed_width(self, qapp):
+        x_axis_column = 7
+        y_axis_column = 8
         widget = PlotWidget()
         header = widget._trace_table.horizontalHeader()
-        assert header.sectionResizeMode(7) == QHeaderView.ResizeMode.Fixed
-        assert header.sectionResizeMode(8) == QHeaderView.ResizeMode.Fixed
+        assert header.sectionResizeMode(x_axis_column) == QHeaderView.ResizeMode.Fixed
+        assert header.sectionResizeMode(y_axis_column) == QHeaderView.ResizeMode.Fixed
 
     def test_line_width_and_point_size_controls_update_trace(self, qapp):
         widget = PlotWidget()

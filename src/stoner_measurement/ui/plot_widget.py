@@ -343,7 +343,14 @@ class PlotWidget(QWidget):
         self._set_trace_visibility(str(sender.property(_TRACE_NAME_PROPERTY)), visible)
 
     def _update_colour_button(self, button: QPushButton, colour: str) -> None:
-        """Apply swatch styling and text to a trace-colour button."""
+        """Apply swatch styling and text to a trace-colour button.
+
+        Args:
+            button (QPushButton):
+                Button widget representing the trace colour control.
+            colour (str):
+                Colour value to display on the button.
+        """
         if not QColor(colour).isValid():
             return
         hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
@@ -725,9 +732,9 @@ class PlotWidget(QWidget):
             >>> widget.trace_names
             []
         """
+        self._colour_cycle = cycle(_TRACE_COLOURS)
         for name in list(self._traces.keys()):
             self.remove_trace(name)
-        self._colour_cycle = cycle(_TRACE_COLOURS)
 
     # ------------------------------------------------------------------
     # Public API — axis management

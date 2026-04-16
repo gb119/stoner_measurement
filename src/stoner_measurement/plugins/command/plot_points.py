@@ -39,6 +39,9 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
+_DEFAULT_X_AXIS = "bottom"
+_DEFAULT_Y_AXIS = "left"
+
 
 def _safe_disconnect(signal: Any, slot: Any) -> None:
     """Disconnect *signal* from *slot*, silently ignoring errors if not connected.
@@ -171,7 +174,7 @@ class PlotPointsCommand(CommandPlugin):
         self._sequence_engine_ref: SequenceEngine | None = None
         self.x_key: str = ""
         self.y_entries: list[dict[str, str]] = []
-        self.x_axis_name: str = "bottom"
+        self.x_axis_name: str = _DEFAULT_X_AXIS
 
     # ------------------------------------------------------------------
     # sequence_engine property — auto-wires plot_point signal
@@ -343,8 +346,8 @@ class PlotPointsCommand(CommandPlugin):
         for entry in self.y_entries:
             y_key = entry.get("key", "")
             label = entry.get("label", y_key)
-            x_axis = self.x_axis_name or "bottom"
-            y_axis = entry.get("y_axis", "left") or "left"
+            x_axis = self.x_axis_name or _DEFAULT_X_AXIS
+            y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS) or _DEFAULT_Y_AXIS
             if not y_key:
                 continue
             if y_key not in values:
@@ -496,7 +499,7 @@ class PlotPointsCommand(CommandPlugin):
                 y_axis_entry = QComboBox(series_container)
                 y_axis_entry.setEditable(True)
                 y_axis_entry.addItems(y_axis_names)
-                entry_y_axis = entry.get("y_axis", "left")
+                entry_y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS)
                 if entry_y_axis in y_axis_names:
                     y_axis_entry.setCurrentText(entry_y_axis)
                 else:
@@ -536,7 +539,7 @@ class PlotPointsCommand(CommandPlugin):
 
                 def _make_y_axis_handler(idx: int) -> Any:
                     def _apply_y_axis(text: str, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["y_axis"] = text.strip() or "left"
+                        self.y_entries[_idx]["y_axis"] = text.strip() or _DEFAULT_Y_AXIS
 
                     return _apply_y_axis
 
@@ -560,7 +563,9 @@ class PlotPointsCommand(CommandPlugin):
         def _add_series() -> None:
             default_key = value_keys[0] if value_keys else ""
             default_label = _default_label(default_key, ns) if default_key else ""
-            self.y_entries.append({"key": default_key, "label": default_label, "y_axis": "left"})
+            self.y_entries.append(
+                {"key": default_key, "label": default_label, "y_axis": _DEFAULT_Y_AXIS}
+            )
             _rebuild_rows()
 
         add_btn.clicked.connect(_add_series)
@@ -610,9 +615,9 @@ class PlotPointsCommand(CommandPlugin):
                 Serialised dict as produced by :meth:`to_json`.
         """
         self.x_key = data.get("x_key", "")
-        self.x_axis_name = data.get("x_axis_name", "bottom")
+        self.x_axis_name = data.get("x_axis_name", _DEFAULT_X_AXIS)
         # Backward-compat: old format stored a global y_axis_name.
-        legacy_y_axis = data.get("y_axis_name", "left")
+        legacy_y_axis = data.get("y_axis_name", _DEFAULT_Y_AXIS)
         raw_entries = data.get("y_entries", [])
         self.y_entries = []
         for e in raw_entries:
@@ -636,13 +641,13 @@ def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list
             no plot widget (or axis orientation map) is available.
     """
     if engine is None:
-        return ["bottom"], ["left"]
+        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     plot_widget = getattr(engine, "plot_widget", None)
     orientations = getattr(plot_widget, "_axis_orientations", None)
     if not isinstance(orientations, dict):
-        return ["bottom"], ["left"]
+        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
     y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
-    return x_axes or ["bottom"], y_axes or ["left"]
+    return x_axes or [_DEFAULT_X_AXIS], y_axes or [_DEFAULT_Y_AXIS]
