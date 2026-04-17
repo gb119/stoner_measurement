@@ -233,6 +233,19 @@ class TestFunctionScanGenerator:
         assert abs(gen_cos.generate()[0] - 1.0) < 1e-9  # sin(0 + π/2) = 1
         assert abs(gen_sin.generate()[0]) < 1e-9  # sin(0) = 0
 
+    def test_generate_applies_exponent_before_scaling(self, qapp):
+        gen = FunctionScanGenerator(
+            waveform=WaveformType.SINE,
+            amplitude=2.0,
+            offset=1.0,
+            phase=-90.0,
+            exponent=2.0,
+            num_points=100,
+        )
+        arr = gen.generate()
+        # sin(-π/2) = -1 -> (-1)**2 = 1 -> 2*1 + 1 = 3
+        assert abs(arr[0] - 3.0) < 1e-9
+
     # ------------------------------------------------------------------
     # Boundary conditions
     # ------------------------------------------------------------------
@@ -353,6 +366,10 @@ class TestFunctionScanGenerator:
         gen = FunctionScanGenerator()
         assert gen.periods == 1.0
 
+    def test_default_exponent_is_one(self, qapp):
+        gen = FunctionScanGenerator()
+        assert gen.exponent == 1.0
+
     def test_generate_half_period(self, qapp):
         """0.5 periods of sine: starts at 0, peaks at midpoint, ends near 0."""
         gen = FunctionScanGenerator(
@@ -388,6 +405,12 @@ class TestFunctionScanGenerator:
         gen.periods = 2.0
         assert gen._cache is None
 
+    def test_exponent_change_invalidates_cache(self, qapp):
+        gen = FunctionScanGenerator()
+        _ = gen.values
+        gen.exponent = 2.0
+        assert gen._cache is None
+
     def test_periods_below_minimum_clamped(self, qapp):
         gen = FunctionScanGenerator(periods=0.0)
         assert gen.periods > 0.0
@@ -397,6 +420,13 @@ class TestFunctionScanGenerator:
         received: list[None] = []
         gen.values_changed.connect(lambda: received.append(None))
         gen.periods = 3.0
+        assert len(received) == 1
+
+    def test_exponent_signal_emitted(self, qapp):
+        gen = FunctionScanGenerator()
+        received: list[None] = []
+        gen.values_changed.connect(lambda: received.append(None))
+        gen.exponent = 2.0
         assert len(received) == 1
 
     # ------------------------------------------------------------------
@@ -532,3 +562,14 @@ class TestFunctionScanWidget:
         gen = FunctionScanGenerator(periods=0.5)
         widget = FunctionScanWidget(generator=gen)
         assert abs(widget._periods_spin.value() - 0.5) < 1e-9
+
+    def test_exponent_spinbox_updates_generator(self, qapp):
+        gen = FunctionScanGenerator(exponent=1.0)
+        widget = FunctionScanWidget(generator=gen)
+        widget._exponent_spin.setValue(3.0)
+        assert abs(gen.exponent - 3.0) < 1e-9
+
+    def test_exponent_spinbox_initial_value(self, qapp):
+        gen = FunctionScanGenerator(exponent=2.0)
+        widget = FunctionScanWidget(generator=gen)
+        assert abs(widget._exponent_spin.value() - 2.0) < 1e-9

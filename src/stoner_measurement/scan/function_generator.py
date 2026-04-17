@@ -48,8 +48,8 @@ class FunctionScanGenerator(BaseScanGenerator):
     """Scan generator that produces values from a standard waveform function.
 
     The output sequence spans *periods* complete periods of the selected
-    waveform, scaled by *amplitude*, offset by *offset*, and phase-shifted
-    by *phase*.
+    waveform, transformed by *exponent*, scaled by *amplitude*, offset by
+    *offset*, and phase-shifted by *phase*.
 
     A cosine waveform is equivalent to :attr:`WaveformType.SINE` with
     ``phase=90.0``.
@@ -63,6 +63,8 @@ class FunctionScanGenerator(BaseScanGenerator):
             DC offset added to the waveform.
         phase (float):
             Phase shift in degrees.
+        exponent (float):
+            Power-law exponent applied to the waveform before scaling.
         periods (float):
             Number of complete periods spanned by the sequence (> 0).
         num_points (int):
@@ -77,6 +79,8 @@ class FunctionScanGenerator(BaseScanGenerator):
             Initial DC offset. Defaults to ``0.0``.
         phase (float):
             Initial phase shift in degrees. Defaults to ``0.0``.
+        exponent (float):
+            Initial power-law exponent. Defaults to ``1.0``.
         periods (float):
             Initial number of complete periods. Defaults to ``1.0``.
         num_points (int):
@@ -104,6 +108,7 @@ class FunctionScanGenerator(BaseScanGenerator):
         amplitude: float = 1.0,
         offset: float = 0.0,
         phase: float = 0.0,
+        exponent: float = 1.0,
         periods: float = 1.0,
         num_points: int = 100,
         parent: QObject | None = None,
@@ -114,6 +119,7 @@ class FunctionScanGenerator(BaseScanGenerator):
         self._amplitude = float(amplitude)
         self._offset = float(offset)
         self._phase = float(phase)
+        self._exponent = float(exponent)
         self._periods = max(1e-9, float(periods))
         self._num_points = max(2, int(num_points))
 
@@ -162,6 +168,16 @@ class FunctionScanGenerator(BaseScanGenerator):
         self._invalidate_cache()
 
     @property
+    def exponent(self) -> float:
+        """Power-law exponent applied before amplitude/offset scaling."""
+        return self._exponent
+
+    @exponent.setter
+    def exponent(self, value: float) -> None:
+        self._exponent = float(value)
+        self._invalidate_cache()
+
+    @property
     def num_points(self) -> int:
         """Number of points in the sequence (≥ 2)."""
         return self._num_points
@@ -189,9 +205,9 @@ class FunctionScanGenerator(BaseScanGenerator):
         """Compute the waveform sequence.
 
         Builds an array of *num_points* values spanning *periods* complete
-        periods of the selected waveform, scaled by :attr:`amplitude` and
-        shifted by :attr:`offset`.  The waveform is phase-shifted by
-        :attr:`phase` degrees.
+        periods of the selected waveform, transformed by :attr:`exponent`,
+        scaled by :attr:`amplitude`, and shifted by :attr:`offset`. The
+        waveform is phase-shifted by :attr:`phase` degrees.
 
         Returns:
             (np.ndarray):
@@ -225,6 +241,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             wave = 2.0 * ((x / (2.0 * np.pi)) % 1.0) - 1.0
         else:
             wave = np.zeros(self._num_points)
+        wave = wave**self._exponent
         return self._amplitude * wave + self._offset
 
     def measure_flags(self) -> np.ndarray:
@@ -274,7 +291,8 @@ class FunctionScanGenerator(BaseScanGenerator):
         Returns:
             (dict):
                 A dict with keys ``"type"``, ``"waveform"``, ``"amplitude"``,
-                ``"offset"``, ``"phase"``, ``"periods"``, and ``"num_points"``.
+                ``"offset"``, ``"phase"``, ``"exponent"``, ``"periods"``, and
+                ``"num_points"``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -294,6 +312,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             "amplitude": self._amplitude,
             "offset": self._offset,
             "phase": self._phase,
+            "exponent": self._exponent,
             "periods": self._periods,
             "num_points": self._num_points,
         }
@@ -334,6 +353,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             amplitude=float(data.get("amplitude", 1.0)),
             offset=float(data.get("offset", 0.0)),
             phase=float(data.get("phase", 0.0)),
+            exponent=float(data.get("exponent", 1.0)),
             periods=float(data.get("periods", 1.0)),
             num_points=int(data.get("num_points", 100)),
             parent=parent,
@@ -417,6 +437,14 @@ class FunctionScanWidget(QWidget):
         self._phase_spin.setToolTip("Phase shift in degrees")
         form.addRow("Phase (°):", self._phase_spin)
 
+        self._exponent_spin = QDoubleSpinBox()
+        self._exponent_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
+        self._exponent_spin.setSingleStep(0.1)
+        self._exponent_spin.setDecimals(4)
+        self._exponent_spin.setValue(self._generator.exponent)
+        self._exponent_spin.setToolTip("Power-law exponent before scaling")
+        form.addRow("Exponent:", self._exponent_spin)
+
         self._points_spin = QSpinBox()
         self._points_spin.setRange(2, _MAX_NUM_POINTS)
         self._points_spin.setValue(self._generator.num_points)
@@ -448,6 +476,7 @@ class FunctionScanWidget(QWidget):
         self._amplitude_spin.valueChanged.connect(self._on_amplitude_changed)
         self._offset_spin.valueChanged.connect(self._on_offset_changed)
         self._phase_spin.valueChanged.connect(self._on_phase_changed)
+        self._exponent_spin.valueChanged.connect(self._on_exponent_changed)
         self._points_spin.valueChanged.connect(self._on_points_changed)
         self._periods_spin.valueChanged.connect(self._on_periods_changed)
         self._generator.values_changed.connect(self._refresh_plot)
@@ -467,6 +496,10 @@ class FunctionScanWidget(QWidget):
     def _on_phase_changed(self, value: float) -> None:
         """Update generator phase."""
         self._generator.phase = value
+
+    def _on_exponent_changed(self, value: float) -> None:
+        """Update generator exponent."""
+        self._generator.exponent = value
 
     def _on_points_changed(self, value: int) -> None:
         """Update generator num_points."""
