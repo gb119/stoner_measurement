@@ -17,7 +17,11 @@ from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley import Keithley2400
 from stoner_measurement.instruments.lakeshore import Lakeshore525
-from stoner_measurement.instruments.magnet_controller import MagnetController
+from stoner_measurement.instruments.magnet_controller import (
+    MagnetController,
+    MagnetState,
+    MagnetStatus,
+)
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
 from stoner_measurement.instruments.source_meter import SourceMeter
@@ -432,6 +436,33 @@ class TestLakeshore525:
         m = Lakeshore525(transport=_null())
         with pytest.raises(ValueError, match="positive"):
             m.set_magnet_constant(0.0)
+        with pytest.raises(ValueError, match="positive"):
+            m.set_magnet_constant(-1.0)
+
+    def test_query_float_raises_for_unparseable_numeric_response(self):
+        t = _null(responses=[b"not-a-float\r\n"])
+        m = Lakeshore525(transport=t)
+        with pytest.raises(ValueError):
+            _ = m.current
+
+    def test_wait_for_ramp_complete_times_out_when_state_stays_ramping(self, monkeypatch):
+        m = Lakeshore525(transport=_null())
+
+        def _always_ramping(_self):
+            return MagnetStatus(
+                state=MagnetState.RAMPING,
+                current=0.0,
+                field=0.0,
+                voltage=0.0,
+                persistent=False,
+                heater_on=False,
+                at_target=False,
+                message="ramping",
+            )
+
+        monkeypatch.setattr(Lakeshore525, "status", property(_always_ramping))
+        with pytest.raises(TimeoutError):
+            m._wait_for_ramp_complete(timeout=0.01, poll_period=0.0)
 
 
 # ---------------------------------------------------------------------------
