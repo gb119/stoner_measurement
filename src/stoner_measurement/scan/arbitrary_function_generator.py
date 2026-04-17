@@ -51,6 +51,21 @@ _DEFAULT_RAMP_CODE = textwrap.dedent(
         return np.sin(ix * omega)
     """
 )
+_FORBIDDEN_AST_NODES: tuple[type[ast.AST], ...] = (
+    ast.AsyncFor,
+    ast.AsyncFunctionDef,
+    ast.Await,
+    ast.ClassDef,
+    ast.For,
+    ast.Global,
+    ast.Import,
+    ast.ImportFrom,
+    ast.Lambda,
+    ast.Nonlocal,
+    ast.Try,
+    ast.While,
+    ast.With,
+)
 
 
 class ArbitraryFunctionScanGenerator(BaseScanGenerator):
@@ -105,15 +120,53 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
     def _update_syntax_state(self, code: str) -> None:
         """Update stored syntax error state for *code*."""
         try:
-            ast.parse(code)
-            self._syntax_error_line = None
-            self._syntax_error_message = ""
+            tree = ast.parse(code)
         except SyntaxError as exc:
             self._syntax_error_line = exc.lineno
             self._syntax_error_message = str(exc)
+            return
+        validation_error = self._validate_code_tree(tree)
+        if validation_error is None:
+            self._syntax_error_line = None
+            self._syntax_error_message = ""
+            return
+        self._syntax_error_line, self._syntax_error_message = validation_error
+
+    def _validate_code_tree(self, tree: ast.Module) -> tuple[int | None, str] | None:
+        """Validate AST safety and required function shape."""
+        for node in ast.walk(tree):
+            if isinstance(node, _FORBIDDEN_AST_NODES):
+                return getattr(node, "lineno", None), (
+                    f"Unsupported statement in ramp code: {type(node).__name__}."
+                )
+        ramp_functions = [
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "ramp"
+        ]
+        if len(ramp_functions) != 1:
+            return 1, "Code must define exactly one function named ramp(ix, omega)."
+        ramp_function = ramp_functions[0]
+        if len(ramp_function.args.args) != 2:
+            return (
+                getattr(ramp_function, "lineno", None),
+                "ramp must accept exactly two arguments: ix and omega.",
+            )
+        arg_names = [arg.arg for arg in ramp_function.args.args]
+        if arg_names != ["ix", "omega"]:
+            return (
+                getattr(ramp_function, "lineno", None),
+                "ramp arguments must be named ix and omega.",
+            )
+        return None
 
     def _compile_ramp_function(self):
         """Compile and return the user-defined ramp function, if available."""
+        tree = ast.parse(self._code)
+        validation_error = self._validate_code_tree(tree)
+        if validation_error is not None:
+            line, message = validation_error
+            raise ValueError(f"{message} (line {line})")
         namespace: dict[str, Any] = {
             "__builtins__": _SAFE_BUILTINS,
             "np": np,

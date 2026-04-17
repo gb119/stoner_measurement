@@ -1,7 +1,7 @@
 """Scan generator sub-package.
 
 Provides :class:`BaseScanGenerator` and concrete implementations:
-:class:`ArbitraryFunctionScanGenerator` with its Qt configuration widget
+:class:`ArbitraryFunctionScanGenerator` with its Qt configuration widget;
 :class:`ArbitraryFunctionScanWidget`;
 :class:`FunctionScanGenerator` with its Qt configuration widget
 :class:`FunctionScanWidget`, :class:`SteppedScanGenerator` with its Qt
