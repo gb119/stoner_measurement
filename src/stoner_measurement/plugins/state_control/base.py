@@ -33,9 +33,11 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
 from stoner_measurement.plugins.sequence.base import SequencePlugin
 from stoner_measurement.scan import (
+    ArbitraryFunctionScanGenerator,
     BaseScanGenerator,
     FunctionScanGenerator,
     ListScanGenerator,
+    RampScanGenerator,
     SteppedScanGenerator,
 )
 
@@ -338,6 +340,8 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         FunctionScanGenerator,
         SteppedScanGenerator,
         ListScanGenerator,
+        RampScanGenerator,
+        ArbitraryFunctionScanGenerator,
     ]
 
     state_changed = pyqtSignal(float)
