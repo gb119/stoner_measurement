@@ -243,8 +243,8 @@ class TestFunctionScanGenerator:
             num_points=100,
         )
         arr = gen.generate()
-        # sin(-π/2) = -1 -> (-1)**2 = 1 -> 2*1 + 1 = 3
-        assert abs(arr[0] - 3.0) < 1e-9
+        # sin(-π/2) = -1 -> sign(-1)*|-1|^2 = -1 -> 2*(-1) + 1 = -1
+        assert abs(arr[0] - (-1.0)) < 1e-9
 
     # ------------------------------------------------------------------
     # Boundary conditions
