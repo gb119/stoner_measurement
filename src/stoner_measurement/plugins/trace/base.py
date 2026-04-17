@@ -41,9 +41,11 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.scan import (
+    ArbitraryFunctionScanGenerator,
     BaseScanGenerator,
     FunctionScanGenerator,
     ListScanGenerator,
+    RampScanGenerator,
     SteppedScanGenerator,
 )
 
@@ -416,6 +418,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         FunctionScanGenerator,
         SteppedScanGenerator,
         ListScanGenerator,
+        RampScanGenerator,
+        ArbitraryFunctionScanGenerator,
     ]
 
     scan_generator_changed = pyqtSignal()

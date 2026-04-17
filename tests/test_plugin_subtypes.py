@@ -188,6 +188,16 @@ class TestTracePlugin:
         p.set_scan_generator_class(SteppedScanGenerator)
         assert isinstance(p.scan_generator, SteppedScanGenerator)
 
+    def test_scan_generator_class_list_includes_new_generators(self, qapp):
+        from stoner_measurement.scan import (
+            ArbitraryFunctionScanGenerator,
+            RampScanGenerator,
+        )
+
+        p = _SimpleTrace()
+        assert RampScanGenerator in p._scan_generator_classes
+        assert ArbitraryFunctionScanGenerator in p._scan_generator_classes
+
     def test_scan_generator_changed_emitted(self, qapp):
         from stoner_measurement.scan import SteppedScanGenerator
         p = _SimpleTrace()
@@ -370,6 +380,16 @@ class TestStateControlPlugin:
         p = _InstantState()
         p.set_state(5.0)
         assert p.get_state() == 5.0
+
+    def test_scan_generator_class_list_includes_new_generators(self, qapp):
+        from stoner_measurement.scan import (
+            ArbitraryFunctionScanGenerator,
+            RampScanGenerator,
+        )
+
+        p = _InstantState()
+        assert RampScanGenerator in p._scan_generator_classes
+        assert ArbitraryFunctionScanGenerator in p._scan_generator_classes
 
     def test_is_at_target(self, qapp):
         assert _InstantState().is_at_target() is True

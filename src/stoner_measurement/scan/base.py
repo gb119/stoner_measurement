@@ -130,13 +130,19 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
             >>> restored.stages
             [(1.0, 0.25, True)]
         """
+        from stoner_measurement.scan.arbitrary_function_generator import (
+            ArbitraryFunctionScanGenerator,
+        )
         from stoner_measurement.scan.function_generator import FunctionScanGenerator
         from stoner_measurement.scan.list_generator import ListScanGenerator
+        from stoner_measurement.scan.ramp_generator import RampScanGenerator
         from stoner_measurement.scan.stepped_generator import SteppedScanGenerator
 
         _REGISTRY: dict[str, type[BaseScanGenerator]] = {
+            "ArbitraryFunctionScanGenerator": ArbitraryFunctionScanGenerator,
             "FunctionScanGenerator": FunctionScanGenerator,
             "ListScanGenerator": ListScanGenerator,
+            "RampScanGenerator": RampScanGenerator,
             "SteppedScanGenerator": SteppedScanGenerator,
         }
         type_name = data.get("type", "")
