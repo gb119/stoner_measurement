@@ -510,9 +510,39 @@ class TestSaveCommand:
         lines = out_file.read_text().splitlines()
         header = lines[0].split("\t")
         assert header[0] == "TDI Format 2.0"
+        assert header[1] == "index"
         # DataFrame column names should be in the headers.
         assert any("value" in h for h in header[1:])
         assert any("x" in h for h in header[1:])
+        assert lines[1].split("\t")[1] == "0.0"
+        assert lines[2].split("\t")[1] == "1.0"
+
+    def test_execute_data_mode_uses_named_index_header(self, qapp, engine, tmp_path):
+        import pandas as pd
+
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        counter = CounterPlugin()
+        engine.add_plugin("counter", counter)
+        counter._data = pd.DataFrame(  # noqa: SLF001
+            [{"value": 1.0}, {"value": 2.0}],
+            index=pd.Index([10, 20], name="step"),
+        )
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.save_mode = "data"
+        cmd.data_source = "counter"
+        cmd.no_overwrite = False
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd.execute()
+
+        lines = out_file.read_text().splitlines()
+        header = lines[0].split("\t")
+        assert header[1] == "step"
+        assert lines[1].split("\t")[1] == "10.0"
+        assert lines[2].split("\t")[1] == "20.0"
 
     def test_execute_data_mode_no_source_logs_warning(self, qapp, engine, tmp_path, caplog):
         import logging
