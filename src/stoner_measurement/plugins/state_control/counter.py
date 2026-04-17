@@ -45,7 +45,7 @@ class CounterPlugin(StateControlPlugin):
         >>> plugin.name
         'Counter'
         >>> plugin.state_name
-        'Count'
+        'Value'
         >>> plugin.units
         ''
         >>> plugin.get_state()
@@ -73,9 +73,9 @@ class CounterPlugin(StateControlPlugin):
 
         Returns:
             (str):
-                Always ``"Count"``.
+                Always ``"Value"``.
         """
-        return "Count"
+        return "Value"
 
     @property
     def units(self) -> str:
