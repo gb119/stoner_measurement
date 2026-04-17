@@ -19,21 +19,21 @@ class TestArbitraryFunctionScanGenerator:
         assert len(values) == 32
         assert np.isfinite(values).all()
 
-    def test_generate_custom_ramp_function(self, qapp):
-        code = "def ramp(ix, omega):\n    return ix * omega\n"
+    def test_generate_custom_scan_function(self, qapp):
+        code = "def scan(ix, omega):\n    return ix * omega\n"
         gen = ArbitraryFunctionScanGenerator(num_points=5, code=code)
         values = gen.generate()
         omega = (2.0 * np.pi) / 5.0
         assert np.allclose(values, [0.0, omega, 2 * omega, 3 * omega, 4 * omega])
 
     def test_syntax_error_sets_error_state(self, qapp):
-        gen = ArbitraryFunctionScanGenerator(code="def ramp(ix, omega)\n    return ix\n")
+        gen = ArbitraryFunctionScanGenerator(code="def scan(ix, omega)\n    return ix\n")
         assert gen.syntax_error_line is not None
         assert gen.syntax_error_message
         assert np.isnan(gen.generate()).all()
 
     def test_runtime_error_yields_nan_values(self, qapp):
-        code = "def ramp(ix, omega):\n    return 1 / (ix - 2)\n"
+        code = "def scan(ix, omega):\n    return 1 / (ix - 2)\n"
         gen = ArbitraryFunctionScanGenerator(num_points=5, code=code)
         values = gen.generate()
         assert np.isnan(values[2])
@@ -46,7 +46,7 @@ class TestArbitraryFunctionScanGenerator:
         assert flags.tolist() == [True] * 9
 
     def test_to_json_and_from_json_round_trip(self, qapp):
-        code = "def ramp(ix, omega):\n    return ix\n"
+        code = "def scan(ix, omega):\n    return ix\n"
         gen = ArbitraryFunctionScanGenerator(num_points=21, code=code)
         restored = ArbitraryFunctionScanGenerator._from_json_data(gen.to_json())
         assert restored.num_points == 21
@@ -78,13 +78,13 @@ class TestArbitraryFunctionScanWidget:
     def test_editor_updates_generator_code_and_syntax_marker(self, qapp):
         gen = ArbitraryFunctionScanGenerator()
         widget = ArbitraryFunctionScanWidget(generator=gen)
-        widget._editor.set_text("def ramp(ix, omega)\n    return ix\n")
+        widget._editor.set_text("def scan(ix, omega)\n    return ix\n")
         assert gen.syntax_error_line is not None
         assert widget._editor.syntax_error_line == gen.syntax_error_line
 
     def test_plot_curve_matches_generator_values(self, qapp):
         gen = ArbitraryFunctionScanGenerator(num_points=16)
         widget = ArbitraryFunctionScanWidget(generator=gen)
-        widget._editor.set_text("def ramp(ix, omega):\n    return np.cos(ix * omega)\n")
+        widget._editor.set_text("def scan(ix, omega):\n    return np.cos(ix * omega)\n")
         _x, y = widget._curve.getData()
         assert np.allclose(y, gen.values)

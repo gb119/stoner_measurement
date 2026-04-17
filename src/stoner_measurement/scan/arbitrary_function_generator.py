@@ -1,12 +1,12 @@
 """Arbitrary function scan generator and its configuration widget.
 
 :class:`ArbitraryFunctionScanGenerator` evaluates user-supplied Python source
-that defines ``ramp(ix, omega)`` to generate a scan sequence.
+that defines ``scan(ix, omega)`` to generate a scan sequence.
 :class:`ArbitraryFunctionScanWidget` exposes a syntax-highlighted editor and a
 live preview plot.
 
 Notes:
-    User-supplied ramp code is executed at runtime. Only trusted code should
+    User-supplied scan code is executed at runtime. Only trusted code should
     be loaded in measurement configurations.
 """
 
@@ -46,8 +46,8 @@ _SAFE_BUILTINS: dict[str, object] = {
 }
 _DEFAULT_RAMP_CODE = textwrap.dedent(
     """\
-    def ramp(ix, omega):
-        \"\"\"Example arbitrary ramp: one sine period over the scan length.\"\"\"
+    def scan(ix, omega):
+        \"\"\"Example arbitrary scan: one sine period over the scan length.\"\"\"
         return np.sin(ix * omega)
     """
 )
@@ -69,7 +69,7 @@ _FORBIDDEN_AST_NODES: tuple[type[ast.AST], ...] = (
 
 
 class ArbitraryFunctionScanGenerator(BaseScanGenerator):
-    """Scan generator that evaluates a user-defined ``ramp(ix, omega)`` function.
+    """Scan generator that evaluates a user-defined ``scan(ix, omega)`` function.
 
     Notes:
         The generator executes user code. Only load configurations from trusted
@@ -104,7 +104,7 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
 
     @property
     def code(self) -> str:
-        """User-defined Python code containing ``ramp(ix, omega)``."""
+        """User-defined Python code containing ``scan(ix, omega)``."""
         return self._code
 
     @code.setter
@@ -143,31 +143,31 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         for node in ast.walk(tree):
             if isinstance(node, _FORBIDDEN_AST_NODES):
                 return getattr(node, "lineno", None), (
-                    f"Unsupported statement in ramp code: {type(node).__name__}."
+                    f"Unsupported statement in scan code: {type(node).__name__}."
                 )
-        ramp_functions = [
+        scan_functions = [
             node
             for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "ramp"
+            if isinstance(node, ast.FunctionDef) and node.name == "scan"
         ]
-        if len(ramp_functions) != 1:
-            return 1, "Code must define exactly one function named ramp(ix, omega)."
-        ramp_function = ramp_functions[0]
-        if len(ramp_function.args.args) != 2:
+        if len(scan_functions) != 1:
+            return 1, "Code must define exactly one function named scan(ix, omega)."
+        scan_function = scan_functions[0]
+        if len(scan_function.args.args) != 2:
             return (
-                getattr(ramp_function, "lineno", None),
-                "ramp must accept exactly two arguments: ix and omega.",
+                getattr(scan_function, "lineno", None),
+                "scan must accept exactly two arguments: ix and omega.",
             )
-        arg_names = [arg.arg for arg in ramp_function.args.args]
+        arg_names = [arg.arg for arg in scan_function.args.args]
         if arg_names != ["ix", "omega"]:
             return (
-                getattr(ramp_function, "lineno", None),
-                "ramp arguments must be named ix and omega.",
+                getattr(scan_function, "lineno", None),
+                "scan arguments must be named ix and omega.",
             )
         return None
 
-    def _compile_ramp_function(self):
-        """Compile and return the user-defined ramp function, if available."""
+    def _compile_scan_function(self):
+        """Compile and return the user-defined scan function, if available."""
         tree = ast.parse(self._code)
         validation_error = self._validate_code_tree(tree)
         if validation_error is not None:
@@ -178,24 +178,24 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             "np": np,
             "numpy": np,
         }
-        exec(compile(self._code, "<ramp_code>", "exec"), namespace)  # noqa: S102
-        ramp = namespace.get("ramp")
-        return ramp if callable(ramp) else None
+        exec(compile(self._code, "<scan_code>", "exec"), namespace)  # noqa: S102
+        scan = namespace.get("scan")
+        return scan if callable(scan) else None
 
     def generate(self) -> np.ndarray:
-        """Compute the sequence by evaluating ``ramp(ix, omega)``."""
+        """Compute the sequence by evaluating ``scan(ix, omega)``."""
         try:
-            ramp_function = self._compile_ramp_function()
+            scan_function = self._compile_scan_function()
         except Exception:
             return np.full(self._num_points, np.nan, dtype=float)
-        if ramp_function is None:
+        if scan_function is None:
             return np.full(self._num_points, np.nan, dtype=float)
 
         omega = (2.0 * np.pi) / float(self._num_points)
         values = np.empty(self._num_points, dtype=float)
         for ix in range(self._num_points):
             try:
-                values[ix] = float(ramp_function(ix, omega))
+                values[ix] = float(scan_function(ix, omega))
             except Exception:
                 values[ix] = np.nan
         return values
