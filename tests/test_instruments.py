@@ -389,13 +389,18 @@ class TestLakeshore525:
         assert m.get_model() == "MODEL525"
         assert m.get_firmware_version() == "1.2.3"
 
-    def test_current_field_voltage_queries(self):
+    def test_reading_properties_send_correct_commands(self):
         t = _null(responses=[b"2.5\r\n", b"0.75\r\n", b"1.2\r\n"])
         m = Lakeshore525(transport=t)
         assert m.current == pytest.approx(2.5)
         assert m.field == pytest.approx(0.75)
         assert m.voltage == pytest.approx(1.2)
         assert t.write_log == [b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n"]
+
+    def test_current_uses_first_value_from_comma_separated_response(self):
+        t = _null(responses=[b"2.5,OK\r\n"])
+        m = Lakeshore525(transport=t)
+        assert m.current == pytest.approx(2.5)
 
     def test_set_target_and_ramp_commands(self):
         t = _null()
@@ -445,7 +450,7 @@ class TestLakeshore525:
         with pytest.raises(ValueError):
             _ = m.current
 
-    def test_wait_for_ramp_timeout_when_ramping(self, monkeypatch):
+    def test_wait_for_ramp_raises_timeout_when_stuck_ramping(self, monkeypatch):
         m = Lakeshore525(transport=_null())
 
         def _always_ramping(_self):

@@ -31,6 +31,7 @@ _TERMINAL_RAMP_STATES = {
     MagnetState.PERSISTENT,
     MagnetState.QUIESCENT,
 }
+_HEATER_ON_VALUES = {"1", "ON", "on", "True", "true"}
 
 
 class Lakeshore525(MagnetController, MagnetSupply):
@@ -174,7 +175,7 @@ class Lakeshore525(MagnetController, MagnetSupply):
                 ``True`` when the heater is enabled.
         """
         value = self.query("HEATER?").strip()
-        return value in {"1", "ON", "on", "True", "true"}
+        return value in _HEATER_ON_VALUES
 
     def set_target_current(self, current: float) -> None:
         """Set the target current in amps.
