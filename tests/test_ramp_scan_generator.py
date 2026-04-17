@@ -29,7 +29,7 @@ class TestRampScanGenerator:
             assert values[0] == pytest.approx(1.5)
             assert values[-1] == pytest.approx(7.0)
 
-    def test_non_linear_invalid_base_falls_back_to_linear(self, qapp):
+    def test_nonlinear_invalid_base_falls_back_to_linear(self, qapp):
         exp_gen = RampScanGenerator(start=0.0, end=4.0, num_points=10, mode=RampMode.EXPONENTIAL, base=1.0)
         log_gen = RampScanGenerator(start=0.0, end=4.0, num_points=10, mode=RampMode.LOGARITHMIC, base=1.0)
         pow_gen = RampScanGenerator(start=0.0, end=4.0, num_points=10, mode=RampMode.POWER, base=0.0)

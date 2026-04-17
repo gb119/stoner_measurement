@@ -3,12 +3,13 @@
 Provides :class:`BaseScanGenerator` and concrete implementations:
 :class:`ArbitraryFunctionScanGenerator` with its Qt configuration widget;
 :class:`ArbitraryFunctionScanWidget`;
-:class:`FunctionScanGenerator` with its Qt configuration widget
-:class:`FunctionScanWidget`, :class:`SteppedScanGenerator` with its Qt
-configuration widget :class:`SteppedScanWidget`;
-:class:`RampScanGenerator` with its Qt configuration widget
+:class:`FunctionScanGenerator` with its Qt configuration widget;
+:class:`FunctionScanWidget`;
+:class:`SteppedScanGenerator` with its Qt configuration widget;
+:class:`SteppedScanWidget`;
+:class:`RampScanGenerator` with its Qt configuration widget;
 :class:`RampScanWidget`; and
-:class:`ListScanGenerator` with its Qt configuration widget
+:class:`ListScanGenerator` with its Qt configuration widget;
 :class:`ListScanWidget`.
 """
 
