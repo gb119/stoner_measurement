@@ -1148,7 +1148,8 @@ class SequenceEngine(QObject):
         plugins: dict[str, BasePlugin],
         *,
         return_line_map: Literal[False] = ...,
-    ) -> str: ...
+    ) -> str:
+        ...
 
     @overload
     def generate_sequence_code(
@@ -1157,7 +1158,8 @@ class SequenceEngine(QObject):
         plugins: dict[str, BasePlugin],
         *,
         return_line_map: Literal[True],
-    ) -> tuple[str, dict[int, BasePlugin]]: ...
+    ) -> tuple[str, dict[int, BasePlugin]]:
+        ...
 
     def generate_sequence_code(
         self,
