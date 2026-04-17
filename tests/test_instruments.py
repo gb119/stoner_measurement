@@ -16,7 +16,12 @@ import pytest
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley import Keithley2400
-from stoner_measurement.instruments.magnet_controller import MagnetController
+from stoner_measurement.instruments.lakeshore import Lakeshore525
+from stoner_measurement.instruments.magnet_controller import (
+    MagnetController,
+    MagnetState,
+    MagnetStatus,
+)
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
 from stoner_measurement.instruments.source_meter import SourceMeter
@@ -359,6 +364,110 @@ class TestKeithley2400:
         t = _null()
         Keithley2400(transport=t).enable_output(False)
         assert t.write_log[-1] == b":OUTP:STAT 0\n"
+
+
+# ---------------------------------------------------------------------------
+# Lakeshore525 concrete driver
+# ---------------------------------------------------------------------------
+
+
+class TestLakeshore525:
+    def test_default_protocol_is_lakeshore(self):
+        m = Lakeshore525(transport=NullTransport())
+        assert isinstance(m.protocol, LakeshoreProtocol)
+
+    def test_identify_and_model_and_firmware(self):
+        t = _null(
+            responses=[
+                b"LAKESHORE,MODEL525,SN001,1.2.3\r\n",
+                b"LAKESHORE,MODEL525,SN001,1.2.3\r\n",
+                b"LAKESHORE,MODEL525,SN001,1.2.3\r\n",
+            ]
+        )
+        m = Lakeshore525(transport=t)
+        assert m.identify() == "LAKESHORE,MODEL525,SN001,1.2.3"
+        assert m.get_model() == "MODEL525"
+        assert m.get_firmware_version() == "1.2.3"
+
+    def test_reading_properties_send_correct_commands(self):
+        t = _null(responses=[b"2.5\r\n", b"0.75\r\n", b"1.2\r\n"])
+        m = Lakeshore525(transport=t)
+        assert m.current == pytest.approx(2.5)
+        assert m.field == pytest.approx(0.75)
+        assert m.voltage == pytest.approx(1.2)
+        assert t.write_log == [b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n"]
+
+    def test_current_uses_first_value_from_comma_separated_response(self):
+        t = _null(responses=[b"2.5,OK\r\n"])
+        m = Lakeshore525(transport=t)
+        assert m.current == pytest.approx(2.5)
+
+    def test_set_target_and_ramp_commands(self):
+        t = _null()
+        m = Lakeshore525(transport=t)
+        m.set_target_current(3.0)
+        m.set_target_field(0.9)
+        m.ramp_to_target()
+        assert t.write_log == [b"SETI 3.0\r\n", b"SETF 0.9\r\n", b"RAMP\r\n"]
+
+    def test_heater_methods_and_property(self):
+        t = _null(responses=[b"1\r\n"])
+        m = Lakeshore525(transport=t)
+        m.heater_on()
+        m.heater_off()
+        assert m.heater is True
+        assert t.write_log == [b"HEATER 1\r\n", b"HEATER 0\r\n", b"HEATER?\r\n"]
+
+    def test_status_maps_state(self):
+        t = _null(
+            responses=[
+                b"at_target\r\n",
+                b"1.1\r\n",
+                b"0.3\r\n",
+                b"0.2\r\n",
+                b"0\r\n",
+            ]
+        )
+        m = Lakeshore525(transport=t)
+        status = m.status
+        assert status.state.value == "at_target"
+        assert status.at_target is True
+        assert status.current == pytest.approx(1.1)
+        assert status.field == pytest.approx(0.3)
+        assert status.voltage == pytest.approx(0.2)
+        assert status.heater_on is False
+
+    def test_set_magnet_constant_validation(self):
+        m = Lakeshore525(transport=_null())
+        with pytest.raises(ValueError, match="positive"):
+            m.set_magnet_constant(0.0)
+        with pytest.raises(ValueError, match="positive"):
+            m.set_magnet_constant(-1.0)
+
+    def test_query_float_raises_for_unparseable_numeric_response(self):
+        t = _null(responses=[b"not-a-float\r\n"])
+        m = Lakeshore525(transport=t)
+        with pytest.raises(ValueError):
+            _ = m.current
+
+    def test_wait_for_ramp_raises_timeout_when_stuck_ramping(self, monkeypatch):
+        m = Lakeshore525(transport=_null())
+
+        def _always_ramping(_self):
+            return MagnetStatus(
+                state=MagnetState.RAMPING,
+                current=0.0,
+                field=0.0,
+                voltage=0.0,
+                persistent=False,
+                heater_on=False,
+                at_target=False,
+                message="ramping",
+            )
+
+        monkeypatch.setattr(Lakeshore525, "status", property(_always_ramping))
+        with pytest.raises(TimeoutError):
+            m._wait_for_ramp_complete(timeout=0.01, poll_period=0.0)
 
 
 # ---------------------------------------------------------------------------
