@@ -10,155 +10,93 @@ otherwise stated.
 
 from __future__ import annotations
 
-from abc import abstractmethod
-from typing import TYPE_CHECKING
-
-from stoner_measurement.instruments.base_instrument import BaseInstrument
-
-if TYPE_CHECKING:
-    from stoner_measurement.instruments.protocol.base import BaseProtocol
-    from stoner_measurement.instruments.transport.base import BaseTransport
+from enum import Enum
+from dataclasses import dataclass
+from typing import Optional, Protocol
 
 
-class MagnetController(BaseInstrument):
-    """Abstract base class for magnet power supply controller instruments.
+class MagnetState(Enum):
+    STANDBY = "standby"
+    RAMPING = "ramping"
+    AT_TARGET = "at_target"
+    PERSISTENT = "persistent"
+    QUIESCENT = "quiescent"
+    FAULT = "fault"
+    QUENCH = "quench"
+    UNKNOWN = "unknown"
 
-    Provides a uniform interface for reading and controlling the magnetic
-    field produced by a superconducting solenoid.  All field values are
-    in Tesla and ramp rates in Tesla per minute.
 
-    Attributes:
-        transport (BaseTransport):
-            Transport layer instance.
-        protocol (BaseProtocol):
-            Protocol instance.
+@dataclass
+class MagnetLimits:
+    max_current: float  # A
+    max_field: Optional[float] = None  # T
+    max_ramp_rate: Optional[float] = None  # A/s or T/min
 
-    Examples:
-        >>> # Demonstrate interface using a minimal concrete implementation
-        >>> from stoner_measurement.instruments.transport import NullTransport
-        >>> from stoner_measurement.instruments.protocol import OxfordProtocol
-        >>> from stoner_measurement.instruments.magnet_controller import MagnetController
-        >>> class _MC(MagnetController):
-        ...     def get_field(self): return 1.5
-        ...     def get_field_setpoint(self): return 1.5
-        ...     def set_field_setpoint(self, value): pass
-        ...     def get_ramp_rate(self): return 0.1
-        ...     def set_ramp_rate(self, rate): pass
-        ...     def go_to_setpoint(self): pass
-        ...     def go_to_zero(self): pass
-        ...     def hold(self): pass
-        >>> mc = _MC(NullTransport(), OxfordProtocol())
-        >>> mc.get_field()
-        1.5
-    """
 
-    def __init__(
-        self,
-        transport: BaseTransport,
-        protocol: BaseProtocol,
-    ) -> None:
-        """Initialise the magnet controller.
+@dataclass
+class MagnetStatus:
+    state: MagnetState
+    current: float          # A
+    field: Optional[float]  # T, if known
+    voltage: Optional[float]  # V
+    persistent: bool
+    heater_on: Optional[bool]
+    at_target: bool
+    message: Optional[str] = None
 
-        Args:
-            transport (BaseTransport):
-                Transport layer instance.
-            protocol (BaseProtocol):
-                Protocol instance.
-        """
-        super().__init__(transport=transport, protocol=protocol)
 
-    @abstractmethod
-    def get_field(self) -> float:
-        """Return the current magnetic field in Tesla.
+class MagnetSupply(Protocol):
+    # --- lifecycle ---
+    def connect(self) -> None: ...
+    def disconnect(self) -> None: ...
+    def is_connected(self) -> bool: ...
 
-        Returns:
-            (float):
-                Measured field in Tesla.
+    # context manager sugar
+    def __enter__(self) -> "MagnetSupply": ...
+    def __exit__(self, exc_type, exc, tb) -> None: ...
 
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
+    # --- identity & configuration ---
+    def identify(self) -> str: ...
+    def get_model(self) -> str: ...
+    def get_firmware_version(self) -> str: ...
 
-    @abstractmethod
-    def get_field_setpoint(self) -> float:
-        """Return the target field setpoint in Tesla.
+    # --- readings as properties ---
+    @property
+    def current(self) -> float: ...
 
-        Returns:
-            (float):
-                Target field in Tesla.
+    @property
+    def field(self) -> float: ...
 
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
+    @property
+    def voltage(self) -> float: ...
 
-    @abstractmethod
-    def set_field_setpoint(self, value: float) -> None:
-        """Set the target field in Tesla.
+    @property
+    def status(self) -> MagnetStatus: ...
 
-        Args:
-            value (float):
-                Desired field in Tesla.
+    @property
+    def magnet_constant(self) -> float: ...
 
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-            ValueError:
-                If *value* exceeds the instrument's maximum rated field.
-        """
+    @property
+    def limits(self) -> MagnetLimits: ...
 
-    @abstractmethod
-    def get_ramp_rate(self) -> float:
-        """Return the field ramp rate in Tesla per minute.
+    @property
+    def heater(self) -> bool: ...
 
-        Returns:
-            (float):
-                Current ramp rate in T/min.
+    # --- configuration as methods ---
+    def set_target_current(self, current: float) -> None: ...
+    def set_target_field(self, field: float) -> None: ...
+    def set_ramp_rate_current(self, rate: float) -> None: ...
+    def set_ramp_rate_field(self, rate: float) -> None: ...
+    def set_magnet_constant(self, tesla_per_amp: float) -> None: ...
+    def set_limits(self, limits: MagnetLimits) -> None: ...
 
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
+    # --- actions as methods ---
+    def ramp_to_target(self) -> None: ...
+    def ramp_to_current(self, current: float, *, wait: bool = False) -> None: ...
+    def ramp_to_field(self, field: float, *, wait: bool = False) -> None: ...
+    def pause_ramp(self) -> None: ...
+    def abort_ramp(self) -> None: ...
 
-    @abstractmethod
-    def set_ramp_rate(self, rate: float) -> None:
-        """Set the field ramp rate in Tesla per minute.
-
-        Args:
-            rate (float):
-                Desired ramp rate in T/min.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-            ValueError:
-                If *rate* exceeds the instrument's maximum rated ramp rate.
-        """
-
-    @abstractmethod
-    def go_to_setpoint(self) -> None:
-        """Begin ramping the field towards the current setpoint.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
-
-    @abstractmethod
-    def go_to_zero(self) -> None:
-        """Begin ramping the field to zero.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
-
-    @abstractmethod
-    def hold(self) -> None:
-        """Hold the field at its current value (stop ramping).
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
+    # --- persistent switch ---
+    def heater_on(self) -> None: ...
+    def heater_off(self) -> None: ...
