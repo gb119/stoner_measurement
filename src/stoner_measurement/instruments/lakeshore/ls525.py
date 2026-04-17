@@ -132,7 +132,7 @@ class Lakeshore525(MagnetController, MagnetSupply):
             (MagnetStatus):
                 Snapshot of controller state and key readings.
         """
-        state_reply = self.query("STATE?").strip().lower()
+        state_reply = self.query("OPSTR?").strip().lower()
         state = _STATE_MAP.get(state_reply, MagnetState.UNKNOWN)
         at_target = state in _TERMINAL_RAMP_STATES
         return MagnetStatus(
@@ -174,7 +174,7 @@ class Lakeshore525(MagnetController, MagnetSupply):
             (bool):
                 ``True`` when the heater is enabled.
         """
-        value = self.query("HEATER?").strip()
+        value = self.query("PSH?").strip()
         return value in _HEATER_ON_VALUES
 
     def set_target_current(self, current: float) -> None:
@@ -279,11 +279,11 @@ class Lakeshore525(MagnetController, MagnetSupply):
 
     def heater_on(self) -> None:
         """Enable the persistent switch heater."""
-        self.write("HEATER 1")
+        self.write("PSH 1")
 
     def heater_off(self) -> None:
         """Disable the persistent switch heater."""
-        self.write("HEATER 0")
+        self.write("PSH 0")
 
     def _query_float(self, command: str) -> float:
         """Query the instrument and parse a numeric response.
