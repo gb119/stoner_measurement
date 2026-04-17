@@ -15,7 +15,7 @@ import numpy as np
 from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
 
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
-from stoner_measurement.scan import FunctionScanGenerator
+from stoner_measurement.scan import SteppedScanGenerator
 
 
 class DummyPlugin(TracePlugin):
@@ -52,7 +52,7 @@ class DummyPlugin(TracePlugin):
         self._normal_resistance: str = "1.0"
         self._noise_level: str = "0.0"
         self._rounding_level = "0.0"
-        self.scan_generator = FunctionScanGenerator()
+        self.scan_generator = SteppedScanGenerator(parent=self)
 
     @property
     def name(self) -> str:
@@ -252,7 +252,10 @@ class DummyPlugin(TracePlugin):
         if v_n > 0.0:
             V += np.random.normal(0, v_n, V.size)
 
-        yield from zip(I, V)
+        measure_flags = self.scan_generator.measure_flags()
+        for i_val, v_val, measure in zip(I, V, measure_flags):
+            if measure:
+                yield float(i_val), float(v_val)
 
     def to_json(self) -> dict[str, Any]:
         """Serialise this plugin's configuration, including RSJ model parameters.

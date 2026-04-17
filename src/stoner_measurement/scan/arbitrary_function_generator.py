@@ -161,11 +161,14 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         if validation_error is not None:
             line, message = validation_error
             raise ValueError(f"{message} (line {line})")
+        sequence_logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        if sequence_logger.level == logging.NOTSET:
+            sequence_logger.setLevel(logging.INFO)
         namespace: dict[str, Any] = {
             "__builtins__": __builtins__,
             "np": np,
             "numpy": np,
-            "log": logging.getLogger(SEQUENCE_LOGGER_NAME),
+            "log": sequence_logger,
         }
         exec(
             compile(self._code, "<scan_code>", "exec"), namespace
