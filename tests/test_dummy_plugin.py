@@ -32,14 +32,13 @@ class TestDummyPlugin:
         data = list(plugin.execute({}))
         assert len(data) == 5
 
-    def test_execute_empty_scan_yields_start_point(self, qapp):
+    def test_execute_empty_scan_yields_default_points(self, qapp):
         plugin = DummyPlugin()
-        # Default scan generator has no stages but still yields the start point (0.0)
+        # Default FunctionScanGenerator generates 100 points
         data = list(plugin.execute({}))
-        assert len(data) == 1
-        assert data[0][0] == 0.0  # start point
+        assert len(data) == 100
 
-    def test_execute_only_measured_points_yielded(self, qapp):
+    def test_execute_yields_all_points_regardless_of_measure_flag(self, qapp):
         plugin = DummyPlugin()
         gen = SteppedScanGenerator(
             start=0.0,
@@ -48,9 +47,8 @@ class TestDummyPlugin:
         )
         plugin.scan_generator = gen
         data = list(plugin.execute({}))
-        xs = [x for x, _ in data]
-        # Positioning stage (0.0→0.2) not measured; measuring stage (0.2→0.4) is
-        assert all(x > 0.19 for x in xs)
+        # All 5 scan points yielded — execute() does not filter by measure flag
+        assert len(data) == 5
 
     def test_execute_yields_tuples(self, qapp):
         plugin = DummyPlugin()
@@ -124,8 +122,9 @@ class TestDummyPlugin:
         assert plugin.monitor_widget() is None
 
     def test_has_scan_generator(self, qapp):
+        from stoner_measurement.scan import FunctionScanGenerator
         plugin = DummyPlugin()
-        assert isinstance(plugin.scan_generator, SteppedScanGenerator)
+        assert isinstance(plugin.scan_generator, FunctionScanGenerator)
 
     def test_scan_tab_is_first(self, qapp):
         plugin = DummyPlugin()
@@ -162,17 +161,17 @@ class TestDummyPlugin:
         assert isinstance(plugin.scan_generator, FunctionScanGenerator)
 
     def test_set_scan_generator_class_noop_if_same(self, qapp):
+        from stoner_measurement.scan import FunctionScanGenerator
         plugin = DummyPlugin()
         gen_before = plugin.scan_generator
-        plugin.set_scan_generator_class(SteppedScanGenerator)
+        plugin.set_scan_generator_class(FunctionScanGenerator)
         assert plugin.scan_generator is gen_before
 
     def test_scan_generator_changed_signal(self, qapp):
-        from stoner_measurement.scan import FunctionScanGenerator
         plugin = DummyPlugin()
         received = []
         plugin.scan_generator_changed.connect(lambda: received.append(True))
-        plugin.set_scan_generator_class(FunctionScanGenerator)
+        plugin.set_scan_generator_class(SteppedScanGenerator)
         assert len(received) == 1
 
     # ------------------------------------------------------------------

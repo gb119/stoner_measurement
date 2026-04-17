@@ -242,7 +242,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             wave = 2.0 * ((x / (2.0 * np.pi)) % 1.0) - 1.0
         else:
             wave = np.zeros(self._num_points)
-        wave = np.power(wave, self._exponent)
+        wave = np.sign(wave) * np.abs(wave) ** self._exponent
         return self._amplitude * wave + self._offset
 
     def measure_flags(self) -> np.ndarray:
