@@ -4,6 +4,10 @@
 that defines ``ramp(ix, omega)`` to generate a scan sequence.
 :class:`ArbitraryFunctionScanWidget` exposes a syntax-highlighted editor and a
 live preview plot.
+
+Notes:
+    User-supplied ramp code is executed at runtime. Only trusted code should
+    be loaded in measurement configurations.
 """
 
 from __future__ import annotations
@@ -27,6 +31,19 @@ from stoner_measurement.scan.base import BaseScanGenerator
 from stoner_measurement.ui.editor_widget import EditorWidget
 
 _MAX_NUM_POINTS = 10_000
+_SAFE_BUILTINS: dict[str, object] = {
+    "abs": abs,
+    "bool": bool,
+    "float": float,
+    "int": int,
+    "len": len,
+    "max": max,
+    "min": min,
+    "pow": pow,
+    "range": range,
+    "round": round,
+    "sum": sum,
+}
 _DEFAULT_RAMP_CODE = textwrap.dedent(
     """\
     def ramp(ix, omega):
@@ -97,7 +114,11 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
 
     def _compile_ramp_function(self):
         """Compile and return the user-defined ramp function, if available."""
-        namespace: dict[str, Any] = {"__builtins__": __builtins__, "np": np, "numpy": np}
+        namespace: dict[str, Any] = {
+            "__builtins__": _SAFE_BUILTINS,
+            "np": np,
+            "numpy": np,
+        }
         exec(compile(self._code, "<ramp_code>", "exec"), namespace)  # noqa: S102
         ramp = namespace.get("ramp")
         return ramp if callable(ramp) else None
