@@ -13,6 +13,7 @@ Notes:
 from __future__ import annotations
 
 import ast
+import logging
 import textwrap
 from typing import Any
 
@@ -22,29 +23,18 @@ from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
+    QLabel,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
+from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.scan.base import BaseScanGenerator
 from stoner_measurement.ui.editor_widget import EditorWidget
 
 _MAX_NUM_POINTS = 10_000
-_SAFE_BUILTINS: dict[str, object] = {
-    "abs": abs,
-    "bool": bool,
-    "float": float,
-    "int": int,
-    "len": len,
-    "max": max,
-    "min": min,
-    "pow": pow,
-    "range": range,
-    "round": round,
-    "sum": sum,
-}
-_DEFAULT_RAMP_CODE = textwrap.dedent(
+_DEFAULT_SCAN_CODE = textwrap.dedent(
     """\
     def scan(ix, omega):
         \"\"\"Example arbitrary scan: one sine period over the scan length.\"\"\"
@@ -56,32 +46,33 @@ _FORBIDDEN_AST_NODES: tuple[type[ast.AST], ...] = (
     ast.AsyncFunctionDef,
     ast.Await,
     ast.ClassDef,
-    ast.For,
     ast.Global,
-    ast.Import,
-    ast.ImportFrom,
     ast.Lambda,
     ast.Nonlocal,
-    ast.Try,
-    ast.While,
-    ast.With,
 )
 
 
 class ArbitraryFunctionScanGenerator(BaseScanGenerator):
     """Scan generator that evaluates a user-defined ``scan(ix, omega)`` function.
 
+    The execution namespace provides:
+
+    * ``np`` / ``numpy`` — NumPy.
+    * ``log`` — the sequence-engine :class:`logging.Logger` (name
+      ``"stoner_measurement.sequence"``).  Use ``log.debug(...)``,
+      ``log.info(...)``, etc. to emit messages to the sequence log viewer.
+
     Notes:
         The generator executes user code. Only load configurations from trusted
-        sources. AST validation and restricted builtins reduce risk but do not
-        provide full sandbox isolation.
+        sources. AST validation reduces risk but does not provide full sandbox
+        isolation.
     """
 
     def __init__(
         self,
         *,
         num_points: int = 100,
-        code: str = _DEFAULT_RAMP_CODE,
+        code: str = _DEFAULT_SCAN_CODE,
         parent: QObject | None = None,
     ) -> None:
         """Initialise the arbitrary-function scan generator."""
@@ -174,9 +165,10 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             line, message = validation_error
             raise ValueError(f"{message} (line {line})")
         namespace: dict[str, Any] = {
-            "__builtins__": _SAFE_BUILTINS,
+            "__builtins__": __builtins__,
             "np": np,
             "numpy": np,
+            "log": logging.getLogger(SEQUENCE_LOGGER_NAME),
         }
         exec(compile(self._code, "<scan_code>", "exec"), namespace)  # noqa: S102
         scan = namespace.get("scan")
@@ -221,7 +213,7 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         """Reconstruct an :class:`ArbitraryFunctionScanGenerator` from serialised *data*."""
         return cls(
             num_points=int(data.get("num_points", 100)),
-            code=str(data.get("code", _DEFAULT_RAMP_CODE)),
+            code=str(data.get("code", _DEFAULT_SCAN_CODE)),
             parent=parent,
         )
 
@@ -260,6 +252,13 @@ class ArbitraryFunctionScanWidget(QWidget):
                 self._generator.syntax_error_line,
                 self._generator.syntax_error_message,
             )
+        namespace_label = QLabel(
+            "<i>Runtime namespace includes Python built-ins, "
+            "<code>numpy</code> as <code>np</code> and <code>numpy</code>, "
+            "and <code>log</code> for sequence log messages.</i>"
+        )
+        namespace_label.setWordWrap(True)
+        root_layout.addWidget(namespace_label)
         root_layout.addWidget(self._editor)
 
         self._plot_widget = pg.PlotWidget()
