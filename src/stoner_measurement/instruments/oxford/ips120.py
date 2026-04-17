@@ -44,7 +44,9 @@ class OxfordIPS120(MagnetController, MagnetSupply):
     Examples:
         >>> from stoner_measurement.instruments.oxford import OxfordIPS120
         >>> from stoner_measurement.instruments.transport import NullTransport
-        >>> t = NullTransport(responses=[b"VIPS120-10 3.07\\r"])
+        >>> t = NullTransport(
+        ...     responses=[b"VIPS120-10 3.07\\r"],
+        ... )
         >>> mps = OxfordIPS120(transport=t)
         >>> mps.connect()
         >>> mps.identify()
@@ -72,7 +74,8 @@ class OxfordIPS120(MagnetController, MagnetSupply):
 
         Returns:
             (str):
-                Identity payload from the instrument.
+                Identity payload from the instrument with the leading
+                Oxford command-echo prefix removed by the protocol parser.
         """
         return self.query("V")
 
@@ -306,7 +309,11 @@ class OxfordIPS120(MagnetController, MagnetSupply):
                 Parsed floating-point value from the response.
         """
         reply = self.query(command)
-        return float(reply.split(",", maxsplit=1)[0].strip())
+        token = reply.split(",", maxsplit=1)[0].strip()
+        try:
+            return float(token)
+        except ValueError as exc:
+            raise ValueError(f"Invalid numeric response for {command}: {reply!r}") from exc
 
     def _wait_for_ramp_complete(self, *, timeout: float = 600.0, poll_period: float = 0.25) -> None:
         """Wait for ramp to reach a terminal or inactive state, timing out if unsuccessful.

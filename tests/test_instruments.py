@@ -482,7 +482,7 @@ class TestOxfordIPS120:
         m = OxfordIPS120(transport=NullTransport())
         assert isinstance(m.protocol, OxfordProtocol)
 
-    def test_identify_and_model_and_firmware(self):
+    def test_identity_parsing(self):
         t = _null(
             responses=[
                 b"VIPS120-10 3.07\r",
@@ -545,6 +545,8 @@ class TestOxfordIPS120:
             m.set_magnet_constant(0.0)
         with pytest.raises(ValueError, match="positive"):
             m.set_magnet_constant(-1.0)
+        m.set_magnet_constant(0.5)
+        assert m.magnet_constant == pytest.approx(0.5)
 
     def test_set_target_field_uses_magnet_constant_conversion(self):
         t = _null()
@@ -556,7 +558,7 @@ class TestOxfordIPS120:
     def test_query_float_raises_for_unparseable_numeric_response(self):
         t = _null(responses=[b"Rnot-a-float\r"])
         m = OxfordIPS120(transport=t)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid numeric response for R1"):
             _ = m.current
 
     def test_wait_for_ramp_raises_timeout_when_stuck_ramping(self, monkeypatch):
