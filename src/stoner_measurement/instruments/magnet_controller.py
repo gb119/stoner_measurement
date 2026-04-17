@@ -1,18 +1,22 @@
-"""Abstract base class for magnet controller instruments.
+"""Abstract interfaces for superconducting magnet power supply instruments.
 
-Defines the common interface for superconducting magnet power supply
-controllers.  Concrete subclasses (e.g. Oxford IPS 120-10) implement the
-abstract methods for the specific instrument's command set.
-
-Magnetic field values are in Tesla and ramp rates in Tesla per minute unless
+Defines shared types and abstract interfaces for magnet controller drivers.
+Magnetic field values are in tesla and ramp rates in tesla per minute unless
 otherwise stated.
 """
 
 from __future__ import annotations
 
-from enum import Enum
+from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from enum import Enum
+from typing import TYPE_CHECKING, Protocol
+
+from stoner_measurement.instruments.base_instrument import BaseInstrument
+
+if TYPE_CHECKING:
+    from stoner_measurement.instruments.protocol.base import BaseProtocol
+    from stoner_measurement.instruments.transport.base import BaseTransport
 
 
 class MagnetState(Enum):
@@ -29,20 +33,20 @@ class MagnetState(Enum):
 @dataclass
 class MagnetLimits:
     max_current: float  # A
-    max_field: Optional[float] = None  # T
-    max_ramp_rate: Optional[float] = None  # A/s or T/min
+    max_field: float | None = None  # T
+    max_ramp_rate: float | None = None  # A/s or T/min
 
 
 @dataclass
 class MagnetStatus:
     state: MagnetState
     current: float          # A
-    field: Optional[float]  # T, if known
-    voltage: Optional[float]  # V
+    field: float | None  # T, if known
+    voltage: float | None  # V
     persistent: bool
-    heater_on: Optional[bool]
+    heater_on: bool | None
     at_target: bool
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class MagnetSupply(Protocol):
@@ -52,7 +56,7 @@ class MagnetSupply(Protocol):
     def is_connected(self) -> bool: ...
 
     # context manager sugar
-    def __enter__(self) -> "MagnetSupply": ...
+    def __enter__(self) -> MagnetSupply: ...
     def __exit__(self, exc_type, exc, tb) -> None: ...
 
     # --- identity & configuration ---
@@ -100,3 +104,120 @@ class MagnetSupply(Protocol):
     # --- persistent switch ---
     def heater_on(self) -> None: ...
     def heater_off(self) -> None: ...
+
+
+class MagnetController(BaseInstrument):
+    """Abstract base class for superconducting magnet power supply drivers.
+
+    Attributes:
+        transport (BaseTransport):
+            Transport layer instance.
+        protocol (BaseProtocol):
+            Protocol layer instance.
+    """
+
+    def __init__(self, transport: BaseTransport, protocol: BaseProtocol) -> None:
+        """Initialise the magnet controller.
+
+        Args:
+            transport (BaseTransport):
+                Transport layer used for physical I/O.
+            protocol (BaseProtocol):
+                Protocol layer used for command formatting/parsing.
+        """
+        super().__init__(transport=transport, protocol=protocol)
+
+    @abstractmethod
+    def get_model(self) -> str:
+        """Return the instrument model identifier."""
+
+    @abstractmethod
+    def get_firmware_version(self) -> str:
+        """Return the firmware version string."""
+
+    @property
+    @abstractmethod
+    def current(self) -> float:
+        """Return current output in amps."""
+
+    @property
+    @abstractmethod
+    def field(self) -> float:
+        """Return field output in tesla."""
+
+    @property
+    @abstractmethod
+    def voltage(self) -> float:
+        """Return output voltage in volts."""
+
+    @property
+    @abstractmethod
+    def status(self) -> MagnetStatus:
+        """Return consolidated magnet status."""
+
+    @property
+    @abstractmethod
+    def magnet_constant(self) -> float:
+        """Return magnet constant in tesla per amp."""
+
+    @property
+    @abstractmethod
+    def limits(self) -> MagnetLimits:
+        """Return configured magnet limits."""
+
+    @property
+    @abstractmethod
+    def heater(self) -> bool:
+        """Return persistent switch heater state."""
+
+    @abstractmethod
+    def set_target_current(self, current: float) -> None:
+        """Set target current in amps."""
+
+    @abstractmethod
+    def set_target_field(self, field: float) -> None:
+        """Set target field in tesla."""
+
+    @abstractmethod
+    def set_ramp_rate_current(self, rate: float) -> None:
+        """Set current ramp rate."""
+
+    @abstractmethod
+    def set_ramp_rate_field(self, rate: float) -> None:
+        """Set field ramp rate."""
+
+    @abstractmethod
+    def set_magnet_constant(self, tesla_per_amp: float) -> None:
+        """Set magnet constant."""
+
+    @abstractmethod
+    def set_limits(self, limits: MagnetLimits) -> None:
+        """Set controller limits."""
+
+    @abstractmethod
+    def ramp_to_target(self) -> None:
+        """Ramp to the currently programmed target."""
+
+    @abstractmethod
+    def ramp_to_current(self, current: float, *, wait: bool = False) -> None:
+        """Ramp to a specific current."""
+
+    @abstractmethod
+    def ramp_to_field(self, field: float, *, wait: bool = False) -> None:
+        """Ramp to a specific field."""
+
+    @abstractmethod
+    def pause_ramp(self) -> None:
+        """Pause an active ramp."""
+
+    @abstractmethod
+    def abort_ramp(self) -> None:
+        """Abort ramping immediately."""
+
+    @abstractmethod
+    def heater_on(self) -> None:
+        """Enable persistent heater."""
+
+    @abstractmethod
+    def heater_off(self) -> None:
+        """Disable persistent heater."""
