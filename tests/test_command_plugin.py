@@ -510,6 +510,7 @@ class TestSaveCommand:
         lines = out_file.read_text().splitlines()
         header = lines[0].split("\t")
         assert header[0] == "TDI Format 2.0"
+        # Column 0 is the TDI marker; column 1 is the first numerical data column.
         assert header[1] == "index"
         # DataFrame column names should be in the headers.
         assert any("value" in h for h in header[1:])

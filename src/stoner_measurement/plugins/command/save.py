@@ -485,7 +485,11 @@ class SaveCommand(CommandPlugin):
 
         columns: list[tuple[str, np.ndarray]] = []
         index_name = str(df.index.name) if df.index.name else "index"
-        index_arr = np.array([_to_float_or_nan(value) for value in df.index], dtype=float)
+        index_arr = np.fromiter(
+            (_to_float_or_nan(value) for value in df.index),
+            dtype=float,
+            count=len(df.index),
+        )
         columns.append((index_name, index_arr))
         for col_name in df.columns:
             arr = df[col_name].to_numpy(dtype=float, na_value=float("nan"))
