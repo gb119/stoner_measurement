@@ -356,7 +356,6 @@ class SaveCommand(CommandPlugin):
             data=data,
             no_overwrite=no_overwrite,
         )
-        dest = self._resolve_destination(no_overwrite=_no_overwrite)
         ns = self.engine_namespace
         metadata = self._build_metadata(ns=ns)
         columns = self._build_data_columns(
@@ -365,6 +364,9 @@ class SaveCommand(CommandPlugin):
             trace_keys=_trace_keys,
             data_source=_data_source,
         )
+        if _save_mode == "data" and not columns:
+            return
+        dest = self._resolve_destination(no_overwrite=_no_overwrite)
         rows = self._build_rows(metadata=metadata, columns=columns)
         self._write_rows(dest=dest, rows=rows)
         self.log.info("Data saved to %s", dest)
@@ -430,9 +432,13 @@ class SaveCommand(CommandPlugin):
         """Build flattened metadata strings for the first output column."""
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
+        engine = self.sequence_engine
+        if engine is None:
+            raise RuntimeError("SaveCommand must be attached to a SequenceEngine before execute()")
+
         metadata: list[str] = []
         seen_ids: set[int] = set()
-        for var_name in self.sequence_engine._plugin_var_names.values():  # noqa: SLF001
+        for var_name in engine._plugin_var_names.values():  # noqa: SLF001
             plugin = ns.get(var_name)
             if isinstance(plugin, BasePlugin) and id(plugin) not in seen_ids:
                 seen_ids.add(id(plugin))
