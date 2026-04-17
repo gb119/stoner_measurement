@@ -57,15 +57,19 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
 
     The execution namespace provides:
 
+    * Python built-in functions (same set as the ``curve_fit`` plugin — i.e.
+      the full :mod:`builtins` module).
     * ``np`` / ``numpy`` — NumPy.
     * ``log`` — the sequence-engine :class:`logging.Logger` (name
       ``"stoner_measurement.sequence"``).  Use ``log.debug(...)``,
       ``log.info(...)``, etc. to emit messages to the sequence log viewer.
 
     Notes:
-        The generator executes user code. Only load configurations from trusted
-        sources. AST validation reduces risk but does not provide full sandbox
-        isolation.
+        The generator executes user code with access to full Python built-ins,
+        matching the behaviour of the ``curve_fit`` transform plugin.  This
+        means functions like ``open()``, ``eval()``, and ``__import__()`` are
+        available.  Only load configurations from trusted sources; do not run
+        untrusted scan code in a production environment.
     """
 
     def __init__(
@@ -170,7 +174,7 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             "numpy": np,
             "log": logging.getLogger(SEQUENCE_LOGGER_NAME),
         }
-        exec(compile(self._code, "<scan_code>", "exec"), namespace)  # noqa: S102
+        exec(compile(self._code, "<scan_code>", "exec"), namespace)  # noqa: S102 – full builtins intentional; matches curve_fit plugin contract
         scan = namespace.get("scan")
         return scan if callable(scan) else None
 

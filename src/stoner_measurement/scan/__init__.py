@@ -1,16 +1,13 @@
 """Scan generator sub-package.
 
-Provides :class:`BaseScanGenerator` and concrete implementations:
-:class:`ArbitraryFunctionScanGenerator` with its Qt configuration widget;
-:class:`ArbitraryFunctionScanWidget`;
-:class:`FunctionScanGenerator` with its Qt configuration widget;
-:class:`FunctionScanWidget`;
-:class:`SteppedScanGenerator` with its Qt configuration widget;
-:class:`SteppedScanWidget`;
-:class:`RampScanGenerator` with its Qt configuration widget;
-:class:`RampScanWidget`; and
-:class:`ListScanGenerator` with its Qt configuration widget;
-:class:`ListScanWidget`.
+Provides :class:`BaseScanGenerator` and the following concrete implementations
+together with their Qt configuration widgets:
+
+* :class:`ArbitraryFunctionScanGenerator` / :class:`ArbitraryFunctionScanWidget`
+* :class:`FunctionScanGenerator` / :class:`FunctionScanWidget`
+* :class:`ListScanGenerator` / :class:`ListScanWidget`
+* :class:`RampScanGenerator` / :class:`RampScanWidget`
+* :class:`SteppedScanGenerator` / :class:`SteppedScanWidget`
 """
 
 from stoner_measurement.scan.arbitrary_function_generator import (
