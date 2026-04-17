@@ -63,10 +63,7 @@ class GpibTransport(BaseTransport):
         try:
             import pyvisa as _pyvisa  # noqa: F401
         except ImportError as exc:
-            raise ImportError(
-                "pyvisa is required for GpibTransport. "
-                "Install it with: pip install pyvisa"
-            ) from exc
+            raise ImportError("pyvisa is required for GpibTransport. " "Install it with: pip install pyvisa") from exc
 
         super().__init__(timeout=timeout)
         self.address = address
@@ -104,9 +101,7 @@ class GpibTransport(BaseTransport):
             self._resource.timeout = int(self._timeout * 1000)  # pyvisa uses milliseconds
             self._is_open = True
         except pyvisa.VisaIOError as exc:
-            raise ConnectionError(
-                f"Cannot open GPIB resource {self.resource_string!r}: {exc}"
-            ) from exc
+            raise ConnectionError(f"Cannot open GPIB resource {self.resource_string!r}: {exc}") from exc
 
     def close(self) -> None:
         """Close the GPIB resource."""
@@ -158,9 +153,7 @@ class GpibTransport(BaseTransport):
         try:
             return self._resource.read_raw(num_bytes)
         except pyvisa.errors.VisaIOError as exc:
-            raise TimeoutError(
-                f"Timeout reading from GPIB address {self.address}: {exc}"
-            ) from exc
+            raise TimeoutError(f"Timeout reading from GPIB address {self.address}: {exc}") from exc
 
     def _apply_timeout(self, value: float) -> None:
         """Update the PyVISA timeout on a live connection.

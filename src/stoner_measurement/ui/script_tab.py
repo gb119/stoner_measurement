@@ -168,6 +168,7 @@ class _ScriptPane(QWidget):
 # ScriptTab — tabbed editor + console
 # ---------------------------------------------------------------------------
 
+
 class ScriptTab(QWidget):
     """Container widget with a tabbed Python editor panel and an interactive console.
 

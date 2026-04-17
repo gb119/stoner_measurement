@@ -462,9 +462,7 @@ class _EngineThread(QThread):
                     responsible_plugin = line_map.get(seq_lineno)
 
             if responsible_plugin is not None:
-                exc_str = "".join(
-                    traceback.format_exception_only(exc_type, exc_value)
-                ).rstrip()
+                exc_str = "".join(traceback.format_exception_only(exc_type, exc_value)).rstrip()
                 msg = (
                     f"Error in sequence step: {responsible_plugin.instance_name}"
                     f" ({responsible_plugin.name})\n{exc_str}"
@@ -836,8 +834,7 @@ class SequenceEngine(QObject):
             current_plugin = self._namespace.get(old_var)
             if existing is not current_plugin:
                 raise ValueError(
-                    f"Cannot rename plugin {ep_name!r}: "
-                    f"{new_var_name!r} is already in use in the namespace."
+                    f"Cannot rename plugin {ep_name!r}: " f"{new_var_name!r} is already in use in the namespace."
                 )
         plugin = self._namespace.pop(old_var, None)
         if plugin is not None:

@@ -106,8 +106,7 @@ class SerialTransport(BaseTransport):
             import serial as _serial  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "pyserial is required for SerialTransport. "
-                "Install it with: pip install pyserial"
+                "pyserial is required for SerialTransport. " "Install it with: pip install pyserial"
             ) from exc
 
         super().__init__(timeout=timeout)

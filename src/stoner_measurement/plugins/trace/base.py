@@ -261,9 +261,7 @@ class _ScanPage(QWidget):
         header_form = QFormLayout()
 
         name_edit = QLineEdit(plugin.instance_name)
-        name_edit.setToolTip(
-            "Python variable name used to access this plugin in the sequence engine"
-        )
+        name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
 
         def _apply_name() -> None:
             new_name = name_edit.text().strip()
@@ -610,9 +608,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> plugin.configure()   # reads widget values for the dummy plugin
         """
 
-    def measure(
-        self, parameters: dict[str, Any]
-    ) -> dict[str, TraceData]:
+    def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         """Trigger acquisition and return all trace data keyed by channel name.
 
         This is the primary measurement entry point for the sequence engine.
@@ -826,9 +822,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     # Configuration tabs
     # ------------------------------------------------------------------
 
-    def config_tabs(
-        self, parent: QWidget | None = None
-    ) -> list[tuple[str, QWidget]]:
+    def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return a fixed set of configuration tabs for this plugin.
 
         Returns a *Scan* tab (instance name, optional generator selector, and
@@ -911,9 +905,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def execute(
-        self, parameters: dict[str, Any]
-    ) -> Generator[tuple[float, float]]:
+    def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
         """Acquire a trace and yield ``(x, y)`` data points.
 
         This method is the primary acquisition entry point.  Each yielded
@@ -984,9 +976,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         return "y"
 
-    def execute_multichannel(
-        self, parameters: dict[str, Any]
-    ) -> Generator[tuple[str, float, float]]:
+    def execute_multichannel(self, parameters: dict[str, Any]) -> Generator[tuple[str, float, float]]:
         """Acquire traces from all channels and yield ``(channel, x, y)`` triples.
 
         The default implementation wraps :meth:`execute` using the first entry

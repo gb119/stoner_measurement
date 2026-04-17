@@ -563,9 +563,7 @@ class PlotPointsCommand(CommandPlugin):
         def _add_series() -> None:
             default_key = value_keys[0] if value_keys else ""
             default_label = _default_label(default_key, ns) if default_key else ""
-            self.y_entries.append(
-                {"key": default_key, "label": default_label, "y_axis": _DEFAULT_Y_AXIS}
-            )
+            self.y_entries.append({"key": default_key, "label": default_label, "y_axis": _DEFAULT_Y_AXIS})
             _rebuild_rows()
 
         add_btn.clicked.connect(_add_series)

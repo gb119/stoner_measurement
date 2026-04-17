@@ -126,9 +126,7 @@ def make_log_icon(size: int = 32) -> QIcon:
     # Draw page background.
     painter.setBrush(QColor(240, 240, 240))
     painter.setPen(QColor(160, 160, 160))
-    painter.drawRoundedRect(
-        int(page_x), int(page_y), int(page_w), int(page_h), 2, 2
-    )
+    painter.drawRoundedRect(int(page_x), int(page_y), int(page_w), int(page_h), 2, 2)
 
     # Draw three log lines with coloured bullets.
     bullet_colours = [QColor(100, 100, 200), QColor(200, 140, 0), QColor(200, 50, 50)]
@@ -146,9 +144,7 @@ def make_log_icon(size: int = 32) -> QIcon:
         painter.drawEllipse(QPointF(page_x + margin + bullet_r, y), bullet_r, bullet_r)
         # Line
         painter.setPen(QColor(80, 80, 80))
-        painter.drawLine(
-            QPointF(line_left, y), QPointF(line_right, y)
-        )
+        painter.drawLine(QPointF(line_left, y), QPointF(line_right, y))
 
     painter.end()
     return QIcon(QPixmap.fromImage(img))

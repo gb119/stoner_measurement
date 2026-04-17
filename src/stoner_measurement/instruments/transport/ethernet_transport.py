@@ -62,9 +62,7 @@ class EthernetTransport(BaseTransport):
             self._socket.settimeout(self._timeout)
             self._is_open = True
         except OSError as exc:
-            raise ConnectionError(
-                f"Cannot connect to {self.host}:{self.port}: {exc}"
-            ) from exc
+            raise ConnectionError(f"Cannot connect to {self.host}:{self.port}: {exc}") from exc
 
     def close(self) -> None:
         """Close the TCP socket."""
@@ -114,13 +112,9 @@ class EthernetTransport(BaseTransport):
         try:
             data = self._socket.recv(num_bytes)
         except TimeoutError as exc:
-            raise TimeoutError(
-                f"No data received from {self.host}:{self.port} within {self._timeout}s."
-            ) from exc
+            raise TimeoutError(f"No data received from {self.host}:{self.port} within {self._timeout}s.") from exc
         if not data:
-            raise TimeoutError(
-                f"Connection closed by {self.host}:{self.port}."
-            )
+            raise TimeoutError(f"Connection closed by {self.host}:{self.port}.")
         return data
 
     def flush(self) -> None:

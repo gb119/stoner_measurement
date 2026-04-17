@@ -77,9 +77,7 @@ class UdpTransport(BaseTransport):
             if self._socket is not None:
                 self._socket.close()
                 self._socket = None
-            raise ConnectionError(
-                f"Cannot open UDP socket to {self.host}:{self.port}: {exc}"
-            ) from exc
+            raise ConnectionError(f"Cannot open UDP socket to {self.host}:{self.port}: {exc}") from exc
 
     def close(self) -> None:
         """Close the UDP socket."""
@@ -127,9 +125,7 @@ class UdpTransport(BaseTransport):
         try:
             return self._socket.recv(num_bytes)
         except TimeoutError as exc:
-            raise TimeoutError(
-                f"No data received from {self.host}:{self.port} within {self._timeout}s."
-            ) from exc
+            raise TimeoutError(f"No data received from {self.host}:{self.port} within {self._timeout}s.") from exc
 
     def _apply_timeout(self, value: float) -> None:
         """Update the socket timeout on a live connection."""

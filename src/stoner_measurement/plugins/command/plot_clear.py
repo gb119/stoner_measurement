@@ -205,8 +205,7 @@ class PlotClearCommand(CommandPlugin):
         """
         widget = QWidget(parent)
         label = QLabel(
-            "<i>No configuration required.  When executed, all traces are "
-            "removed from the plot window.</i>",
+            "<i>No configuration required.  When executed, all traces are " "removed from the plot window.</i>",
             widget,
         )
         label.setWordWrap(True)

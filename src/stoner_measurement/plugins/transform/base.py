@@ -491,9 +491,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         return QWidget(parent)
 
-    def config_tabs(
-        self, parent: QWidget | None = None
-    ) -> list[tuple[str, QWidget]]:
+    def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return configuration tabs for this transform plugin.
 
         Produces a single *Data* tab that places the instance-name editor

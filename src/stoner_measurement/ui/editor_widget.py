@@ -77,16 +77,69 @@ class PythonHighlighter(QSyntaxHighlighter):
 
         # Built-ins
         builtins = [
-            "abs", "all", "any", "bin", "bool", "bytes", "callable", "chr",
-            "dict", "dir", "divmod", "enumerate", "eval", "exec", "filter",
-            "float", "format", "frozenset", "getattr", "globals", "hasattr",
-            "hash", "help", "hex", "id", "input", "int", "isinstance",
-            "issubclass", "iter", "len", "list", "locals", "map", "max",
-            "min", "next", "object", "oct", "open", "ord", "pow", "print",
-            "property", "range", "repr", "reversed", "round", "set",
-            "setattr", "slice", "sorted", "staticmethod", "str", "sum",
-            "super", "tuple", "type", "vars", "zip",
-            "None", "True", "False",
+            "abs",
+            "all",
+            "any",
+            "bin",
+            "bool",
+            "bytes",
+            "callable",
+            "chr",
+            "dict",
+            "dir",
+            "divmod",
+            "enumerate",
+            "eval",
+            "exec",
+            "filter",
+            "float",
+            "format",
+            "frozenset",
+            "getattr",
+            "globals",
+            "hasattr",
+            "hash",
+            "help",
+            "hex",
+            "id",
+            "input",
+            "int",
+            "isinstance",
+            "issubclass",
+            "iter",
+            "len",
+            "list",
+            "locals",
+            "map",
+            "max",
+            "min",
+            "next",
+            "object",
+            "oct",
+            "open",
+            "ord",
+            "pow",
+            "print",
+            "property",
+            "range",
+            "repr",
+            "reversed",
+            "round",
+            "set",
+            "setattr",
+            "slice",
+            "sorted",
+            "staticmethod",
+            "str",
+            "sum",
+            "super",
+            "tuple",
+            "type",
+            "vars",
+            "zip",
+            "None",
+            "True",
+            "False",
         ]
         bi_pattern = r"\b(?:" + "|".join(re.escape(b) for b in builtins) + r")\b"
         self._rules.append((re.compile(bi_pattern), builtin_fmt))
@@ -116,6 +169,7 @@ class PythonHighlighter(QSyntaxHighlighter):
 # ---------------------------------------------------------------------------
 # Line-number gutter
 # ---------------------------------------------------------------------------
+
 
 class _LineNumberArea(QWidget):
     """Narrow widget that paints line numbers alongside the editor."""
@@ -165,6 +219,7 @@ class _LineNumberArea(QWidget):
 # ---------------------------------------------------------------------------
 # Editor widget
 # ---------------------------------------------------------------------------
+
 
 class EditorWidget(QPlainTextEdit):
     """Plain-text editor with Python syntax highlighting and line numbers.
@@ -235,9 +290,7 @@ class EditorWidget(QPlainTextEdit):
         if dy:
             self._line_number_area.scroll(0, dy)
         else:
-            self._line_number_area.update(
-                0, rect.y(), self._line_number_area.width(), rect.height()
-            )
+            self._line_number_area.update(0, rect.y(), self._line_number_area.width(), rect.height())
         if rect.contains(self.viewport().rect()):
             self._update_line_number_area_width(0)
 
@@ -245,9 +298,7 @@ class EditorWidget(QPlainTextEdit):
         """Resize the gutter when the editor is resized."""
         super().resizeEvent(event)
         cr = self.contentsRect()
-        self._line_number_area.setGeometry(
-            QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height())
-        )
+        self._line_number_area.setGeometry(QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height()))
 
     def paint_line_numbers(self, event) -> None:  # type: ignore[override]
         """Paint line numbers into the gutter widget.
@@ -318,13 +369,12 @@ class EditorWidget(QPlainTextEdit):
     def _highlight_current_line(self) -> None:
         """Highlight the line that contains the text cursor."""
         from PyQt6.QtWidgets import QTextEdit
+
         extra: list[QTextEdit.ExtraSelection] = []
         if not self.isReadOnly():
             selection = QTextEdit.ExtraSelection()
             selection.format.setBackground(QColor("#fffde7"))
-            selection.format.setProperty(
-                QTextCharFormat.Property.FullWidthSelection, True
-            )
+            selection.format.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
             selection.cursor = self.textCursor()
             selection.cursor.clearSelection()
             extra.append(selection)

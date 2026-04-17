@@ -87,9 +87,7 @@ class _StateControlScanPage(QWidget):
         header_form = QFormLayout()
 
         name_edit = QLineEdit(plugin.instance_name)
-        name_edit.setToolTip(
-            "Python variable name used to access this plugin in the sequence engine"
-        )
+        name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
 
         def _apply_name() -> None:
             new_name = name_edit.text().strip()
@@ -173,8 +171,7 @@ class _StateControlScanPage(QWidget):
 
         clear_filter_edit = QLineEdit(plugin.clear_filter)
         clear_filter_edit.setToolTip(
-            "Python expression evaluated to decide whether to clear the data. "
-            "Default: True"
+            "Python expression evaluated to decide whether to clear the data. " "Default: True"
         )
 
         data_form.addRow("Collect data:", collect_check)
@@ -619,9 +616,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     # Configuration tabs
     # ------------------------------------------------------------------
 
-    def config_tabs(
-        self, parent: QWidget | None = None
-    ) -> list[tuple[str, QWidget]]:
+    def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return a fixed set of configuration tabs for this plugin.
 
         Returns a *Scan* tab (instance name, state info, optional generator
@@ -966,9 +961,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         while not self.is_at_target():
             self.state_changed.emit(self.get_state())
             if time.monotonic() > deadline:
-                self.state_error.emit(
-                    f"Timeout after {self.settle_timeout}s waiting for state to reach {value}"
-                )
+                self.state_error.emit(f"Timeout after {self.settle_timeout}s waiting for state to reach {value}")
                 return
             time.sleep(poll_interval)
         self.state_reached.emit(self.get_state())

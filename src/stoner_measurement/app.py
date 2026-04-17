@@ -96,9 +96,7 @@ class MeasurementApp(QMainWindow):
         # Wire sequence step selection → config panel -------------------------
         # Use an intermediate slot so step plugins are synced into the engine
         # namespace (and _traces rebuilt) before the config widget is shown.
-        self._main_window.dock_panel.plugin_selected.connect(
-            self._on_plugin_selected_for_config
-        )
+        self._main_window.dock_panel.plugin_selected.connect(self._on_plugin_selected_for_config)
 
         # Build the UI before discovering plugins (so signals are in place) ---
         self._build_actions()
@@ -355,9 +353,7 @@ class MeasurementApp(QMainWindow):
         self._act_stop.triggered.connect(self._on_stop)
 
         self._act_generate = QAction(make_generate_icon(), "&Generate Code", self)
-        self._act_generate.setStatusTip(
-            "Render the current sequence steps as Python code in the editor"
-        )
+        self._act_generate.setStatusTip("Render the current sequence steps as Python code in the editor")
         self._act_generate.triggered.connect(self._on_load_to_editor)
 
         # Edit actions
@@ -374,9 +370,7 @@ class MeasurementApp(QMainWindow):
         self._act_paste.triggered.connect(self._on_paste)
 
         self._act_toggle_disable = QAction("Disable Plugin", self)
-        self._act_toggle_disable.setStatusTip(
-            "Disable or re-enable the selected sequence step"
-        )
+        self._act_toggle_disable.setStatusTip("Disable or re-enable the selected sequence step")
         self._act_toggle_disable.setEnabled(False)
         self._act_toggle_disable.triggered.connect(self._on_toggle_disable)
 
@@ -389,15 +383,11 @@ class MeasurementApp(QMainWindow):
         # View actions
         self._act_view_measurement = QAction("&Measurement", self)
         self._act_view_measurement.setStatusTip("Switch to the Measurement tab")
-        self._act_view_measurement.triggered.connect(
-            lambda: self._main_window.tabs.setCurrentIndex(0)
-        )
+        self._act_view_measurement.triggered.connect(lambda: self._main_window.tabs.setCurrentIndex(0))
 
         self._act_view_editor = QAction("&Script Editor", self)
         self._act_view_editor.setStatusTip("Switch to the Script Editor tab")
-        self._act_view_editor.triggered.connect(
-            lambda: self._main_window.tabs.setCurrentIndex(1)
-        )
+        self._act_view_editor.triggered.connect(lambda: self._main_window.tabs.setCurrentIndex(1))
 
         self._act_show_log = QAction(make_log_icon(), "Show &Log", self)
         self._act_show_log.setStatusTip("Open the log viewer window")
@@ -503,12 +493,9 @@ class MeasurementApp(QMainWindow):
             self._act_save.setStatusTip("Save the current measurement sequence")
             self._act_save_as.setText("Save Sequence &As…")
             self._act_save_as.setStatusTip("Save the current measurement sequence to a new file")
-            self._act_run.setStatusTip(
-                "Convert the measurement sequence to a script and execute it"
-            )
+            self._act_run.setStatusTip("Convert the measurement sequence to a script and execute it")
             self._act_generate.setStatusTip(
-                "Render the current sequence steps as Python code in the editor"
-                " (without switching tabs)"
+                "Render the current sequence steps as Python code in the editor" " (without switching tabs)"
             )
             self._act_cut.setText("Cu&t Step")
             self._act_cut.setStatusTip("Cut the selected sequence step to the clipboard")
@@ -526,9 +513,7 @@ class MeasurementApp(QMainWindow):
             self._act_save_as.setText("Save Script &As…")
             self._act_save_as.setStatusTip("Save the current sequence script to a new file")
             self._act_run.setStatusTip("Execute the sequence script in the editor")
-            self._act_generate.setStatusTip(
-                "Render the current sequence steps as Python code in the editor"
-            )
+            self._act_generate.setStatusTip("Render the current sequence steps as Python code in the editor")
             self._act_cut.setText("Cu&t")
             self._act_cut.setStatusTip("Cut the selected text")
             self._act_copy.setText("&Copy")
@@ -860,9 +845,7 @@ class MeasurementApp(QMainWindow):
             dock = self._main_window.dock_panel
             steps = dock.sequence_steps
             plugins = self._plugin_manager.plugins
-            _, line_map = self._engine.generate_sequence_code(
-                steps, plugins, return_line_map=True
-            )
+            _, line_map = self._engine.generate_sequence_code(steps, plugins, return_line_map=True)
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
         self._engine.run_script(script, customised=customised, line_map=line_map)
 
@@ -996,9 +979,7 @@ class MeasurementApp(QMainWindow):
             if self._current_measurement_path is None:
                 self.setWindowTitle("Stoner Measurement")
             else:
-                self.setWindowTitle(
-                    f"Stoner Measurement — {self._current_measurement_path.name}"
-                )
+                self.setWindowTitle(f"Stoner Measurement — {self._current_measurement_path.name}")
             return
         pane = self._main_window.script_tab.current_pane()
         if pane is None or pane.path is None:

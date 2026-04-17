@@ -13,6 +13,7 @@ import math
 
 import numpy as np
 import pyqtgraph as pg
+from PyQt6 import QtGui
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -256,10 +257,24 @@ class RampScanWidget(QWidget):
 
         root_layout.addWidget(controls_box)
 
+        # --- Preview plot ---
         self._plot_widget = pg.PlotWidget()
-        self._plot_widget.setLabel("bottom", "Point index")
-        self._plot_widget.setLabel("left", "Value")
-        self._curve = self._plot_widget.plot(pen=pg.mkPen(color="#1f77b4", width=1.5))
+
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        font.setBold(True)
+        font.setFamily("Arial")
+
+        axis_pen = pg.mkPen(color="white", width=2)
+        for axis, label in zip(["left", "bottom"], ["Value", "Index"]):
+            axis = self._plot_widget.getAxis(axis)
+            axis.setTextPen(pg.mkPen("white"))
+            axis.setTickFont(font)
+            axis.setLabel(
+                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+            )
+            axis.setPen(axis_pen)
+        self._curve = self._plot_widget.plot(pen=pg.mkPen(color="yellow", width=2.5))
         root_layout.addWidget(self._plot_widget)
         self.setLayout(root_layout)
 

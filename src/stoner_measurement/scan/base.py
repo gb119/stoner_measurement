@@ -95,9 +95,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         """
 
     @classmethod
-    def from_json(
-        cls, data: dict[str, Any], parent: QObject | None = None
-    ) -> BaseScanGenerator:
+    def from_json(cls, data: dict[str, Any], parent: QObject | None = None) -> BaseScanGenerator:
         """Reconstruct a scan generator from a serialised dict produced by :meth:`to_json`.
 
         Dispatches to the appropriate concrete subclass based on the value of
@@ -148,16 +146,11 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         type_name = data.get("type", "")
         gen_cls = _REGISTRY.get(type_name)
         if gen_cls is None:
-            raise ValueError(
-                f"Unknown scan generator type: {type_name!r}. "
-                f"Expected one of: {sorted(_REGISTRY)}"
-            )
+            raise ValueError(f"Unknown scan generator type: {type_name!r}. " f"Expected one of: {sorted(_REGISTRY)}")
         return gen_cls._from_json_data(data, parent)  # noqa: SLF001
 
     @classmethod
-    def _from_json_data(
-        cls, data: dict[str, Any], parent: QObject | None = None
-    ) -> BaseScanGenerator:
+    def _from_json_data(cls, data: dict[str, Any], parent: QObject | None = None) -> BaseScanGenerator:
         """Reconstruct an instance of *this* class from *data*.
 
         Concrete subclasses must override this classmethod to read their

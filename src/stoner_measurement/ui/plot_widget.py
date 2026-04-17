@@ -226,15 +226,11 @@ class PlotWidget(QWidget):
 
     def _x_axis_names(self) -> list[str]:
         """Return sorted names of registered x-axes."""
-        return sorted(
-            name for name, orientation in self._axis_orientations.items() if orientation == "x"
-        )
+        return sorted(name for name, orientation in self._axis_orientations.items() if orientation == "x")
 
     def _y_axis_names(self) -> list[str]:
         """Return sorted names of registered y-axes."""
-        return sorted(
-            name for name, orientation in self._axis_orientations.items() if orientation == "y"
-        )
+        return sorted(name for name, orientation in self._axis_orientations.items() if orientation == "y")
 
     def _refresh_trace_and_axis_controls(self) -> None:
         """Refresh table rows after trace or axis changes."""
@@ -645,16 +641,10 @@ class PlotWidget(QWidget):
         curve = self._get_or_create_trace(trace_name)
         if line_style not in _LINE_STYLES:
             valid_line_styles = ", ".join(_LINE_STYLES)
-            raise ValueError(
-                f"Unknown line style: {line_style!r}. "
-                f"Valid options are: {valid_line_styles}."
-            )
+            raise ValueError(f"Unknown line style: {line_style!r}. " f"Valid options are: {valid_line_styles}.")
         if point_style not in _POINT_STYLES:
             valid_point_styles = ", ".join(_POINT_STYLES)
-            raise ValueError(
-                f"Unknown point style: {point_style!r}. "
-                f"Valid options are: {valid_point_styles}."
-            )
+            raise ValueError(f"Unknown point style: {point_style!r}. " f"Valid options are: {valid_point_styles}.")
         if line_width is not None and line_width <= 0:
             raise ValueError(f"Line width must be greater than zero, got {line_width}.")
         if point_size is not None and point_size <= 0:

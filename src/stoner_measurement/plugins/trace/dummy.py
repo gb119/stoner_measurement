@@ -15,7 +15,7 @@ import numpy as np
 from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
 
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
-from stoner_measurement.scan import SteppedScanGenerator
+from stoner_measurement.scan import FunctionScanGenerator
 
 
 class DummyPlugin(TracePlugin):
@@ -51,7 +51,8 @@ class DummyPlugin(TracePlugin):
         self._critical_current: str = "1.0"
         self._normal_resistance: str = "1.0"
         self._noise_level: str = "0.0"
-        self.scan_generator = SteppedScanGenerator(start=0.0, stages=[], parent=self)
+        self._rounding_level = "0.0"
+        self.scan_generator = FunctionScanGenerator()
 
     @property
     def name(self) -> str:
@@ -178,9 +179,7 @@ class DummyPlugin(TracePlugin):
         except RuntimeError:
             return float(expr)
 
-    def execute(
-        self, parameters: dict[str, Any]
-    ) -> Generator[tuple[float, float]]:
+    def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
         """Yield RSJ I-V data points with optional Gaussian noise.
 
         Iterates over the scan generator, treating each scan-point value as an
@@ -238,27 +237,22 @@ class DummyPlugin(TracePlugin):
         i_c = self._eval_expr(str(parameters.get("I_c", self._critical_current)))
         r_n = self._eval_expr(str(parameters.get("R_n", self._normal_resistance)))
         v_n_expr = str(parameters.get("V_n", self._noise_level))
+        rounding = self._eval_expr(str(parameters.get("Rounding", self._rounding_level)))
 
-        currents: list[float] = []
-        voltages: list[float] = []
-        for _ix, current, measure in self.scan_generator:
-            if measure:
-                abs_i = abs(current)
-                if abs_i < i_c:
-                    voltage = 0.0
-                else:
-                    voltage = math.copysign(
-                        r_n * math.sqrt(max(0.0, abs_i**2 - i_c**2)), current
-                    )
-                currents.append(current)
-                voltages.append(voltage)
+        I = self.scan_generator.generate()
+        if rounding > 0:
+            data = np.empty((I.size, 100))
+            for ix, ic_ix in enumerate(np.random.normal(loc=i_c, scale=rounding, size=100)):
+                data[:, ix] = np.where(np.abs(I) < ic_ix, 0.0, r_n * np.sign(I) * np.sqrt(np.abs(I**2 - ic_ix**2)))
+            V = data.mean(axis=1)
+        else:
+            V = np.where(np.abs(I) < i_c, 0.0, r_n * np.sign(I) * np.sqrt(np.abs(I**2 - i_c**2)))
 
-        v_arr = np.array(voltages)
         v_n = self._eval_expr(v_n_expr)
         if v_n > 0.0:
-            v_arr = v_arr + np.random.normal(0, v_n, v_arr.size)
+            V += np.random.normal(0, v_n, V.size)
 
-        yield from zip(currents, v_arr.tolist())
+        yield from zip(I, V)
 
     def to_json(self) -> dict[str, Any]:
         """Serialise this plugin's configuration, including RSJ model parameters.
@@ -288,9 +282,8 @@ class DummyPlugin(TracePlugin):
             '0.0'
         """
         data = super().to_json()
-        data["critical_current"] = self._critical_current
-        data["normal_resistance"] = self._normal_resistance
-        data["noise_level"] = self._noise_level
+        for attr in ["critical_current", "normal_resistance", "noise_level", "rounding_level"]:
+            data[attr] = getattr(self, f"_{attr}")
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -305,12 +298,9 @@ class DummyPlugin(TracePlugin):
                 Serialised plugin dict as produced by :meth:`to_json`.
         """
         super()._restore_from_json(data)
-        if "critical_current" in data:
-            self._critical_current = data["critical_current"]
-        if "normal_resistance" in data:
-            self._normal_resistance = data["normal_resistance"]
-        if "noise_level" in data:
-            self._noise_level = data["noise_level"]
+        for attr in ["critical_current", "normal_resistance", "noise_level", "rounding_level"]:
+            if attr in data:
+                setattr(self, f"_{attr}", data.get(attr))
 
     def _plugin_config_tabs(self) -> QWidget:
         """Return a settings widget with expression-string controls for *I_c*, *R_n*, and *V_n*.
@@ -353,6 +343,9 @@ class DummyPlugin(TracePlugin):
         v_n_edit = QLineEdit(self._noise_level)
         v_n_edit.setToolTip(tooltip + " Use '0.0' for noiseless output.")
 
+        Rounding_edit = QLineEdit(self._rounding_level)
+        Rounding_edit.setToolTip(tooltip + " Set scale for Ic variation.")
+
         def _update_i_c() -> None:
             self._critical_current = i_c_edit.text().strip()
 
@@ -362,13 +355,18 @@ class DummyPlugin(TracePlugin):
         def _update_v_n() -> None:
             self._noise_level = v_n_edit.text().strip()
 
+        def _update_rounding() -> None:
+            self._rounding_level = Rounding_edit.text().strip()
+
         i_c_edit.editingFinished.connect(_update_i_c)
         r_n_edit.editingFinished.connect(_update_r_n)
         v_n_edit.editingFinished.connect(_update_v_n)
+        Rounding_edit.editingFinished.connect(_update_rounding)
 
         layout.addRow("Critical current I_c (A):", i_c_edit)
         layout.addRow("Normal resistance R_n (\u03a9):", r_n_edit)
         layout.addRow("Noise level V_n (V):", v_n_edit)
+        layout.addRow("Rounding level Rounding (A):", Rounding_edit)
         return widget
 
     def _about_html(self) -> str:

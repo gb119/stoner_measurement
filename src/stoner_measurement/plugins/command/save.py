@@ -378,9 +378,7 @@ class SaveCommand(CommandPlugin):
 
         path_val = self.eval(self.path_expr)
         if not isinstance(path_val, str):
-            raise TypeError(
-                f"SaveCommand.path_expr must evaluate to a str, got {type(path_val).__name__!r}"
-            )
+            raise TypeError(f"SaveCommand.path_expr must evaluate to a str, got {type(path_val).__name__!r}")
         dest = pathlib.Path(path_val)
         if not dest.is_absolute():
             from stoner_measurement.ui.settings_dialog import (
@@ -698,9 +696,7 @@ class SaveCommand(CommandPlugin):
             for trace_key in traces_catalog:
                 cb = QCheckBox(trace_key, traces_container)
                 cb.setChecked(self.trace_selection.get(trace_key, True))
-                cb.stateChanged.connect(
-                    lambda state, k=trace_key: self.trace_selection.update({k: bool(state)})
-                )
+                cb.stateChanged.connect(lambda state, k=trace_key: self.trace_selection.update({k: bool(state)}))
                 traces_layout.addWidget(cb)
         else:
             traces_layout.addWidget(QLabel("<i>No traces available.</i>", traces_container))
@@ -748,9 +744,7 @@ class SaveCommand(CommandPlugin):
 
             source_edit.editingFinished.connect(_apply_source_text)
             data_form.addRow("Data source:", source_edit)
-            data_form.addRow(
-                QLabel("<i>No state-control plugins available.</i>", data_widget)
-            )
+            data_form.addRow(QLabel("<i>No state-control plugins available.</i>", data_widget))
 
         data_widget.setLayout(data_form)
         stack.addWidget(data_widget)  # index 1

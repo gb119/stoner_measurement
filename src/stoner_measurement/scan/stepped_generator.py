@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
+from PyQt6 import QtGui
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -109,9 +110,7 @@ class SteppedScanGenerator(BaseScanGenerator):
     def stages(self, value: list[tuple[float, float, bool]]) -> None:
         for i, (_target, step, _measure) in enumerate(value):
             if step <= 0:
-                raise ValueError(
-                    f"Step size must be positive; stage {i} has step={step!r}."
-                )
+                raise ValueError(f"Step size must be positive; stage {i} has step={step!r}.")
         self._stages = [(float(t), float(s), bool(m)) for t, s, m in value]
         self._invalidate_cache()
 
@@ -241,9 +240,7 @@ class SteppedScanGenerator(BaseScanGenerator):
         }
 
     @classmethod
-    def _from_json_data(
-        cls, data: dict, parent=None
-    ) -> SteppedScanGenerator:
+    def _from_json_data(cls, data: dict, parent=None) -> SteppedScanGenerator:
         """Reconstruct a :class:`SteppedScanGenerator` from serialised *data*.
 
         Args:
@@ -351,9 +348,23 @@ class SteppedScanWidget(QWidget):
         # --- Preview tab ---
         preview_widget = QWidget()
         preview_layout = QVBoxLayout(preview_widget)
+        # --- Preview plot ---
         self._plot_widget = pg.PlotWidget()
-        self._plot_widget.setLabel("bottom", "Point index")
-        self._plot_widget.setLabel("left", "Value")
+
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        font.setBold(True)
+        font.setFamily("Arial")
+
+        axis_pen = pg.mkPen(color="white", width=2)
+        for axis, label in zip(["left", "bottom"], ["Value", "Index"]):
+            axis = self._plot_widget.getAxis(axis)
+            axis.setTextPen(pg.mkPen("white"))
+            axis.setTickFont(font)
+            axis.setLabel(
+                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+            )
+            axis.setPen(axis_pen)
         self._green_scatter = pg.ScatterPlotItem(
             pen=None,
             brush=pg.mkBrush(color=(0, 200, 0, 200)),

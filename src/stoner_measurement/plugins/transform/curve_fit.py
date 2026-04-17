@@ -14,6 +14,7 @@ Notes:
 from __future__ import annotations
 
 import ast
+import logging
 import textwrap
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +33,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.plugins.trace.base import TraceData
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.ui.editor_widget import EditorWidget
@@ -43,8 +45,7 @@ if TYPE_CHECKING:
 # Default fit-function source code shown in a new plugin instance
 # ---------------------------------------------------------------------------
 
-_DEFAULT_FIT_CODE = textwrap.dedent(
-    """\
+_DEFAULT_FIT_CODE = textwrap.dedent("""\
     def fit(x, a, b):
         \"\"\"Linear fit: y = a*x + b.\"\"\"
         return a * x + b
@@ -53,8 +54,7 @@ _DEFAULT_FIT_CODE = textwrap.dedent(
     # Optional: define p0(x, y) to compute initial parameter estimates.
     # def p0(x, y):
     #     return (1.0, 0.0)
-    """
-)
+    """)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -195,16 +195,11 @@ class _ParamTableWidget(QWidget):
 
         self._table = QTableWidget(0, 4, self)
         self._table.setHorizontalHeaderLabels(["Parameter", "Min", "Initial", "Max"])
-        self._table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents
-        )
+        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         for col in (1, 2, 3):
-            self._table.horizontalHeader().setSectionResizeMode(
-                col, QHeaderView.ResizeMode.Stretch
-            )
+            self._table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self._table.setToolTip(
-            "Leave Min/Initial/Max blank to use defaults.\n"
-            "Min/Max constrain the curve fit; Initial sets p0."
+            "Leave Min/Initial/Max blank to use defaults.\n" "Min/Max constrain the curve fit; Initial sets p0."
         )
         self._table.itemChanged.connect(self.settings_changed)
         layout.addWidget(self._table)
@@ -263,9 +258,7 @@ class _ParamTableWidget(QWidget):
         self.param_settings = self._read_table()
         return self.param_settings
 
-    def load_settings(
-        self, settings: dict[str, dict[str, float | None]], param_names: list[str]
-    ) -> None:
+    def load_settings(self, settings: dict[str, dict[str, float | None]], param_names: list[str]) -> None:
         """Populate the table from *settings* for the given *param_names*.
 
         Args:
@@ -658,10 +651,7 @@ class CurveFitPlugin(TransformPlugin):
 
             popt, pcov = curve_fit(fit_func, x_arr, y_arr, **kwargs)
         except ImportError:
-            self.log.error(
-                "CurveFit: scipy is not installed.  "
-                "Install scipy to use the curve-fit plugin."
-            )
+            self.log.error("CurveFit: scipy is not installed.  " "Install scipy to use the curve-fit plugin.")
             return nan_result
         except Exception as exc:
             self.log.error("CurveFit: curve_fit failed — %s", exc)
@@ -708,9 +698,7 @@ class CurveFitPlugin(TransformPlugin):
         else:
             traces = self.engine_namespace.get("_traces", {})
             if not self.trace_key or self.trace_key not in traces:
-                raise ValueError(
-                    f"Trace {self.trace_key!r} not found in _traces catalogue."
-                )
+                raise ValueError(f"Trace {self.trace_key!r} not found in _traces catalogue.")
             trace_expr = traces[self.trace_key]
             trace_data = self.eval(trace_expr)
             x_data = trace_data.x
@@ -733,6 +721,7 @@ class CurveFitPlugin(TransformPlugin):
 
             ns["np"] = _np
             ns["numpy"] = _np
+            ns["log"] = (logging.getLogger(SEQUENCE_LOGGER_NAME),)
         except ImportError:
             pass
         exec(compile(self.fit_code, "<fit_code>", "exec"), ns)  # noqa: S102
@@ -763,9 +752,7 @@ class CurveFitPlugin(TransformPlugin):
                 result = p0_func(x_arr, y_arr)
                 return list(result)
             except Exception as exc:
-                self.log.warning(
-                    "CurveFit: p0 function raised %s — using table values.", exc
-                )
+                self.log.warning("CurveFit: p0 function raised %s — using table values.", exc)
 
         initials = []
         all_none = True
@@ -841,9 +828,7 @@ class CurveFitPlugin(TransformPlugin):
     # Configuration tabs
     # ------------------------------------------------------------------
 
-    def config_tabs(
-        self, parent: QWidget | None = None
-    ) -> list[tuple[str, QWidget]]:
+    def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return the configuration tabs for this plugin.
 
         Produces a *Data* tab (with the instance-name editor at the top,
@@ -940,8 +925,7 @@ class CurveFitPlugin(TransformPlugin):
         # --- Y uncertainty expression (advanced) ---
         y_error_edit = QLineEdit(self.y_error_expr, widget)
         y_error_edit.setToolTip(
-            "Python expression for y-uncertainty (sigma).  "
-            "Leave blank to fit without uncertainties."
+            "Python expression for y-uncertainty (sigma).  " "Leave blank to fit without uncertainties."
         )
 
         layout.addRow("Trace:", trace_combo)
@@ -951,8 +935,7 @@ class CurveFitPlugin(TransformPlugin):
         layout.addRow("Y uncertainty:", y_error_edit)
         layout.addRow(
             QLabel(
-                "<i>In advanced mode expressions are evaluated against the "
-                "engine namespace at runtime.</i>",
+                "<i>In advanced mode expressions are evaluated against the " "engine namespace at runtime.</i>",
                 widget,
             )
         )
@@ -993,9 +976,7 @@ class CurveFitPlugin(TransformPlugin):
 
         return widget
 
-    def _build_fit_and_param_tabs(
-        self, parent: QWidget | None
-    ) -> tuple[QWidget, QWidget]:
+    def _build_fit_and_param_tabs(self, parent: QWidget | None) -> tuple[QWidget, QWidget]:
         """Build the *Fit Function* and *Parameters* tab widgets.
 
         The two widgets share a connection: when the editor contents change the
@@ -1034,9 +1015,7 @@ class CurveFitPlugin(TransformPlugin):
         editor = EditorWidget(fit_widget)
         editor.set_text(self.fit_code)
         if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
-            editor.set_syntax_error(
-                self.fit_code_syntax_error_line, self.fit_code_syntax_error_message
-            )
+            editor.set_syntax_error(self.fit_code_syntax_error_line, self.fit_code_syntax_error_message)
         fit_layout.addWidget(editor)
         fit_widget.setLayout(fit_layout)
 
@@ -1052,8 +1031,7 @@ class CurveFitPlugin(TransformPlugin):
         initial_check = QCheckBox("Calculate initial-parameter trace", param_container)
         initial_check.setChecked(self.show_initial_trace)
         initial_check.setToolTip(
-            "When enabled, stores a trace of the fitting function evaluated "
-            "with the initial parameter values (p0)."
+            "When enabled, stores a trace of the fitting function evaluated " "with the initial parameter values (p0)."
         )
         param_layout.addWidget(initial_check)
 
@@ -1072,9 +1050,7 @@ class CurveFitPlugin(TransformPlugin):
             old_names = list(self.param_names)
             self._update_param_names(code)
             if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
-                editor.set_syntax_error(
-                    self.fit_code_syntax_error_line, self.fit_code_syntax_error_message
-                )
+                editor.set_syntax_error(self.fit_code_syntax_error_line, self.fit_code_syntax_error_message)
             else:
                 editor.clear_syntax_error()
             # Flush current table values into param_settings.
@@ -1160,10 +1136,7 @@ class CurveFitPlugin(TransformPlugin):
         self.param_names = data.get("param_names", _parse_fit_params(self.fit_code))
         raw_settings = data.get("param_settings", {})
         self.param_settings = {
-            name: {
-                k: (float(v) if v is not None else None)
-                for k, v in entry.items()
-            }
+            name: {k: (float(v) if v is not None else None) for k, v in entry.items()}
             for name, entry in raw_settings.items()
         }
         self.show_initial_trace = data.get("show_initial_trace", False)

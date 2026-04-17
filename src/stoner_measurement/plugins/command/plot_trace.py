@@ -338,9 +338,7 @@ class PlotTraceCommand(CommandPlugin):
         """
         if self.advanced_mode:
             if not self.x_expr or not self.y_expr:
-                self.log.warning(
-                    "PlotTrace: x_expr or y_expr is empty — skipping plot."
-                )
+                self.log.warning("PlotTrace: x_expr or y_expr is empty — skipping plot.")
                 return
             x_data = self.eval(self.x_expr)
             y_data = self.eval(self.y_expr)
@@ -349,8 +347,7 @@ class PlotTraceCommand(CommandPlugin):
             traces = self.engine_namespace.get("_traces", {})
             if not self.trace_key or self.trace_key not in traces:
                 self.log.warning(
-                    "PlotTrace: trace %r not found in _traces catalogue — "
-                    "skipping plot.",
+                    "PlotTrace: trace %r not found in _traces catalogue — " "skipping plot.",
                     self.trace_key,
                 )
                 return

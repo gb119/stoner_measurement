@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 import pyqtgraph as pg
+from PyQt6 import QtGui
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QFormLayout,
@@ -34,13 +35,11 @@ from stoner_measurement.scan.base import BaseScanGenerator
 from stoner_measurement.ui.editor_widget import EditorWidget
 
 _MAX_NUM_POINTS = 10_000
-_DEFAULT_SCAN_CODE = textwrap.dedent(
-    """\
+_DEFAULT_SCAN_CODE = textwrap.dedent("""\
     def scan(ix, omega):
         \"\"\"Example arbitrary scan: one sine period over the scan length.\"\"\"
         return np.sin(ix * omega)
-    """
-)
+    """)
 _FORBIDDEN_AST_NODES: tuple[type[ast.AST], ...] = (
     ast.AsyncFor,
     ast.AsyncFunctionDef,
@@ -137,14 +136,8 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         """Validate AST safety and required function shape."""
         for node in ast.walk(tree):
             if isinstance(node, _FORBIDDEN_AST_NODES):
-                return getattr(node, "lineno", None), (
-                    f"Unsupported statement in scan code: {type(node).__name__}."
-                )
-        scan_functions = [
-            node
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "scan"
-        ]
+                return getattr(node, "lineno", None), (f"Unsupported statement in scan code: {type(node).__name__}.")
+        scan_functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "scan"]
         if len(scan_functions) != 1:
             return 1, "Code must define exactly one function named scan(ix, omega)."
         scan_function = scan_functions[0]
@@ -174,7 +167,9 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             "numpy": np,
             "log": logging.getLogger(SEQUENCE_LOGGER_NAME),
         }
-        exec(compile(self._code, "<scan_code>", "exec"), namespace)  # noqa: S102 – full builtins intentional; matches curve_fit plugin contract
+        exec(
+            compile(self._code, "<scan_code>", "exec"), namespace
+        )  # noqa: S102 – full builtins intentional; matches curve_fit plugin contract
         scan = namespace.get("scan")
         return scan if callable(scan) else None
 
@@ -265,10 +260,24 @@ class ArbitraryFunctionScanWidget(QWidget):
         root_layout.addWidget(namespace_label)
         root_layout.addWidget(self._editor)
 
+        # --- Preview plot ---
         self._plot_widget = pg.PlotWidget()
-        self._plot_widget.setLabel("bottom", "Point index")
-        self._plot_widget.setLabel("left", "Value")
-        self._curve = self._plot_widget.plot(pen=pg.mkPen(color="#1f77b4", width=1.5))
+
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        font.setBold(True)
+        font.setFamily("Arial")
+
+        axis_pen = pg.mkPen(color="white", width=2)
+        for axis, label in zip(["left", "bottom"], ["Value", "Index"]):
+            axis = self._plot_widget.getAxis(axis)
+            axis.setTextPen(pg.mkPen("white"))
+            axis.setTickFont(font)
+            axis.setLabel(
+                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+            )
+            axis.setPen(axis_pen)
+        self._curve = self._plot_widget.plot(pen=pg.mkPen(color="yellow", width=2.5))
         root_layout.addWidget(self._plot_widget)
 
         self.setLayout(root_layout)

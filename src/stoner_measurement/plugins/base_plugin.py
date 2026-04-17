@@ -115,7 +115,7 @@ def _inline_format(raw: str) -> str:
     parts: list[str] = []
     last_end = 0
     for m in _INLINE_RE.finditer(raw):
-        parts.append(_html_mod.escape(raw[last_end:m.start()]))
+        parts.append(_html_mod.escape(raw[last_end : m.start()]))
         if m.group("dbl") is not None:
             parts.append(f"<code>{_html_mod.escape(m.group('dbl_text'))}</code>")
         elif m.group("bold") is not None:
@@ -202,9 +202,7 @@ def _docstring_to_html(plugin_name: str, doc: str) -> str:
                 skip_section = True
             else:
                 skip_section = False
-                html_parts.append(
-                    f"<h4>{_html_mod.escape(section_m.group(1))}</h4>"
-                )
+                html_parts.append(f"<h4>{_html_mod.escape(section_m.group(1))}</h4>")
             next_is_code = False
             if len(lines) == 1:
                 continue
@@ -221,25 +219,17 @@ def _docstring_to_html(plugin_name: str, doc: str) -> str:
         # ---- Code block (introduced by previous ``::`` paragraph) -----------
         if next_is_code:
             # Strip the common 4-space indent and render as preformatted text.
-            code_lines = [
-                line[4:] if line.startswith("    ") else line for line in lines
-            ]
+            code_lines = [line[4:] if line.startswith("    ") else line for line in lines]
             code = "\n".join(code_lines).strip()
-            html_parts.append(
-                f"<pre><code>{_html_mod.escape(code)}</code></pre>"
-            )
+            html_parts.append(f"<pre><code>{_html_mod.escape(code)}</code></pre>")
             next_is_code = False
             continue
 
         # ---- All-indented block — standalone code block ----------------------
         if all(line.startswith("    ") or not line.strip() for line in lines):
-            code_lines = [
-                line[4:] if line.startswith("    ") else "" for line in lines
-            ]
+            code_lines = [line[4:] if line.startswith("    ") else "" for line in lines]
             code = "\n".join(code_lines).strip()
-            html_parts.append(
-                f"<pre><code>{_html_mod.escape(code)}</code></pre>"
-            )
+            html_parts.append(f"<pre><code>{_html_mod.escape(code)}</code></pre>")
             continue
 
         # ---- Bullet list -----------------------------------------------------
@@ -253,9 +243,7 @@ def _docstring_to_html(plugin_name: str, doc: str) -> str:
                 elif items_text:
                     # Continuation line — append to the previous item.
                     items_text[-1] += " " + line.strip()
-            li_tags = "".join(
-                f"<li>{_inline_format(item)}</li>" for item in items_text if item
-            )
+            li_tags = "".join(f"<li>{_inline_format(item)}</li>" for item in items_text if item)
             html_parts.append(f"<ul>{li_tags}</ul>")
             continue
 
@@ -533,9 +521,7 @@ class BasePlugin(ABC):
                 If *value* is not a valid Python identifier.
         """
         if not value or not value.isidentifier():
-            raise ValueError(
-                f"instance_name must be a valid Python identifier, got {value!r}"
-            )
+            raise ValueError(f"instance_name must be a valid Python identifier, got {value!r}")
         old = self.instance_name
         if value == old:
             return
@@ -602,9 +588,7 @@ class BasePlugin(ABC):
         return d
 
     @classmethod
-    def from_json(
-        cls, data: dict[str, Any], parent: QObject | None = None
-    ) -> BasePlugin:
+    def from_json(cls, data: dict[str, Any], parent: QObject | None = None) -> BasePlugin:
         """Reconstruct a plugin from a serialised dict produced by :meth:`to_json`.
 
         Uses the ``"class"`` field to import the concrete plugin class, creates
@@ -697,9 +681,7 @@ class BasePlugin(ABC):
         layout = QFormLayout(widget)
 
         name_edit = QLineEdit(self.instance_name, widget)
-        name_edit.setToolTip(
-            "Python variable name used to access this plugin in the sequence engine"
-        )
+        name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
 
         def _apply() -> None:
             new_name = name_edit.text().strip()
@@ -902,9 +884,7 @@ class BasePlugin(ABC):
         about_widget.setHtml(about_html)
         return (f"{self.name} \u2013 About", about_widget)
 
-    def config_tabs(
-        self, parent: QWidget | None = None
-    ) -> list[tuple[str, QWidget]]:
+    def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return a list of ``(tab_title, widget)`` pairs for the config panel.
 
         Each pair contributes one tab to the right-hand configuration panel.

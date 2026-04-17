@@ -146,9 +146,7 @@ class SettingsDialog(QDialog):
         """Open a directory-chooser and populate the data-directory field."""
         current = self._data_dir_edit.text().strip()
         start = current if Path(current).is_dir() else ""
-        path = QFileDialog.getExistingDirectory(
-            self, "Select Default Data Directory", start
-        )
+        path = QFileDialog.getExistingDirectory(self, "Select Default Data Directory", start)
         if path:
             self._data_dir_edit.setText(path)
 

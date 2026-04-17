@@ -297,9 +297,7 @@ class _SequenceTreeWidget(QTreeWidget):
     # Helpers
     # ------------------------------------------------------------------
 
-    def set_new_item_factory(
-        self, factory: Callable[[str], QTreeWidgetItem | None] | None
-    ) -> None:
+    def set_new_item_factory(self, factory: Callable[[str], QTreeWidgetItem | None] | None) -> None:
         """Register *factory* as the callable used to create new tree items.
 
         The factory is invoked when a plugin is dragged from the
@@ -374,11 +372,7 @@ class _SequenceTreeWidget(QTreeWidget):
         item = QTreeWidgetItem([text])
         item.setData(0, _EP_NAME_ROLE, ep_name)
         item.setData(0, _PLUGIN_INSTANCE_ROLE, plugin)
-        flags = (
-            Qt.ItemFlag.ItemIsEnabled
-            | Qt.ItemFlag.ItemIsSelectable
-            | Qt.ItemFlag.ItemIsDragEnabled
-        )
+        flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled
         if self._is_sequence_plugin_instance(plugin):
             flags |= Qt.ItemFlag.ItemIsDropEnabled
             font = item.font(0)
@@ -587,22 +581,14 @@ class _SequenceTreeWidget(QTreeWidget):
             target.setExpanded(True)
         elif pos == QAbstractItemView.DropIndicatorPosition.AboveItem:
             target_parent = target.parent()
-            idx = (
-                target_parent.indexOfChild(target)
-                if target_parent is not None
-                else self.indexOfTopLevelItem(target)
-            )
+            idx = target_parent.indexOfChild(target) if target_parent is not None else self.indexOfTopLevelItem(target)
             if target_parent is not None:
                 target_parent.insertChild(idx, new_item)
             else:
                 self.insertTopLevelItem(idx, new_item)
         else:  # BelowItem or OnViewport with non-None target
             target_parent = target.parent()
-            idx = (
-                target_parent.indexOfChild(target)
-                if target_parent is not None
-                else self.indexOfTopLevelItem(target)
-            )
+            idx = target_parent.indexOfChild(target) if target_parent is not None else self.indexOfTopLevelItem(target)
             if target_parent is not None:
                 target_parent.insertChild(idx + 1, new_item)
             else:
@@ -1003,9 +989,7 @@ class DockPanel(QWidget):
         self._sequence_tree.set_new_item_factory(self._make_new_step_item)
         # Enable right-click context menu on the sequence tree.
         self._sequence_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._sequence_tree.customContextMenuRequested.connect(
-            self._show_sequence_context_menu
-        )
+        self._sequence_tree.customContextMenuRequested.connect(self._show_sequence_context_menu)
 
         # --- Control buttons ---
         self._add_step_btn = QPushButton("Add Step")
@@ -1035,9 +1019,7 @@ class DockPanel(QWidget):
         self._remove_step_btn.clicked.connect(self._remove_step)
         self._sequence_tree.delete_requested.connect(self._remove_step)
         self._sequence_tree.itemSelectionChanged.connect(self._on_selection_changed)
-        self._instrument_list.itemDoubleClicked.connect(
-            lambda item, col: self._on_instrument_double_clicked()
-        )
+        self._instrument_list.itemDoubleClicked.connect(lambda item, col: self._on_instrument_double_clicked())
         self._instrument_filter.textChanged.connect(self._filter_instruments)
 
         # Populate instrument list and monitoring widgets
@@ -1079,11 +1061,7 @@ class DockPanel(QWidget):
                 leaf = QTreeWidgetItem([ep_name])
                 leaf.setData(0, _EP_NAME_ROLE, ep_name)
                 leaf.setToolTip(0, plugin.tooltip())
-                leaf.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                    | Qt.ItemFlag.ItemIsDragEnabled
-                )
+                leaf.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
                 category_item.addChild(leaf)
             category_item.setExpanded(True)
 
@@ -1099,11 +1077,7 @@ class DockPanel(QWidget):
                 leaf = QTreeWidgetItem([ep_name])
                 leaf.setData(0, _EP_NAME_ROLE, ep_name)
                 leaf.setToolTip(0, plugin.tooltip())
-                leaf.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                    | Qt.ItemFlag.ItemIsDragEnabled
-                )
+                leaf.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
                 category_item.addChild(leaf)
             category_item.setExpanded(True)
 
@@ -1332,9 +1306,7 @@ class DockPanel(QWidget):
     # Instance-name uniqueness helpers
     # ------------------------------------------------------------------
 
-    def _current_instance_names(
-        self, exclude_plugin: BasePlugin | None = None
-    ) -> set[str]:
+    def _current_instance_names(self, exclude_plugin: BasePlugin | None = None) -> set[str]:
         """Return instance names of all step plugins currently in the tree.
 
         Args:
@@ -1446,8 +1418,7 @@ class DockPanel(QWidget):
             return (plugin, [_item_to_step(item.child(j)) for j in range(item.childCount())])
 
         return [
-            _item_to_step(self._sequence_tree.topLevelItem(i))
-            for i in range(self._sequence_tree.topLevelItemCount())
+            _item_to_step(self._sequence_tree.topLevelItem(i)) for i in range(self._sequence_tree.topLevelItemCount())
         ]
 
     def load_sequence(self, steps: list[_SequenceStep]) -> None:
@@ -1669,9 +1640,7 @@ class DockPanel(QWidget):
             num += 1
         return f"{base}_{num}"
 
-    def _paste_adjust_names(
-        self, step: _SequenceStep, allocated: set[str]
-    ) -> _SequenceStep:
+    def _paste_adjust_names(self, step: _SequenceStep, allocated: set[str]) -> _SequenceStep:
         """Recursively adjust plugin instance names in *step* to avoid collisions.
 
         Mutates the plugin instances in *step* in-place (safe because they have
@@ -1727,9 +1696,7 @@ class DockPanel(QWidget):
             new_name = self._compute_paste_name(plugin.instance_name, existing | allocated)
             plugin.instance_name = new_name
             allocated.add(new_name)
-            new_sub = [
-                self._paste_adjust_names_inner(s, allocated, existing) for s in sub_steps
-            ]
+            new_sub = [self._paste_adjust_names_inner(s, allocated, existing) for s in sub_steps]
             return (plugin, new_sub)
         new_name = self._compute_paste_name(step.instance_name, existing | allocated)
         step.instance_name = new_name
@@ -1882,15 +1849,11 @@ class DockPanel(QWidget):
             if parent is None:
                 base_idx = self._sequence_tree.indexOfTopLevelItem(anchor)
                 for i, step in enumerate(steps):
-                    new_items.append(
-                        self._load_step(step, parent_item=None, insert_index=base_idx + 1 + i)
-                    )
+                    new_items.append(self._load_step(step, parent_item=None, insert_index=base_idx + 1 + i))
             else:
                 base_idx = parent.indexOfChild(anchor)
                 for i, step in enumerate(steps):
-                    new_items.append(
-                        self._load_step(step, parent_item=parent, insert_index=base_idx + 1 + i)
-                    )
+                    new_items.append(self._load_step(step, parent_item=parent, insert_index=base_idx + 1 + i))
 
         # Select all newly pasted items so the user can see what was inserted.
         self._sequence_tree.clearSelection()

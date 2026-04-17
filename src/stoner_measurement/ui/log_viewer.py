@@ -57,8 +57,7 @@ class LogViewerWindow(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             parent,
-            Qt.WindowType.Window
-            | Qt.WindowType.WindowStaysOnTopHint,
+            Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint,
         )
         self.setWindowTitle("Log Viewer")
         self.resize(700, 400)
@@ -70,9 +69,7 @@ class LogViewerWindow(QWidget):
         mono.setStyleHint(QFont.StyleHint.Monospace)
         self._output.setFont(mono)
         self._output.setMaximumBlockCount(2000)
-        self._output.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Toolbar row ----------------------------------------------------------
         self._btn_clear = QPushButton("Clear", self)

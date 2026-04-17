@@ -177,9 +177,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         self.execute()
 
-    def config_tabs(
-        self, parent: QWidget | None = None
-    ) -> list[tuple[str, QWidget]]:
+    def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return configuration tabs combining general and plugin-specific settings.
 
         Overrides the base-class implementation so that command plugins present
