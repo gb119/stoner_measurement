@@ -12,9 +12,11 @@ tab-delimited text file.  Two save modes are supported:
 
 from __future__ import annotations
 
+import pathlib
 import re
 from typing import Any
 
+import numpy as np
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -117,6 +119,14 @@ def _flatten_to_metadata(obj: Any, prefix: str = "") -> list[str]:
     return entries
 
 
+def _to_float_or_nan(value: Any) -> float:
+    """Return *value* as float, or NaN when it cannot be converted."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 class SaveCommand(CommandPlugin):
     """Command plugin that saves current trace or state-control data to disc.
 
@@ -145,7 +155,8 @@ class SaveCommand(CommandPlugin):
     * The remaining cells of row 0 are column headers — one per data column.
       In trace mode each header has the form
       ``"{channel_name}:{axis_label} ({axis_units})"``.  In data mode the
-      DataFrame column names are used directly.
+      DataFrame index is written first (header ``"index"`` unless the index is
+      named), followed by DataFrame column names.
     * The remaining cells of column 0 (rows 1 onwards) hold flattened
       key-value metadata derived from two sources:
 
@@ -278,7 +289,9 @@ class SaveCommand(CommandPlugin):
         The accumulated :class:`~pandas.DataFrame` from the
         :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
         instance named by :attr:`data_source` (or the ``data`` kwarg) is saved.
-        DataFrame column names are used directly as column headers.
+        The DataFrame index is written as the first numerical column (header
+        ``"index"`` unless the index is named), followed by DataFrame column
+        names.
 
         The file layout is:
 
@@ -338,47 +351,58 @@ class SaveCommand(CommandPlugin):
             True
             >>> engine.shutdown()
         """
-        import pathlib
+        _save_mode, _trace_keys, _data_source, _no_overwrite = self._resolve_effective_options(
+            trace=trace,
+            data=data,
+            no_overwrite=no_overwrite,
+        )
+        dest = self._resolve_destination(no_overwrite=_no_overwrite)
+        ns = self.engine_namespace
+        metadata = self._build_metadata(ns=ns)
+        columns = self._build_data_columns(
+            ns=ns,
+            save_mode=_save_mode,
+            trace_keys=_trace_keys,
+            data_source=_data_source,
+        )
+        rows = self._build_rows(metadata=metadata, columns=columns)
+        self._write_rows(dest=dest, rows=rows)
+        self.log.info("Data saved to %s", dest)
 
-        import numpy as np
-
-        from stoner_measurement.plugins.base_plugin import BasePlugin
-
-        # ------------------------------------------------------------------
-        # Validate and resolve per-call overrides.
-        # ------------------------------------------------------------------
-
+    def _resolve_effective_options(
+        self,
+        *,
+        trace: str | list[str] | None,
+        data: str | None,
+        no_overwrite: bool | None,
+    ) -> tuple[str, set[str] | None, str, bool]:
+        """Resolve per-call overrides into effective save settings."""
         if trace is not None and data is not None:
             raise ValueError("SaveCommand.execute(): 'trace' and 'data' are mutually exclusive")
 
-        # Effective save mode: kwarg wins over configured attribute.
         if trace is not None:
-            _save_mode = "traces"
+            save_mode = "traces"
         elif data is not None:
-            _save_mode = "data"
+            save_mode = "data"
         else:
-            _save_mode = self.save_mode
+            save_mode = self.save_mode
 
-        # Effective no-overwrite flag.
-        _no_overwrite = self.no_overwrite if no_overwrite is None else no_overwrite
-
-        # Effective trace filter: kwarg wins over configured trace_selection.
-        # When 'trace' kwarg is given, normalise to a set of allowed keys.
+        trace_keys: set[str] | None
         if trace is not None:
-            _trace_keys: set[str] | None = {trace} if isinstance(trace, str) else set(trace)
+            trace_keys = {trace} if isinstance(trace, str) else set(trace)
         else:
-            _trace_keys = None  # fall back to trace_selection per-key logic
+            trace_keys = None
 
-        # Effective data source: kwarg wins over configured data_source.
-        _data_source = data if data is not None else self.data_source
+        data_source = data if data is not None else self.data_source
+        effective_no_overwrite = self.no_overwrite if no_overwrite is None else no_overwrite
+        return save_mode, trace_keys, data_source, effective_no_overwrite
 
-        # ------------------------------------------------------------------
-        # Resolve file path.
-        # ------------------------------------------------------------------
-
+    def _resolve_destination(self, *, no_overwrite: bool) -> pathlib.Path:
+        """Evaluate :attr:`path_expr`, resolve to a writable path, and apply no-overwrite."""
         path_val = self.eval(self.path_expr)
         if not isinstance(path_val, str):
             raise TypeError(f"SaveCommand.path_expr must evaluate to a str, got {type(path_val).__name__!r}")
+
         dest = pathlib.Path(path_val)
         if not dest.is_absolute():
             from stoner_measurement.ui.settings_dialog import (
@@ -390,13 +414,9 @@ class SaveCommand(CommandPlugin):
             data_dir = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
             if data_dir:
                 dest = pathlib.Path(data_dir) / dest
+
         dest.parent.mkdir(parents=True, exist_ok=True)
-
-        # ------------------------------------------------------------------
-        # Honour no_overwrite: find a free filename if the path already exists.
-        # ------------------------------------------------------------------
-
-        if _no_overwrite and dest.exists():
+        if no_overwrite and dest.exists():
             stem = dest.stem
             suffix = dest.suffix
             parent_dir = dest.parent
@@ -404,19 +424,15 @@ class SaveCommand(CommandPlugin):
             while dest.exists():
                 dest = parent_dir / f"{stem}_{counter:03d}{suffix}"
                 counter += 1
+        return dest
 
-        ns = self.engine_namespace
-        engine = self.sequence_engine
-
-        # ------------------------------------------------------------------
-        # Build metadata entries for column 0.
-        # ------------------------------------------------------------------
+    def _build_metadata(self, *, ns: dict[str, Any]) -> list[str]:
+        """Build flattened metadata strings for the first output column."""
+        from stoner_measurement.plugins.base_plugin import BasePlugin
 
         metadata: list[str] = []
-
-        # 1. Flattened to_json() state from every registered base plugin.
         seen_ids: set[int] = set()
-        for var_name in engine._plugin_var_names.values():  # noqa: SLF001
+        for var_name in self.sequence_engine._plugin_var_names.values():  # noqa: SLF001
             plugin = ns.get(var_name)
             if isinstance(plugin, BasePlugin) and id(plugin) not in seen_ids:
                 seen_ids.add(id(plugin))
@@ -424,7 +440,6 @@ class SaveCommand(CommandPlugin):
                 prefix = str(state.get("instance_name", var_name))
                 metadata.extend(_flatten_to_metadata(state, prefix))
 
-        # 2. Current scalar readings from the _values catalog.
         values_catalog: dict[str, str] = ns.get("_values", {})
         for key, expr in values_catalog.items():
             try:
@@ -432,70 +447,105 @@ class SaveCommand(CommandPlugin):
                 metadata.extend(_flatten_to_metadata(val, key))
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 self.log.debug("Failed to evaluate value %r: %s", key, exc)
-        # Build data columns (trace mode or data mode).
-        # ------------------------------------------------------------------
+        return metadata
 
-        # Each entry: (header_string, 1-D numpy array)
+    def _build_data_columns(
+        self,
+        *,
+        ns: dict[str, Any],
+        save_mode: str,
+        trace_keys: set[str] | None,
+        data_source: str,
+    ) -> list[tuple[str, np.ndarray]]:
+        """Build numeric columns and headers for traces or DataFrame data mode."""
+        if save_mode == "data":
+            return self._build_data_mode_columns(ns=ns, data_source=data_source)
+        return self._build_trace_mode_columns(ns=ns, trace_keys=trace_keys)
+
+    def _build_data_mode_columns(
+        self,
+        *,
+        ns: dict[str, Any],
+        data_source: str,
+    ) -> list[tuple[str, np.ndarray]]:
+        """Build numeric columns from a state-control DataFrame including the index first."""
+        if not data_source:
+            self.log.warning("SaveCommand: no data_source configured for data mode")
+            return []
+        source_plugin = ns.get(data_source)
+        if source_plugin is None:
+            self.log.warning("SaveCommand: data_source %r not found in namespace", data_source)
+            return []
+        df = getattr(source_plugin, "data", None)
+        if df is None:
+            self.log.warning("SaveCommand: plugin %r has no 'data' attribute", data_source)
+            return []
+        if df.empty:
+            self.log.debug("SaveCommand: plugin %r data is empty — writing headers only", data_source)
+
         columns: list[tuple[str, np.ndarray]] = []
+        index_name = str(df.index.name) if df.index.name else "index"
+        index_arr = np.fromiter(
+            (_to_float_or_nan(value) for value in df.index),
+            dtype=float,
+            count=len(df.index),
+        )
+        columns.append((index_name, index_arr))
+        for col_name in df.columns:
+            arr = df[col_name].to_numpy(dtype=float, na_value=float("nan"))
+            columns.append((str(col_name), arr))
+        return columns
 
-        if _save_mode == "data":
-            # Data mode: use a StateControlPlugin's accumulated DataFrame.
-            if not _data_source:
-                self.log.warning("SaveCommand: no data_source configured for data mode")
-                return
-            source_plugin = ns.get(_data_source)
-            if source_plugin is None:
-                self.log.warning("SaveCommand: data_source %r not found in namespace", _data_source)
-                return
-            df = getattr(source_plugin, "data", None)
-            if df is None:
-                self.log.warning("SaveCommand: plugin %r has no 'data' attribute", _data_source)
-                return
-            if df.empty:
-                self.log.debug("SaveCommand: plugin %r data is empty — writing headers only", _data_source)
-            for col_name in df.columns:
-                arr = df[col_name].to_numpy(dtype=float, na_value=float("nan"))
-                columns.append((str(col_name), arr))
-        else:
-            # Trace mode: use selected entries from the _traces catalog.
-            traces_catalog: dict[str, str] = ns.get("_traces", {})
-            for trace_key, expr in traces_catalog.items():
-                # Apply filter: kwarg whitelist takes priority, then trace_selection.
-                if _trace_keys is not None:
-                    if trace_key not in _trace_keys:
-                        continue
-                elif not self.trace_selection.get(trace_key, True):
+    def _build_trace_mode_columns(
+        self,
+        *,
+        ns: dict[str, Any],
+        trace_keys: set[str] | None,
+    ) -> list[tuple[str, np.ndarray]]:
+        """Build numeric columns from selected traces."""
+        columns: list[tuple[str, np.ndarray]] = []
+        traces_catalog: dict[str, str] = ns.get("_traces", {})
+        for trace_key, expr in traces_catalog.items():
+            if trace_keys is not None:
+                if trace_key not in trace_keys:
                     continue
-                try:
-                    trace_data = self.eval(expr)
-                    # channel_name is the part after the first ":" in trace_key.
-                    channel_name = trace_key.split(":", 1)[-1]
-                    for channel_attr in ("x", "y", "d", "e"):
-                        arr: np.ndarray = getattr(trace_data, channel_attr, None)
-                        if arr is None or len(arr) == 0:
-                            continue
-                        label = (trace_data.names or {}).get(channel_attr) or channel_attr
-                        units = (trace_data.units or {}).get(channel_attr, "")
-                        columns.append((f"{channel_name}:{label} ({units})", arr))
-                except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-                    self.log.debug("Failed to evaluate trace %r: %s", trace_key, exc)
-        # Assemble and write the TDI Format 2.0 table.
-        # ------------------------------------------------------------------
+            elif not self.trace_selection.get(trace_key, True):
+                continue
+            try:
+                trace_data = self.eval(expr)
+                channel_name = trace_key.split(":", 1)[-1]
+                for channel_attr in ("x", "y", "d", "e"):
+                    arr: np.ndarray = getattr(trace_data, channel_attr, None)
+                    if arr is None or len(arr) == 0:
+                        continue
+                    label = (trace_data.names or {}).get(channel_attr) or channel_attr
+                    units = (trace_data.units or {}).get(channel_attr, "")
+                    columns.append((f"{channel_name}:{label} ({units})", arr))
+            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                self.log.debug("Failed to evaluate trace %r: %s", trace_key, exc)
+        return columns
 
+    def _build_rows(
+        self,
+        *,
+        metadata: list[str],
+        columns: list[tuple[str, np.ndarray]],
+    ) -> list[list[str]]:
+        """Build row-wise TDI table data from metadata and numeric columns."""
         header_row = ["TDI Format 2.0"] + [col[0] for col in columns]
-
         max_data_len = max((len(col[1]) for col in columns), default=0)
         n_rows = max(len(metadata), max_data_len)
-
         rows: list[list[str]] = [header_row]
         for i in range(n_rows):
             meta_cell = metadata[i] if i < len(metadata) else ""
             data_cells = [str(col[1][i]) if i < len(col[1]) else "" for col in columns]
             rows.append([meta_cell] + data_cells)
+        return rows
 
+    def _write_rows(self, *, dest: pathlib.Path, rows: list[list[str]]) -> None:
+        """Write the tab-delimited TDI rows to *dest*."""
         content = "\n".join("\t".join(row) for row in rows) + "\n"
         dest.write_text(content, encoding="utf-8")
-        self.log.info("Data saved to %s", dest)
 
     def __call__(
         self,
