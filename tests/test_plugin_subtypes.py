@@ -901,9 +901,9 @@ class TestStateControlDataCollection:
         p.ix = 0
         p.value = 2.0
         # Only collect the counter value, not all outputs
-        p.collect(outputs=["counter:Count"])
+        p.collect(outputs=["counter:Value"])
         assert not p.data.empty
-        assert "counter:Count" in p.data.columns
+        assert "counter:Value" in p.data.columns
         assert "value" in p.data.columns
         engine.shutdown()
 
