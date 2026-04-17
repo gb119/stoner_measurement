@@ -70,7 +70,7 @@ class TestFunctionScanGeneratorJson:
     def test_to_json_all_fields_present(self, qapp):
         gen = FunctionScanGenerator()
         d = gen.to_json()
-        for key in ("waveform", "amplitude", "offset", "phase", "periods", "num_points"):
+        for key in ("waveform", "amplitude", "offset", "phase", "exponent", "periods", "num_points"):
             assert key in d
 
     def test_to_json_waveform_as_string(self, qapp):
@@ -84,6 +84,7 @@ class TestFunctionScanGeneratorJson:
             amplitude=2.5,
             offset=0.5,
             phase=45.0,
+            exponent=2.0,
             periods=3.0,
             num_points=50,
         )
@@ -93,6 +94,7 @@ class TestFunctionScanGeneratorJson:
         assert restored.amplitude == 2.5
         assert restored.offset == 0.5
         assert restored.phase == 45.0
+        assert restored.exponent == 2.0
         assert restored.periods == 3.0
         assert restored.num_points == 50
 
@@ -108,6 +110,7 @@ class TestFunctionScanGeneratorJson:
         gen = BaseScanGenerator.from_json(d)
         assert isinstance(gen, FunctionScanGenerator)
         assert gen.amplitude == 1.0
+        assert gen.exponent == 1.0
         assert gen.num_points == 100
 
 
