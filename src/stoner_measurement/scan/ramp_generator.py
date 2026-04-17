@@ -134,7 +134,7 @@ class RampScanGenerator(BaseScanGenerator):
 
     def generate(self) -> np.ndarray:
         """Compute the ramp sequence."""
-        if self._num_points <= 2 or abs(self._end - self._start) < _BASE_EPS:
+        if self._num_points < 2 or abs(self._end - self._start) < _BASE_EPS:
             return self._linear_values()
 
         mode = self._mode

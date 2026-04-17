@@ -69,7 +69,13 @@ _FORBIDDEN_AST_NODES: tuple[type[ast.AST], ...] = (
 
 
 class ArbitraryFunctionScanGenerator(BaseScanGenerator):
-    """Scan generator that evaluates a user-defined ``ramp(ix, omega)`` function."""
+    """Scan generator that evaluates a user-defined ``ramp(ix, omega)`` function.
+
+    Notes:
+        The generator executes user code. Only load configurations from trusted
+        sources. AST validation and restricted builtins reduce risk but do not
+        provide full sandbox isolation.
+    """
 
     def __init__(
         self,
