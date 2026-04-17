@@ -220,7 +220,7 @@ class Lakeshore525(MagnetController, MagnetSupply):
                 Magnet constant in tesla per amp.
         """
         if tesla_per_amp <= 0.0:
-            raise ValueError("Magnet constant must be positive.")
+            raise ValueError(f"Magnet constant must be positive, got {tesla_per_amp}.")
         self._magnet_constant = tesla_per_amp
 
     def set_limits(self, limits: MagnetLimits) -> None:
@@ -285,13 +285,33 @@ class Lakeshore525(MagnetController, MagnetSupply):
         self.write("HEATER 0")
 
     def _query_float(self, command: str) -> float:
-        """Query a numeric value and parse the first comma-separated token."""
+        """Query the instrument and parse the first token of a comma-separated response.
+
+        Args:
+            command (str):
+                Instrument query command expected to return a numeric value.
+
+        Returns:
+            (float):
+                Parsed floating-point value from the response.
+        """
         reply = self.query(command)
         token = reply.split(",", maxsplit=1)[0].strip()
         return float(token)
 
     def _wait_for_ramp_complete(self, *, timeout: float = 600.0, poll_period: float = 0.25) -> None:
-        """Wait for ramp completion, timing out if the state never settles."""
+        """Wait for ramp to reach a terminal or inactive state, timing out if unsuccessful.
+
+        Keyword Parameters:
+            timeout (float):
+                Maximum wait time in seconds before aborting.
+            poll_period (float):
+                Delay between status polls in seconds.
+
+        Raises:
+            TimeoutError:
+                If the ramp does not reach a terminal state before *timeout*.
+        """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             state = self.status.state
