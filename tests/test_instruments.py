@@ -416,7 +416,7 @@ class TestLakeshore525:
         m.heater_on()
         m.heater_off()
         assert m.heater is True
-        assert t.write_log == [b"HEATER 1\r\n", b"HEATER 0\r\n", b"HEATER?\r\n"]
+        assert t.write_log == [b"PSH 1\r\n", b"PSH 0\r\n", b"PSH?\r\n"]
 
     def test_status_maps_state(self):
         t = _null(
@@ -436,6 +436,7 @@ class TestLakeshore525:
         assert status.field == pytest.approx(0.3)
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
+        assert t.write_log == [b"OPSTR?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n", b"PSH?\r\n"]
 
     def test_set_magnet_constant_validation(self):
         m = Lakeshore525(transport=_null())
