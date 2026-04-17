@@ -285,7 +285,7 @@ class Lakeshore525(MagnetController, MagnetSupply):
         self.write("HEATER 0")
 
     def _query_float(self, command: str) -> float:
-        """Query the instrument and parse the first token of a comma-separated response.
+        """Query the instrument and parse a numeric response.
 
         Args:
             command (str):
@@ -293,7 +293,8 @@ class Lakeshore525(MagnetController, MagnetSupply):
 
         Returns:
             (float):
-                Parsed floating-point value from the response.
+                Parsed floating-point value from the response. If the response
+                contains comma-separated tokens, the first token is used.
         """
         reply = self.query(command)
         token = reply.split(",", maxsplit=1)[0].strip()

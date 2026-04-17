@@ -445,7 +445,7 @@ class TestLakeshore525:
         with pytest.raises(ValueError):
             _ = m.current
 
-    def test_wait_for_ramp_complete_times_out_when_state_stays_ramping(self, monkeypatch):
+    def test_wait_for_ramp_timeout_when_ramping(self, monkeypatch):
         m = Lakeshore525(transport=_null())
 
         def _always_ramping(_self):
