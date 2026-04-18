@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QLabel,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -208,16 +207,19 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             "type": "ArbitraryFunctionScanGenerator",
             "num_points": self._num_points,
             "code": self._code,
+            "units": self._units,
         }
 
     @classmethod
     def _from_json_data(cls, data: dict, parent=None) -> ArbitraryFunctionScanGenerator:
         """Reconstruct an :class:`ArbitraryFunctionScanGenerator` from serialised *data*."""
-        return cls(
+        instance = cls(
             num_points=int(data.get("num_points", 100)),
             code=str(data.get("code", _DEFAULT_SCAN_CODE)),
             parent=parent,
         )
+        instance.units = str(data.get("units", ""))
+        return instance
 
 
 class ArbitraryFunctionScanWidget(QWidget):
@@ -241,8 +243,8 @@ class ArbitraryFunctionScanWidget(QWidget):
 
         controls_box = QGroupBox("Parameters")
         controls_form = QFormLayout(controls_box)
-        self._points_spin = QSpinBox()
-        self._points_spin.setRange(2, _MAX_NUM_POINTS)
+        self._points_spin = pg.SpinBox(int=True)
+        self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
         self._points_spin.setValue(self._generator.num_points)
         controls_form.addRow("Points:", self._points_spin)
         root_layout.addWidget(controls_box)

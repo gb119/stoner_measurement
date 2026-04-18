@@ -17,10 +17,8 @@ from PyQt6 import QtGui
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -188,13 +186,14 @@ class RampScanGenerator(BaseScanGenerator):
             "num_points": self._num_points,
             "mode": self._mode.value,
             "base": self._base,
+            "units": self._units,
         }
 
     @classmethod
     def _from_json_data(cls, data: dict, parent=None) -> RampScanGenerator:
         """Reconstruct a :class:`RampScanGenerator` from serialised *data*."""
         mode = RampMode(data.get("mode", RampMode.LINEAR.value))
-        return cls(
+        instance = cls(
             start=float(data.get("start", 0.0)),
             end=float(data.get("end", 1.0)),
             num_points=int(data.get("num_points", 100)),
@@ -202,6 +201,8 @@ class RampScanGenerator(BaseScanGenerator):
             base=float(data.get("base", math.e)),
             parent=parent,
         )
+        instance.units = str(data.get("units", ""))
+        return instance
 
 
 class RampScanWidget(QWidget):
@@ -226,20 +227,18 @@ class RampScanWidget(QWidget):
         controls_box = QGroupBox("Parameters")
         form = QFormLayout(controls_box)
 
-        self._start_spin = QDoubleSpinBox()
-        self._start_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._start_spin.setDecimals(6)
+        self._start_spin = pg.SpinBox()
+        self._start_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._start_spin.setValue(self._generator.start)
         form.addRow("Start:", self._start_spin)
 
-        self._end_spin = QDoubleSpinBox()
-        self._end_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._end_spin.setDecimals(6)
+        self._end_spin = pg.SpinBox()
+        self._end_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._end_spin.setValue(self._generator.end)
         form.addRow("End:", self._end_spin)
 
-        self._points_spin = QSpinBox()
-        self._points_spin.setRange(2, _MAX_NUM_POINTS)
+        self._points_spin = pg.SpinBox(int=True)
+        self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
         self._points_spin.setValue(self._generator.num_points)
         form.addRow("Points:", self._points_spin)
 
@@ -249,9 +248,8 @@ class RampScanWidget(QWidget):
         self._mode_combo.setCurrentIndex(list(RampMode).index(self._generator.mode))
         form.addRow("Mode:", self._mode_combo)
 
-        self._base_spin = QDoubleSpinBox()
-        self._base_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._base_spin.setDecimals(6)
+        self._base_spin = pg.SpinBox()
+        self._base_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._base_spin.setValue(self._generator.base)
         form.addRow("Base:", self._base_spin)
 
@@ -286,6 +284,13 @@ class RampScanWidget(QWidget):
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self._base_spin.valueChanged.connect(self._on_base_changed)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.units_changed.connect(self._update_units)
+        self._update_units(self._generator.units)
+
+    def _update_units(self, units: str) -> None:
+        """Update the suffix of value spinboxes to match *units*."""
+        for spin in (self._start_spin, self._end_spin):
+            spin.setOpts(suffix=units)
 
     def _on_start_changed(self, value: float) -> None:
         """Update generator start."""

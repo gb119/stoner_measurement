@@ -109,3 +109,42 @@ class TestRampScanWidget:
         widget._base_spin.setValue(3.0)
         _x, y = widget._curve.getData()
         assert np.allclose(y, gen.values)
+
+    # ------------------------------------------------------------------
+    # units — widget suffix propagation
+    # ------------------------------------------------------------------
+
+    def test_units_applied_to_start_and_end_spinboxes(self, qapp):
+        gen = RampScanGenerator()
+        widget = RampScanWidget(generator=gen)
+        gen.units = "T"
+        assert widget._start_spin.opts["suffix"] == "T"
+        assert widget._end_spin.opts["suffix"] == "T"
+
+    def test_units_not_applied_to_base_spinbox(self, qapp):
+        gen = RampScanGenerator()
+        widget = RampScanWidget(generator=gen)
+        gen.units = "V"
+        assert widget._base_spin.opts.get("suffix", "") != "V"
+
+    def test_units_initialised_from_generator_at_construction(self, qapp):
+        gen = RampScanGenerator()
+        gen.units = "A"
+        widget = RampScanWidget(generator=gen)
+        assert widget._start_spin.opts["suffix"] == "A"
+        assert widget._end_spin.opts["suffix"] == "A"
+
+    def test_units_to_json_round_trip(self, qapp):
+        gen = RampScanGenerator()
+        gen.units = "V"
+        d = gen.to_json()
+        assert d["units"] == "V"
+        restored = RampScanGenerator._from_json_data(d)
+        assert restored.units == "V"
+
+    def test_units_missing_from_json_defaults_empty(self, qapp):
+        gen = RampScanGenerator()
+        d = gen.to_json()
+        d.pop("units", None)
+        restored = RampScanGenerator._from_json_data(d)
+        assert restored.units == ""

@@ -42,6 +42,10 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
     * **Change notification** — the :attr:`values_changed` signal is emitted
       whenever a parameter is updated; :attr:`current_value_changed` is
       emitted on every iteration step with the current output value.
+    * **Units** — the :attr:`units` property stores a physical unit string
+      (e.g. ``"V"``, ``"T"``).  When set, :attr:`units_changed` is emitted
+      so that connected configuration widgets can update their spinbox
+      suffixes to display the new unit.
 
     Attributes:
         values_changed (pyqtSignal):
@@ -51,14 +55,28 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
             Emitted on each iteration step with the current output value as
             a ``float`` argument.  Consumers can connect this signal to a
             display widget to show the current scan position.
+        units_changed (pyqtSignal):
+            Emitted with the new unit string whenever :attr:`units` is set.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
+
+    Examples:
+        >>> from PyQt6.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> from stoner_measurement.scan.ramp_generator import RampScanGenerator
+        >>> gen = RampScanGenerator()
+        >>> gen.units
+        ''
+        >>> gen.units = 'V'
+        >>> gen.units
+        'V'
     """
 
     values_changed = pyqtSignal()
     current_value_changed = pyqtSignal(float)
+    units_changed = pyqtSignal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the generator state."""
@@ -66,6 +84,33 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         self._cache: np.ndarray | None = None
         self._flags_cache: np.ndarray | None = None
         self._index: int = 0
+        self._units: str = ""
+
+    # ------------------------------------------------------------------
+    # Units property
+    # ------------------------------------------------------------------
+
+    @property
+    def units(self) -> str:
+        """Physical unit string displayed on value spinboxes (e.g. ``"V"``).
+
+        Setting this property emits :attr:`units_changed` so that connected
+        configuration widgets can refresh their spinbox suffixes.  An empty
+        string (the default) means no unit is displayed.  The signal is only
+        emitted when the value actually changes.
+
+        Returns:
+            (str):
+                The current unit string.
+        """
+        return self._units
+
+    @units.setter
+    def units(self, value: str) -> None:
+        new_units = str(value)
+        if new_units != self._units:
+            self._units = new_units
+            self.units_changed.emit(self._units)
 
     @abstractmethod
     def to_json(self) -> dict[str, Any]:

@@ -16,10 +16,8 @@ from PyQt6 import QtGui
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -316,6 +314,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             "exponent": self._exponent,
             "periods": self._periods,
             "num_points": self._num_points,
+            "units": self._units,
         }
 
     @classmethod
@@ -347,7 +346,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             20
         """
         waveform = WaveformType(data.get("waveform", WaveformType.SINE.value))
-        return cls(
+        instance = cls(
             waveform=waveform,
             amplitude=float(data.get("amplitude", 1.0)),
             offset=float(data.get("offset", 0.0)),
@@ -357,6 +356,8 @@ class FunctionScanGenerator(BaseScanGenerator):
             num_points=int(data.get("num_points", 100)),
             parent=parent,
         )
+        instance.units = str(data.get("units", ""))
+        return instance
 
 
 class FunctionScanWidget(QWidget):
@@ -412,48 +413,38 @@ class FunctionScanWidget(QWidget):
         self._waveform_combo.setCurrentIndex(list(WaveformType).index(self._generator.waveform))
         form.addRow("Waveform:", self._waveform_combo)
 
-        self._amplitude_spin = QDoubleSpinBox()
-        self._amplitude_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._amplitude_spin.setSingleStep(0.1)
-        self._amplitude_spin.setDecimals(4)
+        self._amplitude_spin = pg.SpinBox()
+        self._amplitude_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True)
         self._amplitude_spin.setValue(self._generator.amplitude)
         self._amplitude_spin.setToolTip("Peak-to-centre amplitude")
         form.addRow("Amplitude:", self._amplitude_spin)
 
-        self._offset_spin = QDoubleSpinBox()
-        self._offset_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._offset_spin.setSingleStep(0.1)
-        self._offset_spin.setDecimals(4)
+        self._offset_spin = pg.SpinBox()
+        self._offset_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True)
         self._offset_spin.setValue(self._generator.offset)
         self._offset_spin.setToolTip("DC offset")
         form.addRow("Offset:", self._offset_spin)
 
-        self._phase_spin = QDoubleSpinBox()
-        self._phase_spin.setRange(-360.0, 360.0)
-        self._phase_spin.setSingleStep(1.0)
-        self._phase_spin.setDecimals(2)
+        self._phase_spin = pg.SpinBox()
+        self._phase_spin.setOpts(bounds=(-360.0, 360.0), step=1.0, decimals=2)
         self._phase_spin.setValue(self._generator.phase)
         self._phase_spin.setToolTip("Phase shift in degrees")
         form.addRow("Phase (°):", self._phase_spin)
 
-        self._exponent_spin = QDoubleSpinBox()
-        self._exponent_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._exponent_spin.setSingleStep(0.1)
-        self._exponent_spin.setDecimals(4)
+        self._exponent_spin = pg.SpinBox()
+        self._exponent_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4)
         self._exponent_spin.setValue(self._generator.exponent)
         self._exponent_spin.setToolTip("Power-law exponent before scaling")
         form.addRow("Exponent:", self._exponent_spin)
 
-        self._points_spin = QSpinBox()
-        self._points_spin.setRange(2, _MAX_NUM_POINTS)
+        self._points_spin = pg.SpinBox(int=True)
+        self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
         self._points_spin.setValue(self._generator.num_points)
         self._points_spin.setToolTip("Number of points in the sequence")
         form.addRow("Points:", self._points_spin)
 
-        self._periods_spin = QDoubleSpinBox()
-        self._periods_spin.setRange(0.01, 1000.0)
-        self._periods_spin.setSingleStep(0.5)
-        self._periods_spin.setDecimals(2)
+        self._periods_spin = pg.SpinBox()
+        self._periods_spin.setOpts(bounds=(0.01, 1000.0), step=0.5, decimals=2)
         self._periods_spin.setValue(self._generator.periods)
         self._periods_spin.setToolTip("Number of complete periods in the scan")
         form.addRow("Periods:", self._periods_spin)
@@ -492,6 +483,13 @@ class FunctionScanWidget(QWidget):
         self._points_spin.valueChanged.connect(self._on_points_changed)
         self._periods_spin.valueChanged.connect(self._on_periods_changed)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.units_changed.connect(self._update_units)
+        self._update_units(self._generator.units)
+
+    def _update_units(self, units: str) -> None:
+        """Update the suffix of value spinboxes to match *units*."""
+        for spin in (self._amplitude_spin, self._offset_spin):
+            spin.setOpts(suffix=units)
 
     def _on_waveform_changed(self, index: int) -> None:
         """Update generator waveform from combo box selection."""

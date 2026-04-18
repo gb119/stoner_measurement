@@ -141,3 +141,22 @@ class TestArbitraryFunctionScanWidget:
         label_texts = " ".join(lbl.text() for lbl in labels)
         assert "np" in label_texts
         assert "log" in label_texts
+
+    # ------------------------------------------------------------------
+    # units — JSON round-trip
+    # ------------------------------------------------------------------
+
+    def test_units_to_json_round_trip(self, qapp):
+        gen = ArbitraryFunctionScanGenerator()
+        gen.units = "K"
+        d = gen.to_json()
+        assert d["units"] == "K"
+        restored = ArbitraryFunctionScanGenerator._from_json_data(d)
+        assert restored.units == "K"
+
+    def test_units_missing_from_json_defaults_empty(self, qapp):
+        gen = ArbitraryFunctionScanGenerator()
+        d = gen.to_json()
+        d.pop("units", None)
+        restored = ArbitraryFunctionScanGenerator._from_json_data(d)
+        assert restored.units == ""

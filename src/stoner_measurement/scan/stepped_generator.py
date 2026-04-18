@@ -14,7 +14,6 @@ from PyQt6 import QtGui
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -237,6 +236,7 @@ class SteppedScanGenerator(BaseScanGenerator):
             "type": "SteppedScanGenerator",
             "start": self._start,
             "stages": [[t, s, m] for t, s, m in self._stages],
+            "units": self._units,
         }
 
     @classmethod
@@ -266,7 +266,9 @@ class SteppedScanGenerator(BaseScanGenerator):
             [(4.0, 1.0, False)]
         """
         stages = [(float(t), float(s), bool(m)) for t, s, m in data.get("stages", [])]
-        return cls(start=float(data.get("start", 0.0)), stages=stages, parent=parent)
+        instance = cls(start=float(data.get("start", 0.0)), stages=stages, parent=parent)
+        instance.units = str(data.get("units", ""))
+        return instance
 
 
 class SteppedScanWidget(QWidget):
@@ -274,7 +276,7 @@ class SteppedScanWidget(QWidget):
 
     The widget provides two tabs:
 
-    * **Stages** — a :class:`QDoubleSpinBox` for the start value and a
+    * **Stages** — a :class:`~pyqtgraph.SpinBox` for the start value and a
       :class:`QTableWidget` where each row defines one stage (target, step
       size, measure flag).  Rows can be added or removed with buttons below
       the table.
@@ -322,10 +324,8 @@ class SteppedScanWidget(QWidget):
         stages_layout = QVBoxLayout(stages_widget)
 
         start_form = QFormLayout()
-        self._start_spin = QDoubleSpinBox()
-        self._start_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._start_spin.setSingleStep(0.1)
-        self._start_spin.setDecimals(4)
+        self._start_spin = pg.SpinBox()
+        self._start_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True)
         self._start_spin.setValue(self._generator.start)
         self._start_spin.setToolTip("Initial scan value")
         start_form.addRow("Start:", self._start_spin)
@@ -398,6 +398,19 @@ class SteppedScanWidget(QWidget):
         self._add_btn.clicked.connect(self._add_default_row)
         self._remove_btn.clicked.connect(self._remove_selected_row)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.units_changed.connect(self._update_units)
+        self._update_units(self._generator.units)
+
+    def _update_units(self, units: str) -> None:
+        """Update the suffix of all value spinboxes to match *units*."""
+        self._start_spin.setOpts(suffix=units)
+        for row in range(self._table.rowCount()):
+            target_w: pg.SpinBox | None = self._table.cellWidget(row, 0)
+            step_w: pg.SpinBox | None = self._table.cellWidget(row, 1)
+            if target_w is not None:
+                target_w.setOpts(suffix=units)
+            if step_w is not None:
+                step_w.setOpts(suffix=units)
 
     def _add_row(
         self,
@@ -413,18 +426,20 @@ class SteppedScanWidget(QWidget):
             row = self._table.rowCount()
             self._table.insertRow(row)
 
-            target_spin = QDoubleSpinBox()
-            target_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-            target_spin.setSingleStep(0.1)
-            target_spin.setDecimals(4)
+            target_spin = pg.SpinBox()
+            target_spin.setOpts(
+                bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4,
+                siPrefix=True, suffix=self._generator.units,
+            )
             target_spin.setValue(float(target))
             target_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)
 
-            step_spin = QDoubleSpinBox()
-            step_spin.setRange(_MIN_STEP, _SPINBOX_MAX_ABS)
-            step_spin.setSingleStep(0.1)
-            step_spin.setDecimals(4)
+            step_spin = pg.SpinBox()
+            step_spin.setOpts(
+                bounds=(_MIN_STEP, _SPINBOX_MAX_ABS), step=0.1, decimals=4,
+                siPrefix=True, suffix=self._generator.units,
+            )
             step_spin.setValue(float(step))
             step_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 1, step_spin)
@@ -462,8 +477,8 @@ class SteppedScanWidget(QWidget):
             return
         stages: list[tuple[float, float, bool]] = []
         for row in range(self._table.rowCount()):
-            target_w: QDoubleSpinBox | None = self._table.cellWidget(row, 0)
-            step_w: QDoubleSpinBox | None = self._table.cellWidget(row, 1)
+            target_w: pg.SpinBox | None = self._table.cellWidget(row, 0)
+            step_w: pg.SpinBox | None = self._table.cellWidget(row, 1)
             measure_cb: QCheckBox | None = self._table.cellWidget(row, 2)
             if target_w is None or step_w is None or measure_cb is None:
                 continue
