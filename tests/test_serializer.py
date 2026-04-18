@@ -215,7 +215,7 @@ class TestStateControlPluginJson:
 
         plugin = CounterPlugin()
         d = plugin.to_json()
-        assert d["type"] == "state"
+        assert d["type"] == "state_scan"
 
     def test_to_json_includes_scan_generator(self, qapp):
         from stoner_measurement.plugins.state_control import CounterPlugin

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.trace import DummyPlugin
 
@@ -64,4 +62,5 @@ class TestPluginManager:
         # The package registers these entry-points via pyproject.toml
         assert "dummy" in pm.plugins
         assert "counter" in pm.plugins
+        assert "sweep_time" in pm.plugins
         assert "save" in pm.plugins

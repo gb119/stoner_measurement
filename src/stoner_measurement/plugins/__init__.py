@@ -7,9 +7,15 @@ The plugin classes are organised into type-specific sub-packages:
 
 * :mod:`stoner_measurement.plugins.trace` — collects (x, y) data traces from
   instruments (:class:`~stoner_measurement.plugins.trace.base.TracePlugin`).
-* :mod:`stoner_measurement.plugins.state_control` — controls experimental state
-  (field, temperature, motor position, etc.)
-  (:class:`~stoner_measurement.plugins.state_control.base.StateControlPlugin`).
+* :mod:`stoner_measurement.plugins.state` — shared abstract ancestor for both
+  state-scan and state-sweep plugin families
+  (:class:`~stoner_measurement.plugins.state.base.StatePlugin`).
+* :mod:`stoner_measurement.plugins.state_scan` — controls experimental state
+  (field, temperature, motor position, etc.) via discrete-step scanning
+  (:class:`~stoner_measurement.plugins.state_scan.base.StateScanPlugin`).
+* :mod:`stoner_measurement.plugins.state_sweep` — executes sub-sequences in a
+  generator-driven sweep loop
+  (:class:`~stoner_measurement.plugins.state_sweep.base.StateSweepPlugin`).
 * :mod:`stoner_measurement.plugins.monitor` — passively records auxiliary
   quantities at regular intervals
   (:class:`~stoner_measurement.plugins.monitor.base.MonitorPlugin`).
@@ -31,8 +37,14 @@ Built-in example plugins:
 
 * :class:`~stoner_measurement.plugins.trace.dummy.DummyPlugin` — hardware-free
   RSJ I-V model (in :mod:`stoner_measurement.plugins.trace`).
-* :class:`~stoner_measurement.plugins.state_control.counter.CounterPlugin` —
-  hardware-free counter (in :mod:`stoner_measurement.plugins.state_control`).
+* :class:`~stoner_measurement.plugins.state_scan.counter.CounterPlugin` —
+  hardware-free counter (in :mod:`stoner_measurement.plugins.state_scan`).
+
+Legacy aliases:
+
+* :class:`~stoner_measurement.plugins.state_control.StateControlPlugin` —
+  alias for :class:`~stoner_measurement.plugins.state_scan.StateScanPlugin`
+  (in :mod:`stoner_measurement.plugins.state_control`).
 """
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -44,19 +56,27 @@ from stoner_measurement.plugins.command import (
 )
 from stoner_measurement.plugins.monitor import MonitorPlugin
 from stoner_measurement.plugins.sequence import SequencePlugin, TopLevelSequence
+from stoner_measurement.plugins.state import StatePlugin
 from stoner_measurement.plugins.state_control import StateControlPlugin
+from stoner_measurement.plugins.state_scan import CounterPlugin, StateScanPlugin
+from stoner_measurement.plugins.state_sweep import StateSweepPlugin, SweepTimePlugin
 from stoner_measurement.plugins.trace import TraceData, TracePlugin
 from stoner_measurement.plugins.transform import TransformPlugin
 
 __all__ = [
     "BasePlugin",
     "CommandPlugin",
+    "CounterPlugin",
     "DetailsCommand",
     "MonitorPlugin",
     "PlotTraceCommand",
     "SaveCommand",
     "SequencePlugin",
     "StateControlPlugin",
+    "StatePlugin",
+    "StateScanPlugin",
+    "StateSweepPlugin",
+    "SweepTimePlugin",
     "TopLevelSequence",
     "TraceData",
     "TracePlugin",
