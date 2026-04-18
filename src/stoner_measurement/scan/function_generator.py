@@ -440,7 +440,6 @@ class FunctionScanWidget(QWidget):
         self._exponent_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
         self._exponent_spin.setSingleStep(0.1)
         self._exponent_spin.setDecimals(4)
-        self._exponent_spin.setOpts(siPrefix=True)
         self._exponent_spin.setValue(self._generator.exponent)
         self._exponent_spin.setToolTip("Power-law exponent before scaling")
         form.addRow("Exponent:", self._exponent_spin)
