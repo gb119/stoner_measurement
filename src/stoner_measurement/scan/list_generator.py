@@ -168,6 +168,7 @@ class ListScanGenerator(BaseScanGenerator):
         return {
             "type": "ListScanGenerator",
             "stages": [[t, m] for t, m in self._stages],
+            "units": self._units,
         }
 
     @classmethod
@@ -195,7 +196,9 @@ class ListScanGenerator(BaseScanGenerator):
             [(1.0, True), (3.0, False)]
         """
         stages = [(float(t), bool(m)) for t, m in data.get("stages", [])]
-        return cls(stages=stages, parent=parent)
+        instance = cls(stages=stages, parent=parent)
+        instance.units = str(data.get("units", ""))
+        return instance
 
 
 class ListScanWidget(QWidget):
@@ -301,6 +304,15 @@ class ListScanWidget(QWidget):
         self._add_btn.clicked.connect(self._add_default_row)
         self._remove_btn.clicked.connect(self._remove_selected_row)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.units_changed.connect(self._update_units)
+        self._update_units(self._generator.units)
+
+    def _update_units(self, units: str) -> None:
+        """Update the suffix of all target spinboxes to match *units*."""
+        for row in range(self._table.rowCount()):
+            target_w: pg.SpinBox | None = self._table.cellWidget(row, 0)
+            if target_w is not None:
+                target_w.setOpts(suffix=units)
 
     def _add_row(
         self,
@@ -316,7 +328,8 @@ class ListScanWidget(QWidget):
             self._table.insertRow(row)
 
             target_spin = pg.SpinBox()
-            target_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True)
+            target_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True,
+                                suffix=self._generator.units)
             target_spin.setValue(float(target))
             target_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)

@@ -207,16 +207,19 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             "type": "ArbitraryFunctionScanGenerator",
             "num_points": self._num_points,
             "code": self._code,
+            "units": self._units,
         }
 
     @classmethod
     def _from_json_data(cls, data: dict, parent=None) -> ArbitraryFunctionScanGenerator:
         """Reconstruct an :class:`ArbitraryFunctionScanGenerator` from serialised *data*."""
-        return cls(
+        instance = cls(
             num_points=int(data.get("num_points", 100)),
             code=str(data.get("code", _DEFAULT_SCAN_CODE)),
             parent=parent,
         )
+        instance.units = str(data.get("units", ""))
+        return instance
 
 
 class ArbitraryFunctionScanWidget(QWidget):

@@ -314,6 +314,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             "exponent": self._exponent,
             "periods": self._periods,
             "num_points": self._num_points,
+            "units": self._units,
         }
 
     @classmethod
@@ -345,7 +346,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             20
         """
         waveform = WaveformType(data.get("waveform", WaveformType.SINE.value))
-        return cls(
+        instance = cls(
             waveform=waveform,
             amplitude=float(data.get("amplitude", 1.0)),
             offset=float(data.get("offset", 0.0)),
@@ -355,6 +356,8 @@ class FunctionScanGenerator(BaseScanGenerator):
             num_points=int(data.get("num_points", 100)),
             parent=parent,
         )
+        instance.units = str(data.get("units", ""))
+        return instance
 
 
 class FunctionScanWidget(QWidget):
@@ -480,6 +483,13 @@ class FunctionScanWidget(QWidget):
         self._points_spin.valueChanged.connect(self._on_points_changed)
         self._periods_spin.valueChanged.connect(self._on_periods_changed)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.units_changed.connect(self._update_units)
+        self._update_units(self._generator.units)
+
+    def _update_units(self, units: str) -> None:
+        """Update the suffix of value spinboxes to match *units*."""
+        for spin in (self._amplitude_spin, self._offset_spin):
+            spin.setOpts(suffix=units)
 
     def _on_waveform_changed(self, index: int) -> None:
         """Update generator waveform from combo box selection."""

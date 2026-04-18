@@ -186,13 +186,14 @@ class RampScanGenerator(BaseScanGenerator):
             "num_points": self._num_points,
             "mode": self._mode.value,
             "base": self._base,
+            "units": self._units,
         }
 
     @classmethod
     def _from_json_data(cls, data: dict, parent=None) -> RampScanGenerator:
         """Reconstruct a :class:`RampScanGenerator` from serialised *data*."""
         mode = RampMode(data.get("mode", RampMode.LINEAR.value))
-        return cls(
+        instance = cls(
             start=float(data.get("start", 0.0)),
             end=float(data.get("end", 1.0)),
             num_points=int(data.get("num_points", 100)),
@@ -200,6 +201,8 @@ class RampScanGenerator(BaseScanGenerator):
             base=float(data.get("base", math.e)),
             parent=parent,
         )
+        instance.units = str(data.get("units", ""))
+        return instance
 
 
 class RampScanWidget(QWidget):
@@ -281,6 +284,13 @@ class RampScanWidget(QWidget):
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self._base_spin.valueChanged.connect(self._on_base_changed)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.units_changed.connect(self._update_units)
+        self._update_units(self._generator.units)
+
+    def _update_units(self, units: str) -> None:
+        """Update the suffix of value spinboxes to match *units*."""
+        for spin in (self._start_spin, self._end_spin):
+            spin.setOpts(suffix=units)
 
     def _on_start_changed(self, value: float) -> None:
         """Update generator start."""

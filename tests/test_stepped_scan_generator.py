@@ -430,3 +430,55 @@ class TestSteppedScanWidget:
         widget = SteppedScanWidget(generator=gen)
         x_green, _ = widget._green_scatter.getData()
         assert x_green is None or len(x_green) == 0
+
+    # ------------------------------------------------------------------
+    # units — widget suffix propagation
+    # ------------------------------------------------------------------
+
+    def test_units_applied_to_start_spinbox(self, qapp):
+        gen = SteppedScanGenerator()
+        widget = SteppedScanWidget(generator=gen)
+        gen.units = "T"
+        assert widget._start_spin.opts["suffix"] == "T"
+
+    def test_units_applied_to_table_target_and_step_spinboxes(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
+        widget = SteppedScanWidget(generator=gen)
+        gen.units = "V"
+        target_w = widget._table.cellWidget(0, 0)
+        step_w = widget._table.cellWidget(0, 1)
+        assert target_w.opts["suffix"] == "V"
+        assert step_w.opts["suffix"] == "V"
+
+    def test_units_applied_to_newly_added_row(self, qapp):
+        gen = SteppedScanGenerator()
+        widget = SteppedScanWidget(generator=gen)
+        gen.units = "A"
+        widget._add_btn.click()
+        target_w = widget._table.cellWidget(0, 0)
+        step_w = widget._table.cellWidget(0, 1)
+        assert target_w.opts["suffix"] == "A"
+        assert step_w.opts["suffix"] == "A"
+
+    def test_units_initialised_from_generator_at_construction(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
+        gen.units = "Oe"
+        widget = SteppedScanWidget(generator=gen)
+        assert widget._start_spin.opts["suffix"] == "Oe"
+        target_w = widget._table.cellWidget(0, 0)
+        assert target_w.opts["suffix"] == "Oe"
+
+    def test_units_to_json_round_trip(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
+        gen.units = "T"
+        d = gen.to_json()
+        assert d["units"] == "T"
+        restored = SteppedScanGenerator._from_json_data(d)
+        assert restored.units == "T"
+
+    def test_units_missing_from_json_defaults_empty(self, qapp):
+        gen = SteppedScanGenerator()
+        d = gen.to_json()
+        d.pop("units", None)
+        restored = SteppedScanGenerator._from_json_data(d)
+        assert restored.units == ""

@@ -393,3 +393,45 @@ class TestListScanWidget:
         widget = ListScanWidget(generator=gen)
         x_green, _ = widget._green_scatter.getData()
         assert x_green is None or len(x_green) == 0
+
+    # ------------------------------------------------------------------
+    # units — widget suffix propagation
+    # ------------------------------------------------------------------
+
+    def test_units_applied_to_table_target_spinboxes(self, qapp):
+        gen = ListScanGenerator(stages=[(1.0, True), (2.0, False)])
+        widget = ListScanWidget(generator=gen)
+        gen.units = "T"
+        for row in range(widget._table.rowCount()):
+            target_w = widget._table.cellWidget(row, 0)
+            assert target_w.opts["suffix"] == "T"
+
+    def test_units_applied_to_newly_added_row(self, qapp):
+        gen = ListScanGenerator()
+        widget = ListScanWidget(generator=gen)
+        gen.units = "V"
+        widget._add_btn.click()
+        target_w = widget._table.cellWidget(0, 0)
+        assert target_w.opts["suffix"] == "V"
+
+    def test_units_initialised_from_generator_at_construction(self, qapp):
+        gen = ListScanGenerator(stages=[(1.0, True)])
+        gen.units = "A"
+        widget = ListScanWidget(generator=gen)
+        target_w = widget._table.cellWidget(0, 0)
+        assert target_w.opts["suffix"] == "A"
+
+    def test_units_to_json_round_trip(self, qapp):
+        gen = ListScanGenerator(stages=[(1.0, True)])
+        gen.units = "T"
+        d = gen.to_json()
+        assert d["units"] == "T"
+        restored = ListScanGenerator._from_json_data(d)
+        assert restored.units == "T"
+
+    def test_units_missing_from_json_defaults_empty(self, qapp):
+        gen = ListScanGenerator()
+        d = gen.to_json()
+        d.pop("units", None)
+        restored = ListScanGenerator._from_json_data(d)
+        assert restored.units == ""

@@ -158,6 +158,39 @@ class TestBaseScanGenerator:
         list(gen)
         assert emitted == [1.0, 2.0, 3.0]
 
+    # ------------------------------------------------------------------
+    # units property
+    # ------------------------------------------------------------------
+
+    def test_units_default_empty_string(self, qapp):
+        gen = self._Minimal()
+        assert gen.units == ""
+
+    def test_units_setter_updates_value(self, qapp):
+        gen = self._Minimal()
+        gen.units = "V"
+        assert gen.units == "V"
+
+    def test_units_setter_emits_units_changed(self, qapp):
+        gen = self._Minimal()
+        emitted: list[str] = []
+        gen.units_changed.connect(emitted.append)
+        gen.units = "T"
+        assert emitted == ["T"]
+
+    def test_units_setter_does_not_invalidate_cache(self, qapp):
+        """Changing units must not discard the value cache."""
+        gen = self._Minimal()
+        cached = gen.values
+        gen.units = "A"
+        assert gen._cache is not None
+        assert gen._cache is cached
+
+    def test_units_setter_coerces_to_str(self, qapp):
+        gen = self._Minimal()
+        gen.units = 42  # type: ignore[assignment]
+        assert gen.units == "42"
+
 
 class TestFunctionScanGenerator:
     # ------------------------------------------------------------------
@@ -573,3 +606,42 @@ class TestFunctionScanWidget:
         gen = FunctionScanGenerator(exponent=2.0)
         widget = FunctionScanWidget(generator=gen)
         assert abs(widget._exponent_spin.value() - 2.0) < 1e-9
+
+    # ------------------------------------------------------------------
+    # units — widget suffix propagation
+    # ------------------------------------------------------------------
+
+    def test_units_applied_to_amplitude_and_offset_spinboxes(self, qapp):
+        gen = FunctionScanGenerator()
+        widget = FunctionScanWidget(generator=gen)
+        gen.units = "V"
+        assert widget._amplitude_spin.opts["suffix"] == "V"
+        assert widget._offset_spin.opts["suffix"] == "V"
+
+    def test_units_not_applied_to_phase_or_exponent_spinboxes(self, qapp):
+        gen = FunctionScanGenerator()
+        widget = FunctionScanWidget(generator=gen)
+        gen.units = "T"
+        assert widget._phase_spin.opts.get("suffix", "") != "T"
+        assert widget._exponent_spin.opts.get("suffix", "") != "T"
+
+    def test_units_initialised_from_generator_at_construction(self, qapp):
+        gen = FunctionScanGenerator()
+        gen.units = "A"
+        widget = FunctionScanWidget(generator=gen)
+        assert widget._amplitude_spin.opts["suffix"] == "A"
+
+    def test_units_to_json_round_trip(self, qapp):
+        gen = FunctionScanGenerator()
+        gen.units = "V"
+        d = gen.to_json()
+        assert d["units"] == "V"
+        restored = FunctionScanGenerator._from_json_data(d)
+        assert restored.units == "V"
+
+    def test_units_missing_from_json_defaults_empty(self, qapp):
+        gen = FunctionScanGenerator()
+        d = gen.to_json()
+        d.pop("units", None)
+        restored = FunctionScanGenerator._from_json_data(d)
+        assert restored.units == ""
