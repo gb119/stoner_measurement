@@ -14,7 +14,6 @@ import pyqtgraph as pg
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
     QPushButton,
@@ -316,10 +315,11 @@ class ListScanWidget(QWidget):
             row = self._table.rowCount()
             self._table.insertRow(row)
 
-            target_spin = QDoubleSpinBox()
+            target_spin = pg.SpinBox()
             target_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
             target_spin.setSingleStep(0.1)
             target_spin.setDecimals(4)
+            target_spin.setOpts(siPrefix=True)
             target_spin.setValue(float(target))
             target_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)
@@ -353,7 +353,7 @@ class ListScanWidget(QWidget):
             return
         stages: list[tuple[float, bool]] = []
         for row in range(self._table.rowCount()):
-            target_w: QDoubleSpinBox | None = self._table.cellWidget(row, 0)
+            target_w: pg.SpinBox | None = self._table.cellWidget(row, 0)
             measure_cb: QCheckBox | None = self._table.cellWidget(row, 1)
             if target_w is None or measure_cb is None:
                 continue

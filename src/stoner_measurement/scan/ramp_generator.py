@@ -17,10 +17,8 @@ from PyQt6 import QtGui
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -226,19 +224,21 @@ class RampScanWidget(QWidget):
         controls_box = QGroupBox("Parameters")
         form = QFormLayout(controls_box)
 
-        self._start_spin = QDoubleSpinBox()
+        self._start_spin = pg.SpinBox()
         self._start_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
         self._start_spin.setDecimals(6)
+        self._start_spin.setOpts(siPrefix=True)
         self._start_spin.setValue(self._generator.start)
         form.addRow("Start:", self._start_spin)
 
-        self._end_spin = QDoubleSpinBox()
+        self._end_spin = pg.SpinBox()
         self._end_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
         self._end_spin.setDecimals(6)
+        self._end_spin.setOpts(siPrefix=True)
         self._end_spin.setValue(self._generator.end)
         form.addRow("End:", self._end_spin)
 
-        self._points_spin = QSpinBox()
+        self._points_spin = pg.SpinBox(int=True)
         self._points_spin.setRange(2, _MAX_NUM_POINTS)
         self._points_spin.setValue(self._generator.num_points)
         form.addRow("Points:", self._points_spin)
@@ -249,9 +249,10 @@ class RampScanWidget(QWidget):
         self._mode_combo.setCurrentIndex(list(RampMode).index(self._generator.mode))
         form.addRow("Mode:", self._mode_combo)
 
-        self._base_spin = QDoubleSpinBox()
+        self._base_spin = pg.SpinBox()
         self._base_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
         self._base_spin.setDecimals(6)
+        self._base_spin.setOpts(siPrefix=True)
         self._base_spin.setValue(self._generator.base)
         form.addRow("Base:", self._base_spin)
 

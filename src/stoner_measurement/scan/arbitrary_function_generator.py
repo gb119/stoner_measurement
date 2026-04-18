@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QLabel,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -241,7 +240,7 @@ class ArbitraryFunctionScanWidget(QWidget):
 
         controls_box = QGroupBox("Parameters")
         controls_form = QFormLayout(controls_box)
-        self._points_spin = QSpinBox()
+        self._points_spin = pg.SpinBox(int=True)
         self._points_spin.setRange(2, _MAX_NUM_POINTS)
         self._points_spin.setValue(self._generator.num_points)
         controls_form.addRow("Points:", self._points_spin)
