@@ -174,12 +174,12 @@ class PlotWidget(QWidget):
         self._trace_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         header = self._trace_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed)
         self._trace_table.setColumnWidth(2, _COLOUR_COLUMN_WIDTH)
@@ -373,6 +373,7 @@ class PlotWidget(QWidget):
         if not selected.isValid():
             return
         self.set_trace_style(trace_name=trace_name, colour=selected.name(QColor.NameFormat.HexRgb))
+        self._update_colour_button(sender,selected.name(QColor.NameFormat.HexRgb))
 
     def _on_trace_line_style_changed(self, line_style: str) -> None:
         """Update trace line style from a table control."""
@@ -608,8 +609,8 @@ class PlotWidget(QWidget):
         self,
         trace_name: str,
         colour: str | None = None,
-        line_style: str = "solid",
-        point_style: str = "none",
+        line_style: str | None = None,
+        point_style: str | None = None,
         line_width: float | None = None,
         point_size: float | None = None,
     ) -> None:
@@ -641,10 +642,10 @@ class PlotWidget(QWidget):
                 If *line_style* or *point_style* are unknown values.
         """
         curve = self._get_or_create_trace(trace_name)
-        if line_style not in _LINE_STYLES:
+        if not (line_style is None or line_style in _LINE_STYLES):
             valid_line_styles = ", ".join(_LINE_STYLES)
             raise ValueError(f"Unknown line style: {line_style!r}. " f"Valid options are: {valid_line_styles}.")
-        if point_style not in _POINT_STYLES:
+        if not (point_style is None or point_style in _POINT_STYLES):
             valid_point_styles = ", ".join(_POINT_STYLES)
             raise ValueError(f"Unknown point style: {point_style!r}. " f"Valid options are: {valid_point_styles}.")
         if line_width is not None and line_width <= 0:
@@ -657,8 +658,14 @@ class PlotWidget(QWidget):
             if not QColor(colour).isValid():
                 raise ValueError(f"Invalid colour value: {colour!r}")
             style["colour"] = colour
-        style["line"] = line_style
-        style["point"] = point_style
+        if line_style is not None:
+            style["line"] = line_style
+        else:
+            style.setdefault("line","solid")
+        if point_style is not None:
+            style["point"] = point_style
+        else:
+            style.setdefault("point","none")
         if line_width is not None:
             self._trace_line_width[trace_name] = line_width
         if point_size is not None:
@@ -667,10 +674,10 @@ class PlotWidget(QWidget):
         pen = pg.mkPen(
             color=style["colour"],
             width=self._trace_line_width.get(trace_name, _DEFAULT_LINE_WIDTH),
-            style=_LINE_STYLES[line_style],
+            style=_LINE_STYLES[style["line"]],
         )
         curve.setPen(pen)
-        symbol = _POINT_STYLES[point_style]
+        symbol = _POINT_STYLES.get(style["point"],None)
         curve.setSymbol(symbol)
         if symbol is None:
             curve.setSymbolBrush(None)

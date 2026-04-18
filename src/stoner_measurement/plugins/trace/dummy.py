@@ -7,11 +7,11 @@ as a smoke-test and worked example.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Generator
 from typing import Any
 
 import numpy as np
+from scipy.constants import Boltzmann as kb, eV
 from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
 
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
@@ -241,8 +241,9 @@ class DummyPlugin(TracePlugin):
 
         I = self.scan_generator.generate()
         if rounding > 0:
+            dIc=np.sqrt(4*kb*rounding*1E10/r_n)
             data = np.empty((I.size, 100))
-            for ix, ic_ix in enumerate(np.random.normal(loc=i_c, scale=rounding, size=100)):
+            for ix, ic_ix in enumerate(np.random.normal(loc=i_c, scale=dIc, size=100)):
                 data[:, ix] = np.where(np.abs(I) < ic_ix, 0.0, r_n * np.sign(I) * np.sqrt(np.abs(I**2 - ic_ix**2)))
             V = data.mean(axis=1)
         else:
@@ -366,7 +367,7 @@ class DummyPlugin(TracePlugin):
         layout.addRow("Critical current I_c (A):", i_c_edit)
         layout.addRow("Normal resistance R_n (\u03a9):", r_n_edit)
         layout.addRow("Noise level V_n (V):", v_n_edit)
-        layout.addRow("Rounding level Rounding (A):", Rounding_edit)
+        layout.addRow("Thermal noise (K):", Rounding_edit)
         return widget
 
     def _about_html(self) -> str:
