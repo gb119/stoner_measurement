@@ -34,7 +34,9 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
     * **Iterator interface** — :meth:`__iter__` and :meth:`__next__` allow
       direct iteration over the generated values; :meth:`reset` restarts
       iteration.  Each step yields a ``(index, value, measure, stage)``
-      tuple.
+      tuple, where *index* is the point number, *value* is the scan value,
+      *measure* indicates whether to collect data at that point, and *stage*
+      identifies the originating stage.
     * **Value caching** — :attr:`values` calls :meth:`generate` on first
       access and caches the result until a parameter changes.  :attr:`flags`
       similarly caches the result of :meth:`measure_flags`.

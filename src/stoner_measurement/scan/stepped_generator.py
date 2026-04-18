@@ -195,12 +195,11 @@ class SteppedScanGenerator(BaseScanGenerator):
         stage_data = self._stage_points()
         if not stage_data:
             return np.array([0], dtype=int)
-        start_stage = stage_data[0][2]
         per_stage_indices = np.repeat(
             [stage_index for _, _, stage_index in stage_data],
             [len(pts) for pts, _, _ in stage_data],
         )
-        return np.concatenate([[start_stage], per_stage_indices]).astype(int, copy=False)
+        return np.concatenate([[0], per_stage_indices]).astype(int, copy=False)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`SteppedScanWidget` configured for this generator.
