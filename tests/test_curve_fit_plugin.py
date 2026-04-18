@@ -9,7 +9,9 @@ import pytest
 
 from stoner_measurement.plugins.transform import CurveFitPlugin
 from stoner_measurement.plugins.transform.curve_fit import (
+    _format_value_with_uncertainty,
     _has_p0_function,
+    _ParamTableWidget,
     _parse_fit_params,
 )
 
@@ -51,6 +53,34 @@ class TestHasP0Function:
 
     def test_syntax_error_returns_false(self):
         assert not _has_p0_function("not valid !!!!")
+
+
+class TestFormatValueWithUncertainty:
+    def test_formats_with_matching_precision(self):
+        assert _format_value_with_uncertainty(12.345, 0.67) == "12.3 ± 0.7"
+
+    def test_rounds_integer_scale_uncertainty(self):
+        assert _format_value_with_uncertainty(1234.0, 230.0) == "1200 ± 200"
+
+    def test_preserves_decimal_precision_when_rounding_to_one(self):
+        assert _format_value_with_uncertainty(1.23, 0.96) == "1.2 ± 1.0"
+
+    def test_returns_empty_for_non_finite_values(self):
+        assert _format_value_with_uncertainty(np.nan, 0.1) == ""
+        assert _format_value_with_uncertainty(1.0, np.nan) == ""
+
+
+class TestParamTableWidget:
+    def test_has_fitted_column(self, qapp):
+        table = _ParamTableWidget()
+        assert table._table.columnCount() == 5  # noqa: SLF001
+        assert table._table.horizontalHeaderItem(4).text() == "Fitted"  # noqa: SLF001
+
+    def test_updates_fitted_column_text(self, qapp):
+        table = _ParamTableWidget()
+        table.set_parameters(["a"])
+        table.update_fitted_results({"a": 12.345, "a_err": 0.67})
+        assert table._table.item(0, 4).text() == "12.3 ± 0.7"  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------
@@ -436,8 +466,6 @@ class TestCurveFitConfigTabs:
     def test_parameters_tab_is_qwidget_with_param_table(self, qapp):
         from PyQt6.QtWidgets import QWidget
 
-        from stoner_measurement.plugins.transform.curve_fit import _ParamTableWidget
-
         p = CurveFitPlugin()
         tabs = p.config_tabs()
         param_widget = dict(tabs)["Parameters"]
@@ -450,6 +478,33 @@ class TestCurveFitConfigTabs:
         p = CurveFitPlugin()
         p.param_names = ["k", "c"]
         assert p.output_names == ["k", "k_err", "c", "c_err"]
+
+    def test_parameters_table_updates_fitted_values_after_run(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        p = CurveFitPlugin()
+        engine.add_plugin("curve_fit", p)
+        engine._namespace["_x"] = np.linspace(0.0, 1.0, 30)
+        engine._namespace["_y"] = 3.0 * engine._namespace["_x"] + 1.5
+        p.advanced_mode = True
+        p.x_expr = "_x"
+        p.y_expr = "_y"
+        p.fit_code = "def fit(x, a, b): return a * x + b"
+        p.param_names = ["a", "b"]
+
+        tabs = p.config_tabs()
+        param_widget = dict(tabs)["Parameters"]
+        table = param_widget.findChildren(_ParamTableWidget)[0]
+        assert table._table.item(0, 4).text() == ""  # noqa: SLF001
+
+        p.run({})
+        qapp.processEvents()
+
+        fitted_cell = table._table.item(0, 4).text()  # noqa: SLF001
+        assert fitted_cell
+        assert "±" in fitted_cell
+        engine.shutdown()
 
 
 # ---------------------------------------------------------------------------
