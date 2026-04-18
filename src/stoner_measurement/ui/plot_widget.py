@@ -270,7 +270,7 @@ class PlotWidget(QWidget):
                 line_width.setOpts(bounds=(_MIN_LINE_WIDTH, _MAX_LINE_WIDTH), step=_LINE_WIDTH_STEP, decimals=2)
                 line_width.setValue(self._trace_line_width.get(trace_name, _DEFAULT_LINE_WIDTH))
                 line_width.setProperty(_TRACE_NAME_PROPERTY, trace_name)
-                line_width.valueChanged.connect(lambda sb: self._on_trace_line_width_changed(float(sb.value())))
+                line_width.valueChanged.connect(lambda v: self._on_trace_line_width_changed(float(v)))
                 self._trace_table.setCellWidget(row, 4, line_width)
 
                 point_selector = QComboBox(self._trace_table)
@@ -286,7 +286,7 @@ class PlotWidget(QWidget):
                 point_size.setOpts(bounds=(_MIN_POINT_SIZE, _MAX_POINT_SIZE), step=_POINT_SIZE_STEP, decimals=2)
                 point_size.setValue(self._trace_point_size.get(trace_name, _DEFAULT_POINT_SIZE))
                 point_size.setProperty(_TRACE_NAME_PROPERTY, trace_name)
-                point_size.valueChanged.connect(lambda sb: self._on_trace_point_size_changed(float(sb.value())))
+                point_size.valueChanged.connect(lambda v: self._on_trace_point_size_changed(float(v)))
                 self._trace_table.setCellWidget(row, 6, point_size)
 
                 x_axis_selector = QComboBox(self._trace_table)
