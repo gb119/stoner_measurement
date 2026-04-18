@@ -35,6 +35,7 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         start: float = 0.0,
         segments: list[tuple[float, float, bool]] | None = None,
         poll_seconds: float = _DEFAULT_POLL_SECONDS,
+        start_timeout_seconds: float = 60.0,
         state_sweep=None,
         parent: QObject | None = None,
     ) -> None:
@@ -42,6 +43,7 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         self._start = float(start)
         self._segments: list[tuple[float, float, bool]] = segments or [(1.0, 0.1, True)]
         self._poll_seconds = max(0.0, float(poll_seconds))
+        self._start_timeout_seconds = max(0.0, float(start_timeout_seconds))
 
     @property
     def start(self) -> float:
@@ -73,6 +75,15 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         self._poll_seconds = max(0.0, float(value))
         self._invalidate()
 
+    @property
+    def start_timeout_seconds(self) -> float:
+        return self._start_timeout_seconds
+
+    @start_timeout_seconds.setter
+    def start_timeout_seconds(self, value: float) -> None:
+        self._start_timeout_seconds = max(0.0, float(value))
+        self._invalidate()
+
     def iter_points(self) -> Iterator[tuple[int, float, int, bool]]:
         plugin = self.state_sweep
         if plugin is None:
@@ -81,7 +92,10 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
             return
 
         plugin.set_state(float(self._start))
+        start_wait_started = time.monotonic()
         while not plugin.is_at_target():
+            if self._start_timeout_seconds > 0.0 and (time.monotonic() - start_wait_started) > self._start_timeout_seconds:
+                return
             if self._poll_seconds > 0.0:
                 time.sleep(self._poll_seconds)
 
@@ -116,6 +130,7 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
             "start": self._start,
             "segments": [[target, rate, measure] for target, rate, measure in self._segments],
             "poll_seconds": self._poll_seconds,
+            "start_timeout_seconds": self._start_timeout_seconds,
         }
 
     @classmethod
@@ -125,6 +140,7 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
             start=float(data.get("start", 0.0)),
             segments=segments,
             poll_seconds=float(data.get("poll_seconds", _DEFAULT_POLL_SECONDS)),
+            start_timeout_seconds=float(data.get("start_timeout_seconds", 60.0)),
             state_sweep=state_sweep,
             parent=parent,
         )
@@ -154,6 +170,11 @@ class MultiSegmentRampSweepWidget(QWidget):
         self._poll_spin.setOpts(bounds=(0.0, 60.0), decimals=6, suffix="s")
         self._poll_spin.valueChanged.connect(self._on_poll_changed)
         form.addRow("Poll interval:", self._poll_spin)
+
+        self._start_timeout_spin = pg.SpinBox()
+        self._start_timeout_spin.setOpts(bounds=(0.0, _SPINBOX_MAX_ABS), decimals=6, suffix="s")
+        self._start_timeout_spin.valueChanged.connect(self._on_start_timeout_changed)
+        form.addRow("Start wait timeout:", self._start_timeout_spin)
         root.addLayout(form)
 
         self._table = QTableWidget(0, 3, self)
@@ -220,6 +241,7 @@ class MultiSegmentRampSweepWidget(QWidget):
     def _populate_from_generator(self) -> None:
         self._start_spin.setValue(self._generator.start)
         self._poll_spin.setValue(self._generator.poll_seconds)
+        self._start_timeout_spin.setValue(self._generator.start_timeout_seconds)
         self._table.setRowCount(0)
         for target, rate, measure in self._generator.segments:
             self._table.insertRow(self._table.rowCount())
@@ -261,3 +283,6 @@ class MultiSegmentRampSweepWidget(QWidget):
 
     def _on_poll_changed(self, value: float) -> None:
         self._generator.poll_seconds = float(value)
+
+    def _on_start_timeout_changed(self, value: float) -> None:
+        self._generator.start_timeout_seconds = float(value)

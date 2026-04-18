@@ -183,7 +183,6 @@ class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.clear_filter: str = "True"
         self._data: pd.DataFrame = pd.DataFrame()
         self._cached_config_tabs: list | None = None
-        self._iter_started: bool = False
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         default_filter = f"{old_name}.meas_flag"
@@ -283,7 +282,6 @@ class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         return None
 
     def _begin_sweep(self) -> None:
-        self._iter_started = False
         self.sweep_generator.reset()
 
     def __iter__(self) -> StateSweepPlugin:
@@ -291,9 +289,6 @@ class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         return self
 
     def __next__(self) -> bool:
-        if not self._iter_started:
-            self.sweep_generator.reset()
-            self._iter_started = True
         try:
             self.ix, self.value, self.stage, self.meas_flag = next(self.sweep_generator)
             return True

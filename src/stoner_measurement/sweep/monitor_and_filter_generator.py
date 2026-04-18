@@ -118,7 +118,7 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
     def _change_exceeds_limit(self, current: float, baseline: float, use_percent: bool, limit: float) -> bool:
         if use_percent:
             if baseline == 0.0:
-                # A non-zero current against a zero baseline represents an
+                # A non-zero current against a zero baseline represents
                 # unbounded percentage change.
                 delta = 0.0 if current == 0.0 else math.inf
             else:
