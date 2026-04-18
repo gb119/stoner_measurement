@@ -156,20 +156,25 @@ class TestListScanGenerator:
     def test_iter_yields_all_values(self, qapp):
         gen = ListScanGenerator(stages=[(1.0, True), (2.0, False)])
         results = list(gen)
-        values = [v for _, v, _ in results]
+        values = [v for _, v, _, _ in results]
         assert np.allclose(values, [1.0, 2.0])
 
     def test_iter_flags_match_measure_flags(self, qapp):
         gen = ListScanGenerator(stages=[(1.0, True), (2.0, False)])
         results = list(gen)
-        flags = [f for _, _, f in results]
+        flags = [f for _, _, f, _ in results]
         assert flags == [True, False]
 
     def test_iter_indices_are_sequential(self, qapp):
         gen = ListScanGenerator(stages=[(1.0, True), (2.0, True), (3.0, True)])
         results = list(gen)
-        indices = [i for i, _, _ in results]
+        indices = [i for i, _, _, _ in results]
         assert indices == [0, 1, 2]
+
+    def test_iter_stage_is_zero(self, qapp):
+        gen = ListScanGenerator(stages=[(1.0, True), (2.0, True)])
+        results = list(gen)
+        assert [stage for _, _, _, stage in results] == [0, 0]
 
     def test_len(self, qapp):
         gen = ListScanGenerator(stages=[(1.0, True), (2.0, False)])

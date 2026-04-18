@@ -117,11 +117,11 @@ class SteppedScanGenerator(BaseScanGenerator):
     # Core computation helpers
     # ------------------------------------------------------------------
 
-    def _stage_points(self) -> list[tuple[np.ndarray, bool]]:
+    def _stage_points(self) -> list[tuple[np.ndarray, bool, int]]:
         """Compute per-stage scan point arrays."""
-        result: list[tuple[np.ndarray, bool]] = []
+        result: list[tuple[np.ndarray, bool, int]] = []
         current = self._start
-        for target, step, measure in self._stages:
+        for stage_index, (target, step, measure) in enumerate(self._stages):
             distance = abs(target - current)
             if distance == 0.0:
                 current = float(target)
@@ -131,7 +131,7 @@ class SteppedScanGenerator(BaseScanGenerator):
                 current = float(target)
                 continue
             pts = np.linspace(current, target, n + 1)[1:]
-            result.append((pts, measure))
+            result.append((pts, measure, stage_index))
             current = float(target)
         return result
 
@@ -157,7 +157,7 @@ class SteppedScanGenerator(BaseScanGenerator):
         stage_data = self._stage_points()
         if not stage_data:
             return np.array([self._start], dtype=float)
-        arrays = [np.array([self._start], dtype=float)] + [pts for pts, _ in stage_data]
+        arrays = [np.array([self._start], dtype=float)] + [pts for pts, _, _ in stage_data]
         return np.concatenate(arrays)
 
     def measure_flags(self) -> np.ndarray:
@@ -185,10 +185,22 @@ class SteppedScanGenerator(BaseScanGenerator):
             return np.array([True], dtype=bool)
         start_flag = stage_data[0][1]
         per_stage_flags = np.repeat(
-            [m for _, m in stage_data],
-            [len(pts) for pts, _ in stage_data],
+            [m for _, m, _ in stage_data],
+            [len(pts) for pts, _, _ in stage_data],
         )
         return np.concatenate([[start_flag], per_stage_flags])
+
+    def stage_indices(self) -> np.ndarray:
+        """Return per-point stage indices for the stepped sequence."""
+        stage_data = self._stage_points()
+        if not stage_data:
+            return np.array([0], dtype=int)
+        start_stage = stage_data[0][2]
+        per_stage_indices = np.repeat(
+            [stage_index for _, _, stage_index in stage_data],
+            [len(pts) for pts, _, _ in stage_data],
+        )
+        return np.concatenate([[start_stage], per_stage_indices]).astype(int, copy=False)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`SteppedScanWidget` configured for this generator.
