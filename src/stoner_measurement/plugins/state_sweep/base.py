@@ -6,7 +6,6 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-import pandas as pd
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -19,8 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-from stoner_measurement.plugins.sequence.base import SequencePlugin
+from stoner_measurement.plugins.state.base import StatePlugin
 from stoner_measurement.sweep import (
     BaseSweepGenerator,
     MonitorAndFilterSweepGenerator,
@@ -158,7 +156,7 @@ class _StateSweepPage(QWidget):
         layout.addWidget(data_widget)
 
 
-class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
+class StateSweepPlugin(StatePlugin):
     """Base class for plugins that run a sub-sequence inside a sweep loop."""
 
     _sweep_generator_class: ClassVar[type[BaseSweepGenerator]] = MonitorAndFilterSweepGenerator
@@ -167,92 +165,27 @@ class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         MultiSegmentRampSweepGenerator,
     ]
 
-    instance_name_changed = pyqtSignal(str, str)
     sweep_generator_changed = pyqtSignal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.sweep_generator: BaseSweepGenerator = self._sweep_generator_class(state_sweep=self, parent=self)
-        self.ix: int = -1
-        self.value: float = 0.0
-        self.stage: int = 0
-        self.meas_flag: bool = False
-        self.collect_data: bool = False
-        self.clear_on_start: bool = True
-        self.collect_filter: str = f"{self.instance_name}.meas_flag"
-        self.clear_filter: str = "True"
-        self._data: pd.DataFrame = pd.DataFrame()
-        self._cached_config_tabs: list | None = None
-
-    def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
-        default_filter = f"{old_name}.meas_flag"
-        if self.collect_filter == default_filter:
-            self.collect_filter = f"{new_name}.meas_flag"
-        self.instance_name_changed.emit(old_name, new_name)
+        self.ix = -1
 
     @property
     def plugin_type(self) -> str:
         return "state_sweep"
 
-    @property
-    def data(self) -> pd.DataFrame:
-        return self._data
-
-    def clear_data(self) -> None:
-        try:
-            should_clear = bool(self.eval(self.clear_filter))
-        except RuntimeError:
-            should_clear = True
-        if should_clear:
-            self._data = pd.DataFrame()
-
-    def collect(self, outputs: list[str] | None = None) -> None:
-        if not self.meas_flag or self.sequence_engine is None:
-            return
-        try:
-            should_collect = bool(self.eval(self.collect_filter))
-        except (RuntimeError, SyntaxError, ValueError):
-            should_collect = False
-        if not should_collect:
-            return
-
-        ns = self.engine_namespace
-        values_cat: dict[str, str] = ns.get("_values", {})
-        keys = [k for k in outputs if k in values_cat] if outputs is not None else list(values_cat.keys())
-
-        row: dict[str, Any] = {"value": self.value, "stage": self.stage}
-        for key in keys:
-            expr = values_cat[key]
-            try:
-                row[key] = self.eval(expr)
-            except (RuntimeError, SyntaxError, ValueError, NameError, AttributeError) as exc:
-                self.log.warning("collect(): failed to evaluate %r: %s", expr, exc)
-                row[key] = None
-
-        new_row = pd.DataFrame([row], index=[self.ix])
-        self._data = new_row if self._data.empty else pd.concat([self._data, new_row])
-
     def to_json(self) -> dict[str, Any]:
         data = super().to_json()
         data["sweep_generator"] = self.sweep_generator.to_json()
-        data["collect_data"] = self.collect_data
-        data["clear_on_start"] = self.clear_on_start
-        data["collect_filter"] = self.collect_filter
-        data["clear_filter"] = self.clear_filter
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
+        super()._restore_from_json(data)
         if "sweep_generator" in data:
             self.sweep_generator = BaseSweepGenerator.from_json(data["sweep_generator"], state_sweep=self, parent=self)
             self.sweep_generator_changed.emit()
-        if "collect_data" in data:
-            self.collect_data = bool(data["collect_data"])
-        if "clear_on_start" in data:
-            self.clear_on_start = bool(data["clear_on_start"])
-        if "collect_filter" in data:
-            self.collect_filter = str(data["collect_filter"])
-        if "clear_filter" in data:
-            self.clear_filter = str(data["clear_filter"])
 
     def set_sweep_generator_class(self, cls: type[BaseSweepGenerator]) -> None:
         if isinstance(self.sweep_generator, cls):
@@ -265,11 +198,11 @@ class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             return self._cached_config_tabs
 
         tabs: list[tuple[str, QWidget]] = [
-            (f"{self.name} – Sweep", _StateSweepPage(self)),
+            (f"{self.name} \u2013 Sweep", _StateSweepPage(self)),
         ]
 
         settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
-        tabs.append((f"{self.name} – Settings", settings_widget))
+        tabs.append((f"{self.name} \u2013 Settings", settings_widget))
 
         about_tab = self._make_about_tab()
         if about_tab is not None:
@@ -325,15 +258,6 @@ class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     def units(self) -> str:
         """Physical units for the swept state."""
 
-    def connect(self) -> None:
-        """Open instrument connections."""
-
-    def configure(self) -> None:
-        """Configure the instrument."""
-
-    def disconnect(self) -> None:
-        """Release instrument resources."""
-
     def set_state(self, value: float) -> None:
         """Set the current state value (NOP default)."""
 
@@ -350,10 +274,6 @@ class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     def is_at_target(self) -> bool:
         """Return whether the target is reached (always ``True`` by default)."""
         return True
-
-    def reported_values(self) -> dict[str, str]:
-        var = self.instance_name
-        return {f"{var}:{self.state_name}": f"{var}.value"}
 
     def generate_action_code(
         self,

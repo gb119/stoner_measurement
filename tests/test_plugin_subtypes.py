@@ -360,7 +360,7 @@ class TestTracePlugin:
 
 class TestStateControlPlugin:
     def test_plugin_type(self, qapp):
-        assert _InstantState().plugin_type == "state"
+        assert _InstantState().plugin_type == "state_scan"
 
     def test_state_name(self, qapp):
         assert _InstantState().state_name == "Voltage"
@@ -854,6 +854,7 @@ class TestStateControlDataCollection:
         p = _InstantState()
         engine.add_plugin("instantstate", p)
         p.collect_filter = "True"
+        p.meas_flag = True
         p.ix = 0
         p.value = 3.5
         p.stage = 2
@@ -882,6 +883,7 @@ class TestStateControlDataCollection:
         p = _InstantState()
         engine.add_plugin("instantstate", p)
         p.collect_filter = "True"
+        p.meas_flag = True
         for i in range(3):
             p.ix = i
             p.value = float(i)
@@ -902,6 +904,7 @@ class TestStateControlDataCollection:
         engine.add_plugin("counter", counter)
         counter.value = 7.0
         p.collect_filter = "True"
+        p.meas_flag = True
         p.ix = 0
         p.value = 2.0
         # Only collect the counter value, not all outputs

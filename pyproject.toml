@@ -53,7 +53,7 @@ dev = [
 stoner-measurement = "stoner_measurement.main:main"
 
 [project.entry-points."stoner_measurement.plugins"]
-counter = "stoner_measurement.plugins.state_control.counter:CounterPlugin"
+counter = "stoner_measurement.plugins.state_scan.counter:CounterPlugin"
 sweep_time = "stoner_measurement.plugins.state_sweep.sweep_time:SweepTimePlugin"
 curve_fit = "stoner_measurement.plugins.transform.curve_fit:CurveFitPlugin"
 dummy = "stoner_measurement.plugins.trace.dummy:DummyPlugin"
