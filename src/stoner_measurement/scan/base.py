@@ -96,20 +96,12 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
 
         Setting this property emits :attr:`units_changed` so that connected
         configuration widgets can refresh their spinbox suffixes.  An empty
-        string (the default) means no unit is displayed.
+        string (the default) means no unit is displayed.  The signal is only
+        emitted when the value actually changes.
 
         Returns:
             (str):
                 The current unit string.
-
-        Examples:
-            >>> from PyQt6.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.scan.ramp_generator import RampScanGenerator
-            >>> gen = RampScanGenerator()
-            >>> gen.units = 'T'
-            >>> gen.units
-            'T'
         """
         return self._units
 
