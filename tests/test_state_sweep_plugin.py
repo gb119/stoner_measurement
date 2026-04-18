@@ -315,7 +315,9 @@ class TestSweepGenerators:
     def test_multisegment_estimated_duration_empty_segments(self, qapp):
         gen = MultiSegmentRampSweepGenerator(start=0.0, segments=[])
         # Empty segments list is normalised to [(1.0, 0.1, True)] by setter.
-        # Test the zero-segments path by calling with the raw private attribute.
+        # Access _segments directly to reach the empty-list code path; this
+        # is intentional since the setter prevents an empty list from being
+        # stored in normal use.
         gen._segments = []
         assert gen.estimated_duration() == 0.0
 

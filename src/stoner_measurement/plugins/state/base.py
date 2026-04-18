@@ -261,11 +261,12 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     def collect(self, outputs: list[str] | None = None) -> None:
         """Append a row of current output values to :attr:`data`.
 
-        Only collects when :attr:`meas_flag` is ``True`` and the plugin is
-        attached to a sequence engine.  Evaluates :attr:`collect_filter`; if
-        truthy, appends a row to :attr:`data` keyed by :attr:`ix`.  The row
-        contains :attr:`value` and :attr:`stage`, followed by evaluated outputs
-        from the engine's values catalogue.
+        Only collects when :attr:`meas_flag` is ``True`` **and** the plugin is
+        attached to a sequence engine (i.e. :attr:`sequence_engine` is not
+        ``None``).  Both conditions must be met.  Evaluates
+        :attr:`collect_filter`; if truthy, appends a row to :attr:`data` keyed
+        by :attr:`ix`.  The row contains :attr:`value` and :attr:`stage`,
+        followed by evaluated outputs from the engine's values catalogue.
 
         Keyword Parameters:
             outputs (list[str] | None):

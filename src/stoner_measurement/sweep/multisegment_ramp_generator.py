@@ -128,8 +128,8 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         """Return the estimated total sweep duration in seconds.
 
         Computes the sum of travel-time for each segment: ``|target - prev| / rate``.
-        Returns ``float("inf")`` if any segment has a zero or negative rate, or
-        if there are no segments.
+        Returns ``float("inf")`` if any segment has a zero or negative rate.
+        Returns ``0.0`` if there are no segments.
 
         Returns:
             (float):
