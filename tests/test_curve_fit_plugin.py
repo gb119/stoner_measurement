@@ -62,6 +62,9 @@ class TestFormatValueWithUncertainty:
     def test_rounds_integer_scale_uncertainty(self):
         assert _format_value_with_uncertainty(1234.0, 230.0) == "1200 ± 200"
 
+    def test_preserves_decimal_precision_when_rounding_to_one(self):
+        assert _format_value_with_uncertainty(1.23, 0.96) == "1.2 ± 1.0"
+
     def test_returns_empty_for_non_finite_values(self):
         assert _format_value_with_uncertainty(np.nan, 0.1) == ""
         assert _format_value_with_uncertainty(1.0, np.nan) == ""

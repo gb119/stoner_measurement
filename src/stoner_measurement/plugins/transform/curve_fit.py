@@ -191,7 +191,7 @@ def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
     if rounded_uncertainty <= 0.0 or not math.isfinite(rounded_uncertainty):
         return ""
 
-    exponent = math.floor(math.log10(abs(rounded_uncertainty)))
+    exponent = math.floor(math.log10(abs(uncertainty_float)))
     decimals = -exponent
     rounded_value = round(value_float, decimals)
 
