@@ -241,12 +241,6 @@ class StateScanPlugin(StatePlugin):
             Ordered list of scan generator classes offered in the config tab.
         scan_generator (BaseScanGenerator):
             Active scan generator instance.
-        state_changed (pyqtSignal[float]):
-            Emitted continuously with the current measured value while ramping.
-        state_reached (pyqtSignal[float]):
-            Emitted once when the hardware has settled at the target value.
-        state_error (pyqtSignal[str]):
-            Emitted if the hardware faults or the settle timeout is exceeded.
         scan_generator_changed (pyqtSignal):
             Emitted after :attr:`scan_generator` is replaced.
 
@@ -289,9 +283,6 @@ class StateScanPlugin(StatePlugin):
         ArbitraryFunctionScanGenerator,
     ]
 
-    state_changed = pyqtSignal(float)
-    state_reached = pyqtSignal(float)
-    state_error = pyqtSignal(str)
     scan_generator_changed = pyqtSignal()
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -526,19 +517,6 @@ class StateScanPlugin(StatePlugin):
             (bool):
                 ``True`` if settled; ``False`` while ramping or settling.
         """
-
-    @property
-    def limits(self) -> tuple[float, float]:
-        """Allowed set-point range ``(minimum, maximum)``.
-
-        :meth:`ramp_to` rejects targets outside this range by emitting
-        :attr:`state_error`.  The default is ``(-inf, inf)`` (no limits).
-
-        Returns:
-            (tuple[float, float]):
-                ``(min_value, max_value)`` in the units of :attr:`units`.
-        """
-        return (float("-inf"), float("inf"))
 
     @property
     def settle_timeout(self) -> float:

@@ -124,6 +124,36 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         return MultiSegmentRampSweepWidget(generator=self, parent=parent)
 
+    def estimated_duration(self) -> float:
+        """Return the estimated total sweep duration in seconds.
+
+        Computes the sum of travel-time for each segment: ``|target - prev| / rate``.
+        Returns ``float("inf")`` if any segment has a zero or negative rate, or
+        if there are no segments.
+
+        Returns:
+            (float):
+                Total estimated sweep time in seconds.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.sweep import MultiSegmentRampSweepGenerator
+            >>> gen = MultiSegmentRampSweepGenerator(start=0.0, segments=[(2.0, 1.0, True), (0.0, 0.5, False)])
+            >>> gen.estimated_duration()
+            6.0
+        """
+        if not self._segments:
+            return 0.0
+        total = 0.0
+        prev = self._start
+        for target, rate, _ in self._segments:
+            if rate <= 0.0:
+                return float("inf")
+            total += abs(target - prev) / rate
+            prev = target
+        return total
+
     def to_json(self) -> dict[str, Any]:
         return {
             "type": "MultiSegmentRampSweepGenerator",

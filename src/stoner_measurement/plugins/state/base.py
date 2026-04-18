@@ -9,6 +9,8 @@ both families:
 * data-collection settings and the collected :class:`~pandas.DataFrame`
 * ``collect()`` / ``clear_data()`` lifecycle helpers
 * ``instance_name_changed`` signal with auto-update of ``collect_filter``
+* ``state_changed``, ``state_reached``, ``state_error`` progress signals
+* ``limits`` property (default: no limits)
 * abstract ``state_name`` and ``units`` properties
 * NOP instrument-lifecycle hooks (``connect``, ``configure``, ``disconnect``)
 * ``reported_values()`` helper
@@ -67,6 +69,14 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         instance_name_changed (pyqtSignal[str, str]):
             Emitted when :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.instance_name`
             changes.  Arguments are the old name and the new name.
+        state_changed (pyqtSignal[float]):
+            Emitted with the current measured value each time the hardware
+            state is sampled during a ramp or sweep.
+        state_reached (pyqtSignal[float]):
+            Emitted once when the target set-point has been reached.
+        state_error (pyqtSignal[str]):
+            Emitted if the hardware faults, a timeout is exceeded, or a
+            measured value falls outside :attr:`limits`.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -92,9 +102,14 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         True
         >>> p.data.empty
         True
+        >>> p.limits
+        (-inf, inf)
     """
 
     instance_name_changed = pyqtSignal(str, str)
+    state_changed = pyqtSignal(float)
+    state_reached = pyqtSignal(float)
+    state_error = pyqtSignal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise shared iteration state and data-collection fields."""
@@ -140,6 +155,37 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             (str):
                 E.g. ``"T"``, ``"K"``, ``"s"``.
         """
+
+    # ------------------------------------------------------------------
+    # Limits
+    # ------------------------------------------------------------------
+
+    @property
+    def limits(self) -> tuple[float, float]:
+        """Allowed set-point or measured-value range ``(minimum, maximum)``.
+
+        Subclasses may override this to enforce hardware safety limits.
+        The default is ``(-inf, inf)`` (no limits).
+
+        :class:`~stoner_measurement.plugins.state_scan.base.StateScanPlugin`
+        uses this in :meth:`~stoner_measurement.plugins.state_scan.base.StateScanPlugin.ramp_to`
+        to reject out-of-range targets.
+        :class:`~stoner_measurement.plugins.state_sweep.base.StateSweepPlugin`
+        uses this in its iteration loop to stop the sweep if a sampled value
+        goes out of range.
+
+        Returns:
+            (tuple[float, float]):
+                ``(min_value, max_value)`` in the units of :attr:`units`.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_scan import CounterPlugin
+            >>> CounterPlugin().limits
+            (-inf, inf)
+        """
+        return (float("-inf"), float("inf"))
 
     # ------------------------------------------------------------------
     # Instrument lifecycle NOPs

@@ -140,6 +140,121 @@ class TestStateSweepPlugin:
         assert isinstance(restored, SweepTimePlugin)
         assert restored.plugin_type == "state_sweep"
 
+    def test_to_json_includes_sweep_timeout_factor(self, qapp):
+        plugin = SweepTimePlugin()
+        plugin.sweep_timeout_factor = 3.5
+        d = plugin.to_json()
+        assert d["sweep_timeout_factor"] == 3.5
+
+    def test_from_json_restores_sweep_timeout_factor(self, qapp):
+        plugin = SweepTimePlugin()
+        plugin.sweep_timeout_factor = 4.0
+        restored = BasePlugin.from_json(plugin.to_json())
+        assert isinstance(restored, SweepTimePlugin)
+        assert restored.sweep_timeout_factor == 4.0
+
+    def test_state_reached_emitted_on_normal_exhaustion(self, qapp):
+        plugin = _TestSweepPlugin()
+        plugin.sweep_generator = _FiniteSweepGenerator(
+            points=[(0, 1.0, 0, True)], state_sweep=plugin, parent=plugin
+        )
+        reached: list[float] = []
+        plugin.state_reached.connect(reached.append)
+        plugin._begin_sweep()
+        assert next(plugin) is True
+        assert next(plugin) is False
+        assert reached == [1.0]
+
+    def test_state_changed_emitted_at_each_point(self, qapp):
+        plugin = _TestSweepPlugin()
+        plugin.sweep_generator = _FiniteSweepGenerator(
+            points=[(0, 1.0, 0, True), (1, 2.5, 0, True)], state_sweep=plugin, parent=plugin
+        )
+        changed: list[float] = []
+        plugin.state_changed.connect(changed.append)
+        plugin._begin_sweep()
+        next(plugin)
+        next(plugin)
+        next(plugin)  # exhausted
+        assert changed == [1.0, 2.5]
+
+    def test_state_error_emitted_on_timeout(self, qapp):
+        import time
+        from collections.abc import Iterator
+        from PyQt6.QtWidgets import QWidget as _QW
+
+        class _SlowGenerator(BaseSweepGenerator):
+            def iter_points(self) -> Iterator[tuple[int, float, int, bool]]:
+                while True:
+                    time.sleep(0.01)
+                    yield 0, 0.0, 0, True
+
+            def config_widget(self, parent=None):
+                return _QW(parent)
+
+            @classmethod
+            def _from_json_data(cls, data, *, state_sweep=None, parent=None):
+                return cls(state_sweep=state_sweep, parent=parent)
+
+        plugin = _TestSweepPlugin()
+        plugin._sweep_generator_class = _SlowGenerator
+        plugin.sweep_generator = _SlowGenerator(state_sweep=plugin, parent=plugin)
+        plugin.sweep_timeout_factor = 1.0
+        # Manually set a deadline that is already past
+        plugin._begin_sweep()
+        plugin._sweep_deadline = time.monotonic() - 1.0
+
+        errors: list[str] = []
+        plugin.state_error.connect(errors.append)
+        result = next(plugin)
+        assert result is False
+        assert errors
+        assert "timeout" in errors[0].lower()
+
+    def test_state_error_emitted_on_out_of_limits(self, qapp):
+        plugin = _TestSweepPlugin()
+        plugin.sweep_generator = _FiniteSweepGenerator(
+            points=[(0, 10.0, 0, True)], state_sweep=plugin, parent=plugin
+        )
+        errors: list[str] = []
+        plugin.state_error.connect(errors.append)
+
+        class _LimitedPlugin(_TestSweepPlugin):
+            @property
+            def limits(self):
+                return (0.0, 5.0)
+
+        p2 = _LimitedPlugin()
+        p2.sweep_generator = _FiniteSweepGenerator(
+            points=[(0, 10.0, 0, True)], state_sweep=p2, parent=p2
+        )
+        errors2: list[str] = []
+        p2.state_error.connect(errors2.append)
+        p2._begin_sweep()
+        result = next(p2)
+        assert result is False
+        assert errors2
+        assert "limits" in errors2[0].lower()
+
+    def test_limits_inherited_from_state_plugin(self, qapp):
+        from stoner_measurement.plugins.state import StatePlugin
+        plugin = _TestSweepPlugin()
+        assert isinstance(plugin, StatePlugin)
+        assert plugin.limits == (float("-inf"), float("inf"))
+
+    def test_state_signals_inherited_from_state_plugin(self, qapp):
+        from stoner_measurement.plugins.state import StatePlugin
+        from stoner_measurement.plugins.state_scan import StateScanPlugin
+        # Both families share signals from StatePlugin
+        assert hasattr(StatePlugin, "state_changed")
+        assert hasattr(StatePlugin, "state_reached")
+        assert hasattr(StatePlugin, "state_error")
+        scan = StateScanPlugin.__dict__
+        # scan_generator_changed is scan-specific; the three state signals are NOT redeclared
+        assert "state_changed" not in scan
+        assert "state_reached" not in scan
+        assert "state_error" not in scan
+
 
 class TestSweepGenerators:
     def test_base_from_json_dispatches_monitor_and_filter(self, qapp):
@@ -180,3 +295,42 @@ class TestSweepGenerators:
         stages = {stage for _ix, _value, stage, _measure in points}
         assert stages == {0, 1}
         assert points[0][3] is True
+
+    def test_multisegment_estimated_duration_simple(self, qapp):
+        gen = MultiSegmentRampSweepGenerator(
+            start=0.0,
+            segments=[(2.0, 1.0, True), (0.0, 0.5, False)],
+        )
+        # |2.0 - 0.0| / 1.0  +  |0.0 - 2.0| / 0.5  =  2.0 + 4.0  =  6.0
+        assert gen.estimated_duration() == 6.0
+
+    def test_multisegment_estimated_duration_zero_rate_returns_inf(self, qapp):
+        import math
+        gen = MultiSegmentRampSweepGenerator(
+            start=0.0,
+            segments=[(1.0, 0.0, True)],
+        )
+        assert math.isinf(gen.estimated_duration())
+
+    def test_multisegment_estimated_duration_empty_segments(self, qapp):
+        gen = MultiSegmentRampSweepGenerator(start=0.0, segments=[])
+        # Empty segments list is normalised to [(1.0, 0.1, True)] by setter.
+        # Test the zero-segments path by calling with the raw private attribute.
+        gen._segments = []
+        assert gen.estimated_duration() == 0.0
+
+    def test_monitor_and_filter_estimated_duration_is_inf(self, qapp):
+        import math
+        gen = MonitorAndFilterSweepGenerator()
+        assert math.isinf(gen.estimated_duration())
+
+    def test_sweep_timeout_scales_with_factor(self, qapp):
+        plugin = _TrackingRampSweep()
+        gen = MultiSegmentRampSweepGenerator(
+            start=0.0,
+            segments=[(2.0, 1.0, True)],
+            state_sweep=plugin,
+        )
+        plugin.sweep_generator = gen
+        plugin.sweep_timeout_factor = 3.0
+        assert plugin.sweep_timeout == 6.0

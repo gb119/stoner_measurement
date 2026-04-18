@@ -66,6 +66,30 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         self.reset()
         self.values_changed.emit()
 
+    def estimated_duration(self) -> float:
+        """Return an estimate of how long the sweep will take, in seconds.
+
+        The default implementation returns ``float("inf")`` (unknown duration),
+        which effectively disables any timeout that is calculated from this
+        value.  Concrete generators that have enough information to predict
+        their duration should override this method.
+
+        Returns:
+            (float):
+                Estimated sweep duration in seconds, or ``float("inf")`` if
+                the duration cannot be determined.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.sweep import MonitorAndFilterSweepGenerator
+            >>> import math
+            >>> gen = MonitorAndFilterSweepGenerator()
+            >>> math.isinf(gen.estimated_duration())
+            True
+        """
+        return float("inf")
+
     def to_json(self) -> dict[str, Any]:
         """Serialise this generator configuration."""
         return {"type": type(self).__name__}
