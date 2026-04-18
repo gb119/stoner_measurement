@@ -316,10 +316,7 @@ class ListScanWidget(QWidget):
             self._table.insertRow(row)
 
             target_spin = pg.SpinBox()
-            target_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-            target_spin.setSingleStep(0.1)
-            target_spin.setDecimals(4)
-            target_spin.setOpts(siPrefix=True)
+            target_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True)
             target_spin.setValue(float(target))
             target_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)

@@ -267,8 +267,7 @@ class PlotWidget(QWidget):
                 self._trace_table.setCellWidget(row, 3, line_selector)
 
                 line_width = pg.SpinBox(self._trace_table)
-                line_width.setRange(_MIN_LINE_WIDTH, _MAX_LINE_WIDTH)
-                line_width.setSingleStep(_LINE_WIDTH_STEP)
+                line_width.setOpts(bounds=(_MIN_LINE_WIDTH, _MAX_LINE_WIDTH), step=_LINE_WIDTH_STEP)
                 line_width.setValue(self._trace_line_width.get(trace_name, _DEFAULT_LINE_WIDTH))
                 line_width.setProperty(_TRACE_NAME_PROPERTY, trace_name)
                 line_width.valueChanged.connect(self._on_trace_line_width_changed)
@@ -284,8 +283,7 @@ class PlotWidget(QWidget):
                 self._trace_table.setCellWidget(row, 5, point_selector)
 
                 point_size = pg.SpinBox(self._trace_table)
-                point_size.setRange(_MIN_POINT_SIZE, _MAX_POINT_SIZE)
-                point_size.setSingleStep(_POINT_SIZE_STEP)
+                point_size.setOpts(bounds=(_MIN_POINT_SIZE, _MAX_POINT_SIZE), step=_POINT_SIZE_STEP)
                 point_size.setValue(self._trace_point_size.get(trace_name, _DEFAULT_POINT_SIZE))
                 point_size.setProperty(_TRACE_NAME_PROPERTY, trace_name)
                 point_size.valueChanged.connect(self._on_trace_point_size_changed)

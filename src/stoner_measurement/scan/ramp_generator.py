@@ -225,21 +225,17 @@ class RampScanWidget(QWidget):
         form = QFormLayout(controls_box)
 
         self._start_spin = pg.SpinBox()
-        self._start_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._start_spin.setDecimals(6)
-        self._start_spin.setOpts(siPrefix=True)
+        self._start_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._start_spin.setValue(self._generator.start)
         form.addRow("Start:", self._start_spin)
 
         self._end_spin = pg.SpinBox()
-        self._end_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._end_spin.setDecimals(6)
-        self._end_spin.setOpts(siPrefix=True)
+        self._end_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._end_spin.setValue(self._generator.end)
         form.addRow("End:", self._end_spin)
 
         self._points_spin = pg.SpinBox(int=True)
-        self._points_spin.setRange(2, _MAX_NUM_POINTS)
+        self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
         self._points_spin.setValue(self._generator.num_points)
         form.addRow("Points:", self._points_spin)
 
@@ -250,9 +246,7 @@ class RampScanWidget(QWidget):
         form.addRow("Mode:", self._mode_combo)
 
         self._base_spin = pg.SpinBox()
-        self._base_spin.setRange(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS)
-        self._base_spin.setDecimals(6)
-        self._base_spin.setOpts(siPrefix=True)
+        self._base_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._base_spin.setValue(self._generator.base)
         form.addRow("Base:", self._base_spin)
 
