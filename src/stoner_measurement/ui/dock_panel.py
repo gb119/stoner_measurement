@@ -1067,7 +1067,7 @@ class DockPanel(QWidget):
             category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self._instrument_list.addTopLevelItem(category_item)
             for ep_name, plugin in sorted(entries):
-                leaf = QTreeWidgetItem([ep_name])
+                leaf = QTreeWidgetItem([plugin.name])
                 leaf.setData(0, _EP_NAME_ROLE, ep_name)
                 leaf.setToolTip(0, plugin.tooltip())
                 leaf.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
@@ -1083,7 +1083,7 @@ class DockPanel(QWidget):
             category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self._instrument_list.addTopLevelItem(category_item)
             for ep_name, plugin in sorted(entries):
-                leaf = QTreeWidgetItem([ep_name])
+                leaf = QTreeWidgetItem([plugin.name])
                 leaf.setData(0, _EP_NAME_ROLE, ep_name)
                 leaf.setToolTip(0, plugin.tooltip())
                 leaf.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)

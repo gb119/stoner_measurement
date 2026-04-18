@@ -55,6 +55,25 @@ class TestDockPanel:
         assert category.childCount() == 1
         assert category.child(0).text(0) == "Dummy"
 
+    def test_state_scan_and_sweep_show_user_facing_names(self, qapp):
+        from stoner_measurement.plugins.state_scan.counter import CounterPlugin
+        from stoner_measurement.plugins.state_sweep.sweep_time import SweepTimePlugin
+        from stoner_measurement.ui.dock_panel import _EP_NAME_ROLE
+
+        pm = PluginManager()
+        pm.register("counter", CounterPlugin())
+        pm.register("sweep_time", SweepTimePlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        category_map = {
+            panel._instrument_list.topLevelItem(i).text(0): panel._instrument_list.topLevelItem(i)
+            for i in range(panel._instrument_list.topLevelItemCount())
+        }
+        assert category_map["State Scan"].child(0).text(0) == "Counter"
+        assert category_map["State Scan"].child(0).data(0, _EP_NAME_ROLE) == "counter"
+        assert category_map["State Sweep"].child(0).text(0) == "Sweep Time"
+        assert category_map["State Sweep"].child(0).data(0, _EP_NAME_ROLE) == "sweep_time"
+
     def test_sequence_steps_empty_initially(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
         assert panel.sequence_steps == []
