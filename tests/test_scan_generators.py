@@ -186,6 +186,14 @@ class TestBaseScanGenerator:
         assert gen._cache is not None
         assert gen._cache is cached
 
+    def test_units_setter_does_not_emit_when_value_unchanged(self, qapp):
+        gen = self._Minimal()
+        gen.units = "V"
+        emitted: list[str] = []
+        gen.units_changed.connect(emitted.append)
+        gen.units = "V"  # same value — should not fire
+        assert emitted == []
+
     def test_units_setter_coerces_to_str(self, qapp):
         gen = self._Minimal()
         gen.units = 42  # type: ignore[assignment]

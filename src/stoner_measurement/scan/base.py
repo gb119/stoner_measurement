@@ -115,8 +115,10 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
 
     @units.setter
     def units(self, value: str) -> None:
-        self._units = str(value)
-        self.units_changed.emit(self._units)
+        new_units = str(value)
+        if new_units != self._units:
+            self._units = new_units
+            self.units_changed.emit(self._units)
 
     @abstractmethod
     def to_json(self) -> dict[str, Any]:
