@@ -63,7 +63,8 @@ _PASTE_SUFFIX_RE = re.compile(r"^(.*)_(\d+)$")
 # one registered plugin are shown.
 _PLUGIN_TYPE_CATEGORIES: list[tuple[str, str]] = [
     ("trace", "Trace"),
-    ("state", "State Control"),
+    ("state_scan", "State Control"),
+    ("state_sweep", "State Sweep"),
     ("monitor", "Monitor"),
     ("transform", "Transform"),
     ("command", "Command"),
@@ -187,8 +188,8 @@ class _PluginTreeWidget(QTreeWidget):
     def select_plugin(self, ep_name: str) -> bool:
         """Select the leaf item whose entry-point name is *ep_name*.
 
-        Iterates over all category nodes and their children to find the plugin
-        leaf that carries *ep_name* in :data:`_EP_NAME_ROLE`.
+        Recursively traverses the tree to find the plugin leaf item that carries
+        *ep_name* in :data:`_EP_NAME_ROLE`.
 
         Args:
             ep_name (str):
@@ -213,13 +214,20 @@ class _PluginTreeWidget(QTreeWidget):
             >>> panel._instrument_list.select_plugin("NoSuchPlugin")
             False
         """
+        def _walk(item: QTreeWidgetItem) -> QTreeWidgetItem | None:
+            if item.data(0, _EP_NAME_ROLE) == ep_name:
+                return item
+            for i in range(item.childCount()):
+                found = _walk(item.child(i))
+                if found is not None:
+                    return found
+            return None
+
         for i in range(self.topLevelItemCount()):
-            category = self.topLevelItem(i)
-            for j in range(category.childCount()):
-                child = category.child(j)
-                if child.data(0, _EP_NAME_ROLE) == ep_name:
-                    self.setCurrentItem(child)
-                    return True
+            found = _walk(self.topLevelItem(i))
+            if found is not None:
+                self.setCurrentItem(found)
+                return True
         return False
 
 
@@ -1113,16 +1121,20 @@ class DockPanel(QWidget):
                 The filter string typed into the filter box.
         """
         text_lower = text.lower()
+
+        def _apply(item: QTreeWidgetItem) -> bool:
+            if item.childCount() == 0:
+                visible = text_lower in item.text(0).lower()
+                item.setHidden(not visible)
+                return visible
+            has_visible_child = False
+            for i in range(item.childCount()):
+                has_visible_child = _apply(item.child(i)) or has_visible_child
+            item.setHidden(not has_visible_child)
+            return has_visible_child
+
         for i in range(self._instrument_list.topLevelItemCount()):
-            category = self._instrument_list.topLevelItem(i)
-            has_visible = False
-            for j in range(category.childCount()):
-                child = category.child(j)
-                match = text_lower in child.text(0).lower()
-                child.setHidden(not match)
-                if match:
-                    has_visible = True
-            category.setHidden(not has_visible)
+            _apply(self._instrument_list.topLevelItem(i))
 
     def _release_step_plugins(self, item: QTreeWidgetItem) -> None:
         """Remove the strong reference to the plugin in *item* (and all children).
@@ -1155,6 +1167,10 @@ class DockPanel(QWidget):
         """
         current = self._instrument_list.currentItem()
         if current is None:
+            return
+        if current.childCount() > 0:
+            # Guard against adding hierarchy/category nodes; only leaf plugin
+            # items are addable sequence steps.
             return
         ep_name: str = current.data(0, _EP_NAME_ROLE) or ""
         if not ep_name:

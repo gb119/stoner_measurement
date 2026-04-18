@@ -335,12 +335,12 @@ class TestDockPanel:
         pm = PluginManager()
         state_plugin = _FakeStatePlugin()
         trace_plugin = DummyPlugin()
-        pm.register("state", state_plugin)
+        pm.register("state_scan", state_plugin)
         pm.register("trace", trace_plugin)
         panel = DockPanel(plugin_manager=pm)
 
         # Add both as top-level steps
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
         panel._instrument_list.select_plugin("trace")
         panel._add_step()
@@ -362,11 +362,11 @@ class TestDockPanel:
     def test_remove_sub_step(self, qapp):
         """Removing a sub-step removes only the child, leaving the parent intact."""
         pm = PluginManager()
-        pm.register("state", _FakeStatePlugin())
+        pm.register("state_scan", _FakeStatePlugin())
         pm.register("trace", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
         panel._instrument_list.select_plugin("trace")
         panel._add_step()
@@ -390,10 +390,10 @@ class TestDockPanel:
     def test_state_control_item_is_bold(self, qapp):
         """StateControlPlugin items are rendered with a bold font in the tree."""
         pm = PluginManager()
-        pm.register("state", _FakeStatePlugin())
+        pm.register("state_scan", _FakeStatePlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
 
         item = panel._sequence_tree.topLevelItem(0)
@@ -403,11 +403,11 @@ class TestDockPanel:
         """Renaming a step plugin's instance_name updates its label even when it is a sub-step."""
         from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
         pm = PluginManager()
-        pm.register("state", _FakeStatePlugin())
+        pm.register("state_scan", _FakeStatePlugin())
         pm.register("trace", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
         panel._instrument_list.select_plugin("trace")
         panel._add_step()
@@ -924,12 +924,12 @@ class TestDockPanel:
         from PyQt6.QtCore import Qt
 
         pm = PluginManager()
-        pm.register("state", _FakeStatePlugin())
+        pm.register("state_scan", _FakeStatePlugin())
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
         # Add state (index 0) then dummy (index 1).
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
         panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
@@ -966,10 +966,10 @@ class TestDockPanel:
         from PyQt6.QtCore import Qt
 
         pm = PluginManager()
-        pm.register("state", _FakeStatePlugin())
+        pm.register("state_scan", _FakeStatePlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
         state_item = panel._sequence_tree.topLevelItem(0)
         state_item.setSelected(True)
@@ -983,11 +983,11 @@ class TestDockPanel:
         from PyQt6.QtCore import Qt
 
         pm = PluginManager()
-        pm.register("state", _FakeStatePlugin())
+        pm.register("state_scan", _FakeStatePlugin())
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
         panel._instrument_list.select_plugin("Dummy")
         panel._add_step()
@@ -1105,11 +1105,11 @@ class TestDockPanel:
         from PyQt6.QtCore import Qt
 
         pm = PluginManager()
-        pm.register("state", _FakeStatePlugin())
+        pm.register("state_scan", _FakeStatePlugin())
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
         for _ in range(2):
             panel._instrument_list.select_plugin("Dummy")
@@ -1131,11 +1131,11 @@ class TestDockPanel:
         from PyQt6.QtCore import Qt
 
         pm = PluginManager()
-        pm.register("state", _FakeStatePlugin())
+        pm.register("state_scan", _FakeStatePlugin())
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state")
+        panel._instrument_list.select_plugin("state_scan")
         panel._add_step()
         for _ in range(2):
             panel._instrument_list.select_plugin("Dummy")

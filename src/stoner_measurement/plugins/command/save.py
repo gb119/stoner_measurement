@@ -7,7 +7,8 @@ tab-delimited text file.  Two save modes are supported:
 * **Traces** — writes all (or a selected subset of) trace channels from the
   ``_traces`` catalogue in the sequence engine namespace.
 * **Data** — writes the accumulated :class:`~pandas.DataFrame` from a named
-  :class:`~stoner_measurement.plugins.state_control.StateControlPlugin` instance.
+  :class:`~stoner_measurement.plugins.state.StatePlugin` instance (either a
+  state-scan or state-sweep plugin).
 """
 
 from __future__ import annotations
@@ -145,7 +146,7 @@ class SaveCommand(CommandPlugin):
       are saved; an empty dict saves all available traces.
     * **Data** (``"data"``) — writes the accumulated
       :class:`~pandas.DataFrame` from the
-      :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+      :class:`~stoner_measurement.plugins.state.StatePlugin`
       instance named by :attr:`data_source`.
 
     The output is a **TDI Format 2.0** tab-delimited text file structured as
@@ -194,8 +195,8 @@ class SaveCommand(CommandPlugin):
             default) saves all available traces.
         data_source (str):
             Instance name of the
-            :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
-            whose :attr:`~stoner_measurement.plugins.state_control.StateControlPlugin.data`
+            :class:`~stoner_measurement.plugins.state.StatePlugin`
+            whose :attr:`~stoner_measurement.plugins.state.StatePlugin.data`
             DataFrame is saved in data mode.  Defaults to ``""``.
         no_overwrite (bool):
             When ``True`` (the default) an existing file is never overwritten;
@@ -287,7 +288,7 @@ class SaveCommand(CommandPlugin):
         **Data mode** (``save_mode == "data"``)
 
         The accumulated :class:`~pandas.DataFrame` from the
-        :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+        :class:`~stoner_measurement.plugins.state.StatePlugin`
         instance named by :attr:`data_source` (or the ``data`` kwarg) is saved.
         The DataFrame index is written as the first numerical column (header
         ``"index"`` unless the index is named), followed by DataFrame column
@@ -313,7 +314,7 @@ class SaveCommand(CommandPlugin):
                 Defaults to ``None`` (use configured :attr:`trace_selection`).
             data (str | None):
                 Instance name of the
-                :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+                :class:`~stoner_measurement.plugins.state.StatePlugin`
                 whose DataFrame to save.  When supplied the save mode for
                 this call becomes ``"data"`` and the value overrides
                 :attr:`data_source`.  May not be combined with *trace*.
@@ -613,7 +614,7 @@ class SaveCommand(CommandPlugin):
           from the ``_traces`` catalogue in the sequence engine namespace (or
           an empty list when the plugin is detached).
         * **Data mode** — a combo box listing all
-          :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
+          :class:`~stoner_measurement.plugins.state.StatePlugin`
           instances registered with the engine (or a plain text field when the
           plugin is detached).
 
@@ -633,7 +634,7 @@ class SaveCommand(CommandPlugin):
             >>> isinstance(SaveCommand().config_widget(), QWidget)
             True
         """
-        from stoner_measurement.plugins.state_control import StateControlPlugin
+        from stoner_measurement.plugins.state import StatePlugin
 
         widget = QWidget(parent)
         outer_layout = QVBoxLayout(widget)
@@ -762,7 +763,7 @@ class SaveCommand(CommandPlugin):
         traces_scroll.setWidget(traces_container)
         stack.addWidget(traces_scroll)  # index 0
 
-        # Page 1: Data — combo box of StateControlPlugin instances.
+        # Page 1: Data — combo box of StatePlugin instances.
         data_widget = QWidget()
         data_form = QFormLayout(data_widget)
 
@@ -771,7 +772,7 @@ class SaveCommand(CommandPlugin):
         if engine is not None:
             for var_name in engine._plugin_var_names.values():  # noqa: SLF001
                 plugin_inst = ns.get(var_name)
-                if isinstance(plugin_inst, StateControlPlugin):
+                if isinstance(plugin_inst, StatePlugin):
                     state_plugins.append(var_name)
 
         if state_plugins:
@@ -793,7 +794,7 @@ class SaveCommand(CommandPlugin):
             data_form.addRow("Data source:", source_combo)
         else:
             source_edit = QLineEdit(self.data_source, data_widget)
-            source_edit.setToolTip("Instance name of a StateControlPlugin to save data from.")
+            source_edit.setToolTip("Instance name of a StatePlugin (state-scan or state-sweep) to save data from.")
 
             def _apply_source_text() -> None:
                 self.data_source = source_edit.text().strip()

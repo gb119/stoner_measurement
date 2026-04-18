@@ -33,9 +33,10 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
 
     * **Iterator interface** — :meth:`__iter__` and :meth:`__next__` allow
       direct iteration over the generated values; :meth:`reset` restarts
-      iteration.  Each step yields a ``(value, measure)`` tuple where
-      *measure* indicates whether the point should be recorded as a
-      measurement.
+      iteration.  Each step yields a ``(index, value, measure, stage)``
+      tuple, where *index* is the point number, *value* is the scan value,
+      *measure* indicates whether to collect data at that point, and *stage*
+      identifies the originating stage.
     * **Value caching** — :attr:`values` calls :meth:`generate` on first
       access and caches the result until a parameter changes.  :attr:`flags`
       similarly caches the result of :meth:`measure_flags`.
@@ -83,6 +84,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         super().__init__(parent)
         self._cache: np.ndarray | None = None
         self._flags_cache: np.ndarray | None = None
+        self._stage_indices_cache: np.ndarray | None = None
         self._index: int = 0
         self._units: str = ""
 
@@ -316,7 +318,33 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         """Invalidate the cached values and flags, and emit :attr:`values_changed`."""
         self._cache = None
         self._flags_cache = None
+        self._stage_indices_cache = None
         self.values_changed.emit()
+
+    def stage_indices(self) -> np.ndarray:
+        """Compute and return per-point stage indices.
+
+        The default implementation reports all points as belonging to stage
+        ``0``.  Scan generators with explicit stage boundaries should override
+        this method.
+
+        Returns:
+            (np.ndarray):
+                A 1-D integer array of the same length as :meth:`generate`.
+        """
+        return np.zeros(len(self.values), dtype=int)
+
+    @property
+    def point_stage_indices(self) -> np.ndarray:
+        """Cached per-point stage indices.
+
+        Returns:
+            (np.ndarray):
+                A 1-D integer array aligned with :attr:`values`.
+        """
+        if self._stage_indices_cache is None:
+            self._stage_indices_cache = self.stage_indices()
+        return self._stage_indices_cache
 
     def reset(self) -> None:
         """Reset the iterator to the beginning of the sequence.
@@ -365,8 +393,8 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         self._index = 0
         return self
 
-    def __next__(self) -> tuple[int, float, bool]:
-        """Return the index, value and measure flag for the next point in the sequence.
+    def __next__(self) -> tuple[int, float, bool, int]:
+        """Return index, value, measure flag, and stage for the next point.
 
         Also emits :attr:`current_value_changed` with the current output
         value so that connected widgets can update a position indicator.
@@ -378,6 +406,8 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
                 The next output value.
             (bool):
                 Whether this point should be recorded as a measurement.
+            (int):
+                Stage index from which this point originates.
 
         Raises:
             StopIteration:
@@ -388,6 +418,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         index = self._index
         value = float(self.values[self._index])
         measure = bool(self.flags[self._index])
+        stage = int(self.point_stage_indices[self._index])
         self._index += 1
         self.current_value_changed.emit(value)
-        return index, value, measure
+        return index, value, measure, stage

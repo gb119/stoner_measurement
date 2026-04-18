@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import math
 import textwrap
 from typing import TYPE_CHECKING, Any
 
@@ -162,12 +163,53 @@ _INF = float("inf")
 _NAN = float("nan")
 
 
+def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
+    """Format a fitted value as ``value ± uncertainty``.
+
+    The uncertainty is rounded to one significant figure and the value is
+    rounded to the same decimal precision.
+
+    Args:
+        value (Any):
+            Best-fit parameter value.
+        uncertainty (Any):
+            One-sigma uncertainty for the parameter value.
+
+    Returns:
+        (str):
+            Formatted text, or an empty string when the inputs are not finite.
+    """
+    try:
+        value_float = float(value)
+        uncertainty_float = float(uncertainty)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(value_float) or not math.isfinite(uncertainty_float) or uncertainty_float <= 0.0:
+        return ""
+
+    rounded_uncertainty = float(f"{uncertainty_float:.1g}")
+    if rounded_uncertainty <= 0.0 or not math.isfinite(rounded_uncertainty):
+        return ""
+
+    exponent = math.floor(math.log10(abs(uncertainty_float)))
+    decimals = -exponent
+    rounded_value = round(value_float, decimals)
+
+    if decimals > 0:
+        value_text = f"{rounded_value:.{decimals}f}"
+        uncertainty_text = f"{rounded_uncertainty:.{decimals}f}"
+    else:
+        value_text = f"{rounded_value:.0f}"
+        uncertainty_text = f"{rounded_uncertainty:.0f}"
+    return f"{value_text} ± {uncertainty_text}"
+
+
 class _ParamTableWidget(QWidget):
     """Table widget for configuring per-parameter bounds and initial values.
 
     Displays one row per parameter detected in the fit function.  Each row
-    has four columns: parameter name (read-only), minimum bound, initial
-    value, and maximum bound.  Empty cells mean "unconstrained / auto".
+    has five columns: parameter name (read-only), minimum bound, initial
+    value, maximum bound, and fitted value with uncertainty.
 
     Args:
         parent (QWidget | None):
@@ -188,15 +230,16 @@ class _ParamTableWidget(QWidget):
         super().__init__(parent)
         self._build_ui()
         self.param_settings: dict[str, dict[str, float | None]] = {}
+        self._fitted_text_by_param: dict[str, str] = {}
 
     def _build_ui(self) -> None:
         """Build the table widget and surrounding layout."""
         layout = QVBoxLayout(self)
 
-        self._table = QTableWidget(0, 4, self)
-        self._table.setHorizontalHeaderLabels(["Parameter", "Min", "Initial", "Max"])
+        self._table = QTableWidget(0, 5, self)
+        self._table.setHorizontalHeaderLabels(["Parameter", "Min", "Initial", "Max", "Fitted"])
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        for col in (1, 2, 3):
+        for col in (1, 2, 3, 4):
             self._table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self._table.setToolTip(
             "Leave Min/Initial/Max blank to use defaults.\n" "Min/Max constrain the curve fit; Initial sets p0."
@@ -246,6 +289,7 @@ class _ParamTableWidget(QWidget):
                 val = prev.get(key)
                 text = "" if val is None else str(val)
                 self._table.setItem(row, col, QTableWidgetItem(text))
+            self._set_fitted_cell(row, self._fitted_text_by_param.get(name, ""))
 
     def read_settings(self) -> dict[str, dict[str, float | None]]:
         """Read current table values and return a settings dict.
@@ -269,6 +313,23 @@ class _ParamTableWidget(QWidget):
         """
         self.param_settings = settings
         self._fill_table(param_names, settings)
+
+    def update_fitted_results(self, results: dict[str, Any]) -> None:
+        """Update the fitted-value column from a transform result dict.
+
+        Args:
+            results (dict[str, Any]):
+                Transform output mapping containing ``{name}`` and
+                ``{name}_err`` entries for each parameter.
+        """
+        fitted_text_by_param: dict[str, str] = {}
+        for name in self._iter_parameter_names():
+            fitted_text_by_param[name] = _format_value_with_uncertainty(
+                results.get(name),
+                results.get(f"{name}_err"),
+            )
+        self._fitted_text_by_param = fitted_text_by_param
+        self._apply_fitted_values()
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -314,6 +375,30 @@ class _ParamTableWidget(QWidget):
                 val = vals.get(key)
                 text = "" if val is None else str(val)
                 self._table.setItem(row, col, QTableWidgetItem(text))
+            self._set_fitted_cell(row, self._fitted_text_by_param.get(name, ""))
+
+    def _iter_parameter_names(self):
+        """Yield parameter names in table row order."""
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 0)
+            if item is None:
+                continue
+            yield item.text()
+
+    def _apply_fitted_values(self) -> None:
+        """Apply cached fitted-value text to the table."""
+        blocked = self._table.blockSignals(True)
+        try:
+            for row, name in enumerate(self._iter_parameter_names()):
+                self._set_fitted_cell(row, self._fitted_text_by_param.get(name, ""))
+        finally:
+            self._table.blockSignals(blocked)
+
+    def _set_fitted_cell(self, row: int, text: str) -> None:
+        """Set the read-only fitted-value cell for *row*."""
+        item = QTableWidgetItem(text)
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        self._table.setItem(row, 4, item)
 
 
 # ---------------------------------------------------------------------------
@@ -1025,6 +1110,7 @@ class CurveFitPlugin(TransformPlugin):
 
         param_widget = _ParamTableWidget(param_container)
         param_widget.load_settings(self.param_settings, self.param_names)
+        param_widget.update_fitted_results(self.data)
         param_layout.addWidget(param_widget)
 
         # Optional trace output checkboxes.
@@ -1068,6 +1154,7 @@ class CurveFitPlugin(TransformPlugin):
             self._merge_param_settings(table_settings, self.param_names)
 
         param_widget.settings_changed.connect(_on_table_changed)
+        self.transform_complete.connect(param_widget.update_fitted_results)
 
         # ---- Wire trace checkboxes to attributes -----------------------
         def _on_initial_toggled(checked: bool) -> None:
