@@ -634,6 +634,7 @@ class SaveCommand(CommandPlugin):
             True
         """
         from stoner_measurement.plugins.state_control import StateControlPlugin
+        from stoner_measurement.plugins.state_sweep import StateSweepPlugin
 
         widget = QWidget(parent)
         outer_layout = QVBoxLayout(widget)
@@ -771,7 +772,7 @@ class SaveCommand(CommandPlugin):
         if engine is not None:
             for var_name in engine._plugin_var_names.values():  # noqa: SLF001
                 plugin_inst = ns.get(var_name)
-                if isinstance(plugin_inst, StateControlPlugin):
+                if isinstance(plugin_inst, (StateControlPlugin, StateSweepPlugin)):
                     state_plugins.append(var_name)
 
         if state_plugins:

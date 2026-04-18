@@ -10,6 +10,9 @@ The plugin classes are organised into type-specific sub-packages:
 * :mod:`stoner_measurement.plugins.state_control` — controls experimental state
   (field, temperature, motor position, etc.)
   (:class:`~stoner_measurement.plugins.state_control.base.StateControlPlugin`).
+* :mod:`stoner_measurement.plugins.state_sweep` — executes sub-sequences in a
+  generator-driven sweep loop
+  (:class:`~stoner_measurement.plugins.state_sweep.base.StateSweepPlugin`).
 * :mod:`stoner_measurement.plugins.monitor` — passively records auxiliary
   quantities at regular intervals
   (:class:`~stoner_measurement.plugins.monitor.base.MonitorPlugin`).
@@ -45,6 +48,7 @@ from stoner_measurement.plugins.command import (
 from stoner_measurement.plugins.monitor import MonitorPlugin
 from stoner_measurement.plugins.sequence import SequencePlugin, TopLevelSequence
 from stoner_measurement.plugins.state_control import StateControlPlugin
+from stoner_measurement.plugins.state_sweep import StateSweepPlugin, SweepTimePlugin
 from stoner_measurement.plugins.trace import TraceData, TracePlugin
 from stoner_measurement.plugins.transform import TransformPlugin
 
@@ -57,6 +61,8 @@ __all__ = [
     "SaveCommand",
     "SequencePlugin",
     "StateControlPlugin",
+    "StateSweepPlugin",
+    "SweepTimePlugin",
     "TopLevelSequence",
     "TraceData",
     "TracePlugin",
