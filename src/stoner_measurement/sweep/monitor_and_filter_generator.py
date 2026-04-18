@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.sweep.base import BaseSweepGenerator
 
 _DEFAULT_POLL_SECONDS = 0.05
+_SPINBOX_MAX_ABS = 1e9
 
 
 class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
@@ -117,6 +118,8 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
     def _change_exceeds_limit(self, current: float, baseline: float, use_percent: bool, limit: float) -> bool:
         if use_percent:
             if baseline == 0.0:
+                # A non-zero current against a zero baseline represents an
+                # unbounded percentage change.
                 delta = 0.0 if current == 0.0 else math.inf
             else:
                 delta = abs((current - baseline) / baseline) * 100.0
@@ -255,7 +258,7 @@ class MonitorAndFilterSweepWidget(QWidget):
 
     def _build_limit_spin(self, value: float) -> pg.SpinBox:
         spin = pg.SpinBox(self._table)
-        spin.setOpts(bounds=(0.0, 1e12), decimals=6)
+        spin.setOpts(bounds=(0.0, _SPINBOX_MAX_ABS), decimals=6)
         spin.setValue(float(value))
         spin.valueChanged.connect(self._sync_rows_from_table)
         return spin

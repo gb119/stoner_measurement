@@ -68,6 +68,10 @@ class _StateSweepPage(QWidget):
             if new_name and new_name.isidentifier():
                 name_edit.setStyleSheet("")
                 plugin.instance_name = new_name
+            elif not new_name:
+                name_edit.setStyleSheet("border: 1px solid red;")
+                name_edit.setToolTip("Instance name cannot be empty.")
+                name_edit.setText(plugin.instance_name)
             else:
                 name_edit.setStyleSheet("border: 1px solid red;")
                 name_edit.setToolTip(
@@ -182,6 +186,9 @@ class StateSweepPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self._iter_started: bool = False
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
+        default_filter = f"{old_name}.meas_flag"
+        if self.collect_filter == default_filter:
+            self.collect_filter = f"{new_name}.meas_flag"
         self.instance_name_changed.emit(old_name, new_name)
 
     @property

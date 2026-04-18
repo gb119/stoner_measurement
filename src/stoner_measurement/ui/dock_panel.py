@@ -188,7 +188,7 @@ class _PluginTreeWidget(QTreeWidget):
     def select_plugin(self, ep_name: str) -> bool:
         """Select the leaf item whose entry-point name is *ep_name*.
 
-        Recursively traverses the tree to find the plugin leaf that carries
+        Recursively traverses the tree to find the plugin leaf item that carries
         *ep_name* in :data:`_EP_NAME_ROLE`.
 
         Args:

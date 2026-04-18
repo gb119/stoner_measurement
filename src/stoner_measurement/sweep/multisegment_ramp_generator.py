@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.sweep.base import BaseSweepGenerator
 
 _DEFAULT_POLL_SECONDS = 0.05
+_SPINBOX_MAX_ABS = 1e9
 
 
 class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
@@ -145,7 +146,7 @@ class MultiSegmentRampSweepWidget(QWidget):
 
         form = QFormLayout()
         self._start_spin = pg.SpinBox()
-        self._start_spin.setOpts(bounds=(-1e12, 1e12), decimals=6)
+        self._start_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6)
         self._start_spin.valueChanged.connect(self._on_start_changed)
         form.addRow("Start value:", self._start_spin)
 
@@ -180,14 +181,14 @@ class MultiSegmentRampSweepWidget(QWidget):
 
     def _build_target_spin(self, value: float) -> pg.SpinBox:
         spin = pg.SpinBox(self._table)
-        spin.setOpts(bounds=(-1e12, 1e12), decimals=6)
+        spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6)
         spin.setValue(float(value))
         spin.valueChanged.connect(self._sync_segments_from_table)
         return spin
 
     def _build_rate_spin(self, value: float) -> pg.SpinBox:
         spin = pg.SpinBox(self._table)
-        spin.setOpts(bounds=(0.0, 1e12), decimals=6)
+        spin.setOpts(bounds=(0.0, _SPINBOX_MAX_ABS), decimals=6)
         spin.setValue(max(0.0, float(value)))
         spin.valueChanged.connect(self._sync_segments_from_table)
         return spin
@@ -245,8 +246,8 @@ class MultiSegmentRampSweepWidget(QWidget):
         current = float(self._generator.start)
         current_time = 0.0
         for target, rate, measure in self._generator.segments:
-            safe_rate = abs(float(rate))
-            duration = abs(float(target) - current) / safe_rate if safe_rate > 0.0 else 0.0
+            rate_magnitude = abs(float(rate))
+            duration = abs(float(target) - current) / rate_magnitude if rate_magnitude > 0.0 else 0.0
             x_vals = [current_time, current_time + duration]
             y_vals = [current, float(target)]
             pen = pg.mkPen(color=(0, 200, 0) if measure else (200, 0, 0), width=2)
