@@ -118,14 +118,14 @@ class TestBaseScanGenerator:
 
     def test_iter_yields_all_values(self, qapp):
         gen = self._Minimal()
-        assert list(gen) == [(0, 1.0, True), (1, 2.0, True), (2, 3.0, True)]
+        assert list(gen) == [(0, 1.0, True, 0), (1, 2.0, True, 0), (2, 3.0, True, 0)]
 
     def test_next_returns_tuple(self, qapp):
         gen = self._Minimal()
         it = iter(gen)
         result = next(it)
         assert isinstance(result, tuple)
-        assert result == (0, 1.0, True)
+        assert result == (0, 1.0, True, 0)
 
     def test_next_raises_stop_iteration(self, qapp):
         gen = self._Minimal()
@@ -140,7 +140,7 @@ class TestBaseScanGenerator:
         gen = self._Minimal()
         list(gen)  # exhaust
         gen.reset()
-        assert list(gen) == [(0, 1.0, True), (1, 2.0, True), (2, 3.0, True)]
+        assert list(gen) == [(0, 1.0, True, 0), (1, 2.0, True, 0), (2, 3.0, True, 0)]
 
     def test_current_value_changed_emitted_on_next(self, qapp):
         gen = self._Minimal()
@@ -326,7 +326,7 @@ class TestFunctionScanGenerator:
     def test_iter_values_match_generate(self, qapp):
         gen = FunctionScanGenerator(num_points=10)
         expected = gen.generate()
-        collected = [value for _, value, _ in gen]
+        collected = [value for _, value, _, _ in gen]
         assert np.allclose(collected, expected)
 
     def test_len(self, qapp):
@@ -498,8 +498,9 @@ class TestFunctionScanGenerator:
     def test_iter_yields_tuples_with_true_measure(self, qapp):
         gen = FunctionScanGenerator(num_points=3)
         results = list(gen)
-        assert all(isinstance(r, tuple) and len(r) == 3 for r in results)
+        assert all(isinstance(r, tuple) and len(r) == 4 for r in results)
         assert all(r[2] is True for r in results)
+        assert all(r[3] == 0 for r in results)
 
     def test_current_value_changed_emitted_during_iteration(self, qapp):
         gen = FunctionScanGenerator(num_points=4)

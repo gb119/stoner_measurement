@@ -856,10 +856,12 @@ class TestStateControlDataCollection:
         p.collect_filter = "True"
         p.ix = 0
         p.value = 3.5
+        p.stage = 2
         p.collect()
         assert not p.data.empty
         assert p.data.index.tolist() == [0]
         assert p.data["value"].iloc[0] == 3.5
+        assert p.data["stage"].iloc[0] == 2
         engine.shutdown()
 
     def test_collect_skips_when_filter_false(self, qapp):
@@ -883,9 +885,11 @@ class TestStateControlDataCollection:
         for i in range(3):
             p.ix = i
             p.value = float(i)
+            p.stage = i
             p.collect()
         assert len(p.data) == 3
         assert p.data.index.tolist() == [0, 1, 2]
+        assert p.data["stage"].tolist() == [0, 1, 2]
         engine.shutdown()
 
     def test_collect_with_outputs_filter(self, qapp):

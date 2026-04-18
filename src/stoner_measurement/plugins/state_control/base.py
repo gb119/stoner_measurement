@@ -354,6 +354,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.ix: int = 0
         self.value: float = 0.0
         self.meas_flag: bool = False
+        self.stage: int = 0
         self.collect_data: bool = False
         self.clear_on_start: bool = True
         self.collect_filter: str = f"{self.instance_name}.meas_flag"
@@ -433,7 +434,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         Evaluates :attr:`collect_filter` in the sequence engine namespace.  If
         the result is truthy, a row is appended to :attr:`data` with the
         current iterator index (:attr:`ix`) as the index label.  The row
-        contains :attr:`value` as its first entry, followed by the evaluated
+        contains :attr:`value` and :attr:`stage` as its first entries, followed by the evaluated
         outputs from either *outputs* (if supplied) or the full sequence
         engine values catalogue.
 
@@ -485,7 +486,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         else:
             keys = list(values_cat.keys())
 
-        row: dict[str, Any] = {"value": self.value}
+        row: dict[str, Any] = {"value": self.value, "stage": self.stage}
         for key in keys:
             expr = values_cat[key]
             try:
@@ -734,10 +735,11 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.ix = 0
         self.value = 0.0
         self.meas_flag = False
+        self.stage = 0
         self.connect()
         self.configure()
         try:
-            for self.ix, self.value, self.meas_flag in self.scan_generator:
+            for self.ix, self.value, self.meas_flag, self.stage in self.scan_generator:
                 self.ramp_to(float(self.value))
                 for sub_step in sub_steps:
                     sub_step()
@@ -1010,7 +1012,7 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             ...     def is_at_target(self): return True
             >>> p = _S()
             >>> lines = p.generate_action_code(1, [], lambda s, i: [])
-            >>> any("for s.ix, s.value, s.meas_flag in s.scan_generator:" in line for line in lines)
+            >>> any("for s.ix, s.value, s.meas_flag, s.stage in s.scan_generator:" in line for line in lines)
             True
             >>> p.clear_on_start = True
             >>> lines2 = p.generate_action_code(1, [], lambda s, i: [])
@@ -1028,7 +1030,10 @@ class StateControlPlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         if self.clear_on_start:
             lines.append(f"{prefix}{var_name}.clear_data()")
         lines += [
-            f"{prefix}for {var_name}.ix, {var_name}.value, {var_name}.meas_flag in {var_name}.scan_generator:",
+            (
+                f"{prefix}for {var_name}.ix, {var_name}.value, {var_name}.meas_flag, "
+                f"{var_name}.stage in {var_name}.scan_generator:"
+            ),
             f"{loop_prefix}wait_for_plot_ready()",
             f"{loop_prefix}{var_name}.ramp_to(float({var_name}.value))",
             f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.get_state():.4g}} {self.units}")',
