@@ -63,7 +63,8 @@ _PASTE_SUFFIX_RE = re.compile(r"^(.*)_(\d+)$")
 # one registered plugin are shown.
 _PLUGIN_TYPE_CATEGORIES: list[tuple[str, str]] = [
     ("trace", "Trace"),
-    ("state_scan", "State Control"),
+    ("state_control", "State Control"),
+    ("state_scan", "State Scan"),
     ("state_sweep", "State Sweep"),
     ("monitor", "Monitor"),
     ("transform", "Transform"),
