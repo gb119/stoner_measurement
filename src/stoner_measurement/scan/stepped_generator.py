@@ -276,7 +276,7 @@ class SteppedScanWidget(QWidget):
 
     The widget provides two tabs:
 
-    * **Stages** — a :class:`pyqtgraph.SpinBox` for the start value and a
+    * **Stages** — a :class:`~pyqtgraph.SpinBox` for the start value and a
       :class:`QTableWidget` where each row defines one stage (target, step
       size, measure flag).  Rows can be added or removed with buttons below
       the table.
@@ -427,15 +427,19 @@ class SteppedScanWidget(QWidget):
             self._table.insertRow(row)
 
             target_spin = pg.SpinBox()
-            target_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True,
-                                suffix=self._generator.units)
+            target_spin.setOpts(
+                bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4,
+                siPrefix=True, suffix=self._generator.units,
+            )
             target_spin.setValue(float(target))
             target_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)
 
             step_spin = pg.SpinBox()
-            step_spin.setOpts(bounds=(_MIN_STEP, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True,
-                              suffix=self._generator.units)
+            step_spin.setOpts(
+                bounds=(_MIN_STEP, _SPINBOX_MAX_ABS), step=0.1, decimals=4,
+                siPrefix=True, suffix=self._generator.units,
+            )
             step_spin.setValue(float(step))
             step_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 1, step_spin)
