@@ -550,45 +550,45 @@ class TestDataCatalogs:
 
     def test_add_trace_plugin_populates_traces_catalog(self, engine):
         plugin = DummyPlugin()
-        engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         cat = engine.traces_catalog
         assert len(cat) > 0
 
     def test_trace_catalog_key_format(self, engine):
         plugin = DummyPlugin()
-        engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         cat = engine.traces_catalog
         assert "dummy:Dummy" in cat
 
     def test_trace_catalog_value_is_expression(self, engine):
         plugin = DummyPlugin()
-        engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         assert engine.traces_catalog["dummy:Dummy"] == "dummy.data['Dummy']"
 
-    def test_remove_plugin_clears_traces_catalog(self, engine):
+    def test_clear_step_catalog_clears_traces_catalog(self, engine):
         plugin = DummyPlugin()
-        engine.add_plugin("dummy", plugin)
-        engine.remove_plugin("dummy")
+        engine.update_step_plugin_catalog([plugin])
+        engine.update_step_plugin_catalog([])
         assert engine.traces_catalog == {}
 
-    def test_rename_plugin_updates_traces_catalog(self, engine):
+    def test_step_plugin_rename_updates_traces_catalog(self, engine):
         plugin = DummyPlugin()
-        engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin._instance_name = "my_dummy"
-        engine.rename_plugin("dummy", "my_dummy")
+        engine.update_step_plugin_catalog([plugin])
         cat = engine.traces_catalog
         assert "my_dummy:Dummy" in cat
         assert "dummy:Dummy" not in cat
 
     def test_traces_catalog_in_namespace_is_live(self, engine):
         plugin = DummyPlugin()
-        engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         assert engine._namespace["_traces"] == engine.traces_catalog
 
     def test_values_catalog_populated_by_state_plugin(self, engine):
         from stoner_measurement.plugins.state_control import CounterPlugin
         plugin = CounterPlugin()
-        engine.add_plugin("counter", plugin)
+        engine.update_step_plugin_catalog([plugin])
         cat = engine.values_catalog
         assert len(cat) > 0
         assert any("counter" in k for k in cat)
@@ -597,10 +597,68 @@ class TestDataCatalogs:
         from stoner_measurement.plugins.state_control import CounterPlugin
         trace_plugin = DummyPlugin()
         state_plugin = CounterPlugin()
-        engine.add_plugin("dummy", trace_plugin)
-        engine.add_plugin("counter", state_plugin)
+        engine.update_step_plugin_catalog([trace_plugin, state_plugin])
         assert len(engine.traces_catalog) > 0
         assert len(engine.values_catalog) > 0
+
+    def test_add_plugin_does_not_populate_traces_catalog(self, engine):
+        """Base plugins registered via add_plugin do not contribute to the catalog."""
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        assert engine.traces_catalog == {}
+
+    def test_update_step_plugin_catalog_includes_step_traces(self, engine):
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        assert "dummy:Dummy" in engine.traces_catalog
+
+    def test_update_step_plugin_catalog_persists_across_add_plugin(self, engine):
+        """Step plugin contributions survive a subsequent add_plugin call."""
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        engine.add_plugin("counter", CounterPlugin())
+        assert "dummy:Dummy" in engine.traces_catalog
+
+    def test_update_step_plugin_catalog_persists_across_remove_plugin(self, engine):
+        """Step plugin contributions survive a remove_plugin call."""
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        base = DummyPlugin()
+        engine.add_plugin("base_dummy", base)
+        engine.remove_plugin("base_dummy")
+        assert "dummy:Dummy" in engine.traces_catalog
+
+    def test_update_step_plugin_catalog_replaces_previous_steps(self, engine):
+        """Calling update_step_plugin_catalog again replaces the previous step list."""
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        step_a = DummyPlugin()
+        engine.update_step_plugin_catalog([step_a])
+        assert "dummy:Dummy" in engine.traces_catalog
+        step_b = CounterPlugin()
+        engine.update_step_plugin_catalog([step_b])
+        assert "dummy:Dummy" not in engine.traces_catalog
+        assert any("counter" in k for k in engine.values_catalog)
+
+    def test_all_plugins_returns_base_and_step_plugins(self, engine):
+        base = DummyPlugin()
+        step = DummyPlugin()
+        engine.add_plugin("base_dummy", base)
+        engine.update_step_plugin_catalog([step])
+        plugins = engine.all_plugins()
+        assert base in plugins
+        assert step in plugins
+
+    def test_all_plugins_deduplicates_same_instance(self, engine):
+        """A plugin that appears as both base and step is returned only once."""
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
+        plugins = engine.all_plugins()
+        assert plugins.count(plugin) == 1
+
+    def test_all_plugins_empty_when_no_plugins(self, engine):
+        assert engine.all_plugins() == []
 
     def test_plot_widget_initially_none(self, engine):
         """plot_widget is None before being set by the application."""

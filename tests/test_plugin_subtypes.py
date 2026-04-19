@@ -902,6 +902,7 @@ class TestStateControlDataCollection:
         counter = CounterPlugin()
         engine.add_plugin("instantstate", p)
         engine.add_plugin("counter", counter)
+        engine.update_step_plugin_catalog([p, counter])
         counter.value = 7.0
         p.collect_filter = "True"
         p.meas_flag = True

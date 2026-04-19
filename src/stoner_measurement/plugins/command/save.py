@@ -431,21 +431,15 @@ class SaveCommand(CommandPlugin):
 
     def _build_metadata(self, *, ns: dict[str, Any]) -> list[str]:
         """Build flattened metadata strings for the first output column."""
-        from stoner_measurement.plugins.base_plugin import BasePlugin
-
         engine = self.sequence_engine
         if engine is None:
             raise RuntimeError("SaveCommand must be attached to a SequenceEngine before execute()")
 
         metadata: list[str] = []
-        seen_ids: set[int] = set()
-        for var_name in engine._plugin_var_names.values():  # noqa: SLF001
-            plugin = ns.get(var_name)
-            if isinstance(plugin, BasePlugin) and id(plugin) not in seen_ids:
-                seen_ids.add(id(plugin))
-                state = plugin.to_json()
-                prefix = str(state.get("instance_name", var_name))
-                metadata.extend(_flatten_to_metadata(state, prefix))
+        for plugin in engine.all_plugins():
+            state = plugin.to_json()
+            prefix = str(state.get("instance_name", plugin.instance_name))
+            metadata.extend(_flatten_to_metadata(state, prefix))
 
         values_catalog: dict[str, str] = ns.get("_values", {})
         for key, expr in values_catalog.items():
@@ -770,10 +764,9 @@ class SaveCommand(CommandPlugin):
         engine = self.sequence_engine
         state_plugins: list[str] = []
         if engine is not None:
-            for var_name in engine._plugin_var_names.values():  # noqa: SLF001
-                plugin_inst = ns.get(var_name)
-                if isinstance(plugin_inst, StatePlugin):
-                    state_plugins.append(var_name)
+            for plugin in engine.all_plugins():
+                if isinstance(plugin, StatePlugin):
+                    state_plugins.append(plugin.instance_name)
 
         if state_plugins:
             source_combo = QComboBox(data_widget)
