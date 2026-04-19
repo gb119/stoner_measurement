@@ -1,7 +1,7 @@
 Plugin modules
 ==============
 
-Base package
+Base plugins
 ------------
 
 .. automodapi:: stoner_measurement.plugins
@@ -38,6 +38,9 @@ State plugins
    :no-heading:
    :include-all-objects:
 
+State scan plugins
+~~~~~~~~~~~~~~~~~~
+
 .. automodapi:: stoner_measurement.plugins.state_scan
    :no-heading:
    :include-all-objects:
@@ -50,6 +53,9 @@ State plugins
    :no-heading:
    :include-all-objects:
 
+State sweep plugins
+~~~~~~~~~~~~~~~~~~~
+
 .. automodapi:: stoner_measurement.plugins.state_sweep
    :no-heading:
    :include-all-objects:
@@ -61,6 +67,9 @@ State plugins
 .. automodapi:: stoner_measurement.plugins.state_sweep.sweep_time
    :no-heading:
    :include-all-objects:
+
+State control plugins
+~~~~~~~~~~~~~~~~~~~~~
 
 .. automodapi:: stoner_measurement.plugins.state_control
    :no-heading:
