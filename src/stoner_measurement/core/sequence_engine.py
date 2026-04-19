@@ -883,7 +883,7 @@ class SequenceEngine(QObject):
                 if isinstance(plugin, BasePlugin):
                     traces.update(plugin.reported_traces())
                     values.update(plugin.reported_values())
-                if isinstance(plugin, StatePlugin):
+                if isinstance(plugin, StatePlugin) and plugin.collect_data:
                     dataframes.append(plugin.instance_name)
         self._namespace["_traces"] = traces
         self._namespace["_values"] = values
