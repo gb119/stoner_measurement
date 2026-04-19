@@ -263,6 +263,22 @@ class TestSaveCommand:
         # The save plugin's instance_name should appear in flattened metadata.
         assert "save.instance_name{str}='save'" in text
 
+    def test_execute_tdi_step_plugin_state_flattened(self, qapp, engine, tmp_path):
+        """Step plugins registered via update_step_plugin_catalog appear in metadata."""
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        step = DummyPlugin()
+        step._instance_name = "step_dummy"  # noqa: SLF001
+        engine.update_step_plugin_catalog([step])
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+        cmd.execute()
+
+        text = out_file.read_text()
+        assert "step_dummy.instance_name" in text
+
     def test_execute_tdi_values_in_metadata(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)

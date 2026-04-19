@@ -602,6 +602,59 @@ class TestDataCatalogs:
         assert len(engine.traces_catalog) > 0
         assert len(engine.values_catalog) > 0
 
+    def test_update_step_plugin_catalog_includes_step_traces(self, engine):
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        assert "dummy:Dummy" in engine.traces_catalog
+
+    def test_update_step_plugin_catalog_persists_across_add_plugin(self, engine):
+        """Step plugin contributions survive a subsequent add_plugin call."""
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        engine.add_plugin("counter", CounterPlugin())
+        assert "dummy:Dummy" in engine.traces_catalog
+
+    def test_update_step_plugin_catalog_persists_across_remove_plugin(self, engine):
+        """Step plugin contributions survive a remove_plugin call."""
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        base = DummyPlugin()
+        engine.add_plugin("base_dummy", base)
+        engine.remove_plugin("base_dummy")
+        assert "dummy:Dummy" in engine.traces_catalog
+
+    def test_update_step_plugin_catalog_replaces_previous_steps(self, engine):
+        """Calling update_step_plugin_catalog again replaces the previous step list."""
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        step_a = DummyPlugin()
+        engine.update_step_plugin_catalog([step_a])
+        assert "dummy:Dummy" in engine.traces_catalog
+        step_b = CounterPlugin()
+        engine.update_step_plugin_catalog([step_b])
+        assert "dummy:Dummy" not in engine.traces_catalog
+        assert any("counter" in k for k in engine.values_catalog)
+
+    def test_all_plugins_returns_base_and_step_plugins(self, engine):
+        base = DummyPlugin()
+        step = DummyPlugin()
+        engine.add_plugin("base_dummy", base)
+        engine.update_step_plugin_catalog([step])
+        plugins = engine.all_plugins()
+        assert base in plugins
+        assert step in plugins
+
+    def test_all_plugins_deduplicates_same_instance(self, engine):
+        """A plugin that appears as both base and step is returned only once."""
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
+        plugins = engine.all_plugins()
+        assert plugins.count(plugin) == 1
+
+    def test_all_plugins_empty_when_no_plugins(self, engine):
+        assert engine.all_plugins() == []
+
     def test_plot_widget_initially_none(self, engine):
         """plot_widget is None before being set by the application."""
         assert engine.plot_widget is None

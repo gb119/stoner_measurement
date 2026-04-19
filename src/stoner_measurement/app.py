@@ -158,39 +158,19 @@ class MeasurementApp(QMainWindow):
         read ``engine_namespace["_traces"]`` to populate their dropdowns.
 
         Notes:
-            The catalog is built in two phases:
-
-            1. **Base plugins** — plugins registered with the engine via
-               :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.add_plugin`
-               (the plugin-manager instances) are iterated first.  Their
-               :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_traces`
-               and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_values`
-               contributions seed the initial catalog.
-            2. **Step plugins** — plugin instances created for each sequence step
-               in the dock panel are traversed recursively (depth-first through
-               sub-steps).  Any step plugin that is not yet attached to the engine
-               has its ``sequence_engine`` set so that ``engine_namespace`` becomes
-               functional.  Its trace and value contributions are then merged into
-               the catalog, overwriting any base-plugin entry with the same key.
-
-            The final catalog is written directly to the engine namespace as
-            ``_traces`` and ``_values``, making it immediately visible to any
-            plugin whose ``engine_namespace`` references this engine.
+            Step plugins are attached to the engine so that
+            ``engine_namespace`` becomes functional in their configuration
+            widgets.  The catalog is rebuilt by
+            :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.update_step_plugin_catalog`,
+            which includes contributions from both base plugins and the
+            step plugins passed here.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
-        # Collect traces and values from base plugins already in the engine.
-        traces: dict[str, str] = {}
-        values: dict[str, str] = {}
-        for var_name in self._engine._plugin_var_names.values():  # noqa: SLF001
-            base_plugin = self._engine._namespace.get(var_name)  # noqa: SLF001
-            if isinstance(base_plugin, BasePlugin):
-                traces.update(base_plugin.reported_traces())
-                values.update(base_plugin.reported_values())
+        step_plugins: list[BasePlugin] = []
 
-        # Collect traces and values from step plugins in the current sequence.
         def _process(steps: list) -> None:
-            """Recursively attach unregistered step plugins to the engine and accumulate their catalogs."""
+            """Recursively collect step plugins and attach them to the engine."""
             for step in steps:
                 if isinstance(step, tuple):
                     step_plugin, sub_steps = step
@@ -198,26 +178,12 @@ class MeasurementApp(QMainWindow):
                 else:
                     step_plugin = step
                 if isinstance(step_plugin, BasePlugin):
-                    # Attach to the engine so engine_namespace works in config widgets.
                     if step_plugin.sequence_engine is None:
                         step_plugin.sequence_engine = self._engine
-                    prefix = f"{step_plugin.instance_name}:"
-                    for key in list(traces):
-                        if not key.startswith(prefix):
-                            continue
-                        traces.pop(key, None)
-                    for key in list(values):
-                        if not key.startswith(prefix):
-                            continue
-                        values.pop(key, None)
-                    traces.update(step_plugin.reported_traces())
-                    values.update(step_plugin.reported_values())
+                    step_plugins.append(step_plugin)
 
         _process(self._main_window.dock_panel.sequence_steps)
-
-        # Update the live namespace so config widgets see the full catalogue.
-        self._engine._namespace["_traces"] = traces  # noqa: SLF001
-        self._engine._namespace["_values"] = values  # noqa: SLF001
+        self._engine.update_step_plugin_catalog(step_plugins)
 
     def _on_plugins_changed(self) -> None:
         """Synchronise the engine namespace with the current plugins."""

@@ -589,6 +589,10 @@ class SequenceEngine(QObject):
         self._namespace = self._make_namespace()
         self._namespace["wait_for_plot_ready"] = self.wait_for_plot_ready
         self._plugin_var_names: dict[str, str] = {}  # ep_name → var_name in namespace
+        # Step-plugin instances provided by the application layer (e.g. from the
+        # sequence editor).  These supplement the base plugins when rebuilding the
+        # _traces/_values catalogs.
+        self._extra_catalog_plugins: list[Any] = []
 
         # Reference to the main plot widget; set by the application after startup.
         # Used by PlotTraceCommand to deliver data directly without manual signal wiring.
@@ -845,15 +849,18 @@ class SequenceEngine(QObject):
     def _rebuild_data_catalogs(self) -> None:
         """Rebuild the ``_traces`` and ``_values`` namespace entries from all registered plugins.
 
-        Iterates over every plugin currently registered with this engine and merges
+        Iterates over every plugin currently registered with this engine — both
+        the base plugins (added via :meth:`add_plugin`) and any sequence-step
+        plugins registered via :meth:`update_step_plugin_catalog` — and merges
         their :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_traces`
         and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_values`
         dictionaries into two master catalogs which are then stored in the live
         namespace as ``_traces`` and ``_values`` respectively.
 
         This method is called automatically by :meth:`add_plugin`,
-        :meth:`remove_plugin`, and :meth:`rename_plugin` so that the catalogs
-        always reflect the current set of registered plugins.
+        :meth:`remove_plugin`, :meth:`rename_plugin`, and
+        :meth:`update_step_plugin_catalog` so that the catalogs always reflect
+        the current set of registered plugins.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
@@ -864,8 +871,94 @@ class SequenceEngine(QObject):
             if isinstance(plugin, BasePlugin):
                 traces.update(plugin.reported_traces())
                 values.update(plugin.reported_values())
+        for plugin in self._extra_catalog_plugins:
+            if isinstance(plugin, BasePlugin):
+                prefix = f"{plugin.instance_name}:"
+                for key in list(traces):
+                    if key.startswith(prefix):
+                        del traces[key]
+                for key in list(values):
+                    if key.startswith(prefix):
+                        del values[key]
+                traces.update(plugin.reported_traces())
+                values.update(plugin.reported_values())
         self._namespace["_traces"] = traces
         self._namespace["_values"] = values
+
+    def update_step_plugin_catalog(self, plugins: list) -> None:
+        """Update the engine's step-plugin catalog and rebuild ``_traces``/``_values``.
+
+        Called by the application layer whenever the sequence-step list changes.
+        Stores *plugins* as the current set of step-plugin instances and triggers
+        :meth:`_rebuild_data_catalogs` so that both the base-plugin and step-plugin
+        contributions are reflected in the live namespace immediately.
+
+        Args:
+            plugins (list):
+                Flat list of
+                :class:`~stoner_measurement.plugins.base_plugin.BasePlugin` instances
+                collected from the current sequence tree.  Non-plugin objects in
+                the list are silently ignored.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
+            >>> engine = SequenceEngine()
+            >>> step = DummyPlugin()
+            >>> engine.update_step_plugin_catalog([step])
+            >>> "dummy:Dummy" in engine.traces_catalog
+            True
+            >>> engine.shutdown()
+        """
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        self._extra_catalog_plugins = [p for p in plugins if isinstance(p, BasePlugin)]
+        self._rebuild_data_catalogs()
+
+    def all_plugins(self) -> list:
+        """Return all plugin instances known to this engine.
+
+        Combines the base plugins registered via :meth:`add_plugin` with the
+        step plugins registered via :meth:`update_step_plugin_catalog`.
+        Each plugin instance appears at most once (identity-based deduplication).
+
+        Returns:
+            (list):
+                Ordered list of
+                :class:`~stoner_measurement.plugins.base_plugin.BasePlugin`
+                instances — base plugins first, then step plugins.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
+            >>> engine = SequenceEngine()
+            >>> base = DummyPlugin()
+            >>> step = DummyPlugin()
+            >>> engine.add_plugin("dummy", base)
+            >>> engine.update_step_plugin_catalog([step])
+            >>> plugins = engine.all_plugins()
+            >>> base in plugins
+            True
+            >>> step in plugins
+            True
+            >>> engine.shutdown()
+        """
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        result: list = []
+        seen: set[int] = set()
+        for var_name in self._plugin_var_names.values():
+            plugin = self._namespace.get(var_name)
+            if isinstance(plugin, BasePlugin) and id(plugin) not in seen:
+                result.append(plugin)
+                seen.add(id(plugin))
+        for plugin in self._extra_catalog_plugins:
+            if id(plugin) not in seen:
+                result.append(plugin)
+                seen.add(id(plugin))
+        return result
 
     @property
     def traces_catalog(self) -> dict[str, str]:
