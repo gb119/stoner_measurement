@@ -270,7 +270,7 @@ class TestSaveCommand:
         from stoner_measurement.plugins.trace import DummyPlugin
 
         step = DummyPlugin()
-        step._instance_name = "step_dummy"  # noqa: SLF001
+        step.instance_name = "step_dummy"
         engine.update_step_plugin_catalog([step])
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)

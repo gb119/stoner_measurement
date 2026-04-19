@@ -890,8 +890,9 @@ class SequenceEngine(QObject):
             plugins (list[BasePlugin]):
                 Flat list of
                 :class:`~stoner_measurement.plugins.base_plugin.BasePlugin` instances
-                collected from the current sequence tree.  Non-plugin objects in
-                the list are silently ignored.
+                collected from the current sequence tree.  Any element that is not
+                a ``BasePlugin`` instance is silently ignored, so mixed lists are
+                safe to pass.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
