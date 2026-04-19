@@ -608,6 +608,8 @@ class MeasurementApp(QMainWindow):
         self._load_template_sequence()
         self._current_measurement_path = None
         self._update_window_title()
+        self._engine._rebuild_data_catalogs()
+
 
     def _on_open_measurement(self) -> None:
         """Open a saved measurement sequence from a JSON file.
@@ -646,6 +648,7 @@ class MeasurementApp(QMainWindow):
         dock.load_sequence(steps)
         self._current_measurement_path = file_path
         self._update_window_title()
+        self._engine._rebuild_data_catalogs()
 
     def _on_save_measurement(self) -> None:
         """Save the current measurement sequence to the last-used file.

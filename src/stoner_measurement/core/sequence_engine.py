@@ -58,6 +58,7 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
 
+
 #: Logger name used for all sequence-engine and plugin log messages.
 SEQUENCE_LOGGER_NAME = "stoner_measurement.sequence"
 
@@ -846,8 +847,12 @@ class SequenceEngine(QObject):
             self._plugin_var_names[ep_name] = new_var_name
         self._rebuild_data_catalogs()
 
-    def _rebuild_data_catalogs(self) -> None:
+    def _rebuild_data_catalogs(self, script=False) -> None:
         """Rebuild the ``_traces`` and ``_values`` namespace entries from sequence-step plugins.
+
+        Keyword Args:
+            script (bool, False):
+                If set True then the sequence steps are not used as we're about to run a script.'
 
         Iterates over the sequence-step plugins registered via
         :meth:`update_step_plugin_catalog` and merges their
@@ -868,15 +873,21 @@ class SequenceEngine(QObject):
         the current sequence.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
+        from stoner_measurement.plugins.state import StatePlugin
 
         traces: dict[str, str] = {}
         values: dict[str, str] = {}
-        for plugin in self._extra_catalog_plugins:
-            if isinstance(plugin, BasePlugin):
-                traces.update(plugin.reported_traces())
-                values.update(plugin.reported_values())
+        dataframes: list[str] = []
+        if not script:
+            for plugin in self._extra_catalog_plugins:
+                if isinstance(plugin, BasePlugin):
+                    traces.update(plugin.reported_traces())
+                    values.update(plugin.reported_values())
+                if isinstance(plugin, StatePlugin):
+                    dataframes.append(plugin.instance_name)
         self._namespace["_traces"] = traces
         self._namespace["_values"] = values
+        self._namespace["_dataframes"]  = dataframes
 
     def update_step_plugin_catalog(self, plugins: list[BasePlugin]) -> None:
         """Update the engine's step-plugin catalog and rebuild ``_traces``/``_values``.
