@@ -27,7 +27,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libegl1 \
             libgl1 \
-            libopengl0
+            libopengl0 \
+            graphviz \
+            graphviz-dev
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
@@ -39,7 +41,7 @@ jobs:
       - name: Install documentation dependencies
         shell: bash -el {0}
         run: |
-          conda install -y sphinx sphinx-automodapi sphinx-copybutton
+          conda install -y sphinx sphinx-automodapi sphinx-copybutton graphviz
           if conda install -y -c phygbu sphinx-better-theme; then
             echo "sphinx-better-theme installed from phygbu conda channel"
           else
