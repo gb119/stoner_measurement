@@ -27,6 +27,7 @@ release = "0.1.0"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx_automodapi.automodapi",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
@@ -35,6 +36,10 @@ extensions = [
 autosummary_generate = True
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
+autodoc_mock_imports = [
+    "PyQt6",
+    "pyqtgraph",
+]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]

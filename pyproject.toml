@@ -34,6 +34,7 @@ dependencies = [
 [project.optional-dependencies]
 docs = [
     "sphinx>=8.0",
+    "sphinx-automodapi>=0.16",
     "sphinx-better-theme>=0.1.5",
 ]
 instruments = [
