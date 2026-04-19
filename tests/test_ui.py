@@ -46,11 +46,11 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=plugin_manager)
         assert panel is not None
 
-    def test_instrument_list_populated(self, plugin_manager):
+    def test_plugin_list_populated(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
         # "Dummy" is a TracePlugin so it appears under a "Trace" category node.
-        assert panel._instrument_list.topLevelItemCount() == 1
-        category = panel._instrument_list.topLevelItem(0)
+        assert panel._plugin_list.topLevelItemCount() == 1
+        category = panel._plugin_list.topLevelItem(0)
         assert category.text(0) == "Trace"
         assert category.childCount() == 1
         assert category.child(0).text(0) == "Dummy"
@@ -66,8 +66,8 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         category_map = {
-            panel._instrument_list.topLevelItem(i).text(0): panel._instrument_list.topLevelItem(i)
-            for i in range(panel._instrument_list.topLevelItemCount())
+            panel._plugin_list.topLevelItem(i).text(0): panel._plugin_list.topLevelItem(i)
+            for i in range(panel._plugin_list.topLevelItemCount())
         }
         assert category_map["State Scan"].child(0).text(0) == "Counter"
         assert category_map["State Scan"].child(0).data(0, _EP_NAME_ROLE) == "counter"
@@ -80,7 +80,7 @@ class TestDockPanel:
 
     def test_add_step(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
         steps = panel.sequence_steps
         assert len(steps) == 1
@@ -88,7 +88,7 @@ class TestDockPanel:
 
     def test_remove_step(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
         panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
         panel._remove_step()
@@ -97,11 +97,11 @@ class TestDockPanel:
     def test_refresh_on_plugin_registration(self, qapp):
         pm = PluginManager()
         panel = DockPanel(plugin_manager=pm)
-        assert panel._instrument_list.topLevelItemCount() == 0
+        assert panel._plugin_list.topLevelItemCount() == 0
 
         pm.register("Dummy", DummyPlugin())
-        assert panel._instrument_list.topLevelItemCount() == 1
-        assert panel._instrument_list.topLevelItem(0).childCount() == 1
+        assert panel._plugin_list.topLevelItemCount() == 1
+        assert panel._plugin_list.topLevelItem(0).childCount() == 1
 
     # --- Monitoring widget tests ---
 
@@ -182,7 +182,7 @@ class TestDockPanel:
         received = []
         panel.plugin_selected.connect(lambda p: received.append(p))
 
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
         panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
 
@@ -196,7 +196,7 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
         panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
 
@@ -213,7 +213,7 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
 
         item = panel._sequence_tree.topLevelItem(0)
@@ -227,7 +227,7 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
 
         from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
@@ -243,9 +243,9 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -258,9 +258,9 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -292,9 +292,9 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add two PlotTraceCommand steps.
-        panel._instrument_list.select_plugin("PlotTrace")
+        panel._plugin_list.select_plugin("PlotTrace")
         panel._add_step()
-        panel._instrument_list.select_plugin("PlotTrace")
+        panel._plugin_list.select_plugin("PlotTrace")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -327,7 +327,7 @@ class TestDockPanel:
         pm.register("ep_key", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("ep_key")
+        panel._plugin_list.select_plugin("ep_key")
         panel._add_step()
 
         item = panel._sequence_tree.topLevelItem(0)
@@ -359,9 +359,9 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add both as top-level steps
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
-        panel._instrument_list.select_plugin("trace")
+        panel._plugin_list.select_plugin("trace")
         panel._add_step()
 
         # Manually nest the trace item under the state item
@@ -385,9 +385,9 @@ class TestDockPanel:
         pm.register("trace", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
-        panel._instrument_list.select_plugin("trace")
+        panel._plugin_list.select_plugin("trace")
         panel._add_step()
 
         state_item = panel._sequence_tree.topLevelItem(0)
@@ -412,7 +412,7 @@ class TestDockPanel:
         pm.register("state_scan", _FakeStatePlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
 
         item = panel._sequence_tree.topLevelItem(0)
@@ -426,9 +426,9 @@ class TestDockPanel:
         pm.register("trace", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
-        panel._instrument_list.select_plugin("trace")
+        panel._plugin_list.select_plugin("trace")
         panel._add_step()
 
         state_item = panel._sequence_tree.topLevelItem(0)
@@ -458,7 +458,7 @@ class TestDockPanel:
 
         # Add all three as top-level steps
         for ep_name in ("outer", "inner", "trace"):
-            panel._instrument_list.select_plugin(ep_name)
+            panel._plugin_list.select_plugin(ep_name)
             panel._add_step()
 
         # Locate items by ep_name (plugin_names is sorted, so positions may vary)
@@ -497,7 +497,7 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         for ep_name in ("outer", "inner", "trace"):
-            panel._instrument_list.select_plugin(ep_name)
+            panel._plugin_list.select_plugin(ep_name)
             panel._add_step()
 
         outer_item = self._find_item(panel, "outer")
@@ -529,9 +529,9 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add the same plugin twice.
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -551,14 +551,14 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add first step and rename it so the default slot is occupied.
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
         steps = panel.sequence_steps
         steps[0].instance_name = "my_sensor"
 
         # Adding a second step must not reuse "dummy" (now occupied by my_sensor
         # after initial rename) or clash with "my_sensor".
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
         steps = panel.sequence_steps
         assert steps[0].instance_name != steps[1].instance_name
@@ -571,7 +571,7 @@ class TestDockPanel:
 
         # Add three Dummy steps (names: "dummy", "dummy_2", "dummy_3").
         for _ in range(3):
-            panel._instrument_list.select_plugin("Dummy")
+            panel._plugin_list.select_plugin("Dummy")
             panel._add_step()
 
         # The next unique name should be "dummy_4".
@@ -583,9 +583,9 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
 
         steps = panel.sequence_steps
@@ -596,17 +596,17 @@ class TestDockPanel:
 
     # --- Plugin-list drag-and-drop tests ---
 
-    def test_instrument_list_is_plugin_tree_widget(self, plugin_manager):
-        """DockPanel._instrument_list is a _PluginTreeWidget (drag-enabled)."""
+    def test_plugin_list_is_plugin_tree_widget(self, plugin_manager):
+        """DockPanel._plugin_list is a _PluginTreeWidget (drag-enabled)."""
         from PyQt6.QtWidgets import QAbstractItemView
 
         from stoner_measurement.ui.dock_panel import _PluginTreeWidget
 
         panel = DockPanel(plugin_manager=plugin_manager)
-        assert isinstance(panel._instrument_list, _PluginTreeWidget)
-        assert panel._instrument_list.dragEnabled()
+        assert isinstance(panel._plugin_list, _PluginTreeWidget)
+        assert panel._plugin_list.dragEnabled()
         assert (
-            panel._instrument_list.dragDropMode()
+            panel._plugin_list.dragDropMode()
             == QAbstractItemView.DragDropMode.DragOnly
         )
 
@@ -616,10 +616,10 @@ class TestDockPanel:
 
         panel = DockPanel(plugin_manager=plugin_manager)
         # Get the "Dummy" leaf item under the first category.
-        category = panel._instrument_list.topLevelItem(0)
+        category = panel._plugin_list.topLevelItem(0)
         leaf = category.child(0)
         assert leaf.data(0, _EP_NAME_ROLE) == "Dummy"
-        mime = panel._instrument_list.mimeData([leaf])
+        mime = panel._plugin_list.mimeData([leaf])
         assert mime.hasFormat(_PLUGIN_EP_MIME_TYPE)
         ep_name = bytes(mime.data(_PLUGIN_EP_MIME_TYPE)).decode()
         assert ep_name == "Dummy"
@@ -629,7 +629,7 @@ class TestDockPanel:
         from PyQt6.QtCore import Qt
 
         panel = DockPanel(plugin_manager=plugin_manager)
-        category = panel._instrument_list.topLevelItem(0)
+        category = panel._plugin_list.topLevelItem(0)
         assert not (category.flags() & Qt.ItemFlag.ItemIsDragEnabled)
 
     def test_category_mime_data_excludes_ep_mime_type(self, plugin_manager):
@@ -637,15 +637,15 @@ class TestDockPanel:
         from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
 
         panel = DockPanel(plugin_manager=plugin_manager)
-        category = panel._instrument_list.topLevelItem(0)
-        mime = panel._instrument_list.mimeData([category])
+        category = panel._plugin_list.topLevelItem(0)
+        mime = panel._plugin_list.mimeData([category])
         assert not mime.hasFormat(_PLUGIN_EP_MIME_TYPE)
 
     def test_add_step_ignores_category_node(self, plugin_manager):
         """Selecting a category node and clicking Add Step does not add a sequence step."""
         panel = DockPanel(plugin_manager=plugin_manager)
-        category = panel._instrument_list.topLevelItem(0)
-        panel._instrument_list.setCurrentItem(category)
+        category = panel._plugin_list.topLevelItem(0)
+        panel._plugin_list.setCurrentItem(category)
         panel._add_step()
         assert panel.sequence_steps == []
 
@@ -810,7 +810,7 @@ class TestDockPanel:
                 List of the newly added top-level :class:`QTreeWidgetItem` objects.
         """
         for _ in range(count):
-            panel._instrument_list.select_plugin("Dummy")
+            panel._plugin_list.select_plugin("Dummy")
             panel._add_step()
         return [panel._sequence_tree.topLevelItem(i) for i in range(count)]
 
@@ -948,9 +948,9 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         # Add state (index 0) then dummy (index 1).
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
 
         dummy_item = panel._sequence_tree.topLevelItem(1)
@@ -988,7 +988,7 @@ class TestDockPanel:
         pm.register("state_scan", _FakeStatePlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
         state_item = panel._sequence_tree.topLevelItem(0)
         state_item.setSelected(True)
@@ -1006,9 +1006,9 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
-        panel._instrument_list.select_plugin("Dummy")
+        panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
 
         state_item = panel._sequence_tree.topLevelItem(0)
@@ -1128,10 +1128,10 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
         for _ in range(2):
-            panel._instrument_list.select_plugin("Dummy")
+            panel._plugin_list.select_plugin("Dummy")
             panel._add_step()
 
         state_item = panel._sequence_tree.topLevelItem(0)
@@ -1154,10 +1154,10 @@ class TestDockPanel:
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
-        panel._instrument_list.select_plugin("state_scan")
+        panel._plugin_list.select_plugin("state_scan")
         panel._add_step()
         for _ in range(2):
-            panel._instrument_list.select_plugin("Dummy")
+            panel._plugin_list.select_plugin("Dummy")
             panel._add_step()
 
         state_item = panel._sequence_tree.topLevelItem(0)

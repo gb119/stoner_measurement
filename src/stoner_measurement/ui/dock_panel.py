@@ -1,6 +1,6 @@
 """Dock panel — left 25 % of the main window.
 
-Provides instrument listing, sequence building controls, a run button,
+Provides plugin listing, sequence building controls, a run button,
 and a monitoring section where plugins can display live status widgets.
 The sequence list is a tree widget that supports drag-and-drop reordering
 and arbitrarily deep sub-sequence nesting for
@@ -210,9 +210,9 @@ class _PluginTreeWidget(QTreeWidget):
             >>> from stoner_measurement.ui.dock_panel import DockPanel
             >>> panel = DockPanel(plugin_manager=pm)
             >>> pm.register("Dummy", DummyPlugin())
-            >>> panel._instrument_list.select_plugin("Dummy")
+            >>> panel._plugin_list.select_plugin("Dummy")
             True
-            >>> panel._instrument_list.select_plugin("NoSuchPlugin")
+            >>> panel._plugin_list.select_plugin("NoSuchPlugin")
             False
         """
         def _walk(item: QTreeWidgetItem) -> QTreeWidgetItem | None:
@@ -935,7 +935,7 @@ class DockPanel(QWidget):
         plugin_manager (PluginManager):
             The application
             :class:`~stoner_measurement.core.plugin_manager.PluginManager`
-            instance — used to populate the available-instruments list and to
+            instance — used to populate the available-plugins list and to
             manage monitoring widgets.
 
     Keyword Parameters:
@@ -980,14 +980,14 @@ class DockPanel(QWidget):
 
         # --- Available sequence commands / plugins ---
         layout.addWidget(QLabel("<b>Available sequence commands</b>"))
-        self._instrument_filter = QLineEdit()
-        self._instrument_filter.setObjectName("instrumentFilter")
-        self._instrument_filter.setPlaceholderText("Filter plugins...")
-        self._instrument_filter.setClearButtonEnabled(True)
-        layout.addWidget(self._instrument_filter)
-        self._instrument_list = _PluginTreeWidget()
-        self._instrument_list.setObjectName("instrumentList")
-        layout.addWidget(self._instrument_list)
+        self._plugin_filter = QLineEdit()
+        self._plugin_filter.setObjectName("pluginFilter")
+        self._plugin_filter.setPlaceholderText("Filter plugins...")
+        self._plugin_filter.setClearButtonEnabled(True)
+        layout.addWidget(self._plugin_filter)
+        self._plugin_list = _PluginTreeWidget()
+        self._plugin_list.setObjectName("pluginList")
+        layout.addWidget(self._plugin_list)
 
         # --- Sequence steps ---
         layout.addWidget(QLabel("<b>Sequence Steps</b>"))
@@ -1028,21 +1028,21 @@ class DockPanel(QWidget):
         self._remove_step_btn.clicked.connect(self._remove_step)
         self._sequence_tree.delete_requested.connect(self._remove_step)
         self._sequence_tree.itemSelectionChanged.connect(self._on_selection_changed)
-        self._instrument_list.itemDoubleClicked.connect(lambda item, col: self._on_instrument_double_clicked())
-        self._instrument_filter.textChanged.connect(self._filter_instruments)
+        self._plugin_list.itemDoubleClicked.connect(lambda item, col: self._on_plugin_double_clicked())
+        self._plugin_filter.textChanged.connect(self._filter_plugins)
 
-        # Populate instrument list and monitoring widgets
-        self._refresh_instruments()
+        # Populate plugin list and monitoring widgets
+        self._refresh_plugins()
         self._refresh_monitors()
-        plugin_manager.plugins_changed.connect(self._refresh_instruments)
+        plugin_manager.plugins_changed.connect(self._refresh_plugins)
         plugin_manager.plugins_changed.connect(self._refresh_monitors)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _refresh_instruments(self) -> None:
-        """Reload the instrument list from the plugin manager, grouped by plugin type.
+    def _refresh_plugins(self) -> None:
+        """Reload the plugin list from the plugin manager, grouped by plugin type.
 
         Plugins are organised under category header nodes in the order defined
         by :data:`_PLUGIN_TYPE_CATEGORIES`.  Categories with no registered
@@ -1050,7 +1050,7 @@ class DockPanel(QWidget):
         within each category.  After rebuilding the tree the current filter
         text is re-applied.
         """
-        self._instrument_list.clear()
+        self._plugin_list.clear()
         plugins = self._plugin_manager.plugins
 
         # Group plugins by their type key.
@@ -1065,7 +1065,7 @@ class DockPanel(QWidget):
                 continue
             category_item = QTreeWidgetItem([label])
             category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self._instrument_list.addTopLevelItem(category_item)
+            self._plugin_list.addTopLevelItem(category_item)
             for ep_name, plugin in sorted(entries):
                 leaf = QTreeWidgetItem([plugin.name])
                 leaf.setData(0, _EP_NAME_ROLE, ep_name)
@@ -1081,7 +1081,7 @@ class DockPanel(QWidget):
                 continue
             category_item = QTreeWidgetItem([type_key.capitalize()])
             category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self._instrument_list.addTopLevelItem(category_item)
+            self._plugin_list.addTopLevelItem(category_item)
             for ep_name, plugin in sorted(entries):
                 leaf = QTreeWidgetItem([plugin.name])
                 leaf.setData(0, _EP_NAME_ROLE, ep_name)
@@ -1090,7 +1090,7 @@ class DockPanel(QWidget):
                 category_item.addChild(leaf)
             category_item.setExpanded(True)
 
-        self._filter_instruments(self._instrument_filter.text())
+        self._filter_plugins(self._plugin_filter.text())
 
     def _refresh_monitors(self) -> None:
         """Sync monitoring widgets with the current plugin list."""
@@ -1106,11 +1106,11 @@ class DockPanel(QWidget):
                 if widget is not None:
                     self.add_monitor_widget(name, widget)
 
-    def _on_instrument_double_clicked(self) -> None:
-        """Add the double-clicked instrument as a sequence step."""
+    def _on_plugin_double_clicked(self) -> None:
+        """Add the double-clicked plugin as a sequence step."""
         self._add_step()
 
-    def _filter_instruments(self, text: str) -> None:
+    def _filter_plugins(self, text: str) -> None:
         """Show only plugin leaf items whose name contains *text*.
 
         The filter is case-insensitive.  An empty *text* shows all items.
@@ -1134,8 +1134,8 @@ class DockPanel(QWidget):
             item.setHidden(not has_visible_child)
             return has_visible_child
 
-        for i in range(self._instrument_list.topLevelItemCount()):
-            _apply(self._instrument_list.topLevelItem(i))
+        for i in range(self._plugin_list.topLevelItemCount()):
+            _apply(self._plugin_list.topLevelItem(i))
 
     def _release_step_plugins(self, item: QTreeWidgetItem) -> None:
         """Remove the strong reference to the plugin in *item* (and all children).
@@ -1156,7 +1156,7 @@ class DockPanel(QWidget):
             self._release_step_plugins(item.child(i))
 
     def _add_step(self) -> None:
-        """Add the selected instrument as a top-level sequence step.
+        """Add the selected plugin as a top-level sequence step.
 
         Reads the entry-point name from the currently selected leaf item's
         :data:`_EP_NAME_ROLE` data.  Category header nodes do not carry an
@@ -1166,7 +1166,7 @@ class DockPanel(QWidget):
         Delegates to :meth:`_make_new_step_item` to create the item, then
         appends it at the top level of the sequence tree.
         """
-        current = self._instrument_list.currentItem()
+        current = self._plugin_list.currentItem()
         if current is None:
             return
         if current.childCount() > 0:
@@ -1376,7 +1376,7 @@ class DockPanel(QWidget):
             >>> panel = DockPanel(plugin_manager=pm)
             >>> panel._unique_step_name("dummy")
             'dummy'
-            >>> panel._instrument_list.select_plugin("Dummy")
+            >>> panel._plugin_list.select_plugin("Dummy")
             True
             >>> panel._add_step()
             >>> panel._unique_step_name("dummy")
