@@ -1,8 +1,8 @@
 Plugin modules
 ==============
 
-Base plugins
-------------
+Plugin base classes
+-------------------
 
 .. automodapi:: stoner_measurement.plugins
    :no-heading:
