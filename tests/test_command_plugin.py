@@ -204,6 +204,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -225,6 +226,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -301,6 +303,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         result = plugin.measure({})
         n_points = len(result["Dummy"].x)
 
@@ -431,6 +434,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -455,6 +459,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -482,6 +487,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -722,6 +728,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -744,6 +751,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -767,6 +775,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -790,6 +799,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -878,6 +888,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
@@ -911,6 +922,7 @@ class TestSaveCommand:
             start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
         )
         engine.add_plugin("dummy", plugin)
+        engine.update_step_plugin_catalog([plugin])
         plugin.measure({})
 
         cmd = SaveCommand()
