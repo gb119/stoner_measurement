@@ -27,6 +27,7 @@ release = "0.1.0"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx_automodapi.automodapi",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
@@ -35,9 +36,14 @@ extensions = [
 autosummary_generate = True
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
+automodapi_toctreedirnm = "_generated/automodapi"
+autodoc_mock_imports = [
+    "PyQt6",
+    "pyqtgraph",
+]
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "_generated", "Thumbs.db", ".DS_Store"]
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
