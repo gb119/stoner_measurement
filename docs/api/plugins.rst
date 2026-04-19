@@ -6,19 +6,6 @@ Plugin modules
    :undoc-members:
    :show-inheritance:
 
-Sequence sub-package
---------------------
-
-.. automodule:: stoner_measurement.plugins.sequence
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: stoner_measurement.plugins.sequence.base
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Trace sub-package
 -----------------
 
@@ -37,20 +24,28 @@ Trace sub-package
    :undoc-members:
    :show-inheritance:
 
-State-control sub-package
+State-scan sub-package
 --------------------------
 
-.. automodule:: stoner_measurement.plugins.state_control
+.. automodule:: stoner_measurement.plugins.state_scan.base
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: stoner_measurement.plugins.state_control.base
+.. automodule:: stoner_measurement.plugins.state_scan.counter
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: stoner_measurement.plugins.state_control.counter
+State-sweep sub-package
+--------------------------
+
+.. automodule:: stoner_measurement.plugins.state_sweep.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: stoner_measurement.plugins.state_sweep.sweep_time
    :members:
    :undoc-members:
    :show-inheritance:
