@@ -44,6 +44,7 @@ from stoner_measurement.instruments.temperature_controller import (
     TemperatureController,
     TemperatureReading,
     TemperatureStatus,
+    ZoneEntry,
 )
 
 __all__ = [
@@ -62,4 +63,5 @@ __all__ = [
     "TemperatureController",
     "TemperatureReading",
     "TemperatureStatus",
+    "ZoneEntry",
 ]

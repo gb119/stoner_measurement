@@ -37,6 +37,7 @@ from stoner_measurement.instruments.temperature_controller import (
     TemperatureController,
     TemperatureReading,
     TemperatureStatus,
+    ZoneEntry,
 )
 from stoner_measurement.instruments.transport import NullTransport
 
@@ -1621,8 +1622,9 @@ class TestTemperatureControllerOptional:
             _make_tc().get_zone(1, 1)
 
     def test_set_zone_raises(self):
+        entry = ZoneEntry(upper_bound=50.0, p=10.0, i=1.0, d=0.0, ramp_rate=5.0, heater_range=1, heater_output=25.0)
         with pytest.raises(NotImplementedError, match="has_zone"):
-            _make_tc().set_zone(1, 1, upper_bound=50.0, p=10.0, i=1.0, d=0.0, ramp_rate=5.0, range_=1)
+            _make_tc().set_zone(1, 1, entry)
 
     def test_start_autotune_raises(self):
         with pytest.raises(NotImplementedError, match="has_autotune"):
@@ -1693,6 +1695,7 @@ class TestTemperatureControllerExports:
             TemperatureController,
             TemperatureReading,
             TemperatureStatus,
+            ZoneEntry,
         )
 
         assert AlarmState is not None
@@ -1705,3 +1708,163 @@ class TestTemperatureControllerExports:
         assert TemperatureController is not None
         assert TemperatureReading is not None
         assert TemperatureStatus is not None
+        assert ZoneEntry is not None
+
+
+# ---------------------------------------------------------------------------
+# ZoneEntry dataclass
+# ---------------------------------------------------------------------------
+
+
+class TestZoneEntry:
+    """Tests for the ZoneEntry frozen dataclass."""
+
+    def test_fields_round_trip(self):
+        entry = ZoneEntry(
+            upper_bound=100.0,
+            p=50.0,
+            i=2.0,
+            d=0.5,
+            ramp_rate=10.0,
+            heater_range=2,
+            heater_output=30.0,
+        )
+        assert entry.upper_bound == pytest.approx(100.0)
+        assert entry.p == pytest.approx(50.0)
+        assert entry.i == pytest.approx(2.0)
+        assert entry.d == pytest.approx(0.5)
+        assert entry.ramp_rate == pytest.approx(10.0)
+        assert entry.heater_range == 2
+        assert entry.heater_output == pytest.approx(30.0)
+
+    def test_is_frozen(self):
+        entry = ZoneEntry(
+            upper_bound=50.0, p=10.0, i=1.0, d=0.0,
+            ramp_rate=5.0, heater_range=1, heater_output=25.0,
+        )
+        with pytest.raises((AttributeError, TypeError)):
+            entry.heater_output = 50.0  # type: ignore[misc]
+
+    def test_zero_ramp_rate_allowed(self):
+        """ramp_rate=0 means immediate setpoint change (no ramping)."""
+        entry = ZoneEntry(
+            upper_bound=50.0, p=10.0, i=1.0, d=0.0,
+            ramp_rate=0.0, heater_range=0, heater_output=0.0,
+        )
+        assert entry.ramp_rate == pytest.approx(0.0)
+        assert entry.heater_range == 0
+
+    def test_full_heater_power(self):
+        """heater_output of 100 % is a valid upper boundary."""
+        entry = ZoneEntry(
+            upper_bound=400.0, p=100.0, i=10.0, d=1.0,
+            ramp_rate=2.0, heater_range=5, heater_output=100.0,
+        )
+        assert entry.heater_output == pytest.approx(100.0)
+        assert entry.heater_range == 5
+
+
+# ---------------------------------------------------------------------------
+# ZoneEntry — optional zone API (NotImplementedError paths)
+# ---------------------------------------------------------------------------
+
+
+class TestZoneEntryOptionalAPI:
+    """The updated zone optional methods use ZoneEntry; NotImplementedError paths."""
+
+    def test_get_zone_raises(self):
+        with pytest.raises(NotImplementedError, match="has_zone"):
+            _make_tc().get_zone(1, 1)
+
+    def test_set_zone_raises_with_entry(self):
+        entry = ZoneEntry(
+            upper_bound=100.0, p=50.0, i=2.0, d=0.0,
+            ramp_rate=5.0, heater_range=1, heater_output=25.0,
+        )
+        with pytest.raises(NotImplementedError, match="has_zone"):
+            _make_tc().set_zone(1, 1, entry)
+
+
+# ---------------------------------------------------------------------------
+# ramp_to_setpoint composite method
+# ---------------------------------------------------------------------------
+
+
+class TestRampToSetpoint:
+    """Tests for the ramp_to_setpoint concrete composite method."""
+
+    def test_ramp_to_setpoint_enables_ramp_and_sets_setpoint(self, monkeypatch):
+        """When has_ramp=True and no rate given: enables ramp then sets setpoint."""
+        calls = []
+        tc = _make_tc()
+
+        monkeypatch.setattr(type(tc), "set_ramp_enabled", lambda self, loop, enabled: calls.append(("ramp_enabled", loop, enabled)))
+        monkeypatch.setattr(type(tc), "set_setpoint", lambda self, loop, val: calls.append(("setpoint", loop, val)))
+
+        tc.ramp_to_setpoint(1, 200.0)
+
+        assert ("ramp_enabled", 1, True) in calls
+        assert ("setpoint", 1, 200.0) in calls
+        # setpoint must be written after ramp is enabled
+        assert calls.index(("ramp_enabled", 1, True)) < calls.index(("setpoint", 1, 200.0))
+
+    def test_ramp_to_setpoint_sets_rate_when_provided(self, monkeypatch):
+        """When rate is supplied it is written before enabling ramping."""
+        calls = []
+        tc = _make_tc()
+
+        monkeypatch.setattr(type(tc), "set_ramp_rate", lambda self, loop, rate: calls.append(("rate", loop, rate)))
+        monkeypatch.setattr(type(tc), "set_ramp_enabled", lambda self, loop, en: calls.append(("enabled", loop, en)))
+        monkeypatch.setattr(type(tc), "set_setpoint", lambda self, loop, val: calls.append(("sp", loop, val)))
+
+        tc.ramp_to_setpoint(1, 150.0, rate=5.0)
+
+        assert ("rate", 1, 5.0) in calls
+        assert ("enabled", 1, True) in calls
+        assert ("sp", 1, 150.0) in calls
+        # order: set_ramp_rate → set_ramp_enabled → set_setpoint
+        assert calls.index(("rate", 1, 5.0)) < calls.index(("enabled", 1, True))
+        assert calls.index(("enabled", 1, True)) < calls.index(("sp", 1, 150.0))
+
+    def test_ramp_to_setpoint_skips_ramp_when_not_supported(self, monkeypatch):
+        """When has_ramp=False, ramp methods are not called."""
+        calls = []
+        tc = _make_tc()
+
+        # Override capabilities to report has_ramp=False
+        monkeypatch.setattr(
+            type(tc),
+            "get_capabilities",
+            lambda self: ControllerCapabilities(
+                num_inputs=2, num_loops=1,
+                input_channels=("A", "B"), loop_numbers=(1,),
+                has_ramp=False,
+            ),
+        )
+        monkeypatch.setattr(type(tc), "set_ramp_rate", lambda self, loop, rate: calls.append("rate"))
+        monkeypatch.setattr(type(tc), "set_ramp_enabled", lambda self, loop, en: calls.append("enabled"))
+        monkeypatch.setattr(type(tc), "set_setpoint", lambda self, loop, val: calls.append(("sp", val)))
+
+        tc.ramp_to_setpoint(1, 200.0, rate=5.0)
+
+        # ramp methods must not be called
+        assert "rate" not in calls
+        assert "enabled" not in calls
+        # but setpoint must still be written
+        assert ("sp", 200.0) in calls
+
+    def test_ramp_to_setpoint_no_rate_no_set_ramp_rate_call(self, monkeypatch):
+        """When rate=None, set_ramp_rate must not be called."""
+        calls = []
+        tc = _make_tc()
+
+        monkeypatch.setattr(type(tc), "set_ramp_rate", lambda self, loop, rate: calls.append("rate"))
+        monkeypatch.setattr(type(tc), "set_ramp_enabled", lambda self, loop, en: calls.append("enabled"))
+        monkeypatch.setattr(type(tc), "set_setpoint", lambda self, loop, val: calls.append("sp"))
+
+        tc.ramp_to_setpoint(1, 100.0)  # rate omitted (None)
+
+        assert "rate" not in calls
+        assert "enabled" in calls
+        assert "sp" in calls
+

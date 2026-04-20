@@ -149,6 +149,48 @@ class PIDParameters:
 
 
 @dataclass(frozen=True)
+class ZoneEntry:
+    """One entry in a temperature controller's zone / table control table.
+
+    Zone control divides the operating temperature range into consecutive
+    segments.  Each segment has its own PID gains, setpoint ramp rate,
+    heater range, and manual heater output power.  When the active setpoint
+    crosses *upper_bound* the controller automatically loads the next zone's
+    parameters.
+
+    Attributes:
+        upper_bound (float):
+            Upper setpoint boundary for this zone in Kelvin.  When the
+            setpoint is at or below this value the zone's PID and heater
+            settings are applied.
+        p (float):
+            Proportional gain for this zone.
+        i (float):
+            Integral gain (reset) for this zone.
+        d (float):
+            Derivative gain (rate) for this zone.
+        ramp_rate (float):
+            Setpoint ramp rate for this zone in Kelvin per minute.  A value
+            of ``0`` means the setpoint changes immediately (no ramp).
+        heater_range (int):
+            Heater range index for this zone (instrument-specific; ``0``
+            conventionally means heater off).
+        heater_output (float):
+            Manual heater output power percentage for this zone (0–100 %).
+            Used when the loop is in open-loop mode or as the initial value
+            when entering the zone.
+    """
+
+    upper_bound: float
+    p: float
+    i: float
+    d: float
+    ramp_rate: float
+    heater_range: int
+    heater_output: float
+
+
+@dataclass(frozen=True)
 class TemperatureReading:
     """A snapshot of a single sensor channel reading.
 
@@ -882,6 +924,56 @@ class TemperatureController(BaseInstrument):
             f"tolerance: {tolerance} K)."
         )
 
+    def ramp_to_setpoint(
+        self,
+        loop: int,
+        target: float,
+        *,
+        rate: float | None = None,
+    ) -> None:
+        """Set a new target setpoint for *loop*, optionally configuring the ramp rate.
+
+        This convenience method performs the typical "ramp to a new temperature"
+        sequence:
+
+        1. If *rate* is given, set the ramp rate via :meth:`set_ramp_rate`.
+        2. Enable ramping via :meth:`set_ramp_enabled` (only when the driver
+           advertises :attr:`~ControllerCapabilities.has_ramp`).
+        3. Write the new setpoint via :meth:`set_setpoint`.
+
+        Callers that need to wait for the temperature to arrive should follow
+        this call with :meth:`wait_for_setpoint`.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            target (float):
+                Desired setpoint in Kelvin.
+
+        Keyword Parameters:
+            rate (float | None):
+                Ramp rate in Kelvin per minute.  When provided, the rate is
+                written to the instrument before the setpoint is updated.
+                When ``None`` the currently programmed ramp rate is unchanged.
+                Ignored if the driver does not advertise
+                :attr:`~ControllerCapabilities.has_ramp`.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            ValueError:
+                If *target* or *rate* are outside the instrument's valid range.
+
+        Examples:
+            >>> tc.ramp_to_setpoint(1, 150.0, rate=5.0)
+        """
+        caps = self.get_capabilities()
+        if caps.has_ramp:
+            if rate is not None:
+                self.set_ramp_rate(loop, rate)
+            self.set_ramp_enabled(loop, True)
+        self.set_setpoint(loop, target)
+
     # ------------------------------------------------------------------
     # Optional methods — alarm limits
     # ------------------------------------------------------------------
@@ -1003,13 +1095,8 @@ class TemperatureController(BaseInstrument):
             "Check get_capabilities().has_zone before calling this method."
         )
 
-    def get_zone(self, loop: int, zone_index: int) -> dict[str, object]:
+    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry:
         """Return the parameters of zone entry *zone_index* for *loop*.
-
-        The returned dictionary contains at minimum the keys ``"upper_bound"``
-        (K), ``"p"``, ``"i"``, ``"d"``, ``"ramp_rate"`` (K/min), and
-        ``"range_"`` (heater range index).  Drivers may include additional
-        instrument-specific keys.
 
         Args:
             loop (int):
@@ -1018,8 +1105,9 @@ class TemperatureController(BaseInstrument):
                 Zone entry index (1-based).
 
         Returns:
-            (dict[str, object]):
-                Zone parameters keyed by name.
+            (ZoneEntry):
+                Zone parameters including PID gains, ramp rate, heater range
+                and heater output power for this table entry.
 
         Raises:
             NotImplementedError:
@@ -1033,18 +1121,7 @@ class TemperatureController(BaseInstrument):
             "Check get_capabilities().has_zone before calling this method."
         )
 
-    def set_zone(
-        self,
-        loop: int,
-        zone_index: int,
-        *,
-        upper_bound: float,
-        p: float,
-        i: float,
-        d: float,
-        ramp_rate: float,
-        range_: int,
-    ) -> None:
+    def set_zone(self, loop: int, zone_index: int, entry: ZoneEntry) -> None:
         """Write a zone table entry for *loop*.
 
         Args:
@@ -1052,20 +1129,9 @@ class TemperatureController(BaseInstrument):
                 Control loop number (1-based).
             zone_index (int):
                 Zone entry index (1-based).
-
-        Keyword Parameters:
-            upper_bound (float):
-                Upper setpoint boundary for this zone in Kelvin.
-            p (float):
-                Proportional gain for this zone.
-            i (float):
-                Integral gain for this zone.
-            d (float):
-                Derivative gain for this zone.
-            ramp_rate (float):
-                Setpoint ramp rate for this zone in Kelvin per minute.
-            range_ (int):
-                Heater range index for this zone (instrument-specific).
+            entry (ZoneEntry):
+                Zone parameters to write, including PID gains, ramp rate,
+                heater range and heater output power.
 
         Raises:
             NotImplementedError:
