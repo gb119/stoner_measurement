@@ -33,11 +33,12 @@ laboratory instruments:
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.magnet_controller import MagnetController
+from stoner_measurement.instruments.magnet_controller import MagnetController, MagnetLimits, MagnetState, MagnetStatus
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
     SourceMeter,
+    SourceMeterCapabilities,
     SourceMode,
     SourceSweepConfiguration,
     SweepSpacing,
@@ -67,13 +68,17 @@ __all__ = [
     "InstrumentError",
     "LoopStatus",
     "MagnetController",
+    "MagnetLimits",
+    "MagnetState",
+    "MagnetStatus",
     "MeasureFunction",
     "Nanovoltmeter",
     "PIDParameters",
     "RampState",
     "SensorStatus",
-    "SourceMode",
     "SourceMeter",
+    "SourceMeterCapabilities",
+    "SourceMode",
     "SourceSweepConfiguration",
     "SweepSpacing",
     "TemperatureController",

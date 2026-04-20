@@ -3,12 +3,31 @@
 Defines the common interface for combined voltage/current source and
 measurement instruments (SMUs).  Concrete subclasses (e.g. Keithley 2400,
 Keithley 2450) implement the abstract methods for the specific instrument.
+
+The interface is divided into three tiers:
+
+**Core abstract methods** — must be implemented by every concrete driver:
+    source mode, source level, compliance, integration time (NPLC),
+    single-shot voltage/current measurement, output enable, and capability
+    reporting.
+
+**Concrete composite methods** — default implementations built from the core
+    abstracts: :meth:`measure_resistance`, :meth:`measure_power`, and the
+    sweep convenience wrappers :meth:`configure_linear_sweep`,
+    :meth:`configure_log_sweep`, and :meth:`configure_custom_sweep`.
+
+**Optional methods** — raise :class:`NotImplementedError` by default; override
+    in drivers that support the feature (check via
+    :meth:`get_capabilities` before calling): measurement function selection,
+    source sweep configuration, source delay, trigger/arm model, and reading
+    buffer control.
 """
 
 from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
@@ -17,17 +36,94 @@ if TYPE_CHECKING:
     from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.transport.base import BaseTransport
 
-#: Possible source modes for an SMU.
-SourceMode = str  # Literal["VOLT", "CURR"]
 
-#: Possible measured functions for an SMU.
-MeasureFunction = str  # Literal["VOLT", "CURR", "RES", "POW"]
+# ---------------------------------------------------------------------------
+# Enumerations
+# ---------------------------------------------------------------------------
 
-#: Sweep spacing options for built-in source sweeps.
-SweepSpacing = str  # Literal["LIN", "LOG", "LIST"]
 
-#: Trigger and arm source options.
-TriggerSource = str  # Literal["IMM", "BUS", "EXT", "TLIN", "TIM"]
+class SourceMode(Enum):
+    """Source output mode of an SMU.
+
+    Attributes:
+        VOLT:
+            Voltage source mode; the instrument outputs a programmed voltage
+            and measures current (or resistance).
+        CURR:
+            Current source mode; the instrument outputs a programmed current
+            and measures voltage (or resistance).
+    """
+
+    VOLT = "VOLT"
+    CURR = "CURR"
+
+
+class MeasureFunction(Enum):
+    """Measurement function selected on an SMU.
+
+    Attributes:
+        VOLT:
+            Voltage measurement.
+        CURR:
+            Current measurement.
+        RES:
+            Resistance measurement (4-wire or 2-wire depending on driver
+            configuration).
+        POW:
+            Power (derived from simultaneous voltage and current readings).
+    """
+
+    VOLT = "VOLT"
+    CURR = "CURR"
+    RES = "RES"
+    POW = "POW"
+
+
+class SweepSpacing(Enum):
+    """Point-spacing mode for a built-in source sweep.
+
+    Attributes:
+        LIN:
+            Linearly spaced sweep points from *start* to *stop*.
+        LOG:
+            Logarithmically spaced sweep points from *start* to *stop*.
+        LIST:
+            Arbitrary point list supplied in
+            :attr:`SourceSweepConfiguration.values`.
+    """
+
+    LIN = "LIN"
+    LOG = "LOG"
+    LIST = "LIST"
+
+
+class TriggerSource(Enum):
+    """Trigger or arm source for a trigger-model configuration.
+
+    Attributes:
+        IMM:
+            Immediate (internal) — the layer completes as soon as it is
+            entered.
+        BUS:
+            IEEE-488 / GPIB bus trigger (``*TRG`` or ``GET``).
+        EXT:
+            External hardware trigger input.
+        TLIN:
+            Trigger link (LAN or digital I/O trigger bus, instrument-specific).
+        TIM:
+            Internal timer-based trigger.
+    """
+
+    IMM = "IMM"
+    BUS = "BUS"
+    EXT = "EXT"
+    TLIN = "TLIN"
+    TIM = "TIM"
+
+
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
 
 #: Minimum current magnitude used for resistance calculation.
 _MIN_CURRENT_FOR_RESISTANCE_CALCULATION = 1e-12
@@ -36,6 +132,24 @@ _MIN_CURRENT_FOR_RESISTANCE_CALCULATION = 1e-12
 @dataclass(frozen=True)
 class SourceSweepConfiguration:
     """Configuration for a source sweep.
+
+    Attributes:
+        start (float):
+            Sweep start value in source units.  Ignored for list sweeps.
+        stop (float):
+            Sweep stop value in source units.  Ignored for list sweeps.
+        points (int):
+            Number of sweep points.  For list sweeps this is inferred from
+            ``len(values)`` by convenience wrappers but must be supplied
+            explicitly when constructing this dataclass directly.
+        spacing (SweepSpacing):
+            Point-spacing mode.  Defaults to :attr:`~SweepSpacing.LIN`.
+        values (tuple[float, ...] | None):
+            Explicit source values for :attr:`~SweepSpacing.LIST` sweeps.
+            Ignored for linear and logarithmic sweeps.
+        delay (float):
+            Source settling delay between sweep points in seconds.  A value
+            of ``0.0`` disables the added delay.
 
     Notes:
         Default ``start``, ``stop``, and ``points`` values are placeholders.
@@ -47,20 +161,72 @@ class SourceSweepConfiguration:
     start: float = 0.0
     stop: float = 0.0
     points: int = 0
-    spacing: SweepSpacing = "LIN"
+    spacing: SweepSpacing = SweepSpacing.LIN
     values: tuple[float, ...] | None = None
     delay: float = 0.0
 
 
 @dataclass(frozen=True)
 class TriggerModelConfiguration:
-    """Configuration for simple trigger and arm models."""
+    """Configuration for simple trigger and arm models.
 
-    trigger_source: TriggerSource = "IMM"
+    Attributes:
+        trigger_source (TriggerSource):
+            Source that advances the trigger layer.  Defaults to
+            :attr:`~TriggerSource.IMM`.
+        trigger_count (int):
+            Number of times the trigger layer executes per arm.  Defaults
+            to ``1``.
+        trigger_delay (float):
+            Delay in seconds inserted before each measurement trigger.
+            Defaults to ``0.0``.
+        arm_source (TriggerSource):
+            Source that advances the arm layer.  Defaults to
+            :attr:`~TriggerSource.IMM`.
+        arm_count (int):
+            Number of times the arm layer executes.  Defaults to ``1``.
+    """
+
+    trigger_source: TriggerSource = TriggerSource.IMM
     trigger_count: int = 1
     trigger_delay: float = 0.0
-    arm_source: TriggerSource = "IMM"
+    arm_source: TriggerSource = TriggerSource.IMM
     arm_count: int = 1
+
+
+@dataclass(frozen=True)
+class SourceMeterCapabilities:
+    """Static capability descriptor for a source-meter driver.
+
+    Attributes:
+        has_function_selection (bool):
+            ``True`` if the driver supports selecting measurement functions
+            via :meth:`~SourceMeter.get_measure_functions` and
+            :meth:`~SourceMeter.set_measure_functions`.
+        has_sweep (bool):
+            ``True`` if the driver supports built-in source sweeps via
+            :meth:`~SourceMeter.configure_source_sweep`.
+        has_source_delay (bool):
+            ``True`` if the driver supports a programmable source delay via
+            :meth:`~SourceMeter.get_source_delay` and
+            :meth:`~SourceMeter.set_source_delay`.
+        has_trigger_model (bool):
+            ``True`` if the driver supports trigger and arm model
+            configuration via :meth:`~SourceMeter.configure_trigger_model`,
+            :meth:`~SourceMeter.initiate`, and :meth:`~SourceMeter.abort`.
+        has_buffer (bool):
+            ``True`` if the driver supports a reading buffer via
+            :meth:`~SourceMeter.set_buffer_size`,
+            :meth:`~SourceMeter.get_buffer_size`,
+            :meth:`~SourceMeter.clear_buffer`, and
+            :meth:`~SourceMeter.read_buffer`.
+    """
+
+    has_function_selection: bool = False
+    has_sweep: bool = False
+    has_source_delay: bool = False
+    has_trigger_model: bool = False
+    has_buffer: bool = False
 
 
 class SourceMeter(BaseInstrument):
@@ -69,6 +235,12 @@ class SourceMeter(BaseInstrument):
     A source-meter can source voltage or current while simultaneously
     measuring the complementary quantity, making it suitable for
     current-voltage (I–V) characterisation.
+
+    Subclasses must implement the core abstract methods.  Optional capability
+    methods raise :class:`NotImplementedError` by default; drivers override
+    only those methods that their hardware supports.  Callers should consult
+    :meth:`get_capabilities` to determine which optional features are available
+    before invoking them.
 
     Attributes:
         transport (BaseTransport):
@@ -80,9 +252,11 @@ class SourceMeter(BaseInstrument):
         >>> # Demonstrate interface using a minimal concrete implementation
         >>> from stoner_measurement.instruments.transport import NullTransport
         >>> from stoner_measurement.instruments.protocol import ScpiProtocol
-        >>> from stoner_measurement.instruments.source_meter import SourceMeter
+        >>> from stoner_measurement.instruments.source_meter import (
+        ...     SourceMeter, SourceMode, SourceMeterCapabilities,
+        ... )
         >>> class _SM(SourceMeter):
-        ...     def get_source_mode(self): return "VOLT"
+        ...     def get_source_mode(self): return SourceMode.VOLT
         ...     def set_source_mode(self, mode): pass
         ...     def get_source_level(self): return 1.0
         ...     def set_source_level(self, value): pass
@@ -94,9 +268,12 @@ class SourceMeter(BaseInstrument):
         ...     def measure_current(self): return 0.001
         ...     def output_enabled(self): return False
         ...     def enable_output(self, state): pass
+        ...     def get_capabilities(self): return SourceMeterCapabilities()
         >>> sm = _SM(NullTransport(), ScpiProtocol())
         >>> sm.get_source_mode()
-        'VOLT'
+        <SourceMode.VOLT: 'VOLT'>
+        >>> sm.get_capabilities().has_sweep
+        False
     """
 
     def __init__(
@@ -116,12 +293,12 @@ class SourceMeter(BaseInstrument):
 
     @abstractmethod
     def get_source_mode(self) -> SourceMode:
-        """Return the current source mode (``"VOLT"`` or ``"CURR"``).
+        """Return the current source mode.
 
         Returns:
-            (str):
-                Source mode: ``"VOLT"`` for voltage source or ``"CURR"`` for
-                current source.
+            (SourceMode):
+                :attr:`~SourceMode.VOLT` if the instrument is sourcing voltage,
+                :attr:`~SourceMode.CURR` if it is sourcing current.
 
         Raises:
             ConnectionError:
@@ -133,14 +310,13 @@ class SourceMeter(BaseInstrument):
         """Set the source mode.
 
         Args:
-            mode (str):
-                ``"VOLT"`` for voltage source or ``"CURR"`` for current source.
+            mode (SourceMode):
+                :attr:`~SourceMode.VOLT` for voltage source or
+                :attr:`~SourceMode.CURR` for current source.
 
         Raises:
             ConnectionError:
                 If the transport is not open.
-            ValueError:
-                If *mode* is not ``"VOLT"`` or ``"CURR"``.
         """
 
     @abstractmethod
@@ -279,31 +455,60 @@ class SourceMeter(BaseInstrument):
                 If the transport is not open.
         """
 
+    @abstractmethod
+    def get_capabilities(self) -> SourceMeterCapabilities:
+        """Return the static capability descriptor for this SMU driver.
+
+        Returns:
+            (SourceMeterCapabilities):
+                Descriptor advertising which optional feature groups are
+                supported by this driver.
+
+        Examples:
+            >>> caps = sm.get_capabilities()  # doctest: +SKIP
+            >>> caps.has_sweep  # doctest: +SKIP
+            False
+        """
+
+    # ------------------------------------------------------------------
+    # Optional methods — measurement function selection
+    # ------------------------------------------------------------------
+
     def get_measure_functions(self) -> tuple[MeasureFunction, ...]:
         """Return enabled measurement functions.
 
         Returns:
-            (tuple[str, ...]):
-                Enabled measurement function names.
+            (tuple[MeasureFunction, ...]):
+                Enabled measurement functions.
 
         Raises:
             NotImplementedError:
-                If the driver does not implement function selection.
+                If the driver does not support function selection.
+                Check :attr:`SourceMeterCapabilities.has_function_selection`
+                before calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose measurement function selection.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support measurement function selection. "
+            "Check get_capabilities().has_function_selection before calling this method."
+        )
 
     def set_measure_functions(self, functions: tuple[MeasureFunction, ...]) -> None:
         """Enable one or more measurement functions.
 
         Args:
-            functions (tuple[str, ...]):
-                Sequence of measurement function names to enable.
+            functions (tuple[MeasureFunction, ...]):
+                Sequence of measurement functions to enable.
 
         Raises:
             NotImplementedError:
-                If the driver does not implement function selection.
+                If the driver does not support function selection.
+                Check :attr:`SourceMeterCapabilities.has_function_selection`
+                before calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose measurement function selection.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support measurement function selection. "
+            "Check get_capabilities().has_function_selection before calling this method."
+        )
 
     def measure_resistance(self) -> float:
         """Return resistance calculated from measured voltage and current.
@@ -344,9 +549,13 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose source sweep configuration.
+                If the driver does not support source sweep configuration.
+                Check :attr:`SourceMeterCapabilities.has_sweep` before calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose source sweep configuration.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support source sweep configuration. "
+            "Check get_capabilities().has_sweep before calling this method."
+        )
 
     def configure_linear_sweep(self, start: float, stop: float, points: int, *, delay: float = 0.0) -> None:
         """Configure a linear source sweep.
@@ -365,14 +574,17 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose source sweep configuration.
+                If the driver does not support source sweep configuration.
+                Check :attr:`SourceMeterCapabilities.has_sweep` before calling.
 
         Examples:
             >>> from stoner_measurement.instruments.transport import NullTransport
             >>> from stoner_measurement.instruments.protocol import ScpiProtocol
-            >>> from stoner_measurement.instruments.source_meter import SourceMeter
+            >>> from stoner_measurement.instruments.source_meter import (
+            ...     SourceMeter, SourceMode, SourceMeterCapabilities,
+            ... )
             >>> class _SM(SourceMeter):
-            ...     def get_source_mode(self): return "VOLT"
+            ...     def get_source_mode(self): return SourceMode.VOLT
             ...     def set_source_mode(self, mode): pass
             ...     def get_source_level(self): return 0.0
             ...     def set_source_level(self, value): pass
@@ -384,17 +596,18 @@ class SourceMeter(BaseInstrument):
             ...     def measure_current(self): return 0.0
             ...     def output_enabled(self): return False
             ...     def enable_output(self, state): pass
-            >>> _SM(NullTransport(), ScpiProtocol()).configure_linear_sweep(0.0, 1.0, 11, delay=0.01)
+            ...     def get_capabilities(self): return SourceMeterCapabilities()
+            >>> _SM(NullTransport(), ScpiProtocol()).configure_linear_sweep(0.0, 1.0, 11, delay=0.01)  # doctest: +ELLIPSIS
             Traceback (most recent call last):
             ...
-            NotImplementedError: This source-meter driver does not expose source sweep configuration.
+            NotImplementedError: _SM does not support source sweep configuration. ...
         """
         self.configure_source_sweep(
             SourceSweepConfiguration(
                 start=start,
                 stop=stop,
                 points=points,
-                spacing="LIN",
+                spacing=SweepSpacing.LIN,
                 delay=delay,
             )
         )
@@ -416,14 +629,15 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose source sweep configuration.
+                If the driver does not support source sweep configuration.
+                Check :attr:`SourceMeterCapabilities.has_sweep` before calling.
         """
         self.configure_source_sweep(
             SourceSweepConfiguration(
                 start=start,
                 stop=stop,
                 points=points,
-                spacing="LOG",
+                spacing=SweepSpacing.LOG,
                 delay=delay,
             )
         )
@@ -441,12 +655,13 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose source sweep configuration.
+                If the driver does not support source sweep configuration.
+                Check :attr:`SourceMeterCapabilities.has_sweep` before calling.
         """
         self.configure_source_sweep(
             SourceSweepConfiguration(
                 points=len(values),
-                spacing="LIST",
+                spacing=SweepSpacing.LIST,
                 values=values,
                 delay=delay,
             )
@@ -461,9 +676,14 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose source delay control.
+                If the driver does not support source delay control.
+                Check :attr:`SourceMeterCapabilities.has_source_delay` before
+                calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose source delay control.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support source delay control. "
+            "Check get_capabilities().has_source_delay before calling this method."
+        )
 
     def get_source_delay(self) -> float:
         """Return source delay in seconds.
@@ -474,9 +694,14 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose source delay control.
+                If the driver does not support source delay control.
+                Check :attr:`SourceMeterCapabilities.has_source_delay` before
+                calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose source delay control.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support source delay control. "
+            "Check get_capabilities().has_source_delay before calling this method."
+        )
 
     def configure_trigger_model(self, config: TriggerModelConfiguration) -> None:
         """Configure trigger and arm behaviour.
@@ -487,27 +712,42 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose trigger model configuration.
+                If the driver does not support trigger model configuration.
+                Check :attr:`SourceMeterCapabilities.has_trigger_model` before
+                calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose trigger model configuration.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support trigger model configuration. "
+            "Check get_capabilities().has_trigger_model before calling this method."
+        )
 
     def initiate(self) -> None:
         """Arm and initiate acquisition.
 
         Raises:
             NotImplementedError:
-                If the driver does not expose trigger initiation.
+                If the driver does not support trigger initiation.
+                Check :attr:`SourceMeterCapabilities.has_trigger_model` before
+                calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose trigger initiation.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support trigger initiation. "
+            "Check get_capabilities().has_trigger_model before calling this method."
+        )
 
     def abort(self) -> None:
         """Abort trigger execution.
 
         Raises:
             NotImplementedError:
-                If the driver does not expose trigger abort.
+                If the driver does not support trigger abort.
+                Check :attr:`SourceMeterCapabilities.has_trigger_model` before
+                calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose trigger abort.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support trigger abort. "
+            "Check get_capabilities().has_trigger_model before calling this method."
+        )
 
     def set_buffer_size(self, size: int) -> None:
         """Set reading buffer capacity.
@@ -518,9 +758,13 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose reading buffer control.
+                If the driver does not support reading buffer control.
+                Check :attr:`SourceMeterCapabilities.has_buffer` before calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose reading buffer control.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support reading buffer control. "
+            "Check get_capabilities().has_buffer before calling this method."
+        )
 
     def get_buffer_size(self) -> int:
         """Return reading buffer capacity.
@@ -531,18 +775,26 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose reading buffer control.
+                If the driver does not support reading buffer control.
+                Check :attr:`SourceMeterCapabilities.has_buffer` before calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose reading buffer control.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support reading buffer control. "
+            "Check get_capabilities().has_buffer before calling this method."
+        )
 
     def clear_buffer(self) -> None:
         """Clear the instrument reading buffer.
 
         Raises:
             NotImplementedError:
-                If the driver does not expose reading buffer control.
+                If the driver does not support reading buffer control.
+                Check :attr:`SourceMeterCapabilities.has_buffer` before calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose reading buffer control.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support reading buffer control. "
+            "Check get_capabilities().has_buffer before calling this method."
+        )
 
     def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
         """Return readings from the instrument buffer.
@@ -557,6 +809,10 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             NotImplementedError:
-                If the driver does not expose reading buffer control.
+                If the driver does not support reading buffer control.
+                Check :attr:`SourceMeterCapabilities.has_buffer` before calling.
         """
-        raise NotImplementedError("This source-meter driver does not expose reading buffer control.")
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support reading buffer control. "
+            "Check get_capabilities().has_buffer before calling this method."
+        )
