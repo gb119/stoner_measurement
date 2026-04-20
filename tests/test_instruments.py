@@ -16,14 +16,23 @@ import pytest
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley import Keithley2400
-from stoner_measurement.instruments.lakeshore import Lakeshore525
+from stoner_measurement.instruments.lakeshore import (
+    Lakeshore335,
+    Lakeshore336,
+    Lakeshore340,
+    Lakeshore525,
+)
 from stoner_measurement.instruments.magnet_controller import (
     MagnetController,
     MagnetState,
     MagnetStatus,
 )
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
-from stoner_measurement.instruments.oxford import OxfordIPS120
+from stoner_measurement.instruments.oxford import (
+    OxfordIPS120,
+    OxfordITC503,
+    OxfordMercuryTemperatureController,
+)
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
 from stoner_measurement.instruments.source_meter import SourceMeter
 from stoner_measurement.instruments.temperature_controller import (
@@ -591,6 +600,150 @@ class TestOxfordIPS120:
         monkeypatch.setattr(OxfordIPS120, "status", property(_always_ramping))
         with pytest.raises(TimeoutError):
             m._wait_for_ramp_complete(timeout=0.01, poll_period=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Lakeshore temperature controller drivers
+# ---------------------------------------------------------------------------
+
+
+class TestLakeshoreTemperatureControllers:
+    def test_default_protocol_is_lakeshore(self):
+        assert isinstance(Lakeshore335(transport=NullTransport()).protocol, LakeshoreProtocol)
+        assert isinstance(Lakeshore336(transport=NullTransport()).protocol, LakeshoreProtocol)
+        assert isinstance(Lakeshore340(transport=NullTransport()).protocol, LakeshoreProtocol)
+
+    def test_lakeshore335_temperature_and_status(self):
+        t = _null(responses=[b"4.2\r\n", b"0\r\n"])
+        tc = Lakeshore335(transport=t)
+        assert tc.get_temperature("A") == pytest.approx(4.2)
+        assert tc.get_sensor_status("A") is SensorStatus.OK
+        assert t.write_log == [b"KRDG? A\r\n", b"RDGST? A\r\n"]
+
+    def test_lakeshore335_loop_methods(self):
+        t = _null(
+            responses=[
+                b"1,1,0\r\n",
+                b"10.0\r\n",
+                b"1,1,0\r\n",
+                b"1,0.5\r\n",
+                b"1,0.5\r\n",
+                b"50,2,0.1\r\n",
+            ]
+        )
+        tc = Lakeshore335(transport=t)
+        assert tc.get_loop_mode(1) is ControlMode.CLOSED_LOOP
+        assert tc.get_setpoint(1) == pytest.approx(10.0)
+        tc.set_setpoint(1, 12.5)
+        tc.set_input_channel(1, "B")
+        assert tc.get_ramp_enabled(1) is True
+        assert tc.get_ramp_rate(1) == pytest.approx(0.5)
+        pid = tc.get_pid(1)
+        assert pid == PIDParameters(50.0, 2.0, 0.1)
+        assert t.write_log == [
+            b"OUTMODE? 1\r\n",
+            b"SETP? 1\r\n",
+            b"SETP 1,12.5\r\n",
+            b"OUTMODE? 1\r\n",
+            b"OUTMODE 1,1,2,0\r\n",
+            b"RAMP? 1\r\n",
+            b"RAMP? 1\r\n",
+            b"PID? 1\r\n",
+        ]
+
+    def test_lakeshore_capabilities(self):
+        caps_335 = Lakeshore335(transport=_null()).get_capabilities()
+        caps_336 = Lakeshore336(transport=_null()).get_capabilities()
+        caps_340 = Lakeshore340(transport=_null()).get_capabilities()
+        assert caps_335.input_channels == ("A", "B")
+        assert caps_336.input_channels == ("A", "B", "C", "D")
+        assert caps_340.input_channels == ("A", "B")
+
+
+# ---------------------------------------------------------------------------
+# Oxford temperature controller drivers
+# ---------------------------------------------------------------------------
+
+
+class TestOxfordTemperatureControllers:
+    def test_default_protocols(self):
+        assert isinstance(OxfordITC503(transport=NullTransport()).protocol, OxfordProtocol)
+        assert isinstance(OxfordMercuryTemperatureController(transport=NullTransport()).protocol, ScpiProtocol)
+
+    def test_itc503_core_methods(self):
+        t = _null(
+            responses=[
+                b"R4.2\r",
+                b"R10.0\r",
+                b"R1\r",
+                b"R22.5\r",
+                b"R30.0,4.0,0.0\r",
+                b"R1,0.8\r",
+                b"R1,0.8\r",
+            ]
+        )
+        tc = OxfordITC503(transport=t)
+        assert tc.get_temperature("A") == pytest.approx(4.2)
+        assert tc.get_setpoint(1) == pytest.approx(10.0)
+        assert tc.get_loop_mode(1) is ControlMode.CLOSED_LOOP
+        assert tc.get_heater_output(1) == pytest.approx(22.5)
+        assert tc.get_pid(1) == PIDParameters(30.0, 4.0, 0.0)
+        assert tc.get_ramp_rate(1) == pytest.approx(0.8)
+        tc.set_setpoint(1, 12.0)
+        tc.set_loop_mode(1, ControlMode.OPEN_LOOP)
+        tc.set_ramp_enabled(1, True)
+        assert t.write_log == [
+            b"R1\r",
+            b"R0\r",
+            b"R20\r",
+            b"R5\r",
+            b"R8,R9,R10\r",
+            b"R21\r",
+            b"T12.0\r",
+            b"A2\r",
+            b"R21\r",
+            b"S1,0.8\r",
+        ]
+
+    def test_mercury_core_methods(self):
+        t = _null(
+            responses=[
+                b"4.2\n",
+                b"15.0\n",
+                b"1\n",
+                b"35.0\n",
+                b"40.0,3.0,0.2\n",
+                b"0,1.5\n",
+                b"0,1.5\n",
+            ]
+        )
+        tc = OxfordMercuryTemperatureController(transport=t)
+        assert tc.get_temperature("B") == pytest.approx(4.2)
+        assert tc.get_setpoint(1) == pytest.approx(15.0)
+        assert tc.get_loop_mode(1) is ControlMode.CLOSED_LOOP
+        assert tc.get_heater_output(1) == pytest.approx(35.0)
+        assert tc.get_pid(1) == PIDParameters(40.0, 3.0, 0.2)
+        assert tc.get_ramp_enabled(1) is False
+        tc.set_setpoint(1, 22.0)
+        tc.set_ramp_rate(1, 2.0)
+        assert t.write_log == [
+            b"READ:TEMP? B\n",
+            b"READ:LOOP1:SETP?\n",
+            b"READ:LOOP1:MODE?\n",
+            b"READ:LOOP1:HTR?\n",
+            b"READ:LOOP1:PID?\n",
+            b"READ:LOOP1:RAMP?\n",
+            b"SET:LOOP1:SETP 22.0\n",
+            b"READ:LOOP1:RAMP?\n",
+            b"SET:LOOP1:RAMP 0,2.0\n",
+        ]
+
+    def test_capabilities(self):
+        caps_itc = OxfordITC503(transport=_null()).get_capabilities()
+        caps_mercury = OxfordMercuryTemperatureController(transport=_null()).get_capabilities()
+        assert caps_itc.has_cryogen_control is False
+        assert caps_mercury.has_cryogen_control is True
+        assert caps_mercury.loop_numbers == (1, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -1867,4 +2020,3 @@ class TestRampToSetpoint:
         assert "rate" not in calls
         assert "enabled" in calls
         assert "sp" in calls
-
