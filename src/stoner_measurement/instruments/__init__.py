@@ -33,13 +33,35 @@ from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.magnet_controller import MagnetController
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.source_meter import SourceMeter
-from stoner_measurement.instruments.temperature_controller import TemperatureController
+from stoner_measurement.instruments.temperature_controller import (
+    AlarmState,
+    ControllerCapabilities,
+    ControlMode,
+    LoopStatus,
+    PIDParameters,
+    RampState,
+    SensorStatus,
+    TemperatureController,
+    TemperatureReading,
+    TemperatureStatus,
+    ZoneEntry,
+)
 
 __all__ = [
+    "AlarmState",
     "BaseInstrument",
+    "ControllerCapabilities",
+    "ControlMode",
     "InstrumentError",
+    "LoopStatus",
     "MagnetController",
     "Nanovoltmeter",
+    "PIDParameters",
+    "RampState",
+    "SensorStatus",
     "SourceMeter",
     "TemperatureController",
+    "TemperatureReading",
+    "TemperatureStatus",
+    "ZoneEntry",
 ]
