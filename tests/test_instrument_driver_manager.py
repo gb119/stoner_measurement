@@ -35,8 +35,13 @@ class TestInstrumentDriverManager:
         manager.discover()
         discovered = manager.driver_classes
         assert "Keithley2400" in discovered
+        assert "Lakeshore335" in discovered
+        assert "Lakeshore336" in discovered
+        assert "Lakeshore340" in discovered
         assert "Lakeshore525" in discovered
         assert "OxfordIPS120" in discovered
+        assert "OxfordITC503" in discovered
+        assert "OxfordMercuryTemperatureController" in discovered
 
     def test_drivers_by_type_filters_magnet_controllers(self):
         manager = InstrumentDriverManager()
