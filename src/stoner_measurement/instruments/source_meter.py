@@ -29,10 +29,20 @@ SweepSpacing = str  # Literal["LIN", "LOG", "LIST"]
 #: Trigger and arm source options.
 TriggerSource = str  # Literal["IMM", "BUS", "EXT", "TLIN", "TIM"]
 
+#: Minimum current magnitude used for resistance calculation.
+_MIN_CURRENT_FOR_RESISTANCE_CALCULATION = 1e-12
+
 
 @dataclass(frozen=True)
 class SourceSweepConfiguration:
-    """Configuration for a source sweep."""
+    """Configuration for a source sweep.
+
+    Notes:
+        Default ``start``, ``stop``, and ``points`` values are placeholders.
+        Callers should provide values appropriate for the selected spacing mode.
+        For list sweeps, use ``values`` and set ``points`` to ``len(values)``.
+        The default ``delay`` of ``0.0`` seconds disables added settling time.
+    """
 
     start: float = 0.0
     stop: float = 0.0
@@ -304,10 +314,15 @@ class SourceMeter(BaseInstrument):
 
         Raises:
             ZeroDivisionError:
-                If the measured current is zero.
+                If the measured current magnitude is below ``1e-12`` A.
+
+        Notes:
+            Currents with absolute magnitude smaller than
+            ``_MIN_CURRENT_FOR_RESISTANCE_CALCULATION`` are treated as zero to
+            avoid numerically unstable resistance values.
         """
         current = self.measure_current()
-        if current == 0.0:
+        if abs(current) < _MIN_CURRENT_FOR_RESISTANCE_CALCULATION:
             raise ZeroDivisionError("Measured current is zero; cannot calculate resistance.")
         return self.measure_voltage() / current
 
@@ -334,7 +349,46 @@ class SourceMeter(BaseInstrument):
         raise NotImplementedError("This source-meter driver does not expose source sweep configuration.")
 
     def configure_linear_sweep(self, start: float, stop: float, points: int, *, delay: float = 0.0) -> None:
-        """Configure a linear source sweep."""
+        """Configure a linear source sweep.
+
+        Args:
+            start (float):
+                Sweep start value in source units.
+            stop (float):
+                Sweep stop value in source units.
+            points (int):
+                Number of points in the sweep.
+
+        Keyword Parameters:
+            delay (float):
+                Source settling delay between sweep points in seconds.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose source sweep configuration.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.protocol import ScpiProtocol
+            >>> from stoner_measurement.instruments.source_meter import SourceMeter
+            >>> class _SM(SourceMeter):
+            ...     def get_source_mode(self): return "VOLT"
+            ...     def set_source_mode(self, mode): pass
+            ...     def get_source_level(self): return 0.0
+            ...     def set_source_level(self, value): pass
+            ...     def get_compliance(self): return 0.0
+            ...     def set_compliance(self, value): pass
+            ...     def get_nplc(self): return 1.0
+            ...     def set_nplc(self, value): pass
+            ...     def measure_voltage(self): return 0.0
+            ...     def measure_current(self): return 0.0
+            ...     def output_enabled(self): return False
+            ...     def enable_output(self, state): pass
+            >>> _SM(NullTransport(), ScpiProtocol()).configure_linear_sweep(0.0, 1.0, 11, delay=0.01)
+            Traceback (most recent call last):
+            ...
+            NotImplementedError: This source-meter driver does not expose source sweep configuration.
+        """
         self.configure_source_sweep(
             SourceSweepConfiguration(
                 start=start,
@@ -346,7 +400,24 @@ class SourceMeter(BaseInstrument):
         )
 
     def configure_log_sweep(self, start: float, stop: float, points: int, *, delay: float = 0.0) -> None:
-        """Configure a logarithmic source sweep."""
+        """Configure a logarithmic source sweep.
+
+        Args:
+            start (float):
+                Sweep start value in source units.
+            stop (float):
+                Sweep stop value in source units.
+            points (int):
+                Number of points in the sweep.
+
+        Keyword Parameters:
+            delay (float):
+                Source settling delay between sweep points in seconds.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose source sweep configuration.
+        """
         self.configure_source_sweep(
             SourceSweepConfiguration(
                 start=start,
@@ -358,7 +429,20 @@ class SourceMeter(BaseInstrument):
         )
 
     def configure_custom_sweep(self, values: tuple[float, ...], *, delay: float = 0.0) -> None:
-        """Configure a custom point-by-point source sweep."""
+        """Configure a custom point-by-point source sweep.
+
+        Args:
+            values (tuple[float, ...]):
+                Explicit source values to program.
+
+        Keyword Parameters:
+            delay (float):
+                Source settling delay between points in seconds.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose source sweep configuration.
+        """
         self.configure_source_sweep(
             SourceSweepConfiguration(
                 points=len(values),

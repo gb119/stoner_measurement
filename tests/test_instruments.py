@@ -377,6 +377,10 @@ class TestKeithley2400:
         t = _null(responses=[b"'VOLT:DC','CURR:DC'\n"])
         assert Keithley2400(transport=t).get_measure_functions() == ("VOLT", "CURR")
 
+    def test_get_measure_functions_without_suffix(self):
+        t = _null(responses=[b"'VOLT','CURR'\n"])
+        assert Keithley2400(transport=t).get_measure_functions() == ("VOLT", "CURR")
+
     def test_set_measure_functions(self):
         t = _null()
         Keithley2400(transport=t).set_measure_functions(("VOLT", "CURR"))
@@ -404,6 +408,7 @@ class TestKeithley2400:
         k = Keithley2400(transport=t)
         k.configure_source_sweep(SourceSweepConfiguration(start=0.0, stop=1.0, points=5, spacing="LIN", delay=0.01))
         assert t.write_log == [
+            b":SOUR:FUNC:MODE?\n",
             b":SOUR:FUNC:MODE VOLT\n",
             b":SOUR:VOLT:MODE SWE\n",
             b":SOUR:VOLT:STAR 0.0\n",
@@ -424,6 +429,7 @@ class TestKeithley2400:
         k = Keithley2400(transport=t)
         k.configure_source_sweep(SourceSweepConfiguration(spacing="LIST", values=(1e-3, 2e-3, 3e-3), delay=0.1))
         assert t.write_log == [
+            b":SOUR:FUNC:MODE?\n",
             b":SOUR:FUNC:MODE CURR\n",
             b":SOUR:CURR:MODE LIST\n",
             b":SOUR:LIST:CURR 0.001,0.002,0.003\n",
@@ -504,6 +510,20 @@ class TestKeithley2400:
             Keithley2400(transport=_null()).set_buffer_size(0)
         with pytest.raises(ValueError, match="positive"):
             Keithley2400(transport=_null()).read_buffer(0)
+
+    def test_read_buffer_malformed_numeric_response_raises(self):
+        t = _null(responses=[b"1.0,,2.0\n"])
+        with pytest.raises(ValueError, match="Malformed numeric response"):
+            Keithley2400(transport=t).read_buffer()
+
+    def test_read_buffer_non_numeric_response_raises(self):
+        t = _null(responses=[b"abc,1.0\n"])
+        with pytest.raises(ValueError, match="Malformed numeric response"):
+            Keithley2400(transport=t).read_buffer()
+
+    def test_read_buffer_empty_response_returns_empty_tuple(self):
+        t = _null(responses=[b"\n"])
+        assert Keithley2400(transport=t).read_buffer() == ()
 
     def test_output_enabled_true(self):
         t = _null(responses=[b"1\n"])

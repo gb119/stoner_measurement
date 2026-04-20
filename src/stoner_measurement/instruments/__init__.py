@@ -38,8 +38,8 @@ from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
     SourceMeter,
-    SourceSweepConfiguration,
     SourceMode,
+    SourceSweepConfiguration,
     SweepSpacing,
     TriggerModelConfiguration,
     TriggerSource,
