@@ -154,7 +154,10 @@ class TemperatureReading:
 
     Attributes:
         value (float):
-            Measured temperature in Kelvin.
+            Numeric sensor reading expressed in the units given by the
+            *units* field.  Drivers should convert to Kelvin and set
+            ``units="K"`` wherever possible; raw resistance or voltage
+            readings should set the appropriate unit string instead.
         status (SensorStatus):
             Validity / range status of the reading.
         units (str):
@@ -867,11 +870,12 @@ class TemperatureController(BaseInstrument):
         """
         deadline = time.monotonic() + timeout
         target = self.get_setpoint(loop)
+        current = self.get_temperature(channel)
         while time.monotonic() < deadline:
-            current = self.get_temperature(channel)
             if abs(current - target) <= tolerance:
                 return
             time.sleep(poll_period)
+            current = self.get_temperature(channel)
         raise TimeoutError(
             f"Temperature on channel '{channel}' did not reach setpoint {target} K "
             f"within {timeout} s (last reading: {current:.3f} K, "

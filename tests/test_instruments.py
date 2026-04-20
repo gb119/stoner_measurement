@@ -1585,7 +1585,7 @@ class TestTemperatureControllerComposite:
         tc = _make_tc()
         monkeypatch.setattr(type(tc), "get_setpoint", lambda self, loop: 80.0)
         monkeypatch.setattr(type(tc), "get_temperature", lambda self, ch: next(readings))
-        tc.wait_for_setpoint(1, "A", tolerance=0.5, timeout=5.0, poll_period=0.0)
+        tc.wait_for_setpoint(1, "A", tolerance=0.5, timeout=5.0, poll_period=0.001)
 
 
 # ---------------------------------------------------------------------------
