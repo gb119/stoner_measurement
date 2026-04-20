@@ -29,6 +29,7 @@ laboratory instruments:
 """
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
+from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.magnet_controller import MagnetController
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
@@ -52,6 +53,7 @@ __all__ = [
     "BaseInstrument",
     "ControllerCapabilities",
     "ControlMode",
+    "InstrumentDriverManager",
     "InstrumentError",
     "LoopStatus",
     "MagnetController",
