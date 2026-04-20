@@ -26,6 +26,8 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
 * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
 * :class:`~stoner_measurement.instruments.keithley.Keithley2400` — concrete SMU driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2410` — concrete SMU driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2450` — concrete SMU driver
 """
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
@@ -33,7 +35,15 @@ from stoner_measurement.instruments.driver_manager import InstrumentDriverManage
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.magnet_controller import MagnetController
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
-from stoner_measurement.instruments.source_meter import SourceMeter
+from stoner_measurement.instruments.source_meter import (
+    MeasureFunction,
+    SourceMeter,
+    SourceSweepConfiguration,
+    SourceMode,
+    SweepSpacing,
+    TriggerModelConfiguration,
+    TriggerSource,
+)
 from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
     ControllerCapabilities,
@@ -57,13 +67,19 @@ __all__ = [
     "InstrumentError",
     "LoopStatus",
     "MagnetController",
+    "MeasureFunction",
     "Nanovoltmeter",
     "PIDParameters",
     "RampState",
     "SensorStatus",
+    "SourceMode",
     "SourceMeter",
+    "SourceSweepConfiguration",
+    "SweepSpacing",
     "TemperatureController",
     "TemperatureReading",
     "TemperatureStatus",
+    "TriggerModelConfiguration",
+    "TriggerSource",
     "ZoneEntry",
 ]

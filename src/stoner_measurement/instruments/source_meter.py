@@ -8,6 +8,7 @@ Keithley 2450) implement the abstract methods for the specific instrument.
 from __future__ import annotations
 
 from abc import abstractmethod
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
@@ -18,6 +19,38 @@ if TYPE_CHECKING:
 
 #: Possible source modes for an SMU.
 SourceMode = str  # Literal["VOLT", "CURR"]
+
+#: Possible measured functions for an SMU.
+MeasureFunction = str  # Literal["VOLT", "CURR", "RES", "POW"]
+
+#: Sweep spacing options for built-in source sweeps.
+SweepSpacing = str  # Literal["LIN", "LOG", "LIST"]
+
+#: Trigger and arm source options.
+TriggerSource = str  # Literal["IMM", "BUS", "EXT", "TLIN", "TIM"]
+
+
+@dataclass(frozen=True)
+class SourceSweepConfiguration:
+    """Configuration for a source sweep."""
+
+    start: float = 0.0
+    stop: float = 0.0
+    points: int = 0
+    spacing: SweepSpacing = "LIN"
+    values: tuple[float, ...] | None = None
+    delay: float = 0.0
+
+
+@dataclass(frozen=True)
+class TriggerModelConfiguration:
+    """Configuration for simple trigger and arm models."""
+
+    trigger_source: TriggerSource = "IMM"
+    trigger_count: int = 1
+    trigger_delay: float = 0.0
+    arm_source: TriggerSource = "IMM"
+    arm_count: int = 1
 
 
 class SourceMeter(BaseInstrument):
@@ -235,3 +268,211 @@ class SourceMeter(BaseInstrument):
             ConnectionError:
                 If the transport is not open.
         """
+
+    def get_measure_functions(self) -> tuple[MeasureFunction, ...]:
+        """Return enabled measurement functions.
+
+        Returns:
+            (tuple[str, ...]):
+                Enabled measurement function names.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not implement function selection.
+        """
+        raise NotImplementedError("This source-meter driver does not expose measurement function selection.")
+
+    def set_measure_functions(self, functions: tuple[MeasureFunction, ...]) -> None:
+        """Enable one or more measurement functions.
+
+        Args:
+            functions (tuple[str, ...]):
+                Sequence of measurement function names to enable.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not implement function selection.
+        """
+        raise NotImplementedError("This source-meter driver does not expose measurement function selection.")
+
+    def measure_resistance(self) -> float:
+        """Return resistance calculated from measured voltage and current.
+
+        Returns:
+            (float):
+                Resistance in ohms.
+
+        Raises:
+            ZeroDivisionError:
+                If the measured current is zero.
+        """
+        current = self.measure_current()
+        if current == 0.0:
+            raise ZeroDivisionError("Measured current is zero; cannot calculate resistance.")
+        return self.measure_voltage() / current
+
+    def measure_power(self) -> float:
+        """Return power calculated from measured voltage and current.
+
+        Returns:
+            (float):
+                Electrical power in watts.
+        """
+        return self.measure_voltage() * self.measure_current()
+
+    def configure_source_sweep(self, config: SourceSweepConfiguration) -> None:
+        """Configure a source sweep.
+
+        Args:
+            config (SourceSweepConfiguration):
+                Source sweep configuration.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose source sweep configuration.
+        """
+        raise NotImplementedError("This source-meter driver does not expose source sweep configuration.")
+
+    def configure_linear_sweep(self, start: float, stop: float, points: int, *, delay: float = 0.0) -> None:
+        """Configure a linear source sweep."""
+        self.configure_source_sweep(
+            SourceSweepConfiguration(
+                start=start,
+                stop=stop,
+                points=points,
+                spacing="LIN",
+                delay=delay,
+            )
+        )
+
+    def configure_log_sweep(self, start: float, stop: float, points: int, *, delay: float = 0.0) -> None:
+        """Configure a logarithmic source sweep."""
+        self.configure_source_sweep(
+            SourceSweepConfiguration(
+                start=start,
+                stop=stop,
+                points=points,
+                spacing="LOG",
+                delay=delay,
+            )
+        )
+
+    def configure_custom_sweep(self, values: tuple[float, ...], *, delay: float = 0.0) -> None:
+        """Configure a custom point-by-point source sweep."""
+        self.configure_source_sweep(
+            SourceSweepConfiguration(
+                points=len(values),
+                spacing="LIST",
+                values=values,
+                delay=delay,
+            )
+        )
+
+    def set_source_delay(self, delay: float) -> None:
+        """Set source delay in seconds before each measurement trigger.
+
+        Args:
+            delay (float):
+                Source delay in seconds.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose source delay control.
+        """
+        raise NotImplementedError("This source-meter driver does not expose source delay control.")
+
+    def get_source_delay(self) -> float:
+        """Return source delay in seconds.
+
+        Returns:
+            (float):
+                Source delay in seconds.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose source delay control.
+        """
+        raise NotImplementedError("This source-meter driver does not expose source delay control.")
+
+    def configure_trigger_model(self, config: TriggerModelConfiguration) -> None:
+        """Configure trigger and arm behaviour.
+
+        Args:
+            config (TriggerModelConfiguration):
+                Trigger and arm model configuration.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose trigger model configuration.
+        """
+        raise NotImplementedError("This source-meter driver does not expose trigger model configuration.")
+
+    def initiate(self) -> None:
+        """Arm and initiate acquisition.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose trigger initiation.
+        """
+        raise NotImplementedError("This source-meter driver does not expose trigger initiation.")
+
+    def abort(self) -> None:
+        """Abort trigger execution.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose trigger abort.
+        """
+        raise NotImplementedError("This source-meter driver does not expose trigger abort.")
+
+    def set_buffer_size(self, size: int) -> None:
+        """Set reading buffer capacity.
+
+        Args:
+            size (int):
+                Number of readings the instrument should retain.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose reading buffer control.
+        """
+        raise NotImplementedError("This source-meter driver does not expose reading buffer control.")
+
+    def get_buffer_size(self) -> int:
+        """Return reading buffer capacity.
+
+        Returns:
+            (int):
+                Number of readings that the buffer can store.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose reading buffer control.
+        """
+        raise NotImplementedError("This source-meter driver does not expose reading buffer control.")
+
+    def clear_buffer(self) -> None:
+        """Clear the instrument reading buffer.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose reading buffer control.
+        """
+        raise NotImplementedError("This source-meter driver does not expose reading buffer control.")
+
+    def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
+        """Return readings from the instrument buffer.
+
+        Args:
+            count (int | None):
+                Optional count of readings to request.
+
+        Returns:
+            (tuple[float, ...]):
+                Flat tuple of numeric readings from the instrument buffer.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not expose reading buffer control.
+        """
+        raise NotImplementedError("This source-meter driver does not expose reading buffer control.")
