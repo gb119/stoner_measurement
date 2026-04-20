@@ -76,8 +76,7 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
 
     def get_input_channel(self, loop: int) -> str:
         """Return the channel assigned to *loop*."""
-        mode, input_index, _ = self._get_outmode(loop)
-        _ = mode
+        _, input_index, _ = self._get_outmode(loop)
         return self._channel_from_index(input_index)
 
     def set_input_channel(self, loop: int, channel: str) -> None:
@@ -125,8 +124,7 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
 
     def get_ramp_rate(self, loop: int) -> float:
         """Return ramp rate in Kelvin per minute for *loop*."""
-        enabled, rate = self._get_ramp(loop)
-        _ = enabled
+        _, rate = self._get_ramp(loop)
         return rate
 
     def set_ramp_rate(self, loop: int, rate: float) -> None:

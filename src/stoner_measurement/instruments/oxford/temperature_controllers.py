@@ -92,8 +92,7 @@ class _OxfordTemperatureControllerBase(TemperatureController):
 
     def get_ramp_rate(self, loop: int) -> float:
         """Return ramp rate in Kelvin per minute for *loop*."""
-        enabled, rate = self._get_ramp(loop)
-        _ = enabled
+        _, rate = self._get_ramp(loop)
         return rate
 
     def set_ramp_rate(self, loop: int, rate: float) -> None:
@@ -213,7 +212,8 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         return {"A": "R1", "B": "R2", "C": "R3"}[channel]
 
     def _input_command(self, loop: int, channel: str) -> str:
-        return f"C{ {'A': 1, 'B': 2, 'C': 3}[channel] }".replace(" ", "")
+        channel_code = {"A": 1, "B": 2, "C": 3}[channel]
+        return f"C{channel_code}"
 
     def _setpoint_query(self, loop: int) -> str:
         return "R0"

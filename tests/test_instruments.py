@@ -626,7 +626,6 @@ class TestLakeshoreTemperatureControllers:
                 b"1,1,0\r\n",
                 b"10.0\r\n",
                 b"1,1,0\r\n",
-                b"1,2,0\r\n",
                 b"1,0.5\r\n",
                 b"1,0.5\r\n",
                 b"50,2,0.1\r\n",
@@ -679,6 +678,7 @@ class TestOxfordTemperatureControllers:
                 b"R1\r",
                 b"R22.5\r",
                 b"R30.0,4.0,0.0\r",
+                b"R1,0.8\r",
                 b"R1,0.8\r",
             ]
         )
