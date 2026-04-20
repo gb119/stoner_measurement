@@ -35,6 +35,8 @@ class TestInstrumentDriverManager:
         manager.discover()
         discovered = manager.driver_classes
         assert "Keithley2400" in discovered
+        assert "Keithley2410" in discovered
+        assert "Keithley2450" in discovered
         assert "Lakeshore335" in discovered
         assert "Lakeshore336" in discovered
         assert "Lakeshore340" in discovered
@@ -56,6 +58,8 @@ class TestInstrumentDriverManager:
         manager.discover()
         source_meters = manager.drivers_by_type(SourceMeter)
         assert "Keithley2400" in source_meters
+        assert "Keithley2410" in source_meters
+        assert "Keithley2450" in source_meters
         assert "Lakeshore525" not in source_meters
 
     def test_discover_loads_third_party_entry_points(self, monkeypatch):

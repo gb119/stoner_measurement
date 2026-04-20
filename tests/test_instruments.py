@@ -15,7 +15,7 @@ import pytest
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.keithley import Keithley2400
+from stoner_measurement.instruments.keithley import Keithley2400, Keithley2410, Keithley2450
 from stoner_measurement.instruments.lakeshore import (
     Lakeshore335,
     Lakeshore336,
@@ -34,7 +34,16 @@ from stoner_measurement.instruments.oxford import (
     OxfordMercuryTemperatureController,
 )
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
-from stoner_measurement.instruments.source_meter import SourceMeter
+from stoner_measurement.instruments.source_meter import (
+    MeasureFunction,
+    SourceMeter,
+    SourceMeterCapabilities,
+    SourceMode,
+    SourceSweepConfiguration,
+    SweepSpacing,
+    TriggerModelConfiguration,
+    TriggerSource,
+)
 from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
     ControllerCapabilities,
@@ -313,21 +322,21 @@ class TestKeithley2400:
     def test_get_source_mode(self):
         t = _null(responses=[b"VOLT\n"])
         k = Keithley2400(transport=t)
-        assert k.get_source_mode() == "VOLT"
+        assert k.get_source_mode() == SourceMode.VOLT
 
     def test_set_source_mode_volt(self):
         t = _null()
-        Keithley2400(transport=t).set_source_mode("VOLT")
+        Keithley2400(transport=t).set_source_mode(SourceMode.VOLT)
         assert t.write_log[-1] == b":SOUR:FUNC:MODE VOLT\n"
 
     def test_set_source_mode_curr(self):
         t = _null()
-        Keithley2400(transport=t).set_source_mode("CURR")
+        Keithley2400(transport=t).set_source_mode(SourceMode.CURR)
         assert t.write_log[-1] == b":SOUR:FUNC:MODE CURR\n"
 
-    def test_set_source_mode_invalid_raises(self):
-        with pytest.raises(ValueError, match="Invalid source mode"):
-            Keithley2400(transport=_null()).set_source_mode("OHMS")
+    def test_source_mode_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            SourceMode("OHMS")
 
     def test_get_source_level(self):
         t = _null(responses=[b"1.000000E+00\n"])
@@ -369,6 +378,158 @@ class TestKeithley2400:
         t = _null(responses=[b"+1.000000E-03\n"])
         assert Keithley2400(transport=t).measure_current() == pytest.approx(0.001)
 
+    def test_get_measure_functions(self):
+        t = _null(responses=[b"'VOLT:DC','CURR:DC'\n"])
+        assert Keithley2400(transport=t).get_measure_functions() == (MeasureFunction.VOLT, MeasureFunction.CURR)
+
+    def test_get_measure_functions_without_suffix(self):
+        t = _null(responses=[b"'VOLT','CURR'\n"])
+        assert Keithley2400(transport=t).get_measure_functions() == (MeasureFunction.VOLT, MeasureFunction.CURR)
+
+    def test_set_measure_functions(self):
+        t = _null()
+        Keithley2400(transport=t).set_measure_functions((MeasureFunction.VOLT, MeasureFunction.CURR))
+        assert t.write_log[-1] == b":SENS:FUNC 'VOLT','CURR'\n"
+
+    def test_measure_function_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            MeasureFunction("TEMP")
+
+    def test_measure_resistance(self):
+        t = _null(responses=[b"+1.200000E+03\n"])
+        assert Keithley2400(transport=t).measure_resistance() == pytest.approx(1200.0)
+
+    def test_measure_power(self):
+        t = _null(responses=[b"+2.000000E+00,+5.000000E-01\n"])
+        assert Keithley2400(transport=t).measure_power() == pytest.approx(1.0)
+
+    def test_measure_power_raises_when_response_missing_current(self):
+        t = _null(responses=[b"+2.000000E+00\n"])
+        with pytest.raises(ValueError, match="both voltage and current"):
+            Keithley2400(transport=t).measure_power()
+
+    def test_configure_linear_sweep(self):
+        t = _null(responses=[b"VOLT\n"])
+        k = Keithley2400(transport=t)
+        k.configure_source_sweep(
+            SourceSweepConfiguration(start=0.0, stop=1.0, points=5, spacing=SweepSpacing.LIN, delay=0.01)
+        )
+        assert t.write_log == [
+            b":SOUR:FUNC:MODE?\n",
+            b":SOUR:FUNC:MODE VOLT\n",
+            b":SOUR:VOLT:MODE SWE\n",
+            b":SOUR:VOLT:STAR 0.0\n",
+            b":SOUR:VOLT:STOP 1.0\n",
+            b":SOUR:SWE:POIN 5\n",
+            b":SOUR:SWE:SPAC LIN\n",
+            b":SOUR:DEL 0.01\n",
+        ]
+
+    def test_configure_log_sweep_requires_at_least_two_points(self):
+        t = _null()
+        k = Keithley2400(transport=t)
+        with pytest.raises(ValueError, match="at least 2 points"):
+            k.configure_source_sweep(SourceSweepConfiguration(start=0.0, stop=1.0, points=1, spacing=SweepSpacing.LOG))
+
+    def test_configure_custom_sweep(self):
+        t = _null(responses=[b"CURR\n"])
+        k = Keithley2400(transport=t)
+        k.configure_source_sweep(
+            SourceSweepConfiguration(spacing=SweepSpacing.LIST, values=(1e-3, 2e-3, 3e-3), delay=0.1)
+        )
+        assert t.write_log == [
+            b":SOUR:FUNC:MODE?\n",
+            b":SOUR:FUNC:MODE CURR\n",
+            b":SOUR:CURR:MODE LIST\n",
+            b":SOUR:LIST:CURR 0.001,0.002,0.003\n",
+            b":SOUR:SWE:POIN 3\n",
+            b":SOUR:DEL 0.1\n",
+        ]
+
+    def test_sweep_spacing_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            SweepSpacing("CUSTOM")
+
+    def test_set_and_get_source_delay(self):
+        t = _null(responses=[b"1.000000E-02\n"])
+        k = Keithley2400(transport=t)
+        k.set_source_delay(0.01)
+        assert k.get_source_delay() == pytest.approx(0.01)
+        assert t.write_log == [b":SOUR:DEL 0.01\n", b":SOUR:DEL?\n"]
+
+    def test_set_source_delay_negative_raises(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            Keithley2400(transport=_null()).set_source_delay(-0.1)
+
+    def test_configure_trigger_model(self):
+        t = _null()
+        k = Keithley2400(transport=t)
+        k.configure_trigger_model(
+            TriggerModelConfiguration(
+                trigger_source=TriggerSource.BUS,
+                trigger_count=11,
+                trigger_delay=0.25,
+                arm_source=TriggerSource.IMM,
+                arm_count=3,
+            )
+        )
+        assert t.write_log == [
+            b":TRIG:SOUR BUS\n",
+            b":TRIG:COUN 11\n",
+            b":TRIG:DEL 0.25\n",
+            b":ARM:SOUR IMM\n",
+            b":ARM:COUN 3\n",
+        ]
+
+    def test_trigger_source_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            TriggerSource("BAD")
+
+    def test_initiate_and_abort(self):
+        t = _null()
+        k = Keithley2400(transport=t)
+        k.initiate()
+        k.abort()
+        assert t.write_log == [b":INIT\n", b":ABOR\n"]
+
+    def test_buffer_control_and_readout(self):
+        t = _null(responses=[b"250\n", b"1.0,2.0,3.0\n", b"4.0,5.0\n"])
+        k = Keithley2400(transport=t)
+        k.set_buffer_size(250)
+        assert k.get_buffer_size() == 250
+        k.clear_buffer()
+        all_values = k.read_buffer()
+        partial_values = k.read_buffer(2)
+        assert all_values == pytest.approx((1.0, 2.0, 3.0))
+        assert partial_values == pytest.approx((4.0, 5.0))
+        assert t.write_log == [
+            b":TRAC:POIN 250\n",
+            b":TRAC:POIN?\n",
+            b":TRAC:CLE\n",
+            b":TRAC:DATA?\n",
+            b":TRAC:DATA? 1,2\n",
+        ]
+
+    def test_buffer_size_validation(self):
+        with pytest.raises(ValueError, match="positive"):
+            Keithley2400(transport=_null()).set_buffer_size(0)
+        with pytest.raises(ValueError, match="positive"):
+            Keithley2400(transport=_null()).read_buffer(0)
+
+    def test_read_buffer_malformed_numeric_response_raises(self):
+        t = _null(responses=[b"1.0,,2.0\n"])
+        with pytest.raises(ValueError, match="Malformed numeric response"):
+            Keithley2400(transport=t).read_buffer()
+
+    def test_read_buffer_non_numeric_response_raises(self):
+        t = _null(responses=[b"abc,1.0\n"])
+        with pytest.raises(ValueError, match="Malformed numeric response"):
+            Keithley2400(transport=t).read_buffer()
+
+    def test_read_buffer_empty_response_returns_empty_tuple(self):
+        t = _null(responses=[b"\n"])
+        assert Keithley2400(transport=t).read_buffer() == ()
+
     def test_output_enabled_true(self):
         t = _null(responses=[b"1\n"])
         assert Keithley2400(transport=t).output_enabled() is True
@@ -385,6 +546,29 @@ class TestKeithley2400:
     def test_enable_output_off(self):
         t = _null()
         Keithley2400(transport=t).enable_output(False)
+        assert t.write_log[-1] == b":OUTP:STAT 0\n"
+
+    def test_get_capabilities(self):
+        caps = Keithley2400(transport=_null()).get_capabilities()
+        assert isinstance(caps, SourceMeterCapabilities)
+        assert caps.has_function_selection
+        assert caps.has_sweep
+        assert caps.has_source_delay
+        assert caps.has_trigger_model
+        assert caps.has_buffer
+
+
+class TestKeithley24xxVariants:
+    def test_keithley2410_inherits_2400_behaviour(self):
+        t = _null()
+        k = Keithley2410(transport=t)
+        k.enable_output(True)
+        assert t.write_log[-1] == b":OUTP:STAT 1\n"
+
+    def test_keithley2450_inherits_2400_behaviour(self):
+        t = _null()
+        k = Keithley2450(transport=t)
+        k.enable_output(False)
         assert t.write_log[-1] == b":OUTP:STAT 0\n"
 
 

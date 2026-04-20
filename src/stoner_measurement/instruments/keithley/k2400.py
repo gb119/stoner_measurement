@@ -16,11 +16,20 @@ from __future__ import annotations
 
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
-from stoner_measurement.instruments.source_meter import SourceMeter, SourceMode
+from stoner_measurement.instruments.source_meter import (
+    MeasureFunction,
+    SourceMeter,
+    SourceMeterCapabilities,
+    SourceMode,
+    SourceSweepConfiguration,
+    SweepSpacing,
+    TriggerModelConfiguration,
+    TriggerSource,
+)
 from stoner_measurement.instruments.transport.base import BaseTransport
 
-#: Valid source modes accepted by the Keithley 2400.
-_VALID_MODES = frozenset({"VOLT", "CURR"})
+#: Valid measurement functions for Keithley 24xx SMUs.
+_VALID_MEASURE_FUNCTIONS = frozenset({"VOLT", "CURR", "RES"})
 
 #: NPLC range supported by the Keithley 2400.
 _NPLC_MIN = 0.01
@@ -77,16 +86,83 @@ class Keithley2400(SourceMeter):
         )
 
     # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalise_measure_function(function_name: str) -> MeasureFunction:
+        """Normalise a function token returned by SCPI into a MeasureFunction enum value.
+
+        Args:
+            function_name (str):
+                Raw function token returned by the instrument.
+
+        Returns:
+            (MeasureFunction):
+                Normalised measurement function.
+
+        Raises:
+            ValueError:
+                If the token does not map to a known MeasureFunction value.
+        """
+        token = function_name.strip().strip("'\"").upper()
+        if ":" in token:
+            token = token.split(":", 1)[0]
+        return MeasureFunction(token)
+
+    @staticmethod
+    def _parse_csv_floats(values: str) -> tuple[float, ...]:
+        """Parse a comma-separated float response payload.
+
+        Args:
+            values (str):
+                Comma-separated numeric payload.
+
+        Returns:
+            (tuple[float, ...]):
+                Parsed numeric values.
+
+        Raises:
+            ValueError:
+                If the payload is malformed or cannot be parsed as floats.
+        """
+        stripped = values.strip()
+        if not stripped:
+            return ()
+        tokens = [token.strip() for token in stripped.split(",")]
+        if "" in tokens:
+            raise ValueError(f"Malformed numeric response: {values!r}")
+        try:
+            return tuple(float(token) for token in tokens)
+        except ValueError as exc:
+            raise ValueError(f"Malformed numeric response: {values!r}") from exc
+
+    def _source_prefix(self, source_mode: SourceMode | None = None) -> str:
+        """Return :SOUR command prefix for the selected source mode.
+
+        Args:
+            source_mode (SourceMode | None):
+                Optional source mode. If ``None``, query the instrument.
+
+        Returns:
+            (str):
+                ``":SOUR:VOLT"`` for voltage source mode, otherwise
+                ``":SOUR:CURR"``.
+        """
+        mode = source_mode if source_mode is not None else self.get_source_mode()
+        return ":SOUR:VOLT" if mode == SourceMode.VOLT else ":SOUR:CURR"
+
+    # ------------------------------------------------------------------
     # Source mode
     # ------------------------------------------------------------------
 
     def get_source_mode(self) -> SourceMode:
-        """Return the active source mode (``"VOLT"`` or ``"CURR"``).
+        """Return the active source mode.
 
         Returns:
-            (str):
-                ``"VOLT"`` if the instrument is sourcing voltage, or
-                ``"CURR"`` if it is sourcing current.
+            (SourceMode):
+                :attr:`~SourceMode.VOLT` if the instrument is sourcing voltage,
+                :attr:`~SourceMode.CURR` if it is sourcing current.
 
         Raises:
             ConnectionError:
@@ -95,42 +171,41 @@ class Keithley2400(SourceMeter):
         Examples:
             >>> from stoner_measurement.instruments.transport import NullTransport
             >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> from stoner_measurement.instruments.source_meter import SourceMode
             >>> t = NullTransport(responses=[b"VOLT\\n"])
             >>> k = Keithley2400(transport=t)
             >>> k.connect()
             >>> k.get_source_mode()
-            'VOLT'
+            <SourceMode.VOLT: 'VOLT'>
             >>> k.disconnect()
         """
-        return self.query(":SOUR:FUNC:MODE?")
+        return SourceMode(self.query(":SOUR:FUNC:MODE?"))
 
     def set_source_mode(self, mode: SourceMode) -> None:
         """Set the source mode.
 
         Args:
-            mode (str):
-                ``"VOLT"`` for voltage source or ``"CURR"`` for current source.
+            mode (SourceMode):
+                :attr:`~SourceMode.VOLT` for voltage source or
+                :attr:`~SourceMode.CURR` for current source.
 
         Raises:
             ConnectionError:
                 If the transport is not open.
-            ValueError:
-                If *mode* is not ``"VOLT"`` or ``"CURR"``.
 
         Examples:
             >>> from stoner_measurement.instruments.transport import NullTransport
             >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> from stoner_measurement.instruments.source_meter import SourceMode
             >>> t = NullTransport()
             >>> k = Keithley2400(transport=t)
             >>> k.connect()
-            >>> k.set_source_mode("VOLT")
+            >>> k.set_source_mode(SourceMode.VOLT)
             >>> t.write_log[-1]
             b':SOUR:FUNC:MODE VOLT\\n'
             >>> k.disconnect()
         """
-        if mode not in _VALID_MODES:
-            raise ValueError(f"Invalid source mode {mode!r}; must be one of {_VALID_MODES}.")
-        self.write(f":SOUR:FUNC:MODE {mode}")
+        self.write(f":SOUR:FUNC:MODE {mode.value}")
 
     # ------------------------------------------------------------------
     # Source level
@@ -282,8 +357,8 @@ class Keithley2400(SourceMeter):
             >>> k = Keithley2400(transport=t)
             >>> k.connect()
             >>> k.set_nplc(5.0)
-            >>> t.write_log[-1]
-            b':SENS:VOLT:NPLC 5.0\\n'
+            >>> t.write_log  # two writes: voltage sense then current sense
+            [b':SENS:VOLT:NPLC 5.0\\n', b':SENS:CURR:NPLC 5.0\\n']
             >>> k.disconnect()
         """
         if not (_NPLC_MIN <= value <= _NPLC_MAX):
@@ -294,6 +369,28 @@ class Keithley2400(SourceMeter):
     # ------------------------------------------------------------------
     # Measurements
     # ------------------------------------------------------------------
+
+    def get_measure_functions(self) -> tuple[MeasureFunction, ...]:
+        """Return enabled measurement functions."""
+        payload = self.query(":SENS:FUNC?")
+        return tuple(
+            self._normalise_measure_function(function_name)
+            for function_name in payload.split(",")
+            if function_name.strip()
+        )
+
+    def set_measure_functions(self, functions: tuple[MeasureFunction, ...]) -> None:
+        """Enable one or more measurement functions."""
+        if not functions:
+            raise ValueError("At least one measurement function must be provided.")
+        invalid = [f for f in functions if f.value not in _VALID_MEASURE_FUNCTIONS]
+        if invalid:
+            raise ValueError(
+                f"Invalid measurement function(s) {[f.value for f in invalid]!r}; "
+                f"must be drawn from {_VALID_MEASURE_FUNCTIONS}."
+            )
+        quoted = ",".join(f"'{f.value}'" for f in functions)
+        self.write(f":SENS:FUNC {quoted}")
 
     def measure_voltage(self) -> float:
         """Trigger a voltage measurement and return the result in volts.
@@ -349,6 +446,401 @@ class Keithley2400(SourceMeter):
         self.write(":SENS:FUNC 'CURR'")
         return float(self.query(":READ?").split(",")[0])
 
+    def measure_resistance(self) -> float:
+        """Trigger a resistance measurement and return the result in ohms.
+
+        Returns:
+            (float):
+                Measured resistance in ohms.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport(responses=[b"+1.200000E+03\\n"])
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.measure_resistance()
+            1200.0
+            >>> k.disconnect()
+        """
+        self.write(":SENS:FUNC 'RES'")
+        return float(self.query(":READ?").split(",")[0])
+
+    def measure_power(self) -> float:
+        """Trigger simultaneous voltage/current measurements and return power in watts.
+
+        Returns:
+            (float):
+                Measured power in watts.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            ValueError:
+                If the instrument response does not include both voltage and current.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport(responses=[b"+2.000000E+00,+5.000000E-01\\n"])
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.measure_power()
+            1.0
+            >>> k.disconnect()
+        """
+        self.write(":SENS:FUNC 'VOLT','CURR'")
+        values = self._parse_csv_floats(self.query(":READ?"))
+        if len(values) < 2:
+            raise ValueError("Instrument did not return both voltage and current readings for power calculation.")
+        return values[0] * values[1]
+
+    # ------------------------------------------------------------------
+    # Sweep, source delay, triggering, and buffer control
+    # ------------------------------------------------------------------
+
+    def configure_source_sweep(self, config: SourceSweepConfiguration) -> None:
+        """Configure linear, logarithmic, or list source sweeps.
+
+        Args:
+            config (SourceSweepConfiguration):
+                Sweep configuration payload.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            ValueError:
+                If the delay, point count, or list values are invalid.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> from stoner_measurement.instruments.source_meter import (
+            ...     SourceSweepConfiguration, SweepSpacing,
+            ... )
+            >>> t = NullTransport(responses=[b"VOLT\\n"])
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.configure_source_sweep(
+            ...     SourceSweepConfiguration(
+            ...         start=0.0, stop=1.0, points=5,
+            ...         spacing=SweepSpacing.LIN, delay=0.01,
+            ...     )
+            ... )
+            >>> t.write_log[-1]
+            b':SOUR:DEL 0.01\\n'
+            >>> k.disconnect()
+        """
+        if config.delay < 0.0:
+            raise ValueError("Sweep delay must be non-negative.")
+
+        source_mode = self.get_source_mode()
+        source_prefix = self._source_prefix(source_mode)
+        self.write(f":SOUR:FUNC:MODE {source_mode.value}")
+
+        if config.spacing in (SweepSpacing.LIN, SweepSpacing.LOG):
+            spacing_str = config.spacing.value
+            if config.points < 2:
+                raise ValueError(f"{spacing_str} sweep requires at least 2 points.")
+            self.write(f"{source_prefix}:MODE SWE")
+            self.write(f"{source_prefix}:STAR {config.start}")
+            self.write(f"{source_prefix}:STOP {config.stop}")
+            self.write(f":SOUR:SWE:POIN {config.points}")
+            self.write(f":SOUR:SWE:SPAC {spacing_str}")
+            self.set_source_delay(config.delay)
+            return
+
+        if config.values is None or len(config.values) == 0:
+            raise ValueError("Custom/list sweep requires at least one value.")
+        values = ",".join(str(value) for value in config.values)
+        self.write(f"{source_prefix}:MODE LIST")
+        self.write(f":SOUR:LIST:{source_mode.value} {values}")
+        self.write(f":SOUR:SWE:POIN {len(config.values)}")
+        self.set_source_delay(config.delay)
+
+    def set_source_delay(self, delay: float) -> None:
+        """Set source delay before each measurement trigger.
+
+        Args:
+            delay (float):
+                Source delay in seconds.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            ValueError:
+                If *delay* is negative.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport()
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.set_source_delay(0.01)
+            >>> t.write_log[-1]
+            b':SOUR:DEL 0.01\\n'
+            >>> k.disconnect()
+        """
+        if delay < 0.0:
+            raise ValueError("Source delay must be non-negative.")
+        self.write(f":SOUR:DEL {delay}")
+
+    def get_source_delay(self) -> float:
+        """Return source delay before each measurement trigger.
+
+        Returns:
+            (float):
+                Source delay in seconds.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport(responses=[b"1.000000E-02\\n"])
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.get_source_delay()
+            0.01
+            >>> k.disconnect()
+        """
+        return float(self.query(":SOUR:DEL?"))
+
+    def configure_trigger_model(self, config: TriggerModelConfiguration) -> None:
+        """Configure trigger and arm model settings.
+
+        Args:
+            config (TriggerModelConfiguration):
+                Trigger and arm model configuration.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            ValueError:
+                If trigger or arm counts are not positive, or trigger delay is
+                negative.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> from stoner_measurement.instruments.source_meter import (
+            ...     TriggerModelConfiguration, TriggerSource,
+            ... )
+            >>> t = NullTransport()
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.configure_trigger_model(
+            ...     TriggerModelConfiguration(
+            ...         trigger_source=TriggerSource.BUS,
+            ...         trigger_count=2,
+            ...         trigger_delay=0.1,
+            ...     )
+            ... )
+            >>> t.write_log[0]
+            b':TRIG:SOUR BUS\\n'
+            >>> k.disconnect()
+        """
+        if config.trigger_count <= 0:
+            raise ValueError("Trigger count must be positive.")
+        if config.arm_count <= 0:
+            raise ValueError("Arm count must be positive.")
+        if config.trigger_delay < 0.0:
+            raise ValueError("Trigger delay must be non-negative.")
+
+        self.write(f":TRIG:SOUR {config.trigger_source.value}")
+        self.write(f":TRIG:COUN {config.trigger_count}")
+        self.write(f":TRIG:DEL {config.trigger_delay}")
+        self.write(f":ARM:SOUR {config.arm_source.value}")
+        self.write(f":ARM:COUN {config.arm_count}")
+
+    def initiate(self) -> None:
+        """Arm and start the trigger model.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport()
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.initiate()
+            >>> t.write_log[-1]
+            b':INIT\\n'
+            >>> k.disconnect()
+        """
+        self.write(":INIT")
+
+    def abort(self) -> None:
+        """Abort trigger execution.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport()
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.abort()
+            >>> t.write_log[-1]
+            b':ABOR\\n'
+            >>> k.disconnect()
+        """
+        self.write(":ABOR")
+
+    def set_buffer_size(self, size: int) -> None:
+        """Set reading buffer capacity.
+
+        Args:
+            size (int):
+                Number of readings for the buffer to retain.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            ValueError:
+                If *size* is not positive.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport()
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.set_buffer_size(100)
+            >>> t.write_log[-1]
+            b':TRAC:POIN 100\\n'
+            >>> k.disconnect()
+        """
+        if size <= 0:
+            raise ValueError("Buffer size must be positive.")
+        self.write(f":TRAC:POIN {size}")
+
+    def get_buffer_size(self) -> int:
+        """Return reading buffer capacity.
+
+        Returns:
+            (int):
+                Number of readings that can be stored.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport(responses=[b"250\\n"])
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.get_buffer_size()
+            250
+            >>> k.disconnect()
+
+        Notes:
+            Some instruments may return the buffer size in exponential format.
+            The response is therefore parsed as ``float`` before conversion to
+            ``int``.
+        """
+        return int(float(self.query(":TRAC:POIN?")))
+
+    def clear_buffer(self) -> None:
+        """Clear the reading buffer.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport()
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.clear_buffer()
+            >>> t.write_log[-1]
+            b':TRAC:CLE\\n'
+            >>> k.disconnect()
+        """
+        self.write(":TRAC:CLE")
+
+    def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
+        """Read buffered readings from the internal trace buffer.
+
+        Args:
+            count (int | None):
+                Optional number of readings to return from the start of the buffer.
+
+        Returns:
+            (tuple[float, ...]):
+                Flat tuple of numeric readings.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            ValueError:
+                If *count* is provided and is not positive.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> t = NullTransport(responses=[b"1.0,2.0\\n"])
+            >>> k = Keithley2400(transport=t)
+            >>> k.connect()
+            >>> k.read_buffer()
+            (1.0, 2.0)
+            >>> k.disconnect()
+        """
+        if count is None:
+            response = self.query(":TRAC:DATA?")
+            return self._parse_csv_floats(response)
+        if count <= 0:
+            raise ValueError("Requested buffer count must be positive.")
+        response = self.query(f":TRAC:DATA? 1,{count}")
+        return self._parse_csv_floats(response)
+
+    # ------------------------------------------------------------------
+    # Capabilities
+    # ------------------------------------------------------------------
+
+    def get_capabilities(self) -> SourceMeterCapabilities:
+        """Return the capability descriptor for the Keithley 2400 driver.
+
+        Returns:
+            (SourceMeterCapabilities):
+                Descriptor indicating that this driver supports measurement
+                function selection, source sweeps, source delay, trigger/arm
+                model configuration, and reading buffer control.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.keithley import Keithley2400
+            >>> caps = Keithley2400(transport=NullTransport()).get_capabilities()
+            >>> caps.has_sweep
+            True
+            >>> caps.has_buffer
+            True
+        """
+        return SourceMeterCapabilities(
+            has_function_selection=True,
+            has_sweep=True,
+            has_source_delay=True,
+            has_trigger_model=True,
+            has_buffer=True,
+        )
+
     # ------------------------------------------------------------------
     # Output control
     # ------------------------------------------------------------------
@@ -402,3 +894,19 @@ class Keithley2400(SourceMeter):
             >>> k.disconnect()
         """
         self.write(f":OUTP:STAT {1 if state else 0}")
+
+
+class Keithley2410(Keithley2400):
+    """Driver for the Keithley 2410 SourceMeter.
+
+    This model uses command-level compatibility with the Keithley 2400
+    implementation for core source/measure, sweep, trigger, and buffer features.
+    """
+
+
+class Keithley2450(Keithley2400):
+    """Driver for the Keithley 2450 SourceMeter.
+
+    This model supports a SCPI command subset that is compatible with the
+    Keithley 2400 implementation exposed by this class hierarchy.
+    """
