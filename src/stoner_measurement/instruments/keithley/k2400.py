@@ -538,6 +538,9 @@ class Keithley2400(SourceMeter):
         if config.delay < 0.0:
             raise ValueError("Sweep delay must be non-negative.")
 
+        if config.spacing is SweepSpacing.LOG and (config.points is None or config.points < 2):
+            raise ValueError("LOG sweep requires at least 2 points.")
+
         source_mode = self.get_source_mode()
         source_prefix = self._source_prefix(source_mode)
         self.write(f":SOUR:FUNC:MODE {source_mode.value}")
