@@ -22,6 +22,7 @@ from stoner_measurement.instruments.source_meter import (
     SourceMeterCapabilities,
     SourceMode,
     SourceSweepConfiguration,
+    SweepSpacing,
     TriggerModelConfiguration,
     TriggerSource,
 )
@@ -356,8 +357,8 @@ class Keithley2400(SourceMeter):
             >>> k = Keithley2400(transport=t)
             >>> k.connect()
             >>> k.set_nplc(5.0)
-            >>> t.write_log[0]
-            b':SENS:VOLT:NPLC 5.0\\n'
+            >>> t.write_log  # two writes: voltage sense then current sense
+            [b':SENS:VOLT:NPLC 5.0\\n', b':SENS:CURR:NPLC 5.0\\n']
             >>> k.disconnect()
         """
         if not (_NPLC_MIN <= value <= _NPLC_MAX):
@@ -541,7 +542,7 @@ class Keithley2400(SourceMeter):
         source_prefix = self._source_prefix(source_mode)
         self.write(f":SOUR:FUNC:MODE {source_mode.value}")
 
-        if config.spacing in (config.spacing.LIN, config.spacing.LOG):
+        if config.spacing in (SweepSpacing.LIN, SweepSpacing.LOG):
             spacing_str = config.spacing.value
             if config.points < 2:
                 raise ValueError(f"{spacing_str} sweep requires at least 2 points.")
