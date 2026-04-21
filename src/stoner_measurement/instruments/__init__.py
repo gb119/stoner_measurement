@@ -24,16 +24,32 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.temperature_controller.TemperatureController` — abstract type
 * :class:`~stoner_measurement.instruments.magnet_controller.MagnetController` — abstract type
 * :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
+* :class:`~stoner_measurement.instruments.current_source.CurrentSource` — abstract type
 * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
 * :class:`~stoner_measurement.instruments.keithley.Keithley2400` — concrete SMU driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley2410` — concrete SMU driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley2450` — concrete SMU driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley6221` — concrete current-source driver
+* :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81CurrentSource` — concrete current-source driver
 """
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
+from stoner_measurement.instruments.current_source import (
+    CurrentSource,
+    CurrentSourceCapabilities,
+    CurrentSweepConfiguration,
+    CurrentSweepSpacing,
+    CurrentWaveform,
+    PulsedSweepConfiguration,
+)
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.magnet_controller import MagnetController, MagnetLimits, MagnetState, MagnetStatus
+from stoner_measurement.instruments.magnet_controller import (
+    MagnetController,
+    MagnetLimits,
+    MagnetState,
+    MagnetStatus,
+)
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
@@ -64,6 +80,11 @@ __all__ = [
     "BaseInstrument",
     "ControllerCapabilities",
     "ControlMode",
+    "CurrentSource",
+    "CurrentSourceCapabilities",
+    "CurrentSweepConfiguration",
+    "CurrentSweepSpacing",
+    "CurrentWaveform",
     "InstrumentDriverManager",
     "InstrumentError",
     "LoopStatus",
@@ -74,6 +95,7 @@ __all__ = [
     "MeasureFunction",
     "Nanovoltmeter",
     "PIDParameters",
+    "PulsedSweepConfiguration",
     "RampState",
     "SensorStatus",
     "SourceMeter",
