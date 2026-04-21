@@ -13,14 +13,17 @@ from stoner_measurement.instruments.transport.base import BaseTransport
 
 
 class Keithley6221(CurrentSource):
-    """Driver for the Keithley 6221 precision AC/DC current source."""
+    """Driver for the Keithley 6221 precision AC/DC current source.
+
+    Provides DC source-level and compliance control plus AC waveform controls
+    (waveform shape, frequency, and offset current) using SCPI commands.
+    """
 
     def __init__(
         self,
         transport: BaseTransport,
         protocol: BaseProtocol | None = None,
     ) -> None:
-        """Initialise the Keithley 6221 driver."""
         super().__init__(
             transport=transport,
             protocol=protocol if protocol is not None else ScpiProtocol(),

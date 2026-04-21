@@ -16,14 +16,18 @@ _M81_DEFAULT_NEGATIVE_CHANNEL = 2
 
 
 class LakeshoreM81CurrentSource(CurrentSource):
-    """Driver for the Lakeshore M81 balanced current-source outputs."""
+    """Driver for the Lakeshore M81 balanced current-source outputs.
+
+    Models the M81 as a differential current-source backed by two matched
+    output channels. The public source-level API uses channel 1 amplitude and
+    mirrors channel 2 with opposite polarity for balanced drive.
+    """
 
     def __init__(
         self,
         transport: BaseTransport,
         protocol: BaseProtocol | None = None,
     ) -> None:
-        """Initialise the Lakeshore M81 current-source driver."""
         super().__init__(
             transport=transport,
             protocol=protocol if protocol is not None else ScpiProtocol(),

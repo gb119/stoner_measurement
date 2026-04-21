@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class CurrentWaveform(Enum):
-    """Output waveform mode of a current source."""
+    """Output waveform mode of a current-source instrument."""
 
     DC = "DC"
     SINE = "SINE"
@@ -51,14 +51,18 @@ class CurrentSourceCapabilities:
 
 
 class CurrentSource(BaseInstrument):
-    """Abstract base class for precision current-source instruments."""
+    """Abstract base class for precision current-source instruments.
+
+    Provides a shared API for DC current level, compliance voltage, and output
+    enable control, with optional AC waveform and balanced-channel extensions
+    advertised via :meth:`get_capabilities`.
+    """
 
     def __init__(
         self,
         transport: BaseTransport,
         protocol: BaseProtocol,
     ) -> None:
-        """Initialise the current source."""
         super().__init__(transport=transport, protocol=protocol)
 
     @abstractmethod
@@ -90,14 +94,24 @@ class CurrentSource(BaseInstrument):
         """Return the static capability descriptor for this driver."""
 
     def get_waveform(self) -> CurrentWaveform:
-        """Return the configured output waveform."""
+        """Return the configured output waveform.
+
+        Raises:
+            NotImplementedError:
+                If waveform selection is not supported by the driver.
+        """
         raise NotImplementedError(
             f"{type(self).__name__} does not support waveform selection. "
             "Check get_capabilities().has_waveform_selection before calling this method."
         )
 
     def set_waveform(self, waveform: CurrentWaveform) -> None:
-        """Set output waveform mode."""
+        """Set output waveform mode.
+
+        Raises:
+            NotImplementedError:
+                If waveform selection is not supported by the driver.
+        """
         _ = waveform
         raise NotImplementedError(
             f"{type(self).__name__} does not support waveform selection. "
@@ -105,14 +119,24 @@ class CurrentSource(BaseInstrument):
         )
 
     def get_frequency(self) -> float:
-        """Return AC waveform frequency in Hz."""
+        """Return AC waveform frequency in Hz.
+
+        Raises:
+            NotImplementedError:
+                If AC frequency control is not supported by the driver.
+        """
         raise NotImplementedError(
             f"{type(self).__name__} does not support frequency control. "
             "Check get_capabilities().has_frequency_control before calling this method."
         )
 
     def set_frequency(self, value: float) -> None:
-        """Set AC waveform frequency in Hz."""
+        """Set AC waveform frequency in Hz.
+
+        Raises:
+            NotImplementedError:
+                If AC frequency control is not supported by the driver.
+        """
         _ = value
         raise NotImplementedError(
             f"{type(self).__name__} does not support frequency control. "
@@ -120,14 +144,24 @@ class CurrentSource(BaseInstrument):
         )
 
     def get_offset_current(self) -> float:
-        """Return AC waveform DC offset current in amps."""
+        """Return AC waveform DC offset current in amps.
+
+        Raises:
+            NotImplementedError:
+                If offset-current control is not supported by the driver.
+        """
         raise NotImplementedError(
             f"{type(self).__name__} does not support offset-current control. "
             "Check get_capabilities().has_offset_current before calling this method."
         )
 
     def set_offset_current(self, value: float) -> None:
-        """Set AC waveform DC offset current in amps."""
+        """Set AC waveform DC offset current in amps.
+
+        Raises:
+            NotImplementedError:
+                If offset-current control is not supported by the driver.
+        """
         _ = value
         raise NotImplementedError(
             f"{type(self).__name__} does not support offset-current control. "
@@ -135,7 +169,12 @@ class CurrentSource(BaseInstrument):
         )
 
     def get_channel_level(self, channel: int) -> float:
-        """Return programmed current for a specific output channel."""
+        """Return programmed current for a specific output channel.
+
+        Raises:
+            NotImplementedError:
+                If per-channel current control is not supported by the driver.
+        """
         _ = channel
         raise NotImplementedError(
             f"{type(self).__name__} does not support per-channel current control. "
@@ -143,7 +182,12 @@ class CurrentSource(BaseInstrument):
         )
 
     def set_channel_level(self, channel: int, value: float) -> None:
-        """Set current for a specific output channel."""
+        """Set current for a specific output channel.
+
+        Raises:
+            NotImplementedError:
+                If per-channel current control is not supported by the driver.
+        """
         _ = (channel, value)
         raise NotImplementedError(
             f"{type(self).__name__} does not support per-channel current control. "
