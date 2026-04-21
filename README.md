@@ -5,21 +5,30 @@
 [![Run Tests](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml/badge.svg)](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e)](https://app.codacy.com/gh/gb119/stoner_measurement/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
-A Python Qt6 desktop application for carrying out scientific measurements by
-communicating with laboratory instruments over USB, Serial, GPIB, and Ethernet
-interfaces.
+A Python/PyQt6 desktop application for building and running scientific
+measurement sequences with laboratory instruments.
 
 ## Features
 
-- **Instrument plugins** — connect to real hardware via a simple plugin API;
-  instruments are discovered automatically through Python entry-points.
-- **Sequence builder** — drag instruments into a visual sequence list and nest
-  state-control steps to define complex measurement sweeps.
-- **Live plotting** — data points are plotted in real time as a sequence runs.
-- **Script editor** — view, edit, and re-run the auto-generated Python script
-  that drives the sequence engine.
+- **Two execution workflows** — run a drag-and-drop sequence in the Measurement
+  tab, or run/edit Python directly in the Script Editor tab.
+- **Plugin-based sequence engine** — command, trace, state-control, monitor,
+  transform, and sequence plugins are discovered from
+  `stoner_measurement.plugins` entry points.
+- **Live data and namespace model** — sequence execution updates `_traces` and
+  `_values`, supports NumPy in the runtime namespace, and streams logs to the
+  built-in log viewer.
+- **Instrument abstraction layer** — transport/protocol composition plus common
+  instrument interfaces (source meter, current source, nanovoltmeter, magnet
+  controller, temperature controller) with built-in and third-party driver
+  discovery.
+- **Persistent workflows** — save/load both measurement sequences and scripts.
 
 ## Quick start
+
+### Prerequisites
+
+- Python 3.12 or newer
 
 ### Install
 
@@ -48,31 +57,36 @@ from stoner_measurement.main import main
 main()
 ```
 
-## Application layout
+## Application overview
 
-The main window is divided into three panels:
+The main window contains a Measurement workspace and a Script Editor workspace.
 
-| Panel | Description |
-|-------|-------------|
-| **Left (25 %)** | Instrument / plugin list and sequence builder. Drag instruments into the sequence list to build a measurement sequence. |
-| **Central (50 %)** | Live PyQtGraph plotting area. Data points produced by each sequence step are plotted here in real time. |
-| **Right (25 %)** | Tabbed configuration area. Each loaded plugin contributes a tab with its own configuration controls. |
+The Measurement workspace is divided into three panels:
+
+|Panel|Description|
+|---|---|
+|**Left (25 %)**|Plugin list, sequence tree, and monitoring widgets.|
+|**Central (50 %)**|Live PyQtGraph plotting area for sequence data.|
+|**Right (25 %)**|Tabbed configuration panel for selected plugins/steps.|
+
+Menus and toolbar actions support sequence/script creation, opening/saving,
+run/pause/stop, Python code generation from the sequence tree, and opening the
+log viewer window.
 
 ## Running a measurement
 
-1. Select an instrument in the **left panel** and click *Add Step*.
+1. Select a plugin in the **left panel** and click *Add Step*.
 2. Repeat for each step you need.
 3. Configure each step via the corresponding tab in the **right panel**.
-4. Click *Run* to start the sequence.
+4. Click *Run* to render and execute the generated sequence script.
 
 ## Documentation
 
 Full documentation — including the API reference, a guide to writing your own
-instrument plugins, and contribution guidelines — is available at:
+plugins and instrument drivers, and contribution guidelines — is available at:
 
 <https://gb119.github.io/stoner_measurement/>
 
 ## Licence
 
 Distributed under the MIT Licence.  See [LICENSE](LICENSE) for details.
-
