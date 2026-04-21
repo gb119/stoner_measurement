@@ -15,12 +15,13 @@ import pytest
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.keithley import Keithley2400, Keithley2410, Keithley2450
+from stoner_measurement.instruments.keithley import Keithley2400, Keithley2410, Keithley2450, Keithley6221
 from stoner_measurement.instruments.lakeshore import (
     Lakeshore335,
     Lakeshore336,
     Lakeshore340,
     Lakeshore525,
+    LakeshoreM81CurrentSource,
 )
 from stoner_measurement.instruments.magnet_controller import (
     MagnetController,
@@ -43,6 +44,11 @@ from stoner_measurement.instruments.source_meter import (
     SweepSpacing,
     TriggerModelConfiguration,
     TriggerSource,
+)
+from stoner_measurement.instruments.current_source import (
+    CurrentSource,
+    CurrentSourceCapabilities,
+    CurrentWaveform,
 )
 from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
@@ -104,6 +110,10 @@ class TestAbstractEnforcement:
     def test_source_meter_is_abstract(self):
         with pytest.raises(TypeError):
             SourceMeter(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+
+    def test_current_source_is_abstract(self):
+        with pytest.raises(TypeError):
+            CurrentSource(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
 
     def test_nanovoltmeter_is_abstract(self):
         with pytest.raises(TypeError):
@@ -570,6 +580,146 @@ class TestKeithley24xxVariants:
         k = Keithley2450(transport=t)
         k.enable_output(False)
         assert t.write_log[-1] == b":OUTP:STAT 0\n"
+
+
+# ---------------------------------------------------------------------------
+# Keithley6221 concrete driver
+# ---------------------------------------------------------------------------
+
+
+class TestKeithley6221:
+    def test_default_protocol_is_scpi(self):
+        k = Keithley6221(transport=NullTransport())
+        assert isinstance(k.protocol, ScpiProtocol)
+
+    def test_get_set_source_level(self):
+        t = _null(responses=[b"1.000000E-03\n"])
+        k = Keithley6221(transport=t)
+        assert k.get_source_level() == pytest.approx(1e-3)
+        k.set_source_level(2e-3)
+        assert t.write_log == [b":SOUR:CURR?\n", b":SOUR:CURR 0.002\n"]
+
+    def test_get_set_compliance_voltage(self):
+        t = _null(responses=[b"10\n"])
+        k = Keithley6221(transport=t)
+        assert k.get_compliance_voltage() == pytest.approx(10.0)
+        k.set_compliance_voltage(8.5)
+        assert t.write_log == [b":SOUR:CURR:COMP?\n", b":SOUR:CURR:COMP 8.5\n"]
+
+    def test_output_enable(self):
+        t = _null(responses=[b"1\n"])
+        k = Keithley6221(transport=t)
+        assert k.output_enabled() is True
+        k.enable_output(False)
+        assert t.write_log == [b":OUTP:STAT?\n", b":OUTP:STAT 0\n"]
+
+    def test_waveform_frequency_and_offset(self):
+        t = _null(responses=[b"SIN\n", b"13.7\n", b"1.0E-4\n"])
+        k = Keithley6221(transport=t)
+        assert k.get_waveform() is CurrentWaveform.SINE
+        assert k.get_frequency() == pytest.approx(13.7)
+        assert k.get_offset_current() == pytest.approx(1.0e-4)
+        k.set_waveform(CurrentWaveform.DC)
+        k.set_frequency(17.0)
+        k.set_offset_current(-2.0e-4)
+        assert t.write_log == [
+            b":SOUR:WAVE:FUNC?\n",
+            b":SOUR:WAVE:FREQ?\n",
+            b":SOUR:WAVE:OFFS?\n",
+            b":SOUR:WAVE:FUNC DC\n",
+            b":SOUR:WAVE:FREQ 17.0\n",
+            b":SOUR:WAVE:OFFS -0.0002\n",
+        ]
+
+    def test_set_frequency_validation(self):
+        with pytest.raises(ValueError, match="positive"):
+            Keithley6221(transport=_null()).set_frequency(0.0)
+
+    def test_get_capabilities(self):
+        caps = Keithley6221(transport=_null()).get_capabilities()
+        assert isinstance(caps, CurrentSourceCapabilities)
+        assert caps.has_waveform_selection
+        assert caps.has_frequency_control
+        assert caps.has_offset_current
+        assert not caps.has_balanced_outputs
+        assert caps.channel_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Lakeshore M81 current source concrete driver
+# ---------------------------------------------------------------------------
+
+
+class TestLakeshoreM81CurrentSource:
+    def test_default_protocol_is_scpi(self):
+        src = LakeshoreM81CurrentSource(transport=NullTransport())
+        assert isinstance(src.protocol, ScpiProtocol)
+
+    def test_set_and_get_balanced_source_level(self):
+        t = _null(responses=[b"0.002\n", b"-0.002\n"])
+        src = LakeshoreM81CurrentSource(transport=t)
+        assert src.get_source_level() == pytest.approx(0.002)
+        src.set_source_level(0.003)
+        assert t.write_log == [
+            b":SOUR1:CURR?\n",
+            b":SOUR2:CURR?\n",
+            b":SOUR1:CURR 0.003\n",
+            b":SOUR2:CURR -0.003\n",
+        ]
+
+    def test_channel_level_validation(self):
+        src = LakeshoreM81CurrentSource(transport=_null())
+        with pytest.raises(ValueError, match="channels 1 and 2"):
+            src.get_channel_level(3)
+
+    def test_output_and_compliance(self):
+        t = _null(responses=[b"1\n", b"1\n", b"20\n"])
+        src = LakeshoreM81CurrentSource(transport=t)
+        assert src.output_enabled() is True
+        assert src.get_compliance_voltage() == pytest.approx(20.0)
+        src.enable_output(False)
+        src.set_compliance_voltage(15.0)
+        assert t.write_log == [
+            b":OUTP1:STAT?\n",
+            b":OUTP2:STAT?\n",
+            b":SOUR1:CURR:COMP?\n",
+            b":OUTP1:STAT 0\n",
+            b":OUTP2:STAT 0\n",
+            b":SOUR1:CURR:COMP 15.0\n",
+            b":SOUR2:CURR:COMP 15.0\n",
+        ]
+
+    def test_waveform_frequency_offset_and_capabilities(self):
+        t = _null(responses=[b"SIN\n", b"17.5\n", b"1.0E-4\n"])
+        src = LakeshoreM81CurrentSource(transport=t)
+        assert src.get_waveform() is CurrentWaveform.SINE
+        assert src.get_frequency() == pytest.approx(17.5)
+        assert src.get_offset_current() == pytest.approx(1.0e-4)
+        src.set_waveform(CurrentWaveform.DC)
+        src.set_frequency(23.0)
+        src.set_offset_current(2.0e-4)
+        caps = src.get_capabilities()
+        assert isinstance(caps, CurrentSourceCapabilities)
+        assert caps.has_waveform_selection
+        assert caps.has_frequency_control
+        assert caps.has_offset_current
+        assert caps.has_balanced_outputs
+        assert caps.channel_count == 2
+        assert t.write_log == [
+            b":SOUR1:FUNC?\n",
+            b":SOUR1:FREQ?\n",
+            b":SOUR1:CURR:OFFS?\n",
+            b":SOUR1:FUNC DC\n",
+            b":SOUR2:FUNC DC\n",
+            b":SOUR1:FREQ 23.0\n",
+            b":SOUR2:FREQ 23.0\n",
+            b":SOUR1:CURR:OFFS 0.0002\n",
+            b":SOUR2:CURR:OFFS -0.0002\n",
+        ]
+
+    def test_frequency_validation(self):
+        with pytest.raises(ValueError, match="positive"):
+            LakeshoreM81CurrentSource(transport=_null()).set_frequency(-1.0)
 
 
 # ---------------------------------------------------------------------------

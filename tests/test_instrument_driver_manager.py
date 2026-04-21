@@ -8,6 +8,7 @@ import pytest
 
 from stoner_measurement.instruments import (
     BaseInstrument,
+    CurrentSource,
     InstrumentDriverManager,
     MagnetController,
     SourceMeter,
@@ -37,10 +38,12 @@ class TestInstrumentDriverManager:
         assert "Keithley2400" in discovered
         assert "Keithley2410" in discovered
         assert "Keithley2450" in discovered
+        assert "Keithley6221" in discovered
         assert "Lakeshore335" in discovered
         assert "Lakeshore336" in discovered
         assert "Lakeshore340" in discovered
         assert "Lakeshore525" in discovered
+        assert "LakeshoreM81CurrentSource" in discovered
         assert "OxfordIPS120" in discovered
         assert "OxfordITC503" in discovered
         assert "OxfordMercuryTemperatureController" in discovered
@@ -61,6 +64,15 @@ class TestInstrumentDriverManager:
         assert "Keithley2410" in source_meters
         assert "Keithley2450" in source_meters
         assert "Lakeshore525" not in source_meters
+
+    def test_drivers_by_type_filters_current_sources(self):
+        manager = InstrumentDriverManager()
+        manager.discover()
+        current_sources = manager.drivers_by_type(CurrentSource)
+        assert "Keithley6221" in current_sources
+        assert "LakeshoreM81CurrentSource" in current_sources
+        assert "Keithley2400" not in current_sources
+        assert "Lakeshore525" not in current_sources
 
     def test_discover_loads_third_party_entry_points(self, monkeypatch):
         fake_eps = [_FakeEntryPoint(name="third_party", target=_ThirdPartyInstrument)]
