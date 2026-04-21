@@ -16,8 +16,8 @@ measurement sequences with laboratory instruments.
   transform, and sequence plugins are discovered from
   `stoner_measurement.plugins` entry points.
 - **Live data and namespace model** — sequence execution updates `_traces` and
-  `_values`, supports NumPy in the runtime namespace, and streams logs to the
-  built-in log viewer.
+  `_values` (runtime data dictionaries available to scripts/plugins), supports
+  NumPy in the runtime namespace, and streams logs to the built-in log viewer.
 - **Instrument abstraction layer** — transport/protocol composition plus common
   instrument interfaces (source meter, current source, nanovoltmeter, magnet
   controller, temperature controller) with built-in and third-party driver
