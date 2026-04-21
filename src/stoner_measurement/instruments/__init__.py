@@ -41,7 +41,12 @@ from stoner_measurement.instruments.current_source import (
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.magnet_controller import MagnetController, MagnetLimits, MagnetState, MagnetStatus
+from stoner_measurement.instruments.magnet_controller import (
+    MagnetController,
+    MagnetLimits,
+    MagnetState,
+    MagnetStatus,
+)
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,

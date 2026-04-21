@@ -14,8 +14,18 @@ from __future__ import annotations
 import pytest
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
+from stoner_measurement.instruments.current_source import (
+    CurrentSource,
+    CurrentSourceCapabilities,
+    CurrentWaveform,
+)
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.keithley import Keithley2400, Keithley2410, Keithley2450, Keithley6221
+from stoner_measurement.instruments.keithley import (
+    Keithley2400,
+    Keithley2410,
+    Keithley2450,
+    Keithley6221,
+)
 from stoner_measurement.instruments.lakeshore import (
     Lakeshore335,
     Lakeshore336,
@@ -44,11 +54,6 @@ from stoner_measurement.instruments.source_meter import (
     SweepSpacing,
     TriggerModelConfiguration,
     TriggerSource,
-)
-from stoner_measurement.instruments.current_source import (
-    CurrentSource,
-    CurrentSourceCapabilities,
-    CurrentWaveform,
 )
 from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
@@ -656,13 +661,12 @@ class TestLakeshoreM81CurrentSource:
         assert isinstance(src.protocol, ScpiProtocol)
 
     def test_set_and_get_balanced_source_level(self):
-        t = _null(responses=[b"0.002\n", b"-0.002\n"])
+        t = _null(responses=[b"0.002\n"])
         src = LakeshoreM81CurrentSource(transport=t)
         assert src.get_source_level() == pytest.approx(0.002)
         src.set_source_level(0.003)
         assert t.write_log == [
             b":SOUR1:CURR?\n",
-            b":SOUR2:CURR?\n",
             b":SOUR1:CURR 0.003\n",
             b":SOUR2:CURR -0.003\n",
         ]

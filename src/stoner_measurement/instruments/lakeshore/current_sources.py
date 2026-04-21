@@ -47,9 +47,7 @@ class LakeshoreM81CurrentSource(CurrentSource):
 
     def get_source_level(self) -> float:
         """Return differential source current amplitude in amps."""
-        positive = self.get_channel_level(_M81_DEFAULT_POSITIVE_CHANNEL)
-        negative = self.get_channel_level(_M81_DEFAULT_NEGATIVE_CHANNEL)
-        return 0.5 * (positive - negative)
+        return self.get_channel_level(_M81_DEFAULT_POSITIVE_CHANNEL)
 
     def set_source_level(self, value: float) -> None:
         """Set differential source current amplitude in amps."""
