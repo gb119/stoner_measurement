@@ -17,7 +17,10 @@ from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.current_source import (
     CurrentSource,
     CurrentSourceCapabilities,
+    CurrentSweepConfiguration,
+    CurrentSweepSpacing,
     CurrentWaveform,
+    PulsedSweepConfiguration,
 )
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley import (
@@ -647,7 +650,164 @@ class TestKeithley6221:
         assert caps.has_frequency_control
         assert caps.has_offset_current
         assert not caps.has_balanced_outputs
+        assert caps.has_sweep
+        assert caps.has_pulsed_sweep
         assert caps.channel_count == 1
+
+    def test_linear_sweep_configuration(self):
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.configure_sweep(
+            CurrentSweepConfiguration(
+                start=0.0,
+                stop=1e-3,
+                points=11,
+                spacing=CurrentSweepSpacing.LIN,
+                delay=0.05,
+            )
+        )
+        assert t.write_log == [
+            b":SOUR:SWE:SPAC LIN\n",
+            b":SOUR:SWE:STAR 0.0\n",
+            b":SOUR:SWE:STOP 0.001\n",
+            b":SOUR:SWE:POIN 11\n",
+            b":SOUR:DEL 0.05\n",
+        ]
+
+    def test_list_sweep_configuration(self):
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.configure_sweep(
+            CurrentSweepConfiguration(
+                spacing=CurrentSweepSpacing.LIST,
+                values=(1e-3, 2e-3, 3e-3),
+                delay=0.0,
+            )
+        )
+        assert t.write_log == [
+            b":SOUR:SWE:SPAC LIST\n",
+            b":SOUR:LIST:CURR 0.001,0.002,0.003\n",
+            b":SOUR:SWE:POIN 3\n",
+            b":SOUR:DEL 0.0\n",
+        ]
+
+    def test_list_sweep_empty_values_raises(self):
+        k = Keithley6221(transport=_null())
+        with pytest.raises(ValueError, match="non-empty"):
+            k.configure_sweep(
+                CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=())
+            )
+
+    def test_sweep_with_repeat_count(self):
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.configure_sweep(
+            CurrentSweepConfiguration(
+                start=0.0,
+                stop=1e-3,
+                points=5,
+                spacing=CurrentSweepSpacing.LIN,
+                count=3,
+            )
+        )
+        assert b":SOUR:SWE:COUN 3\n" in t.write_log
+
+    def test_sweep_start_and_abort(self):
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.sweep_start()
+        k.sweep_abort()
+        assert t.write_log == [b":SOUR:SWE:ARM\n", b":SOUR:SWE:ABOR\n"]
+
+    def test_pulsed_list_sweep(self):
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.configure_pulsed_sweep(
+            CurrentSweepConfiguration(
+                spacing=CurrentSweepSpacing.LIST,
+                values=(1e-3, 2e-3, 3e-3),
+            ),
+            PulsedSweepConfiguration(width=1e-3, off_time=5e-3, low_level=0.0),
+        )
+        assert t.write_log == [
+            b":SOUR:SWE:SPAC LIST\n",
+            b":SOUR:LIST:CURR 0.001,0.002,0.003\n",
+            b":SOUR:SWE:POIN 3\n",
+            b":SOUR:DEL 0.0\n",
+            b":SOUR:PULS:STAT 1\n",
+            b":SOUR:PULS:WIDT 0.001\n",
+            b":SOUR:PULS:DEL 0.005\n",
+            b":SOUR:PULS:CURR:LOW 0.0\n",
+        ]
+
+    def test_pulsed_sweep_width_validation(self):
+        k = Keithley6221(transport=_null())
+        with pytest.raises(ValueError, match="width"):
+            k.configure_pulsed_sweep(
+                CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=(1e-3,)),
+                PulsedSweepConfiguration(width=0.0, off_time=1e-3),
+            )
+
+    def test_pulsed_sweep_off_time_validation(self):
+        k = Keithley6221(transport=_null())
+        with pytest.raises(ValueError, match="off_time"):
+            k.configure_pulsed_sweep(
+                CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=(1e-3,)),
+                PulsedSweepConfiguration(width=1e-3, off_time=0.0),
+            )
+
+    def test_convenience_configure_custom_sweep(self):
+        """configure_custom_sweep delegates to configure_sweep with LIST spacing."""
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.configure_custom_sweep((1e-3, 2e-3, 3e-3), delay=0.01)
+        assert t.write_log == [
+            b":SOUR:SWE:SPAC LIST\n",
+            b":SOUR:LIST:CURR 0.001,0.002,0.003\n",
+            b":SOUR:SWE:POIN 3\n",
+            b":SOUR:DEL 0.01\n",
+        ]
+
+    def test_convenience_configure_linear_sweep(self):
+        """configure_linear_sweep delegates to configure_sweep with LIN spacing."""
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.configure_linear_sweep(0.0, 1e-3, 11)
+        assert t.write_log[0] == b":SOUR:SWE:SPAC LIN\n"
+
+    def test_base_sweep_raises_on_unsupported_driver(self):
+        """Base class configure_sweep raises NotImplementedError when not overridden."""
+
+        class _MinimalSource(CurrentSource):
+            def get_source_level(self):
+                return 0.0
+
+            def set_source_level(self, v):
+                pass
+
+            def get_compliance_voltage(self):
+                return 0.0
+
+            def set_compliance_voltage(self, v):
+                pass
+
+            def output_enabled(self):
+                return False
+
+            def enable_output(self, s):
+                pass
+
+            def get_capabilities(self):
+                return CurrentSourceCapabilities()
+
+        src = _MinimalSource(_null(), ScpiProtocol())
+        with pytest.raises(NotImplementedError, match="has_sweep"):
+            src.configure_sweep(CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIN))
+        with pytest.raises(NotImplementedError, match="has_pulsed_sweep"):
+            src.configure_pulsed_sweep(
+                CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=(1e-3,)),
+                PulsedSweepConfiguration(width=1e-3, off_time=1e-3),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -708,6 +868,8 @@ class TestLakeshoreM81CurrentSource:
         assert caps.has_frequency_control
         assert caps.has_offset_current
         assert caps.has_balanced_outputs
+        assert caps.has_sweep
+        assert not caps.has_pulsed_sweep
         assert caps.channel_count == 2
         assert t.write_log == [
             b":SOUR1:FUNC?\n",
@@ -724,6 +886,81 @@ class TestLakeshoreM81CurrentSource:
     def test_frequency_validation(self):
         with pytest.raises(ValueError, match="positive"):
             LakeshoreM81CurrentSource(transport=_null()).set_frequency(-1.0)
+
+    def test_balanced_list_sweep_configuration(self):
+        t = _null()
+        src = LakeshoreM81CurrentSource(transport=t)
+        src.configure_sweep(
+            CurrentSweepConfiguration(
+                spacing=CurrentSweepSpacing.LIST,
+                values=(1e-3, 2e-3, 3e-3),
+            )
+        )
+        assert t.write_log == [
+            b":SOUR1:SWE:MODE LIST\n",
+            b":SOUR1:SWE:CUST:LIST 0.001,0.002,0.003\n",
+            b":SOUR1:SWE:NPTS 3\n",
+            b":SOUR2:SWE:MODE LIST\n",
+            b":SOUR2:SWE:CUST:LIST -0.001,-0.002,-0.003\n",
+            b":SOUR2:SWE:NPTS 3\n",
+        ]
+
+    def test_balanced_linear_sweep_configuration(self):
+        t = _null()
+        src = LakeshoreM81CurrentSource(transport=t)
+        src.configure_sweep(
+            CurrentSweepConfiguration(
+                start=0.0,
+                stop=1e-3,
+                points=5,
+                spacing=CurrentSweepSpacing.LIN,
+            )
+        )
+        assert t.write_log == [
+            b":SOUR1:SWE:MODE LIN\n",
+            b":SOUR1:SWE:STAR 0.0\n",
+            b":SOUR1:SWE:STOP 0.001\n",
+            b":SOUR1:SWE:NPTS 5\n",
+            b":SOUR2:SWE:MODE LIN\n",
+            b":SOUR2:SWE:STAR -0.0\n",
+            b":SOUR2:SWE:STOP -0.001\n",
+            b":SOUR2:SWE:NPTS 5\n",
+        ]
+
+    def test_balanced_sweep_with_delay_and_count(self):
+        t = _null()
+        src = LakeshoreM81CurrentSource(transport=t)
+        src.configure_sweep(
+            CurrentSweepConfiguration(
+                spacing=CurrentSweepSpacing.LIST,
+                values=(1e-3, 2e-3),
+                delay=0.1,
+                count=2,
+            )
+        )
+        assert b":SOUR1:SWE:DEL 0.1\n" in t.write_log
+        assert b":SOUR2:SWE:DEL 0.1\n" in t.write_log
+        assert b":SOUR1:SWE:COUN 2\n" in t.write_log
+        assert b":SOUR2:SWE:COUN 2\n" in t.write_log
+
+    def test_list_sweep_empty_raises(self):
+        src = LakeshoreM81CurrentSource(transport=_null())
+        with pytest.raises(ValueError, match="non-empty"):
+            src.configure_sweep(
+                CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=())
+            )
+
+    def test_balanced_sweep_start_and_abort(self):
+        t = _null()
+        src = LakeshoreM81CurrentSource(transport=t)
+        src.sweep_start()
+        src.sweep_abort()
+        assert t.write_log == [
+            b":SOUR1:SWE:ARM\n",
+            b":SOUR2:SWE:ARM\n",
+            b":SOUR1:SWE:ABOR\n",
+            b":SOUR2:SWE:ABOR\n",
+        ]
 
 
 # ---------------------------------------------------------------------------

@@ -37,7 +37,10 @@ from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.current_source import (
     CurrentSource,
     CurrentSourceCapabilities,
+    CurrentSweepConfiguration,
+    CurrentSweepSpacing,
     CurrentWaveform,
+    PulsedSweepConfiguration,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.errors import InstrumentError
@@ -79,6 +82,8 @@ __all__ = [
     "ControlMode",
     "CurrentSource",
     "CurrentSourceCapabilities",
+    "CurrentSweepConfiguration",
+    "CurrentSweepSpacing",
     "CurrentWaveform",
     "InstrumentDriverManager",
     "InstrumentError",
@@ -90,6 +95,7 @@ __all__ = [
     "MeasureFunction",
     "Nanovoltmeter",
     "PIDParameters",
+    "PulsedSweepConfiguration",
     "RampState",
     "SensorStatus",
     "SourceMeter",

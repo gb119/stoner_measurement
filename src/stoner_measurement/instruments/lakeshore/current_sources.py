@@ -5,6 +5,8 @@ from __future__ import annotations
 from stoner_measurement.instruments.current_source import (
     CurrentSource,
     CurrentSourceCapabilities,
+    CurrentSweepConfiguration,
+    CurrentSweepSpacing,
     CurrentWaveform,
 )
 from stoner_measurement.instruments.protocol.base import BaseProtocol
@@ -20,7 +22,10 @@ class LakeshoreM81CurrentSource(CurrentSource):
 
     Models the M81 as a differential current-source backed by two matched
     output channels. The public source-level API uses channel 1 amplitude and
-    mirrors channel 2 with opposite polarity for balanced drive.
+    mirrors channel 2 with opposite polarity for balanced drive.  Built-in
+    sweeps (linear, logarithmic, custom list) are also supported; the sweep
+    is mirrored across both channels so the differential current follows the
+    programmed profile.
     """
 
     def __init__(
@@ -110,6 +115,54 @@ class LakeshoreM81CurrentSource(CurrentSource):
         self.write(f":SOUR1:CURR:OFFS {value}")
         self.write(f":SOUR2:CURR:OFFS {-value}")
 
+    def configure_sweep(self, config: CurrentSweepConfiguration) -> None:
+        """Configure a built-in balanced current sweep.
+
+        Channel 1 is programmed with the positive sense of the sweep;
+        channel 2 is programmed with the mirrored (negated) profile so that
+        the differential output follows the intended sweep.
+
+        Args:
+            config (CurrentSweepConfiguration):
+                Sweep configuration.  For :attr:`~CurrentSweepSpacing.LIST`
+                spacing, ``config.values`` must be non-empty.
+
+        Raises:
+            ValueError:
+                If ``config.spacing`` is ``LIST`` and ``config.values`` is
+                empty or ``None``.
+        """
+        if config.spacing is CurrentSweepSpacing.LIST:
+            if not config.values:
+                raise ValueError("LIST sweep requires non-empty values.")
+            for ch, sign in ((_M81_DEFAULT_POSITIVE_CHANNEL, 1.0), (_M81_DEFAULT_NEGATIVE_CHANNEL, -1.0)):
+                csv = ",".join(str(v * sign) for v in config.values)
+                self.write(f":SOUR{ch}:SWE:MODE {config.spacing.value}")
+                self.write(f":SOUR{ch}:SWE:CUST:LIST {csv}")
+                self.write(f":SOUR{ch}:SWE:NPTS {len(config.values)}")
+        else:
+            for ch, sign in ((_M81_DEFAULT_POSITIVE_CHANNEL, 1.0), (_M81_DEFAULT_NEGATIVE_CHANNEL, -1.0)):
+                self.write(f":SOUR{ch}:SWE:MODE {config.spacing.value}")
+                self.write(f":SOUR{ch}:SWE:STAR {config.start * sign}")
+                self.write(f":SOUR{ch}:SWE:STOP {config.stop * sign}")
+                self.write(f":SOUR{ch}:SWE:NPTS {config.points}")
+        if config.delay:
+            for ch in (_M81_DEFAULT_POSITIVE_CHANNEL, _M81_DEFAULT_NEGATIVE_CHANNEL):
+                self.write(f":SOUR{ch}:SWE:DEL {config.delay}")
+        if config.count != 1:
+            for ch in (_M81_DEFAULT_POSITIVE_CHANNEL, _M81_DEFAULT_NEGATIVE_CHANNEL):
+                self.write(f":SOUR{ch}:SWE:COUN {config.count}")
+
+    def sweep_start(self) -> None:
+        """Arm the configured balanced sweep, making it ready for triggering."""
+        for ch in (_M81_DEFAULT_POSITIVE_CHANNEL, _M81_DEFAULT_NEGATIVE_CHANNEL):
+            self.write(f":SOUR{ch}:SWE:ARM")
+
+    def sweep_abort(self) -> None:
+        """Abort a running or armed balanced sweep."""
+        for ch in (_M81_DEFAULT_POSITIVE_CHANNEL, _M81_DEFAULT_NEGATIVE_CHANNEL):
+            self.write(f":SOUR{ch}:SWE:ABOR")
+
     def get_capabilities(self) -> CurrentSourceCapabilities:
         """Return static capabilities for Lakeshore M81 current source."""
         return CurrentSourceCapabilities(
@@ -117,5 +170,7 @@ class LakeshoreM81CurrentSource(CurrentSource):
             has_frequency_control=True,
             has_offset_current=True,
             has_balanced_outputs=True,
+            has_sweep=True,
+            has_pulsed_sweep=False,
             channel_count=2,
         )
