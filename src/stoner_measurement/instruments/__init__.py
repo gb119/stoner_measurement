@@ -25,7 +25,12 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.magnet_controller.MagnetController` — abstract type
 * :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
 * :class:`~stoner_measurement.instruments.current_source.CurrentSource` — abstract type
+* :class:`~stoner_measurement.instruments.dmm.DigitalMultimeter` — abstract type
 * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
+* :class:`~stoner_measurement.instruments.keithley.Keithley2000` — concrete DMM driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2700` — concrete DMM driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2182A` — concrete nanovoltmeter driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley182` — concrete nanovoltmeter driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley2400` — concrete SMU driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley2410` — concrete SMU driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley2450` — concrete SMU driver
@@ -42,6 +47,12 @@ from stoner_measurement.instruments.current_source import (
     CurrentWaveform,
     PulsedSweepConfiguration,
 )
+from stoner_measurement.instruments.dmm import (
+    DigitalMultimeter,
+    DmmCapabilities,
+    DmmFunction,
+    DmmTriggerSource,
+)
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.magnet_controller import (
@@ -51,6 +62,11 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetStatus,
 )
 from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
+from stoner_measurement.instruments.nanovoltmeter import (
+    NanovoltmeterCapabilities,
+    NanovoltmeterFunction,
+    NanovoltmeterTriggerSource,
+)
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
     SourceMeter,
@@ -85,6 +101,10 @@ __all__ = [
     "CurrentSweepConfiguration",
     "CurrentSweepSpacing",
     "CurrentWaveform",
+    "DigitalMultimeter",
+    "DmmCapabilities",
+    "DmmFunction",
+    "DmmTriggerSource",
     "InstrumentDriverManager",
     "InstrumentError",
     "LoopStatus",
@@ -94,6 +114,9 @@ __all__ = [
     "MagnetStatus",
     "MeasureFunction",
     "Nanovoltmeter",
+    "NanovoltmeterCapabilities",
+    "NanovoltmeterFunction",
+    "NanovoltmeterTriggerSource",
     "PIDParameters",
     "PulsedSweepConfiguration",
     "RampState",
