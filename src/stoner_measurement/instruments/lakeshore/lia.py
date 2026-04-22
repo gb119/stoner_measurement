@@ -125,13 +125,13 @@ class LakeshoreM81LockIn(LockInAmplifier):
         return float(self.query(f":SENS{self._sense_slot}:LIA:FREQ?"))
 
     def set_reference_frequency(self, value: float) -> None:
-        if value <= 0.0:
-            raise ValueError("Reference frequency must be positive.")
         if self._source_slot is None:
             raise NotImplementedError(
                 "Supply source_slot at construction to set the reference frequency "
                 "via the M81 source module."
             )
+        if value <= 0.0:
+            raise ValueError("Reference frequency must be positive.")
         self.write(f":SOUR{self._source_slot}:FREQ {value}")
 
     def get_reference_phase(self) -> float:

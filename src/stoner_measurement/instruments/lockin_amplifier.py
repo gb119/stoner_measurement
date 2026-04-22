@@ -79,7 +79,15 @@ class LockInExpandFactor(Enum):
 
 @dataclass(frozen=True)
 class LockInAmplifierCapabilities:
-    """Static capability descriptor for a lock-in amplifier driver."""
+    """Static capability descriptor for a lock-in amplifier driver.
+
+    Attributes:
+        max_harmonic (int):
+            Highest harmonic supported for lock-in detection.  A value of
+            ``0`` means harmonic selection is not available or the limit is
+            not known; when ``has_harmonic_selection`` is ``True`` and
+            ``max_harmonic`` is ``0`` the driver imposes no upper bound.
+    """
 
     has_reference_source_selection: bool = True
     has_reference_frequency_control: bool = True
@@ -97,6 +105,7 @@ class LockInAmplifierCapabilities:
     has_input_shielding_control: bool = False
     has_line_filter_control: bool = False
     has_sync_filter: bool = False
+    has_dynamic_reserve_db: bool = False
     max_harmonic: int = 0
 
 

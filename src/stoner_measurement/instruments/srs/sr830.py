@@ -157,6 +157,7 @@ class SRS830(LockInAmplifier):
     def set_reference_frequency(self, value: float) -> None:
         if value <= 0.0:
             raise ValueError("Reference frequency must be positive.")
+        # SR830 accepts 0.001 Hz to 102 kHz when in internal reference mode.
         self.write(f"FREQ {value}")
 
     def get_reference_phase(self) -> float:
