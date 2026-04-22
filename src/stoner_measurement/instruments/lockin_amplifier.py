@@ -383,3 +383,254 @@ class LockInAmplifier(BaseInstrument):
             f"{type(self).__name__} does not support auto-reserve adjustment. "
             "Check get_capabilities().has_auto_reserve before calling this method."
         )
+
+    def get_oscillator_amplitude(self) -> float:
+        """Return the internal oscillator sine output amplitude in volts.
+
+        Returns:
+            (float):
+                Oscillator amplitude in volts.
+
+        Raises:
+            NotImplementedError:
+                If the instrument does not have a controllable internal oscillator.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support internal oscillator control. "
+            "Check get_capabilities().has_internal_oscillator before calling this method."
+        )
+
+    def set_oscillator_amplitude(self, value: float) -> None:
+        """Set the internal oscillator sine output amplitude in volts.
+
+        Args:
+            value (float):
+                Amplitude in volts.
+
+        Raises:
+            NotImplementedError:
+                If the instrument does not have a controllable internal oscillator.
+        """
+        _ = value
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support internal oscillator control. "
+            "Check get_capabilities().has_internal_oscillator before calling this method."
+        )
+
+    def get_output_offset(self, channel: LockInOutputChannel) -> tuple[float, LockInExpandFactor]:
+        """Return the output offset percentage and expand factor for a channel.
+
+        Args:
+            channel (LockInOutputChannel):
+                Output channel to query.
+
+        Returns:
+            (tuple[float, LockInExpandFactor]):
+                ``(offset_pct, expand_factor)`` where ``offset_pct`` is the
+                offset as a percentage and ``expand_factor`` is the expand
+                multiplier.
+
+        Raises:
+            NotImplementedError:
+                If output offset and expand are not supported by the instrument.
+        """
+        _ = channel
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support output offset and expand. "
+            "Check get_capabilities().has_output_offset before calling this method."
+        )
+
+    def set_output_offset(
+        self,
+        channel: LockInOutputChannel,
+        offset_pct: float,
+        expand_factor: LockInExpandFactor,
+    ) -> None:
+        """Set the output offset and expand factor for a channel.
+
+        Args:
+            channel (LockInOutputChannel):
+                Output channel to configure.
+            offset_pct (float):
+                Offset as a percentage (typically −105 % to +105 %).
+            expand_factor (LockInExpandFactor):
+                Expand multiplier to apply.
+
+        Raises:
+            NotImplementedError:
+                If output offset and expand are not supported by the instrument.
+        """
+        _, _, _ = channel, offset_pct, expand_factor
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support output offset and expand. "
+            "Check get_capabilities().has_output_offset before calling this method."
+        )
+
+    def get_input_source(self) -> LockInInputSource:
+        """Return the active input source.
+
+        Returns:
+            (LockInInputSource):
+                Active input source selection.
+
+        Raises:
+            NotImplementedError:
+                If input source selection is not supported by the instrument.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support input source selection. "
+            "Check get_capabilities().has_input_source_selection before calling this method."
+        )
+
+    def set_input_source(self, source: LockInInputSource) -> None:
+        """Set the active input source.
+
+        Args:
+            source (LockInInputSource):
+                Input source to select.
+
+        Raises:
+            NotImplementedError:
+                If input source selection is not supported by the instrument.
+        """
+        _ = source
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support input source selection. "
+            "Check get_capabilities().has_input_source_selection before calling this method."
+        )
+
+    def get_input_shielding(self) -> LockInInputShielding:
+        """Return the input shield grounding mode.
+
+        Returns:
+            (LockInInputShielding):
+                Active input shield grounding mode.
+
+        Raises:
+            NotImplementedError:
+                If input shielding control is not supported by the instrument.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support input shielding control. "
+            "Check get_capabilities().has_input_shielding_control before calling this method."
+        )
+
+    def set_input_shielding(self, shielding: LockInInputShielding) -> None:
+        """Set the input shield grounding mode.
+
+        Args:
+            shielding (LockInInputShielding):
+                Shielding mode to select.
+
+        Raises:
+            NotImplementedError:
+                If input shielding control is not supported by the instrument.
+        """
+        _ = shielding
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support input shielding control. "
+            "Check get_capabilities().has_input_shielding_control before calling this method."
+        )
+
+    def get_line_filter(self) -> LockInLineFilter:
+        """Return the line-frequency notch filter configuration.
+
+        Returns:
+            (LockInLineFilter):
+                Active notch filter configuration.
+
+        Raises:
+            NotImplementedError:
+                If line filter control is not supported by the instrument.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support line filter control. "
+            "Check get_capabilities().has_line_filter_control before calling this method."
+        )
+
+    def set_line_filter(self, filter_config: LockInLineFilter) -> None:
+        """Set the line-frequency notch filter configuration.
+
+        Args:
+            filter_config (LockInLineFilter):
+                Notch filter configuration to apply.
+
+        Raises:
+            NotImplementedError:
+                If line filter control is not supported by the instrument.
+        """
+        _ = filter_config
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support line filter control. "
+            "Check get_capabilities().has_line_filter_control before calling this method."
+        )
+
+    def get_sync_filter_enabled(self) -> bool:
+        """Return whether the synchronous output filter is enabled.
+
+        Returns:
+            (bool):
+                ``True`` when the synchronous filter is enabled.
+
+        Raises:
+            NotImplementedError:
+                If synchronous filter control is not supported by the instrument.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support synchronous filter control. "
+            "Check get_capabilities().has_sync_filter before calling this method."
+        )
+
+    def set_sync_filter_enabled(self, state: bool) -> None:
+        """Enable or disable the synchronous output filter.
+
+        Args:
+            state (bool):
+                ``True`` to enable the synchronous filter.
+
+        Raises:
+            NotImplementedError:
+                If synchronous filter control is not supported by the instrument.
+        """
+        _ = state
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support synchronous filter control. "
+            "Check get_capabilities().has_sync_filter before calling this method."
+        )
+
+    def get_dynamic_reserve_db(self) -> float:
+        """Return the dynamic reserve (signal stability) in decibels.
+
+        A higher value indicates that the instrument can tolerate larger
+        interfering signals relative to the signal of interest without
+        introducing significant errors.
+
+        Returns:
+            (float):
+                Dynamic reserve in dB.
+
+        Raises:
+            NotImplementedError:
+                If numeric dynamic reserve control is not supported by the instrument.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support numeric dynamic reserve control. "
+            "Check get_capabilities().has_dynamic_reserve_db before calling this method."
+        )
+
+    def set_dynamic_reserve_db(self, value_db: float) -> None:
+        """Set the dynamic reserve (signal stability) in decibels.
+
+        Args:
+            value_db (float):
+                Desired dynamic reserve in dB.
+
+        Raises:
+            NotImplementedError:
+                If numeric dynamic reserve control is not supported by the instrument.
+        """
+        _ = value_db
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support numeric dynamic reserve control. "
+            "Check get_capabilities().has_dynamic_reserve_db before calling this method."
+        )

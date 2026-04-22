@@ -59,6 +59,7 @@ class TestInstrumentDriverManager:
         assert "OxfordITC503" in discovered
         assert "OxfordMercuryTemperatureController" in discovered
         assert "SRS830" in discovered
+        assert "LakeshoreM81LockIn" in discovered
 
     def test_drivers_by_type_filters_magnet_controllers(self):
         manager = InstrumentDriverManager()
@@ -117,6 +118,7 @@ class TestInstrumentDriverManager:
         manager.discover()
         lockins = manager.drivers_by_type(LockInAmplifier)
         assert "SRS830" in lockins
+        assert "LakeshoreM81LockIn" in lockins
         assert "Keithley2000" not in lockins
 
     def test_discover_loads_third_party_entry_points(self, monkeypatch):

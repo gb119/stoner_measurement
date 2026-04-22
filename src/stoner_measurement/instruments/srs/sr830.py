@@ -5,7 +5,12 @@ from __future__ import annotations
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInAmplifier,
     LockInAmplifierCapabilities,
+    LockInExpandFactor,
     LockInInputCoupling,
+    LockInInputShielding,
+    LockInInputSource,
+    LockInLineFilter,
+    LockInOutputChannel,
     LockInReferenceSource,
     LockInReserveMode,
 )
@@ -76,6 +81,9 @@ class SRS830(LockInAmplifier):
         1.0,
     )
     _FILTER_SLOPES: tuple[int, ...] = (6, 12, 18, 24)
+    _OSCILLATOR_AMPLITUDE_MIN: float = 0.004
+    _OSCILLATOR_AMPLITUDE_MAX: float = 5.000
+    _MAX_HARMONIC: int = 19999
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
@@ -161,8 +169,8 @@ class SRS830(LockInAmplifier):
         return int(float(self.query("HARM?")))
 
     def set_harmonic(self, harmonic: int) -> None:
-        if harmonic <= 0:
-            raise ValueError("Harmonic must be a positive integer.")
+        if not (1 <= harmonic <= self._MAX_HARMONIC):
+            raise ValueError(f"Harmonic must be an integer between 1 and {self._MAX_HARMONIC}.")
         self.write(f"HARM {harmonic}")
 
     def get_filter_slope(self) -> int:
@@ -211,6 +219,96 @@ class SRS830(LockInAmplifier):
     def auto_reserve(self) -> None:
         self.write("ARSV")
 
+    def get_oscillator_amplitude(self) -> float:
+        return float(self.query("SLVL?"))
+
+    def set_oscillator_amplitude(self, value: float) -> None:
+        if not (self._OSCILLATOR_AMPLITUDE_MIN <= value <= self._OSCILLATOR_AMPLITUDE_MAX):
+            raise ValueError(
+                f"Oscillator amplitude must be between {self._OSCILLATOR_AMPLITUDE_MIN} V "
+                f"and {self._OSCILLATOR_AMPLITUDE_MAX} V."
+            )
+        self.write(f"SLVL {value}")
+
+    def get_output_offset(self, channel: LockInOutputChannel) -> tuple[float, LockInExpandFactor]:
+        channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
+        expand_decode = {0: LockInExpandFactor.X1, 1: LockInExpandFactor.X10, 2: LockInExpandFactor.X100}
+        offset_pct, expand_code_f = self._parse_csv_pair(self.query(f"OEXP? {channel_codes[channel]}"))
+        expand_code = int(expand_code_f)
+        if expand_code not in expand_decode:
+            raise ValueError(f"Unexpected expand code: {expand_code}")
+        return offset_pct, expand_decode[expand_code]
+
+    def set_output_offset(
+        self,
+        channel: LockInOutputChannel,
+        offset_pct: float,
+        expand_factor: LockInExpandFactor,
+    ) -> None:
+        if not (-105.0 <= offset_pct <= 105.0):
+            raise ValueError("Offset percentage must be between -105 and 105.")
+        channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
+        expand_encode = {LockInExpandFactor.X1: 0, LockInExpandFactor.X10: 1, LockInExpandFactor.X100: 2}
+        self.write(f"OEXP {channel_codes[channel]},{offset_pct},{expand_encode[expand_factor]}")
+
+    def get_input_source(self) -> LockInInputSource:
+        decode = {
+            0: LockInInputSource.A,
+            1: LockInInputSource.A_MINUS_B,
+            2: LockInInputSource.I_1MOHM,
+            3: LockInInputSource.I_100MOHM,
+        }
+        code = int(float(self.query("ISRC?")))
+        if code not in decode:
+            raise ValueError(f"Unexpected input source code: {code}")
+        return decode[code]
+
+    def set_input_source(self, source: LockInInputSource) -> None:
+        encode = {
+            LockInInputSource.A: 0,
+            LockInInputSource.A_MINUS_B: 1,
+            LockInInputSource.I_1MOHM: 2,
+            LockInInputSource.I_100MOHM: 3,
+        }
+        self.write(f"ISRC {encode[source]}")
+
+    def get_input_shielding(self) -> LockInInputShielding:
+        return (
+            LockInInputShielding.GROUND
+            if self._decode_bool_token(self.query("IGND?"))
+            else LockInInputShielding.FLOAT
+        )
+
+    def set_input_shielding(self, shielding: LockInInputShielding) -> None:
+        self.write(f"IGND {1 if shielding is LockInInputShielding.GROUND else 0}")
+
+    def get_line_filter(self) -> LockInLineFilter:
+        decode = {
+            0: LockInLineFilter.NONE,
+            1: LockInLineFilter.LINE,
+            2: LockInLineFilter.LINE_2X,
+            3: LockInLineFilter.BOTH,
+        }
+        code = int(float(self.query("ILIN?")))
+        if code not in decode:
+            raise ValueError(f"Unexpected line filter code: {code}")
+        return decode[code]
+
+    def set_line_filter(self, filter_config: LockInLineFilter) -> None:
+        encode = {
+            LockInLineFilter.NONE: 0,
+            LockInLineFilter.LINE: 1,
+            LockInLineFilter.LINE_2X: 2,
+            LockInLineFilter.BOTH: 3,
+        }
+        self.write(f"ILIN {encode[filter_config]}")
+
+    def get_sync_filter_enabled(self) -> bool:
+        return self._decode_bool_token(self.query("SYNC?"))
+
+    def set_sync_filter_enabled(self, state: bool) -> None:
+        self.write(f"SYNC {1 if state else 0}")
+
     def get_capabilities(self) -> LockInAmplifierCapabilities:
         return LockInAmplifierCapabilities(
             has_reference_source_selection=True,
@@ -223,4 +321,12 @@ class SRS830(LockInAmplifier):
             has_auto_gain=True,
             has_auto_phase=True,
             has_auto_reserve=True,
+            has_output_offset=True,
+            has_internal_oscillator=True,
+            has_input_source_selection=True,
+            has_input_shielding_control=True,
+            has_line_filter_control=True,
+            has_sync_filter=True,
+            max_harmonic=self._MAX_HARMONIC,
         )
+
