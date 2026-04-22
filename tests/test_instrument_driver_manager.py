@@ -10,6 +10,7 @@ from stoner_measurement.instruments import (
     BaseInstrument,
     CurrentSource,
     DigitalMultimeter,
+    Electrometer,
     InstrumentDriverManager,
     MagnetController,
     Nanovoltmeter,
@@ -45,6 +46,9 @@ class TestInstrumentDriverManager:
         assert "Keithley2182A" in discovered
         assert "Keithley182" in discovered
         assert "Keithley6221" in discovered
+        assert "Keithley6845" in discovered
+        assert "Keithley6514" in discovered
+        assert "Keithley6517" in discovered
         assert "Lakeshore335" in discovered
         assert "Lakeshore336" in discovered
         assert "Lakeshore340" in discovered
@@ -79,6 +83,16 @@ class TestInstrumentDriverManager:
         assert "LakeshoreM81CurrentSource" in current_sources
         assert "Keithley2400" not in current_sources
         assert "Lakeshore525" not in current_sources
+
+    def test_drivers_by_type_filters_electrometers(self):
+        manager = InstrumentDriverManager()
+        manager.discover()
+        electrometers = manager.drivers_by_type(Electrometer)
+        assert "Keithley6845" in electrometers
+        assert "Keithley6514" in electrometers
+        assert "Keithley6517" in electrometers
+        assert "Keithley2400" not in electrometers
+        assert "Keithley6221" not in electrometers
 
     def test_drivers_by_type_filters_digital_multimeters(self):
         manager = InstrumentDriverManager()
