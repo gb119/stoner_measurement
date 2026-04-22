@@ -36,6 +36,47 @@ class LockInReserveMode(Enum):
     LOW_NOISE = "LOW_NOISE"
 
 
+class LockInInputSource(Enum):
+    """Input source selection for lock-in amplifiers."""
+
+    A = "A"
+    A_MINUS_B = "A_MINUS_B"
+    I_1MOHM = "I_1MOHM"
+    I_100MOHM = "I_100MOHM"
+
+
+class LockInInputShielding(Enum):
+    """Input shield grounding selection for lock-in amplifiers."""
+
+    FLOAT = "FLOAT"
+    GROUND = "GROUND"
+
+
+class LockInLineFilter(Enum):
+    """Line-frequency notch filter configuration for lock-in amplifiers."""
+
+    NONE = "NONE"
+    LINE = "LINE"
+    LINE_2X = "LINE_2X"
+    BOTH = "BOTH"
+
+
+class LockInOutputChannel(Enum):
+    """Output channel selection for offset and expand operations."""
+
+    X = "X"
+    Y = "Y"
+    R = "R"
+
+
+class LockInExpandFactor(Enum):
+    """Expand factor for output offset operations."""
+
+    X1 = 1
+    X10 = 10
+    X100 = 100
+
+
 @dataclass(frozen=True)
 class LockInAmplifierCapabilities:
     """Static capability descriptor for a lock-in amplifier driver."""
@@ -50,6 +91,13 @@ class LockInAmplifierCapabilities:
     has_auto_gain: bool = False
     has_auto_phase: bool = False
     has_auto_reserve: bool = False
+    has_output_offset: bool = False
+    has_internal_oscillator: bool = False
+    has_input_source_selection: bool = False
+    has_input_shielding_control: bool = False
+    has_line_filter_control: bool = False
+    has_sync_filter: bool = False
+    max_harmonic: int = 0
 
 
 class LockInAmplifier(BaseInstrument):
