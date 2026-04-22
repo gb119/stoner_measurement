@@ -14,7 +14,14 @@ from stoner_measurement.instruments.transport.base import BaseTransport
 
 
 class Keithley2182A(Nanovoltmeter):
-    """Driver for the Keithley 2182A nanovoltmeter."""
+    """Driver for the Keithley 2182A nanovoltmeter.
+
+    Attributes:
+        transport (BaseTransport):
+            Transport layer (serial, GPIB, or Ethernet).
+        protocol (BaseProtocol):
+            Protocol instance (defaults to :class:`ScpiProtocol`).
+    """
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())

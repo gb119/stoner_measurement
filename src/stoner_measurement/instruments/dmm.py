@@ -50,55 +50,119 @@ class DmmCapabilities:
 
 
 class DigitalMultimeter(BaseInstrument):
-    """Abstract base class for digital multimeter instruments."""
+    """Abstract base class for digital multimeter instruments.
+
+    Attributes:
+        transport (BaseTransport):
+            Transport layer instance.
+        protocol (BaseProtocol):
+            Protocol instance.
+    """
 
     def __init__(
         self,
         transport: BaseTransport,
         protocol: BaseProtocol,
     ) -> None:
-        """Initialise the multimeter."""
+        """Initialise the multimeter.
+
+        Args:
+            transport (BaseTransport):
+                Transport layer instance.
+            protocol (BaseProtocol):
+                Protocol instance.
+        """
         super().__init__(transport=transport, protocol=protocol)
 
     @abstractmethod
     def measure(self) -> float:
-        """Trigger a measurement and return its value."""
+        """Trigger a measurement and return its value.
+
+        Returns:
+            (float):
+                Measured scalar value in units of the active function.
+        """
 
     @abstractmethod
     def get_measure_function(self) -> DmmFunction:
-        """Return the active measurement function."""
+        """Return the active measurement function.
+
+        Returns:
+            (DmmFunction):
+                Active measurement function.
+        """
 
     @abstractmethod
     def set_measure_function(self, function: DmmFunction) -> None:
-        """Set the active measurement function."""
+        """Set the active measurement function.
+
+        Args:
+            function (DmmFunction):
+                Function to select.
+        """
 
     @abstractmethod
     def get_range(self) -> float:
-        """Return the active measurement range."""
+        """Return the active measurement range.
+
+        Returns:
+            (float):
+                Range value in units of the active function.
+        """
 
     @abstractmethod
     def set_range(self, value: float) -> None:
-        """Set the active measurement range."""
+        """Set the active measurement range.
+
+        Args:
+            value (float):
+                Range value in units of the active function.
+        """
 
     @abstractmethod
     def get_autorange(self) -> bool:
-        """Return ``True`` if autorange is enabled."""
+        """Return ``True`` if autorange is enabled.
+
+        Returns:
+            (bool):
+                ``True`` when autorange is enabled.
+        """
 
     @abstractmethod
     def set_autorange(self, state: bool) -> None:
-        """Enable or disable autorange."""
+        """Enable or disable autorange.
+
+        Args:
+            state (bool):
+                ``True`` to enable autorange.
+        """
 
     @abstractmethod
     def get_nplc(self) -> float:
-        """Return the integration time in line cycles."""
+        """Return the integration time in line cycles.
+
+        Returns:
+            (float):
+                Integration time in power-line cycles.
+        """
 
     @abstractmethod
     def set_nplc(self, value: float) -> None:
-        """Set the integration time in line cycles."""
+        """Set the integration time in line cycles.
+
+        Args:
+            value (float):
+                Integration time in power-line cycles.
+        """
 
     @abstractmethod
     def get_capabilities(self) -> DmmCapabilities:
-        """Return static capability metadata."""
+        """Return static capability metadata.
+
+        Returns:
+            (DmmCapabilities):
+                Capability descriptor.
+        """
 
     def get_filter_enabled(self) -> bool:
         """Return whether filtering is enabled.
@@ -250,6 +314,15 @@ class DigitalMultimeter(BaseInstrument):
 
     def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
         """Read values from the instrument buffer.
+
+        Keyword Parameters:
+            count (int | None):
+                Optional number of points to read from the start of the buffer.
+                If ``None``, read all available points.
+
+        Returns:
+            (tuple[float, ...]):
+                Parsed buffer values.
 
         Raises:
             NotImplementedError:

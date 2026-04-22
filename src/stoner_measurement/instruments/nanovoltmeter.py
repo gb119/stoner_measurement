@@ -194,15 +194,30 @@ class Nanovoltmeter(BaseInstrument):
 
     @abstractmethod
     def get_measure_function(self) -> NanovoltmeterFunction:
-        """Return the active measurement function."""
+        """Return the active measurement function.
+
+        Returns:
+            (NanovoltmeterFunction):
+                Active measurement function.
+        """
 
     @abstractmethod
     def set_measure_function(self, function: NanovoltmeterFunction) -> None:
-        """Set the active measurement function."""
+        """Set the active measurement function.
+
+        Args:
+            function (NanovoltmeterFunction):
+                Function to select.
+        """
 
     @abstractmethod
     def get_capabilities(self) -> NanovoltmeterCapabilities:
-        """Return static capability metadata."""
+        """Return static capability metadata.
+
+        Returns:
+            (NanovoltmeterCapabilities):
+                Capability descriptor.
+        """
 
     def get_filter_enabled(self) -> bool:
         """Return whether filtering is enabled.
@@ -354,6 +369,15 @@ class Nanovoltmeter(BaseInstrument):
 
     def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
         """Read values from the instrument buffer.
+
+        Keyword Parameters:
+            count (int | None):
+                Optional number of points to read from the start of the buffer.
+                If ``None``, read all available points.
+
+        Returns:
+            (tuple[float, ...]):
+                Parsed buffer values.
 
         Raises:
             NotImplementedError:
