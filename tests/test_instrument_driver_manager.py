@@ -9,8 +9,10 @@ import pytest
 from stoner_measurement.instruments import (
     BaseInstrument,
     CurrentSource,
+    DigitalMultimeter,
     InstrumentDriverManager,
     MagnetController,
+    Nanovoltmeter,
     SourceMeter,
 )
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
@@ -38,6 +40,10 @@ class TestInstrumentDriverManager:
         assert "Keithley2400" in discovered
         assert "Keithley2410" in discovered
         assert "Keithley2450" in discovered
+        assert "Keithley2000" in discovered
+        assert "Keithley2700" in discovered
+        assert "Keithley2182A" in discovered
+        assert "Keithley182" in discovered
         assert "Keithley6221" in discovered
         assert "Lakeshore335" in discovered
         assert "Lakeshore336" in discovered
@@ -73,6 +79,22 @@ class TestInstrumentDriverManager:
         assert "LakeshoreM81CurrentSource" in current_sources
         assert "Keithley2400" not in current_sources
         assert "Lakeshore525" not in current_sources
+
+    def test_drivers_by_type_filters_digital_multimeters(self):
+        manager = InstrumentDriverManager()
+        manager.discover()
+        dmms = manager.drivers_by_type(DigitalMultimeter)
+        assert "Keithley2000" in dmms
+        assert "Keithley2700" in dmms
+        assert "Keithley2400" not in dmms
+
+    def test_drivers_by_type_filters_nanovoltmeters(self):
+        manager = InstrumentDriverManager()
+        manager.discover()
+        nanovoltmeters = manager.drivers_by_type(Nanovoltmeter)
+        assert "Keithley2182A" in nanovoltmeters
+        assert "Keithley182" in nanovoltmeters
+        assert "Keithley2000" not in nanovoltmeters
 
     def test_discover_loads_third_party_entry_points(self, monkeypatch):
         fake_eps = [_FakeEntryPoint(name="third_party", target=_ThirdPartyInstrument)]
