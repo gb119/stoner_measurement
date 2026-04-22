@@ -21,16 +21,20 @@ laboratory instruments:
 **Instrument hierarchy**:
 
 * :class:`~stoner_measurement.instruments.base_instrument.BaseInstrument` — holds transport + protocol
-* :class:`~stoner_measurement.instruments.temperature_controller.TemperatureController` — abstract type
-* :class:`~stoner_measurement.instruments.magnet_controller.MagnetController` — abstract type
-* :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
-* :class:`~stoner_measurement.instruments.current_source.CurrentSource` — abstract type
-* :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
-* :class:`~stoner_measurement.instruments.keithley.Keithley2400` — concrete SMU driver
-* :class:`~stoner_measurement.instruments.keithley.Keithley2410` — concrete SMU driver
-* :class:`~stoner_measurement.instruments.keithley.Keithley2450` — concrete SMU driver
-* :class:`~stoner_measurement.instruments.keithley.Keithley6221` — concrete current-source driver
-* :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81CurrentSource` — concrete current-source driver
+ * :class:`~stoner_measurement.instruments.temperature_controller.TemperatureController` — abstract type
+ * :class:`~stoner_measurement.instruments.magnet_controller.MagnetController` — abstract type
+ * :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
+ * :class:`~stoner_measurement.instruments.current_source.CurrentSource` — abstract type
+ * :class:`~stoner_measurement.instruments.electrometer.Electrometer` — abstract type
+ * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
+ * :class:`~stoner_measurement.instruments.keithley.Keithley2400` — concrete SMU driver
+ * :class:`~stoner_measurement.instruments.keithley.Keithley2410` — concrete SMU driver
+ * :class:`~stoner_measurement.instruments.keithley.Keithley2450` — concrete SMU driver
+ * :class:`~stoner_measurement.instruments.keithley.Keithley6221` — concrete current-source driver
+ * :class:`~stoner_measurement.instruments.keithley.Keithley6845` — concrete electrometer/picoammeter driver
+ * :class:`~stoner_measurement.instruments.keithley.Keithley6514` — concrete electrometer driver
+ * :class:`~stoner_measurement.instruments.keithley.Keithley6517` — concrete electrometer driver
+ * :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81CurrentSource` — concrete current-source driver
 """
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
@@ -43,6 +47,14 @@ from stoner_measurement.instruments.current_source import (
     PulsedSweepConfiguration,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
+from stoner_measurement.instruments.electrometer import (
+    Electrometer,
+    ElectrometerCapabilities,
+    ElectrometerDataFormat,
+    ElectrometerFunction,
+    ElectrometerTriggerConfiguration,
+    ElectrometerTriggerSource,
+)
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.magnet_controller import (
     MagnetController,
@@ -85,6 +97,12 @@ __all__ = [
     "CurrentSweepConfiguration",
     "CurrentSweepSpacing",
     "CurrentWaveform",
+    "Electrometer",
+    "ElectrometerCapabilities",
+    "ElectrometerDataFormat",
+    "ElectrometerFunction",
+    "ElectrometerTriggerConfiguration",
+    "ElectrometerTriggerSource",
     "InstrumentDriverManager",
     "InstrumentError",
     "LoopStatus",
