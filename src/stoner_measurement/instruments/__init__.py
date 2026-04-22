@@ -61,8 +61,8 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
 )
-from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
 from stoner_measurement.instruments.nanovoltmeter import (
+    Nanovoltmeter,
     NanovoltmeterCapabilities,
     NanovoltmeterFunction,
     NanovoltmeterTriggerSource,

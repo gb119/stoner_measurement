@@ -22,7 +22,12 @@ from stoner_measurement.instruments.current_source import (
     CurrentWaveform,
     PulsedSweepConfiguration,
 )
-from stoner_measurement.instruments.dmm import DigitalMultimeter, DmmCapabilities, DmmFunction, DmmTriggerSource
+from stoner_measurement.instruments.dmm import (
+    DigitalMultimeter,
+    DmmCapabilities,
+    DmmFunction,
+    DmmTriggerSource,
+)
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley import (
     Keithley182,
@@ -651,7 +656,7 @@ class TestKeithley2000:
         assert k.read_buffer() == pytest.approx((1.0, 2.0, 3.0))
 
     def test_setters_and_limits(self):
-        t = _null(responses=[b'"VOLT:DC"\n', b'"VOLT:DC"\n', b'"VOLT:DC"\n', b'"VOLT:DC"\n'])
+        t = _null(responses=[b'"VOLT:DC"\n', b'"VOLT:DC"\n', b'"VOLT:DC"\n', b'"VOLT:DC"\n', b'"VOLT:DC"\n'])
         k = Keithley2000(transport=t)
         k.set_range(1.0)
         k.set_autorange(False)
