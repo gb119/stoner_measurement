@@ -37,6 +37,13 @@ from stoner_measurement.instruments.electrometer import (
     ElectrometerTriggerSource,
 )
 from stoner_measurement.instruments.errors import InstrumentError
+from stoner_measurement.instruments.lockin_amplifier import (
+    LockInAmplifier,
+    LockInAmplifierCapabilities,
+    LockInInputCoupling,
+    LockInReferenceSource,
+    LockInReserveMode,
+)
 from stoner_measurement.instruments.keithley import (
     Keithley182,
     Keithley2000,
@@ -74,6 +81,7 @@ from stoner_measurement.instruments.oxford import (
     OxfordMercuryTemperatureController,
 )
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
+from stoner_measurement.instruments.srs import SRS830
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
     SourceMeter,
@@ -160,6 +168,10 @@ class TestAbstractEnforcement:
     def test_electrometer_is_abstract(self):
         with pytest.raises(TypeError):
             Electrometer(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+
+    def test_lock_in_amplifier_is_abstract(self):
+        with pytest.raises(TypeError):
+            LockInAmplifier(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -776,6 +788,90 @@ class TestKeithley2182Variants:
         k = Keithley182(transport=t)
         k.abort()
         assert t.write_log[-1] == b":ABOR\n"
+
+
+# ---------------------------------------------------------------------------
+# SRS830 concrete driver
+# ---------------------------------------------------------------------------
+
+
+class TestSRS830:
+    def test_default_protocol_is_scpi(self):
+        k = SRS830(transport=NullTransport())
+        assert isinstance(k.protocol, ScpiProtocol)
+
+    def test_dual_output_measurements(self):
+        t = _null(responses=[b"1.0,-2.0\n", b"3.0,45.0\n"])
+        k = SRS830(transport=t)
+        assert k.measure_xy() == pytest.approx((1.0, -2.0))
+        assert k.measure_rt() == pytest.approx((3.0, 45.0))
+
+    def test_getters(self):
+        t = _null(responses=[b"8\n", b"10\n", b"1\n", b"137.0\n", b"-12.5\n", b"3\n", b"2\n", b"1\n", b"2\n"])
+        k = SRS830(transport=t)
+        assert k.get_sensitivity() == pytest.approx(1e-6)
+        assert k.get_time_constant() == pytest.approx(1.0)
+        assert k.get_reference_source() is LockInReferenceSource.INTERNAL
+        assert k.get_reference_frequency() == pytest.approx(137.0)
+        assert k.get_reference_phase() == pytest.approx(-12.5)
+        assert k.get_harmonic() == 3
+        assert k.get_filter_slope() == 18
+        assert k.get_input_coupling() is LockInInputCoupling.DC
+        assert k.get_reserve_mode() is LockInReserveMode.LOW_NOISE
+
+    def test_setters_and_auto_actions(self):
+        t = _null()
+        k = SRS830(transport=t)
+        k.set_sensitivity(1e-6)
+        k.set_time_constant(1.0)
+        k.set_reference_source(LockInReferenceSource.EXTERNAL)
+        k.set_reference_frequency(17.0)
+        k.set_reference_phase(33.5)
+        k.set_harmonic(2)
+        k.set_filter_slope(12)
+        k.set_input_coupling(LockInInputCoupling.AC)
+        k.set_reserve_mode(LockInReserveMode.NORMAL)
+        k.auto_gain()
+        k.auto_phase()
+        k.auto_reserve()
+        assert t.write_log == [
+            b"SENS 8\n",
+            b"OFLT 10\n",
+            b"FMOD 0\n",
+            b"FREQ 17.0\n",
+            b"PHAS 33.5\n",
+            b"HARM 2\n",
+            b"OFSL 1\n",
+            b"ICPL 0\n",
+            b"RMOD 1\n",
+            b"AGAN\n",
+            b"APHS\n",
+            b"ARSV\n",
+        ]
+
+    def test_setter_validation(self):
+        k = SRS830(transport=_null())
+        with pytest.raises(ValueError):
+            k.set_sensitivity(1.5e-6)
+        with pytest.raises(ValueError):
+            k.set_time_constant(2.0)
+        with pytest.raises(ValueError):
+            k.set_reference_frequency(0.0)
+        with pytest.raises(ValueError):
+            k.set_harmonic(0)
+        with pytest.raises(ValueError):
+            k.set_filter_slope(9)
+
+    def test_capabilities(self):
+        caps = SRS830(transport=_null()).get_capabilities()
+        assert isinstance(caps, LockInAmplifierCapabilities)
+        assert caps.has_harmonic_selection
+        assert caps.has_filter_slope_control
+        assert caps.has_input_coupling_control
+        assert caps.has_reserve_mode_control
+        assert caps.has_auto_gain
+        assert caps.has_auto_phase
+        assert caps.has_auto_reserve
 
 
 # ---------------------------------------------------------------------------
@@ -2723,6 +2819,25 @@ class TestTemperatureControllerExports:
         assert TemperatureReading is not None
         assert TemperatureStatus is not None
         assert ZoneEntry is not None
+
+
+class TestLockInAmplifierExports:
+    """Lock-in types must be importable from the top-level instruments package."""
+
+    def test_all_types_exported(self):
+        from stoner_measurement.instruments import (
+            LockInAmplifier,
+            LockInAmplifierCapabilities,
+            LockInInputCoupling,
+            LockInReferenceSource,
+            LockInReserveMode,
+        )
+
+        assert LockInAmplifier is not None
+        assert LockInAmplifierCapabilities is not None
+        assert LockInInputCoupling is not None
+        assert LockInReferenceSource is not None
+        assert LockInReserveMode is not None
 
 
 # ---------------------------------------------------------------------------
