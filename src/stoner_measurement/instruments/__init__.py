@@ -21,20 +21,25 @@ laboratory instruments:
 **Instrument hierarchy**:
 
 * :class:`~stoner_measurement.instruments.base_instrument.BaseInstrument` — holds transport + protocol
- * :class:`~stoner_measurement.instruments.temperature_controller.TemperatureController` — abstract type
- * :class:`~stoner_measurement.instruments.magnet_controller.MagnetController` — abstract type
- * :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
- * :class:`~stoner_measurement.instruments.current_source.CurrentSource` — abstract type
- * :class:`~stoner_measurement.instruments.electrometer.Electrometer` — abstract type
- * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
- * :class:`~stoner_measurement.instruments.keithley.Keithley2400` — concrete SMU driver
- * :class:`~stoner_measurement.instruments.keithley.Keithley2410` — concrete SMU driver
- * :class:`~stoner_measurement.instruments.keithley.Keithley2450` — concrete SMU driver
- * :class:`~stoner_measurement.instruments.keithley.Keithley6221` — concrete current-source driver
- * :class:`~stoner_measurement.instruments.keithley.Keithley6845` — concrete electrometer/picoammeter driver
- * :class:`~stoner_measurement.instruments.keithley.Keithley6514` — concrete electrometer driver
- * :class:`~stoner_measurement.instruments.keithley.Keithley6517` — concrete electrometer driver
- * :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81CurrentSource` — concrete current-source driver
+* :class:`~stoner_measurement.instruments.temperature_controller.TemperatureController` — abstract type
+* :class:`~stoner_measurement.instruments.magnet_controller.MagnetController` — abstract type
+* :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
+* :class:`~stoner_measurement.instruments.current_source.CurrentSource` — abstract type
+* :class:`~stoner_measurement.instruments.dmm.DigitalMultimeter` — abstract type
+* :class:`~stoner_measurement.instruments.electrometer.Electrometer` — abstract type
+* :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
+* :class:`~stoner_measurement.instruments.keithley.Keithley2000` — concrete DMM driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2700` — concrete DMM driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2182A` — concrete nanovoltmeter driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley182` — concrete nanovoltmeter driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2400` — concrete SMU driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2410` — concrete SMU driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley2450` — concrete SMU driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley6221` — concrete current-source driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley6845` — concrete electrometer/picoammeter driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley6514` — concrete electrometer driver
+* :class:`~stoner_measurement.instruments.keithley.Keithley6517` — concrete electrometer driver
+* :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81CurrentSource` — concrete current-source driver
 """
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
@@ -45,6 +50,12 @@ from stoner_measurement.instruments.current_source import (
     CurrentSweepSpacing,
     CurrentWaveform,
     PulsedSweepConfiguration,
+)
+from stoner_measurement.instruments.dmm import (
+    DigitalMultimeter,
+    DmmCapabilities,
+    DmmFunction,
+    DmmTriggerSource,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.electrometer import (
@@ -62,7 +73,12 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
 )
-from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
+from stoner_measurement.instruments.nanovoltmeter import (
+    Nanovoltmeter,
+    NanovoltmeterCapabilities,
+    NanovoltmeterFunction,
+    NanovoltmeterTriggerSource,
+)
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
     SourceMeter,
@@ -97,6 +113,10 @@ __all__ = [
     "CurrentSweepConfiguration",
     "CurrentSweepSpacing",
     "CurrentWaveform",
+    "DigitalMultimeter",
+    "DmmCapabilities",
+    "DmmFunction",
+    "DmmTriggerSource",
     "Electrometer",
     "ElectrometerCapabilities",
     "ElectrometerDataFormat",
@@ -112,6 +132,9 @@ __all__ = [
     "MagnetStatus",
     "MeasureFunction",
     "Nanovoltmeter",
+    "NanovoltmeterCapabilities",
+    "NanovoltmeterFunction",
+    "NanovoltmeterTriggerSource",
     "PIDParameters",
     "PulsedSweepConfiguration",
     "RampState",

@@ -22,6 +22,12 @@ from stoner_measurement.instruments.current_source import (
     CurrentWaveform,
     PulsedSweepConfiguration,
 )
+from stoner_measurement.instruments.dmm import (
+    DigitalMultimeter,
+    DmmCapabilities,
+    DmmFunction,
+    DmmTriggerSource,
+)
 from stoner_measurement.instruments.electrometer import (
     Electrometer,
     ElectrometerCapabilities,
@@ -32,9 +38,13 @@ from stoner_measurement.instruments.electrometer import (
 )
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley import (
+    Keithley182,
+    Keithley2000,
+    Keithley2182A,
     Keithley2400,
     Keithley2410,
     Keithley2450,
+    Keithley2700,
     Keithley6221,
     Keithley6514,
     Keithley6517,
@@ -52,7 +62,12 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
 )
-from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
+from stoner_measurement.instruments.nanovoltmeter import (
+    Nanovoltmeter,
+    NanovoltmeterCapabilities,
+    NanovoltmeterFunction,
+    NanovoltmeterTriggerSource,
+)
 from stoner_measurement.instruments.oxford import (
     OxfordIPS120,
     OxfordITC503,
@@ -133,6 +148,10 @@ class TestAbstractEnforcement:
     def test_current_source_is_abstract(self):
         with pytest.raises(TypeError):
             CurrentSource(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+
+    def test_digital_multimeter_is_abstract(self):
+        with pytest.raises(TypeError):
+            DigitalMultimeter(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
 
     def test_nanovoltmeter_is_abstract(self):
         with pytest.raises(TypeError):
@@ -603,6 +622,160 @@ class TestKeithley24xxVariants:
         k = Keithley2450(transport=t)
         k.enable_output(False)
         assert t.write_log[-1] == b":OUTP:STAT 0\n"
+
+
+# ---------------------------------------------------------------------------
+# Keithley2000/2700 concrete drivers
+# ---------------------------------------------------------------------------
+
+
+class TestKeithley2000:
+    def test_default_protocol_is_scpi(self):
+        k = Keithley2000(transport=NullTransport())
+        assert isinstance(k.protocol, ScpiProtocol)
+
+    def test_measure_and_function_control(self):
+        t = _null(responses=[b"1.234\n", b'"VOLT:DC"\n'])
+        k = Keithley2000(transport=t)
+        assert k.measure() == pytest.approx(1.234)
+        assert k.get_measure_function() == DmmFunction.VOLT_DC
+        k.set_measure_function(DmmFunction.CURR_DC)
+        assert t.write_log[-1] == b':SENS:FUNC "CURR:DC"\n'
+
+    def test_range_autorange_and_nplc(self):
+        t = _null(responses=[b'"VOLT:DC"\n', b"10\n", b'"VOLT:DC"\n', b"1\n", b'"VOLT:DC"\n', b"1\n"])
+        k = Keithley2000(transport=t)
+        assert k.get_range() == pytest.approx(10.0)
+        assert k.get_autorange() is True
+        assert k.get_nplc() == pytest.approx(1.0)
+
+    def test_filter_trigger_and_buffer(self):
+        t = _null(
+            responses=[
+                b'"VOLT:DC"\n',
+                b"1\n",
+                b'"VOLT:DC"\n',
+                b"10\n",
+                b"BUS\n",
+                b"3\n",
+                b"5\n",
+                b"1.0,2.0,3.0\n",
+            ]
+        )
+        k = Keithley2000(transport=t)
+        assert k.get_filter_enabled() is True
+        assert k.get_filter_count() == 10
+        assert k.get_trigger_source() == DmmTriggerSource.BUS
+        assert k.get_trigger_count() == 3
+        assert k.get_buffer_count() == 5
+        assert k.read_buffer() == pytest.approx((1.0, 2.0, 3.0))
+
+    def test_setters_and_limits(self):
+        t = _null(responses=[b'"VOLT:DC"\n', b'"VOLT:DC"\n', b'"VOLT:DC"\n', b'"VOLT:DC"\n', b'"VOLT:DC"\n'])
+        k = Keithley2000(transport=t)
+        k.set_range(1.0)
+        k.set_autorange(False)
+        k.set_nplc(2.0)
+        k.set_filter_enabled(True)
+        k.set_filter_count(4)
+        k.set_trigger_source(DmmTriggerSource.EXT)
+        k.set_trigger_count(2)
+        k.initiate()
+        k.abort()
+        k.clear_buffer()
+        assert t.write_log[-5:] == [b":TRIG:SOUR EXT\n", b":TRIG:COUN 2\n", b":INIT\n", b":ABOR\n", b":TRAC:CLE\n"]
+        with pytest.raises(ValueError):
+            k.set_filter_count(0)
+        with pytest.raises(ValueError):
+            k.set_trigger_count(0)
+        with pytest.raises(ValueError):
+            k.read_buffer(0)
+
+    def test_capabilities(self):
+        caps = Keithley2000(transport=_null()).get_capabilities()
+        assert isinstance(caps, DmmCapabilities)
+        assert caps.has_filter
+        assert caps.has_trigger
+        assert caps.has_buffer
+
+
+class TestKeithley2000Variants:
+    def test_keithley2700_inherits_2000_behaviour(self):
+        t = _null()
+        k = Keithley2700(transport=t)
+        k.abort()
+        assert t.write_log[-1] == b":ABOR\n"
+
+
+# ---------------------------------------------------------------------------
+# Keithley2182A/182 concrete drivers
+# ---------------------------------------------------------------------------
+
+
+class TestKeithley2182A:
+    def test_default_protocol_is_scpi(self):
+        k = Keithley2182A(transport=NullTransport())
+        assert isinstance(k.protocol, ScpiProtocol)
+
+    def test_measure_range_autorange_nplc(self):
+        t = _null(responses=[b"1.0E-06\n", b"0.1\n", b"1\n", b"5.0\n"])
+        k = Keithley2182A(transport=t)
+        assert k.measure_voltage() == pytest.approx(1e-6)
+        assert k.get_range() == pytest.approx(0.1)
+        assert k.get_autorange() is True
+        assert k.get_nplc() == pytest.approx(5.0)
+
+    def test_function_filter_trigger_and_buffer(self):
+        t = _null(responses=[b'"VOLT"\n', b"1\n", b"5\n", b"BUS\n", b"7\n", b"2\n", b"1.0,2.0\n"])
+        k = Keithley2182A(transport=t)
+        assert k.get_measure_function() == NanovoltmeterFunction.VOLT
+        assert k.get_filter_enabled() is True
+        assert k.get_filter_count() == 5
+        assert k.get_trigger_source() == NanovoltmeterTriggerSource.BUS
+        assert k.get_trigger_count() == 7
+        assert k.get_buffer_count() == 2
+        assert k.read_buffer() == pytest.approx((1.0, 2.0))
+
+    def test_setters_and_limits(self):
+        t = _null()
+        k = Keithley2182A(transport=t)
+        k.set_range(0.1)
+        k.set_autorange(False)
+        k.set_nplc(1.0)
+        k.set_measure_function(NanovoltmeterFunction.TEMP)
+        k.set_filter_enabled(True)
+        k.set_filter_count(3)
+        k.set_trigger_source(NanovoltmeterTriggerSource.EXT)
+        k.set_trigger_count(2)
+        k.initiate()
+        k.abort()
+        k.clear_buffer()
+        assert t.write_log[-5:] == [b":TRIG:SOUR EXT\n", b":TRIG:COUN 2\n", b":INIT\n", b":ABOR\n", b":TRAC:CLE\n"]
+        with pytest.raises(ValueError):
+            k.set_range(0.0)
+        with pytest.raises(ValueError):
+            k.set_nplc(0.0)
+        with pytest.raises(ValueError):
+            k.set_filter_count(0)
+        with pytest.raises(ValueError):
+            k.set_trigger_count(0)
+        with pytest.raises(ValueError):
+            k.read_buffer(0)
+
+    def test_capabilities(self):
+        caps = Keithley2182A(transport=_null()).get_capabilities()
+        assert isinstance(caps, NanovoltmeterCapabilities)
+        assert caps.has_filter
+        assert caps.has_trigger
+        assert caps.has_buffer
+
+
+class TestKeithley2182Variants:
+    def test_keithley182_inherits_2182a_behaviour(self):
+        t = _null()
+        k = Keithley182(transport=t)
+        k.abort()
+        assert t.write_log[-1] == b":ABOR\n"
 
 
 # ---------------------------------------------------------------------------

@@ -1,9 +1,4 @@
-"""Abstract base class for nanovoltmeter instruments.
-
-Defines the common interface for high-precision voltmeter instruments.
-Concrete subclasses (e.g. Keithley 2182A, Keithley 182) implement the
-abstract methods for the specific instrument's command set.
-"""
+"""Abstract base class for digital multimeter instruments."""
 
 from __future__ import annotations
 
@@ -19,15 +14,22 @@ if TYPE_CHECKING:
     from stoner_measurement.instruments.transport.base import BaseTransport
 
 
-class NanovoltmeterFunction(Enum):
-    """Measurement functions for nanovoltmeters."""
+class DmmFunction(Enum):
+    """Measurement functions for digital multimeters."""
 
-    VOLT = "VOLT"
+    VOLT_DC = "VOLT:DC"
+    VOLT_AC = "VOLT:AC"
+    CURR_DC = "CURR:DC"
+    CURR_AC = "CURR:AC"
+    RES = "RES"
+    FRES = "FRES"
+    FREQ = "FREQ"
+    PER = "PER"
     TEMP = "TEMP"
 
 
-class NanovoltmeterTriggerSource(Enum):
-    """Trigger-source selection for nanovoltmeters."""
+class DmmTriggerSource(Enum):
+    """Trigger-source selection for digital multimeters."""
 
     IMM = "IMM"
     BUS = "BUS"
@@ -37,45 +39,24 @@ class NanovoltmeterTriggerSource(Enum):
 
 
 @dataclass(frozen=True)
-class NanovoltmeterCapabilities:
-    """Static capability descriptor for a nanovoltmeter driver."""
+class DmmCapabilities:
+    """Static capability descriptor for a DMM driver."""
 
-    has_function_selection: bool = False
+    has_function_selection: bool = True
     has_filter: bool = False
     has_trigger: bool = False
     has_buffer: bool = False
-    supported_functions: tuple[NanovoltmeterFunction, ...] = (NanovoltmeterFunction.VOLT,)
+    supported_functions: tuple[DmmFunction, ...] = (DmmFunction.VOLT_DC,)
 
 
-class Nanovoltmeter(BaseInstrument):
-    """Abstract base class for nanovoltmeter instruments.
-
-    Provides a uniform interface for high-sensitivity DC voltage measurements.
-    Nanovoltmeters are commonly used in low-resistance measurements, Hall-effect
-    measurements, and thermoelectric studies.
+class DigitalMultimeter(BaseInstrument):
+    """Abstract base class for digital multimeter instruments.
 
     Attributes:
         transport (BaseTransport):
             Transport layer instance.
         protocol (BaseProtocol):
             Protocol instance.
-
-    Examples:
-        >>> # Demonstrate interface using a minimal concrete implementation
-        >>> from stoner_measurement.instruments.transport import NullTransport
-        >>> from stoner_measurement.instruments.protocol import ScpiProtocol
-        >>> from stoner_measurement.instruments.nanovoltmeter import Nanovoltmeter
-        >>> class _NVM(Nanovoltmeter):
-        ...     def measure_voltage(self): return 1.23e-6
-        ...     def get_range(self): return 0.1
-        ...     def set_range(self, value): pass
-        ...     def get_autorange(self): return True
-        ...     def set_autorange(self, state): pass
-        ...     def get_nplc(self): return 5.0
-        ...     def set_nplc(self, value): pass
-        >>> nvm = _NVM(NullTransport(), ScpiProtocol())
-        >>> nvm.measure_voltage()
-        1.23e-06
     """
 
     def __init__(
@@ -83,7 +64,7 @@ class Nanovoltmeter(BaseInstrument):
         transport: BaseTransport,
         protocol: BaseProtocol,
     ) -> None:
-        """Initialise the nanovoltmeter.
+        """Initialise the multimeter.
 
         Args:
             transport (BaseTransport):
@@ -94,128 +75,92 @@ class Nanovoltmeter(BaseInstrument):
         super().__init__(transport=transport, protocol=protocol)
 
     @abstractmethod
-    def measure_voltage(self) -> float:
-        """Trigger a voltage measurement and return the result in volts.
+    def measure(self) -> float:
+        """Trigger a measurement and return its value.
 
         Returns:
             (float):
-                Measured voltage in volts.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
+                Measured scalar value in units of the active function.
         """
 
     @abstractmethod
-    def get_range(self) -> float:
-        """Return the current voltage measurement range in volts.
-
-        Returns:
-            (float):
-                Active measurement range in volts.  ``0.0`` typically
-                indicates autorange is active.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
-
-    @abstractmethod
-    def set_range(self, value: float) -> None:
-        """Set the voltage measurement range.
-
-        Args:
-            value (float):
-                Measurement range in volts.  Pass ``0.0`` to enable autorange
-                on instruments that conflate the two settings.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-            ValueError:
-                If *value* is not a valid range for this instrument.
-        """
-
-    @abstractmethod
-    def get_autorange(self) -> bool:
-        """Return ``True`` if autorange is currently enabled.
-
-        Returns:
-            (bool):
-                ``True`` when the instrument selects the range automatically.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
-
-    @abstractmethod
-    def set_autorange(self, state: bool) -> None:
-        """Enable or disable automatic range selection.
-
-        Args:
-            state (bool):
-                ``True`` to enable autorange, ``False`` to use the manually
-                set range.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
-
-    @abstractmethod
-    def get_nplc(self) -> float:
-        """Return the integration time in power-line cycles.
-
-        Returns:
-            (float):
-                Integration time in power-line cycles.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-        """
-
-    @abstractmethod
-    def set_nplc(self, value: float) -> None:
-        """Set the integration time in power-line cycles.
-
-        Args:
-            value (float):
-                Integration time in power-line cycles.  Longer integration
-                times improve resolution but reduce throughput.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
-            ValueError:
-                If *value* is outside the valid range for this instrument.
-        """
-
-    @abstractmethod
-    def get_measure_function(self) -> NanovoltmeterFunction:
+    def get_measure_function(self) -> DmmFunction:
         """Return the active measurement function.
 
         Returns:
-            (NanovoltmeterFunction):
+            (DmmFunction):
                 Active measurement function.
         """
 
     @abstractmethod
-    def set_measure_function(self, function: NanovoltmeterFunction) -> None:
+    def set_measure_function(self, function: DmmFunction) -> None:
         """Set the active measurement function.
 
         Args:
-            function (NanovoltmeterFunction):
+            function (DmmFunction):
                 Function to select.
         """
 
     @abstractmethod
-    def get_capabilities(self) -> NanovoltmeterCapabilities:
+    def get_range(self) -> float:
+        """Return the active measurement range.
+
+        Returns:
+            (float):
+                Range value in units of the active function.
+        """
+
+    @abstractmethod
+    def set_range(self, value: float) -> None:
+        """Set the active measurement range.
+
+        Args:
+            value (float):
+                Range value in units of the active function.
+        """
+
+    @abstractmethod
+    def get_autorange(self) -> bool:
+        """Return ``True`` if autorange is enabled.
+
+        Returns:
+            (bool):
+                ``True`` when autorange is enabled.
+        """
+
+    @abstractmethod
+    def set_autorange(self, state: bool) -> None:
+        """Enable or disable autorange.
+
+        Args:
+            state (bool):
+                ``True`` to enable autorange.
+        """
+
+    @abstractmethod
+    def get_nplc(self) -> float:
+        """Return the integration time in line cycles.
+
+        Returns:
+            (float):
+                Integration time in power-line cycles.
+        """
+
+    @abstractmethod
+    def set_nplc(self, value: float) -> None:
+        """Set the integration time in line cycles.
+
+        Args:
+            value (float):
+                Integration time in power-line cycles.
+        """
+
+    @abstractmethod
+    def get_capabilities(self) -> DmmCapabilities:
         """Return static capability metadata.
 
         Returns:
-            (NanovoltmeterCapabilities):
+            (DmmCapabilities):
                 Capability descriptor.
         """
 
@@ -269,7 +214,7 @@ class Nanovoltmeter(BaseInstrument):
             "Check get_capabilities().has_filter before calling this method."
         )
 
-    def get_trigger_source(self) -> NanovoltmeterTriggerSource:
+    def get_trigger_source(self) -> DmmTriggerSource:
         """Return the trigger source selection.
 
         Raises:
@@ -281,7 +226,7 @@ class Nanovoltmeter(BaseInstrument):
             "Check get_capabilities().has_trigger before calling this method."
         )
 
-    def set_trigger_source(self, source: NanovoltmeterTriggerSource) -> None:
+    def set_trigger_source(self, source: DmmTriggerSource) -> None:
         """Set the trigger source selection.
 
         Raises:
