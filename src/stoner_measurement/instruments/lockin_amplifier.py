@@ -87,7 +87,8 @@ class LockInAmplifier(BaseInstrument):
 
         Returns:
             (tuple[float, float]):
-                ``(x, y)`` values.
+                ``(x, y)`` values in volts, where ``x`` is the in-phase
+                component and ``y`` is the quadrature component.
         """
 
     @abstractmethod
@@ -96,7 +97,8 @@ class LockInAmplifier(BaseInstrument):
 
         Returns:
             (tuple[float, float]):
-                ``(magnitude, theta)`` values.
+                ``(magnitude, theta)`` where magnitude is in volts and
+                ``theta`` is in degrees.
         """
 
     @abstractmethod
@@ -137,7 +139,12 @@ class LockInAmplifier(BaseInstrument):
 
     @abstractmethod
     def get_reference_source(self) -> LockInReferenceSource:
-        """Return the active reference source."""
+        """Return the active reference source.
+
+        Returns:
+            (LockInReferenceSource):
+                Active reference source.
+        """
 
     @abstractmethod
     def set_reference_source(self, source: LockInReferenceSource) -> None:
@@ -150,7 +157,12 @@ class LockInAmplifier(BaseInstrument):
 
     @abstractmethod
     def get_reference_frequency(self) -> float:
-        """Return the reference frequency in hertz."""
+        """Return the reference frequency in hertz.
+
+        Returns:
+            (float):
+                Reference frequency in hertz.
+        """
 
     @abstractmethod
     def set_reference_frequency(self, value: float) -> None:
@@ -163,7 +175,12 @@ class LockInAmplifier(BaseInstrument):
 
     @abstractmethod
     def get_reference_phase(self) -> float:
-        """Return the reference phase in degrees."""
+        """Return the reference phase in degrees.
+
+        Returns:
+            (float):
+                Reference phase in degrees.
+        """
 
     @abstractmethod
     def set_reference_phase(self, value: float) -> None:

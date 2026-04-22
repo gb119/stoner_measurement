@@ -37,13 +37,6 @@ from stoner_measurement.instruments.electrometer import (
     ElectrometerTriggerSource,
 )
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.lockin_amplifier import (
-    LockInAmplifier,
-    LockInAmplifierCapabilities,
-    LockInInputCoupling,
-    LockInReferenceSource,
-    LockInReserveMode,
-)
 from stoner_measurement.instruments.keithley import (
     Keithley182,
     Keithley2000,
@@ -64,6 +57,13 @@ from stoner_measurement.instruments.lakeshore import (
     Lakeshore525,
     LakeshoreM81CurrentSource,
 )
+from stoner_measurement.instruments.lockin_amplifier import (
+    LockInAmplifier,
+    LockInAmplifierCapabilities,
+    LockInInputCoupling,
+    LockInReferenceSource,
+    LockInReserveMode,
+)
 from stoner_measurement.instruments.magnet_controller import (
     MagnetController,
     MagnetState,
@@ -81,7 +81,6 @@ from stoner_measurement.instruments.oxford import (
     OxfordMercuryTemperatureController,
 )
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
-from stoner_measurement.instruments.srs import SRS830
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
     SourceMeter,
@@ -92,6 +91,7 @@ from stoner_measurement.instruments.source_meter import (
     TriggerModelConfiguration,
     TriggerSource,
 )
+from stoner_measurement.instruments.srs import SRS830
 from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
     ControllerCapabilities,

@@ -1,4 +1,4 @@
-"""Stanford Research Systems SR830 lock-in amplifier driver."""
+"""Stanford Research Systems SRS830 lock-in amplifier driver."""
 
 from __future__ import annotations
 
@@ -82,6 +82,7 @@ class SRS830(LockInAmplifier):
 
     @staticmethod
     def _parse_csv_pair(values: str) -> tuple[float, float]:
+        """Parse a comma-separated two-value numeric response."""
         stripped = values.strip()
         tokens = [token.strip() for token in stripped.split(",")]
         if len(tokens) != 2 or "" in tokens:
@@ -93,12 +94,14 @@ class SRS830(LockInAmplifier):
 
     @staticmethod
     def _decode_indexed_value(index: int, values: tuple[float, ...], *, name: str) -> float:
+        """Decode a returned numeric code into a value from a lookup table."""
         if index < 0 or index >= len(values):
             raise ValueError(f"{name} code {index} is out of range.")
         return values[index]
 
     @staticmethod
     def _encode_indexed_value(value: float, values: tuple[float, ...], *, name: str) -> int:
+        """Encode a value to its numeric code using a lookup table."""
         try:
             return values.index(value)
         except ValueError as exc:
@@ -106,6 +109,7 @@ class SRS830(LockInAmplifier):
 
     @staticmethod
     def _decode_bool_token(token: str) -> bool:
+        """Parse an instrument boolean token where ``0`` is false and ``1`` is true."""
         value = int(float(token.strip()))
         if value not in (0, 1):
             raise ValueError(f"Expected boolean token, got {token!r}")
@@ -132,11 +136,9 @@ class SRS830(LockInAmplifier):
         self.write(f"OFLT {self._encode_indexed_value(value, self._TIME_CONSTANTS, name='Time constant')}")
 
     def get_reference_source(self) -> LockInReferenceSource:
-        return (
-            LockInReferenceSource.INTERNAL
-            if self._decode_bool_token(self.query("FMOD?"))
-            else LockInReferenceSource.EXTERNAL
-        )
+        return LockInReferenceSource.EXTERNAL if not self._decode_bool_token(
+            self.query("FMOD?")
+        ) else LockInReferenceSource.INTERNAL
 
     def set_reference_source(self, source: LockInReferenceSource) -> None:
         self.write(f"FMOD {1 if source is LockInReferenceSource.INTERNAL else 0}")
@@ -165,7 +167,9 @@ class SRS830(LockInAmplifier):
 
     def get_filter_slope(self) -> int:
         code = int(float(self.query("OFSL?")))
-        return int(self._decode_indexed_value(code, tuple(float(v) for v in self._FILTER_SLOPES), name="Filter slope"))
+        if code < 0 or code >= len(self._FILTER_SLOPES):
+            raise ValueError(f"Filter slope code {code} is out of range.")
+        return self._FILTER_SLOPES[code]
 
     def set_filter_slope(self, slope: int) -> None:
         try:
