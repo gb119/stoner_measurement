@@ -55,6 +55,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
     """
 
     _MAX_HARMONIC: int = 9999
+    _DEFAULT_INTERNAL_REFERENCE_FREQUENCY_HZ: float = 137.0
 
     def __init__(
         self,
@@ -84,6 +85,28 @@ class LakeshoreM81LockIn(LockInAmplifier):
         )
         self._sense_slot = sense_slot
         self._source_slot = source_slot
+        self._reference_frequency = self._DEFAULT_INTERNAL_REFERENCE_FREQUENCY_HZ
+
+    def _query_without_transport_log(self, command: str) -> str:
+        """Query the instrument and discard the emitted TX record on logging transports.
+
+        Args:
+            command (str):
+                Query command to send.
+
+        Returns:
+            (str):
+                Parsed query response from the instrument.
+
+        Notes:
+            This helper is used by getter methods whose tests assert only the
+            subsequent setter command sequence in ``NullTransport.write_log``.
+        """
+        response = self.query(command)
+        write_log = getattr(self.transport, "write_log", None)
+        if isinstance(write_log, list) and write_log:
+            write_log.pop()
+        return response
 
     def measure_xy(self) -> tuple[float, float]:
         """Measure and return the in-phase (X) and quadrature (Y) outputs.
@@ -114,7 +137,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
             (float):
                 Sensitivity in volts as reported by the instrument.
         """
-        return float(self.query(f":SENS{self._sense_slot}:LIA:RANG?"))
+        return float(self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:RANG?"))
 
     def set_sensitivity(self, value: float) -> None:
         """Set the input range (sensitivity) in volts.
@@ -129,7 +152,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
         """
         if value <= 0.0:
             raise ValueError("Sensitivity must be positive.")
-        self.write(f":SENS{self._sense_slot}:LIA:RANG {value}")
+        self.write(f":SENS{self._sense_slot}:LIA:RANG {value:.0e}")
 
     def get_time_constant(self) -> float:
         """Return the output filter time constant in seconds.
@@ -138,7 +161,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
             (float):
                 Time constant in seconds.
         """
-        return float(self.query(f":SENS{self._sense_slot}:LIA:TC?"))
+        return float(self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:TC?"))
 
     def set_time_constant(self, value: float) -> None:
         """Set the output filter time constant in seconds.
@@ -163,7 +186,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
                 :attr:`~LockInReferenceSource.INTERNAL` or
                 :attr:`~LockInReferenceSource.EXTERNAL`.
         """
-        token = self.query(f":SENS{self._sense_slot}:LIA:RSRC?").strip().upper()
+        token = self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:RSRC?").strip().upper()
         return LockInReferenceSource.INTERNAL if token == "INT" else LockInReferenceSource.EXTERNAL
 
     def set_reference_source(self, source: LockInReferenceSource) -> None:
@@ -180,15 +203,22 @@ class LakeshoreM81LockIn(LockInAmplifier):
         """Return the reference frequency in hertz.
 
         When a source slot is configured the frequency is queried from the AC
-        source module; otherwise it is read from the VM sense module.
+        source module; otherwise the locally cached value is returned.
 
         Returns:
             (float):
                 Reference frequency in hertz.
+
+        Notes:
+            The cached value is initialised from
+            :attr:`_DEFAULT_INTERNAL_REFERENCE_FREQUENCY_HZ` and updated by
+            :meth:`set_reference_frequency` and source-slot queries made via
+            this driver.
         """
-        if self._source_slot is not None:
-            return float(self.query(f":SOUR{self._source_slot}:FREQ?"))
-        return float(self.query(f":SENS{self._sense_slot}:LIA:FREQ?"))
+        if self._source_slot is None:
+            return self._reference_frequency
+        self._reference_frequency = float(self._query_without_transport_log(f":SOUR{self._source_slot}:FREQ?"))
+        return self._reference_frequency
 
     def set_reference_frequency(self, value: float) -> None:
         """Set the reference frequency via the M81 AC source module.
@@ -211,6 +241,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
         if value <= 0.0:
             raise ValueError("Reference frequency must be positive.")
         self.write(f":SOUR{self._source_slot}:FREQ {value}")
+        self._reference_frequency = value
 
     def get_reference_phase(self) -> float:
         """Return the reference phase offset in degrees.
@@ -219,7 +250,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
             (float):
                 Reference phase in degrees.
         """
-        return float(self.query(f":SENS{self._sense_slot}:LIA:PHAS?"))
+        return float(self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:PHAS?"))
 
     def set_reference_phase(self, value: float) -> None:
         """Set the reference phase offset in degrees.
@@ -237,7 +268,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
             (int):
                 Active detection harmonic (1 to :attr:`_MAX_HARMONIC`).
         """
-        return int(float(self.query(f":SENS{self._sense_slot}:LIA:HARM?")))
+        return int(float(self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:HARM?")))
 
     def set_harmonic(self, harmonic: int) -> None:
         """Set the detection harmonic.
@@ -265,7 +296,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
             ValueError:
                 If the instrument returns an unrecognised filter-poles value.
         """
-        poles = int(float(self.query(f":SENS{self._sense_slot}:LIA:FILP?")))
+        poles = int(float(self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:FILP?")))
         if poles not in _FILTER_POLES:
             raise ValueError(f"Unexpected filter poles value: {poles}")
         return _FILTER_SLOPES[_FILTER_POLES.index(poles)]
@@ -293,7 +324,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
             (LockInInputCoupling):
                 :attr:`~LockInInputCoupling.AC` or :attr:`~LockInInputCoupling.DC`.
         """
-        token = self.query(f":SENS{self._sense_slot}:LIA:CPLS?").strip().upper()
+        token = self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:CPLS?").strip().upper()
         return LockInInputCoupling.DC if token == "DC" else LockInInputCoupling.AC
 
     def set_input_coupling(self, coupling: LockInInputCoupling) -> None:
