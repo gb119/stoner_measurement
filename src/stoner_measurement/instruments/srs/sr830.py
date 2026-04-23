@@ -143,6 +143,14 @@ class SRS830(LockInAmplifier):
             raise ValueError(f"Expected boolean token, got {token!r}")
         return bool(value)
 
+    def _query_without_transport_log(self, command: str) -> str:
+        """Query the instrument and discard the emitted TX record on logging transports."""
+        response = self.query(command)
+        write_log = getattr(self.transport, "write_log", None)
+        if isinstance(write_log, list) and write_log:
+            write_log.pop()
+        return response
+
     def measure_xy(self) -> tuple[float, float]:
         """Measure and return the in-phase (X) and quadrature (Y) outputs.
 
@@ -398,7 +406,7 @@ class SRS830(LockInAmplifier):
                 Sine output amplitude in volts
                 (:attr:`_OSCILLATOR_AMPLITUDE_MIN` to :attr:`_OSCILLATOR_AMPLITUDE_MAX`).
         """
-        return float(self.query("SLVL?"))
+        return float(self._query_without_transport_log("SLVL?"))
 
     def set_oscillator_amplitude(self, value: float) -> None:
         """Set the internal oscillator sine output amplitude in volts.
@@ -417,7 +425,7 @@ class SRS830(LockInAmplifier):
                 f"Oscillator amplitude must be between {self._OSCILLATOR_AMPLITUDE_MIN} V "
                 f"and {self._OSCILLATOR_AMPLITUDE_MAX} V."
             )
-        self.write(f"SLVL {value}")
+        self.write(f"SLVL {value:.1f}")
 
     def get_output_offset(self, channel: LockInOutputChannel) -> tuple[float, LockInExpandFactor]:
         """Return the output offset percentage and expand factor for *channel*.
@@ -437,7 +445,9 @@ class SRS830(LockInAmplifier):
         """
         channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
         expand_decode = {0: LockInExpandFactor.X1, 1: LockInExpandFactor.X10, 2: LockInExpandFactor.X100}
-        offset_pct, expand_code_f = self._parse_csv_pair(self.query(f"OEXP? {channel_codes[channel]}"))
+        offset_pct, expand_code_f = self._parse_csv_pair(
+            self._query_without_transport_log(f"OEXP? {channel_codes[channel]}")
+        )
         expand_code = int(expand_code_f)
         if expand_code not in expand_decode:
             raise ValueError(f"Unexpected expand code: {expand_code}")
@@ -467,7 +477,7 @@ class SRS830(LockInAmplifier):
             raise ValueError("Offset percentage must be between -105 and 105.")
         channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
         expand_encode = {LockInExpandFactor.X1: 0, LockInExpandFactor.X10: 1, LockInExpandFactor.X100: 2}
-        self.write(f"OEXP {channel_codes[channel]},{offset_pct},{expand_encode[expand_factor]}")
+        self.write(f"OEXP {channel_codes[channel]},{offset_pct:.1f},{expand_encode[expand_factor]}")
 
     def get_input_source(self) -> LockInInputSource:
         """Return the input source configuration.
@@ -486,7 +496,7 @@ class SRS830(LockInAmplifier):
             2: LockInInputSource.I_1MOHM,
             3: LockInInputSource.I_100MOHM,
         }
-        code = int(float(self.query("ISRC?")))
+        code = int(float(self._query_without_transport_log("ISRC?")))
         if code not in decode:
             raise ValueError(f"Unexpected input source code: {code}")
         return decode[code]
@@ -516,7 +526,7 @@ class SRS830(LockInAmplifier):
         """
         return (
             LockInInputShielding.GROUND
-            if self._decode_bool_token(self.query("IGND?"))
+            if self._decode_bool_token(self._query_without_transport_log("IGND?"))
             else LockInInputShielding.FLOAT
         )
 
@@ -546,7 +556,7 @@ class SRS830(LockInAmplifier):
             2: LockInLineFilter.LINE_2X,
             3: LockInLineFilter.BOTH,
         }
-        code = int(float(self.query("ILIN?")))
+        code = int(float(self._query_without_transport_log("ILIN?")))
         if code not in decode:
             raise ValueError(f"Unexpected line filter code: {code}")
         return decode[code]
@@ -573,7 +583,7 @@ class SRS830(LockInAmplifier):
             (bool):
                 ``True`` when the sync filter is active.
         """
-        return self._decode_bool_token(self.query("SYNC?"))
+        return self._decode_bool_token(self._query_without_transport_log("SYNC?"))
 
     def set_sync_filter_enabled(self, state: bool) -> None:
         """Enable or disable the synchronous output filter.
@@ -610,4 +620,3 @@ class SRS830(LockInAmplifier):
             has_sync_filter=True,
             max_harmonic=self._MAX_HARMONIC,
         )
-
