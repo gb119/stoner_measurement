@@ -91,6 +91,71 @@ def make_app_icon() -> QIcon:
         return QIcon()
 
 
+def make_temperature_icon(size: int = 32) -> QIcon:
+    """Create a simple thermometer icon for the *Temperature Control* action.
+
+    Draws a thermometer outline with a filled bulb at the bottom and a column
+    representing the mercury level.
+
+    Keyword Parameters:
+        size (int):
+            Side length in pixels of the square icon.  Defaults to ``32``.
+
+    Returns:
+        (QIcon):
+            The rendered thermometer icon.
+
+    Examples:
+        >>> icon = make_temperature_icon()
+        >>> icon.isNull()
+        False
+    """
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    cx = size / 2.0
+    bulb_r = size * 0.18
+    bulb_cy = size * 0.78
+    stem_w = size * 0.12
+    stem_top = size * 0.08
+    stem_bottom = bulb_cy - bulb_r * 0.6
+
+    # Stem outline
+    painter.setBrush(QColor(220, 220, 220))
+    painter.setPen(QColor(100, 100, 100))
+    painter.drawRoundedRect(
+        int(cx - stem_w / 2),
+        int(stem_top),
+        int(stem_w),
+        int(stem_bottom - stem_top),
+        int(stem_w / 2),
+        int(stem_w / 2),
+    )
+
+    # Mercury fill in stem (roughly 60 % full)
+    fill_top = stem_top + (stem_bottom - stem_top) * 0.40
+    painter.setBrush(QColor(200, 30, 30))
+    painter.setPen(Qt.PenStyle.NoPen)
+    inner_w = stem_w * 0.55
+    painter.drawRect(
+        int(cx - inner_w / 2),
+        int(fill_top),
+        int(inner_w),
+        int(stem_bottom - fill_top),
+    )
+
+    # Bulb
+    painter.setBrush(QColor(200, 30, 30))
+    painter.setPen(QColor(100, 100, 100))
+    painter.drawEllipse(QPointF(cx, bulb_cy), bulb_r, bulb_r)
+
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
 def make_log_icon(size: int = 32) -> QIcon:
     """Create a simple document-with-lines icon for the *Show Log* action.
 

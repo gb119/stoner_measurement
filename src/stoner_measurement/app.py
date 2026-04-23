@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.ui.icons import make_generate_icon, make_log_icon
+from stoner_measurement.ui.icons import make_generate_icon, make_log_icon, make_temperature_icon
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
 from stoner_measurement.ui.settings_dialog import (
@@ -78,6 +78,11 @@ class MeasurementApp(QMainWindow):
         # Log viewer (created before actions so actions can reference it) ------
         self._log_viewer = LogViewerWindow(parent=None)
         self._engine.log_handler.record_emitted.connect(self._log_viewer.append_record)
+
+        # Temperature control panel (hidden initially) -------------------------
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        self._temp_panel = TemperatureControlPanel(parent=None)
 
         # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
@@ -359,6 +364,15 @@ class MeasurementApp(QMainWindow):
         self._act_show_log.setStatusTip("Open the log viewer window")
         self._act_show_log.triggered.connect(self._on_show_log)
 
+        # Temperature control actions
+        self._act_show_temp_panel = QAction(make_temperature_icon(), "Show &Temperature Control", self)
+        self._act_show_temp_panel.setStatusTip("Open the temperature controller panel")
+        self._act_show_temp_panel.triggered.connect(self._on_show_temp_panel)
+
+        self._act_stop_temp_engine = QAction("Stop Temperature &Engine", self)
+        self._act_stop_temp_engine.setStatusTip("Stop the temperature controller engine and disconnect hardware")
+        self._act_stop_temp_engine.triggered.connect(self._on_stop_temp_engine)
+
         # Help actions
         self._act_about = QAction("&About", self)
         self._act_about.setStatusTip("Show information about this application")
@@ -412,6 +426,12 @@ class MeasurementApp(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self._act_show_log)
 
+        # Temperature menu
+        temp_menu = menu_bar.addMenu("&Temperature")
+        temp_menu.addAction(self._act_show_temp_panel)
+        temp_menu.addSeparator()
+        temp_menu.addAction(self._act_stop_temp_engine)
+
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._act_about)
@@ -439,6 +459,7 @@ class MeasurementApp(QMainWindow):
         toolbar.addAction(self._act_generate)
         toolbar.addSeparator()
         toolbar.addAction(self._act_show_log)
+        toolbar.addAction(self._act_show_temp_panel)
 
     # ------------------------------------------------------------------
     # Tab-change handler — keeps action labels/tips in sync
@@ -921,6 +942,16 @@ class MeasurementApp(QMainWindow):
             self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
         return code, line_map
 
+    def _on_show_temp_panel(self) -> None:
+        """Show the temperature control panel, raising it if already open."""
+        self._temp_panel.show_and_raise()
+
+    def _on_stop_temp_engine(self) -> None:
+        """Stop the temperature controller engine and disconnect the instrument."""
+        from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+
+        TemperatureControllerEngine.instance().shutdown()
+
     def _on_about(self) -> None:
         """Display the About dialogue."""
         QMessageBox.about(
@@ -969,8 +1000,11 @@ class MeasurementApp(QMainWindow):
             self.restoreGeometry(geometry)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        """Save window geometry and cleanly shut down the engine on close."""
+        """Save window geometry and cleanly shut down engines on close."""
         settings = QSettings()
         settings.setValue("mainWindow/geometry", self.saveGeometry())
         self._engine.shutdown()
+        from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+
+        TemperatureControllerEngine.instance().shutdown()
         super().closeEvent(event)
