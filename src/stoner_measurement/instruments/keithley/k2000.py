@@ -43,7 +43,16 @@ class Keithley2000(DigitalMultimeter):
 
     @staticmethod
     def _normalise_function(token: str) -> DmmFunction:
-        """Convert a SCPI function token to the corresponding :class:`DmmFunction` enum."""
+        """Convert a SCPI function token to the corresponding :class:`DmmFunction` enum.
+
+        Args:
+            token (str):
+                Raw SCPI response token (e.g. ``"VOLT"``, ``'"VOLT:DC"'``).
+
+        Returns:
+            (DmmFunction):
+                Matching :class:`DmmFunction` enum member.
+        """
         cleaned = token.strip().strip("'\"").upper()
         if cleaned == "VOLT":
             return DmmFunction.VOLT_DC
@@ -52,7 +61,17 @@ class Keithley2000(DigitalMultimeter):
         return DmmFunction(cleaned)
 
     def _sense_prefix(self, function: DmmFunction | None = None) -> str:
-        """Return the SCPI sense subsystem prefix for the given (or active) function."""
+        """Return the SCPI sense subsystem prefix for the given (or active) function.
+
+        Keyword Parameters:
+            function (DmmFunction | None):
+                Function whose prefix to return. If ``None``, the active
+                measurement function is queried from the instrument.
+
+        Returns:
+            (str):
+                SCPI prefix string (e.g. ``"VOLT:DC"`` → ``"VOLT"``).
+        """
         active = function if function is not None else self.get_measure_function()
         return active.value.split(":", 1)[0]
 

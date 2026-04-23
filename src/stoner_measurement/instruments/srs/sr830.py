@@ -22,7 +22,7 @@ from stoner_measurement.instruments.transport.base import BaseTransport
 class SRS830(LockInAmplifier):
     """Driver for the Stanford Research Systems SR830 lock-in amplifier.
 
-    Communicates via SCPI over serial, GPIB, or Ethernet.  All sensitivity
+    Communicates via SCPI over serial, GPIB, or Ethernet. All sensitivity
     and time-constant values are constrained to the lookup tables defined
     in :attr:`_SENSITIVITIES` and :attr:`_TIME_CONSTANTS`; the nearest
     valid entry must be used.
