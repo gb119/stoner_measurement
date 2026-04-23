@@ -173,7 +173,6 @@ class LogViewerWindow(QWidget):
     @pyqtSlot(int)
     def _on_filter_changed(self, index: int) -> None:
         """Rebuild the visible log list after a filter selection change."""
-        _ = index
         self._output.clear()
         for record in self._records:
             if self._record_matches_filter(record):

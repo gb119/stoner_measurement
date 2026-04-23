@@ -94,7 +94,9 @@ class BaseInstrument(ABC):
         self.transport = transport
         self.protocol = protocol
         self.auto_check_errors = auto_check_errors
-        self._comms_logger = logging.getLogger(f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}")
+        self._comms_logger = logging.getLogger(
+            f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}"
+        )
 
     @property
     def is_connected(self) -> bool:
