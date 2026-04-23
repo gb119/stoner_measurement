@@ -144,7 +144,20 @@ class SRS830(LockInAmplifier):
         return bool(value)
 
     def _query_without_transport_log(self, command: str) -> str:
-        """Query the instrument and discard the emitted TX record on logging transports."""
+        """Query the instrument and discard the emitted TX record on logging transports.
+
+        Args:
+            command (str):
+                Query command to send.
+
+        Returns:
+            (str):
+                Parsed query response from the instrument.
+
+        Notes:
+            This helper is used by getter methods whose tests assert only the
+            subsequent setter command sequence in ``NullTransport.write_log``.
+        """
         response = self.query(command)
         write_log = getattr(self.transport, "write_log", None)
         if isinstance(write_log, list) and write_log:

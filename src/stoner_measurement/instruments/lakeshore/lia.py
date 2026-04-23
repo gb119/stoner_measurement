@@ -55,6 +55,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
     """
 
     _MAX_HARMONIC: int = 9999
+    _DEFAULT_INTERNAL_REFERENCE_FREQUENCY_HZ: float = 137.0
 
     def __init__(
         self,
@@ -84,10 +85,23 @@ class LakeshoreM81LockIn(LockInAmplifier):
         )
         self._sense_slot = sense_slot
         self._source_slot = source_slot
-        self._reference_frequency = 137.0
+        self._reference_frequency = self._DEFAULT_INTERNAL_REFERENCE_FREQUENCY_HZ
 
     def _query_without_transport_log(self, command: str) -> str:
-        """Query the instrument and discard the emitted TX record on logging transports."""
+        """Query the instrument and discard the emitted TX record on logging transports.
+
+        Args:
+            command (str):
+                Query command to send.
+
+        Returns:
+            (str):
+                Parsed query response from the instrument.
+
+        Notes:
+            This helper is used by getter methods whose tests assert only the
+            subsequent setter command sequence in ``NullTransport.write_log``.
+        """
         response = self.query(command)
         write_log = getattr(self.transport, "write_log", None)
         if isinstance(write_log, list) and write_log:
@@ -189,11 +203,17 @@ class LakeshoreM81LockIn(LockInAmplifier):
         """Return the reference frequency in hertz.
 
         When a source slot is configured the frequency is queried from the AC
-        source module; otherwise it is read from the VM sense module.
+        source module; otherwise the locally cached value is returned.
 
         Returns:
             (float):
                 Reference frequency in hertz.
+
+        Notes:
+            The cached value is initialised from
+            :attr:`_DEFAULT_INTERNAL_REFERENCE_FREQUENCY_HZ` and updated by
+            :meth:`set_reference_frequency` and source-slot queries made via
+            this driver.
         """
         if self._source_slot is None:
             return self._reference_frequency
