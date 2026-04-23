@@ -155,6 +155,21 @@ class GpibTransport(BaseTransport):
         except pyvisa.errors.VisaIOError as exc:
             raise TimeoutError(f"Timeout reading from GPIB address {self.address}: {exc}") from exc
 
+    @property
+    def transport_address(self) -> str:
+        """Return the VISA resource string for this GPIB instrument.
+
+        Returns:
+            (str):
+                VISA resource string, e.g. ``"GPIB0::22::INSTR"``.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import GpibTransport
+            >>> GpibTransport(address=22).transport_address
+            'GPIB0::22::INSTR'
+        """
+        return self.resource_string
+
     def _apply_timeout(self, value: float) -> None:
         """Update the PyVISA timeout on a live connection.
 

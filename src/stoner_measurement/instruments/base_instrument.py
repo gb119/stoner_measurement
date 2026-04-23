@@ -9,12 +9,15 @@ instrument by holding references to a :class:`BaseTransport` and a
 
 from __future__ import annotations
 
+import logging
 from abc import ABC
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.transport.base import BaseTransport
+
+_COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
 
 
 class BaseInstrument(ABC):
@@ -91,6 +94,9 @@ class BaseInstrument(ABC):
         self.transport = transport
         self.protocol = protocol
         self.auto_check_errors = auto_check_errors
+        self._comms_logger = logging.getLogger(
+            f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}"
+        )
 
     @property
     def is_connected(self) -> bool:
@@ -175,7 +181,9 @@ class BaseInstrument(ABC):
             [b'OUTP ON\\n']
             >>> instr.disconnect()
         """
-        self.transport.write(self.protocol.format_command(command))
+        payload = self.protocol.format_command(command)
+        self.transport.write(payload)
+        self._log_comms_traffic("TX", payload)
         if self.auto_check_errors and not self.protocol.errors_in_response:
             self.check_for_errors(command=command)
 
@@ -208,6 +216,7 @@ class BaseInstrument(ABC):
         """
         terminator = getattr(self.protocol, "terminator", b"\n")
         raw = self.transport.read_until(terminator)
+        self._log_comms_traffic("RX", raw)
         return self.protocol.parse_response(raw)
 
     def query(self, command: str) -> str:
@@ -252,7 +261,9 @@ class BaseInstrument(ABC):
             'ACME,1,SN,v1'
             >>> instr.disconnect()
         """
-        self.transport.write(self.protocol.format_query(command))
+        payload = self.protocol.format_query(command)
+        self.transport.write(payload)
+        self._log_comms_traffic("TX", payload)
         response = self.read()
         if self.auto_check_errors:
             if self.protocol.errors_in_response:
@@ -310,11 +321,45 @@ class BaseInstrument(ABC):
 
         # Query the instrument's error queue.
         error_query = self.protocol.error_query
-        self.transport.write(self.protocol.format_query(error_query))
+        payload = self.protocol.format_query(error_query)
+        self.transport.write(payload)
+        self._log_comms_traffic("TX", payload)
         terminator = getattr(self.protocol, "terminator", b"\n")
         raw = self.transport.read_until(terminator)
+        self._log_comms_traffic("RX", raw)
         response = self.protocol.parse_response(raw)
         self.protocol.check_error(response, command=command)
+
+    def _log_comms_traffic(self, direction: str, payload: bytes) -> None:
+        """Emit a transcript log entry for one instrument I/O event.
+
+        Args:
+            direction (str):
+                Traffic direction token: ``"TX"`` for transmitted bytes or
+                ``"RX"`` for received bytes.
+            payload (bytes):
+                Raw payload bytes sent to or received from the instrument.
+
+        Notes:
+            ``errors='backslashreplace'`` is used when decoding *payload* so
+            that instruments which send non-UTF-8 binary frames (e.g. raw
+            IEEE 488.2 binary block data) are still represented as printable
+            text in the log rather than causing a ``UnicodeDecodeError``.
+        """
+        decoded_payload = payload.decode(
+            "utf-8",
+            errors="backslashreplace",
+        ).rstrip("\r\n")
+        self._comms_logger.debug(
+            "%s %s",
+            direction,
+            decoded_payload,
+            extra={
+                "sm_traffic_channel": "instrument_comms",
+                "sm_traffic_direction": direction,
+                "sm_transport_address": self.transport.transport_address,
+            },
+        )
 
     def identify(self) -> str:
         """Return the instrument identification string (``*IDN?``).

@@ -136,6 +136,21 @@ class EthernetTransport(BaseTransport):
         finally:
             self._socket.settimeout(self._timeout)
 
+    @property
+    def transport_address(self) -> str:
+        """Return the remote endpoint as ``"<host>:<port>"``.
+
+        Returns:
+            (str):
+                Ethernet address string, e.g. ``"192.168.1.100:5025"``.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import EthernetTransport
+            >>> EthernetTransport(host="192.168.1.100", port=5025).transport_address
+            '192.168.1.100:5025'
+        """
+        return f"{self.host}:{self.port}"
+
     def _apply_timeout(self, value: float) -> None:
         """Update the socket timeout on a live connection."""
         if self._socket is not None:
