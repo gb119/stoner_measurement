@@ -251,8 +251,10 @@ class TestBaseInstrument:
         assert len(transcript_records) == 2
         assert transcript_records[0].sm_traffic_direction == "TX"
         assert transcript_records[0].getMessage() == "TX *IDN?"
+        assert transcript_records[0].sm_transport_address == ""
         assert transcript_records[1].sm_traffic_direction == "RX"
         assert transcript_records[1].getMessage() == "RX answer"
+        assert transcript_records[1].sm_transport_address == ""
 
 
 # ---------------------------------------------------------------------------

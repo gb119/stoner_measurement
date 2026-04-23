@@ -351,6 +351,7 @@ class BaseInstrument(ABC):
             extra={
                 "sm_traffic_channel": "instrument_comms",
                 "sm_traffic_direction": direction,
+                "sm_transport_address": self.transport.transport_address,
             },
         )
 

@@ -220,6 +220,21 @@ class SerialTransport(BaseTransport):
             self._serial.reset_input_buffer()
             self._serial.reset_output_buffer()
 
+    @property
+    def transport_address(self) -> str:
+        """Return the serial port device name.
+
+        Returns:
+            (str):
+                Port name, e.g. ``"/dev/ttyUSB0"`` or ``"COM3"``.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import SerialTransport
+            >>> SerialTransport(port="/dev/ttyUSB0").transport_address
+            '/dev/ttyUSB0'
+        """
+        return self.port
+
     def _apply_timeout(self, value: float) -> None:
         """Update the pyserial timeout on a live connection."""
         if self._serial is not None and self._serial.is_open:

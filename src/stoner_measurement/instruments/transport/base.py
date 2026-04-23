@@ -77,6 +77,29 @@ class BaseTransport(ABC):
         """``True`` if the transport connection is currently open."""
         return self._is_open
 
+    @property
+    def transport_address(self) -> str:
+        """Human-readable address string identifying the remote endpoint.
+
+        Subclasses override this to expose the connection address in a format
+        appropriate to the transport type (e.g. ``"192.168.1.100:5025"`` for
+        TCP, ``"GPIB0::22::INSTR"`` for GPIB, ``"/dev/ttyUSB0"`` for serial).
+
+        The default implementation returns an empty string, which is used by
+        :class:`~stoner_measurement.instruments.transport.null_transport.NullTransport`
+        and any transport that does not carry an addressable endpoint.
+
+        Returns:
+            (str):
+                Address string, or ``""`` if not applicable.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> NullTransport().transport_address
+            ''
+        """
+        return ""
+
     @abstractmethod
     def open(self) -> None:
         """Open the physical connection to the instrument.
