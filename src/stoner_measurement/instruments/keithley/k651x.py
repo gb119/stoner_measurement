@@ -25,6 +25,7 @@ class _KeithleyElectrometerBase(Electrometer):
         transport: BaseTransport,
         protocol: BaseProtocol | None = None,
     ) -> None:
+        """Initialise the Keithley electrometer base driver, defaulting to :class:`ScpiProtocol`."""
         super().__init__(
             transport=transport,
             protocol=protocol if protocol is not None else ScpiProtocol(),

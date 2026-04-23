@@ -152,39 +152,51 @@ class _OxfordTemperatureControllerBase(TemperatureController):
         return bool(int(values[0])), values[1]
 
     def _temperature_query(self, channel: str) -> str:
+        """Return the instrument query command for reading temperature on *channel*."""
         raise NotImplementedError
 
     def _input_command(self, loop: int, channel: str) -> str:
+        """Return the instrument command that assigns *channel* to *loop*."""
         raise NotImplementedError
 
     def _setpoint_query(self, loop: int) -> str:
+        """Return the instrument query command for reading the setpoint of *loop*."""
         raise NotImplementedError
 
     def _setpoint_command(self, loop: int, value: float) -> str:
+        """Return the instrument command that sets the setpoint of *loop* to *value* K."""
         raise NotImplementedError
 
     def _mode_query(self, loop: int) -> str:
+        """Return the instrument query command for reading the control mode of *loop*."""
         raise NotImplementedError
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
+        """Return the instrument command that sets the control mode of *loop*."""
         raise NotImplementedError
 
     def _heater_output_query(self, loop: int) -> str:
+        """Return the instrument query command for reading heater output percentage of *loop*."""
         raise NotImplementedError
 
     def _heater_range_command(self, loop: int, range_: int) -> str:
+        """Return the instrument command that sets the heater range index for *loop*."""
         raise NotImplementedError
 
     def _pid_query(self, loop: int) -> str:
+        """Return the instrument query command for reading PID parameters of *loop*."""
         raise NotImplementedError
 
     def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
+        """Return the instrument command that sets PID parameters for *loop*."""
         raise NotImplementedError
 
     def _ramp_query(self, loop: int) -> str:
+        """Return the instrument query command for reading ramp state and rate of *loop*."""
         raise NotImplementedError
 
     def _ramp_command(self, loop: int, enabled: bool, rate: float) -> str:
+        """Return the instrument command that sets the ramp state and rate for *loop*."""
         raise NotImplementedError
 
 
@@ -209,40 +221,52 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         return self.query("V")
 
     def _temperature_query(self, channel: str) -> str:
+        """Return the ITC503 query command for reading temperature on *channel*."""
         return {"A": "R1", "B": "R2", "C": "R3"}[channel]
 
     def _input_command(self, loop: int, channel: str) -> str:
+        """Return the ITC503 command that assigns *channel* to the heater loop."""
         channel_code = {"A": 1, "B": 2, "C": 3}[channel]
         return f"C{channel_code}"
 
     def _setpoint_query(self, loop: int) -> str:
+        """Return the ITC503 query command for reading the setpoint."""
         return "R0"
 
     def _setpoint_command(self, loop: int, value: float) -> str:
+        """Return the ITC503 command that sets the setpoint to *value* K."""
         return f"T{value}"
 
     def _mode_query(self, loop: int) -> str:
+        """Return the ITC503 query command for reading the control mode."""
         return "R20"
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
+        """Return the ITC503 command that sets the control mode."""
         return f"A{mode_code}"
 
     def _heater_output_query(self, loop: int) -> str:
+        """Return the ITC503 query command for reading heater output percentage."""
         return "R5"
 
     def _heater_range_command(self, loop: int, range_: int) -> str:
+        """Return the ITC503 command that sets the heater range index."""
         return f"H{range_}"
 
     def _pid_query(self, loop: int) -> str:
+        """Return the ITC503 query command for reading PID parameters."""
         return "R8,R9,R10"
 
     def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
+        """Return the ITC503 command that sets PID parameters."""
         return f"P{p},I{i},D{d}"
 
     def _ramp_query(self, loop: int) -> str:
+        """Return the ITC503 query command for reading ramp state and rate."""
         return "R21"
 
     def _ramp_command(self, loop: int, enabled: bool, rate: float) -> str:
+        """Return the ITC503 command that sets the ramp state and rate."""
         return f"S{int(enabled)},{rate}"
 
 
@@ -264,37 +288,49 @@ class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
 
     def _temperature_query(self, channel: str) -> str:
+        """Return the Mercury query command for reading temperature on *channel*."""
         return f"READ:TEMP? {channel}"
 
     def _input_command(self, loop: int, channel: str) -> str:
+        """Return the Mercury command that assigns *channel* to *loop*."""
         return f"CONF:LOOP{loop}:INPUT {channel}"
 
     def _setpoint_query(self, loop: int) -> str:
+        """Return the Mercury query command for reading the setpoint of *loop*."""
         return f"READ:LOOP{loop}:SETP?"
 
     def _setpoint_command(self, loop: int, value: float) -> str:
+        """Return the Mercury command that sets the setpoint of *loop* to *value* K."""
         return f"SET:LOOP{loop}:SETP {value}"
 
     def _mode_query(self, loop: int) -> str:
+        """Return the Mercury query command for reading the control mode of *loop*."""
         return f"READ:LOOP{loop}:MODE?"
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
+        """Return the Mercury command that sets the control mode of *loop*."""
         return f"SET:LOOP{loop}:MODE {mode_code}"
 
     def _heater_output_query(self, loop: int) -> str:
+        """Return the Mercury query command for reading heater output of *loop*."""
         return f"READ:LOOP{loop}:HTR?"
 
     def _heater_range_command(self, loop: int, range_: int) -> str:
+        """Return the Mercury command that sets the heater range for *loop*."""
         return f"SET:LOOP{loop}:RANGE {range_}"
 
     def _pid_query(self, loop: int) -> str:
+        """Return the Mercury query command for reading PID parameters of *loop*."""
         return f"READ:LOOP{loop}:PID?"
 
     def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
+        """Return the Mercury command that sets PID parameters for *loop*."""
         return f"SET:LOOP{loop}:PID {p},{i},{d}"
 
     def _ramp_query(self, loop: int) -> str:
+        """Return the Mercury query command for reading ramp state and rate of *loop*."""
         return f"READ:LOOP{loop}:RAMP?"
 
     def _ramp_command(self, loop: int, enabled: bool, rate: float) -> str:
+        """Return the Mercury command that sets the ramp state and rate for *loop*."""
         return f"SET:LOOP{loop}:RAMP {int(enabled)},{rate}"

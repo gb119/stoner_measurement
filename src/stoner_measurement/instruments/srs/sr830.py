@@ -22,11 +22,30 @@ from stoner_measurement.instruments.transport.base import BaseTransport
 class SRS830(LockInAmplifier):
     """Driver for the Stanford Research Systems SR830 lock-in amplifier.
 
+    Communicates via SCPI over serial, GPIB, or Ethernet. All sensitivity
+    and time-constant values are constrained to the lookup tables defined
+    in :attr:`_SENSITIVITIES` and :attr:`_TIME_CONSTANTS`; the nearest
+    valid entry must be used.
+
+    Keyword Parameters:
+        transport (BaseTransport):
+            Transport layer (serial, GPIB, or Ethernet).
+        protocol (BaseProtocol | None):
+            Protocol instance.  Defaults to :class:`ScpiProtocol`.
+
     Attributes:
         transport (BaseTransport):
             Transport layer (serial, GPIB, or Ethernet).
         protocol (BaseProtocol):
             Protocol instance (defaults to :class:`ScpiProtocol`).
+
+    Examples:
+        >>> from stoner_measurement.instruments.transport import NullTransport
+        >>> from stoner_measurement.instruments.srs.sr830 import SRS830
+        >>> lia = SRS830(NullTransport())
+        >>> caps = lia.get_capabilities()
+        >>> caps.has_harmonic_selection
+        True
     """
 
     _TIME_CONSTANTS: tuple[float, ...] = (
@@ -86,6 +105,7 @@ class SRS830(LockInAmplifier):
     _MAX_HARMONIC: int = 19999
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
+        """Initialise the SR830 driver, defaulting to :class:`ScpiProtocol`."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
 
     @staticmethod
@@ -124,63 +144,182 @@ class SRS830(LockInAmplifier):
         return bool(value)
 
     def measure_xy(self) -> tuple[float, float]:
+        """Measure and return the in-phase (X) and quadrature (Y) outputs.
+
+        Returns:
+            (tuple[float, float]):
+                ``(x, y)`` values in volts.
+        """
         return self._parse_csv_pair(self.query("SNAP?1,2"))
 
     def measure_rt(self) -> tuple[float, float]:
+        """Measure and return the magnitude (R) and phase (theta) outputs.
+
+        Returns:
+            (tuple[float, float]):
+                ``(r, theta)`` where ``r`` is in volts and ``theta`` is in degrees.
+        """
         return self._parse_csv_pair(self.query("SNAP?3,4"))
 
     def get_sensitivity(self) -> float:
+        """Return the active input sensitivity scale in volts.
+
+        Returns:
+            (float):
+                Sensitivity in volts from :attr:`_SENSITIVITIES`.
+        """
         code = int(float(self.query("SENS?")))
         return self._decode_indexed_value(code, self._SENSITIVITIES, name="Sensitivity")
 
     def set_sensitivity(self, value: float) -> None:
+        """Set the input sensitivity scale.
+
+        Args:
+            value (float):
+                Sensitivity in volts.  Must be an exact value from
+                :attr:`_SENSITIVITIES`.
+
+        Raises:
+            ValueError:
+                If *value* is not a valid sensitivity entry.
+        """
         self.write(f"SENS {self._encode_indexed_value(value, self._SENSITIVITIES, name='Sensitivity')}")
 
     def get_time_constant(self) -> float:
+        """Return the active output filter time constant in seconds.
+
+        Returns:
+            (float):
+                Time constant in seconds from :attr:`_TIME_CONSTANTS`.
+        """
         code = int(float(self.query("OFLT?")))
         return self._decode_indexed_value(code, self._TIME_CONSTANTS, name="Time constant")
 
     def set_time_constant(self, value: float) -> None:
+        """Set the output filter time constant.
+
+        Args:
+            value (float):
+                Time constant in seconds.  Must be an exact value from
+                :attr:`_TIME_CONSTANTS`.
+
+        Raises:
+            ValueError:
+                If *value* is not a valid time-constant entry.
+        """
         self.write(f"OFLT {self._encode_indexed_value(value, self._TIME_CONSTANTS, name='Time constant')}")
 
     def get_reference_source(self) -> LockInReferenceSource:
+        """Return the active reference source.
+
+        Returns:
+            (LockInReferenceSource):
+                :attr:`~LockInReferenceSource.INTERNAL` or
+                :attr:`~LockInReferenceSource.EXTERNAL`.
+        """
         return LockInReferenceSource.EXTERNAL if not self._decode_bool_token(
             self.query("FMOD?")
         ) else LockInReferenceSource.INTERNAL
 
     def set_reference_source(self, source: LockInReferenceSource) -> None:
+        """Set the reference source.
+
+        Args:
+            source (LockInReferenceSource):
+                Reference source to select.
+        """
         self.write(f"FMOD {1 if source is LockInReferenceSource.INTERNAL else 0}")
 
     def get_reference_frequency(self) -> float:
+        """Return the reference frequency in hertz.
+
+        Returns:
+            (float):
+                Reference frequency in hertz.
+        """
         return float(self.query("FREQ?"))
 
     def set_reference_frequency(self, value: float) -> None:
+        """Set the internal reference frequency in hertz.
+
+        Args:
+            value (float):
+                Frequency in hertz (0.001 Hz to 102 kHz in internal mode).
+
+        Raises:
+            ValueError:
+                If *value* is not positive.
+        """
         if value <= 0.0:
             raise ValueError("Reference frequency must be positive.")
         # SR830 accepts 0.001 Hz to 102 kHz when in internal reference mode.
         self.write(f"FREQ {value}")
 
     def get_reference_phase(self) -> float:
+        """Return the reference phase in degrees.
+
+        Returns:
+            (float):
+                Reference phase offset in degrees.
+        """
         return float(self.query("PHAS?"))
 
     def set_reference_phase(self, value: float) -> None:
+        """Set the reference phase offset in degrees.
+
+        Args:
+            value (float):
+                Phase offset in degrees.
+        """
         self.write(f"PHAS {value}")
 
     def get_harmonic(self) -> int:
+        """Return the detection harmonic.
+
+        Returns:
+            (int):
+                Active detection harmonic (1 to :attr:`_MAX_HARMONIC`).
+        """
         return int(float(self.query("HARM?")))
 
     def set_harmonic(self, harmonic: int) -> None:
+        """Set the detection harmonic.
+
+        Args:
+            harmonic (int):
+                Harmonic number between 1 and :attr:`_MAX_HARMONIC`.
+
+        Raises:
+            ValueError:
+                If *harmonic* is outside the permitted range.
+        """
         if not (1 <= harmonic <= self._MAX_HARMONIC):
             raise ValueError(f"Harmonic must be an integer between 1 and {self._MAX_HARMONIC}.")
         self.write(f"HARM {harmonic}")
 
     def get_filter_slope(self) -> int:
+        """Return the output low-pass filter roll-off slope in dB/octave.
+
+        Returns:
+            (int):
+                Filter slope in dB/octave, one of ``(6, 12, 18, 24)``.
+        """
         code = int(float(self.query("OFSL?")))
         if code < 0 or code >= len(self._FILTER_SLOPES):
             raise ValueError(f"Filter slope code {code} is out of range.")
         return self._FILTER_SLOPES[code]
 
     def set_filter_slope(self, slope: int) -> None:
+        """Set the output low-pass filter roll-off slope.
+
+        Args:
+            slope (int):
+                Slope in dB/octave.  Must be one of ``(6, 12, 18, 24)``.
+
+        Raises:
+            ValueError:
+                If *slope* is not a valid filter-slope value.
+        """
         try:
             code = self._FILTER_SLOPES.index(slope)
         except ValueError as exc:
@@ -188,12 +327,34 @@ class SRS830(LockInAmplifier):
         self.write(f"OFSL {code}")
 
     def get_input_coupling(self) -> LockInInputCoupling:
+        """Return the input coupling mode.
+
+        Returns:
+            (LockInInputCoupling):
+                :attr:`~LockInInputCoupling.AC` or :attr:`~LockInInputCoupling.DC`.
+        """
         return LockInInputCoupling.DC if self._decode_bool_token(self.query("ICPL?")) else LockInInputCoupling.AC
 
     def set_input_coupling(self, coupling: LockInInputCoupling) -> None:
+        """Set the input coupling mode.
+
+        Args:
+            coupling (LockInInputCoupling):
+                Coupling mode to select.
+        """
         self.write(f"ICPL {1 if coupling is LockInInputCoupling.DC else 0}")
 
     def get_reserve_mode(self) -> LockInReserveMode:
+        """Return the dynamic reserve mode.
+
+        Returns:
+            (LockInReserveMode):
+                Active reserve mode.
+
+        Raises:
+            ValueError:
+                If the instrument returns an unrecognised reserve code.
+        """
         code = int(float(self.query("RMOD?")))
         if code == 0:
             return LockInReserveMode.HIGH_RESERVE
@@ -204,6 +365,12 @@ class SRS830(LockInAmplifier):
         raise ValueError(f"Unexpected reserve mode code: {code}")
 
     def set_reserve_mode(self, mode: LockInReserveMode) -> None:
+        """Set the dynamic reserve mode.
+
+        Args:
+            mode (LockInReserveMode):
+                Reserve mode to select.
+        """
         mapping = {
             LockInReserveMode.HIGH_RESERVE: 0,
             LockInReserveMode.NORMAL: 1,
@@ -212,18 +379,39 @@ class SRS830(LockInAmplifier):
         self.write(f"RMOD {mapping[mode]}")
 
     def auto_gain(self) -> None:
+        """Execute the SR830 auto-gain routine."""
         self.write("AGAN")
 
     def auto_phase(self) -> None:
+        """Execute the SR830 auto-phase routine."""
         self.write("APHS")
 
     def auto_reserve(self) -> None:
+        """Execute the SR830 auto-reserve routine."""
         self.write("ARSV")
 
     def get_oscillator_amplitude(self) -> float:
+        """Return the internal oscillator sine output amplitude in volts.
+
+        Returns:
+            (float):
+                Sine output amplitude in volts
+                (:attr:`_OSCILLATOR_AMPLITUDE_MIN` to :attr:`_OSCILLATOR_AMPLITUDE_MAX`).
+        """
         return float(self.query("SLVL?"))
 
     def set_oscillator_amplitude(self, value: float) -> None:
+        """Set the internal oscillator sine output amplitude in volts.
+
+        Args:
+            value (float):
+                Amplitude in volts, between :attr:`_OSCILLATOR_AMPLITUDE_MIN`
+                (4 mV) and :attr:`_OSCILLATOR_AMPLITUDE_MAX` (5 V).
+
+        Raises:
+            ValueError:
+                If *value* is outside the permitted amplitude range.
+        """
         if not (self._OSCILLATOR_AMPLITUDE_MIN <= value <= self._OSCILLATOR_AMPLITUDE_MAX):
             raise ValueError(
                 f"Oscillator amplitude must be between {self._OSCILLATOR_AMPLITUDE_MIN} V "
@@ -232,6 +420,21 @@ class SRS830(LockInAmplifier):
         self.write(f"SLVL {value}")
 
     def get_output_offset(self, channel: LockInOutputChannel) -> tuple[float, LockInExpandFactor]:
+        """Return the output offset percentage and expand factor for *channel*.
+
+        Args:
+            channel (LockInOutputChannel):
+                Output channel to query (X, Y, or R).
+
+        Returns:
+            (tuple[float, LockInExpandFactor]):
+                ``(offset_pct, expand_factor)`` where *offset_pct* is in the
+                range −105 % to +105 %.
+
+        Raises:
+            ValueError:
+                If the instrument returns an unrecognised expand code.
+        """
         channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
         expand_decode = {0: LockInExpandFactor.X1, 1: LockInExpandFactor.X10, 2: LockInExpandFactor.X100}
         offset_pct, expand_code_f = self._parse_csv_pair(self.query(f"OEXP? {channel_codes[channel]}"))
@@ -246,6 +449,20 @@ class SRS830(LockInAmplifier):
         offset_pct: float,
         expand_factor: LockInExpandFactor,
     ) -> None:
+        """Set the output offset and expand factor for *channel*.
+
+        Args:
+            channel (LockInOutputChannel):
+                Output channel to configure (X, Y, or R).
+            offset_pct (float):
+                Offset percentage in the range −105 to +105.
+            expand_factor (LockInExpandFactor):
+                Expand factor to apply (×1, ×10, or ×100).
+
+        Raises:
+            ValueError:
+                If *offset_pct* is outside the range −105 to +105.
+        """
         if not (-105.0 <= offset_pct <= 105.0):
             raise ValueError("Offset percentage must be between -105 and 105.")
         channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
@@ -253,6 +470,16 @@ class SRS830(LockInAmplifier):
         self.write(f"OEXP {channel_codes[channel]},{offset_pct},{expand_encode[expand_factor]}")
 
     def get_input_source(self) -> LockInInputSource:
+        """Return the input source configuration.
+
+        Returns:
+            (LockInInputSource):
+                Active input source (A, A−B, or current with 1 MΩ / 100 MΩ).
+
+        Raises:
+            ValueError:
+                If the instrument returns an unrecognised input-source code.
+        """
         decode = {
             0: LockInInputSource.A,
             1: LockInInputSource.A_MINUS_B,
@@ -265,6 +492,12 @@ class SRS830(LockInAmplifier):
         return decode[code]
 
     def set_input_source(self, source: LockInInputSource) -> None:
+        """Set the input source configuration.
+
+        Args:
+            source (LockInInputSource):
+                Input source to select.
+        """
         encode = {
             LockInInputSource.A: 0,
             LockInInputSource.A_MINUS_B: 1,
@@ -274,6 +507,13 @@ class SRS830(LockInAmplifier):
         self.write(f"ISRC {encode[source]}")
 
     def get_input_shielding(self) -> LockInInputShielding:
+        """Return the input shield grounding configuration.
+
+        Returns:
+            (LockInInputShielding):
+                :attr:`~LockInInputShielding.GROUND` or
+                :attr:`~LockInInputShielding.FLOAT`.
+        """
         return (
             LockInInputShielding.GROUND
             if self._decode_bool_token(self.query("IGND?"))
@@ -281,9 +521,25 @@ class SRS830(LockInAmplifier):
         )
 
     def set_input_shielding(self, shielding: LockInInputShielding) -> None:
+        """Set the input shield grounding configuration.
+
+        Args:
+            shielding (LockInInputShielding):
+                Shielding mode to select.
+        """
         self.write(f"IGND {1 if shielding is LockInInputShielding.GROUND else 0}")
 
     def get_line_filter(self) -> LockInLineFilter:
+        """Return the line-frequency notch filter configuration.
+
+        Returns:
+            (LockInLineFilter):
+                Active line-filter setting.
+
+        Raises:
+            ValueError:
+                If the instrument returns an unrecognised filter code.
+        """
         decode = {
             0: LockInLineFilter.NONE,
             1: LockInLineFilter.LINE,
@@ -296,6 +552,12 @@ class SRS830(LockInAmplifier):
         return decode[code]
 
     def set_line_filter(self, filter_config: LockInLineFilter) -> None:
+        """Set the line-frequency notch filter configuration.
+
+        Args:
+            filter_config (LockInLineFilter):
+                Notch filter setting to apply.
+        """
         encode = {
             LockInLineFilter.NONE: 0,
             LockInLineFilter.LINE: 1,
@@ -305,12 +567,30 @@ class SRS830(LockInAmplifier):
         self.write(f"ILIN {encode[filter_config]}")
 
     def get_sync_filter_enabled(self) -> bool:
+        """Return whether the synchronous output filter is enabled.
+
+        Returns:
+            (bool):
+                ``True`` when the sync filter is active.
+        """
         return self._decode_bool_token(self.query("SYNC?"))
 
     def set_sync_filter_enabled(self, state: bool) -> None:
+        """Enable or disable the synchronous output filter.
+
+        Args:
+            state (bool):
+                ``True`` to enable the sync filter.
+        """
         self.write(f"SYNC {1 if state else 0}")
 
     def get_capabilities(self) -> LockInAmplifierCapabilities:
+        """Return static capability metadata for the SR830.
+
+        Returns:
+            (LockInAmplifierCapabilities):
+                Capability descriptor reflecting the full SR830 feature set.
+        """
         return LockInAmplifierCapabilities(
             has_reference_source_selection=True,
             has_reference_frequency_control=True,
