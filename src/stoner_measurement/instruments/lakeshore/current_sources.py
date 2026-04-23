@@ -33,6 +33,7 @@ class LakeshoreM81CurrentSource(CurrentSource):
         transport: BaseTransport,
         protocol: BaseProtocol | None = None,
     ) -> None:
+        """Initialise the Lakeshore M81 current-source driver, defaulting to :class:`ScpiProtocol`."""
         super().__init__(
             transport=transport,
             protocol=protocol if protocol is not None else ScpiProtocol(),

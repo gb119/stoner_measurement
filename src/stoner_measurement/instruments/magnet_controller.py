@@ -118,12 +118,15 @@ class MagnetSupply(Protocol):
 
     # --- lifecycle ---
     def connect(self) -> None:
+        """Open the transport connection to the instrument."""
         ...
 
     def disconnect(self) -> None:
+        """Close the transport connection to the instrument."""
         ...
 
     def is_connected(self) -> bool:
+        """Return ``True`` if the transport connection is currently open."""
         ...
 
     # context manager sugar
@@ -135,83 +138,106 @@ class MagnetSupply(Protocol):
 
     # --- identity & configuration ---
     def identify(self) -> str:
+        """Return the instrument identity string."""
         ...
 
     def get_model(self) -> str:
+        """Return the instrument model name."""
         ...
 
     def get_firmware_version(self) -> str:
+        """Return the instrument firmware version string."""
         ...
 
     # --- readings as properties ---
     @property
     def current(self) -> float:
+        """Return the output current in amps."""
         ...
 
     @property
     def field(self) -> float:
+        """Return the output magnetic field in tesla."""
         ...
 
     @property
     def voltage(self) -> float:
+        """Return the output voltage in volts."""
         ...
 
     @property
     def status(self) -> MagnetStatus:
+        """Return a consolidated status snapshot of the magnet supply."""
         ...
 
     @property
     def magnet_constant(self) -> float:
+        """Return the magnet constant in tesla per amp."""
         ...
 
     @property
     def limits(self) -> MagnetLimits:
+        """Return the configured software operating limits."""
         ...
 
     @property
     def heater(self) -> bool:
+        """Return the current state of the persistent switch heater."""
         ...
 
     # --- configuration as methods ---
     def set_target_current(self, current: float) -> None:
+        """Set the target current in amps."""
         ...
 
     def set_target_field(self, field: float) -> None:
+        """Set the target magnetic field in tesla."""
         ...
 
     def set_ramp_rate_current(self, rate: float) -> None:
+        """Set the current ramp rate in amps per minute."""
         ...
 
     def set_ramp_rate_field(self, rate: float) -> None:
+        """Set the field ramp rate in tesla per minute."""
         ...
 
     def set_magnet_constant(self, tesla_per_amp: float) -> None:
+        """Set the magnet constant in tesla per amp."""
         ...
 
     def set_limits(self, limits: MagnetLimits) -> None:
+        """Set the software operating limits for this driver instance."""
         ...
 
     # --- actions as methods ---
     def ramp_to_target(self) -> None:
+        """Begin ramping to the currently programmed target."""
         ...
 
     def ramp_to_current(self, current: float, *, wait: bool = False) -> None:
+        """Programme a current target and begin ramping."""
         ...
 
     def ramp_to_field(self, field: float, *, wait: bool = False) -> None:
+        """Programme a field target and begin ramping."""
         ...
 
     def pause_ramp(self) -> None:
+        """Pause an active ramp."""
         ...
 
     def abort_ramp(self) -> None:
+        """Abort an active ramp immediately."""
         ...
 
     # --- persistent switch ---
     def heater_on(self) -> None:
+        """Enable the persistent switch heater."""
         ...
 
     def heater_off(self) -> None:
+        """Disable the persistent switch heater."""
         ...
 
 
