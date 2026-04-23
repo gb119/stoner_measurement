@@ -339,6 +339,12 @@ class BaseInstrument(ABC):
                 ``"RX"`` for received bytes.
             payload (bytes):
                 Raw payload bytes sent to or received from the instrument.
+
+        Notes:
+            ``errors='backslashreplace'`` is used when decoding *payload* so
+            that instruments which send non-UTF-8 binary frames (e.g. raw
+            IEEE 488.2 binary block data) are still represented as printable
+            text in the log rather than causing a ``UnicodeDecodeError``.
         """
         decoded_payload = payload.decode(
             "utf-8",
