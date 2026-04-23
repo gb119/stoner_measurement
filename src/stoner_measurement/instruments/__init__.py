@@ -25,6 +25,7 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.magnet_controller.MagnetController` — abstract type
 * :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
 * :class:`~stoner_measurement.instruments.current_source.CurrentSource` — abstract type
+* :class:`~stoner_measurement.instruments.lockin_amplifier.LockInAmplifier` — abstract type
 * :class:`~stoner_measurement.instruments.dmm.DigitalMultimeter` — abstract type
 * :class:`~stoner_measurement.instruments.electrometer.Electrometer` — abstract type
 * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
@@ -40,6 +41,8 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.keithley.Keithley6514` — concrete electrometer driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley6517` — concrete electrometer driver
 * :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81CurrentSource` — concrete current-source driver
+* :class:`~stoner_measurement.instruments.srs.SRS830` — concrete lock-in amplifier driver
+* :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81LockIn` — concrete lock-in amplifier driver
 """
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
@@ -67,6 +70,18 @@ from stoner_measurement.instruments.electrometer import (
     ElectrometerTriggerSource,
 )
 from stoner_measurement.instruments.errors import InstrumentError
+from stoner_measurement.instruments.lockin_amplifier import (
+    LockInAmplifier,
+    LockInAmplifierCapabilities,
+    LockInExpandFactor,
+    LockInInputCoupling,
+    LockInInputShielding,
+    LockInInputSource,
+    LockInLineFilter,
+    LockInOutputChannel,
+    LockInReferenceSource,
+    LockInReserveMode,
+)
 from stoner_measurement.instruments.magnet_controller import (
     MagnetController,
     MagnetLimits,
@@ -125,6 +140,16 @@ __all__ = [
     "ElectrometerTriggerSource",
     "InstrumentDriverManager",
     "InstrumentError",
+    "LockInAmplifier",
+    "LockInAmplifierCapabilities",
+    "LockInExpandFactor",
+    "LockInInputCoupling",
+    "LockInInputShielding",
+    "LockInInputSource",
+    "LockInLineFilter",
+    "LockInOutputChannel",
+    "LockInReferenceSource",
+    "LockInReserveMode",
     "LoopStatus",
     "MagnetController",
     "MagnetLimits",

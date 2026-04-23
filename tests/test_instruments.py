@@ -56,6 +56,19 @@ from stoner_measurement.instruments.lakeshore import (
     Lakeshore340,
     Lakeshore525,
     LakeshoreM81CurrentSource,
+    LakeshoreM81LockIn,
+)
+from stoner_measurement.instruments.lockin_amplifier import (
+    LockInAmplifier,
+    LockInAmplifierCapabilities,
+    LockInExpandFactor,
+    LockInInputCoupling,
+    LockInInputShielding,
+    LockInInputSource,
+    LockInLineFilter,
+    LockInOutputChannel,
+    LockInReferenceSource,
+    LockInReserveMode,
 )
 from stoner_measurement.instruments.magnet_controller import (
     MagnetController,
@@ -84,6 +97,7 @@ from stoner_measurement.instruments.source_meter import (
     TriggerModelConfiguration,
     TriggerSource,
 )
+from stoner_measurement.instruments.srs import SRS830
 from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
     ControllerCapabilities,
@@ -160,6 +174,10 @@ class TestAbstractEnforcement:
     def test_electrometer_is_abstract(self):
         with pytest.raises(TypeError):
             Electrometer(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+
+    def test_lock_in_amplifier_is_abstract(self):
+        with pytest.raises(TypeError):
+            LockInAmplifier(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -776,6 +794,248 @@ class TestKeithley2182Variants:
         k = Keithley182(transport=t)
         k.abort()
         assert t.write_log[-1] == b":ABOR\n"
+
+
+# ---------------------------------------------------------------------------
+# SRS830 concrete driver
+# ---------------------------------------------------------------------------
+
+
+class TestSRS830:
+    def test_default_protocol_is_scpi(self):
+        k = SRS830(transport=NullTransport())
+        assert isinstance(k.protocol, ScpiProtocol)
+
+    def test_dual_output_measurements(self):
+        t = _null(responses=[b"1.0,-2.0\n", b"3.0,45.0\n"])
+        k = SRS830(transport=t)
+        assert k.measure_xy() == pytest.approx((1.0, -2.0))
+        assert k.measure_rt() == pytest.approx((3.0, 45.0))
+
+    def test_getters(self):
+        t = _null(responses=[b"8\n", b"10\n", b"1\n", b"137.0\n", b"-12.5\n", b"3\n", b"2\n", b"1\n", b"2\n"])
+        k = SRS830(transport=t)
+        assert k.get_sensitivity() == pytest.approx(1e-6)
+        assert k.get_time_constant() == pytest.approx(1.0)
+        assert k.get_reference_source() is LockInReferenceSource.INTERNAL
+        assert k.get_reference_frequency() == pytest.approx(137.0)
+        assert k.get_reference_phase() == pytest.approx(-12.5)
+        assert k.get_harmonic() == 3
+        assert k.get_filter_slope() == 18
+        assert k.get_input_coupling() is LockInInputCoupling.DC
+        assert k.get_reserve_mode() is LockInReserveMode.LOW_NOISE
+
+    def test_setters_and_auto_actions(self):
+        t = _null()
+        k = SRS830(transport=t)
+        k.set_sensitivity(1e-6)
+        k.set_time_constant(1.0)
+        k.set_reference_source(LockInReferenceSource.EXTERNAL)
+        k.set_reference_frequency(17.0)
+        k.set_reference_phase(33.5)
+        k.set_harmonic(2)
+        k.set_filter_slope(12)
+        k.set_input_coupling(LockInInputCoupling.AC)
+        k.set_reserve_mode(LockInReserveMode.NORMAL)
+        k.auto_gain()
+        k.auto_phase()
+        k.auto_reserve()
+        assert t.write_log == [
+            b"SENS 8\n",
+            b"OFLT 10\n",
+            b"FMOD 0\n",
+            b"FREQ 17.0\n",
+            b"PHAS 33.5\n",
+            b"HARM 2\n",
+            b"OFSL 1\n",
+            b"ICPL 0\n",
+            b"RMOD 1\n",
+            b"AGAN\n",
+            b"APHS\n",
+            b"ARSV\n",
+        ]
+
+    def test_setter_validation(self):
+        k = SRS830(transport=_null())
+        with pytest.raises(ValueError):
+            k.set_sensitivity(1.5e-6)
+        with pytest.raises(ValueError):
+            k.set_time_constant(2.0)
+        with pytest.raises(ValueError):
+            k.set_reference_frequency(0.0)
+        with pytest.raises(ValueError):
+            k.set_harmonic(0)
+        with pytest.raises(ValueError):
+            k.set_harmonic(20000)
+        with pytest.raises(ValueError):
+            k.set_filter_slope(9)
+        with pytest.raises(ValueError):
+            k.set_oscillator_amplitude(0.003)
+        with pytest.raises(ValueError):
+            k.set_oscillator_amplitude(5.001)
+        with pytest.raises(ValueError):
+            k.set_output_offset(LockInOutputChannel.X, 106.0, LockInExpandFactor.X1)
+        with pytest.raises(ValueError):
+            k.set_output_offset(LockInOutputChannel.X, -106.0, LockInExpandFactor.X1)
+
+    def test_capabilities(self):
+        caps = SRS830(transport=_null()).get_capabilities()
+        assert isinstance(caps, LockInAmplifierCapabilities)
+        assert caps.has_harmonic_selection
+        assert caps.has_filter_slope_control
+        assert caps.has_input_coupling_control
+        assert caps.has_reserve_mode_control
+        assert caps.has_auto_gain
+        assert caps.has_auto_phase
+        assert caps.has_auto_reserve
+        assert caps.has_output_offset
+        assert caps.has_internal_oscillator
+        assert caps.has_input_source_selection
+        assert caps.has_input_shielding_control
+        assert caps.has_line_filter_control
+        assert caps.has_sync_filter
+        assert caps.max_harmonic == 19999
+
+    def test_oscillator_and_output_offset(self):
+        t = _null(responses=[b"0.5\n", b"10.0,1\n"])
+        k = SRS830(transport=t)
+        assert k.get_oscillator_amplitude() == pytest.approx(0.5)
+        offset_pct, expand = k.get_output_offset(LockInOutputChannel.X)
+        assert offset_pct == pytest.approx(10.0)
+        assert expand is LockInExpandFactor.X10
+        k.set_oscillator_amplitude(1.0)
+        k.set_output_offset(LockInOutputChannel.R, 5.0, LockInExpandFactor.X100)
+        assert t.write_log == [b"SLVL 1.0\n", b"OEXP 3,5.0,2\n"]
+
+    def test_input_source_and_shielding(self):
+        t = _null(responses=[b"1\n", b"1\n"])
+        k = SRS830(transport=t)
+        assert k.get_input_source() is LockInInputSource.A_MINUS_B
+        assert k.get_input_shielding() is LockInInputShielding.GROUND
+        k.set_input_source(LockInInputSource.I_1MOHM)
+        k.set_input_shielding(LockInInputShielding.FLOAT)
+        assert t.write_log == [b"ISRC 2\n", b"IGND 0\n"]
+
+    def test_line_filter_and_sync(self):
+        t = _null(responses=[b"2\n", b"0\n"])
+        k = SRS830(transport=t)
+        assert k.get_line_filter() is LockInLineFilter.LINE_2X
+        assert k.get_sync_filter_enabled() is False
+        k.set_line_filter(LockInLineFilter.BOTH)
+        k.set_sync_filter_enabled(True)
+        assert t.write_log == [b"ILIN 3\n", b"SYNC 1\n"]
+
+
+# ---------------------------------------------------------------------------
+# LakeshoreM81LockIn concrete driver
+# ---------------------------------------------------------------------------
+
+
+class TestLakeshoreM81LockIn:
+    def test_default_protocol_is_scpi(self):
+        k = LakeshoreM81LockIn(transport=NullTransport())
+        assert isinstance(k.protocol, ScpiProtocol)
+
+    def test_measure_xy_and_rt(self):
+        t = _null(responses=[b"1.2\n", b"-3.4\n", b"5.6\n", b"30.0\n"])
+        k = LakeshoreM81LockIn(transport=t, sense_slot=1)
+        x, y = k.measure_xy()
+        assert x == pytest.approx(1.2)
+        assert y == pytest.approx(-3.4)
+        r, theta = k.measure_rt()
+        assert r == pytest.approx(5.6)
+        assert theta == pytest.approx(30.0)
+
+    def test_sensitivity_and_time_constant(self):
+        t = _null(responses=[b"1e-3\n", b"0.1\n"])
+        k = LakeshoreM81LockIn(transport=t, sense_slot=2)
+        assert k.get_sensitivity() == pytest.approx(1e-3)
+        assert k.get_time_constant() == pytest.approx(0.1)
+        k.set_sensitivity(2e-3)
+        k.set_time_constant(0.3)
+        assert t.write_log == [b":SENS2:LIA:RANG 2e-03\n", b":SENS2:LIA:TC 0.3\n"]
+
+    def test_reference_source_and_phase(self):
+        t = _null(responses=[b"INT\n", b"-15.0\n"])
+        k = LakeshoreM81LockIn(transport=t, sense_slot=1)
+        assert k.get_reference_source() is LockInReferenceSource.INTERNAL
+        assert k.get_reference_phase() == pytest.approx(-15.0)
+        k.set_reference_source(LockInReferenceSource.EXTERNAL)
+        k.set_reference_phase(45.0)
+        assert t.write_log == [b":SENS1:LIA:RSRC EXT\n", b":SENS1:LIA:PHAS 45.0\n"]
+
+    def test_get_reference_frequency_without_source_slot(self):
+        t = _null(responses=[b"137.0\n"])
+        k = LakeshoreM81LockIn(transport=t, sense_slot=1)
+        assert k.get_reference_frequency() == pytest.approx(137.0)
+        assert t.write_log == []
+
+    def test_set_reference_frequency_without_source_slot_raises(self):
+        k = LakeshoreM81LockIn(transport=_null(), sense_slot=1)
+        with pytest.raises(NotImplementedError):
+            k.set_reference_frequency(100.0)
+
+    def test_reference_frequency_with_source_slot(self):
+        t = _null(responses=[b"100.0\n"])
+        k = LakeshoreM81LockIn(transport=t, sense_slot=1, source_slot=2)
+        assert k.get_reference_frequency() == pytest.approx(100.0)
+        k.set_reference_frequency(200.0)
+        assert t.write_log == [b":SOUR2:FREQ 200.0\n"]
+
+    def test_harmonic(self):
+        t = _null(responses=[b"5\n"])
+        k = LakeshoreM81LockIn(transport=t, sense_slot=1)
+        assert k.get_harmonic() == 5
+        k.set_harmonic(10)
+        assert t.write_log == [b":SENS1:LIA:HARM 10\n"]
+
+    def test_filter_slope(self):
+        t = _null(responses=[b"2\n"])
+        k = LakeshoreM81LockIn(transport=t, sense_slot=1)
+        assert k.get_filter_slope() == 12
+        k.set_filter_slope(18)
+        assert t.write_log == [b":SENS1:LIA:FILP 3\n"]
+
+    def test_input_coupling(self):
+        t = _null(responses=[b"DC\n"])
+        k = LakeshoreM81LockIn(transport=t, sense_slot=1)
+        assert k.get_input_coupling() is LockInInputCoupling.DC
+        k.set_input_coupling(LockInInputCoupling.AC)
+        assert t.write_log == [b":SENS1:LIA:CPLS AC\n"]
+
+    def test_auto_phase(self):
+        t = _null()
+        k = LakeshoreM81LockIn(transport=t, sense_slot=1)
+        k.auto_phase()
+        assert t.write_log == [b":SENS1:LIA:APHS\n"]
+
+    def test_validation(self):
+        k = LakeshoreM81LockIn(transport=_null())
+        with pytest.raises(ValueError):
+            k.set_sensitivity(0.0)
+        with pytest.raises(ValueError):
+            k.set_time_constant(-1.0)
+        with pytest.raises(ValueError):
+            k.set_harmonic(0)
+        with pytest.raises(ValueError):
+            k.set_filter_slope(9)
+
+    def test_capabilities_without_source_slot(self):
+        caps = LakeshoreM81LockIn(transport=_null()).get_capabilities()
+        assert isinstance(caps, LockInAmplifierCapabilities)
+        assert not caps.has_reference_frequency_control
+        assert caps.has_reference_phase_control
+        assert caps.has_harmonic_selection
+        assert caps.has_filter_slope_control
+        assert caps.has_input_coupling_control
+        assert caps.has_auto_phase
+        assert not caps.has_reserve_mode_control
+        assert not caps.has_output_offset
+        assert caps.max_harmonic == 9999
+
+    def test_capabilities_with_source_slot(self):
+        caps = LakeshoreM81LockIn(transport=_null(), source_slot=2).get_capabilities()
+        assert caps.has_reference_frequency_control
 
 
 # ---------------------------------------------------------------------------
@@ -2723,6 +2983,35 @@ class TestTemperatureControllerExports:
         assert TemperatureReading is not None
         assert TemperatureStatus is not None
         assert ZoneEntry is not None
+
+
+class TestLockInAmplifierExports:
+    """Lock-in types must be importable from the top-level instruments package."""
+
+    def test_all_types_exported(self):
+        from stoner_measurement.instruments import (
+            LockInAmplifier,
+            LockInAmplifierCapabilities,
+            LockInExpandFactor,
+            LockInInputCoupling,
+            LockInInputShielding,
+            LockInInputSource,
+            LockInLineFilter,
+            LockInOutputChannel,
+            LockInReferenceSource,
+            LockInReserveMode,
+        )
+
+        assert LockInAmplifier is not None
+        assert LockInAmplifierCapabilities is not None
+        assert LockInExpandFactor is not None
+        assert LockInInputCoupling is not None
+        assert LockInInputShielding is not None
+        assert LockInInputSource is not None
+        assert LockInLineFilter is not None
+        assert LockInOutputChannel is not None
+        assert LockInReferenceSource is not None
+        assert LockInReserveMode is not None
 
 
 # ---------------------------------------------------------------------------

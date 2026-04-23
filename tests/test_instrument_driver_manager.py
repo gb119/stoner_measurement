@@ -12,6 +12,7 @@ from stoner_measurement.instruments import (
     DigitalMultimeter,
     Electrometer,
     InstrumentDriverManager,
+    LockInAmplifier,
     MagnetController,
     Nanovoltmeter,
     SourceMeter,
@@ -57,6 +58,8 @@ class TestInstrumentDriverManager:
         assert "OxfordIPS120" in discovered
         assert "OxfordITC503" in discovered
         assert "OxfordMercuryTemperatureController" in discovered
+        assert "SRS830" in discovered
+        assert "LakeshoreM81LockIn" in discovered
 
     def test_drivers_by_type_filters_magnet_controllers(self):
         manager = InstrumentDriverManager()
@@ -109,6 +112,14 @@ class TestInstrumentDriverManager:
         assert "Keithley2182A" in nanovoltmeters
         assert "Keithley182" in nanovoltmeters
         assert "Keithley2000" not in nanovoltmeters
+
+    def test_drivers_by_type_filters_lock_in_amplifiers(self):
+        manager = InstrumentDriverManager()
+        manager.discover()
+        lockins = manager.drivers_by_type(LockInAmplifier)
+        assert "SRS830" in lockins
+        assert "LakeshoreM81LockIn" in lockins
+        assert "Keithley2000" not in lockins
 
     def test_discover_loads_third_party_entry_points(self, monkeypatch):
         fake_eps = [_FakeEntryPoint(name="third_party", target=_ThirdPartyInstrument)]
