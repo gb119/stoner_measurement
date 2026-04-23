@@ -110,6 +110,12 @@ class MagnetStatus:
 
 
 class MagnetSupply(Protocol):
+    """Protocol describing the expected interface of a magnet supply driver.
+
+    Defines the minimum lifecycle, configuration, readback, and ramp-control
+    operations required by code that interacts with magnet supply objects.
+    """
+
     # --- lifecycle ---
     def connect(self) -> None:
         ...
