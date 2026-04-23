@@ -5,14 +5,16 @@ window that lets the user configure and monitor a temperature controller through
 the :class:`~stoner_measurement.temperature_control.engine.TemperatureControllerEngine`
 singleton.
 
-The panel has five sections arranged in a :class:`~PyQt6.QtWidgets.QTabWidget`:
+The panel has four sections arranged in a :class:`~PyQt6.QtWidgets.QTabWidget`:
 
 * **Connection** — driver type, transport type, address, Connect/Disconnect.
 * **Control** — setpoint, mode, ramp, PID, needle valve per loop.
 * **Stability** — tolerance, window, minimum rate-of-change settings.
 * **Chart** — live scrolling pyqtgraph plot of temperatures, setpoints,
   heater output, and needle valve.
-* **Status** — last-updated timestamp, engine status, at-setpoint/stable flags.
+
+A status bar at the bottom shows the last-updated timestamp, engine status,
+and at-setpoint/stable boolean indicators.
 
 Closing the window only hides it; the engine keeps running.
 """

@@ -60,11 +60,11 @@ class TemperatureChannelReading:
             ``0.0`` until enough readings have accumulated.
 
     Examples:
-        >>> from datetime import datetime, timezone
+        >>> from datetime import UTC, datetime
         >>> from stoner_measurement.instruments.temperature_controller import SensorStatus
         >>> from stoner_measurement.temperature_control.types import TemperatureChannelReading
         >>> r = TemperatureChannelReading(
-        ...     channel="A", value=300.0, timestamp=datetime.now(tz=timezone.utc),
+        ...     channel="A", value=300.0, timestamp=datetime.now(tz=UTC),
         ...     status=SensorStatus.OK,
         ... )
         >>> r.units

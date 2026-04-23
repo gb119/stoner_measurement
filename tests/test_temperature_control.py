@@ -508,7 +508,6 @@ class TestTemperatureControlPanel:
         panel.hide()
 
     def test_close_hides_not_destroys(self, qapp):
-
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
         panel = TemperatureControlPanel()
