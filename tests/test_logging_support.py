@@ -13,7 +13,6 @@ from stoner_measurement.core.sequence_engine import (
 )
 from stoner_measurement.plugins.trace import DummyPlugin
 
-
 # ---------------------------------------------------------------------------
 # _QtLogHandler
 # ---------------------------------------------------------------------------
@@ -171,6 +170,7 @@ class TestLogViewerWindow:
 
     def test_stays_on_top_hint(self, qapp):
         from PyQt6.QtCore import Qt
+
         from stoner_measurement.ui.log_viewer import LogViewerWindow
         viewer = LogViewerWindow()
         flags = viewer.windowFlags()

@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.transport.base import BaseTransport
 
+_COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
+
 
 class BaseInstrument(ABC):
     """Base class for all instrument drivers.
@@ -92,7 +94,7 @@ class BaseInstrument(ABC):
         self.transport = transport
         self.protocol = protocol
         self.auto_check_errors = auto_check_errors
-        self._comms_logger = logging.getLogger(f"stoner_measurement.sequence.comms.{self.__class__.__name__}")
+        self._comms_logger = logging.getLogger(f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}")
 
     @property
     def is_connected(self) -> bool:
