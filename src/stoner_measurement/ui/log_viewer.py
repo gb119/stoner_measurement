@@ -205,6 +205,7 @@ class LogViewerWindow(QWidget):
             message = str(record.msg)
         text = f"[{timestamp}] {level_name:8s} {message}"
 
+        # Choose colour by level; fall back to the nearest lower level.
         colour = _LEVEL_COLOURS.get(record.levelno)
         if colour is None:
             for level in sorted(_LEVEL_COLOURS, reverse=True):
