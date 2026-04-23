@@ -340,7 +340,10 @@ class BaseInstrument(ABC):
             payload (bytes):
                 Raw payload bytes sent to or received from the instrument.
         """
-        decoded_payload = payload.decode("utf-8", errors="backslashreplace").rstrip("\r\n")
+        decoded_payload = payload.decode(
+            "utf-8",
+            errors="backslashreplace",
+        ).rstrip("\r\n")
         self._comms_logger.debug(
             "%s %s",
             direction,
