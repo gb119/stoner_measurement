@@ -11,6 +11,8 @@ Covers:
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
@@ -235,6 +237,22 @@ class TestBaseInstrument:
         k = Keithley2400(transport=t)
         with pytest.raises(ConnectionError):
             k.write("OUTP ON")
+
+    def test_query_logs_tx_and_rx_transcript_records(self, caplog):
+        t = _null(responses=[b"answer\n"])
+        k = Keithley2400(transport=t)
+        with caplog.at_level(logging.DEBUG, logger="stoner_measurement.sequence.comms"):
+            assert k.query("*IDN?") == "answer"
+        transcript_records = [
+            record
+            for record in caplog.records
+            if getattr(record, "sm_traffic_channel", "") == "instrument_comms"
+        ]
+        assert len(transcript_records) == 2
+        assert transcript_records[0].sm_traffic_direction == "TX"
+        assert transcript_records[0].getMessage() == "TX *IDN?"
+        assert transcript_records[1].sm_traffic_direction == "RX"
+        assert transcript_records[1].getMessage() == "RX answer"
 
 
 # ---------------------------------------------------------------------------

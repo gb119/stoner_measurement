@@ -13,6 +13,7 @@ from datetime import datetime
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QPlainTextEdit,
     QPushButton,
@@ -28,6 +29,14 @@ _LEVEL_COLOURS: dict[int, QColor] = {
     logging.WARNING: QColor("#c07000"),
     logging.ERROR: QColor("#cc0000"),
     logging.CRITICAL: QColor("#880000"),
+}
+
+_TRAFFIC_FILTER_LABELS: dict[str, str] = {
+    "all": "All logs",
+    "comms": "Instrument comms",
+    "tx": "Instrument TX",
+    "rx": "Instrument RX",
+    "no-comms": "Hide comms",
 }
 
 
@@ -61,6 +70,7 @@ class LogViewerWindow(QWidget):
         )
         self.setWindowTitle("Log Viewer")
         self.resize(700, 400)
+        self._records: list[logging.LogRecord] = []
 
         # Output area ----------------------------------------------------------
         self._output = QPlainTextEdit(self)
@@ -80,8 +90,14 @@ class LogViewerWindow(QWidget):
         self._btn_close.setFixedWidth(70)
         self._btn_close.clicked.connect(self.hide)
 
+        self._traffic_filter = QComboBox(self)
+        for key, label in _TRAFFIC_FILTER_LABELS.items():
+            self._traffic_filter.addItem(label, key)
+        self._traffic_filter.currentIndexChanged.connect(self._on_filter_changed)
+
         btn_row = QHBoxLayout()
         btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.addWidget(self._traffic_filter)
         btn_row.addStretch()
         btn_row.addWidget(self._btn_clear)
         btn_row.addWidget(self._btn_close)
@@ -126,6 +142,7 @@ class LogViewerWindow(QWidget):
             >>> viewer.append_record(record)
             >>> viewer.clear()
         """
+        self._records.clear()
         self._output.clear()
 
     @pyqtSlot(logging.LogRecord)
@@ -149,6 +166,37 @@ class LogViewerWindow(QWidget):
             ...     lineno=0, msg="watch out", args=(), exc_info=None)
             >>> viewer.append_record(record)
         """
+        self._records.append(record)
+        if self._record_matches_filter(record):
+            self._render_record(record)
+
+    @pyqtSlot(int)
+    def _on_filter_changed(self, _index: int) -> None:
+        """Rebuild the visible log list after a filter selection change."""
+        self._output.clear()
+        for record in self._records:
+            if self._record_matches_filter(record):
+                self._render_record(record)
+
+    def _record_matches_filter(self, record: logging.LogRecord) -> bool:
+        """Return ``True`` when *record* is visible in the active filter mode."""
+        mode = str(self._traffic_filter.currentData() or "all")
+        channel = getattr(record, "sm_traffic_channel", "")
+        direction = getattr(record, "sm_traffic_direction", "")
+        if mode == "all":
+            return True
+        if mode == "comms":
+            return channel == "instrument_comms"
+        if mode == "tx":
+            return channel == "instrument_comms" and direction == "TX"
+        if mode == "rx":
+            return channel == "instrument_comms" and direction == "RX"
+        if mode == "no-comms":
+            return channel != "instrument_comms"
+        return True
+
+    def _render_record(self, record: logging.LogRecord) -> None:
+        """Render one log *record* into the output text area."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         level_name = record.levelname
         try:
@@ -157,7 +205,6 @@ class LogViewerWindow(QWidget):
             message = str(record.msg)
         text = f"[{timestamp}] {level_name:8s} {message}"
 
-        # Choose colour by level; fall back to the nearest lower level.
         colour = _LEVEL_COLOURS.get(record.levelno)
         if colour is None:
             for level in sorted(_LEVEL_COLOURS, reverse=True):

@@ -193,3 +193,63 @@ class TestLogViewerWindow:
                 exc_info=None,
             )
             viewer.append_record(record)  # should not raise
+
+    @pytest.mark.parametrize(
+        ("mode", "expected", "unexpected"),
+        [
+            ("comms", "TX *IDN?", "regular message"),
+            ("tx", "TX *IDN?", "RX answer"),
+            ("rx", "RX answer", "TX *IDN?"),
+            ("no-comms", "regular message", "TX *IDN?"),
+        ],
+    )
+    def test_traffic_filter_modes(self, qapp, mode, expected, unexpected):
+        from stoner_measurement.ui.log_viewer import LogViewerWindow
+
+        viewer = LogViewerWindow()
+
+        tx_record = logging.LogRecord(
+            name="stoner_measurement.sequence.comms.Keithley2400",
+            level=logging.DEBUG,
+            pathname="",
+            lineno=0,
+            msg="TX *IDN?",
+            args=(),
+            exc_info=None,
+        )
+        tx_record.sm_traffic_channel = "instrument_comms"
+        tx_record.sm_traffic_direction = "TX"
+
+        rx_record = logging.LogRecord(
+            name="stoner_measurement.sequence.comms.Keithley2400",
+            level=logging.DEBUG,
+            pathname="",
+            lineno=0,
+            msg="RX answer",
+            args=(),
+            exc_info=None,
+        )
+        rx_record.sm_traffic_channel = "instrument_comms"
+        rx_record.sm_traffic_direction = "RX"
+
+        regular_record = logging.LogRecord(
+            name="stoner_measurement.sequence",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="regular message",
+            args=(),
+            exc_info=None,
+        )
+
+        viewer.append_record(tx_record)
+        viewer.append_record(rx_record)
+        viewer.append_record(regular_record)
+
+        mode_index = viewer._traffic_filter.findData(mode)
+        assert mode_index >= 0
+        viewer._traffic_filter.setCurrentIndex(mode_index)
+
+        output_text = viewer._output.toPlainText()
+        assert expected in output_text
+        assert unexpected not in output_text
