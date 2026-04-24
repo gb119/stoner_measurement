@@ -145,11 +145,12 @@ def list_visa_resources(
         return []
 
     result: list[str] = []
+    interface_type_ints = None if resource_filter is None else {int(t) for t in resource_filter}
     for resource_string, info in resources_info.items():
-        if resource_filter is not None and int(info.interface_type) not in {int(t) for t in resource_filter}:
+        if interface_type_ints is not None and int(info.interface_type) not in interface_type_ints:
             continue
         alias = getattr(info, "alias", None)
-        result.append(alias if alias else resource_string)
+        result.append(alias or resource_string)
     return sorted(result)
 
 
