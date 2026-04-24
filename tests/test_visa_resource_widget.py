@@ -8,6 +8,7 @@ from stoner_measurement.ui.widgets.visa_resource_widget import (
     FILTER_ALL,
     FILTER_GPIB,
     FILTER_SERIAL,
+    VisaInterfaceType,
     VisaResourceComboBox,
     VisaResourceStatus,
     list_visa_resources,
@@ -122,13 +123,13 @@ class TestVisaResourceComboBox:
         assert any("GPIB0::9::INSTR" in r for r in received)
 
     def test_filter_all_constant(self):
-        assert FILTER_ALL == "?*::INSTR"
+        assert FILTER_ALL is None
 
     def test_filter_serial_constant(self):
-        assert FILTER_SERIAL == "ASRL*::INSTR"
+        assert FILTER_SERIAL == frozenset({VisaInterfaceType.SERIAL})
 
     def test_filter_gpib_constant(self):
-        assert FILTER_GPIB == "GPIB*::*::INSTR"
+        assert FILTER_GPIB == frozenset({VisaInterfaceType.GPIB})
 
     def test_widget_has_refresh_button(self, qapp):
         from PyQt6.QtWidgets import QPushButton
