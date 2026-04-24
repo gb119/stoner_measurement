@@ -8,6 +8,7 @@ at construction time if it is not installed.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.transport.base import BaseTransport
@@ -15,6 +16,10 @@ from stoner_measurement.instruments.transport.base import BaseTransport
 if TYPE_CHECKING:
     import pyvisa
     import pyvisa.resources
+
+#: Regular expression that parses a GPIB VISA resource string of the form
+#: ``"GPIB<board>::<address>::INSTR"``.
+_GPIB_RESOURCE_RE = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
 
 
 class GpibTransport(BaseTransport):
@@ -70,6 +75,52 @@ class GpibTransport(BaseTransport):
         self.board = board
         self._resource: pyvisa.resources.GPIBInstrument | None = None
         self._rm: pyvisa.ResourceManager | None = None
+
+    @classmethod
+    def from_resource_string(cls, resource_string: str, timeout: float = 2.0) -> GpibTransport:
+        """Construct a :class:`GpibTransport` from a VISA resource string.
+
+        Parses the *board* and *address* components from a resource string of
+        the form ``"GPIB<board>::<address>::INSTR"`` and delegates to the
+        standard constructor.
+
+        Args:
+            resource_string (str):
+                VISA resource string, e.g. ``"GPIB0::22::INSTR"``.
+
+        Keyword Parameters:
+            timeout (float):
+                Read timeout in seconds.  Defaults to ``2.0``.
+
+        Returns:
+            (GpibTransport):
+                A new :class:`GpibTransport` instance.
+
+        Raises:
+            ValueError:
+                If *resource_string* does not match the expected GPIB format.
+            ImportError:
+                If :mod:`pyvisa` is not installed.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import GpibTransport
+            >>> t = GpibTransport.from_resource_string("GPIB0::14::INSTR")
+            >>> t.address
+            14
+            >>> t.board
+            0
+            >>> t.resource_string
+            'GPIB0::14::INSTR'
+        """
+        m = _GPIB_RESOURCE_RE.match(resource_string.strip())
+        if not m:
+            raise ValueError(
+                f"Cannot parse GPIB resource string {resource_string!r}. "
+                "Expected format: 'GPIB<board>::<address>::INSTR'."
+            )
+        board = int(m.group(1))
+        address = int(m.group(2))
+        return cls(address=address, board=board, timeout=timeout)
 
     @property
     def resource_string(self) -> str:

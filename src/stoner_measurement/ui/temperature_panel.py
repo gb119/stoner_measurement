@@ -58,6 +58,12 @@ from stoner_measurement.temperature_control.types import (
     StabilityConfig,
     TemperatureEngineState,
 )
+from stoner_measurement.ui.visa_resource_widget import (
+    FILTER_GPIB,
+    FILTER_SERIAL,
+    VisaResourceComboBox,
+    VisaResourceStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -297,11 +303,15 @@ class TemperatureControlPanel(QWidget):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(0, 0, 0, 0)
-        self._serial_port_edit = _line_edit("/dev/ttyUSB0")
+        self._serial_port_combo = VisaResourceComboBox(
+            resource_filter=FILTER_SERIAL,
+            placeholder="/dev/ttyUSB0",
+            extra_resources=["/dev/ttyUSB0"],
+        )
         self._serial_baud_combo = QComboBox()
         for baud in (9600, 19200, 38400, 57600, 115200):
             self._serial_baud_combo.addItem(str(baud), baud)
-        form.addRow("Port:", self._serial_port_edit)
+        form.addRow("Port:", self._serial_port_combo)
         form.addRow("Baud rate:", self._serial_baud_combo)
         return w
 
@@ -315,8 +325,12 @@ class TemperatureControlPanel(QWidget):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(0, 0, 0, 0)
-        self._gpib_resource_edit = _line_edit("GPIB0::2::INSTR")
-        form.addRow("VISA resource:", self._gpib_resource_edit)
+        self._gpib_resource_combo = VisaResourceComboBox(
+            resource_filter=FILTER_GPIB,
+            placeholder="GPIB0::2::INSTR",
+            extra_resources=["GPIB0::2::INSTR"],
+        )
+        form.addRow("VISA resource:", self._gpib_resource_combo)
         return w
 
     def _build_ethernet_address_form(self) -> QWidget:
@@ -708,10 +722,12 @@ class TemperatureControlPanel(QWidget):
         if driver_cls is None:
             return
         transport_index = self._transport_combo.currentIndex()
+        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTING)
         try:
             transport = self._build_transport(transport_index)
         except Exception:
             logger.exception("Failed to build transport")
+            self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 
         try:
@@ -728,9 +744,11 @@ class TemperatureControlPanel(QWidget):
             driver = driver_cls(transport=transport, protocol=protocol)
         except Exception:
             logger.exception("Failed to instantiate driver")
+            self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 
         self._engine.connect_instrument(driver)
+        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
 
         # Populate control tab with loop groups.
         try:
@@ -744,6 +762,23 @@ class TemperatureControlPanel(QWidget):
         except Exception:
             logger.exception("Failed to read capabilities after connection")
 
+    def _set_address_widget_status(self, transport_index: int, status: VisaResourceStatus) -> None:
+        """Update the connection-status colour on the active address widget.
+
+        Only :class:`VisaResourceComboBox` instances (serial and GPIB) support
+        status colouring; other transport address widgets are left unchanged.
+
+        Args:
+            transport_index (int):
+                Index of the currently selected transport.
+            status (VisaResourceStatus):
+                Status to apply.
+        """
+        if transport_index == 0:
+            self._serial_port_combo.set_status(status)
+        elif transport_index == 1:
+            self._gpib_resource_combo.set_status(status)
+
     def _build_transport(self, index: int):
         """Instantiate the selected transport.
 
@@ -756,12 +791,12 @@ class TemperatureControlPanel(QWidget):
                 The constructed transport instance (not yet opened).
         """
         if index == 0:  # Serial
-            port = self._serial_port_edit.text().strip()
+            port = self._serial_port_combo.current_resource() or "/dev/ttyUSB0"
             baud = self._serial_baud_combo.currentData()
             return SerialTransport(port=port, baud_rate=baud)
         if index == 1:  # GPIB
-            resource = self._gpib_resource_edit.text().strip()
-            return GpibTransport(resource_string=resource)
+            resource = self._gpib_resource_combo.current_resource() or "GPIB0::2::INSTR"
+            return GpibTransport.from_resource_string(resource)
         if index == 2:  # Ethernet
             host = self._eth_host_edit.text().strip()
             port = self._eth_port_spin.value()
@@ -775,6 +810,9 @@ class TemperatureControlPanel(QWidget):
         self._capabilities = None
         self._clear_loop_groups()
         self._needle_group.hide()
+        # Reset address widget colours to disconnected state.
+        self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
+        self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
 
     # ------------------------------------------------------------------
     # Control tab slots
