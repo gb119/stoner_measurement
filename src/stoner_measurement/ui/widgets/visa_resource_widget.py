@@ -8,7 +8,7 @@ reflect the connection status of the associated instrument.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Sequence
 
 from PyQt6.QtCore import pyqtSignal
@@ -64,31 +64,69 @@ class VisaResourceStatus(Enum):
 # Filter helpers
 # ---------------------------------------------------------------------------
 
-#: VISA filter string that matches all instrument resources.
-FILTER_ALL: str = "?*::INSTR"
-#: VISA filter string that matches serial (ASRL) instrument resources.
-FILTER_SERIAL: str = "ASRL*::INSTR"
-#: VISA filter string that matches GPIB instrument resources.
-FILTER_GPIB: str = "GPIB*::*::INSTR"
+
+class VisaInterfaceType(IntEnum):
+    """VISA interface types, mirroring :data:`pyvisa.constants.InterfaceType`.
+
+    These integer values match the underlying pyvisa constants so that
+    comparisons against ``ResourceInfo.interface_type`` work without requiring
+    pyvisa to be imported at module level.
+
+    Attributes:
+        GPIB:
+            IEEE-488 (GPIB) interface.
+        SERIAL:
+            Asynchronous serial (ASRL / RS-232 / RS-485) interface.
+        TCPIP:
+            TCP/IP (LAN) interface.
+        USB:
+            USB (USBTMC) interface.
+
+    Examples:
+        >>> VisaInterfaceType.GPIB.value
+        1
+        >>> VisaInterfaceType.SERIAL.value
+        4
+    """
+
+    GPIB = 1
+    SERIAL = 4
+    TCPIP = 6
+    USB = 7
 
 
-def list_visa_resources(resource_filter: str = FILTER_ALL) -> list[str]:
+#: Filter that matches all instrument resource types.
+FILTER_ALL: frozenset[VisaInterfaceType] | None = None
+#: Filter that matches serial (ASRL) instrument resources.
+FILTER_SERIAL: frozenset[VisaInterfaceType] = frozenset({VisaInterfaceType.SERIAL})
+#: Filter that matches GPIB instrument resources.
+FILTER_GPIB: frozenset[VisaInterfaceType] = frozenset({VisaInterfaceType.GPIB})
+
+
+def list_visa_resources(
+    resource_filter: frozenset[VisaInterfaceType] | None = FILTER_ALL,
+) -> list[str]:
     """Return a list of available VISA resource strings.
 
-    Uses :mod:`pyvisa`'s :class:`~pyvisa.ResourceManager` to enumerate
-    resources matching *resource_filter*.  If :mod:`pyvisa` is not installed,
-    or if no resources are found, an empty list is returned.
+    Uses :mod:`pyvisa`'s :class:`~pyvisa.ResourceManager` to enumerate all
+    resources via :meth:`~pyvisa.ResourceManager.list_resources_info` and
+    then filters by interface type.  If a resource has an alias defined it is
+    returned in preference to the canonical resource string.  If :mod:`pyvisa`
+    is not installed, or if no resources are found, an empty list is returned.
 
     Args:
-        resource_filter (str):
-            VISA resource filter expression, e.g. ``"?*::INSTR"`` for all
-            instruments, ``"ASRL*::INSTR"`` for serial ports, or
-            ``"GPIB*::*::INSTR"`` for GPIB devices.  Defaults to
+        resource_filter (frozenset[VisaInterfaceType] | None):
+            Set of :class:`VisaInterfaceType` values to include.  Pass
+            ``None`` (or :data:`FILTER_ALL`) to include every interface type.
+            Use :data:`FILTER_SERIAL` or :data:`FILTER_GPIB` for specific
+            subsets, or build a custom :class:`frozenset` from
+            :class:`VisaInterfaceType` members.  Defaults to
             :data:`FILTER_ALL`.
 
     Returns:
         (list[str]):
-            Sorted list of VISA resource strings that match the filter.
+            Sorted list of VISA resource strings (or their aliases) that match
+            the filter.
 
     Examples:
         >>> resources = list_visa_resources()
@@ -99,13 +137,20 @@ def list_visa_resources(resource_filter: str = FILTER_ALL) -> list[str]:
         import pyvisa
 
         rm = pyvisa.ResourceManager()
-        resources = rm.list_resources(resource_filter)
+        resources_info = rm.list_resources_info()
         rm.close()
-        return sorted(resources)
     except ImportError:
         return []
     except Exception:  # noqa: BLE001 – pyvisa.Error and OSError from missing VISA library
         return []
+
+    result: list[str] = []
+    for resource_string, info in resources_info.items():
+        if resource_filter is not None and int(info.interface_type) not in {int(t) for t in resource_filter}:
+            continue
+        alias = getattr(info, "alias", None)
+        result.append(alias if alias else resource_string)
+    return sorted(result)
 
 
 # ---------------------------------------------------------------------------
@@ -136,11 +181,13 @@ class VisaResourceComboBox(QWidget):
             Optional Qt parent widget.
 
     Keyword Parameters:
-        resource_filter (str):
-            VISA filter expression used when enumerating resources.  Use one
+        resource_filter (frozenset[VisaInterfaceType] | None):
+            Interface-type filter used when enumerating resources.  Use one
             of the :data:`FILTER_ALL`, :data:`FILTER_SERIAL`, or
-            :data:`FILTER_GPIB` constants, or any valid PyVISA filter string.
-            Defaults to :data:`FILTER_ALL`.
+            :data:`FILTER_GPIB` constants, or build a custom
+            :class:`frozenset` from :class:`VisaInterfaceType` members.
+            ``None`` (the default, :data:`FILTER_ALL`) includes every
+            interface type.
         placeholder (str):
             Placeholder text displayed in the combo box when no resource has
             been selected.  Defaults to ``"(no resource selected)"``.
@@ -174,7 +221,7 @@ class VisaResourceComboBox(QWidget):
         self,
         parent: QWidget | None = None,
         *,
-        resource_filter: str = FILTER_ALL,
+        resource_filter: frozenset[VisaInterfaceType] | None = FILTER_ALL,
         placeholder: str = "(no resource selected)",
         extra_resources: Sequence[str] = (),
     ) -> None:
