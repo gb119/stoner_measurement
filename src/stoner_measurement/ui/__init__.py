@@ -3,7 +3,7 @@
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
 from stoner_measurement.ui.script_tab import ScriptTab
-from stoner_measurement.ui.visa_resource_widget import (
+from stoner_measurement.ui.widgets import (
     FILTER_ALL,
     FILTER_GPIB,
     FILTER_SERIAL,

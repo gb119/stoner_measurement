@@ -58,7 +58,7 @@ from stoner_measurement.temperature_control.types import (
     StabilityConfig,
     TemperatureEngineState,
 )
-from stoner_measurement.ui.visa_resource_widget import (
+from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
     VisaResourceComboBox,

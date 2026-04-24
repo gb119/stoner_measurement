@@ -159,7 +159,7 @@ class VisaResourceComboBox(QWidget):
     Examples:
         >>> from PyQt6.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.ui.visa_resource_widget import VisaResourceComboBox
+        >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
         >>> w = VisaResourceComboBox()
         >>> w is not None
         True
@@ -202,7 +202,7 @@ class VisaResourceComboBox(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.ui.visa_resource_widget import VisaResourceComboBox
+            >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox(extra_resources=["GPIB0::2::INSTR"])
             >>> w.set_resource("GPIB0::2::INSTR")
             >>> w.current_resource()
@@ -220,7 +220,7 @@ class VisaResourceComboBox(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.ui.visa_resource_widget import VisaResourceComboBox
+            >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox()
             >>> w.set_resource("GPIB0::5::INSTR")
             >>> w.current_resource()
@@ -242,7 +242,7 @@ class VisaResourceComboBox(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.ui.visa_resource_widget import (
+            >>> from stoner_measurement.ui.widgets.visa_resource_widget import (
             ...     VisaResourceComboBox, VisaResourceStatus,
             ... )
             >>> w = VisaResourceComboBox()
@@ -290,7 +290,7 @@ class VisaResourceComboBox(QWidget):
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.ui.visa_resource_widget import VisaResourceComboBox
+            >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox()
             >>> w.refresh()  # should not raise
         """

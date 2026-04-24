@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from stoner_measurement.ui.visa_resource_widget import (
+from stoner_measurement.ui.widgets.visa_resource_widget import (
     FILTER_ALL,
     FILTER_GPIB,
     FILTER_SERIAL,
