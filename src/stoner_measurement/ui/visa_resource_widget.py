@@ -102,7 +102,9 @@ def list_visa_resources(resource_filter: str = FILTER_ALL) -> list[str]:
         resources = rm.list_resources(resource_filter)
         rm.close()
         return sorted(resources)
-    except Exception:  # pyvisa not installed or VISA library absent
+    except ImportError:
+        return []
+    except Exception:  # noqa: BLE001 – pyvisa.Error and OSError from missing VISA library
         return []
 
 
