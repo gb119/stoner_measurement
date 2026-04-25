@@ -259,7 +259,16 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self.set_gas_flow(position)
 
     def get_gas_auto(self) -> bool:
-        """Return ``True`` if gas flow is under automatic control."""
+        """Return ``True`` if gas flow is under automatic control.
+
+        Returns:
+            (bool):
+                The last value set via :meth:`set_gas_auto`.  The ITC503
+                does not expose a read-back command for the auto/manual mode
+                flag, so the returned value reflects the last software-set
+                state rather than a live hardware query.  The value defaults
+                to ``False`` on first connection.
+        """
         return self._gas_auto
 
     def set_gas_auto(self, auto: bool) -> None:
@@ -383,7 +392,6 @@ class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
 
     def set_gas_auto(self, auto: bool) -> None:
         """Enable or disable automatic needle-valve control."""
-        self._gas_auto = auto
         mode = "AUTO" if auto else "MANUAL"
         self.write(f"SET:NEEDLEVALVE:MODE {mode}")
 

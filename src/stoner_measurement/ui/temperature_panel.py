@@ -1051,7 +1051,13 @@ class _LoopControlGroup(QGroupBox):
     # --- Live update ---
 
     def update_live(self, setpoint: float, heater_output: float, mode, heater_range: int | None = None, input_channel: str | None = None) -> None:
-        """Refresh live-readback labels.
+        """Refresh live-readback labels from the engine polling state.
+
+        Only the read-only status labels are updated here; editable control
+        widgets (mode combo, heater range, input channel, PID, ramp) are
+        intentionally not overwritten during live polling to avoid disrupting
+        values the user may be in the process of editing.  Use the **Read**
+        button to populate the editable fields with the current hardware state.
 
         Args:
             setpoint (float):
@@ -1063,9 +1069,13 @@ class _LoopControlGroup(QGroupBox):
 
         Keyword Parameters:
             heater_range (int | None):
-                Current heater range index, or ``None`` if not available.
+                Current heater range index — provided for potential future use
+                but not reflected in the editable range widget during live
+                polling.
             input_channel (str | None):
-                Current input channel assignment, or ``None`` if not available.
+                Current input channel — provided for potential future use but
+                not reflected in the editable channel widget during live
+                polling.
         """
         self._setpoint_label.setText(f"{setpoint:.3f} K")
         self._heater_label.setText(f"{heater_output:.1f} %")

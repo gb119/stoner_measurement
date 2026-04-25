@@ -249,7 +249,7 @@ class Lakeshore340(_LakeshoreTemperatureControllerBase):
     """Concrete driver for the Lakeshore 340 temperature controller."""
 
     _MODEL = "MODEL340"
-    _LS340_LOOP1_RANGES = ("Off", "0.5 W", "5 W", "50 W", "500 W")
+    _LS340_LOOP1_RANGES = ("Off", "0.5 W", "5 W", "50 W", "500 W", "5 kW")
     _LS340_LOOP2_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=2,

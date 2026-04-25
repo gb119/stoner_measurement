@@ -577,12 +577,14 @@ class TemperatureControllerEngine(QObject):
             loop_modes[lp] = driver.get_loop_mode(lp)
             try:
                 input_channels[lp] = driver.get_input_channel(lp)
-            except Exception:
-                pass
+            except (ConnectionError, ValueError, AttributeError):
+                logger.exception("Failed to read input channel for loop %d during poll", lp)
             try:
                 heater_ranges[lp] = driver.get_heater_range(lp)
-            except (NotImplementedError, Exception):
+            except NotImplementedError:
                 pass
+            except (ConnectionError, ValueError, AttributeError):
+                logger.exception("Failed to read heater range for loop %d during poll", lp)
 
         # --- Needle valve ---
         needle_valve: float | None = None
@@ -594,8 +596,8 @@ class TemperatureControllerEngine(QObject):
         if caps.has_gas_auto_mode:
             try:
                 gas_auto_mode = driver.get_gas_auto()
-            except Exception:
-                pass
+            except (ConnectionError, ValueError, AttributeError):
+                logger.exception("Failed to read gas auto mode during poll")
 
         # --- Stability evaluation ---
         at_setpoint, stable = self._evaluate_stability(readings, setpoints, caps.loop_numbers, now)
