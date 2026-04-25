@@ -109,6 +109,10 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
         """Return heater output percentage for *loop*."""
         return self._query_float(f"HTR? {self._normalise_loop(loop)}")
 
+    def get_heater_range(self, loop: int) -> int:
+        """Return the current heater range index for *loop*."""
+        return self._parse_int_token(self.query(f"RANGE? {self._normalise_loop(loop)}"))
+
     def set_heater_range(self, loop: int, range_: int) -> None:
         """Set heater range index for *loop*."""
         self.write(f"RANGE {self._normalise_loop(loop)},{int(range_)}")
@@ -213,6 +217,7 @@ class Lakeshore335(_LakeshoreTemperatureControllerBase):
     """Concrete driver for the Lakeshore 335 temperature controller."""
 
     _MODEL = "MODEL335"
+    _LS335_RANGES = ("Off", "Low", "Medium", "High")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=2,
         num_loops=2,
@@ -220,6 +225,7 @@ class Lakeshore335(_LakeshoreTemperatureControllerBase):
         loop_numbers=(1, 2),
         has_ramp=True,
         has_pid=True,
+        heater_range_labels={1: _LS335_RANGES, 2: _LS335_RANGES},
     )
 
 
@@ -227,6 +233,7 @@ class Lakeshore336(_LakeshoreTemperatureControllerBase):
     """Concrete driver for the Lakeshore 336 temperature controller."""
 
     _MODEL = "MODEL336"
+    _LS336_RANGES = ("Off", "Low", "Medium", "High")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=4,
         num_loops=2,
@@ -234,6 +241,7 @@ class Lakeshore336(_LakeshoreTemperatureControllerBase):
         loop_numbers=(1, 2),
         has_ramp=True,
         has_pid=True,
+        heater_range_labels={1: _LS336_RANGES, 2: _LS336_RANGES},
     )
 
 
@@ -241,6 +249,8 @@ class Lakeshore340(_LakeshoreTemperatureControllerBase):
     """Concrete driver for the Lakeshore 340 temperature controller."""
 
     _MODEL = "MODEL340"
+    _LS340_LOOP1_RANGES = ("Off", "0.5 W", "5 W", "50 W", "500 W")
+    _LS340_LOOP2_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=2,
         num_loops=2,
@@ -248,4 +258,5 @@ class Lakeshore340(_LakeshoreTemperatureControllerBase):
         loop_numbers=(1, 2),
         has_ramp=True,
         has_pid=True,
+        heater_range_labels={1: _LS340_LOOP1_RANGES, 2: _LS340_LOOP2_RANGES},
     )

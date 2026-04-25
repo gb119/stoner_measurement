@@ -94,11 +94,20 @@ class TemperatureEngineState:
             Mapping from control-loop number to its current setpoint in Kelvin.
         heater_outputs (dict[int, float]):
             Mapping from control-loop number to its heater output percentage (0–100 %).
+        heater_ranges (dict[int, int]):
+            Mapping from control-loop number to its current heater range index.
         needle_valve (float | None):
             Cryogen gas-flow valve position as a percentage (0–100 %), or
             ``None`` if the instrument does not support cryogen control.
+        gas_auto_mode (bool | None):
+            ``True`` when the gas/needle-valve is under automatic control,
+            ``False`` when in manual mode, or ``None`` if the instrument does
+            not support querying the gas auto mode.
         loop_modes (dict[int, ControlMode]):
             Mapping from control-loop number to its active :class:`~stoner_measurement.instruments.temperature_controller.ControlMode`.
+        input_channels (dict[int, str]):
+            Mapping from control-loop number to the identifier of the sensor
+            channel currently assigned to that loop.
         at_setpoint (dict[int, bool]):
             ``True`` for each loop whose sensor reading is within the configured
             tolerance of the setpoint.
@@ -123,8 +132,11 @@ class TemperatureEngineState:
     readings: dict[str, TemperatureChannelReading] = field(default_factory=dict)
     setpoints: dict[int, float] = field(default_factory=dict)
     heater_outputs: dict[int, float] = field(default_factory=dict)
+    heater_ranges: dict[int, int] = field(default_factory=dict)
     needle_valve: float | None = None
+    gas_auto_mode: bool | None = None
     loop_modes: dict[int, ControlMode] = field(default_factory=dict)
+    input_channels: dict[int, str] = field(default_factory=dict)
     at_setpoint: dict[int, bool] = field(default_factory=dict)
     stable: dict[int, bool] = field(default_factory=dict)
     engine_status: EngineStatus = EngineStatus.DISCONNECTED
@@ -164,3 +176,57 @@ class StabilityConfig:
     window_s: float = 60.0
     min_rate: float = 0.005
     unstable_holdoff_s: float = 5.0
+
+
+@dataclass
+class LoopSettings:
+    """A snapshot of one PID control loop's configurable settings.
+
+    Used by the engine's :meth:`~stoner_measurement.temperature_control.engine.TemperatureControllerEngine.get_loop_settings`
+    method to read all hardware-settable parameters for a single loop in one
+    operation, and to populate the UI "Read" action.
+
+    Attributes:
+        setpoint (float):
+            Target setpoint in Kelvin.
+        mode (ControlMode):
+            Active control mode.
+        input_channel (str):
+            Sensor channel identifier assigned as the control input.
+        ramp_enabled (bool):
+            ``True`` when automatic setpoint ramping is active.
+        ramp_rate (float):
+            Setpoint ramp rate in Kelvin per minute.
+        pid_p (float):
+            Proportional gain.
+        pid_i (float):
+            Integral gain.
+        pid_d (float):
+            Derivative gain.
+        heater_range (int | None):
+            Current heater range index, or ``None`` if the driver does not
+            support reading the heater range.
+
+    Examples:
+        >>> from stoner_measurement.instruments.temperature_controller import ControlMode
+        >>> from stoner_measurement.temperature_control.types import LoopSettings
+        >>> s = LoopSettings(
+        ...     setpoint=300.0, mode=ControlMode.CLOSED_LOOP,
+        ...     input_channel="A", ramp_enabled=False, ramp_rate=5.0,
+        ...     pid_p=50.0, pid_i=1.0, pid_d=0.0, heater_range=1,
+        ... )
+        >>> s.setpoint
+        300.0
+        >>> s.heater_range
+        1
+    """
+
+    setpoint: float
+    mode: ControlMode
+    input_channel: str
+    ramp_enabled: bool
+    ramp_rate: float
+    pid_p: float
+    pid_i: float
+    pid_d: float
+    heater_range: int | None = None

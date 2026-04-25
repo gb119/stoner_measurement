@@ -45,7 +45,7 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.temperature_controller import ControlMode, TemperatureController
+from stoner_measurement.instruments.temperature_controller import ControlMode, ControllerCapabilities, TemperatureController
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
     GpibTransport,
@@ -384,6 +384,16 @@ class TemperatureControlPanel(QWidget):
         needle_row.addWidget(self._needle_spin)
         needle_row.addWidget(self._needle_apply_btn)
         needle_form.addRow("Position:", needle_row)
+        # Gas auto mode toggle (shown only for drivers with has_gas_auto_mode).
+        self._gas_auto_check = QCheckBox("Automatic gas flow")
+        self._gas_auto_check.setToolTip(
+            "When checked the controller manages the needle valve automatically"
+        )
+        self._gas_auto_check.stateChanged.connect(self._on_gas_auto_changed)
+        self._gas_auto_row_label = QLabel("Gas mode:")
+        needle_form.addRow(self._gas_auto_row_label, self._gas_auto_check)
+        self._gas_auto_row_label.hide()
+        self._gas_auto_check.hide()
         self._control_layout.addWidget(self._needle_group)
         self._needle_group.hide()
         self._control_layout.addStretch()
@@ -559,6 +569,8 @@ class TemperatureControlPanel(QWidget):
                 setpoint=state.setpoints.get(loop, 0.0),
                 heater_output=state.heater_outputs.get(loop, 0.0),
                 mode=state.loop_modes.get(loop),
+                heater_range=state.heater_ranges.get(loop),
+                input_channel=state.input_channels.get(loop),
             )
 
         # Needle valve
@@ -566,6 +578,12 @@ class TemperatureControlPanel(QWidget):
             self._needle_spin.blockSignals(True)
             self._needle_spin.setValue(state.needle_valve)
             self._needle_spin.blockSignals(False)
+        if state.gas_auto_mode is not None:
+            self._gas_auto_check.blockSignals(True)
+            self._gas_auto_check.setChecked(state.gas_auto_mode)
+            self._gas_auto_check.blockSignals(False)
+            self._needle_spin.setEnabled(not state.gas_auto_mode)
+            self._needle_apply_btn.setEnabled(not state.gas_auto_mode)
 
         # Update chart buffers and curves.
         self._update_chart(state, now_ts)
@@ -759,6 +777,12 @@ class TemperatureControlPanel(QWidget):
                 self._needle_group.show()
             else:
                 self._needle_group.hide()
+            if caps.has_gas_auto_mode:
+                self._gas_auto_row_label.show()
+                self._gas_auto_check.show()
+            else:
+                self._gas_auto_row_label.hide()
+                self._gas_auto_check.hide()
         except Exception:
             logger.exception("Failed to read capabilities after connection")
 
@@ -810,6 +834,8 @@ class TemperatureControlPanel(QWidget):
         self._capabilities = None
         self._clear_loop_groups()
         self._needle_group.hide()
+        self._gas_auto_row_label.hide()
+        self._gas_auto_check.hide()
         # Reset address widget colours to disconnected state.
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
@@ -828,7 +854,7 @@ class TemperatureControlPanel(QWidget):
         self._clear_loop_groups()
         stretch_item = self._control_layout.takeAt(self._control_layout.count() - 1)
         for lp in caps.loop_numbers:
-            group = _LoopControlGroup(lp, self._engine)
+            group = _LoopControlGroup(lp, self._engine, caps)
             self._loop_groups[lp] = group
             insert_pos = self._control_layout.count()
             self._control_layout.insertWidget(insert_pos, group)
@@ -847,6 +873,20 @@ class TemperatureControlPanel(QWidget):
     def _on_apply_needle(self) -> None:
         """Send the needle valve position to the engine."""
         self._engine.set_needle_valve(self._needle_spin.value())
+
+    @pyqtSlot(int)
+    def _on_gas_auto_changed(self, state: int) -> None:
+        """Send the gas auto mode toggle to the engine and update UI.
+
+        Args:
+            state (int):
+                Qt check state integer (non-zero means checked).
+        """
+        auto = bool(state)
+        self._engine.set_gas_auto(auto)
+        # Disable manual position when in auto mode.
+        self._needle_spin.setEnabled(not auto)
+        self._needle_apply_btn.setEnabled(not auto)
 
     # ------------------------------------------------------------------
     # Stability tab slot
@@ -906,12 +946,16 @@ class _LoopControlGroup(QGroupBox):
             Loop number (1-based).
         engine (TemperatureControllerEngine):
             Engine instance to send commands to.
+        caps (ControllerCapabilities):
+            Capability descriptor of the connected driver, used to populate
+            the heater range combo and the input-channel selector.
     """
 
-    def __init__(self, loop: int, engine: TemperatureControllerEngine) -> None:
+    def __init__(self, loop: int, engine: TemperatureControllerEngine, caps) -> None:
         super().__init__(f"Loop {loop}")
         self._loop = loop
         self._engine = engine
+        self._caps = caps
         self._build()
 
     def _build(self) -> None:
@@ -926,28 +970,24 @@ class _LoopControlGroup(QGroupBox):
         form.addRow("Heater output:", self._heater_label)
         form.addRow("Mode (live):", self._mode_label)
 
+        # Control sensor (input channel)
+        self._channel_combo = QComboBox()
+        for ch in self._caps.input_channels:
+            self._channel_combo.addItem(ch, ch)
+        form.addRow("Control sensor:", self._channel_combo)
+
         # Editable setpoint
         self._sp_spin = QDoubleSpinBox()
         self._sp_spin.setRange(0.0, 1000.0)
         self._sp_spin.setSuffix(" K")
         self._sp_spin.setDecimals(3)
-        sp_row = QHBoxLayout()
-        sp_row.addWidget(self._sp_spin)
-        sp_apply = QPushButton("Apply")
-        sp_apply.clicked.connect(self._on_apply_setpoint)
-        sp_row.addWidget(sp_apply)
-        form.addRow("New setpoint:", sp_row)
+        form.addRow("New setpoint:", self._sp_spin)
 
         # Control mode
         self._mode_combo = QComboBox()
         for mode in ControlMode:
             self._mode_combo.addItem(mode.value.replace("_", " ").title(), mode)
-        mode_row = QHBoxLayout()
-        mode_row.addWidget(self._mode_combo)
-        mode_apply = QPushButton("Apply")
-        mode_apply.clicked.connect(self._on_apply_mode)
-        mode_row.addWidget(mode_apply)
-        form.addRow("Control mode:", mode_row)
+        form.addRow("Control mode:", self._mode_combo)
 
         # Ramp
         self._ramp_enable = QCheckBox("Enable")
@@ -958,21 +998,23 @@ class _LoopControlGroup(QGroupBox):
         ramp_row = QHBoxLayout()
         ramp_row.addWidget(self._ramp_enable)
         ramp_row.addWidget(self._ramp_rate_spin)
-        ramp_apply = QPushButton("Apply")
-        ramp_apply.clicked.connect(self._on_apply_ramp)
-        ramp_row.addWidget(ramp_apply)
         form.addRow("Ramp:", ramp_row)
 
-        # Heater range
-        self._heater_range_spin = QSpinBox()
-        self._heater_range_spin.setRange(0, 5)
-        self._heater_range_spin.setToolTip("Heater range index (0 = off; instrument-specific)")
-        hr_row = QHBoxLayout()
-        hr_row.addWidget(self._heater_range_spin)
-        hr_apply = QPushButton("Apply")
-        hr_apply.clicked.connect(self._on_apply_heater_range)
-        hr_row.addWidget(hr_apply)
-        form.addRow("Heater range:", hr_row)
+        # Heater range — use labelled combo when capability labels are provided,
+        # otherwise fall back to a plain spin box.
+        range_labels = self._caps.heater_range_labels.get(self._loop, ())
+        if range_labels:
+            self._heater_range_combo = QComboBox()
+            for idx, label in enumerate(range_labels):
+                self._heater_range_combo.addItem(label, idx)
+            self._heater_range_spin = None
+            form.addRow("Heater range:", self._heater_range_combo)
+        else:
+            self._heater_range_spin = QSpinBox()
+            self._heater_range_spin.setRange(0, 5)
+            self._heater_range_spin.setToolTip("Heater range index (0 = off; instrument-specific)")
+            self._heater_range_combo = None
+            form.addRow("Heater range:", self._heater_range_spin)
 
         # PID
         self._pid_p_spin = QDoubleSpinBox()
@@ -991,14 +1033,24 @@ class _LoopControlGroup(QGroupBox):
         pid_row.addWidget(self._pid_i_spin)
         pid_row.addWidget(QLabel("D:"))
         pid_row.addWidget(self._pid_d_spin)
-        pid_apply = QPushButton("Apply")
-        pid_apply.clicked.connect(self._on_apply_pid)
-        pid_row.addWidget(pid_apply)
         form.addRow("PID:", pid_row)
+
+        # Single Apply + Read button row
+        btn_row = QHBoxLayout()
+        apply_btn = QPushButton("Apply")
+        apply_btn.setToolTip("Send all loop settings to the instrument")
+        apply_btn.clicked.connect(self._on_apply_all)
+        read_btn = QPushButton("Read")
+        read_btn.setToolTip("Read all loop settings from the instrument and update this panel")
+        read_btn.clicked.connect(self._on_read)
+        btn_row.addWidget(apply_btn)
+        btn_row.addWidget(read_btn)
+        btn_row.addStretch()
+        form.addRow("", btn_row)
 
     # --- Live update ---
 
-    def update_live(self, setpoint: float, heater_output: float, mode) -> None:
+    def update_live(self, setpoint: float, heater_output: float, mode, heater_range: int | None = None, input_channel: str | None = None) -> None:
         """Refresh live-readback labels.
 
         Args:
@@ -1008,49 +1060,80 @@ class _LoopControlGroup(QGroupBox):
                 Current heater output percentage.
             mode (ControlMode | None):
                 Current control mode.
+
+        Keyword Parameters:
+            heater_range (int | None):
+                Current heater range index, or ``None`` if not available.
+            input_channel (str | None):
+                Current input channel assignment, or ``None`` if not available.
         """
         self._setpoint_label.setText(f"{setpoint:.3f} K")
         self._heater_label.setText(f"{heater_output:.1f} %")
         mode_text = mode.value.replace("_", " ").title() if mode is not None else "—"
         self._mode_label.setText(mode_text)
 
-    # --- Apply slots ---
+    # --- Apply / Read slots ---
 
     @pyqtSlot()
-    def _on_apply_setpoint(self) -> None:
-        """Send the new setpoint to the engine."""
-        self._engine.set_setpoint(self._loop, self._sp_spin.value())
-
-    @pyqtSlot()
-    def _on_apply_mode(self) -> None:
-        """Send the selected control mode to the engine."""
+    def _on_apply_all(self) -> None:
+        """Send all loop settings to the engine in a single call."""
         mode = self._mode_combo.currentData()
-        if mode is not None:
-            self._engine.set_loop_mode(self._loop, mode)
-
-    @pyqtSlot()
-    def _on_apply_ramp(self) -> None:
-        """Send ramp settings to the engine."""
-        self._engine.set_ramp(
+        channel = self._channel_combo.currentData()
+        heater_range = self._heater_range_combo.currentData() if self._heater_range_combo is not None else self._heater_range_spin.value()
+        self._engine.set_all_loop_settings(
             self._loop,
-            rate=self._ramp_rate_spin.value(),
-            enabled=self._ramp_enable.isChecked(),
+            setpoint=self._sp_spin.value(),
+            mode=mode,
+            input_channel=channel,
+            ramp_enabled=self._ramp_enable.isChecked(),
+            ramp_rate=self._ramp_rate_spin.value(),
+            pid_p=self._pid_p_spin.value(),
+            pid_i=self._pid_i_spin.value(),
+            pid_d=self._pid_d_spin.value(),
+            heater_range=heater_range,
         )
 
     @pyqtSlot()
-    def _on_apply_heater_range(self) -> None:
-        """Send the heater range to the engine."""
-        self._engine.set_heater_range(self._loop, self._heater_range_spin.value())
-
-    @pyqtSlot()
-    def _on_apply_pid(self) -> None:
-        """Send PID parameters to the engine."""
-        self._engine.set_pid(
-            self._loop,
-            p=self._pid_p_spin.value(),
-            i=self._pid_i_spin.value(),
-            d=self._pid_d_spin.value(),
-        )
+    def _on_read(self) -> None:
+        """Query the hardware for all loop settings and update the UI."""
+        settings = self._engine.get_loop_settings(self._loop)
+        if settings is None:
+            return
+        # Setpoint
+        self._sp_spin.blockSignals(True)
+        self._sp_spin.setValue(settings.setpoint)
+        self._sp_spin.blockSignals(False)
+        # Control mode
+        idx = self._mode_combo.findData(settings.mode)
+        if idx >= 0:
+            self._mode_combo.setCurrentIndex(idx)
+        # Input channel
+        ch_idx = self._channel_combo.findData(settings.input_channel)
+        if ch_idx >= 0:
+            self._channel_combo.setCurrentIndex(ch_idx)
+        # Ramp
+        self._ramp_enable.setChecked(settings.ramp_enabled)
+        self._ramp_rate_spin.blockSignals(True)
+        self._ramp_rate_spin.setValue(settings.ramp_rate)
+        self._ramp_rate_spin.blockSignals(False)
+        # PID
+        self._pid_p_spin.blockSignals(True)
+        self._pid_i_spin.blockSignals(True)
+        self._pid_d_spin.blockSignals(True)
+        self._pid_p_spin.setValue(settings.pid_p)
+        self._pid_i_spin.setValue(settings.pid_i)
+        self._pid_d_spin.setValue(settings.pid_d)
+        self._pid_p_spin.blockSignals(False)
+        self._pid_i_spin.blockSignals(False)
+        self._pid_d_spin.blockSignals(False)
+        # Heater range
+        if settings.heater_range is not None:
+            if self._heater_range_combo is not None:
+                r_idx = self._heater_range_combo.findData(settings.heater_range)
+                if r_idx >= 0:
+                    self._heater_range_combo.setCurrentIndex(r_idx)
+            elif self._heater_range_spin is not None:
+                self._heater_range_spin.setValue(settings.heater_range)
 
 
 # ---------------------------------------------------------------------------
