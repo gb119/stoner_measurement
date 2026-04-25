@@ -951,7 +951,7 @@ class _LoopControlGroup(QGroupBox):
             the heater range combo and the input-channel selector.
     """
 
-    def __init__(self, loop: int, engine: TemperatureControllerEngine, caps) -> None:
+    def __init__(self, loop: int, engine: TemperatureControllerEngine, caps: ControllerCapabilities) -> None:
         super().__init__(f"Loop {loop}")
         self._loop = loop
         self._engine = engine
@@ -1079,7 +1079,11 @@ class _LoopControlGroup(QGroupBox):
         """Send all loop settings to the engine in a single call."""
         mode = self._mode_combo.currentData()
         channel = self._channel_combo.currentData()
-        heater_range = self._heater_range_combo.currentData() if self._heater_range_combo is not None else self._heater_range_spin.value()
+        heater_range = (
+            self._heater_range_combo.currentData()
+            if self._heater_range_combo is not None
+            else self._heater_range_spin.value()
+        )
         self._engine.set_all_loop_settings(
             self._loop,
             setpoint=self._sp_spin.value(),

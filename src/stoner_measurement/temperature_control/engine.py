@@ -446,7 +446,10 @@ class TemperatureControllerEngine(QObject):
             pid_p = pid_i = pid_d = 0.0
         try:
             heater_range: int | None = self._driver.get_heater_range(loop)
-        except (NotImplementedError, Exception):
+        except NotImplementedError:
+            heater_range = None
+        except Exception:
+            logger.exception("Failed to read heater range for loop %d", loop)
             heater_range = None
         return LoopSettings(
             setpoint=setpoint,

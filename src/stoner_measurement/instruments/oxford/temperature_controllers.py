@@ -226,7 +226,16 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         return self.query("V")
 
     def get_heater_range(self, loop: int) -> int:
-        """Return the current heater range index (0=off, 1=on) for *loop*."""
+        """Return the current heater range index (0=off, 1=on) for *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (int):
+                0 when the heater output is zero (off), 1 otherwise.
+        """
         self._normalise_loop(loop)
         # ITC503 does not have a dedicated range-read command; infer from
         # the heater output: zero output implies off, any non-zero implies on.
@@ -337,7 +346,16 @@ class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
 
     def get_heater_range(self, loop: int) -> int:
-        """Return the current heater range index (0=off, 1=on) for *loop*."""
+        """Return the current heater range index (0=off, 1=on) for *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (int):
+                0 when the loop range is ``OFF``, 1 otherwise.
+        """
         loop_n = self._normalise_loop(loop)
         raw = self.query(f"READ:LOOP{loop_n}:RANGE?").strip()
         return 0 if raw in ("OFF", "0", "") else 1
