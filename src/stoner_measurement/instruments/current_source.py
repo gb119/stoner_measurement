@@ -300,7 +300,7 @@ class CurrentSource(BaseInstrument):
             "Check get_capabilities().has_sweep before calling this method."
         )
 
-    def configure_linear_sweep(
+    def configure_linear_sweep(  # pylint: disable=too-many-arguments
         self,
         start: float,
         stop: float,
@@ -341,7 +341,7 @@ class CurrentSource(BaseInstrument):
             )
         )
 
-    def configure_log_sweep(
+    def configure_log_sweep(  # pylint: disable=too-many-arguments
         self,
         start: float,
         stop: float,
