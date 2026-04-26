@@ -711,17 +711,87 @@ class CurveFitPlugin(TransformPlugin):
         # ---- 4. Optionally compute the initial-parameter trace -----------
         result: dict[str, Any] = {}
         if self.show_initial_trace:
-            try:
-                # _build_p0 returns None when all initial values are blank; fall
-                # back to 1.0 for each parameter so the trace can still be drawn.
-                p0_vals = p0 if p0 is not None else [1.0] * len(self.param_names)
-                y_initial = fit_func(x_arr, *p0_vals)
-                # Ensure float array regardless of what fit_func returns.
-                result[_INITIAL_TRACE_KEY] = TraceData(x=x_arr, y=np.asarray(y_initial, dtype=float))
-            except Exception as exc:
-                self.log.warning("CurveFit: failed to compute initial trace — %s", exc)
+            initial_trace = self._compute_initial_trace(fit_func, x_arr, p0)
+            if initial_trace is not None:
+                result[_INITIAL_TRACE_KEY] = initial_trace
 
         # ---- 5. Run curve_fit --------------------------------------------
+        fit_result = self._run_curve_fit(fit_func, x_arr, y_arr, sigma_arr, p0, bounds)
+        if fit_result is None:
+            return nan_result
+        popt, pcov = fit_result
+
+        # ---- 6. Build scalar result dict ---------------------------------
+        result.update(self._build_scalar_results(popt, pcov))
+
+        # ---- 7. Optionally compute the best-fit trace --------------------
+        if self.show_best_fit_trace:
+            best_fit_trace = self._compute_best_fit_trace(fit_func, x_arr, popt)
+            if best_fit_trace is not None:
+                result[_BEST_FIT_TRACE_KEY] = best_fit_trace
+
+        return result
+
+    def _compute_initial_trace(self, fit_func, x_arr: np.ndarray, p0) -> "TraceData | None":
+        """Evaluate the fit function with initial parameters to produce a trace.
+
+        Falls back to ``1.0`` for each parameter when *p0* is ``None`` so that
+        the trace can still be drawn even when no initial values are configured.
+
+        Args:
+            fit_func:
+                Compiled ``fit(x, …)`` callable.
+            x_arr (np.ndarray):
+                x data array.
+            p0:
+                Initial parameter values, or ``None``.
+
+        Returns:
+            (TraceData | None):
+                Trace evaluated at the initial parameters, or ``None`` on
+                failure.
+        """
+        p0_vals = p0 if p0 is not None else [1.0] * len(self.param_names)
+        try:
+            y_initial = fit_func(x_arr, *p0_vals)
+            return TraceData(x=x_arr, y=np.asarray(y_initial, dtype=float))
+        except Exception as exc:
+            self.log.warning("CurveFit: failed to compute initial trace — %s", exc)
+            return None
+
+    def _run_curve_fit(
+        self,
+        fit_func,
+        x_arr: np.ndarray,
+        y_arr: np.ndarray,
+        sigma_arr,
+        p0,
+        bounds,
+    ) -> "tuple[np.ndarray, np.ndarray] | None":
+        """Run ``scipy.optimize.curve_fit`` and return ``(popt, pcov)``.
+
+        Handles :exc:`ImportError` when scipy is absent and any other
+        optimisation failure, logging the appropriate error and returning
+        ``None`` in each case.
+
+        Args:
+            fit_func:
+                Compiled ``fit(x, …)`` callable.
+            x_arr (np.ndarray):
+                x data array.
+            y_arr (np.ndarray):
+                y data array.
+            sigma_arr:
+                y-uncertainty array, or ``None``.
+            p0:
+                Initial parameter values, or ``None``.
+            bounds:
+                ``(lower, upper)`` bounds tuple, or ``None``.
+
+        Returns:
+            (tuple[np.ndarray, np.ndarray] | None):
+                ``(popt, pcov)`` on success, ``None`` on failure.
+        """
         try:
             from scipy.optimize import curve_fit  # noqa: PLC0415
 
@@ -735,29 +805,57 @@ class CurveFitPlugin(TransformPlugin):
                 kwargs["p0"] = p0
 
             popt, pcov = curve_fit(fit_func, x_arr, y_arr, **kwargs)
+            return popt, pcov
         except ImportError:
-            self.log.error("CurveFit: scipy is not installed.  " "Install scipy to use the curve-fit plugin.")
-            return nan_result
+            self.log.error("CurveFit: scipy is not installed.  Install scipy to use the curve-fit plugin.")
+            return None
         except Exception as exc:
             self.log.error("CurveFit: curve_fit failed — %s", exc)
-            return nan_result
+            return None
 
-        # ---- 6. Build scalar result dict ---------------------------------
+    def _build_scalar_results(self, popt: np.ndarray, pcov: np.ndarray) -> dict[str, float]:
+        """Build the scalar result dict from fitted parameters and covariance.
+
+        Args:
+            popt (np.ndarray):
+                Optimal parameter values returned by ``curve_fit``.
+            pcov (np.ndarray):
+                Covariance matrix returned by ``curve_fit``.
+
+        Returns:
+            (dict[str, float]):
+                Mapping of parameter name → optimal value and
+                ``"{name}_err"`` → 1-sigma uncertainty.
+        """
         perr = np.sqrt(np.diag(pcov))
+        result: dict[str, float] = {}
         for i, pname in enumerate(self.param_names):
             result[pname] = float(popt[i]) if i < len(popt) else _NAN
             result[f"{pname}_err"] = float(perr[i]) if i < len(perr) else _NAN
-
-        # ---- 7. Optionally compute the best-fit trace --------------------
-        if self.show_best_fit_trace:
-            try:
-                y_best = fit_func(x_arr, *popt)
-                # Ensure float array regardless of what fit_func returns.
-                result[_BEST_FIT_TRACE_KEY] = TraceData(x=x_arr, y=np.asarray(y_best, dtype=float))
-            except Exception as exc:
-                self.log.warning("CurveFit: failed to compute best-fit trace — %s", exc)
-
         return result
+
+    def _compute_best_fit_trace(self, fit_func, x_arr: np.ndarray, popt: np.ndarray) -> "TraceData | None":
+        """Evaluate the fit function with optimal parameters to produce a trace.
+
+        Args:
+            fit_func:
+                Compiled ``fit(x, …)`` callable.
+            x_arr (np.ndarray):
+                x data array.
+            popt (np.ndarray):
+                Optimal parameter values returned by ``curve_fit``.
+
+        Returns:
+            (TraceData | None):
+                Trace evaluated at the optimal parameters, or ``None`` on
+                failure.
+        """
+        try:
+            y_best = fit_func(x_arr, *popt)
+            return TraceData(x=x_arr, y=np.asarray(y_best, dtype=float))
+        except Exception as exc:
+            self.log.warning("CurveFit: failed to compute best-fit trace — %s", exc)
+            return None
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -948,6 +1046,80 @@ class CurveFitPlugin(TransformPlugin):
         tabs.insert(1, ("Fit Function", fit_tab))
         return tabs
 
+    def _create_data_source_widgets(
+        self, widget: QWidget, traces: dict[str, str]
+    ) -> dict[str, Any]:
+        """Create the data source selection widgets for the *Data* tab.
+
+        Builds and returns the trace dropdown, advanced-mode checkbox, x/y
+        dropdowns, and y-uncertainty line edit together with the channel-items
+        mapping used by the signal handlers.
+
+        Args:
+            widget (QWidget):
+                Parent widget for all created controls.
+            traces (dict[str, str]):
+                Mapping of trace key → engine-namespace expression, typically
+                ``engine_namespace["_traces"]``.
+
+        Returns:
+            (dict[str, Any]):
+                Dict with keys ``"trace_combo"``, ``"advanced_check"``,
+                ``"x_combo"``, ``"y_combo"``, ``"y_error_edit"``, and
+                ``"channel_items"``.
+        """
+        trace_keys = list(traces.keys())
+        channel_items: dict[str, str] = {}
+        for key, expr in traces.items():
+            channel_items[f"{key} (x)"] = f"{expr}.x"
+            channel_items[f"{key} (y)"] = f"{expr}.y"
+        channel_names = list(channel_items.keys())
+
+        trace_combo = QComboBox(widget)
+        if trace_keys:
+            trace_combo.addItems(trace_keys)
+            if self.trace_key in trace_keys:
+                trace_combo.setCurrentText(self.trace_key)
+            else:
+                self.trace_key = trace_keys[0]
+        else:
+            trace_combo.addItem("(no traces available)")
+
+        advanced_check = QCheckBox(widget)
+        advanced_check.setChecked(self.advanced_mode)
+
+        x_combo = QComboBox(widget)
+        if channel_names:
+            x_combo.addItems(channel_names)
+            if not _set_combo_to_expr(x_combo, channel_items, self.x_expr):
+                self.x_expr = channel_items[channel_names[0]]
+                x_combo.setCurrentIndex(0)
+        else:
+            x_combo.addItem("(no channels available)")
+
+        y_combo = QComboBox(widget)
+        if channel_names:
+            y_combo.addItems(channel_names)
+            if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
+                self.y_expr = channel_items[channel_names[0]]
+                y_combo.setCurrentIndex(0)
+        else:
+            y_combo.addItem("(no channels available)")
+
+        y_error_edit = QLineEdit(self.y_error_expr, widget)
+        y_error_edit.setToolTip(
+            "Python expression for y-uncertainty (sigma).  Leave blank to fit without uncertainties."
+        )
+
+        return {
+            "trace_combo": trace_combo,
+            "advanced_check": advanced_check,
+            "x_combo": x_combo,
+            "y_combo": y_combo,
+            "y_error_edit": y_error_edit,
+            "channel_items": channel_items,
+        }
+
     def _build_data_tab(self, parent: QWidget | None = None) -> QWidget:
         """Build the *Data* selection tab widget.
 
@@ -963,77 +1135,29 @@ class CurveFitPlugin(TransformPlugin):
         layout = QFormLayout(widget)
 
         traces: dict[str, str] = self.engine_namespace.get("_traces", {})
-        trace_keys = list(traces.keys())
+        ws = self._create_data_source_widgets(widget, traces)
 
-        # Build per-channel x/y display entries.
-        channel_items: dict[str, str] = {}
-        for key, expr in traces.items():
-            channel_items[f"{key} (x)"] = f"{expr}.x"
-            channel_items[f"{key} (y)"] = f"{expr}.y"
-        channel_names = list(channel_items.keys())
-
-        # --- Simple mode trace dropdown ---
-        trace_combo = QComboBox(widget)
-        if trace_keys:
-            trace_combo.addItems(trace_keys)
-            if self.trace_key in trace_keys:
-                trace_combo.setCurrentText(self.trace_key)
-            else:
-                self.trace_key = trace_keys[0]
-        else:
-            trace_combo.addItem("(no traces available)")
-
-        # --- Advanced mode checkbox ---
-        advanced_check = QCheckBox(widget)
-        advanced_check.setChecked(self.advanced_mode)
-
-        # --- X data dropdown (advanced) ---
-        x_combo = QComboBox(widget)
-        if channel_names:
-            x_combo.addItems(channel_names)
-            if not _set_combo_to_expr(x_combo, channel_items, self.x_expr):
-                self.x_expr = channel_items[channel_names[0]]
-                x_combo.setCurrentIndex(0)
-        else:
-            x_combo.addItem("(no channels available)")
-
-        # --- Y data dropdown (advanced) ---
-        y_combo = QComboBox(widget)
-        if channel_names:
-            y_combo.addItems(channel_names)
-            if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
-                self.y_expr = channel_items[channel_names[0]]
-                y_combo.setCurrentIndex(0)
-        else:
-            y_combo.addItem("(no channels available)")
-
-        # --- Y uncertainty expression (advanced) ---
-        y_error_edit = QLineEdit(self.y_error_expr, widget)
-        y_error_edit.setToolTip(
-            "Python expression for y-uncertainty (sigma).  " "Leave blank to fit without uncertainties."
-        )
-
-        layout.addRow("Trace:", trace_combo)
-        layout.addRow("Advanced mode:", advanced_check)
-        layout.addRow("X data:", x_combo)
-        layout.addRow("Y data:", y_combo)
-        layout.addRow("Y uncertainty:", y_error_edit)
+        layout.addRow("Trace:", ws["trace_combo"])
+        layout.addRow("Advanced mode:", ws["advanced_check"])
+        layout.addRow("X data:", ws["x_combo"])
+        layout.addRow("Y data:", ws["y_combo"])
+        layout.addRow("Y uncertainty:", ws["y_error_edit"])
         layout.addRow(
             QLabel(
-                "<i>In advanced mode expressions are evaluated against the " "engine namespace at runtime.</i>",
+                "<i>In advanced mode expressions are evaluated against the engine namespace at runtime.</i>",
                 widget,
             )
         )
         widget.setLayout(layout)
 
         def _update_enabled(advanced: bool) -> None:
-            trace_combo.setEnabled(not advanced)
-            x_combo.setEnabled(advanced)
-            y_combo.setEnabled(advanced)
-            y_error_edit.setEnabled(advanced)
+            ws["trace_combo"].setEnabled(not advanced)
+            ws["x_combo"].setEnabled(advanced)
+            ws["y_combo"].setEnabled(advanced)
+            ws["y_error_edit"].setEnabled(advanced)
 
         _update_enabled(self.advanced_mode)
-        advanced_check.toggled.connect(_update_enabled)
+        ws["advanced_check"].toggled.connect(_update_enabled)
 
         def _apply_trace(text: str) -> None:
             if text != "(no traces available)":
@@ -1044,22 +1168,62 @@ class CurveFitPlugin(TransformPlugin):
 
         def _apply_x(text: str) -> None:
             if text != "(no channels available)":
-                self.x_expr = channel_items.get(text, self.x_expr)
+                self.x_expr = ws["channel_items"].get(text, self.x_expr)
 
         def _apply_y(text: str) -> None:
             if text != "(no channels available)":
-                self.y_expr = channel_items.get(text, self.y_expr)
+                self.y_expr = ws["channel_items"].get(text, self.y_expr)
 
         def _apply_y_error() -> None:
-            self.y_error_expr = y_error_edit.text().strip()
+            self.y_error_expr = ws["y_error_edit"].text().strip()
 
-        trace_combo.currentTextChanged.connect(_apply_trace)
-        advanced_check.toggled.connect(_apply_advanced)
-        x_combo.currentTextChanged.connect(_apply_x)
-        y_combo.currentTextChanged.connect(_apply_y)
-        y_error_edit.editingFinished.connect(_apply_y_error)
+        ws["trace_combo"].currentTextChanged.connect(_apply_trace)
+        ws["advanced_check"].toggled.connect(_apply_advanced)
+        ws["x_combo"].currentTextChanged.connect(_apply_x)
+        ws["y_combo"].currentTextChanged.connect(_apply_y)
+        ws["y_error_edit"].editingFinished.connect(_apply_y_error)
 
         return widget
+
+    def _build_fit_tab(self, parent: QWidget | None) -> tuple[QWidget, "EditorWidget"]:
+        """Build the *Fit Function* tab widget.
+
+        Args:
+            parent (QWidget | None):
+                Optional Qt parent widget.
+
+        Returns:
+            (tuple[QWidget, EditorWidget]):
+                ``(fit_function_widget, editor)`` where *editor* is needed by
+                :meth:`_build_fit_and_param_tabs` to wire the code-change signal.
+        """
+        fit_widget = QWidget(parent)
+        fit_layout = QVBoxLayout(fit_widget)
+
+        hint_label = QLabel(
+            "<b>Define a <code>fit(x, p1, p2, …)</code> function.</b>  "
+            "Optionally define <code>p0(x, y)</code> to compute initial "
+            "parameter estimates; if absent the Parameters table is used.",
+            fit_widget,
+        )
+        hint_label.setWordWrap(True)
+        fit_layout.addWidget(hint_label)
+
+        namespace_label = QLabel(
+            "<i>Runtime namespace includes Python built-ins and "
+            "<code>numpy</code> available as <code>np</code> and <code>numpy</code>.</i>",
+            fit_widget,
+        )
+        namespace_label.setWordWrap(True)
+        fit_layout.addWidget(namespace_label)
+
+        editor = EditorWidget(fit_widget)
+        editor.set_text(self.fit_code)
+        if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
+            editor.set_syntax_error(self.fit_code_syntax_error_line, self.fit_code_syntax_error_message)
+        fit_layout.addWidget(editor)
+        fit_widget.setLayout(fit_layout)
+        return fit_widget, editor
 
     def _build_fit_and_param_tabs(self, parent: QWidget | None) -> tuple[QWidget, QWidget]:
         """Build the *Fit Function* and *Parameters* tab widgets.
@@ -1078,31 +1242,7 @@ class CurveFitPlugin(TransformPlugin):
                 ``(fit_function_widget, parameters_widget)``
         """
         # ---- Fit Function tab -------------------------------------------
-        fit_widget = QWidget(parent)
-        fit_layout = QVBoxLayout(fit_widget)
-
-        hint_label = QLabel(
-            "<b>Define a <code>fit(x, p1, p2, …)</code> function.</b>  "
-            "Optionally define <code>p0(x, y)</code> to compute initial "
-            "parameter estimates; if absent the Parameters table is used.",
-            fit_widget,
-        )
-        hint_label.setWordWrap(True)
-        fit_layout.addWidget(hint_label)
-        namespace_label = QLabel(
-            "<i>Runtime namespace includes Python built-ins and "
-            "<code>numpy</code> available as <code>np</code> and <code>numpy</code>.</i>",
-            fit_widget,
-        )
-        namespace_label.setWordWrap(True)
-        fit_layout.addWidget(namespace_label)
-
-        editor = EditorWidget(fit_widget)
-        editor.set_text(self.fit_code)
-        if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
-            editor.set_syntax_error(self.fit_code_syntax_error_line, self.fit_code_syntax_error_message)
-        fit_layout.addWidget(editor)
-        fit_widget.setLayout(fit_layout)
+        fit_widget, editor = self._build_fit_tab(parent)
 
         # ---- Parameters tab ---------------------------------------------
         param_container = QWidget(parent)
@@ -1117,7 +1257,7 @@ class CurveFitPlugin(TransformPlugin):
         initial_check = QCheckBox("Calculate initial-parameter trace", param_container)
         initial_check.setChecked(self.show_initial_trace)
         initial_check.setToolTip(
-            "When enabled, stores a trace of the fitting function evaluated " "with the initial parameter values (p0)."
+            "When enabled, stores a trace of the fitting function evaluated with the initial parameter values (p0)."
         )
         param_layout.addWidget(initial_check)
 
@@ -1157,14 +1297,8 @@ class CurveFitPlugin(TransformPlugin):
         self.transform_complete.connect(param_widget.update_fitted_results)
 
         # ---- Wire trace checkboxes to attributes -----------------------
-        def _on_initial_toggled(checked: bool) -> None:
-            self.show_initial_trace = checked
-
-        def _on_best_fit_toggled(checked: bool) -> None:
-            self.show_best_fit_trace = checked
-
-        initial_check.toggled.connect(_on_initial_toggled)
-        best_fit_check.toggled.connect(_on_best_fit_toggled)
+        initial_check.toggled.connect(lambda checked: setattr(self, "show_initial_trace", checked))
+        best_fit_check.toggled.connect(lambda checked: setattr(self, "show_best_fit_trace", checked))
 
         return fit_widget, param_container
 
