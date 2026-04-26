@@ -121,7 +121,7 @@ class _QtLogHandler(logging.Handler, QObject):
             self.handleError(record)
 
     def flush(self) -> None:
-        """No-op flush; guard against RuntimeError if Qt object is already deleted."""
+        """Flush the handler; guard against RuntimeError if Qt object is already deleted."""
         try:
             super().flush()
         except RuntimeError:
