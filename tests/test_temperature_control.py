@@ -525,6 +525,7 @@ class TestTemperatureControlPanel:
         assert "Connection" in tab_titles
         assert "Control" in tab_titles
         assert "Stability" in tab_titles
+        assert "Zone Table" in tab_titles
         assert "Chart" in tab_titles
 
     def test_stability_apply(self, qapp):
@@ -552,3 +553,183 @@ class TestTemperatureControlPanel:
                 import inspect
 
                 assert not inspect.isabstract(cls)
+
+
+# ---------------------------------------------------------------------------
+# Engine zone table methods
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_tc():
+    """Return a minimal fake TemperatureController and its class for zone tests."""
+    from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
+    from stoner_measurement.instruments.temperature_controller import (
+        ControllerCapabilities,
+        ControlMode,
+        PIDParameters,
+        SensorStatus,
+        TemperatureController,
+        ZoneEntry,
+    )
+    from stoner_measurement.instruments.transport import NullTransport
+
+    class _FakeTC(TemperatureController):
+        def get_temperature(self, channel):
+            return 300.0
+
+        def get_sensor_status(self, channel):
+            return SensorStatus.OK
+
+        def get_input_channel(self, loop):
+            return "A"
+
+        def set_input_channel(self, loop, channel):
+            pass
+
+        def get_setpoint(self, loop):
+            return 300.0
+
+        def set_setpoint(self, loop, value):
+            pass
+
+        def get_loop_mode(self, loop):
+            return ControlMode.CLOSED_LOOP
+
+        def set_loop_mode(self, loop, mode):
+            pass
+
+        def get_heater_output(self, loop):
+            return 10.0
+
+        def set_heater_range(self, loop, range_):
+            pass
+
+        def get_pid(self, loop):
+            return PIDParameters(50.0, 1.0, 0.0)
+
+        def set_pid(self, loop, p, i, d):
+            pass
+
+        def get_ramp_rate(self, loop):
+            return 5.0
+
+        def set_ramp_rate(self, loop, rate):
+            pass
+
+        def get_ramp_enabled(self, loop):
+            return False
+
+        def set_ramp_enabled(self, loop, enabled):
+            pass
+
+        def get_capabilities(self):
+            return ControllerCapabilities(
+                num_inputs=1,
+                num_loops=1,
+                input_channels=("A",),
+                loop_numbers=(1,),
+                has_zone=True,
+            )
+
+        def get_num_zones(self, loop):
+            return 3
+
+        def get_zone(self, loop, zone_index):
+            return ZoneEntry(
+                upper_bound=float(zone_index * 50),
+                p=10.0 * zone_index,
+                i=1.0,
+                d=0.0,
+                ramp_rate=5.0,
+                heater_range=1,
+                heater_output=0.0,
+            )
+
+        def set_zone(self, loop, zone_index, entry):
+            pass
+
+    driver = _FakeTC(NullTransport(), LakeshoreProtocol())
+    return driver
+
+
+class TestEngineZoneTable:
+    def test_get_zone_table_disconnected(self, qapp):
+        engine = TemperatureControllerEngine()
+        result = engine.get_zone_table(1)
+        assert result is None
+        engine.shutdown()
+
+    def test_get_zone_table_reads_all_entries(self, qapp):
+        from stoner_measurement.instruments.temperature_controller import ZoneEntry
+
+        engine = TemperatureControllerEngine()
+        driver = _make_fake_tc()
+        engine.connect_instrument(driver)
+        entries = engine.get_zone_table(1)
+        assert entries is not None
+        assert len(entries) == 3
+        assert all(isinstance(e, ZoneEntry) for e in entries)
+        # Zone 1 upper_bound should be 50.0, zone 2 should be 100.0
+        assert entries[0].upper_bound == pytest.approx(50.0)
+        assert entries[1].upper_bound == pytest.approx(100.0)
+        assert entries[2].upper_bound == pytest.approx(150.0)
+        engine.shutdown()
+
+    def test_set_zone_table_calls_driver(self, qapp):
+        from unittest.mock import MagicMock
+
+        from stoner_measurement.instruments.temperature_controller import ZoneEntry
+
+        engine = TemperatureControllerEngine()
+        driver = _make_fake_tc()
+        driver.set_zone = MagicMock()
+        engine.connect_instrument(driver)
+        entries = [
+            ZoneEntry(upper_bound=50.0, p=10.0, i=1.0, d=0.0, ramp_rate=5.0, heater_range=1, heater_output=0.0),
+            ZoneEntry(upper_bound=100.0, p=20.0, i=2.0, d=0.0, ramp_rate=5.0, heater_range=2, heater_output=0.0),
+        ]
+        engine.set_zone_table(1, entries)
+        assert driver.set_zone.call_count == 2
+        # First call should be zone index 1
+        call_args = driver.set_zone.call_args_list
+        assert call_args[0][0][1] == 1  # zone_index=1
+        assert call_args[1][0][1] == 2  # zone_index=2
+        engine.shutdown()
+
+    def test_get_zone_table_handles_partial_failure(self, qapp):
+        from unittest.mock import MagicMock, side_effect
+
+        from stoner_measurement.instruments.temperature_controller import ZoneEntry
+
+        engine = TemperatureControllerEngine()
+        driver = _make_fake_tc()
+
+        call_count = [0]
+        original_get_zone = driver.get_zone
+
+        def _patched_get_zone(loop, zone_index):
+            call_count[0] += 1
+            if zone_index == 2:
+                raise RuntimeError("simulated read failure")
+            return original_get_zone(loop, zone_index)
+
+        driver.get_zone = _patched_get_zone
+        engine.connect_instrument(driver)
+        entries = engine.get_zone_table(1)
+        # Zone 2 failed; entries for zones 1 and 3 should still be present.
+        assert entries is not None
+        assert len(entries) == 2
+        assert entries[0].upper_bound == pytest.approx(50.0)
+        assert entries[1].upper_bound == pytest.approx(150.0)
+        engine.shutdown()
+
+    def test_set_zone_table_disconnected(self, qapp):
+        engine = TemperatureControllerEngine()
+        # Should silently do nothing when disconnected.
+        from stoner_measurement.instruments.temperature_controller import ZoneEntry
+
+        entries = [
+            ZoneEntry(upper_bound=50.0, p=10.0, i=1.0, d=0.0, ramp_rate=5.0, heater_range=1, heater_output=0.0)
+        ]
+        engine.set_zone_table(1, entries)  # no exception expected
+        engine.shutdown()

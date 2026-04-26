@@ -394,8 +394,81 @@ class TemperatureControllerEngine(QObject):
         except Exception:
             logger.exception("Failed to set heater range for loop %d", loop)
 
-    def _safe_read_loop(self, func, loop: int, description: str, default):
-        """Invoke *func(loop)*, returning *default* and logging on any error.
+    def get_zone_table(self, loop: int) -> list | None:
+        """Query the hardware for the complete zone table of control *loop*.
+
+        Returns ``None`` when no instrument is connected.  If the driver's
+        :meth:`~stoner_measurement.instruments.temperature_controller.TemperatureController.get_num_zones`
+        raises or returns ``0``, an empty list is returned.  Individual zone
+        reads that raise are logged and the entry is skipped.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (list[ZoneEntry] | None):
+                Ordered list of zone-table entries (index 0 = zone 1), or
+                ``None`` if disconnected.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+            >>> engine = TemperatureControllerEngine.instance()
+            >>> engine.get_zone_table(1) is None  # no driver connected
+            True
+            >>> engine.shutdown()
+        """
+        if self._driver is None:
+            return None
+        try:
+            num = self._driver.get_num_zones(loop)
+        except Exception:
+            logger.exception("Failed to read number of zones for loop %d", loop)
+            return []
+        if not num:
+            return []
+        entries = []
+        for i in range(1, num + 1):
+            try:
+                entries.append(self._driver.get_zone(loop, i))
+            except Exception:
+                logger.exception("Failed to read zone %d for loop %d", i, loop)
+        return entries
+
+    def set_zone_table(self, loop: int, entries: list) -> None:
+        """Write a complete zone table for control *loop*.
+
+        Iterates over *entries* (first entry → zone index 1) and calls
+        :meth:`~stoner_measurement.instruments.temperature_controller.TemperatureController.set_zone`
+        for each one.  Individual write failures are logged without aborting
+        the remaining writes.  Silently returns if no instrument is connected.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            entries (list[ZoneEntry]):
+                Ordered list of zone-table entries to write.  Index 0 is
+                written as zone 1, index 1 as zone 2, etc.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+            >>> engine = TemperatureControllerEngine.instance()
+            >>> engine.set_zone_table(1, [])  # no-op when no driver
+            >>> engine.shutdown()
+        """
+        if self._driver is None:
+            return
+        for i, entry in enumerate(entries, start=1):
+            try:
+                self._driver.set_zone(loop, i, entry)
+            except Exception:
+                logger.exception("Failed to write zone %d for loop %d", i, loop)
+
+    def _safe_read_loop(self, func, loop: int, description: str, default):        """Invoke *func(loop)*, returning *default* and logging on any error.
 
         Args:
             func:
