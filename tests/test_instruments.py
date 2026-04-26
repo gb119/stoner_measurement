@@ -1882,7 +1882,8 @@ class TestOxfordTemperatureControllers:
     def test_capabilities(self):
         caps_itc = OxfordITC503(transport=_null()).get_capabilities()
         caps_mercury = OxfordMercuryTemperatureController(transport=_null()).get_capabilities()
-        assert caps_itc.has_cryogen_control is False
+        assert caps_itc.has_cryogen_control is True
+        assert caps_itc.has_gas_auto_mode is True
         assert caps_mercury.has_cryogen_control is True
         assert caps_mercury.loop_numbers == (1, 2)
 

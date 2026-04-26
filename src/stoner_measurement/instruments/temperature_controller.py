@@ -225,9 +225,10 @@ class LoopStatus:
             Active control mode of the loop.
         heater_output (float):
             Heater output as a percentage (0–100 %).
-        heater_range (int):
+        heater_range (int | None):
             Active heater range index (instrument-specific; ``0`` conventionally
-            means heater off).
+            means heater off), or ``None`` if the controller does not expose a
+            heater range setting.
         ramp_enabled (bool):
             ``True`` when automatic setpoint ramping is enabled.
         ramp_rate (float):
@@ -248,7 +249,6 @@ class LoopStatus:
     process_value: float
     mode: ControlMode
     heater_output: float
-    heater_range: int
     ramp_enabled: bool
     ramp_rate: float
     ramp_state: RampState
@@ -256,6 +256,7 @@ class LoopStatus:
     i: float
     d: float
     input_channel: str
+    heater_range: int | None = None
 
 
 @dataclass

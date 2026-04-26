@@ -120,6 +120,20 @@ class _QtLogHandler(logging.Handler, QObject):
         except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             self.handleError(record)
 
+    def flush(self) -> None:
+        """Flush the handler; guard against RuntimeError if Qt object is already deleted."""
+        try:
+            super().flush()
+        except RuntimeError:
+            pass
+
+    def close(self) -> None:
+        """Close the handler; guard against RuntimeError if Qt object is already deleted."""
+        try:
+            super().close()
+        except RuntimeError:
+            pass
+
 
 class _SignalStream(TextIOBase):
     """A :class:`io.TextIOBase` that forwards :meth:`write` calls to a Qt signal.
