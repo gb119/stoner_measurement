@@ -176,6 +176,7 @@ def make_log_icon(size: int = 32) -> QIcon:
         >>> icon.isNull()
         False
     """
+    # pylint: disable=too-many-locals
     img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     img.fill(Qt.GlobalColor.transparent)
 

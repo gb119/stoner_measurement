@@ -164,6 +164,53 @@ def _render_section_items(lines: list[str]) -> str:
     return "\n".join(parts)
 
 
+def _render_code_block_html(lines: list[str], strip_indent: int = 4) -> str:
+    """Render *lines* as an HTML ``<pre><code>`` block, stripping *strip_indent* spaces."""
+    stripped = [line[strip_indent:] if line.startswith(" " * strip_indent) else line for line in lines]
+    return f"<pre><code>{_html_mod.escape(chr(10).join(stripped).strip())}</code></pre>"
+
+
+def _render_bullet_block_html(lines: list[str]) -> str:
+    """Render *lines* containing bullet-list items as an HTML ``<ul>`` block."""
+    items_text: list[str] = []
+    for line in lines:
+        bullet_m = re.match(r"^\s*[*\-]\s+(.*)", line)
+        if bullet_m:
+            items_text.append(bullet_m.group(1).strip())
+        elif items_text:
+            items_text[-1] += " " + line.strip()
+    li_tags = "".join(f"<li>{_inline_format(item)}</li>" for item in items_text if item)
+    return f"<ul>{li_tags}</ul>"
+
+
+def _render_content_block(lines: list[str], next_is_code: bool) -> tuple[str, bool]:
+    """Render one non-section paragraph block to HTML.
+
+    Args:
+        lines (list[str]):
+            The non-empty lines of the block.
+        next_is_code (bool):
+            Whether the previous block ended with ``::`` signalling a code block.
+
+    Returns:
+        (tuple[str, bool]):
+            ``(html_fragment, new_next_is_code)`` where *html_fragment* is the
+            rendered HTML string and *new_next_is_code* indicates whether the
+            *following* block should be treated as a code block.
+    """
+    if next_is_code:
+        return _render_code_block_html(lines, strip_indent=4), False
+    if all(line.startswith("    ") or not line.strip() for line in lines):
+        return _render_code_block_html(lines, strip_indent=4), False
+    if any(re.match(r"^\s*[*\-]\s", line) for line in lines):
+        return _render_bullet_block_html(lines), False
+    full_text = " ".join(line.strip() for line in lines if line.strip())
+    if full_text.endswith("::"):
+        prose = full_text[:-2].rstrip()
+        return (f"<p>{_inline_format(prose)}:</p>" if prose else ""), True
+    return f"<p>{_inline_format(full_text)}</p>", False
+
+
 def _docstring_to_html(plugin_name: str, doc: str) -> str:
     """Convert a cleaned Google-style class docstring to HTML for the *About* tab.
 
@@ -197,67 +244,24 @@ def _docstring_to_html(plugin_name: str, doc: str) -> str:
         # ---- Section header detection ----------------------------------------
         section_m = _SECTION_HEADER_RE.match(first_line)
         if section_m and section_m.group(1).lower() in _ALL_KNOWN_SECTIONS:
-            section_key = section_m.group(1).lower()
-            if section_key in _DEVELOPER_SECTIONS:
-                skip_section = True
-            else:
-                skip_section = False
-                html_parts.append(f"<h4>{_html_mod.escape(section_m.group(1))}</h4>")
             next_is_code = False
-            if len(lines) == 1:
-                continue
-            # Items follow on subsequent lines in the same block.
+            section_key = section_m.group(1).lower()
+            skip_section = section_key in _DEVELOPER_SECTIONS
             if not skip_section:
-                rendered = _render_section_items(lines[1:])
-                if rendered:
-                    html_parts.append(rendered)
+                html_parts.append(f"<h4>{_html_mod.escape(section_m.group(1))}</h4>")
+                if len(lines) > 1:
+                    rendered = _render_section_items(lines[1:])
+                    if rendered:
+                        html_parts.append(rendered)
             continue
 
         if skip_section:
             continue
 
-        # ---- Code block (introduced by previous ``::`` paragraph) -----------
-        if next_is_code:
-            # Strip the common 4-space indent and render as preformatted text.
-            code_lines = [line[4:] if line.startswith("    ") else line for line in lines]
-            code = "\n".join(code_lines).strip()
-            html_parts.append(f"<pre><code>{_html_mod.escape(code)}</code></pre>")
-            next_is_code = False
-            continue
-
-        # ---- All-indented block — standalone code block ----------------------
-        if all(line.startswith("    ") or not line.strip() for line in lines):
-            code_lines = [line[4:] if line.startswith("    ") else "" for line in lines]
-            code = "\n".join(code_lines).strip()
-            html_parts.append(f"<pre><code>{_html_mod.escape(code)}</code></pre>")
-            continue
-
-        # ---- Bullet list -----------------------------------------------------
-        if any(re.match(r"^\s*[*\-]\s", line) for line in lines):
-            # Collect list items, merging wrapped continuation lines.
-            items_text: list[str] = []
-            for line in lines:
-                bullet_m = re.match(r"^\s*[*\-]\s+(.*)", line)
-                if bullet_m:
-                    items_text.append(bullet_m.group(1).strip())
-                elif items_text:
-                    # Continuation line — append to the previous item.
-                    items_text[-1] += " " + line.strip()
-            li_tags = "".join(f"<li>{_inline_format(item)}</li>" for item in items_text if item)
-            html_parts.append(f"<ul>{li_tags}</ul>")
-            continue
-
-        # ---- Regular paragraph (possibly ending with ``::`` for code block) --
-        full_text = " ".join(line.strip() for line in lines if line.strip())
-        if full_text.endswith("::"):
-            # The ``::`` signals an upcoming code block.  Strip it (or keep
-            # a trailing colon if there is text before it).
-            prose = full_text[:-2].rstrip()
-            if prose:
-                html_parts.append(f"<p>{_inline_format(prose)}:</p>")
-            next_is_code = True
-        else:
-            html_parts.append(f"<p>{_inline_format(full_text)}</p>")
+        # ---- Delegate content-block rendering to helper ----------------------
+        fragment, next_is_code = _render_content_block(lines, next_is_code)
+        if fragment:
+            html_parts.append(fragment)
 
     return "\n".join(html_parts)
 

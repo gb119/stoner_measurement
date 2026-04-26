@@ -55,7 +55,7 @@ class RampScanGenerator(BaseScanGenerator):
             Base parameter used by non-linear modes.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         start: float = 0.0,

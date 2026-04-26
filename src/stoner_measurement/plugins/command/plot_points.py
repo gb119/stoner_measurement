@@ -414,7 +414,21 @@ class PlotPointsCommand(CommandPlugin):
         outer = QWidget(parent)
         outer_layout = QFormLayout(outer)
 
-        # --- X value dropdown ---
+        self._build_x_combos_section(outer, outer_layout, value_keys, x_axis_names)
+
+        outer_layout.addRow(QLabel("<b>Y series:</b>", outer))
+        self._build_y_series_section(outer, outer_layout, value_keys, y_axis_names, ns)
+
+        outer.setLayout(outer_layout)
+        return outer
+
+    def _build_x_combos_section(
+        self,
+        outer: QWidget,
+        outer_layout: QFormLayout,
+        value_keys: list[str],
+        x_axis_names: list[str],
+    ) -> None:
         x_combo = QComboBox(outer)
         if value_keys:
             x_combo.addItems(value_keys)
@@ -433,7 +447,6 @@ class PlotPointsCommand(CommandPlugin):
         x_combo.currentTextChanged.connect(_apply_x)
         outer_layout.addRow("X value:", x_combo)
 
-        # --- Shared X axis dropdown ---
         x_axis_combo = QComboBox(outer)
         x_axis_combo.addItems(x_axis_names)
         if self.x_axis_name in x_axis_names:
@@ -444,9 +457,14 @@ class PlotPointsCommand(CommandPlugin):
         x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
         outer_layout.addRow("X axis:", x_axis_combo)
 
-        # --- Y series area ---
-        outer_layout.addRow(QLabel("<b>Y series:</b>", outer))
-
+    def _build_y_series_section(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        outer: QWidget,
+        outer_layout: QFormLayout,
+        value_keys: list[str],
+        y_axis_names: list[str],
+        ns: dict,
+    ) -> None:
         scroll_area = QScrollArea(outer)
         scroll_area.setWidgetResizable(True)
         scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -456,7 +474,6 @@ class PlotPointsCommand(CommandPlugin):
         series_layout = QGridLayout(series_container)
         series_layout.setColumnStretch(1, 1)
 
-        # Header row
         series_layout.addWidget(QLabel("<b>Value</b>"), 0, 0)
         series_layout.addWidget(QLabel("<b>Label</b>"), 0, 1)
         series_layout.addWidget(QLabel("<b>Y axis</b>"), 0, 2)
@@ -464,12 +481,9 @@ class PlotPointsCommand(CommandPlugin):
         scroll_area.setWidget(series_container)
         outer_layout.addRow(scroll_area)
 
-        # Track current row widgets so we can rebuild on add/remove.
         row_widgets: list[tuple[QComboBox, QLineEdit, QComboBox, QPushButton]] = []
 
         def _rebuild_rows() -> None:
-            """Clear and re-populate the y-series grid from self.y_entries."""
-            # Remove all widgets except the header (row 0).
             for _combo, _edit, _yax, _btn in row_widgets:
                 _combo.setParent(None)
                 _edit.setParent(None)
@@ -477,7 +491,7 @@ class PlotPointsCommand(CommandPlugin):
                 _btn.setParent(None)
             row_widgets.clear()
 
-            for i, entry in enumerate(self.y_entries):
+            def _build_one_row(entry: dict, i: int) -> tuple:
                 grid_row = i + 1
                 combo = QComboBox(series_container)
                 if value_keys:
@@ -490,12 +504,7 @@ class PlotPointsCommand(CommandPlugin):
                         entry["key"] = value_keys[0] if value_keys else ""
                 else:
                     combo.addItem("(no values available)")
-
                 label_edit = QLineEdit(entry.get("label", ""), series_container)
-
-                # Editable y-axis combo: pre-populated with known axes but
-                # allows the user to type a new name that is auto-created on
-                # execute().
                 y_axis_entry = QComboBox(series_container)
                 y_axis_entry.setEditable(True)
                 y_axis_entry.addItems(y_axis_names)
@@ -504,23 +513,22 @@ class PlotPointsCommand(CommandPlugin):
                     y_axis_entry.setCurrentText(entry_y_axis)
                 else:
                     y_axis_entry.setEditText(entry_y_axis)
-
                 remove_btn = QPushButton("✕", series_container)
                 remove_btn.setFixedWidth(28)
-
                 series_layout.addWidget(combo, grid_row, 0)
                 series_layout.addWidget(label_edit, grid_row, 1)
                 series_layout.addWidget(y_axis_entry, grid_row, 2)
                 series_layout.addWidget(remove_btn, grid_row, 3)
                 row_widgets.append((combo, label_edit, y_axis_entry, remove_btn))
+                return combo, label_edit, y_axis_entry, remove_btn
 
-                # Capture index in closures.
+            for i, entry in enumerate(self.y_entries):
+                combo, label_edit, y_axis_entry, remove_btn = _build_one_row(entry, i)
+
                 def _make_key_handler(idx: int) -> Any:
                     def _apply_key(text: str, _idx: int = idx) -> None:
                         if text != "(no values available)":
                             self.y_entries[_idx]["key"] = text
-                            # Update label default only if the label still
-                            # matches a previously auto-generated value.
                             auto = _default_label(text, ns)
                             current_label = self.y_entries[_idx].get("label", "")
                             if not current_label or current_label == _default_label(
@@ -528,26 +536,22 @@ class PlotPointsCommand(CommandPlugin):
                             ):
                                 self.y_entries[_idx]["label"] = auto
                                 row_widgets[_idx][1].setText(auto)
-
                     return _apply_key
 
                 def _make_label_handler(idx: int) -> Any:
                     def _apply_label(_idx: int = idx) -> None:
                         self.y_entries[_idx]["label"] = row_widgets[_idx][1].text().strip()
-
                     return _apply_label
 
                 def _make_y_axis_handler(idx: int) -> Any:
                     def _apply_y_axis(text: str, _idx: int = idx) -> None:
                         self.y_entries[_idx]["y_axis"] = text.strip() or _DEFAULT_Y_AXIS
-
                     return _apply_y_axis
 
                 def _make_remove_handler(idx: int) -> Any:
                     def _remove(_idx: int = idx) -> None:
                         del self.y_entries[_idx]
                         _rebuild_rows()
-
                     return _remove
 
                 combo.currentTextChanged.connect(_make_key_handler(i))
@@ -557,7 +561,6 @@ class PlotPointsCommand(CommandPlugin):
 
         _rebuild_rows()
 
-        # --- Add Y series button ---
         add_btn = QPushButton("Add Y series", outer)
 
         def _add_series() -> None:
@@ -568,8 +571,6 @@ class PlotPointsCommand(CommandPlugin):
 
         add_btn.clicked.connect(_add_series)
         outer_layout.addRow(add_btn)
-        outer.setLayout(outer_layout)
-        return outer
 
     # ------------------------------------------------------------------
     # Serialisation

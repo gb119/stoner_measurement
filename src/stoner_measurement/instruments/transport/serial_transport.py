@@ -57,9 +57,10 @@ class SerialTransport(BaseTransport):
         False
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         port: str,
+        *,
         baud_rate: int = 9600,
         data_bits: int = 8,
         stop_bits: float = 1,

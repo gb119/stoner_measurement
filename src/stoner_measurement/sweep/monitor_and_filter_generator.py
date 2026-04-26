@@ -32,7 +32,7 @@ _SPINBOX_MAX_ABS = 1e9
 class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
     """Set measure flags when monitored outputs change beyond configured thresholds."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         rows: list[tuple[str, bool, float]] | None = None,

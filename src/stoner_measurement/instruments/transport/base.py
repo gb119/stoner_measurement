@@ -294,38 +294,49 @@ class BaseTransport(ABC):
             return cls._from_visa_resource_string(uri)
         return cls._from_uri_string(uri)
 
+    @staticmethod
+    def _parse_timeout(query: dict) -> float:
+        """Extract the timeout value from a parsed URI query dict, defaulting to 2.0."""
+        values = query.get("timeout")
+        timeout_str = values[0] if values else None
+        return float(timeout_str) if timeout_str is not None else 2.0
+
+    @classmethod
+    def _serial_transport_from_uri(
+        cls, parsed: urllib.parse.ParseResult, query: dict, timeout: float, uri: str
+    ) -> BaseTransport:
+        """Build a :class:`SerialTransport` from URI components."""
+        from stoner_measurement.instruments.transport.serial_transport import SerialTransport
+
+        def _qp(name: str, default: str | None = None) -> str | None:
+            values = query.get(name)
+            return values[0] if values else default
+
+        port = parsed.netloc if parsed.netloc else parsed.path
+        if not port:
+            raise ValueError(f"No serial port specified in URI: {uri!r}")
+        baud_str = _qp("baud_rate") or _qp("baud")
+        return SerialTransport(
+            port=port,
+            baud_rate=int(baud_str) if baud_str is not None else 9600,
+            data_bits=int(_qp("data_bits") or 8),
+            stop_bits=float(_qp("stop_bits") or 1),
+            parity=(_qp("parity") or "N").upper(),
+            xonxoff=(_qp("xonxoff") or "").lower() in ("1", "true", "yes"),
+            rtscts=(_qp("rtscts") or "").lower() in ("1", "true", "yes"),
+            timeout=timeout,
+        )
+
     @classmethod
     def _from_uri_string(cls, uri: str) -> BaseTransport:
         """Parse a ``scheme://...`` URI and return the matching transport."""
         parsed = urllib.parse.urlparse(uri)
         query = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
-
-        def get_query_param(name: str, default: str | None = None) -> str | None:
-            """Return the first value of query parameter *name*, or *default*."""
-            values = query.get(name)
-            return values[0] if values else default
-
         scheme = parsed.scheme.lower()
-        timeout_str = get_query_param("timeout")
-        timeout = float(timeout_str) if timeout_str is not None else 2.0
+        timeout = cls._parse_timeout(query)
 
         if scheme == "serial":
-            from stoner_measurement.instruments.transport.serial_transport import SerialTransport
-
-            port = parsed.netloc if parsed.netloc else parsed.path
-            if not port:
-                raise ValueError(f"No serial port specified in URI: {uri!r}")
-            baud_str = get_query_param("baud_rate") or get_query_param("baud")
-            return SerialTransport(
-                port=port,
-                baud_rate=int(baud_str) if baud_str is not None else 9600,
-                data_bits=int(get_query_param("data_bits") or 8),
-                stop_bits=float(get_query_param("stop_bits") or 1),
-                parity=(get_query_param("parity") or "N").upper(),
-                xonxoff=(get_query_param("xonxoff") or "").lower() in ("1", "true", "yes"),
-                rtscts=(get_query_param("rtscts") or "").lower() in ("1", "true", "yes"),
-                timeout=timeout,
-            )
+            return cls._serial_transport_from_uri(parsed, query, timeout, uri)
 
         if scheme in ("tcp", "tcpip"):
             from stoner_measurement.instruments.transport.ethernet_transport import (

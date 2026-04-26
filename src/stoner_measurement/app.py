@@ -259,9 +259,20 @@ class MeasurementApp(QMainWindow):
 
     def _build_actions(self) -> None:
         """Create all QAction instances used by the menu bar and toolbar."""
-        # File actions
         style = QApplication.style()
+        self._build_file_actions(style)
+        self._build_sequence_actions(style)
+        self._build_edit_actions()
+        self._build_view_actions()
+        # Connect tab changes so action labels/tips stay current.
+        # Must be done after all actions are created so _on_tab_changed can
+        # safely reference self._act_run and self._act_generate.
+        self._main_window.tabs.currentChanged.connect(self._on_tab_changed)
+        # Initialise labels for the default (Measurement) tab -----------
+        self._on_tab_changed(self._main_window.tabs.currentIndex())
 
+    def _build_file_actions(self, style: QStyle) -> None:
+        """Create file-related QAction instances."""
         self._act_new = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_FileIcon),
             "&New",
@@ -295,7 +306,8 @@ class MeasurementApp(QMainWindow):
         self._act_exit.setStatusTip("Exit the application")
         self._act_exit.triggered.connect(self.close)
 
-        # Sequence actions
+    def _build_sequence_actions(self, style: QStyle) -> None:
+        """Create sequence-related QAction instances."""
         self._act_run = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay),
             "&Run",
@@ -327,7 +339,8 @@ class MeasurementApp(QMainWindow):
         self._act_generate.setStatusTip("Render the current sequence steps as Python code in the editor")
         self._act_generate.triggered.connect(self._on_load_to_editor)
 
-        # Edit actions
+    def _build_edit_actions(self) -> None:
+        """Create edit-related QAction instances."""
         self._act_cut = QAction("Cu&t", self)
         self._act_cut.setShortcut(QKeySequence.StandardKey.Cut)
         self._act_cut.triggered.connect(self._on_cut)
@@ -351,7 +364,8 @@ class MeasurementApp(QMainWindow):
         self._act_settings.setMenuRole(QAction.MenuRole.PreferencesRole)
         self._act_settings.triggered.connect(self._on_settings)
 
-        # View actions
+    def _build_view_actions(self) -> None:
+        """Create view, temperature panel, and help QAction instances."""
         self._act_view_measurement = QAction("&Measurement", self)
         self._act_view_measurement.setStatusTip("Switch to the Measurement tab")
         self._act_view_measurement.triggered.connect(lambda: self._main_window.tabs.setCurrentIndex(0))
@@ -364,7 +378,6 @@ class MeasurementApp(QMainWindow):
         self._act_show_log.setStatusTip("Open the log viewer window")
         self._act_show_log.triggered.connect(self._on_show_log)
 
-        # Temperature control actions
         self._act_show_temp_panel = QAction(make_temperature_icon(), "Show &Temperature Control", self)
         self._act_show_temp_panel.setStatusTip("Open the temperature controller panel")
         self._act_show_temp_panel.triggered.connect(self._on_show_temp_panel)
@@ -373,17 +386,9 @@ class MeasurementApp(QMainWindow):
         self._act_stop_temp_engine.setStatusTip("Stop the temperature controller engine and disconnect hardware")
         self._act_stop_temp_engine.triggered.connect(self._on_stop_temp_engine)
 
-        # Help actions
         self._act_about = QAction("&About", self)
         self._act_about.setStatusTip("Show information about this application")
         self._act_about.triggered.connect(self._on_about)
-
-        # Connect tab changes so action labels/tips stay current.
-        # Must be done after all actions are created so _on_tab_changed can
-        # safely reference self._act_run and self._act_generate.
-        self._main_window.tabs.currentChanged.connect(self._on_tab_changed)
-        # Initialise labels for the default (Measurement) tab -----------
-        self._on_tab_changed(self._main_window.tabs.currentIndex())
 
     # ------------------------------------------------------------------
     # Menu bar

@@ -923,7 +923,7 @@ class TemperatureController(BaseInstrument):
         loops = {lp: self.get_loop_status(lp) for lp in caps.loop_numbers}
         return TemperatureStatus(temperatures=temperatures, loops=loops)
 
-    def wait_for_setpoint(
+    def wait_for_setpoint(  # pylint: disable=too-many-arguments
         self,
         loop: int,
         channel: str,

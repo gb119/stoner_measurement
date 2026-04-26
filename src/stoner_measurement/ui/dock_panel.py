@@ -526,6 +526,26 @@ class _SequenceTreeWidget(QTreeWidget):
             target_index -= 1
 
         # Insert at the new location
+        self._insert_dragged_item(dragged, target, pos, target_parent, target_index)
+
+        self.setCurrentItem(dragged)
+        # Tell Qt the drop action was CopyAction so that its internal
+        # startDrag post-drop cleanup (clearOrRemove) is NOT triggered.
+        # We have already moved the item manually above; if Qt's MoveAction
+        # cleanup ran it would remove the item a second time from its new
+        # location, causing the "disappearing item" bug.
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
+
+    def _insert_dragged_item(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        dragged: QTreeWidgetItem,
+        target: QTreeWidgetItem | None,
+        pos: QAbstractItemView.DropIndicatorPosition,
+        target_parent: QTreeWidgetItem | None,
+        target_index: int,
+    ) -> None:
+        """Insert *dragged* at the position described by *target*, *pos*, and *target_parent*."""
         if target is None:
             self.addTopLevelItem(dragged)
         elif pos == QAbstractItemView.DropIndicatorPosition.OnItem:
@@ -541,15 +561,6 @@ class _SequenceTreeWidget(QTreeWidget):
                 target_parent.insertChild(target_index + 1, dragged)
             else:
                 self.insertTopLevelItem(target_index + 1, dragged)
-
-        self.setCurrentItem(dragged)
-        # Tell Qt the drop action was CopyAction so that its internal
-        # startDrag post-drop cleanup (clearOrRemove) is NOT triggered.
-        # We have already moved the item manually above; if Qt's MoveAction
-        # cleanup ran it would remove the item a second time from its new
-        # location, causing the "disappearing item" bug.
-        event.setDropAction(Qt.DropAction.CopyAction)
-        event.accept()
 
     def _handle_external_plugin_drop(self, event: QDropEvent) -> None:
         """Insert a brand-new plugin step at the location indicated by *event*.
