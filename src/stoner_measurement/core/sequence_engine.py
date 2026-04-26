@@ -1532,10 +1532,9 @@ class SequenceEngine(QObject):
                 Mapping of entry-point name → plugin instance.
 
         Returns:
-            (list[str]):
-                Action lines (indented one level, trimmed of trailing blanks).
-            (dict[int, BasePlugin]):
-                Mapping of action-lines index → plugin instance.
+            (tuple[list[str], dict[int, BasePlugin]]):
+                A pair of action lines (indented one level, trimmed of trailing
+                blanks) and a mapping of action-lines index → plugin instance.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
