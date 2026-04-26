@@ -10,6 +10,7 @@ from stoner_measurement.temperature_control.engine import TemperatureControllerE
 from stoner_measurement.temperature_control.pubsub import TemperaturePublisher
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
+    LoopSettings,
     StabilityConfig,
     TemperatureChannelReading,
     TemperatureEngineState,
@@ -17,6 +18,7 @@ from stoner_measurement.temperature_control.types import (
 
 __all__ = [
     "EngineStatus",
+    "LoopSettings",
     "StabilityConfig",
     "TemperatureChannelReading",
     "TemperatureControllerEngine",

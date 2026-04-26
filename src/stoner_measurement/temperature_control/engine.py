@@ -22,6 +22,7 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSlot
 from stoner_measurement.temperature_control.pubsub import TemperaturePublisher
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
+    LoopSettings,
     StabilityConfig,
     TemperatureChannelReading,
     TemperatureEngineState,
@@ -286,6 +287,182 @@ class TemperatureControllerEngine(QObject):
         except Exception:
             logger.exception("Failed to set needle valve position")
 
+    def set_gas_auto(self, auto: bool) -> None:
+        """Enable or disable automatic gas-flow control on the connected instrument.
+
+        Only available when the driver advertises ``has_gas_auto_mode``.
+        Silently ignored otherwise.
+
+        Args:
+            auto (bool):
+                ``True`` to engage automatic gas-flow control; ``False`` for
+                manual.
+        """
+        if self._driver is None:
+            return
+        try:
+            caps = self._driver.get_capabilities()
+            if caps.has_gas_auto_mode:
+                self._driver.set_gas_auto(auto)
+        except Exception:
+            logger.exception("Failed to set gas auto mode")
+
+    def set_input_channel(self, loop: int, channel: str) -> None:
+        """Assign a sensor channel as the input for control *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            channel (str):
+                Sensor channel identifier to assign.
+        """
+        if self._driver is None:
+            return
+        try:
+            self._driver.set_input_channel(loop, channel)
+        except Exception:
+            logger.exception("Failed to set input channel for loop %d", loop)
+
+    def set_all_loop_settings(
+        self,
+        loop: int,
+        *,
+        setpoint: float,
+        mode,
+        input_channel: str,
+        ramp_enabled: bool,
+        ramp_rate: float,
+        pid_p: float,
+        pid_i: float,
+        pid_d: float,
+        heater_range: int,
+    ) -> None:
+        """Apply all control-loop settings in a single call.
+
+        Sends setpoint, control mode, input channel assignment, ramp
+        configuration, PID gains, and heater range to the instrument.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Keyword Parameters:
+            setpoint (float):
+                Target setpoint in Kelvin.
+            mode (ControlMode):
+                Desired control mode.
+            input_channel (str):
+                Sensor channel to assign as the loop input.
+            ramp_enabled (bool):
+                ``True`` to activate setpoint ramping.
+            ramp_rate (float):
+                Ramp rate in Kelvin per minute.
+            pid_p (float):
+                Proportional gain.
+            pid_i (float):
+                Integral gain.
+            pid_d (float):
+                Derivative gain.
+            heater_range (int):
+                Heater range index.
+        """
+        if self._driver is None:
+            return
+        try:
+            self._driver.set_setpoint(loop, setpoint)
+        except Exception:
+            logger.exception("Failed to set setpoint for loop %d", loop)
+        try:
+            self._driver.set_loop_mode(loop, mode)
+        except Exception:
+            logger.exception("Failed to set loop mode for loop %d", loop)
+        try:
+            self._driver.set_input_channel(loop, input_channel)
+        except Exception:
+            logger.exception("Failed to set input channel for loop %d", loop)
+        try:
+            self._driver.set_ramp_rate(loop, ramp_rate)
+            self._driver.set_ramp_enabled(loop, ramp_enabled)
+        except Exception:
+            logger.exception("Failed to set ramp for loop %d", loop)
+        try:
+            self._driver.set_pid(loop, pid_p, pid_i, pid_d)
+        except Exception:
+            logger.exception("Failed to set PID for loop %d", loop)
+        try:
+            self._driver.set_heater_range(loop, heater_range)
+        except Exception:
+            logger.exception("Failed to set heater range for loop %d", loop)
+
+    def get_loop_settings(self, loop: int) -> LoopSettings | None:
+        """Query the hardware for all configurable settings of control *loop*.
+
+        Returns ``None`` when no instrument is connected.  Individual setting
+        reads that fail are logged and sensible defaults are substituted.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (LoopSettings | None):
+                Current hardware settings for *loop*, or ``None`` if
+                disconnected.
+        """
+        if self._driver is None:
+            return None
+        from stoner_measurement.instruments.temperature_controller import ControlMode
+
+        try:
+            setpoint = self._driver.get_setpoint(loop)
+        except Exception:
+            logger.exception("Failed to read setpoint for loop %d", loop)
+            setpoint = 0.0
+        try:
+            mode = self._driver.get_loop_mode(loop)
+        except Exception:
+            logger.exception("Failed to read loop mode for loop %d", loop)
+            mode = ControlMode.CLOSED_LOOP
+        try:
+            input_channel = self._driver.get_input_channel(loop)
+        except Exception:
+            logger.exception("Failed to read input channel for loop %d", loop)
+            input_channel = ""
+        try:
+            ramp_enabled = self._driver.get_ramp_enabled(loop)
+        except Exception:
+            logger.exception("Failed to read ramp enabled for loop %d", loop)
+            ramp_enabled = False
+        try:
+            ramp_rate = self._driver.get_ramp_rate(loop)
+        except Exception:
+            logger.exception("Failed to read ramp rate for loop %d", loop)
+            ramp_rate = 0.0
+        try:
+            pid = self._driver.get_pid(loop)
+            pid_p, pid_i, pid_d = pid.p, pid.i, pid.d
+        except Exception:
+            logger.exception("Failed to read PID for loop %d", loop)
+            pid_p = pid_i = pid_d = 0.0
+        try:
+            heater_range: int | None = self._driver.get_heater_range(loop)
+        except NotImplementedError:
+            heater_range = None
+        except Exception:
+            logger.exception("Failed to read heater range for loop %d", loop)
+            heater_range = None
+        return LoopSettings(
+            setpoint=setpoint,
+            mode=mode,
+            input_channel=input_channel,
+            ramp_enabled=ramp_enabled,
+            ramp_rate=ramp_rate,
+            pid_p=pid_p,
+            pid_i=pid_i,
+            pid_d=pid_d,
+            heater_range=heater_range,
+        )
+
     def set_stability_config(self, config: StabilityConfig) -> None:
         """Replace the stability-evaluation configuration.
 
@@ -391,16 +568,36 @@ class TemperatureControllerEngine(QObject):
         # --- Loop data ---
         setpoints: dict[int, float] = {}
         heater_outputs: dict[int, float] = {}
+        heater_ranges: dict[int, int] = {}
         loop_modes: dict[int, object] = {}
+        input_channels: dict[int, str] = {}
         for lp in caps.loop_numbers:
             setpoints[lp] = driver.get_setpoint(lp)
             heater_outputs[lp] = driver.get_heater_output(lp)
             loop_modes[lp] = driver.get_loop_mode(lp)
+            try:
+                input_channels[lp] = driver.get_input_channel(lp)
+            except (ConnectionError, ValueError, AttributeError):
+                logger.exception("Failed to read input channel for loop %d during poll", lp)
+            try:
+                heater_ranges[lp] = driver.get_heater_range(lp)
+            except NotImplementedError:
+                pass
+            except (ConnectionError, ValueError, AttributeError):
+                logger.exception("Failed to read heater range for loop %d during poll", lp)
 
         # --- Needle valve ---
         needle_valve: float | None = None
         if caps.has_cryogen_control:
             needle_valve = driver.get_gas_flow()
+
+        # --- Gas auto mode ---
+        gas_auto_mode: bool | None = None
+        if caps.has_gas_auto_mode:
+            try:
+                gas_auto_mode = driver.get_gas_auto()
+            except (ConnectionError, ValueError, AttributeError):
+                logger.exception("Failed to read gas auto mode during poll")
 
         # --- Stability evaluation ---
         at_setpoint, stable = self._evaluate_stability(readings, setpoints, caps.loop_numbers, now)
@@ -409,8 +606,11 @@ class TemperatureControllerEngine(QObject):
             readings=readings,
             setpoints=setpoints,
             heater_outputs=heater_outputs,
+            heater_ranges=heater_ranges,
             needle_valve=needle_valve,
+            gas_auto_mode=gas_auto_mode,
             loop_modes=loop_modes,
+            input_channels=input_channels,
             at_setpoint=at_setpoint,
             stable=stable,
             engine_status=EngineStatus.POLLING,

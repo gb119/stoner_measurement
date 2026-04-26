@@ -34,6 +34,7 @@ class _OxfordTemperatureControllerBase(TemperatureController):
         """Initialise the Oxford temperature controller driver."""
         super().__init__(transport=transport, protocol=protocol)
         self._loop_input: dict[int, str] = {loop: self._CAPABILITIES.input_channels[0] for loop in self._CAPABILITIES.loop_numbers}
+        self._gas_auto: bool = False
 
     def get_temperature(self, channel: str) -> float:
         """Return channel temperature in Kelvin."""
@@ -203,6 +204,7 @@ class _OxfordTemperatureControllerBase(TemperatureController):
 class OxfordITC503(_OxfordTemperatureControllerBase):
     """Concrete driver for the Oxford Instruments ITC503 temperature controller."""
 
+    _ITC503_HEATER_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=3,
         num_loops=1,
@@ -210,6 +212,9 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         loop_numbers=(1,),
         has_ramp=True,
         has_pid=True,
+        has_cryogen_control=True,
+        has_gas_auto_mode=True,
+        heater_range_labels={1: _ITC503_HEATER_RANGES},
     )
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
@@ -219,6 +224,65 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def identify(self) -> str:
         """Return identity string."""
         return self.query("V")
+
+    def get_heater_range(self, loop: int) -> int:
+        """Return the current heater range index (0=off, 1=on) for *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (int):
+                0 when the heater output is zero (off), 1 otherwise.
+        """
+        self._normalise_loop(loop)
+        # ITC503 does not have a dedicated range-read command; infer from
+        # the heater output: zero output implies off, any non-zero implies on.
+        output = self._query_float("R5")
+        return 0 if output == 0.0 else 1
+
+    def get_gas_flow(self) -> float:
+        """Return the gas-flow needle valve position as a percentage."""
+        return self._query_float("R6")
+
+    def set_gas_flow(self, percent: float) -> None:
+        """Set the gas-flow needle valve position to *percent* open."""
+        self.write(f"G{percent:.1f}")
+
+    def get_needle_valve(self) -> float:
+        """Return the needle-valve position as a percentage."""
+        return self.get_gas_flow()
+
+    def set_needle_valve(self, position: float) -> None:
+        """Set the needle-valve position to *position* percent open."""
+        self.set_gas_flow(position)
+
+    def get_gas_auto(self) -> bool:
+        """Return ``True`` if gas flow is under automatic control.
+
+        Returns:
+            (bool):
+                The last value set via :meth:`set_gas_auto`.  The ITC503
+                does not expose a read-back command for the auto/manual mode
+                flag, so the returned value reflects the last software-set
+                state rather than a live hardware query.  The value defaults
+                to ``False`` on first connection.
+        """
+        return self._gas_auto
+
+    def set_gas_auto(self, auto: bool) -> None:
+        """Enable or disable automatic gas-flow control.
+
+        The ITC503 ``A`` command controls the combined heater/gas auto mode.
+        Bit 0 = auto heater, bit 1 = auto gas.  This implementation preserves
+        the current heater-auto state when toggling gas auto mode.
+        """
+        self._gas_auto = auto
+        # Bit 0 would be set if we also want auto-heater. Since loop mode
+        # already controls the heater, only set bit 1 for gas auto.
+        mode_code = 2 if auto else 0
+        self.write(f"A{mode_code}")
 
     def _temperature_query(self, channel: str) -> str:
         """Return the ITC503 query command for reading temperature on *channel*."""
@@ -273,6 +337,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
     """Concrete driver for the Oxford Instruments Mercury Temperature Controller."""
 
+    _MERCURY_HEATER_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=4,
         num_loops=2,
@@ -281,11 +346,54 @@ class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
         has_ramp=True,
         has_pid=True,
         has_cryogen_control=True,
+        has_gas_auto_mode=True,
+        heater_range_labels={1: _MERCURY_HEATER_RANGES, 2: _MERCURY_HEATER_RANGES},
     )
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the Mercury temperature controller driver."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
+
+    def get_heater_range(self, loop: int) -> int:
+        """Return the current heater range index (0=off, 1=on) for *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (int):
+                0 when the loop range is ``OFF``, 1 otherwise.
+        """
+        loop_n = self._normalise_loop(loop)
+        raw = self.query(f"READ:LOOP{loop_n}:RANGE?").strip()
+        return 0 if raw in ("OFF", "0", "") else 1
+
+    def get_gas_flow(self) -> float:
+        """Return the gas-flow needle valve position as a percentage."""
+        return self._query_float("READ:NEEDLEVALVE:FLOW?")
+
+    def set_gas_flow(self, percent: float) -> None:
+        """Set the gas-flow needle valve position to *percent* open."""
+        self.write(f"SET:NEEDLEVALVE:FLOW {percent:.1f}")
+
+    def get_needle_valve(self) -> float:
+        """Return the needle-valve position as a percentage."""
+        return self.get_gas_flow()
+
+    def set_needle_valve(self, position: float) -> None:
+        """Set the needle-valve position to *position* percent open."""
+        self.set_gas_flow(position)
+
+    def get_gas_auto(self) -> bool:
+        """Return ``True`` if the needle valve is under automatic control."""
+        raw = self.query("READ:NEEDLEVALVE:MODE?").strip().upper()
+        return raw == "AUTO"
+
+    def set_gas_auto(self, auto: bool) -> None:
+        """Enable or disable automatic needle-valve control."""
+        mode = "AUTO" if auto else "MANUAL"
+        self.write(f"SET:NEEDLEVALVE:MODE {mode}")
 
     def _temperature_query(self, channel: str) -> str:
         """Return the Mercury query command for reading temperature on *channel*."""

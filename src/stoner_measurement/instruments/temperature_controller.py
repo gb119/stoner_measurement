@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import time
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -225,6 +225,9 @@ class LoopStatus:
             Active control mode of the loop.
         heater_output (float):
             Heater output as a percentage (0–100 %).
+        heater_range (int):
+            Active heater range index (instrument-specific; ``0`` conventionally
+            means heater off).
         ramp_enabled (bool):
             ``True`` when automatic setpoint ramping is enabled.
         ramp_rate (float):
@@ -245,6 +248,7 @@ class LoopStatus:
     process_value: float
     mode: ControlMode
     heater_output: float
+    heater_range: int
     ramp_enabled: bool
     ramp_rate: float
     ramp_state: RampState
@@ -303,6 +307,14 @@ class ControllerCapabilities:
         has_cryogen_control (bool):
             ``True`` if the driver supports cryogen-flow or needle-valve control
             (e.g. Oxford Instruments ITC503 or Mercury iTC).
+        has_gas_auto_mode (bool):
+            ``True`` if the driver supports switching the gas/needle-valve control
+            between automatic and manual mode.
+        heater_range_labels (dict[int, tuple[str, ...]]):
+            Optional per-loop mapping of heater range index to human-readable
+            label.  The tuple index corresponds to the integer range index passed
+            to :meth:`~TemperatureController.set_heater_range`.  An empty dict
+            (the default) means the UI should fall back to numeric indices.
         min_temperature (float | None):
             Minimum achievable temperature in Kelvin, or ``None`` if unknown.
         max_temperature (float | None):
@@ -321,6 +333,8 @@ class ControllerCapabilities:
     has_user_curves: bool = False
     has_sensor_excitation: bool = False
     has_cryogen_control: bool = False
+    has_gas_auto_mode: bool = False
+    heater_range_labels: dict[int, tuple[str, ...]] = field(default_factory=dict)
     min_temperature: float | None = None
     max_temperature: float | None = None
 
@@ -609,6 +623,37 @@ class TemperatureController(BaseInstrument):
                 If the transport is not open.
         """
 
+    def get_heater_range(self, loop: int) -> int:
+        """Return the current heater range index for control *loop*.
+
+        The meaning of the returned index is instrument-specific.  A value of
+        ``0`` conventionally means "heater off".
+
+        Drivers that support reading the heater range should override this
+        method.  The default implementation raises :class:`NotImplementedError`.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (int):
+                Current heater range index.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not support reading the heater range.
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> tc.get_heater_range(1)
+            0
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support reading the heater range."
+        )
+
     # ------------------------------------------------------------------
     # Core abstract methods — PID
     # ------------------------------------------------------------------
@@ -838,11 +883,16 @@ class TemperatureController(BaseInstrument):
         pid = self.get_pid(loop)
         ramp_on = self.get_ramp_enabled(loop)
         channel = self.get_input_channel(loop)
+        try:
+            heater_range = self.get_heater_range(loop)
+        except NotImplementedError:
+            heater_range = 0
         return LoopStatus(
             setpoint=self.get_setpoint(loop),
             process_value=self.get_temperature(channel),
             mode=self.get_loop_mode(loop),
             heater_output=self.get_heater_output(loop),
+            heater_range=heater_range,
             ramp_enabled=ramp_on,
             ramp_rate=self.get_ramp_rate(loop),
             ramp_state=self.get_ramp_state(loop),
@@ -1452,4 +1502,55 @@ class TemperatureController(BaseInstrument):
         raise NotImplementedError(
             f"{type(self).__name__} does not support needle-valve control. "
             "Check get_capabilities().has_cryogen_control before calling this method."
+        )
+
+    def get_gas_auto(self) -> bool:
+        """Return ``True`` if the gas/needle-valve is in automatic control mode.
+
+        In automatic mode the controller determines the gas-flow position itself;
+        in manual mode the operator-set position is used directly.
+
+        Drivers that support querying the gas auto mode should override this
+        method.  The default implementation raises :class:`NotImplementedError`.
+
+        Returns:
+            (bool):
+                ``True`` when the gas flow is under automatic control.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not support gas auto mode.
+                Check :attr:`ControllerCapabilities.has_gas_auto_mode` before
+                calling.
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> tc.get_gas_auto()
+            False
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support gas auto mode. "
+            "Check get_capabilities().has_gas_auto_mode before calling this method."
+        )
+
+    def set_gas_auto(self, auto: bool) -> None:
+        """Enable or disable automatic gas/needle-valve control.
+
+        Args:
+            auto (bool):
+                ``True`` to engage automatic gas-flow control; ``False`` to
+                switch to manual control.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not support gas auto mode.
+                Check :attr:`ControllerCapabilities.has_gas_auto_mode` before
+                calling.
+            ConnectionError:
+                If the transport is not open.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support gas auto mode. "
+            "Check get_capabilities().has_gas_auto_mode before calling this method."
         )
