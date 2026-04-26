@@ -29,7 +29,7 @@ _SPINBOX_MAX_ABS = 1e9
 class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
     """Sweep generator that ramps through target/rate segments."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         start: float = 0.0,

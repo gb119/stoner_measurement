@@ -759,7 +759,7 @@ class CurveFitPlugin(TransformPlugin):
             self.log.warning("CurveFit: failed to compute initial trace — %s", exc)
             return None
 
-    def _run_curve_fit(
+    def _run_curve_fit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         fit_func,
         x_arr: np.ndarray,

@@ -323,7 +323,7 @@ class TemperatureControllerEngine(QObject):
         except Exception:
             logger.exception("Failed to set input channel for loop %d", loop)
 
-    def set_all_loop_settings(
+    def set_all_loop_settings(  # pylint: disable=too-many-arguments
         self,
         loop: int,
         *,

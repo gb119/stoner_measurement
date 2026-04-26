@@ -607,7 +607,7 @@ class TemperatureControlPanel(QWidget):
     # Chart helpers
     # ------------------------------------------------------------------
 
-    def _upsert_chart_curve(
+    def _upsert_chart_curve(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self, key: str, xs: list[float], ys: list[float], pen, plot_widget, name: str
     ) -> None:
         """Create or update a named curve on *plot_widget*.
@@ -973,8 +973,13 @@ class _LoopControlGroup(QGroupBox):
     def _build(self) -> None:
         """Build the form layout."""
         form = QFormLayout(self)
+        self._build_readback_rows(form)
+        self._build_control_rows(form)
+        self._build_pid_row(form)
+        self._build_button_row(form)
 
-        # Live readback labels
+    def _build_readback_rows(self, form: QFormLayout) -> None:
+        """Add live-readback label rows to *form*."""
         self._setpoint_label = QLabel("—")
         self._heater_label = QLabel("—")
         self._mode_label = QLabel("—")
@@ -982,26 +987,24 @@ class _LoopControlGroup(QGroupBox):
         form.addRow("Heater output:", self._heater_label)
         form.addRow("Mode (live):", self._mode_label)
 
-        # Control sensor (input channel)
         self._channel_combo = QComboBox()
         for ch in self._caps.input_channels:
             self._channel_combo.addItem(ch, ch)
         form.addRow("Control sensor:", self._channel_combo)
 
-        # Editable setpoint
+    def _build_control_rows(self, form: QFormLayout) -> None:
+        """Add setpoint, mode, ramp and heater-range rows to *form*."""
         self._sp_spin = QDoubleSpinBox()
         self._sp_spin.setRange(0.0, 1000.0)
         self._sp_spin.setSuffix(" K")
         self._sp_spin.setDecimals(3)
         form.addRow("New setpoint:", self._sp_spin)
 
-        # Control mode
         self._mode_combo = QComboBox()
         for mode in ControlMode:
             self._mode_combo.addItem(mode.value.replace("_", " ").title(), mode)
         form.addRow("Control mode:", self._mode_combo)
 
-        # Ramp
         self._ramp_enable = QCheckBox("Enable")
         self._ramp_rate_spin = QDoubleSpinBox()
         self._ramp_rate_spin.setRange(0.0, 100.0)
@@ -1012,8 +1015,6 @@ class _LoopControlGroup(QGroupBox):
         ramp_row.addWidget(self._ramp_rate_spin)
         form.addRow("Ramp:", ramp_row)
 
-        # Heater range — use labelled combo when capability labels are provided,
-        # otherwise fall back to a plain spin box.
         range_labels = self._caps.heater_range_labels.get(self._loop, ())
         if range_labels:
             self._heater_range_combo = QComboBox()
@@ -1028,7 +1029,8 @@ class _LoopControlGroup(QGroupBox):
             self._heater_range_combo = None
             form.addRow("Heater range:", self._heater_range_spin)
 
-        # PID
+    def _build_pid_row(self, form: QFormLayout) -> None:
+        """Add PID spin boxes row to *form*."""
         self._pid_p_spin = QDoubleSpinBox()
         self._pid_p_spin.setRange(0.0, 1000.0)
         self._pid_p_spin.setDecimals(3)
@@ -1047,7 +1049,8 @@ class _LoopControlGroup(QGroupBox):
         pid_row.addWidget(self._pid_d_spin)
         form.addRow("PID:", pid_row)
 
-        # Single Apply + Read button row
+    def _build_button_row(self, form: QFormLayout) -> None:
+        """Add Apply/Read button row to *form*."""
         btn_row = QHBoxLayout()
         apply_btn = QPushButton("Apply")
         apply_btn.setToolTip("Send all loop settings to the instrument")
@@ -1062,7 +1065,15 @@ class _LoopControlGroup(QGroupBox):
 
     # --- Live update ---
 
-    def update_live(self, setpoint: float, heater_output: float, mode, heater_range: int | None = None, input_channel: str | None = None) -> None:
+    def update_live(
+        self,
+        setpoint: float,
+        heater_output: float,
+        mode,
+        *,
+        heater_range: int | None = None,
+        input_channel: str | None = None,
+    ) -> None:
         """Refresh live-readback labels from the engine polling state.
 
         Only the read-only status labels are updated here; editable control

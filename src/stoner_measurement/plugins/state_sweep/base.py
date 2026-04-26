@@ -61,7 +61,17 @@ class _StateSweepPage(QWidget):
     def __init__(self, plugin: StateSweepPlugin, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
+        self._build_header_section(plugin, layout)
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+        sweep_container = _StateSweepTabContainer(plugin, parent=self)
+        layout.addWidget(sweep_container)
+        self._build_data_collection_section(plugin, layout)
 
+    def _build_header_section(self, plugin: StateSweepPlugin, layout: QVBoxLayout) -> None:
+        """Build name edit, plugin type, optional generator combo, and timeout factor."""
         header_form = QFormLayout()
 
         name_edit = QLineEdit(plugin.instance_name)
@@ -89,31 +99,8 @@ class _StateSweepPage(QWidget):
         header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
 
         if len(type(plugin)._sweep_generator_classes) > 1:
-            combo = QComboBox()
-            for cls in type(plugin)._sweep_generator_classes:
-                combo.addItem(cls.__name__, cls)
-            current_idx = combo.findData(type(plugin.sweep_generator))
-            if current_idx >= 0:
-                combo.setCurrentIndex(current_idx)
+            self._add_generator_combo(plugin, header_form)
 
-            def _on_type_changed(index: int) -> None:
-                cls = combo.itemData(index)
-                if cls is not None and not isinstance(plugin.sweep_generator, cls):
-                    plugin.set_sweep_generator_class(cls)
-
-            def _sync_type_combo() -> None:
-                current_cls = type(plugin.sweep_generator)
-                idx = combo.findData(current_cls)
-                if idx >= 0 and combo.currentIndex() != idx:
-                    combo.blockSignals(True)
-                    combo.setCurrentIndex(idx)
-                    combo.blockSignals(False)
-
-            combo.currentIndexChanged.connect(_on_type_changed)
-            plugin.sweep_generator_changed.connect(_sync_type_combo)
-            header_form.addRow("Generator type:", combo)
-
-        # Timeout factor spinbox
         timeout_factor_spin = pg.SpinBox()
         timeout_factor_spin.setOpts(bounds=(0.1, _SPINBOX_MAX_ABS), decimals=2, step=0.1)
         timeout_factor_spin.setValue(plugin.sweep_timeout_factor)
@@ -123,25 +110,43 @@ class _StateSweepPage(QWidget):
             "its estimated duration before a state_error is emitted.  Has no "
             "effect when the sweep generator cannot estimate its duration."
         )
-
-        def _apply_timeout_factor(val: float) -> None:
-            plugin.sweep_timeout_factor = max(0.1, float(val))
-
-        timeout_factor_spin.sigValueChanged.connect(lambda sb: _apply_timeout_factor(sb.value()))
+        timeout_factor_spin.sigValueChanged.connect(
+            lambda sb: setattr(plugin, "sweep_timeout_factor", max(0.1, float(sb.value())))
+        )
         header_form.addRow("Timeout factor:", timeout_factor_spin)
 
         header_widget = QWidget()
         header_widget.setLayout(header_form)
         layout.addWidget(header_widget)
 
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(separator)
+    def _add_generator_combo(self, plugin: StateSweepPlugin, header_form: QFormLayout) -> None:
+        """Add combo box for selecting sweep generator type when multiple classes exist."""
+        combo = QComboBox()
+        for cls in type(plugin)._sweep_generator_classes:
+            combo.addItem(cls.__name__, cls)
+        current_idx = combo.findData(type(plugin.sweep_generator))
+        if current_idx >= 0:
+            combo.setCurrentIndex(current_idx)
 
-        sweep_container = _StateSweepTabContainer(plugin, parent=self)
-        layout.addWidget(sweep_container)
+        def _on_type_changed(index: int) -> None:
+            cls = combo.itemData(index)
+            if cls is not None and not isinstance(plugin.sweep_generator, cls):
+                plugin.set_sweep_generator_class(cls)
 
+        def _sync_type_combo() -> None:
+            current_cls = type(plugin.sweep_generator)
+            idx = combo.findData(current_cls)
+            if idx >= 0 and combo.currentIndex() != idx:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(idx)
+                combo.blockSignals(False)
+
+        combo.currentIndexChanged.connect(_on_type_changed)
+        plugin.sweep_generator_changed.connect(_sync_type_combo)
+        header_form.addRow("Generator type:", combo)
+
+    def _build_data_collection_section(self, plugin: StateSweepPlugin, layout: QVBoxLayout) -> None:
+        """Build data collection checkboxes, filter edits, and preceding separator."""
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
         sep2.setFrameShadow(QFrame.Shadow.Sunken)

@@ -19,6 +19,7 @@ from typing import Any, ClassVar
 
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
@@ -80,10 +81,17 @@ class _StateScanPage(QWidget):
         """Initialise the scan page and bind it to *plugin*."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
+        self._build_header_section(plugin, layout)
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+        scan_container = _StateScanTabContainer(plugin, parent=self)
+        layout.addWidget(scan_container)
+        self._build_data_collection_section(plugin, layout)
 
-        from PyQt6.QtWidgets import QCheckBox
-
-        # --- Header form: instance name + optional generator selector ---
+    def _build_header_section(self, plugin: StateScanPlugin, layout: QVBoxLayout) -> None:
+        """Build name edit, plugin type row, and optional generator combo."""
         header_form = QFormLayout()
 
         name_edit = QLineEdit(plugin.instance_name)
@@ -108,51 +116,45 @@ class _StateScanPage(QWidget):
         header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
 
         if len(type(plugin)._scan_generator_classes) > 1:
-            combo = QComboBox()
-            for cls in type(plugin)._scan_generator_classes:
-                combo.addItem(cls.__name__, cls)
-            current_idx = combo.findData(type(plugin.scan_generator))
-            if current_idx >= 0:
-                combo.setCurrentIndex(current_idx)
-
-            def _on_type_changed(index: int) -> None:
-                cls = combo.itemData(index)
-                if cls is not None and not isinstance(plugin.scan_generator, cls):
-                    plugin.set_scan_generator_class(cls)
-
-            def _sync_type_combo() -> None:
-                current_cls = type(plugin.scan_generator)
-                idx = combo.findData(current_cls)
-                if idx >= 0 and combo.currentIndex() != idx:
-                    combo.blockSignals(True)
-                    combo.setCurrentIndex(idx)
-                    combo.blockSignals(False)
-
-            combo.currentIndexChanged.connect(_on_type_changed)
-            plugin.scan_generator_changed.connect(_sync_type_combo)
-            header_form.addRow("Generator type:", combo)
+            self._add_generator_combo(plugin, header_form)
 
         header_widget = QWidget()
         header_widget.setLayout(header_form)
         layout.addWidget(header_widget)
 
-        # --- Horizontal separator ---
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(separator)
+    def _add_generator_combo(self, plugin: StateScanPlugin, header_form: QFormLayout) -> None:
+        """Add combo box for selecting generator type when multiple classes exist."""
+        combo = QComboBox()
+        for cls in type(plugin)._scan_generator_classes:
+            combo.addItem(cls.__name__, cls)
+        current_idx = combo.findData(type(plugin.scan_generator))
+        if current_idx >= 0:
+            combo.setCurrentIndex(current_idx)
 
-        # --- Scan generator config widget (auto-refreshes on generator change) ---
-        scan_container = _StateScanTabContainer(plugin, parent=self)
-        layout.addWidget(scan_container)
+        def _on_type_changed(index: int) -> None:
+            cls = combo.itemData(index)
+            if cls is not None and not isinstance(plugin.scan_generator, cls):
+                plugin.set_scan_generator_class(cls)
 
-        # --- Horizontal separator before data-collection settings ---
+        def _sync_type_combo() -> None:
+            current_cls = type(plugin.scan_generator)
+            idx = combo.findData(current_cls)
+            if idx >= 0 and combo.currentIndex() != idx:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(idx)
+                combo.blockSignals(False)
+
+        combo.currentIndexChanged.connect(_on_type_changed)
+        plugin.scan_generator_changed.connect(_sync_type_combo)
+        header_form.addRow("Generator type:", combo)
+
+    def _build_data_collection_section(self, plugin: StateScanPlugin, layout: QVBoxLayout) -> None:
+        """Build data collection checkboxes, filter edits, and preceding separator."""
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
         sep2.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(sep2)
 
-        # --- Data-collection settings ---
         data_form = QFormLayout()
 
         collect_check = QCheckBox()

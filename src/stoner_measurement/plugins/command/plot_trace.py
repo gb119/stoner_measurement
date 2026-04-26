@@ -496,7 +496,7 @@ class PlotTraceCommand(CommandPlugin):
             combo.addItem("(no traces available)")
         return combo
 
-    def _build_channel_combo(
+    def _build_channel_combo(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         widget: QWidget,
         channel_names: list[str],
@@ -531,7 +531,7 @@ class PlotTraceCommand(CommandPlugin):
             combo.setCurrentText(axis_names[0])
         return combo
 
-    def _wire_config_signals(
+    def _wire_config_signals(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         trace_combo: QComboBox,
         advanced_check: QCheckBox,

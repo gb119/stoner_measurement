@@ -457,7 +457,7 @@ class PlotPointsCommand(CommandPlugin):
         x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
         outer_layout.addRow("X axis:", x_axis_combo)
 
-    def _build_y_series_section(
+    def _build_y_series_section(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         outer: QWidget,
         outer_layout: QFormLayout,

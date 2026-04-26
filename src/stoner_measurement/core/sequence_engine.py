@@ -329,7 +329,7 @@ class _EngineThread(QThread):
 
         return _tracer
 
-    def _exec_script(
+    def _exec_script(  # pylint: disable=too-many-arguments
         self,
         code_str: str,
         out_stream: _SignalStream,
@@ -388,7 +388,7 @@ class _EngineThread(QThread):
         finally:
             self._running_script = False
 
-    def _emit_script_error(
+    def _emit_script_error(  # pylint: disable=too-many-arguments
         self,
         exc_type: type,
         exc_value: BaseException,
