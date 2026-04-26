@@ -287,7 +287,7 @@ class _EngineThread(QThread):
                 self._exec_command(item[1], out_stream, err_stream)
             elif kind == "script":
                 # item is ("script", code_str, customised, line_map)
-                self._exec_script(item[1], out_stream, err_stream, item[2], item[3])
+                self._exec_script(item[1], out_stream, err_stream, customised=item[2], line_map=item[3])
             self._completed += 1
 
     # ------------------------------------------------------------------
@@ -334,6 +334,7 @@ class _EngineThread(QThread):
         code_str: str,
         out_stream: _SignalStream,
         err_stream: _SignalStream,
+        *,
         customised: bool = True,
         line_map: dict[int, BasePlugin] | None = None,
     ) -> None:
@@ -382,7 +383,7 @@ class _EngineThread(QThread):
             self.status_changed.emit("Error")
         except Exception:  # pylint: disable=broad-exception-caught
             exc_type, exc_value, exc_tb = sys.exc_info()
-            self._emit_script_error(exc_type, exc_value, exc_tb, code_str, customised, line_map)
+            self._emit_script_error(exc_type, exc_value, exc_tb, code_str, customised=customised, line_map=line_map)
             self.status_changed.emit("Error")
         finally:
             self._running_script = False
@@ -393,6 +394,7 @@ class _EngineThread(QThread):
         exc_value: BaseException,
         exc_tb: object,
         code_str: str,
+        *,
         customised: bool,
         line_map: dict[int, BasePlugin] | None,
     ) -> None:
@@ -1363,19 +1365,74 @@ class SequenceEngine(QObject):
             code = "\n".join(header) + "# No sequence steps defined yet.\n"
             return (code, {}) if return_line_map else code
 
-        # ------------------------------------------------------------------
-        # Collect all unique plugin instances (depth-first order).
-        # ------------------------------------------------------------------
+        ordered_plugins = self._collect_plugins_from_steps(steps, plugins)
 
-        ordered_plugins: list[BasePlugin] = []
+        if not ordered_plugins:
+            code = "\n".join(header) + "# No sequence steps defined yet.\n"
+            return (code, {}) if return_line_map else code
+
+        lines: list[str] = list(header)
+        lines.extend(self._generate_instantiation_phase(ordered_plugins))
+        lines.extend(self._generate_connect_phase(ordered_plugins))
+        lines.extend(self._generate_configure_phase(ordered_plugins))
+
+        action_lines, action_line_owner = self._build_action_lines(steps, plugins)
+
+        lines.append("try:")
+
+        if return_line_map:
+            # Embed unique markers in action lines so the line_map can be
+            # rebuilt after black reformatting.  Markers are inline comments of
+            # the form ``# __SM_{idx}__`` appended to the relevant line.  We
+            # strip them from the final output after reconstructing the map.
+            # The bounds check guards against trailing blank lines that were
+            # trimmed from action_lines after action_line_owner was built.
+            for idx in action_line_owner:
+                if idx < len(action_lines) and action_lines[idx].strip():
+                    action_lines[idx] = action_lines[idx] + f"  # __SM_{idx}__"
+
+        lines.extend(action_lines)
+        lines.append("finally:")
+        for plugin in reversed(ordered_plugins):
+            if plugin.has_lifecycle:
+                lines.append(f"    {plugin.instance_name}.disconnect()")
+        lines.append("")
+
+        code = "\n".join(lines)
+        code = self._format_with_black(code)
+
+        if not return_line_map:
+            return code
+
+        code, line_map = self._rebuild_line_map(code, action_line_owner)
+        return code, line_map
+
+    def _collect_plugins_from_steps(
+        self,
+        steps: list,
+        plugins: dict[str, BasePlugin],
+    ) -> list[BasePlugin]:
+        """Collect all unique plugin instances from *steps* in depth-first order.
+
+        Disabled plugins are skipped entirely (including their sub-steps) so
+        that no code is generated for them.
+
+        Args:
+            steps (list):
+                Nested sequence step list.
+            plugins (dict[str, BasePlugin]):
+                Mapping of entry-point name → plugin instance.
+
+        Returns:
+            (list[BasePlugin]):
+                Ordered list of unique, enabled plugin instances.
+        """
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        ordered: list[BasePlugin] = []
         seen_ids: set[int] = set()
 
-        def _collect_plugins(step: object) -> None:
-            """Recursively collect unique plugins from the step tree.
-
-            Disabled plugins are skipped entirely (including their sub-steps)
-            so that no code is generated for them.
-            """
+        def _collect(step: object) -> None:
             if isinstance(step, tuple):
                 plugin_or_name, sub_steps = step
             else:
@@ -1391,61 +1448,99 @@ class SequenceEngine(QObject):
                 return
 
             if plugin is not None and id(plugin) not in seen_ids:
-                ordered_plugins.append(plugin)
+                ordered.append(plugin)
                 seen_ids.add(id(plugin))
 
             for sub in sub_steps:
-                _collect_plugins(sub)
+                _collect(sub)
 
         for step in steps:
-            _collect_plugins(step)
+            _collect(step)
 
-        if not ordered_plugins:
-            code = "\n".join(header) + "# No sequence steps defined yet.\n"
-            return (code, {}) if return_line_map else code
+        return ordered
 
-        lines: list[str] = list(header)
+    def _generate_instantiation_phase(self, ordered_plugins: list[BasePlugin]) -> list[str]:
+        """Generate Phase 0 lines — plugin instantiation from saved configuration.
 
-        # ------------------------------------------------------------------
-        # Phase 0: instantiate plugins from their saved configuration.
-        # ------------------------------------------------------------------
+        Args:
+            ordered_plugins (list[BasePlugin]):
+                Ordered list of unique plugin instances.
 
-        lines.append("# Instantiate plugins from saved configuration (if not already present).")
-        lines.append("from stoner_measurement.plugins.base_plugin import BasePlugin as _BasePlugin")
-        lines.append("")
+        Returns:
+            (list[str]):
+                Lines for Phase 0 of the generated script.
+        """
+        lines: list[str] = [
+            "# Instantiate plugins from saved configuration (if not already present).",
+            "from stoner_measurement.plugins.base_plugin import BasePlugin as _BasePlugin",
+            "",
+        ]
         for plugin in ordered_plugins:
             lines.extend(plugin.generate_instantiation_code())
+        return lines
 
-        # ------------------------------------------------------------------
-        # Phase 1: connect/initialise all plugins.
-        # ------------------------------------------------------------------
+    def _generate_connect_phase(self, ordered_plugins: list[BasePlugin]) -> list[str]:
+        """Generate Phase 1 lines — connect/initialise all plugins.
 
-        lines.append("# Connect and initialise all plugins.")
+        Args:
+            ordered_plugins (list[BasePlugin]):
+                Ordered list of unique plugin instances.
+
+        Returns:
+            (list[str]):
+                Lines for Phase 1 of the generated script.
+        """
+        lines: list[str] = ["# Connect and initialise all plugins."]
         for plugin in ordered_plugins:
             if plugin.has_lifecycle:
                 lines.append(f"{plugin.instance_name}.connect()")
         lines.append("")
+        return lines
 
-        # ------------------------------------------------------------------
-        # Phase 2: configure all plugins.
-        # ------------------------------------------------------------------
+    def _generate_configure_phase(self, ordered_plugins: list[BasePlugin]) -> list[str]:
+        """Generate Phase 2 lines — configure all plugins.
 
-        lines.append("# Configure all plugins.")
+        Args:
+            ordered_plugins (list[BasePlugin]):
+                Ordered list of unique plugin instances.
+
+        Returns:
+            (list[str]):
+                Lines for Phase 2 of the generated script.
+        """
+        lines: list[str] = ["# Configure all plugins."]
         for plugin in ordered_plugins:
             if plugin.has_lifecycle:
                 lines.append(f"{plugin.instance_name}.configure()")
         lines.append("")
+        return lines
 
-        # ------------------------------------------------------------------
-        # Phase 3: action body inside a single try/finally.
-        # ------------------------------------------------------------------
+    def _build_action_lines(
+        self,
+        steps: list,
+        plugins: dict[str, BasePlugin],
+    ) -> tuple[list[str], dict[int, BasePlugin]]:
+        """Build Phase 3 action lines and the index-to-plugin attribution map.
+
+        Each top-level step's rendered lines are attributed to that step's
+        plugin so that errors can be traced back to the responsible plugin.
+
+        Args:
+            steps (list):
+                Nested sequence step list.
+            plugins (dict[str, BasePlugin]):
+                Mapping of entry-point name → plugin instance.
+
+        Returns:
+            (list[str]):
+                Action lines (indented one level, trimmed of trailing blanks).
+            (dict[int, BasePlugin]):
+                Mapping of action-lines index → plugin instance.
+        """
+        from stoner_measurement.plugins.base_plugin import BasePlugin
 
         action_lines: list[str] = []
-        # Maps action_lines index → plugin that generated the line.
-        # Attribution is at the top-level step granularity: all lines produced
-        # by a step's _render_action call (including nested sub-steps) are
-        # attributed to the outermost plugin for that step.
-        _action_line_owner: dict[int, BasePlugin] = {}
+        action_line_owner: dict[int, BasePlugin] = {}
 
         def _render_action(step: object, indent: int) -> list[str]:
             """Resolve *step* to a plugin and delegate to its generate_action_code."""
@@ -1458,7 +1553,7 @@ class SequenceEngine(QObject):
                 sub_steps = []
 
             if isinstance(plugin_or_name, BasePlugin):
-                plugin = plugin_or_name
+                plugin: BasePlugin | None = plugin_or_name
             else:
                 plugin = plugins.get(plugin_or_name)  # type: ignore[arg-type]
 
@@ -1475,72 +1570,73 @@ class SequenceEngine(QObject):
             action_lines.extend(_render_action(step, 1))
             end_idx = len(action_lines)
 
-            # Determine the plugin for attribution.
             step_plugin_or_name = step[0] if isinstance(step, tuple) else step
             if isinstance(step_plugin_or_name, BasePlugin):
                 step_plugin: BasePlugin | None = step_plugin_or_name
             else:
-                # step_plugin_or_name is an ep_name string in this branch.
                 step_plugin = plugins.get(str(step_plugin_or_name))
             if step_plugin is not None:
                 for i in range(start_idx, end_idx):
-                    _action_line_owner[i] = step_plugin
+                    action_line_owner[i] = step_plugin
 
-        # Trim trailing blank line added by last rendered step.
         while action_lines and action_lines[-1] == "":
             action_lines.pop()
 
-        lines.append("try:")
+        return action_lines, action_line_owner
 
-        if return_line_map:
-            # Embed unique markers in action lines so the line_map can be
-            # rebuilt after black reformatting.  Markers are inline comments of
-            # the form ``# __SM_{idx}__`` appended to the relevant line.  We
-            # strip them from the final output after reconstructing the map.
-            # The bounds check guards against trailing blank lines that were
-            # trimmed from action_lines after _action_line_owner was built.
-            for idx in _action_line_owner:
-                if idx < len(action_lines) and action_lines[idx].strip():
-                    action_lines[idx] = action_lines[idx] + f"  # __SM_{idx}__"
+    def _format_with_black(self, code: str) -> str:
+        """Format *code* with black if available, returning the original on failure.
 
-        lines.extend(action_lines)
-        lines.append("finally:")
-        for plugin in reversed(ordered_plugins):
-            if plugin.has_lifecycle:
-                lines.append(f"    {plugin.instance_name}.disconnect()")
-        lines.append("")
+        Args:
+            code (str):
+                Python source code to format.
 
-        code = "\n".join(lines)
-
-        # ------------------------------------------------------------------
-        # Format the generated code with black for human readability.
-        # ------------------------------------------------------------------
+        Returns:
+            (str):
+                Black-formatted source, or the original *code* if black is not
+                installed or formatting fails.
+        """
         try:
             import black
 
-            code = black.format_str(code, mode=black.Mode(line_length=199))
+            return black.format_str(code, mode=black.Mode(line_length=199))
         except ImportError:
-            pass  # black is not installed; fall back to unformatted output.
+            pass
         except Exception:
             logging.getLogger(SEQUENCE_LOGGER_NAME).warning(
                 "black formatting failed; using unformatted code", exc_info=True
             )
+        return code
 
-        if not return_line_map:
-            return code
+    def _rebuild_line_map(
+        self,
+        code: str,
+        action_line_owner: dict[int, BasePlugin],
+    ) -> tuple[str, dict[int, BasePlugin]]:
+        """Rebuild a line-number → plugin map from embedded ``__SM_`` markers.
 
-        # Rebuild the line_map using the embedded markers.  Black preserves
-        # inline comments, so markers survive formatting even if line numbers
-        # shift.  We then strip the markers from the final code string.
+        Black preserves inline comments, so markers survive formatting even if
+        line numbers shift.  After the map is built the markers are stripped
+        from the returned code string.
+
+        Args:
+            code (str):
+                Formatted source code containing ``# __SM_{idx}__`` markers.
+            action_line_owner (dict[int, BasePlugin]):
+                Maps original action-line index to the responsible plugin.
+
+        Returns:
+            (str):
+                Source code with all ``__SM_`` markers removed.
+            (dict[int, BasePlugin]):
+                Mapping of 1-based line numbers to plugin instances.
+        """
         line_map: dict[int, BasePlugin] = {}
-        code_lines = code.splitlines()
-        for lineno_0, line_content in enumerate(code_lines):
+        for lineno_0, line_content in enumerate(code.splitlines()):
             m = _SM_MARKER_FIND_RE.search(line_content)
             if m:
                 orig_idx = int(m.group(1))
-                if orig_idx in _action_line_owner:
-                    line_map[lineno_0 + 1] = _action_line_owner[orig_idx]
-
+                if orig_idx in action_line_owner:
+                    line_map[lineno_0 + 1] = action_line_owner[orig_idx]
         code = _SM_MARKER_STRIP_RE.sub("", code)
-
         return code, line_map
