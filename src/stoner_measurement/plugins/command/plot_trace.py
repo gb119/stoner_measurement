@@ -365,22 +365,7 @@ class PlotTraceCommand(CommandPlugin):
                 return
             title = self.trace_key
 
-            # Emit axis labels derived from TraceData metadata (names and units).
-            names = getattr(trace_data, "names", {})
-            units = getattr(trace_data, "units", {})
-            x_name = names.get("x", "")
-            y_name = names.get("y", "")
-            x_unit = units.get("x", "")
-            y_unit = units.get("y", "")
-            # Treat default placeholder names ("x"/"y" with no units) as empty.
-            if x_name.strip().lower() == "x" and not x_unit:
-                x_name = ""
-            if y_name.strip().lower() == "y" and not y_unit:
-                y_name = ""
-            x_label = _format_axis_label(x_name, x_unit)
-            y_label = _format_axis_label(y_name, y_unit)
-            if x_label or y_label:
-                self.plot_axis_labels.emit(x_label, y_label)
+            self._emit_trace_axis_labels(trace_data)
 
         x_axis = self.x_axis_name or _DEFAULT_X_AXIS
         y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
@@ -438,88 +423,30 @@ class PlotTraceCommand(CommandPlugin):
         widget = QWidget(parent)
         layout = QFormLayout(widget)
 
-        # Build trace lists from the engine namespace.
         traces: dict[str, str] = self.engine_namespace.get("_traces", {})
         trace_keys = list(traces.keys())
-        x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
+        axes_pair = _available_plot_axes(self.sequence_engine)
 
-        # Build a mapping of display-name → expression for individual
-        # x/y data arrays across all trace channels.  Expressions are derived
-        # from the catalogue values (e.g. "dummy.data['Dummy']") by appending
-        # ".x" or ".y" — these are valid Python attribute accesses on TraceData.
-        channel_items: dict[str, str] = {}
-        for key, expr in traces.items():
-            channel_items[f"{key} (x)"] = f"{expr}.x"
-            channel_items[f"{key} (y)"] = f"{expr}.y"
+        channel_items = {
+            f"{k} ({axis})": f"{v}.{axis}"
+            for k, v in traces.items()
+            for axis in ("x", "y")
+        }
         channel_names = list(channel_items.keys())
 
-        # --- Trace dropdown (simple mode) ---
-        trace_combo = QComboBox(widget)
-        if trace_keys:
-            trace_combo.addItems(trace_keys)
-            if self.trace_key in trace_keys:
-                trace_combo.setCurrentText(self.trace_key)
-            else:
-                # trace_key not yet set (or no longer valid); adopt the combo's
-                # default first item so the plugin state matches what is shown
-                # without requiring user interaction.
-                self.trace_key = trace_keys[0]
-        else:
-            trace_combo.addItem("(no traces available)")
-
-        # --- Advanced mode checkbox ---
+        trace_combo = self._build_trace_combo(widget, trace_keys)
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
-
-        # --- X data dropdown (advanced mode) ---
-        x_combo = QComboBox(widget)
-        if channel_names:
-            x_combo.addItems(channel_names)
-            if not _set_combo_to_expr(x_combo, channel_items, self.x_expr):
-                # x_expr not yet set (or no longer valid); adopt the default first item.
-                first_name = channel_names[0]
-                self.x_expr = channel_items[first_name]
-                x_combo.setCurrentText(first_name)
-        else:
-            x_combo.addItem("(no channels available)")
-
-        # --- Y data dropdown (advanced mode) ---
-        y_combo = QComboBox(widget)
-        if channel_names:
-            y_combo.addItems(channel_names)
-            if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
-                # y_expr not yet set (or no longer valid); adopt the default first item.
-                first_name = channel_names[0]
-                self.y_expr = channel_items[first_name]
-                y_combo.setCurrentText(first_name)
-        else:
-            y_combo.addItem("(no channels available)")
-
-        # --- Title expression (advanced mode) ---
+        x_combo = self._build_channel_combo(widget, channel_names, channel_items, self.x_expr, "x_expr")
+        y_combo = self._build_channel_combo(widget, channel_names, channel_items, self.y_expr, "y_expr")
         title_edit = QLineEdit(self.title_expr, widget)
         title_edit.setToolTip(
             "Python expression evaluated at runtime in the engine namespace. "
             "Must produce a string.  Example: f'Run {run_index}'"
         )
+        x_axis_combo = self._build_plot_axis_combo(widget, axes_pair[0], self.x_axis_name, "x_axis_name")
+        y_axis_combo = self._build_plot_axis_combo(widget, axes_pair[1], self.y_axis_name, "y_axis_name")
 
-        # --- Target plot axes ---
-        x_axis_combo = QComboBox(widget)
-        x_axis_combo.addItems(x_axis_names)
-        if self.x_axis_name in x_axis_names:
-            x_axis_combo.setCurrentText(self.x_axis_name)
-        else:
-            self.x_axis_name = x_axis_names[0]
-            x_axis_combo.setCurrentText(self.x_axis_name)
-
-        y_axis_combo = QComboBox(widget)
-        y_axis_combo.addItems(y_axis_names)
-        if self.y_axis_name in y_axis_names:
-            y_axis_combo.setCurrentText(self.y_axis_name)
-        else:
-            self.y_axis_name = y_axis_names[0]
-            y_axis_combo.setCurrentText(self.y_axis_name)
-
-        # Populate form layout.
         layout.addRow("Trace:", trace_combo)
         layout.addRow("Advanced mode:", advanced_check)
         layout.addRow("X data:", x_combo)
@@ -536,7 +463,85 @@ class PlotTraceCommand(CommandPlugin):
         )
         widget.setLayout(layout)
 
-        # --- Enable/disable logic ---
+        self._wire_config_signals(
+            trace_combo, advanced_check, x_combo, y_combo, title_edit, x_axis_combo, y_axis_combo, channel_items
+        )
+        return widget
+
+    def _emit_trace_axis_labels(self, trace_data: Any) -> None:
+        names = getattr(trace_data, "names", {})
+        units = getattr(trace_data, "units", {})
+        x_name = names.get("x", "")
+        y_name = names.get("y", "")
+        x_unit = units.get("x", "")
+        y_unit = units.get("y", "")
+        if x_name.strip().lower() == "x" and not x_unit:
+            x_name = ""
+        if y_name.strip().lower() == "y" and not y_unit:
+            y_name = ""
+        x_label = _format_axis_label(x_name, x_unit)
+        y_label = _format_axis_label(y_name, y_unit)
+        if x_label or y_label:
+            self.plot_axis_labels.emit(x_label, y_label)
+
+    def _build_trace_combo(self, widget: QWidget, trace_keys: list[str]) -> QComboBox:
+        combo = QComboBox(widget)
+        if trace_keys:
+            combo.addItems(trace_keys)
+            if self.trace_key in trace_keys:
+                combo.setCurrentText(self.trace_key)
+            else:
+                self.trace_key = trace_keys[0]
+        else:
+            combo.addItem("(no traces available)")
+        return combo
+
+    def _build_channel_combo(
+        self,
+        widget: QWidget,
+        channel_names: list[str],
+        channel_items: dict[str, str],
+        current_expr: str,
+        fallback_attr: str,
+    ) -> QComboBox:
+        combo = QComboBox(widget)
+        if channel_names:
+            combo.addItems(channel_names)
+            if not _set_combo_to_expr(combo, channel_items, current_expr):
+                first_name = channel_names[0]
+                setattr(self, fallback_attr, channel_items[first_name])
+                combo.setCurrentText(first_name)
+        else:
+            combo.addItem("(no channels available)")
+        return combo
+
+    def _build_plot_axis_combo(
+        self,
+        widget: QWidget,
+        axis_names: list[str],
+        current_val: str,
+        fallback_attr: str,
+    ) -> QComboBox:
+        combo = QComboBox(widget)
+        combo.addItems(axis_names)
+        if current_val in axis_names:
+            combo.setCurrentText(current_val)
+        else:
+            setattr(self, fallback_attr, axis_names[0])
+            combo.setCurrentText(axis_names[0])
+        return combo
+
+    def _wire_config_signals(
+        self,
+        trace_combo: QComboBox,
+        advanced_check: QCheckBox,
+        x_combo: QComboBox,
+        y_combo: QComboBox,
+        title_edit: QLineEdit,
+        x_axis_combo: QComboBox,
+        y_axis_combo: QComboBox,
+        channel_items: dict[str, str],
+    ) -> None:
         def _update_enabled(advanced: bool) -> None:
             trace_combo.setEnabled(not advanced)
             x_combo.setEnabled(advanced)
@@ -546,13 +551,9 @@ class PlotTraceCommand(CommandPlugin):
         _update_enabled(self.advanced_mode)
         advanced_check.toggled.connect(_update_enabled)
 
-        # --- Callbacks to persist state ---
         def _apply_trace(text: str) -> None:
             if text != "(no traces available)":
                 self.trace_key = text
-
-        def _apply_advanced(checked: bool) -> None:
-            self.advanced_mode = checked
 
         def _apply_x(text: str) -> None:
             if text != "(no channels available)":
@@ -565,21 +566,13 @@ class PlotTraceCommand(CommandPlugin):
         def _apply_title() -> None:
             self.title_expr = title_edit.text().strip()
 
-        def _apply_x_axis(text: str) -> None:
-            self.x_axis_name = text
-
-        def _apply_y_axis(text: str) -> None:
-            self.y_axis_name = text
-
         trace_combo.currentTextChanged.connect(_apply_trace)
-        advanced_check.toggled.connect(_apply_advanced)
+        advanced_check.toggled.connect(lambda checked: setattr(self, "advanced_mode", checked))
         x_combo.currentTextChanged.connect(_apply_x)
         y_combo.currentTextChanged.connect(_apply_y)
         title_edit.editingFinished.connect(_apply_title)
-        x_axis_combo.currentTextChanged.connect(_apply_x_axis)
-        y_axis_combo.currentTextChanged.connect(_apply_y_axis)
-
-        return widget
+        x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
+        y_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "y_axis_name", text))
 
     # ------------------------------------------------------------------
     # Serialisation

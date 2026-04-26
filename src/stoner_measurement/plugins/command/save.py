@@ -628,15 +628,37 @@ class SaveCommand(CommandPlugin):
             >>> isinstance(SaveCommand().config_widget(), QWidget)
             True
         """
-        from stoner_measurement.plugins.state import StatePlugin
+        from PyQt6.QtWidgets import QStackedWidget
 
         widget = QWidget(parent)
         outer_layout = QVBoxLayout(widget)
         outer_layout.setContentsMargins(0, 0, 0, 0)
 
         form = QFormLayout()
+        self._build_path_form_row(widget, form)
+        self._build_no_overwrite_row(widget, form)
+        mode_combo = self._build_mode_selector(widget, form)
+        outer_layout.addLayout(form)
 
-        # --- Path expression ---
+        stack = QStackedWidget(widget)
+        outer_layout.addWidget(stack)
+        stack.addWidget(self._build_traces_page())  # index 0
+        stack.addWidget(self._build_data_page())    # index 1
+        stack.setCurrentIndex(0 if self.save_mode == "traces" else 1)
+
+        def _on_mode_changed(index: int) -> None:
+            mode = mode_combo.itemData(index)
+            if mode:
+                self.save_mode = mode
+            stack.setCurrentIndex(0 if self.save_mode == "traces" else 1)
+
+        mode_combo.currentIndexChanged.connect(_on_mode_changed)
+
+        outer_layout.addStretch()
+        widget.setLayout(outer_layout)
+        return widget
+
+    def _build_path_form_row(self, widget: QWidget, form: QFormLayout) -> None:
         path_edit = QLineEdit(self.path_expr, widget)
         path_edit.setToolTip(
             "Python expression evaluated in the sequence engine namespace. "
@@ -694,7 +716,7 @@ class SaveCommand(CommandPlugin):
         path_row.addWidget(browse_btn)
         form.addRow("Path expression:", path_row)
 
-        # --- No-overwrite checkbox ---
+    def _build_no_overwrite_row(self, widget: QWidget, form: QFormLayout) -> None:
         no_overwrite_check = QCheckBox(widget)
         no_overwrite_check.setChecked(self.no_overwrite)
         no_overwrite_check.setToolTip(
@@ -708,7 +730,7 @@ class SaveCommand(CommandPlugin):
         no_overwrite_check.stateChanged.connect(_apply_no_overwrite)
         form.addRow("Never overwrite:", no_overwrite_check)
 
-        # --- Mode selector ---
+    def _build_mode_selector(self, widget: QWidget, form: QFormLayout) -> QComboBox:
         mode_combo = QComboBox(widget)
         mode_combo.addItem("Traces", "traces")
         mode_combo.addItem("Data", "data")
@@ -717,23 +739,15 @@ class SaveCommand(CommandPlugin):
             mode_combo.setCurrentIndex(current_idx)
         mode_combo.setToolTip("Select whether to save trace channels or a state-control plugin's data.")
         form.addRow("Save mode:", mode_combo)
-
         form.addRow(
             QLabel(
                 "<i>Expression is evaluated at runtime in the sequence engine namespace.</i>",
                 widget,
             )
         )
+        return mode_combo
 
-        outer_layout.addLayout(form)
-
-        # --- Mode-specific area (stacked: traces or data) ---
-        from PyQt6.QtWidgets import QStackedWidget
-
-        stack = QStackedWidget(widget)
-        outer_layout.addWidget(stack)
-
-        # Page 0: Traces — scrollable list of per-trace checkboxes.
+    def _build_traces_page(self) -> QScrollArea:
         traces_scroll = QScrollArea()
         traces_scroll.setWidgetResizable(True)
         traces_container = QWidget()
@@ -755,9 +769,9 @@ class SaveCommand(CommandPlugin):
         traces_layout.addStretch()
         traces_container.setLayout(traces_layout)
         traces_scroll.setWidget(traces_container)
-        stack.addWidget(traces_scroll)  # index 0
+        return traces_scroll
 
-        # Page 1: Data — combo box of StatePlugin instances.
+    def _build_data_page(self) -> QWidget:
         data_widget = QWidget()
         data_form = QFormLayout(data_widget)
 
@@ -774,7 +788,6 @@ class SaveCommand(CommandPlugin):
             if idx >= 0:
                 source_combo.setCurrentIndex(idx)
             elif state_plugins:
-                # Auto-select the first available plugin.
                 self.data_source = state_plugins[0]
 
             def _apply_source(index: int) -> None:
@@ -795,22 +808,7 @@ class SaveCommand(CommandPlugin):
             data_form.addRow(QLabel("<i>No state-control plugins available.</i>", data_widget))
 
         data_widget.setLayout(data_form)
-        stack.addWidget(data_widget)  # index 1
-
-        # Sync stack page to current mode and wire mode_combo changes.
-        stack.setCurrentIndex(0 if self.save_mode == "traces" else 1)
-
-        def _on_mode_changed(index: int) -> None:
-            mode = mode_combo.itemData(index)
-            if mode:
-                self.save_mode = mode
-            stack.setCurrentIndex(0 if self.save_mode == "traces" else 1)
-
-        mode_combo.currentIndexChanged.connect(_on_mode_changed)
-
-        outer_layout.addStretch()
-        widget.setLayout(outer_layout)
-        return widget
+        return data_widget
 
     def to_json(self) -> dict[str, Any]:
         """Serialise the save command configuration to a JSON-compatible dict.
