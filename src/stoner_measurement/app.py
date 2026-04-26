@@ -365,7 +365,7 @@ class MeasurementApp(QMainWindow):
         self._act_settings.triggered.connect(self._on_settings)
 
     def _build_view_actions(self) -> None:
-        """Create view, temperature, and help QAction instances."""
+        """Create view, temperature panel, and help QAction instances."""
         self._act_view_measurement = QAction("&Measurement", self)
         self._act_view_measurement.setStatusTip("Switch to the Measurement tab")
         self._act_view_measurement.triggered.connect(lambda: self._main_window.tabs.setCurrentIndex(0))

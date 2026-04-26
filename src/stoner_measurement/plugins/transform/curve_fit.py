@@ -1297,8 +1297,14 @@ class CurveFitPlugin(TransformPlugin):
         self.transform_complete.connect(param_widget.update_fitted_results)
 
         # ---- Wire trace checkboxes to attributes -----------------------
-        initial_check.toggled.connect(lambda checked: setattr(self, "show_initial_trace", checked))
-        best_fit_check.toggled.connect(lambda checked: setattr(self, "show_best_fit_trace", checked))
+        def _on_initial_toggled(checked: bool) -> None:
+            self.show_initial_trace = checked
+
+        def _on_best_fit_toggled(checked: bool) -> None:
+            self.show_best_fit_trace = checked
+
+        initial_check.toggled.connect(_on_initial_toggled)
+        best_fit_check.toggled.connect(_on_best_fit_toggled)
 
         return fit_widget, param_container
 
