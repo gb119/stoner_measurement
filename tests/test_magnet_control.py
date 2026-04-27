@@ -45,7 +45,8 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
             Current value the fake driver will report.  Defaults to ``10.0``.
 
     Returns:
-        A concrete :class:`MagnetController` subclass instance.
+        (MagnetController):
+            A concrete :class:`MagnetController` subclass instance.
     """
     from stoner_measurement.instruments.magnet_controller import (
         MagnetController,
