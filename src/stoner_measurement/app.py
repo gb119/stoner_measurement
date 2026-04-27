@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.ui.icons import make_generate_icon, make_log_icon, make_temperature_icon
+from stoner_measurement.ui.icons import make_generate_icon, make_log_icon, make_magnet_icon, make_temperature_icon
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
 from stoner_measurement.ui.settings_dialog import (
@@ -83,6 +83,11 @@ class MeasurementApp(QMainWindow):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
         self._temp_panel = TemperatureControlPanel(parent=None)
+
+        # Magnet control panel (hidden initially) ------------------------------
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        self._magnet_panel = MagnetControlPanel(parent=None)
 
         # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
@@ -386,6 +391,14 @@ class MeasurementApp(QMainWindow):
         self._act_stop_temp_engine.setStatusTip("Stop the temperature controller engine and disconnect hardware")
         self._act_stop_temp_engine.triggered.connect(self._on_stop_temp_engine)
 
+        self._act_show_magnet_panel = QAction(make_magnet_icon(), "Show &Magnet Control", self)
+        self._act_show_magnet_panel.setStatusTip("Open the magnet controller panel")
+        self._act_show_magnet_panel.triggered.connect(self._on_show_magnet_panel)
+
+        self._act_stop_magnet_engine = QAction("Stop Magnet &Engine", self)
+        self._act_stop_magnet_engine.setStatusTip("Stop the magnet controller engine and disconnect hardware")
+        self._act_stop_magnet_engine.triggered.connect(self._on_stop_magnet_engine)
+
         self._act_about = QAction("&About", self)
         self._act_about.setStatusTip("Show information about this application")
         self._act_about.triggered.connect(self._on_about)
@@ -437,6 +450,12 @@ class MeasurementApp(QMainWindow):
         temp_menu.addSeparator()
         temp_menu.addAction(self._act_stop_temp_engine)
 
+        # Magnet menu
+        magnet_menu = menu_bar.addMenu("&Magnet")
+        magnet_menu.addAction(self._act_show_magnet_panel)
+        magnet_menu.addSeparator()
+        magnet_menu.addAction(self._act_stop_magnet_engine)
+
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._act_about)
@@ -465,6 +484,7 @@ class MeasurementApp(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self._act_show_log)
         toolbar.addAction(self._act_show_temp_panel)
+        toolbar.addAction(self._act_show_magnet_panel)
 
     # ------------------------------------------------------------------
     # Tab-change handler — keeps action labels/tips in sync
@@ -956,6 +976,16 @@ class MeasurementApp(QMainWindow):
         from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 
         TemperatureControllerEngine.instance().shutdown()
+
+    def _on_show_magnet_panel(self) -> None:
+        """Show the magnet control panel, raising it if already open."""
+        self._magnet_panel.show_and_raise()
+
+    def _on_stop_magnet_engine(self) -> None:
+        """Stop the magnet controller engine and disconnect the instrument."""
+        from stoner_measurement.magnet_control.engine import MagnetControllerEngine
+
+        MagnetControllerEngine.instance().shutdown()
 
     def _on_about(self) -> None:
         """Display the About dialogue."""
