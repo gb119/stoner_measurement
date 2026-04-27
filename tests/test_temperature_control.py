@@ -671,6 +671,7 @@ class TestEngineZoneTable:
         assert all(isinstance(e, ZoneEntry) for e in entries)
         # Zone 1 (entries[0]) upper_bound should be 50.0, zone 2 (entries[1]) should be 100.0
         assert entries[0].upper_bound == pytest.approx(50.0)
+        assert entries[0].p == pytest.approx(10.0)
         assert entries[1].upper_bound == pytest.approx(100.0)
         assert entries[2].upper_bound == pytest.approx(150.0)
         engine.shutdown()
@@ -714,7 +715,8 @@ class TestEngineZoneTable:
         driver.get_zone = _patched_get_zone
         engine.connect_instrument(driver)
         entries = engine.get_zone_table(1)
-        # Zone 2 failed; entries for zones 1 and 3 (indices 0 and 1) should still be present.
+        # Zone 2 failed; zones 1 and 3 were read successfully and are returned
+        # at list indices 0 and 1 respectively.
         assert entries is not None
         assert len(entries) == 2
         assert entries[0].upper_bound == pytest.approx(50.0)
