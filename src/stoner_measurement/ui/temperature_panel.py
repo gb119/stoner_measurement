@@ -45,17 +45,17 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
-    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.temperature_controller import (
-    ControlMode,
     ControllerCapabilities,
+    ControlMode,
     TemperatureController,
     ZoneEntry,
 )
@@ -1367,6 +1367,8 @@ class _LoopControlGroup(QGroupBox):
         self._build_control_rows(form)
         self._build_pid_row(form)
         self._build_button_row(form)
+        # Apply initial visibility based on the default mode selection.
+        self._update_mode_visibility(self._mode_combo.currentData())
 
     def _build_readback_rows(self, form: QFormLayout) -> None:
         """Add live-readback label rows to *form*."""
@@ -1383,16 +1385,18 @@ class _LoopControlGroup(QGroupBox):
         form.addRow("Control sensor:", self._channel_combo)
 
     def _build_control_rows(self, form: QFormLayout) -> None:
-        """Add setpoint, mode, ramp and heater-range rows to *form*."""
+        """Add setpoint, mode, ramp, heater-range and manual-output rows to *form*."""
         self._sp_spin = QDoubleSpinBox()
         self._sp_spin.setRange(0.0, 1000.0)
         self._sp_spin.setSuffix(" K")
         self._sp_spin.setDecimals(3)
-        form.addRow("New setpoint:", self._sp_spin)
+        self._sp_row_label = QLabel("New setpoint:")
+        form.addRow(self._sp_row_label, self._sp_spin)
 
         self._mode_combo = QComboBox()
         for mode in ControlMode:
             self._mode_combo.addItem(mode.value.replace("_", " ").title(), mode)
+        self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         form.addRow("Control mode:", self._mode_combo)
 
         self._ramp_enable = QCheckBox("Enable")
@@ -1403,21 +1407,35 @@ class _LoopControlGroup(QGroupBox):
         ramp_row = QHBoxLayout()
         ramp_row.addWidget(self._ramp_enable)
         ramp_row.addWidget(self._ramp_rate_spin)
-        form.addRow("Ramp:", ramp_row)
+        self._ramp_widget = QWidget()
+        self._ramp_widget.setLayout(ramp_row)
+        self._ramp_row_label = QLabel("Ramp:")
+        form.addRow(self._ramp_row_label, self._ramp_widget)
 
+        self._heater_range_label = QLabel("Heater range:")
         range_labels = self._caps.heater_range_labels.get(self._loop, ())
         if range_labels:
             self._heater_range_combo = QComboBox()
             for idx, label in enumerate(range_labels):
                 self._heater_range_combo.addItem(label, idx)
             self._heater_range_spin = None
-            form.addRow("Heater range:", self._heater_range_combo)
+            form.addRow(self._heater_range_label, self._heater_range_combo)
         else:
             self._heater_range_spin = QSpinBox()
             self._heater_range_spin.setRange(0, 5)
             self._heater_range_spin.setToolTip("Heater range index (0 = off; instrument-specific)")
             self._heater_range_combo = None
-            form.addRow("Heater range:", self._heater_range_spin)
+            form.addRow(self._heater_range_label, self._heater_range_spin)
+
+        self._manual_output_spin = QDoubleSpinBox()
+        self._manual_output_spin.setRange(0.0, 100.0)
+        self._manual_output_spin.setSuffix(" %")
+        self._manual_output_spin.setDecimals(1)
+        self._manual_output_spin.setToolTip(
+            "Manual heater output percentage for open-loop control"
+        )
+        self._manual_output_label = QLabel("Manual output:")
+        form.addRow(self._manual_output_label, self._manual_output_spin)
 
     def _build_pid_row(self, form: QFormLayout) -> None:
         """Add PID spin boxes row to *form*."""
@@ -1437,7 +1455,10 @@ class _LoopControlGroup(QGroupBox):
         pid_row.addWidget(self._pid_i_spin)
         pid_row.addWidget(QLabel("D:"))
         pid_row.addWidget(self._pid_d_spin)
-        form.addRow("PID:", pid_row)
+        self._pid_widget = QWidget()
+        self._pid_widget.setLayout(pid_row)
+        self._pid_row_label = QLabel("PID:")
+        form.addRow(self._pid_row_label, self._pid_widget)
 
     def _build_button_row(self, form: QFormLayout) -> None:
         """Add Apply/Read button row to *form*."""
@@ -1452,6 +1473,72 @@ class _LoopControlGroup(QGroupBox):
         btn_row.addWidget(read_btn)
         btn_row.addStretch()
         form.addRow("", btn_row)
+
+    # --- Mode visibility ---
+
+    @pyqtSlot(int)
+    def _on_mode_changed(self, _index: int) -> None:
+        """Update widget visibility when the user selects a different control mode.
+
+        Args:
+            _index (int):
+                Index of the newly selected item in the mode combo box (unused;
+                the mode is read back via :meth:`~PyQt6.QtWidgets.QComboBox.currentData`).
+        """
+        self._update_mode_visibility(self._mode_combo.currentData())
+
+    def _update_mode_visibility(self, mode: ControlMode | None) -> None:
+        """Show or hide control widgets based on *mode*.
+
+        The rules applied are:
+
+        * **Off / Monitor**: heater range, setpoint, ramp, and PID are hidden
+          because the loop is inactive or only observing.
+        * **Open Loop**: setpoint and ramp are hidden (there is no PID feedback);
+          the manual-output spin box becomes visible so the operator can drive a
+          fixed heater output.  PID is hidden.
+        * **Zone**: setpoint, ramp, and heater range remain visible; the PID
+          spin boxes are shown but made read-only because PID gains are
+          determined by the zone table rather than the operator.
+        * **Closed Loop**: all control widgets are visible and editable.
+
+        Args:
+            mode (ControlMode | None):
+                The mode to apply.  ``None`` is treated identically to
+                :attr:`~ControlMode.OFF`.
+        """
+        off_like = mode in (ControlMode.OFF, ControlMode.MONITOR, None)
+        open_loop = mode == ControlMode.OPEN_LOOP
+        zone = mode == ControlMode.ZONE
+
+        sp_visible = not off_like and not open_loop
+        self._sp_row_label.setVisible(sp_visible)
+        self._sp_spin.setVisible(sp_visible)
+
+        ramp_visible = not off_like and not open_loop
+        self._ramp_row_label.setVisible(ramp_visible)
+        self._ramp_widget.setVisible(ramp_visible)
+
+        heater_range_visible = not off_like
+        self._heater_range_label.setVisible(heater_range_visible)
+        heater_range_widget = (
+            self._heater_range_combo
+            if self._heater_range_combo is not None
+            else self._heater_range_spin
+        )
+        if heater_range_widget is not None:
+            heater_range_widget.setVisible(heater_range_visible)
+
+        pid_visible = not off_like and not open_loop
+        self._pid_row_label.setVisible(pid_visible)
+        self._pid_widget.setVisible(pid_visible)
+        pid_editable = pid_visible and not zone
+        self._pid_p_spin.setEnabled(pid_editable)
+        self._pid_i_spin.setEnabled(pid_editable)
+        self._pid_d_spin.setEnabled(pid_editable)
+
+        self._manual_output_label.setVisible(open_loop)
+        self._manual_output_spin.setVisible(open_loop)
 
     # --- Live update ---
 
@@ -1519,6 +1606,9 @@ class _LoopControlGroup(QGroupBox):
             pid_d=self._pid_d_spin.value(),
             heater_range=heater_range,
         )
+        if mode == ControlMode.OPEN_LOOP:
+            # The spin box range constraint (0–100 %) guarantees a valid value.
+            self._engine.set_manual_heater_output(self._loop, self._manual_output_spin.value())
 
     @pyqtSlot()
     def _on_read(self) -> None:
@@ -1530,10 +1620,14 @@ class _LoopControlGroup(QGroupBox):
         self._sp_spin.blockSignals(True)
         self._sp_spin.setValue(settings.setpoint)
         self._sp_spin.blockSignals(False)
-        # Control mode
+        # Control mode — update visibility before re-enabling signals so that
+        # the visibility slot fires once with the final mode value.
+        self._mode_combo.blockSignals(True)
         idx = self._mode_combo.findData(settings.mode)
         if idx >= 0:
             self._mode_combo.setCurrentIndex(idx)
+        self._mode_combo.blockSignals(False)
+        self._update_mode_visibility(settings.mode)
         # Input channel
         ch_idx = self._channel_combo.findData(settings.input_channel)
         if ch_idx >= 0:
@@ -1561,6 +1655,11 @@ class _LoopControlGroup(QGroupBox):
                     self._heater_range_combo.setCurrentIndex(r_idx)
             elif self._heater_range_spin is not None:
                 self._heater_range_spin.setValue(settings.heater_range)
+        # Manual heater output (only meaningful in OPEN_LOOP mode)
+        if settings.manual_output is not None:
+            self._manual_output_spin.blockSignals(True)
+            self._manual_output_spin.setValue(settings.manual_output)
+            self._manual_output_spin.blockSignals(False)
 
 
 # ---------------------------------------------------------------------------

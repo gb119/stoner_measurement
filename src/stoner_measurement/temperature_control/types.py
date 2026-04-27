@@ -206,6 +206,12 @@ class LoopSettings:
         heater_range (int | None):
             Current heater range index, or ``None`` if the driver does not
             support reading the heater range.
+        manual_output (float | None):
+            Current manual heater output percentage (0–100 %), populated when
+            :attr:`mode` is :attr:`~stoner_measurement.instruments.temperature_controller.ControlMode.OPEN_LOOP`
+            and the driver supports
+            :meth:`~stoner_measurement.instruments.temperature_controller.TemperatureController.set_manual_heater_output`.
+            ``None`` in all other modes.
 
     Examples:
         >>> from stoner_measurement.instruments.temperature_controller import ControlMode
@@ -230,3 +236,4 @@ class LoopSettings:
     pid_i: float
     pid_d: float
     heater_range: int | None = None
+    manual_output: float | None = None
