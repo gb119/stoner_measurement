@@ -311,6 +311,9 @@ class ControllerCapabilities:
         has_gas_auto_mode (bool):
             ``True`` if the driver supports switching the gas/needle-valve control
             between automatic and manual mode.
+        has_manual_heater_output (bool):
+            ``True`` if the driver supports setting the heater output directly
+            (required for :attr:`~ControlMode.OPEN_LOOP` operation).
         heater_range_labels (dict[int, tuple[str, ...]]):
             Optional per-loop mapping of heater range index to human-readable
             label.  The tuple index corresponds to the integer range index passed
@@ -335,6 +338,7 @@ class ControllerCapabilities:
     has_sensor_excitation: bool = False
     has_cryogen_control: bool = False
     has_gas_auto_mode: bool = False
+    has_manual_heater_output: bool = False
     heater_range_labels: dict[int, tuple[str, ...]] = field(default_factory=dict)
     min_temperature: float | None = None
     max_temperature: float | None = None
@@ -653,6 +657,41 @@ class TemperatureController(BaseInstrument):
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not support reading the heater range."
+        )
+
+    def set_manual_heater_output(self, loop: int, output: float) -> None:
+        """Set the manual (open-loop) heater output percentage for *loop*.
+
+        Used when the loop is in :attr:`~ControlMode.OPEN_LOOP` mode to drive
+        the heater to a fixed percentage without PID feedback.
+
+        The default implementation raises :class:`NotImplementedError`.
+        Drivers that support open-loop heater output should override this method
+        and set :attr:`ControllerCapabilities.has_manual_heater_output` to
+        ``True`` in their capabilities descriptor.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            output (float):
+                Desired heater output as a percentage (0–100 %).
+
+        Raises:
+            NotImplementedError:
+                If the driver does not support manual heater output control.
+                Check :attr:`ControllerCapabilities.has_manual_heater_output`
+                before calling.
+            ConnectionError:
+                If the transport is not open.
+            ValueError:
+                If *output* is outside 0–100 %.
+
+        Examples:
+            >>> tc.set_manual_heater_output(1, 25.0)
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support setting the manual heater output. "
+            "Check get_capabilities().has_manual_heater_output before calling this method."
         )
 
     # ------------------------------------------------------------------

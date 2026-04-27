@@ -398,6 +398,38 @@ class TemperatureControllerEngine(QObject):
         except Exception:
             logger.exception("Failed to set heater range for loop %d", loop)
 
+    def set_manual_heater_output(self, loop: int, output: float) -> None:
+        """Set the manual heater output for open-loop control of *loop*.
+
+        Delegates to
+        :meth:`~stoner_measurement.instruments.temperature_controller.TemperatureController.set_manual_heater_output`.
+        A :class:`NotImplementedError` from the driver is caught and logged as a
+        warning (driver does not support manual heater output control).  Any other
+        exception is logged as an error.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            output (float):
+                Desired heater output as a percentage (0–100 %).
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+            >>> engine = TemperatureControllerEngine.instance()
+            >>> engine.set_manual_heater_output(1, 25.0)  # no driver connected — silently ignored
+            >>> engine.shutdown()
+        """
+        if self._driver is None:
+            return
+        try:
+            self._driver.set_manual_heater_output(loop, output)
+        except NotImplementedError:
+            logger.warning("Driver does not support setting manual heater output for loop %d", loop)
+        except Exception:
+            logger.exception("Failed to set manual heater output for loop %d", loop)
+
     def get_zone_table(self, loop: int) -> list[ZoneEntry] | None:
         """Query the hardware for the complete zone table of control *loop*.
 
@@ -537,6 +569,15 @@ class TemperatureControllerEngine(QObject):
         except Exception:
             heater_range = None
 
+        manual_output: float | None = None
+        if mode == ControlMode.OPEN_LOOP:
+            # In open-loop mode the heater output is under direct manual
+            # control, so the current heater output percentage *is* the
+            # manual output setting.
+            manual_output = self._safe_read_loop(
+                self._driver.get_heater_output, loop, "heater output", None
+            )
+
         return LoopSettings(
             setpoint=setpoint,
             mode=mode,
@@ -547,6 +588,7 @@ class TemperatureControllerEngine(QObject):
             pid_i=pid_i,
             pid_d=pid_d,
             heater_range=heater_range,
+            manual_output=manual_output,
         )
 
     def set_stability_config(self, config: StabilityConfig) -> None:
