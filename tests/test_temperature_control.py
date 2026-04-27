@@ -697,8 +697,6 @@ class TestEngineZoneTable:
         engine.shutdown()
 
     def test_get_zone_table_handles_partial_failure(self, qapp):
-        from unittest.mock import MagicMock, side_effect
-
         from stoner_measurement.instruments.temperature_controller import ZoneEntry
 
         engine = TemperatureControllerEngine()

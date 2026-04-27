@@ -468,7 +468,8 @@ class TemperatureControllerEngine(QObject):
             except Exception:
                 logger.exception("Failed to write zone %d for loop %d", i, loop)
 
-    def _safe_read_loop(self, func, loop: int, description: str, default):        """Invoke *func(loop)*, returning *default* and logging on any error.
+    def _safe_read_loop(self, func, loop: int, description: str, default):
+        """Invoke *func(loop)*, returning *default* and logging on any error.
 
         Args:
             func:
