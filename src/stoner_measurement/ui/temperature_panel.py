@@ -1145,7 +1145,7 @@ class _ZoneTableWidget(QWidget):
     # Table helpers
     # ------------------------------------------------------------------
 
-    def _populate_table(self, entries: list) -> None:
+    def _populate_table(self, entries: list[ZoneEntry]) -> None:
         """Replace all table rows with *entries*.
 
         Args:
@@ -1205,7 +1205,7 @@ class _ZoneTableWidget(QWidget):
         self._table.setCellWidget(row, _COL_RANGE, _ispin(hr))
         self._table.setCellWidget(row, _COL_OUTPUT, _dspin(ho, max_val=100.0))
 
-    def _collect_entries(self) -> list:
+    def _collect_entries(self) -> list[ZoneEntry]:
         """Read all rows from the table and return a list of :class:`ZoneEntry`.
 
         Returns:

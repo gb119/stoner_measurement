@@ -561,7 +561,7 @@ class TestTemperatureControlPanel:
 
 
 def _make_fake_tc():
-    """Return a minimal fake TemperatureController and its class for zone tests."""
+    """Return a minimal fake TemperatureController for zone tests."""
     from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
     from stoner_measurement.instruments.temperature_controller import (
         ControllerCapabilities,
@@ -669,7 +669,7 @@ class TestEngineZoneTable:
         assert entries is not None
         assert len(entries) == 3
         assert all(isinstance(e, ZoneEntry) for e in entries)
-        # Zone 1 upper_bound should be 50.0, zone 2 should be 100.0
+        # Zone 1 (entries[0]) upper_bound should be 50.0, zone 2 (entries[1]) should be 100.0
         assert entries[0].upper_bound == pytest.approx(50.0)
         assert entries[1].upper_bound == pytest.approx(100.0)
         assert entries[2].upper_bound == pytest.approx(150.0)
@@ -714,7 +714,7 @@ class TestEngineZoneTable:
         driver.get_zone = _patched_get_zone
         engine.connect_instrument(driver)
         entries = engine.get_zone_table(1)
-        # Zone 2 failed; entries for zones 1 and 3 should still be present.
+        # Zone 2 failed; entries for zones 1 and 3 (indices 0 and 1) should still be present.
         assert entries is not None
         assert len(entries) == 2
         assert entries[0].upper_bound == pytest.approx(50.0)

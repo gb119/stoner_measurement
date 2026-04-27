@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSlot
 
@@ -27,6 +28,9 @@ from stoner_measurement.temperature_control.types import (
     TemperatureChannelReading,
     TemperatureEngineState,
 )
+
+if TYPE_CHECKING:
+    from stoner_measurement.instruments.temperature_controller import ZoneEntry
 
 logger = logging.getLogger(__name__)
 
@@ -394,7 +398,7 @@ class TemperatureControllerEngine(QObject):
         except Exception:
             logger.exception("Failed to set heater range for loop %d", loop)
 
-    def get_zone_table(self, loop: int) -> list | None:
+    def get_zone_table(self, loop: int) -> list[ZoneEntry] | None:
         """Query the hardware for the complete zone table of control *loop*.
 
         Returns ``None`` when no instrument is connected.  If the driver's
@@ -437,7 +441,7 @@ class TemperatureControllerEngine(QObject):
                 logger.exception("Failed to read zone %d for loop %d", i, loop)
         return entries
 
-    def set_zone_table(self, loop: int, entries: list) -> None:
+    def set_zone_table(self, loop: int, entries: list[ZoneEntry]) -> None:
         """Write a complete zone table for control *loop*.
 
         Iterates over *entries* (first entry → zone index 1) and calls
