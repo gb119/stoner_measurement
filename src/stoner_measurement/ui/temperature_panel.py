@@ -5,11 +5,13 @@ window that lets the user configure and monitor a temperature controller through
 the :class:`~stoner_measurement.temperature_control.engine.TemperatureControllerEngine`
 singleton.
 
-The panel has four sections arranged in a :class:`~PyQt6.QtWidgets.QTabWidget`:
+The panel has five sections arranged in a :class:`~PyQt6.QtWidgets.QTabWidget`:
 
 * **Connection** — driver type, transport type, address, Connect/Disconnect.
 * **Control** — setpoint, mode, ramp, PID, needle valve per loop.
 * **Stability** — tolerance, window, minimum rate-of-change settings.
+* **Zone Table** — read/edit/write the zone PID/heater-range/ramp-rate table;
+  only enabled when the connected driver advertises ``has_zone = True``.
 * **Chart** — live scrolling pyqtgraph plot of temperatures, setpoints,
   heater output, and needle valve.
 
@@ -21,6 +23,7 @@ Closing the window only hides it; the engine keeps running.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -31,21 +34,31 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
     QSplitter,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.temperature_controller import ControlMode, ControllerCapabilities, TemperatureController
+from stoner_measurement.instruments.temperature_controller import (
+    ControlMode,
+    ControllerCapabilities,
+    TemperatureController,
+    ZoneEntry,
+)
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
     GpibTransport,
@@ -215,6 +228,9 @@ class TemperatureControlPanel(QWidget):
         self._tabs.addTab(self._build_connection_tab(), "Connection")
         self._tabs.addTab(self._build_control_tab(), "Control")
         self._tabs.addTab(self._build_stability_tab(), "Stability")
+        self._zone_tab_index = self._tabs.count()
+        self._tabs.addTab(self._build_zone_tab(), "Zone Table")
+        self._tabs.setTabEnabled(self._zone_tab_index, False)
         self._tabs.addTab(self._build_chart_tab(), "Chart")
 
         status_bar = self._build_status_bar()
@@ -441,6 +457,37 @@ class TemperatureControlPanel(QWidget):
         apply_btn = QPushButton("Apply Stability Settings")
         apply_btn.clicked.connect(self._on_apply_stability)
         form.addRow("", apply_btn)
+
+        return widget
+
+    # --- Zone table tab ---
+
+    def _build_zone_tab(self) -> QWidget:
+        """Build the Zone Table tab widget.
+
+        Returns:
+            (QWidget):
+                The assembled zone table tab.
+        """
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(6)
+
+        # Loop selector row (hidden when only one loop is present).
+        selector_row = QHBoxLayout()
+        selector_row.addWidget(QLabel("Loop:"))
+        self._zone_loop_combo = QComboBox()
+        self._zone_loop_combo.currentIndexChanged.connect(self._on_zone_loop_changed)
+        selector_row.addWidget(self._zone_loop_combo)
+        selector_row.addStretch()
+        self._zone_loop_selector_widget = QWidget()
+        self._zone_loop_selector_widget.setLayout(selector_row)
+        self._zone_loop_selector_widget.hide()
+        layout.addWidget(self._zone_loop_selector_widget)
+
+        # Zone table
+        self._zone_table_widget = _ZoneTableWidget(self._engine)
+        layout.addWidget(self._zone_table_widget)
 
         return widget
 
@@ -795,6 +842,7 @@ class TemperatureControlPanel(QWidget):
             else:
                 self._gas_auto_row_label.hide()
                 self._gas_auto_check.hide()
+            self._configure_zone_tab(caps)
         except Exception:
             logger.exception("Failed to read capabilities after connection")
 
@@ -848,6 +896,13 @@ class TemperatureControlPanel(QWidget):
         self._needle_group.hide()
         self._gas_auto_row_label.hide()
         self._gas_auto_check.hide()
+        # Disable zone table tab and clear its contents.
+        self._tabs.setTabEnabled(self._zone_tab_index, False)
+        self._zone_loop_combo.blockSignals(True)
+        self._zone_loop_combo.clear()
+        self._zone_loop_combo.blockSignals(False)
+        self._zone_loop_selector_widget.hide()
+        self._zone_table_widget.clear_table()
         # Reset address widget colours to disconnected state.
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
@@ -855,6 +910,45 @@ class TemperatureControlPanel(QWidget):
     # ------------------------------------------------------------------
     # Control tab slots
     # ------------------------------------------------------------------
+
+    def _configure_zone_tab(self, caps: ControllerCapabilities) -> None:
+        """Enable or disable the zone tab based on driver capabilities.
+
+        Populates the loop selector with loops that support zone control and
+        shows it only when there is more than one loop.
+
+        Args:
+            caps (ControllerCapabilities):
+                The driver's capability descriptor.
+        """
+        enabled = caps.has_zone
+        self._tabs.setTabEnabled(self._zone_tab_index, enabled)
+        self._zone_loop_combo.blockSignals(True)
+        self._zone_loop_combo.clear()
+        if enabled:
+            for lp in caps.loop_numbers:
+                self._zone_loop_combo.addItem(f"Loop {lp}", lp)
+            if len(caps.loop_numbers) > 1:
+                self._zone_loop_selector_widget.show()
+            else:
+                self._zone_loop_selector_widget.hide()
+            self._zone_table_widget.set_loop(caps.loop_numbers[0] if caps.loop_numbers else 1)
+        else:
+            self._zone_loop_selector_widget.hide()
+            self._zone_table_widget.clear_table()
+        self._zone_loop_combo.blockSignals(False)
+
+    @pyqtSlot(int)
+    def _on_zone_loop_changed(self, index: int) -> None:
+        """Update the zone table widget when a different loop is selected.
+
+        Args:
+            index (int):
+                Index of the newly selected loop in the loop combo box.
+        """
+        loop = self._zone_loop_combo.itemData(index)
+        if loop is not None:
+            self._zone_table_widget.set_loop(loop)
 
     def _rebuild_loop_groups(self, caps) -> None:
         """Rebuild per-loop control groups from the driver capabilities.
@@ -943,6 +1037,302 @@ class TemperatureControlPanel(QWidget):
             except Exception:
                 pass
         self._chart_curves.clear()
+
+
+# ---------------------------------------------------------------------------
+# Zone table widget
+# ---------------------------------------------------------------------------
+
+#: Column indices for the zone table.
+_COL_ZONE = 0
+_COL_UPPER = 1
+_COL_P = 2
+_COL_I = 3
+_COL_D = 4
+_COL_RAMP = 5
+_COL_RANGE = 6
+_COL_OUTPUT = 7
+
+_ZONE_COLUMNS = [
+    "Zone",
+    "Upper Bound (K)",
+    "P",
+    "I",
+    "D",
+    "Ramp Rate (K/min)",
+    "Heater Range",
+    "Heater Output (%)",
+]
+
+
+class _ZoneTableWidget(QWidget):
+    """Self-contained widget for viewing and editing a zone PID table.
+
+    Displays a :class:`~PyQt6.QtWidgets.QTableWidget` with one row per zone
+    entry.  Provides buttons to read the table from and write it to the
+    connected temperature controller via the engine, and to serialise/
+    deserialise the table as JSON.
+
+    Args:
+        engine (TemperatureControllerEngine):
+            Engine instance used to read and write zone data.
+        parent (QWidget | None):
+            Optional Qt parent widget.
+    """
+
+    def __init__(
+        self, engine: TemperatureControllerEngine, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._engine = engine
+        self._loop: int = 1
+        self._build()
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    def set_loop(self, loop: int) -> None:
+        """Set the active control loop number.
+
+        Args:
+            loop (int):
+                Control loop number (1-based) whose zone table will be
+                read or written.
+        """
+        self._loop = loop
+
+    def clear_table(self) -> None:
+        """Remove all rows from the zone table."""
+        self._table.setRowCount(0)
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
+
+    def _build(self) -> None:
+        """Assemble the layout."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        # Table
+        self._table = QTableWidget(0, len(_ZONE_COLUMNS))
+        self._table.setHorizontalHeaderLabels(_ZONE_COLUMNS)
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._table.setAlternatingRowColors(True)
+        layout.addWidget(self._table)
+
+        # Button row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(4)
+        for label, slot in (
+            ("Read", self._on_read),
+            ("Apply", self._on_apply),
+            ("Add Row", self._on_add_row),
+            ("Remove Row", self._on_remove_row),
+            ("Load JSON", self._on_load_json),
+            ("Save JSON", self._on_save_json),
+        ):
+            btn = QPushButton(label)
+            btn.clicked.connect(slot)
+            btn_row.addWidget(btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+    # ------------------------------------------------------------------
+    # Table helpers
+    # ------------------------------------------------------------------
+
+    def _populate_table(self, entries: list[ZoneEntry]) -> None:
+        """Replace all table rows with *entries*.
+
+        Args:
+            entries (list[ZoneEntry]):
+                Zone-table entries to display.
+        """
+        self._table.setRowCount(0)
+        for i, entry in enumerate(entries):
+            self._append_row(i + 1, entry)
+
+    def _append_row(self, zone_number: int, entry: ZoneEntry | None = None) -> None:
+        """Append one editable row to the table.
+
+        Args:
+            zone_number (int):
+                Display-only zone index shown in the first column.
+            entry (ZoneEntry | None):
+                Initial values; when ``None`` all numeric fields default to
+                ``0.0`` / ``0``.
+        """
+        row = self._table.rowCount()
+        self._table.insertRow(row)
+
+        # Zone number — read-only label column.
+        zone_item = QTableWidgetItem(str(zone_number))
+        zone_item.setFlags(zone_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self._table.setItem(row, _COL_ZONE, zone_item)
+
+        def _dspin(value: float, max_val: float = 1000.0, decimals: int = 3) -> QDoubleSpinBox:
+            w = QDoubleSpinBox()
+            w.setRange(0.0, max_val)
+            w.setDecimals(decimals)
+            w.setValue(value)
+            w.setFrame(False)
+            return w
+
+        def _ispin(value: int, max_val: int = 9) -> QSpinBox:
+            w = QSpinBox()
+            w.setRange(0, max_val)
+            w.setValue(value)
+            w.setFrame(False)
+            return w
+
+        ub = entry.upper_bound if entry else 0.0
+        p = entry.p if entry else 0.0
+        i = entry.i if entry else 0.0
+        d = entry.d if entry else 0.0
+        ramp = entry.ramp_rate if entry else 0.0
+        hr = entry.heater_range if entry else 0
+        ho = entry.heater_output if entry else 0.0
+
+        self._table.setCellWidget(row, _COL_UPPER, _dspin(ub, max_val=9999.0))
+        self._table.setCellWidget(row, _COL_P, _dspin(p))
+        self._table.setCellWidget(row, _COL_I, _dspin(i))
+        self._table.setCellWidget(row, _COL_D, _dspin(d))
+        self._table.setCellWidget(row, _COL_RAMP, _dspin(ramp, max_val=999.0))
+        self._table.setCellWidget(row, _COL_RANGE, _ispin(hr))
+        self._table.setCellWidget(row, _COL_OUTPUT, _dspin(ho, max_val=100.0))
+
+    def _collect_entries(self) -> list[ZoneEntry]:
+        """Read all rows from the table and return a list of :class:`ZoneEntry`.
+
+        Returns:
+            (list[ZoneEntry]):
+                Zone-table entries built from the current cell widget values.
+        """
+        entries = []
+        for row in range(self._table.rowCount()):
+
+            def _dval(col: int) -> float:
+                w = self._table.cellWidget(row, col)
+                return w.value() if w is not None else 0.0
+
+            def _ival(col: int) -> int:
+                w = self._table.cellWidget(row, col)
+                return w.value() if w is not None else 0
+
+            entries.append(
+                ZoneEntry(
+                    upper_bound=_dval(_COL_UPPER),
+                    p=_dval(_COL_P),
+                    i=_dval(_COL_I),
+                    d=_dval(_COL_D),
+                    ramp_rate=_dval(_COL_RAMP),
+                    heater_range=_ival(_COL_RANGE),
+                    heater_output=_dval(_COL_OUTPUT),
+                )
+            )
+        return entries
+
+    def _renumber_zones(self) -> None:
+        """Refresh the read-only zone-number column after row additions/removals."""
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, _COL_ZONE)
+            if item is not None:
+                item.setText(str(row + 1))
+
+    # ------------------------------------------------------------------
+    # Button slots
+    # ------------------------------------------------------------------
+
+    @pyqtSlot()
+    def _on_read(self) -> None:
+        """Read the zone table from the instrument via the engine."""
+        entries = self._engine.get_zone_table(self._loop)
+        if entries is None:
+            QMessageBox.warning(self, "Zone Table", "No instrument connected.")
+            return
+        self._populate_table(entries)
+
+    @pyqtSlot()
+    def _on_apply(self) -> None:
+        """Write the current table contents to the instrument via the engine."""
+        entries = self._collect_entries()
+        self._engine.set_zone_table(self._loop, entries)
+
+    @pyqtSlot()
+    def _on_add_row(self) -> None:
+        """Append a blank row to the table."""
+        self._append_row(self._table.rowCount() + 1)
+
+    @pyqtSlot()
+    def _on_remove_row(self) -> None:
+        """Remove the currently selected row (or the last row if none selected)."""
+        selected = self._table.selectedItems()
+        if selected:
+            row = self._table.row(selected[0])
+        else:
+            row = self._table.rowCount() - 1
+        if row >= 0:
+            self._table.removeRow(row)
+            self._renumber_zones()
+
+    @pyqtSlot()
+    def _on_load_json(self) -> None:
+        """Load zone-table entries from a JSON file chosen by the user."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Zone Table", "", "JSON files (*.json);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            entries = [
+                ZoneEntry(
+                    upper_bound=float(item["upper_bound"]),
+                    p=float(item["p"]),
+                    i=float(item["i"]),
+                    d=float(item["d"]),
+                    ramp_rate=float(item["ramp_rate"]),
+                    heater_range=int(item["heater_range"]),
+                    heater_output=float(item["heater_output"]),
+                )
+                for item in data
+            ]
+        except Exception as exc:
+            QMessageBox.critical(self, "Load Zone Table", f"Failed to load file:\n{exc}")
+            return
+        self._populate_table(entries)
+
+    @pyqtSlot()
+    def _on_save_json(self) -> None:
+        """Save the current zone table to a JSON file chosen by the user."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Zone Table", "zone_table.json", "JSON files (*.json);;All files (*)"
+        )
+        if not path:
+            return
+        entries = self._collect_entries()
+        data = [
+            {
+                "upper_bound": e.upper_bound,
+                "p": e.p,
+                "i": e.i,
+                "d": e.d,
+                "ramp_rate": e.ramp_rate,
+                "heater_range": e.heater_range,
+                "heater_output": e.heater_output,
+            }
+            for e in entries
+        ]
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, indent=2)
+        except Exception as exc:
+            QMessageBox.critical(self, "Save Zone Table", f"Failed to save file:\n{exc}")
 
 
 # ---------------------------------------------------------------------------
