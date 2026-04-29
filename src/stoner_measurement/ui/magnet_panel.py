@@ -29,7 +29,6 @@ from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -377,11 +376,8 @@ class MagnetControlPanel(QWidget):
         target_group = QGroupBox("Target Field")
         target_form = QFormLayout(target_group)
 
-        self._target_field_spin = QDoubleSpinBox()
-        self._target_field_spin.setRange(-20.0, 20.0)
-        self._target_field_spin.setDecimals(4)
-        self._target_field_spin.setSuffix(" T")
-        self._target_field_spin.setSingleStep(0.1)
+        self._target_field_spin = pg.SpinBox()
+        self._target_field_spin.setOpts(bounds=(-20.0, 20.0), decimals=4, suffix="T", siPrefix=True, step=0.1)
         self._target_field_spin.valueChanged.connect(self._on_target_field_changed)
         target_form.addRow("Target field:", self._target_field_spin)
 
@@ -402,17 +398,13 @@ class MagnetControlPanel(QWidget):
         ramp_group = QGroupBox("Ramp Rate")
         ramp_form = QFormLayout(ramp_group)
 
-        self._ramp_field_spin = QDoubleSpinBox()
-        self._ramp_field_spin.setRange(0.001, 10.0)
-        self._ramp_field_spin.setDecimals(4)
-        self._ramp_field_spin.setSuffix(" T/min")
+        self._ramp_field_spin = pg.SpinBox()
+        self._ramp_field_spin.setOpts(bounds=(0.001, 10.0), decimals=4, suffix="T/min", siPrefix=True)
         self._ramp_field_spin.setValue(0.1)
         ramp_form.addRow("Field ramp rate:", self._ramp_field_spin)
 
-        self._ramp_current_spin = QDoubleSpinBox()
-        self._ramp_current_spin.setRange(0.01, 1000.0)
-        self._ramp_current_spin.setDecimals(3)
-        self._ramp_current_spin.setSuffix(" A/min")
+        self._ramp_current_spin = pg.SpinBox()
+        self._ramp_current_spin.setOpts(bounds=(0.01, 1000.0), decimals=3, suffix="A/min", siPrefix=True)
         self._ramp_current_spin.setValue(1.0)
         ramp_form.addRow("Current ramp rate:", self._ramp_current_spin)
 
@@ -452,31 +444,23 @@ class MagnetControlPanel(QWidget):
         const_group = QGroupBox("Magnet Constants && Limits")
         const_form = QFormLayout(const_group)
 
-        self._magnet_const_spin = QDoubleSpinBox()
-        self._magnet_const_spin.setRange(0.0001, 100.0)
-        self._magnet_const_spin.setDecimals(6)
-        self._magnet_const_spin.setSuffix(" T/A")
+        self._magnet_const_spin = pg.SpinBox()
+        self._magnet_const_spin.setOpts(bounds=(0.0001, 100.0), decimals=6, suffix="T/A", siPrefix=True)
         self._magnet_const_spin.setValue(0.1)
         const_form.addRow("Magnet constant:", self._magnet_const_spin)
 
-        self._max_current_spin = QDoubleSpinBox()
-        self._max_current_spin.setRange(0.0, 1000.0)
-        self._max_current_spin.setDecimals(2)
-        self._max_current_spin.setSuffix(" A")
+        self._max_current_spin = pg.SpinBox()
+        self._max_current_spin.setOpts(bounds=(0.0, 1000.0), decimals=2, suffix="A", siPrefix=True)
         self._max_current_spin.setValue(100.0)
         const_form.addRow("Max current:", self._max_current_spin)
 
-        self._max_field_spin = QDoubleSpinBox()
-        self._max_field_spin.setRange(0.0, 100.0)
-        self._max_field_spin.setDecimals(3)
-        self._max_field_spin.setSuffix(" T")
+        self._max_field_spin = pg.SpinBox()
+        self._max_field_spin.setOpts(bounds=(0.0, 100.0), decimals=3, suffix="T", siPrefix=True)
         self._max_field_spin.setValue(10.0)
         const_form.addRow("Max field:", self._max_field_spin)
 
-        self._max_ramp_spin = QDoubleSpinBox()
-        self._max_ramp_spin.setRange(0.0, 100.0)
-        self._max_ramp_spin.setDecimals(3)
-        self._max_ramp_spin.setSuffix(" T/min")
+        self._max_ramp_spin = pg.SpinBox()
+        self._max_ramp_spin.setOpts(bounds=(0.0, 100.0), decimals=3, suffix="T/min", siPrefix=True)
         self._max_ramp_spin.setValue(1.0)
         const_form.addRow("Max ramp rate:", self._max_ramp_spin)
 
@@ -851,7 +835,7 @@ class MagnetControlPanel(QWidget):
     # Configuration tab slots
     # ------------------------------------------------------------------
 
-    @pyqtSlot(float)
+    @pyqtSlot(object)
     def _on_target_field_changed(self, value: float) -> None:
         """Update the equivalent-current label when the target field changes.
 
