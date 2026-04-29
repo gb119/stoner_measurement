@@ -257,10 +257,6 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
             (float):
                 Field-to-current conversion factor in T A⁻¹ held by this
                 driver instance.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
         """
         return self._magnet_constant
 
@@ -271,10 +267,6 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         Returns:
             (MagnetLimits):
                 Cached current/field/ramp limits set via :meth:`set_limits`.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
         """
         return self._limits
 
@@ -367,8 +359,6 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
                 Field-to-current conversion factor in T A⁻¹.
 
         Raises:
-            ConnectionError:
-                If the transport is not open.
             ValueError:
                 If *tesla_per_amp* is not positive.
         """
@@ -382,10 +372,6 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         Args:
             limits (MagnetLimits):
                 Limit configuration to cache for runtime checks.
-
-        Raises:
-            ConnectionError:
-                If the transport is not open.
         """
         self._limits = limits
 
