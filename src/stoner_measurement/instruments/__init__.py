@@ -41,6 +41,8 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.keithley.Keithley6514` — concrete electrometer driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley6517` — concrete electrometer driver
 * :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81CurrentSource` — concrete current-source driver
+* :class:`~stoner_measurement.instruments.oxford.OxfordIPS120` — concrete magnet supply driver
+* :class:`~stoner_measurement.instruments.oxford.OxfordMercuryIPS` — concrete magnet supply driver
 * :class:`~stoner_measurement.instruments.srs.SRS830` — concrete lock-in amplifier driver
 * :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81LockIn` — concrete lock-in amplifier driver
 """
