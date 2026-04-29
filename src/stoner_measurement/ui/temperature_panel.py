@@ -390,10 +390,8 @@ class TemperatureControlPanel(QWidget):
         # Needle valve row (shown only for cryogen instruments).
         self._needle_group = QGroupBox("Needle Valve / Gas Flow")
         needle_form = QFormLayout(self._needle_group)
-        self._needle_spin = QDoubleSpinBox()
-        self._needle_spin.setRange(0.0, 100.0)
-        self._needle_spin.setSuffix(" %")
-        self._needle_spin.setSingleStep(1.0)
+        self._needle_spin = pg.SpinBox()
+        self._needle_spin.setOpts(bounds=(0.0, 100.0), suffix="%", decimals=1, step=1.0, siPrefix=False)
         self._needle_apply_btn = QPushButton("Apply")
         self._needle_apply_btn.clicked.connect(self._on_apply_needle)
         needle_row = QHBoxLayout()
@@ -428,29 +426,23 @@ class TemperatureControlPanel(QWidget):
         form = QFormLayout(widget)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        self._stab_tolerance_spin = QDoubleSpinBox()
-        self._stab_tolerance_spin.setRange(0.001, 10.0)
-        self._stab_tolerance_spin.setDecimals(3)
-        self._stab_tolerance_spin.setSuffix(" K")
+        self._stab_tolerance_spin = pg.SpinBox()
+        self._stab_tolerance_spin.setOpts(bounds=(0.001, 10.0), decimals=3, suffix="K", siPrefix=True)
         self._stab_tolerance_spin.setValue(0.1)
         form.addRow("Tolerance:", self._stab_tolerance_spin)
 
-        self._stab_window_spin = QDoubleSpinBox()
-        self._stab_window_spin.setRange(1.0, 3600.0)
-        self._stab_window_spin.setSuffix(" s")
+        self._stab_window_spin = pg.SpinBox()
+        self._stab_window_spin.setOpts(bounds=(1.0, 3600.0), suffix="s", siPrefix=True)
         self._stab_window_spin.setValue(60.0)
         form.addRow("Stability window:", self._stab_window_spin)
 
-        self._stab_min_rate_spin = QDoubleSpinBox()
-        self._stab_min_rate_spin.setRange(0.0001, 1.0)
-        self._stab_min_rate_spin.setDecimals(4)
-        self._stab_min_rate_spin.setSuffix(" K/min")
+        self._stab_min_rate_spin = pg.SpinBox()
+        self._stab_min_rate_spin.setOpts(bounds=(0.0001, 1.0), decimals=4, suffix="K/min", siPrefix=True)
         self._stab_min_rate_spin.setValue(0.005)
         form.addRow("Max rate of change:", self._stab_min_rate_spin)
 
-        self._stab_holdoff_spin = QDoubleSpinBox()
-        self._stab_holdoff_spin.setRange(0.0, 120.0)
-        self._stab_holdoff_spin.setSuffix(" s")
+        self._stab_holdoff_spin = pg.SpinBox()
+        self._stab_holdoff_spin.setOpts(bounds=(0.0, 120.0), suffix="s", siPrefix=True)
         self._stab_holdoff_spin.setValue(5.0)
         form.addRow("Unstable holdoff:", self._stab_holdoff_spin)
 
@@ -1386,10 +1378,8 @@ class _LoopControlGroup(QGroupBox):
 
     def _build_control_rows(self, form: QFormLayout) -> None:
         """Add setpoint, mode, ramp, heater-range and manual-output rows to *form*."""
-        self._sp_spin = QDoubleSpinBox()
-        self._sp_spin.setRange(0.0, 1000.0)
-        self._sp_spin.setSuffix(" K")
-        self._sp_spin.setDecimals(3)
+        self._sp_spin = pg.SpinBox()
+        self._sp_spin.setOpts(bounds=(0.0, 1000.0), decimals=3, suffix="K", siPrefix=True)
         self._sp_row_label = QLabel("New setpoint:")
         form.addRow(self._sp_row_label, self._sp_spin)
 
@@ -1400,10 +1390,8 @@ class _LoopControlGroup(QGroupBox):
         form.addRow("Control mode:", self._mode_combo)
 
         self._ramp_enable = QCheckBox("Enable")
-        self._ramp_rate_spin = QDoubleSpinBox()
-        self._ramp_rate_spin.setRange(0.0, 100.0)
-        self._ramp_rate_spin.setSuffix(" K/min")
-        self._ramp_rate_spin.setDecimals(3)
+        self._ramp_rate_spin = pg.SpinBox()
+        self._ramp_rate_spin.setOpts(bounds=(0.0, 100.0), decimals=3, suffix="K/min", siPrefix=True)
         ramp_row = QHBoxLayout()
         ramp_row.addWidget(self._ramp_enable)
         ramp_row.addWidget(self._ramp_rate_spin)
@@ -1427,10 +1415,8 @@ class _LoopControlGroup(QGroupBox):
             self._heater_range_combo = None
             form.addRow(self._heater_range_label, self._heater_range_spin)
 
-        self._manual_output_spin = QDoubleSpinBox()
-        self._manual_output_spin.setRange(0.0, 100.0)
-        self._manual_output_spin.setSuffix(" %")
-        self._manual_output_spin.setDecimals(1)
+        self._manual_output_spin = pg.SpinBox()
+        self._manual_output_spin.setOpts(bounds=(0.0, 100.0), decimals=1, suffix="%", siPrefix=False)
         self._manual_output_spin.setToolTip(
             "Manual heater output percentage for open-loop control"
         )
@@ -1439,15 +1425,12 @@ class _LoopControlGroup(QGroupBox):
 
     def _build_pid_row(self, form: QFormLayout) -> None:
         """Add PID spin boxes row to *form*."""
-        self._pid_p_spin = QDoubleSpinBox()
-        self._pid_p_spin.setRange(0.0, 1000.0)
-        self._pid_p_spin.setDecimals(3)
-        self._pid_i_spin = QDoubleSpinBox()
-        self._pid_i_spin.setRange(0.0, 1000.0)
-        self._pid_i_spin.setDecimals(3)
-        self._pid_d_spin = QDoubleSpinBox()
-        self._pid_d_spin.setRange(0.0, 1000.0)
-        self._pid_d_spin.setDecimals(3)
+        self._pid_p_spin = pg.SpinBox()
+        self._pid_p_spin.setOpts(bounds=(0.0, 1000.0), decimals=3)
+        self._pid_i_spin = pg.SpinBox()
+        self._pid_i_spin.setOpts(bounds=(0.0, 1000.0), decimals=3)
+        self._pid_d_spin = pg.SpinBox()
+        self._pid_d_spin.setOpts(bounds=(0.0, 1000.0), decimals=3)
         pid_row = QHBoxLayout()
         pid_row.addWidget(QLabel("P:"))
         pid_row.addWidget(self._pid_p_spin)
