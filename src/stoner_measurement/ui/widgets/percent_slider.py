@@ -20,16 +20,16 @@ _SLIDER_STEPS = 1000
 
 
 class PercentSliderWidget(QWidget):
-    """Compound widget combining a horizontal slider and a numeric spin box for 0–100 % values.
+    """Compound widget combining a horizontal slider and a numeric spin box for 0-100 % values.
 
     Dragging the slider or editing the spin box updates both controls
-    simultaneously.  The widget emits :pyqtSignal:`valueChanged` whenever the
-    value changes.
+    simultaneously.  The widget emits ``valueChanged`` whenever the value
+    changes via user interaction.
 
     Attributes:
         valueChanged (pyqtSignal):
             Emitted with the new ``float`` percentage whenever the value
-            changes.
+            changes via user interaction.
 
     Examples:
         >>> from stoner_measurement.ui.widgets import PercentSliderWidget
@@ -90,7 +90,7 @@ class PercentSliderWidget(QWidget):
         """
         return self._spinbox.value()
 
-    def setValue(self, value: float) -> None:  # noqa: N802 – Qt naming convention
+    def setValue(self, value: float) -> None:  # noqa: N802 - Qt naming convention
         """Set the current percentage value, updating both controls.
 
         Args:
@@ -113,7 +113,7 @@ class PercentSliderWidget(QWidget):
             self._spinbox.blockSignals(False)
             self._slider.blockSignals(False)
 
-    def setEnabled(self, enabled: bool) -> None:  # noqa: N802 – Qt naming convention
+    def setEnabled(self, enabled: bool) -> None:  # noqa: N802 - Qt naming convention
         """Enable or disable both the slider and the spin box.
 
         Args:
@@ -130,7 +130,7 @@ class PercentSliderWidget(QWidget):
         self._spinbox.setEnabled(enabled)
         super().setEnabled(enabled)
 
-    def setToolTip(self, tip: str) -> None:  # noqa: N802 – Qt naming convention
+    def setToolTip(self, tip: str) -> None:  # noqa: N802 - Qt naming convention
         """Set the tooltip on both child controls and the container widget.
 
         Args:
