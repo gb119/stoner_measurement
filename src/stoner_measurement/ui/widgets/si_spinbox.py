@@ -73,19 +73,22 @@ class SISpinBox(pg.SpinBox):
         le = self.lineEdit()
         original_text = le.text()
 
-        # Strip the configured prefix before inspecting the user's input.
-        stripped = original_text.removeprefix(self.opts["prefix"]).strip()
+        # Strip the configured prefix and whitespace to get the user's raw input.
+        user_input = original_text.removeprefix(self.opts["prefix"]).strip()
 
         # If the text already ends with the suffix the parent failed for an
         # unrelated reason (e.g. bad number format), so don't retry.
-        if stripped.endswith(suffix):
+        if user_input.endswith(suffix):
             return False
 
-        # Temporarily set the text to include the suffix and let the parent
-        # parse it, ensuring all base-class parsing rules are respected.
+        # Temporarily set the text to a normalised form that includes the
+        # suffix, and let the parent parse it — this ensures all base-class
+        # parsing rules are respected without duplicating internal logic.
+        # We reconstruct from the normalised prefix + user_input to avoid any
+        # trailing whitespace artefacts in the original text.
         self.skipValidate = True
         try:
-            le.setText(original_text + suffix)
+            le.setText(self.opts["prefix"] + user_input + suffix)
             result = super().interpret()
         finally:
             le.setText(original_text)
