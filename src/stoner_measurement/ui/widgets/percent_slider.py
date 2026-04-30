@@ -108,7 +108,8 @@ class PercentSliderWidget(QWidget):
         self._slider.blockSignals(True)
         try:
             self._spinbox.setValue(value)
-            self._slider.setValue(round(value / 100.0 * _SLIDER_STEPS))
+            canonical_value = self._spinbox.value()
+            self._slider.setValue(round(canonical_value / 100.0 * _SLIDER_STEPS))
         finally:
             self._spinbox.blockSignals(False)
             self._slider.blockSignals(False)
