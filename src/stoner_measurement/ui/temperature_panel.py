@@ -74,6 +74,7 @@ from stoner_measurement.temperature_control.types import (
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
+    PercentSliderWidget,
     SISpinBox,
     VisaResourceComboBox,
     VisaResourceStatus,
@@ -391,8 +392,8 @@ class TemperatureControlPanel(QWidget):
         # Needle valve row (shown only for cryogen instruments).
         self._needle_group = QGroupBox("Needle Valve / Gas Flow")
         needle_form = QFormLayout(self._needle_group)
-        self._needle_spin = SISpinBox()
-        self._needle_spin.setOpts(bounds=(0.0, 100.0), suffix="%", decimals=1, step=1.0, siPrefix=False)
+        self._needle_spin = PercentSliderWidget()
+        self._needle_spin.setToolTip("Needle valve / gas flow position (0–100 %)")
         self._needle_apply_btn = QPushButton("Apply")
         self._needle_apply_btn.clicked.connect(self._on_apply_needle)
         needle_row = QHBoxLayout()
@@ -1416,8 +1417,7 @@ class _LoopControlGroup(QGroupBox):
             self._heater_range_combo = None
             form.addRow(self._heater_range_label, self._heater_range_spin)
 
-        self._manual_output_spin = SISpinBox()
-        self._manual_output_spin.setOpts(bounds=(0.0, 100.0), decimals=1, suffix="%", siPrefix=False)
+        self._manual_output_spin = PercentSliderWidget()
         self._manual_output_spin.setToolTip(
             "Manual heater output percentage for open-loop control"
         )
