@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.sweep.base import BaseSweepGenerator
+from stoner_measurement.ui.widgets import SISpinBox
 
 _DEFAULT_POLL_SECONDS = 0.05
 _SPINBOX_MAX_ABS = 1e9
@@ -191,17 +192,17 @@ class MultiSegmentRampSweepWidget(QWidget):
         root = QVBoxLayout(self)
 
         form = QFormLayout()
-        self._start_spin = pg.SpinBox()
+        self._start_spin = SISpinBox()
         self._start_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6)
         self._start_spin.valueChanged.connect(self._on_start_changed)
         form.addRow("Start value:", self._start_spin)
 
-        self._poll_spin = pg.SpinBox()
+        self._poll_spin = SISpinBox()
         self._poll_spin.setOpts(bounds=(0.0, 60.0), decimals=6, suffix="s")
         self._poll_spin.valueChanged.connect(self._on_poll_changed)
         form.addRow("Poll interval:", self._poll_spin)
 
-        self._start_timeout_spin = pg.SpinBox()
+        self._start_timeout_spin = SISpinBox()
         self._start_timeout_spin.setOpts(bounds=(0.0, _SPINBOX_MAX_ABS), decimals=6, suffix="s")
         self._start_timeout_spin.valueChanged.connect(self._on_start_timeout_changed)
         form.addRow("Start wait timeout:", self._start_timeout_spin)
@@ -230,15 +231,15 @@ class MultiSegmentRampSweepWidget(QWidget):
         root.addWidget(self._preview)
         root.addWidget(QLabel("Preview uses green/red segment lines for measure true/false.", self))
 
-    def _build_target_spin(self, value: float) -> pg.SpinBox:
-        spin = pg.SpinBox(self._table)
+    def _build_target_spin(self, value: float) -> SISpinBox:
+        spin = SISpinBox(self._table)
         spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6)
         spin.setValue(float(value))
         spin.valueChanged.connect(self._sync_segments_from_table)
         return spin
 
-    def _build_rate_spin(self, value: float) -> pg.SpinBox:
-        spin = pg.SpinBox(self._table)
+    def _build_rate_spin(self, value: float) -> SISpinBox:
+        spin = SISpinBox(self._table)
         spin.setOpts(bounds=(0.0, _SPINBOX_MAX_ABS), decimals=6)
         spin.setValue(max(0.0, float(value)))
         spin.valueChanged.connect(self._sync_segments_from_table)
@@ -286,8 +287,8 @@ class MultiSegmentRampSweepWidget(QWidget):
             target_w = self._table.cellWidget(row, 0)
             rate_w = self._table.cellWidget(row, 1)
             measure_w = self._table.cellWidget(row, 2)
-            target = float(target_w.value()) if isinstance(target_w, pg.SpinBox) else 0.0
-            rate = float(rate_w.value()) if isinstance(rate_w, pg.SpinBox) else 0.0
+            target = float(target_w.value()) if isinstance(target_w, SISpinBox) else 0.0
+            rate = float(rate_w.value()) if isinstance(rate_w, SISpinBox) else 0.0
             measure = bool(measure_w.isChecked()) if isinstance(measure_w, QCheckBox) else True
             segments.append((target, rate, measure))
         self._generator.segments = segments

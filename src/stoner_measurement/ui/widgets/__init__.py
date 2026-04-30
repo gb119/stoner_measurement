@@ -5,6 +5,7 @@ multiple measurement panels and dialogs.
 """
 
 from stoner_measurement.ui.widgets.percent_slider import PercentSliderWidget
+from stoner_measurement.ui.widgets.si_spinbox import SISpinBox
 from stoner_measurement.ui.widgets.visa_resource_widget import (
     FILTER_ALL,
     FILTER_GPIB,
@@ -20,6 +21,7 @@ __all__ = [
     "FILTER_GPIB",
     "FILTER_SERIAL",
     "PercentSliderWidget",
+    "SISpinBox",
     "VisaInterfaceType",
     "VisaResourceComboBox",
     "VisaResourceStatus",

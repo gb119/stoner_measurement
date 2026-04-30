@@ -26,6 +26,10 @@ class PercentSliderWidget(QWidget):
     simultaneously.  The widget emits ``valueChanged`` whenever the value
     changes via user interaction.
 
+    Args:
+        parent (QWidget | None):
+            Optional parent widget.
+
     Attributes:
         valueChanged (pyqtSignal):
             Emitted with the new ``float`` percentage whenever the value
@@ -42,12 +46,7 @@ class PercentSliderWidget(QWidget):
     valueChanged = pyqtSignal(float)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Initialise the widget with default range 0–100 %.
-
-        Keyword Parameters:
-            parent (QWidget | None):
-                Optional parent widget.
-        """
+        """Initialise the widget with default range 0–100 %."""
         super().__init__(parent)
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
