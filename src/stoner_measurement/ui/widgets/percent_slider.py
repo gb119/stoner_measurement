@@ -152,9 +152,10 @@ class PercentSliderWidget(QWidget):
         self._spinbox.blockSignals(True)
         try:
             self._spinbox.setValue(percent)
+            canonical_percent = self._spinbox.value()
         finally:
             self._spinbox.blockSignals(False)
-        self.valueChanged.emit(percent)
+        self.valueChanged.emit(canonical_percent)
 
     def _on_spinbox_changed(self, percent: float) -> None:
         """Synchronise slider when spin box value changes."""
