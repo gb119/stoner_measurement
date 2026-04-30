@@ -76,10 +76,7 @@ class SISpinBox(pg.SpinBox):
 
         # Reconstruct the prefix-stripped string, mirroring the parent logic.
         strn = self.lineEdit().text()
-        try:
-            strn = strn.removeprefix(self.opts["prefix"])
-        except AttributeError:  # Python < 3.9 fallback
-            strn = strn[len(self.opts["prefix"]):]
+        strn = strn.removeprefix(self.opts["prefix"])
 
         strn = strn.strip()
 
@@ -94,7 +91,7 @@ class SISpinBox(pg.SpinBox):
             val_str, siprefix, parsed_suffix = fn.siParse(
                 candidate, self.opts["regex"], suffix=suffix
             )
-        except Exception:
+        except (ValueError, TypeError):
             return False
 
         if parsed_suffix != suffix:
@@ -111,7 +108,7 @@ class SISpinBox(pg.SpinBox):
         else:
             try:
                 val = fn.siApply(val, siprefix)
-            except Exception:
+            except (KeyError, ArithmeticError):
                 return False
 
         return val
