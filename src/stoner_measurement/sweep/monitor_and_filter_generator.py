@@ -7,7 +7,6 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
-import pyqtgraph as pg
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import (
     QCheckBox,

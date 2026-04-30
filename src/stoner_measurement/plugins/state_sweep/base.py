@@ -8,7 +8,6 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-import pyqtgraph as pg
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,

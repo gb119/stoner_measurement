@@ -7,11 +7,7 @@ automatically when the user omits it.
 
 from __future__ import annotations
 
-import decimal
-from math import isinf, isnan
-
 import pyqtgraph as pg
-import pyqtgraph.functions as fn
 
 __all__ = ["SISpinBox"]
 
@@ -45,7 +41,7 @@ class SISpinBox(pg.SpinBox):
         200.0
     """
 
-    def interpret(self) -> decimal.Decimal | int | bool:
+    def interpret(self) -> float | int | bool:
         """Return the value represented by the current text, or ``False``.
 
         Extends the base implementation to automatically append the configured
@@ -54,16 +50,16 @@ class SISpinBox(pg.SpinBox):
         type the unit string.
 
         Returns:
-            (decimal.Decimal | int): The parsed value when the text is valid.
+            (float | int): The parsed value when the text is valid.
             (bool): ``False`` when the text cannot be parsed.
 
         Examples:
             >>> spin = SISpinBox(suffix='K', siPrefix=True)
             >>> spin.lineEdit().setText('200')
-            >>> spin.interpret() == decimal.Decimal('200')
+            >>> spin.interpret() == 200.0
             True
             >>> spin.lineEdit().setText('200m')
-            >>> spin.interpret() == decimal.Decimal('0.2')
+            >>> abs(spin.interpret() - 0.2) < 1e-9
             True
         """
         result = super().interpret()
@@ -74,41 +70,25 @@ class SISpinBox(pg.SpinBox):
         if not suffix:
             return False
 
-        # Reconstruct the prefix-stripped string, mirroring the parent logic.
-        strn = self.lineEdit().text()
-        strn = strn.removeprefix(self.opts["prefix"])
+        le = self.lineEdit()
+        original_text = le.text()
 
-        strn = strn.strip()
+        # Strip the configured prefix before inspecting the user's input.
+        stripped = original_text.removeprefix(self.opts["prefix"]).strip()
 
         # If the text already ends with the suffix the parent failed for an
         # unrelated reason (e.g. bad number format), so don't retry.
-        if strn.endswith(suffix):
+        if stripped.endswith(suffix):
             return False
 
-        # Retry with the suffix appended directly after the user's text.
-        candidate = strn + suffix
+        # Temporarily set the text to include the suffix and let the parent
+        # parse it, ensuring all base-class parsing rules are respected.
+        self.skipValidate = True
         try:
-            val_str, siprefix, parsed_suffix = fn.siParse(
-                candidate, self.opts["regex"], suffix=suffix
-            )
-        except (ValueError, TypeError):
-            return False
+            le.setText(original_text + suffix)
+            result = super().interpret()
+        finally:
+            le.setText(original_text)
+            self.skipValidate = False
 
-        if parsed_suffix != suffix:
-            return False
-
-        # Replicate the value-generation logic from the parent interpret().
-        val = self.opts["evalFunc"](val_str.replace(",", "."))
-
-        if (self.opts["int"] or self.opts["finite"]) and (isinf(val) or isnan(val)):
-            return False
-
-        if self.opts["int"]:
-            val = int(fn.siApply(val, siprefix))
-        else:
-            try:
-                val = fn.siApply(val, siprefix)
-            except (KeyError, ArithmeticError):
-                return False
-
-        return val
+        return result
