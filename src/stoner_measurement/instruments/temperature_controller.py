@@ -149,6 +149,56 @@ class PIDParameters:
 
 
 @dataclass(frozen=True)
+class InputChannelSettings:
+    """Configuration settings for a single sensor input channel.
+
+    Captures the sensor type, range, filtering, and calibration curve
+    assignment for one input channel.  Fields that are not applicable
+    to a particular driver are set to ``None``.
+
+    Attributes:
+        sensor_type (int | None):
+            Instrument-specific sensor type code (e.g. 0 = Disabled,
+            1 = Diode, 2 = PTC RTD, 3 = NTC RTD).  ``None`` if not
+            configurable on this driver.
+        autorange (bool | None):
+            ``True`` when automatic ranging is enabled; ``None`` if not
+            supported.
+        range_ (int | None):
+            Manual range index (instrument-specific).  Meaningful only
+            when *autorange* is ``False``; ``None`` if not supported.
+        compensation (bool | None):
+            ``True`` when current-reversal compensation is active (diode /
+            RTD inputs on some controllers); ``None`` if not supported.
+        units (int | None):
+            Temperature units code (e.g. 1 = K, 2 = °C, 3 = sensor
+            units).  ``None`` if not configurable.
+        filter_enabled (bool | None):
+            ``True`` when the digital averaging filter is active; ``None``
+            if not supported.
+        filter_points (int | None):
+            Number of readings averaged by the filter (1 effectively
+            disables averaging); ``None`` if not supported.
+        filter_window (float | None):
+            Percentage deviation window that resets the filter (0 disables
+            windowing); ``None`` if not supported.
+        curve_number (int | None):
+            Calibration curve number assigned to this channel (0 = none);
+            ``None`` if curve assignment is not supported.
+    """
+
+    sensor_type: int | None = None
+    autorange: bool | None = None
+    range_: int | None = None
+    compensation: bool | None = None
+    units: int | None = None
+    filter_enabled: bool | None = None
+    filter_points: int | None = None
+    filter_window: float | None = None
+    curve_number: int | None = None
+
+
+@dataclass(frozen=True)
 class ZoneEntry:
     """One entry in a temperature controller's zone / table control table.
 
@@ -314,6 +364,11 @@ class ControllerCapabilities:
         has_manual_heater_output (bool):
             ``True`` if the driver supports setting the heater output directly
             (required for :attr:`~ControlMode.OPEN_LOOP` operation).
+        has_input_settings (bool):
+            ``True`` if the driver supports reading and writing per-channel
+            input configuration (sensor type, range, filter, calibration curve
+            assignment) via :meth:`~TemperatureController.get_input_channel_settings`
+            and :meth:`~TemperatureController.set_input_channel_settings`.
         heater_range_labels (dict[int, tuple[str, ...]]):
             Optional per-loop mapping of heater range index to human-readable
             label.  The tuple index corresponds to the integer range index passed
@@ -339,6 +394,7 @@ class ControllerCapabilities:
     has_cryogen_control: bool = False
     has_gas_auto_mode: bool = False
     has_manual_heater_output: bool = False
+    has_input_settings: bool = False
     heater_range_labels: dict[int, tuple[str, ...]] = field(default_factory=dict)
     min_temperature: float | None = None
     max_temperature: float | None = None
@@ -1456,6 +1512,73 @@ class TemperatureController(BaseInstrument):
         raise NotImplementedError(
             f"{type(self).__name__} does not support user calibration curves. "
             "Check get_capabilities().has_user_curves before calling this method."
+        )
+
+    # ------------------------------------------------------------------
+    # Optional methods — input channel settings
+    # ------------------------------------------------------------------
+
+    def get_input_channel_settings(self, channel: str) -> InputChannelSettings:
+        """Return the configuration settings for sensor input *channel*.
+
+        Reads the sensor type, range, filter, and calibration-curve assignment
+        for the specified input channel.  The returned
+        :class:`InputChannelSettings` instance may contain ``None`` for fields
+        that the driver does not support.
+
+        Args:
+            channel (str):
+                Sensor channel identifier.
+
+        Returns:
+            (InputChannelSettings):
+                Current configuration of the input channel.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not support input channel configuration.
+                Check :attr:`ControllerCapabilities.has_input_settings`
+                before calling.
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> # ctrl.get_input_channel_settings("A")  # requires live instrument
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support input channel settings. "
+            "Check get_capabilities().has_input_settings before calling this method."
+        )
+
+    def set_input_channel_settings(self, channel: str, settings: InputChannelSettings) -> None:
+        """Apply configuration settings to sensor input *channel*.
+
+        Writes the sensor type, range, filter, and calibration-curve
+        assignment from *settings* to the instrument.  Fields that are
+        ``None`` in *settings* are not changed on the instrument.
+
+        Args:
+            channel (str):
+                Sensor channel identifier.
+            settings (InputChannelSettings):
+                Configuration to apply.  ``None`` fields are ignored.
+
+        Raises:
+            NotImplementedError:
+                If the driver does not support input channel configuration.
+                Check :attr:`ControllerCapabilities.has_input_settings`
+                before calling.
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.temperature_controller import InputChannelSettings
+            >>> s = InputChannelSettings(filter_enabled=True, filter_points=10, filter_window=2.0)
+            >>> # ctrl.set_input_channel_settings("A", s)  # requires live instrument
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support input channel settings. "
+            "Check get_capabilities().has_input_settings before calling this method."
         )
 
     # ------------------------------------------------------------------

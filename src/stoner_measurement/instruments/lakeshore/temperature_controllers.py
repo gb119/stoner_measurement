@@ -9,9 +9,11 @@ from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
 from stoner_measurement.instruments.temperature_controller import (
     ControllerCapabilities,
     ControlMode,
+    InputChannelSettings,
     PIDParameters,
     SensorStatus,
     TemperatureController,
+    ZoneEntry,
 )
 from stoner_measurement.instruments.transport.base import BaseTransport
 
@@ -150,6 +152,208 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
         """Return static driver capabilities."""
         return self._CAPABILITIES
 
+    def get_num_zones(self, loop: int) -> int:
+        """Return the number of zone-table entries for *loop*.
+
+        Lakeshore controllers support exactly 10 zones per output loop.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (int):
+                Always 10 for Lakeshore controllers.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore336
+            >>> ctrl = Lakeshore336(transport=NullTransport())
+            >>> ctrl.get_num_zones(1)
+            10
+        """
+        self._normalise_loop(loop)
+        return 10
+
+    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry:
+        """Return zone-table entry *zone_index* for output *loop*.
+
+        Sends the ``ZONE? <loop>,<zone>`` query and parses the response.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            zone_index (int):
+                Zone entry index (1-based, 1–10).
+
+        Returns:
+            (ZoneEntry):
+                Zone parameters read from the instrument.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore336
+            >>> ctrl = Lakeshore336(transport=NullTransport())
+            >>> # ctrl.get_zone(1, 1)  # requires live instrument
+        """
+        values = self._parse_csv_floats(
+            self.query(f"ZONE? {self._normalise_loop(loop)},{zone_index}"),
+            minimum_length=6,
+        )
+        return ZoneEntry(
+            upper_bound=values[0],
+            p=values[1],
+            i=values[2],
+            d=values[3],
+            heater_output=values[4],
+            heater_range=int(values[5]),
+            ramp_rate=0.0,
+        )
+
+    def set_zone(self, loop: int, zone_index: int, entry: ZoneEntry) -> None:
+        """Write zone-table entry *zone_index* for output *loop*.
+
+        Sends the ``ZONE <loop>,<zone>,<upper>,<P>,<I>,<D>,<mout>,<range>``
+        command.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            zone_index (int):
+                Zone entry index (1-based, 1–10).
+            entry (ZoneEntry):
+                Zone parameters to write.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore336
+            >>> from stoner_measurement.instruments.temperature_controller import ZoneEntry
+            >>> ctrl = Lakeshore336(transport=NullTransport())
+            >>> zone = ZoneEntry(upper_bound=100.0, p=50.0, i=10.0, d=0.0, ramp_rate=0.0, heater_range=1, heater_output=0.0)
+            >>> # ctrl.set_zone(1, 1, zone)  # requires live instrument
+        """
+        self.write(
+            f"ZONE {self._normalise_loop(loop)},{zone_index},"
+            f"{entry.upper_bound},{entry.p},{entry.i},{entry.d},"
+            f"{entry.heater_output},{int(entry.heater_range)}"
+        )
+
+    def get_input_channel_settings(self, channel: str) -> InputChannelSettings:
+        """Return sensor-input configuration for *channel*.
+
+        Reads sensor type / range (``INTYPE?``), digital filter (``FILTER?``),
+        and curve assignment (``INCRV?``) in three separate queries.
+
+        Args:
+            channel (str):
+                Sensor channel identifier (e.g. ``"A"``).
+
+        Returns:
+            (InputChannelSettings):
+                Current configuration of the input channel.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore336
+            >>> ctrl = Lakeshore336(transport=NullTransport())
+            >>> # ctrl.get_input_channel_settings("A")  # requires live instrument
+        """
+        ch = self._normalise_channel(channel)
+
+        # INTYPE? returns: <type>,<autorange>,<range>,<compensation>,<units>
+        intype_vals = self._parse_csv_floats(self.query(f"INTYPE? {ch}"), minimum_length=5)
+        sensor_type = int(intype_vals[0])
+        autorange = bool(int(intype_vals[1]))
+        range_ = int(intype_vals[2])
+        compensation = bool(int(intype_vals[3]))
+        units = int(intype_vals[4])
+
+        # FILTER? returns: <on/off>,<settle_time>,<window>
+        filter_vals = self._parse_csv_floats(self.query(f"FILTER? {ch}"), minimum_length=3)
+        filter_enabled = bool(int(filter_vals[0]))
+        filter_points = int(filter_vals[1])
+        filter_window = filter_vals[2]
+
+        # INCRV? returns the calibration curve number
+        curve_number = self._parse_int_token(self.query(f"INCRV? {ch}"))
+
+        return InputChannelSettings(
+            sensor_type=sensor_type,
+            autorange=autorange,
+            range_=range_,
+            compensation=compensation,
+            units=units,
+            filter_enabled=filter_enabled,
+            filter_points=filter_points,
+            filter_window=filter_window,
+            curve_number=curve_number,
+        )
+
+    def set_input_channel_settings(self, channel: str, settings: InputChannelSettings) -> None:
+        """Apply sensor-input configuration for *channel*.
+
+        Issues ``INTYPE``, ``FILTER``, and ``INCRV`` commands as appropriate.
+        Only fields that are not ``None`` in *settings* are applied; fields that
+        are ``None`` are left unchanged on the instrument by first reading the
+        current values.
+
+        Args:
+            channel (str):
+                Sensor channel identifier (e.g. ``"A"``).
+            settings (InputChannelSettings):
+                Configuration to apply.  ``None`` fields are preserved from
+                current hardware state.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore336
+            >>> from stoner_measurement.instruments.temperature_controller import InputChannelSettings
+            >>> ctrl = Lakeshore336(transport=NullTransport())
+            >>> s = InputChannelSettings(filter_enabled=True, filter_points=10, filter_window=2.0)
+            >>> # ctrl.set_input_channel_settings("A", s)  # requires live instrument
+        """
+        ch = self._normalise_channel(channel)
+
+        # Determine if any INTYPE field is being changed.
+        intype_fields = (
+            settings.sensor_type,
+            settings.autorange,
+            settings.range_,
+            settings.compensation,
+            settings.units,
+        )
+        if any(f is not None for f in intype_fields):
+            # Read current INTYPE values only for fields not explicitly set.
+            if any(f is None for f in intype_fields):
+                current_vals = self._parse_csv_floats(self.query(f"INTYPE? {ch}"), minimum_length=5)
+            else:
+                current_vals = [0.0] * 5  # not used when all fields are specified
+            sensor_type = settings.sensor_type if settings.sensor_type is not None else int(current_vals[0])
+            autorange = settings.autorange if settings.autorange is not None else bool(int(current_vals[1]))
+            range_ = settings.range_ if settings.range_ is not None else int(current_vals[2])
+            compensation = settings.compensation if settings.compensation is not None else bool(int(current_vals[3]))
+            units = settings.units if settings.units is not None else int(current_vals[4])
+            self.write(
+                f"INTYPE {ch},{sensor_type},{int(autorange)},{range_},{int(compensation)},{units}"
+            )
+
+        # Determine if any FILTER field is being changed.
+        filter_fields = (settings.filter_enabled, settings.filter_points, settings.filter_window)
+        if any(f is not None for f in filter_fields):
+            # Read current FILTER values only for fields not explicitly set.
+            if any(f is None for f in filter_fields):
+                current_f = self._parse_csv_floats(self.query(f"FILTER? {ch}"), minimum_length=3)
+            else:
+                current_f = [0.0] * 3  # not used when all fields are specified
+            filter_enabled = settings.filter_enabled if settings.filter_enabled is not None else bool(int(current_f[0]))
+            filter_points = settings.filter_points if settings.filter_points is not None else int(current_f[1])
+            filter_window = settings.filter_window if settings.filter_window is not None else current_f[2]
+            self.write(f"FILTER {ch},{int(filter_enabled)},{filter_points},{filter_window}")
+
+        # Apply curve assignment if specified.
+        if settings.curve_number is not None:
+            self.write(f"INCRV {ch},{settings.curve_number}")
+
     def _normalise_channel(self, channel: str) -> str:
         """Validate and normalise channel labels."""
         available = self._CAPABILITIES.input_channels
@@ -225,6 +429,8 @@ class Lakeshore335(_LakeshoreTemperatureControllerBase):
         loop_numbers=(1, 2),
         has_ramp=True,
         has_pid=True,
+        has_zone=True,
+        has_input_settings=True,
         heater_range_labels={1: _LS335_RANGES, 2: _LS335_RANGES},
     )
 
@@ -241,6 +447,8 @@ class Lakeshore336(_LakeshoreTemperatureControllerBase):
         loop_numbers=(1, 2),
         has_ramp=True,
         has_pid=True,
+        has_zone=True,
+        has_input_settings=True,
         heater_range_labels={1: _LS336_RANGES, 2: _LS336_RANGES},
     )
 
@@ -258,5 +466,7 @@ class Lakeshore340(_LakeshoreTemperatureControllerBase):
         loop_numbers=(1, 2),
         has_ramp=True,
         has_pid=True,
+        has_zone=True,
+        has_input_settings=True,
         heater_range_labels={1: _LS340_LOOP1_RANGES, 2: _LS340_LOOP2_RANGES},
     )

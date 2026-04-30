@@ -30,7 +30,7 @@ from stoner_measurement.temperature_control.types import (
 )
 
 if TYPE_CHECKING:
-    from stoner_measurement.instruments.temperature_controller import ZoneEntry
+    from stoner_measurement.instruments.temperature_controller import InputChannelSettings, ZoneEntry
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +272,37 @@ class TemperatureControllerEngine(QObject):
         except Exception:
             logger.exception("Failed to set loop mode for loop %d", loop)
 
+    def get_needle_valve(self) -> float | None:
+        """Return the current cryogen gas-flow (needle valve) position.
+
+        Only available when the driver advertises ``has_cryogen_control``.
+        Returns ``None`` when no instrument is connected or when the driver
+        does not support cryogen control.
+
+        Returns:
+            (float | None):
+                Valve opening as a percentage (0–100 %), or ``None`` if
+                unavailable.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+            >>> engine = TemperatureControllerEngine.instance()
+            >>> engine.get_needle_valve() is None  # no driver connected
+            True
+            >>> engine.shutdown()
+        """
+        if self._driver is None:
+            return None
+        try:
+            caps = self._driver.get_capabilities()
+            if caps.has_cryogen_control:
+                return self._driver.get_gas_flow()
+        except Exception:
+            logger.exception("Failed to read needle valve position")
+        return None
+
     def set_needle_valve(self, position: float) -> None:
         """Set the cryogen gas-flow (needle valve) position.
 
@@ -503,6 +534,66 @@ class TemperatureControllerEngine(QObject):
                 self._driver.set_zone(loop, i, entry)
             except Exception:
                 logger.exception("Failed to write zone %d for loop %d", i, loop)
+
+    def get_input_channel_settings(self, channel: str) -> InputChannelSettings | None:
+        """Query the hardware for the input configuration of sensor *channel*.
+
+        Returns ``None`` when no instrument is connected.  Any exception from
+        the driver is logged and ``None`` is returned.
+
+        Args:
+            channel (str):
+                Sensor channel identifier.
+
+        Returns:
+            (InputChannelSettings | None):
+                Current input configuration for *channel*, or ``None`` if
+                disconnected or if the driver raised an error.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+            >>> engine = TemperatureControllerEngine.instance()
+            >>> engine.get_input_channel_settings("A") is None  # no driver connected
+            True
+            >>> engine.shutdown()
+        """
+        if self._driver is None:
+            return None
+        try:
+            return self._driver.get_input_channel_settings(channel)
+        except Exception:
+            logger.exception("Failed to read input channel settings for channel %s", channel)
+            return None
+
+    def set_input_channel_settings(self, channel: str, settings: InputChannelSettings) -> None:
+        """Apply input configuration settings to sensor *channel*.
+
+        Delegates to the driver; any exception is logged.  Silently returns
+        if no instrument is connected.
+
+        Args:
+            channel (str):
+                Sensor channel identifier.
+            settings (InputChannelSettings):
+                Configuration to apply.  ``None`` fields are preserved from
+                current hardware state.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+            >>> engine = TemperatureControllerEngine.instance()
+            >>> engine.set_input_channel_settings("A", None)  # no-op when no driver  # doctest: +SKIP
+            >>> engine.shutdown()
+        """
+        if self._driver is None:
+            return
+        try:
+            self._driver.set_input_channel_settings(channel, settings)
+        except Exception:
+            logger.exception("Failed to set input channel settings for channel %s", channel)
 
     def _safe_read_loop(self, func, loop: int, description: str, default):
         """Invoke *func(loop)*, returning *default* and logging on any error.
