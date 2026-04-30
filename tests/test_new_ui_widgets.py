@@ -1,4 +1,4 @@
-"""Tests for the new UI widgets: EditorWidget, ConsoleWidget, ScriptTab."""
+"""Tests for the new UI widgets: EditorWidget, ConsoleWidget, ScriptTab, SISpinBox."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from stoner_measurement.app import MeasurementApp
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
 from stoner_measurement.ui.script_tab import ScriptTab
+from stoner_measurement.ui.widgets import SISpinBox
 
 
 class TestEditorWidget:
@@ -443,3 +444,76 @@ class TestMeasurementApp:
         assert "curve_fit:b" not in values
 
         app._engine.shutdown()
+
+
+class TestSISpinBox:
+    """Tests for :class:`SISpinBox` and its relaxed suffix-validation behaviour."""
+
+    def test_is_subclass_of_pg_spinbox(self, qapp):
+        import pyqtgraph as pg
+
+        assert issubclass(SISpinBox, pg.SpinBox)
+
+    def test_creates_widget(self, qapp):
+        spin = SISpinBox()
+        assert spin is not None
+
+    def test_value_with_explicit_suffix_unchanged(self, qapp):
+        """Standard behaviour: user types the full unit string."""
+        spin = SISpinBox(suffix="K", siPrefix=True, value=100.0)
+        spin.lineEdit().setText("200 K")
+        result = spin.interpret()
+        assert result is not False
+        assert float(result) == 200.0
+
+    def test_value_without_suffix_appends_suffix(self, qapp):
+        """Bare number without suffix is accepted and the suffix is appended."""
+        spin = SISpinBox(suffix="K", siPrefix=True, value=100.0)
+        spin.lineEdit().setText("200")
+        result = spin.interpret()
+        assert result is not False
+        assert float(result) == 200.0
+
+    def test_si_prefix_without_suffix_appends_suffix(self, qapp):
+        """SI prefix followed by number, but missing the unit, is accepted."""
+        spin = SISpinBox(suffix="K", siPrefix=True, value=100.0)
+        spin.lineEdit().setText("200m")
+        result = spin.interpret()
+        assert result is not False
+        # 200 mK = 0.2 K
+        assert abs(float(result) - 0.2) < 1e-9
+
+    def test_empty_suffix_no_change(self, qapp):
+        """When no suffix is configured the base behaviour is unchanged."""
+        spin = SISpinBox(value=42.0)
+        spin.lineEdit().setText("99")
+        result = spin.interpret()
+        assert result is not False
+        assert float(result) == 99.0
+
+    def test_invalid_input_returns_false(self, qapp):
+        """Garbage input still returns False."""
+        spin = SISpinBox(suffix="K", siPrefix=True, value=100.0)
+        spin.lineEdit().setText("not-a-number")
+        result = spin.interpret()
+        assert result is False
+
+    def test_int_spinbox_without_suffix(self, qapp):
+        """Integer SpinBox (no suffix) continues to work normally."""
+        spin = SISpinBox(int=True, value=5)
+        spin.lineEdit().setText("10")
+        result = spin.interpret()
+        assert result is not False
+        assert int(result) == 10
+
+    def test_exported_from_ui_widgets(self, qapp):
+        """SISpinBox is accessible via the widgets package public API."""
+        from stoner_measurement.ui.widgets import SISpinBox as _SISpinBox
+
+        assert _SISpinBox is SISpinBox
+
+    def test_exported_from_ui(self, qapp):
+        """SISpinBox is accessible via the top-level ui package."""
+        from stoner_measurement.ui import SISpinBox as _SISpinBox
+
+        assert _SISpinBox is SISpinBox

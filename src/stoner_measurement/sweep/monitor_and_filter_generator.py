@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.sweep.base import BaseSweepGenerator
+from stoner_measurement.ui.widgets import SISpinBox
 
 _DEFAULT_POLL_SECONDS = 0.05
 _SPINBOX_MAX_ABS = 1e9
@@ -205,7 +206,7 @@ class MonitorAndFilterSweepWidget(QWidget):
         root = QVBoxLayout(self)
 
         form = QFormLayout()
-        self._timeout_spin = pg.SpinBox()
+        self._timeout_spin = SISpinBox()
         self._timeout_spin.setOpts(bounds=(0.0, 1e9), decimals=6, suffix="s")
         self._timeout_spin.valueChanged.connect(self._on_timeout_changed)
         form.addRow("Timeout:", self._timeout_spin)
@@ -256,8 +257,8 @@ class MonitorAndFilterSweepWidget(QWidget):
         check.stateChanged.connect(self._sync_rows_from_table)
         return check
 
-    def _build_limit_spin(self, value: float) -> pg.SpinBox:
-        spin = pg.SpinBox(self._table)
+    def _build_limit_spin(self, value: float) -> SISpinBox:
+        spin = SISpinBox(self._table)
         spin.setOpts(bounds=(0.0, _SPINBOX_MAX_ABS), decimals=6)
         spin.setValue(float(value))
         spin.valueChanged.connect(self._sync_rows_from_table)
@@ -300,7 +301,7 @@ class MonitorAndFilterSweepWidget(QWidget):
             spin = self._table.cellWidget(row, 2)
             expression = combo.currentText().strip() if isinstance(combo, QComboBox) else ""
             use_percent = check.isChecked() if isinstance(check, QCheckBox) else False
-            limit = float(spin.value()) if isinstance(spin, pg.SpinBox) else 0.0
+            limit = float(spin.value()) if isinstance(spin, SISpinBox) else 0.0
             rows.append((expression, use_percent, limit))
         self._generator.rows = rows
 

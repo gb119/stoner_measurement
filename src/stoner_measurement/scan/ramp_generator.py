@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.scan.base import BaseScanGenerator
+from stoner_measurement.ui.widgets import SISpinBox
 
 _SPINBOX_MAX_ABS = 1e9
 _MAX_NUM_POINTS = 10_000
@@ -227,17 +228,17 @@ class RampScanWidget(QWidget):
         controls_box = QGroupBox("Parameters")
         form = QFormLayout(controls_box)
 
-        self._start_spin = pg.SpinBox()
+        self._start_spin = SISpinBox()
         self._start_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._start_spin.setValue(self._generator.start)
         form.addRow("Start:", self._start_spin)
 
-        self._end_spin = pg.SpinBox()
+        self._end_spin = SISpinBox()
         self._end_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._end_spin.setValue(self._generator.end)
         form.addRow("End:", self._end_spin)
 
-        self._points_spin = pg.SpinBox(int=True)
+        self._points_spin = SISpinBox(int=True)
         self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
         self._points_spin.setValue(self._generator.num_points)
         form.addRow("Points:", self._points_spin)
@@ -248,7 +249,7 @@ class RampScanWidget(QWidget):
         self._mode_combo.setCurrentIndex(list(RampMode).index(self._generator.mode))
         form.addRow("Mode:", self._mode_combo)
 
-        self._base_spin = pg.SpinBox()
+        self._base_spin = SISpinBox()
         self._base_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
         self._base_spin.setValue(self._generator.base)
         form.addRow("Base:", self._base_spin)

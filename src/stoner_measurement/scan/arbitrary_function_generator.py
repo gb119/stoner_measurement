@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.scan.base import BaseScanGenerator
 from stoner_measurement.ui.editor_widget import EditorWidget
+from stoner_measurement.ui.widgets import SISpinBox
 
 _MAX_NUM_POINTS = 10_000
 _DEFAULT_SCAN_CODE = textwrap.dedent("""\
@@ -243,7 +244,7 @@ class ArbitraryFunctionScanWidget(QWidget):
 
         controls_box = QGroupBox("Parameters")
         controls_form = QFormLayout(controls_box)
-        self._points_spin = pg.SpinBox(int=True)
+        self._points_spin = SISpinBox(int=True)
         self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
         self._points_spin.setValue(self._generator.num_points)
         controls_form.addRow("Points:", self._points_spin)
