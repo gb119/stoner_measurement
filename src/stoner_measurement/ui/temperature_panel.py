@@ -1073,10 +1073,10 @@ class TemperatureControlPanel(QWidget):
         """
         auto = bool(state)
         self._engine.set_gas_auto(auto)
-        # Disable manual position when in auto mode.
+        # Disable manual position when in auto mode; Read is always available
+        # so the operator can check (and update) the current valve state.
         self._needle_spin.setEnabled(not auto)
         self._needle_apply_btn.setEnabled(not auto)
-        self._needle_read_btn.setEnabled(not auto)
 
     # ------------------------------------------------------------------
     # Stability tab slot
@@ -1467,13 +1467,20 @@ class _InputSettingsWidget(QWidget):
     # ------------------------------------------------------------------
 
     def set_channel(self, channel: str) -> None:
-        """Set the active sensor channel.
+        """Set the active sensor channel and reset the editor state.
+
+        Changing channel clears the current form values so settings from a
+        previously selected channel are not shown or applied inadvertently.
 
         Args:
             channel (str):
-                Sensor channel identifier to display and edit.
+                Sensor channel identifier whose settings will subsequently
+                be edited.
         """
+        if channel == self._channel:
+            return
         self._channel = channel
+        self.clear()
 
     def clear(self) -> None:
         """Reset all fields to their default/blank state."""

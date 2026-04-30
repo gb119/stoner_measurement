@@ -554,6 +554,39 @@ class TestTemperatureControlPanel:
 
                 assert not inspect.isabstract(cls)
 
+    def test_has_input_settings_tab(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        tabs = panel._tabs
+        tab_titles = [tabs.tabText(i) for i in range(tabs.count())]
+        assert "Input Settings" in tab_titles
+
+    def test_input_settings_tab_disabled_on_startup(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        assert not panel._tabs.isTabEnabled(panel._input_settings_tab_index)
+
+    def test_needle_read_btn_exists(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        assert hasattr(panel, "_needle_read_btn")
+
+    def test_needle_read_btn_remains_enabled_when_gas_auto_active(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._needle_group.show()
+        # Simulate enabling gas-auto mode.
+        panel._on_gas_auto_changed(2)  # Qt.CheckState.Checked == 2
+        # Apply button should be disabled, but Read button must stay enabled.
+        assert not panel._needle_apply_btn.isEnabled()
+        assert panel._needle_read_btn.isEnabled()
+        # Reset.
+        panel._on_gas_auto_changed(0)
+
 
 # ---------------------------------------------------------------------------
 # Engine zone table methods

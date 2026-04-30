@@ -584,8 +584,10 @@ class TemperatureControllerEngine(QObject):
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+            >>> from stoner_measurement.instruments.temperature_controller import InputChannelSettings
             >>> engine = TemperatureControllerEngine.instance()
-            >>> engine.set_input_channel_settings("A", None)  # no-op when no driver  # doctest: +SKIP
+            >>> settings = InputChannelSettings()  # doctest: +SKIP
+            >>> engine.set_input_channel_settings("A", settings)  # no-op when no driver  # doctest: +SKIP
             >>> engine.shutdown()
         """
         if self._driver is None:
