@@ -326,13 +326,18 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
             # Read current INTYPE values only for fields not explicitly set.
             if any(f is None for f in intype_fields):
                 current_vals = self._parse_csv_floats(self.query(f"INTYPE? {ch}"), minimum_length=5)
+                sensor_type = settings.sensor_type if settings.sensor_type is not None else int(current_vals[0])
+                autorange = settings.autorange if settings.autorange is not None else bool(int(current_vals[1]))
+                range_ = settings.range_ if settings.range_ is not None else int(current_vals[2])
+                compensation = settings.compensation if settings.compensation is not None else bool(int(current_vals[3]))
+                units = settings.units if settings.units is not None else int(current_vals[4])
             else:
-                current_vals = [0.0] * 5  # not used when all fields are specified
-            sensor_type = settings.sensor_type if settings.sensor_type is not None else int(current_vals[0])
-            autorange = settings.autorange if settings.autorange is not None else bool(int(current_vals[1]))
-            range_ = settings.range_ if settings.range_ is not None else int(current_vals[2])
-            compensation = settings.compensation if settings.compensation is not None else bool(int(current_vals[3]))
-            units = settings.units if settings.units is not None else int(current_vals[4])
+                # All INTYPE fields are explicitly provided; no hardware read needed.
+                sensor_type = settings.sensor_type
+                autorange = settings.autorange
+                range_ = settings.range_
+                compensation = settings.compensation
+                units = settings.units
             self.write(
                 f"INTYPE {ch},{sensor_type},{int(autorange)},{range_},{int(compensation)},{units}"
             )
@@ -343,11 +348,14 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
             # Read current FILTER values only for fields not explicitly set.
             if any(f is None for f in filter_fields):
                 current_f = self._parse_csv_floats(self.query(f"FILTER? {ch}"), minimum_length=3)
+                filter_enabled = settings.filter_enabled if settings.filter_enabled is not None else bool(int(current_f[0]))
+                filter_points = settings.filter_points if settings.filter_points is not None else int(current_f[1])
+                filter_window = settings.filter_window if settings.filter_window is not None else current_f[2]
             else:
-                current_f = [0.0] * 3  # not used when all fields are specified
-            filter_enabled = settings.filter_enabled if settings.filter_enabled is not None else bool(int(current_f[0]))
-            filter_points = settings.filter_points if settings.filter_points is not None else int(current_f[1])
-            filter_window = settings.filter_window if settings.filter_window is not None else current_f[2]
+                # All FILTER fields are explicitly provided; no hardware read needed.
+                filter_enabled = settings.filter_enabled
+                filter_points = settings.filter_points
+                filter_window = settings.filter_window
             self.write(f"FILTER {ch},{int(filter_enabled)},{filter_points},{filter_window}")
 
         # Apply curve assignment if specified.

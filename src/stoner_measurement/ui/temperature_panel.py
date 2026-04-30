@@ -1005,7 +1005,8 @@ class TemperatureControlPanel(QWidget):
         if enabled:
             for ch in caps.input_channels:
                 self._input_channel_combo.addItem(ch, ch)
-            self._input_settings_widget.set_channel(caps.input_channels[0] if caps.input_channels else "A")
+            if caps.input_channels:
+                self._input_settings_widget.set_channel(caps.input_channels[0])
         else:
             self._input_settings_widget.clear()
         self._input_channel_combo.blockSignals(False)
