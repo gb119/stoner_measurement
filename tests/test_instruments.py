@@ -105,6 +105,7 @@ from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
     ControllerCapabilities,
     ControlMode,
+    InputChannelSettings,
     LoopStatus,
     PIDParameters,
     RampState,
@@ -1800,6 +1801,99 @@ class TestLakeshoreTemperatureControllers:
         assert caps_335.input_channels == ("A", "B")
         assert caps_336.input_channels == ("A", "B", "C", "D")
         assert caps_340.input_channels == ("A", "B")
+        # Zone and input settings capabilities
+        for caps in (caps_335, caps_336, caps_340):
+            assert caps.has_zone is True
+            assert caps.has_input_settings is True
+
+    def test_lakeshore336_get_num_zones(self):
+        tc = Lakeshore336(transport=_null())
+        assert tc.get_num_zones(1) == 10
+        assert tc.get_num_zones(2) == 10
+
+    def test_lakeshore336_get_num_zones_invalid_loop(self):
+        tc = Lakeshore336(transport=_null())
+        with pytest.raises(ValueError):
+            tc.get_num_zones(3)
+
+    def test_lakeshore336_get_zone(self):
+        t = _null(responses=[b"100.0,50.0,10.0,0.5,25.0,2\r\n"])
+        tc = Lakeshore336(transport=t)
+        zone = tc.get_zone(1, 1)
+        assert zone.upper_bound == pytest.approx(100.0)
+        assert zone.p == pytest.approx(50.0)
+        assert zone.i == pytest.approx(10.0)
+        assert zone.d == pytest.approx(0.5)
+        assert zone.heater_output == pytest.approx(25.0)
+        assert zone.heater_range == 2
+        assert t.write_log == [b"ZONE? 1,1\r\n"]
+
+    def test_lakeshore336_set_zone(self):
+        t = _null()
+        tc = Lakeshore336(transport=t)
+        zone = ZoneEntry(
+            upper_bound=100.0, p=50.0, i=10.0, d=0.5, ramp_rate=0.0, heater_range=2, heater_output=25.0
+        )
+        tc.set_zone(1, 1, zone)
+        assert t.write_log == [b"ZONE 1,1,100.0,50.0,10.0,0.5,25.0,2\r\n"]
+
+    def test_lakeshore336_get_input_channel_settings(self):
+        t = _null(
+            responses=[
+                b"3,0,4,0,1\r\n",  # INTYPE? response
+                b"1,10,2.0\r\n",   # FILTER? response
+                b"22\r\n",         # INCRV? response
+            ]
+        )
+        tc = Lakeshore336(transport=t)
+        settings = tc.get_input_channel_settings("A")
+        assert settings.sensor_type == 3
+        assert settings.autorange is False
+        assert settings.range_ == 4
+        assert settings.compensation is False
+        assert settings.units == 1
+        assert settings.filter_enabled is True
+        assert settings.filter_points == 10
+        assert settings.filter_window == pytest.approx(2.0)
+        assert settings.curve_number == 22
+        assert t.write_log == [b"INTYPE? A\r\n", b"FILTER? A\r\n", b"INCRV? A\r\n"]
+
+    def test_lakeshore336_set_input_channel_settings_all_fields(self):
+        t = _null()
+        tc = Lakeshore336(transport=t)
+        settings = InputChannelSettings(
+            sensor_type=3,
+            autorange=False,
+            range_=4,
+            compensation=False,
+            units=1,
+            filter_enabled=True,
+            filter_points=10,
+            filter_window=2.0,
+            curve_number=22,
+        )
+        tc.set_input_channel_settings("A", settings)
+        assert t.write_log == [
+            b"INTYPE A,3,0,4,0,1\r\n",
+            b"FILTER A,1,10,2.0\r\n",
+            b"INCRV A,22\r\n",
+        ]
+
+    def test_lakeshore336_set_input_channel_settings_partial(self):
+        # Only filter_enabled set; should read current FILTER? first.
+        t = _null(responses=[b"0,5,1.5\r\n"])  # FILTER? read: enabled=0, points=5, window=1.5
+        tc = Lakeshore336(transport=t)
+        settings = InputChannelSettings(filter_enabled=True)
+        tc.set_input_channel_settings("A", settings)
+        # FILTER? read then FILTER write (filter_enabled overridden, points/window preserved).
+        assert t.write_log == [b"FILTER? A\r\n", b"FILTER A,1,5,1.5\r\n"]
+
+    def test_lakeshore336_set_input_channel_settings_curve_only(self):
+        t = _null()
+        tc = Lakeshore336(transport=t)
+        settings = InputChannelSettings(curve_number=5)
+        tc.set_input_channel_settings("A", settings)
+        assert t.write_log == [b"INCRV A,5\r\n"]
 
 
 # ---------------------------------------------------------------------------

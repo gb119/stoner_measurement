@@ -56,6 +56,7 @@ from stoner_measurement.instruments.driver_manager import InstrumentDriverManage
 from stoner_measurement.instruments.temperature_controller import (
     ControllerCapabilities,
     ControlMode,
+    InputChannelSettings,
     TemperatureController,
     ZoneEntry,
 )
@@ -233,6 +234,9 @@ class TemperatureControlPanel(QWidget):
         self._zone_tab_index = self._tabs.count()
         self._tabs.addTab(self._build_zone_tab(), "Zone Table")
         self._tabs.setTabEnabled(self._zone_tab_index, False)
+        self._input_settings_tab_index = self._tabs.count()
+        self._tabs.addTab(self._build_input_settings_tab(), "Input Settings")
+        self._tabs.setTabEnabled(self._input_settings_tab_index, False)
         self._tabs.addTab(self._build_chart_tab(), "Chart")
 
         status_bar = self._build_status_bar()
@@ -396,9 +400,13 @@ class TemperatureControlPanel(QWidget):
         self._needle_spin.setToolTip("Needle valve / gas flow position (0–100 %)")
         self._needle_apply_btn = QPushButton("Apply")
         self._needle_apply_btn.clicked.connect(self._on_apply_needle)
+        self._needle_read_btn = QPushButton("Read")
+        self._needle_read_btn.setToolTip("Read current needle valve position from instrument")
+        self._needle_read_btn.clicked.connect(self._on_read_needle)
         needle_row = QHBoxLayout()
         needle_row.addWidget(self._needle_spin)
         needle_row.addWidget(self._needle_apply_btn)
+        needle_row.addWidget(self._needle_read_btn)
         needle_form.addRow("Position:", needle_row)
         # Gas auto mode toggle (shown only for drivers with has_gas_auto_mode).
         self._gas_auto_check = QCheckBox("Automatic gas flow")
@@ -482,6 +490,35 @@ class TemperatureControlPanel(QWidget):
         # Zone table
         self._zone_table_widget = _ZoneTableWidget(self._engine)
         layout.addWidget(self._zone_table_widget)
+
+        return widget
+
+    # --- Input Settings tab ---
+
+    def _build_input_settings_tab(self) -> QWidget:
+        """Build the Input Settings tab widget.
+
+        Returns:
+            (QWidget):
+                The assembled input settings tab.
+        """
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(6)
+
+        # Channel selector row
+        selector_row = QHBoxLayout()
+        selector_row.addWidget(QLabel("Channel:"))
+        self._input_channel_combo = QComboBox()
+        self._input_channel_combo.currentIndexChanged.connect(self._on_input_channel_changed)
+        selector_row.addWidget(self._input_channel_combo)
+        selector_row.addStretch()
+        layout.addLayout(selector_row)
+
+        # Settings form
+        self._input_settings_widget = _InputSettingsWidget(self._engine)
+        layout.addWidget(self._input_settings_widget)
+        layout.addStretch()
 
         return widget
 
@@ -837,6 +874,7 @@ class TemperatureControlPanel(QWidget):
                 self._gas_auto_row_label.hide()
                 self._gas_auto_check.hide()
             self._configure_zone_tab(caps)
+            self._configure_input_settings_tab(caps)
         except Exception:
             logger.exception("Failed to read capabilities after connection")
 
@@ -897,6 +935,12 @@ class TemperatureControlPanel(QWidget):
         self._zone_loop_combo.blockSignals(False)
         self._zone_loop_selector_widget.hide()
         self._zone_table_widget.clear_table()
+        # Disable input settings tab.
+        self._tabs.setTabEnabled(self._input_settings_tab_index, False)
+        self._input_channel_combo.blockSignals(True)
+        self._input_channel_combo.clear()
+        self._input_channel_combo.blockSignals(False)
+        self._input_settings_widget.clear()
         # Reset address widget colours to disconnected state.
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
@@ -944,6 +988,41 @@ class TemperatureControlPanel(QWidget):
         if loop is not None:
             self._zone_table_widget.set_loop(loop)
 
+    def _configure_input_settings_tab(self, caps: ControllerCapabilities) -> None:
+        """Enable or disable the Input Settings tab based on driver capabilities.
+
+        Populates the channel selector with the available input channels and
+        loads settings for the first channel.
+
+        Args:
+            caps (ControllerCapabilities):
+                The driver's capability descriptor.
+        """
+        enabled = caps.has_input_settings
+        self._tabs.setTabEnabled(self._input_settings_tab_index, enabled)
+        self._input_channel_combo.blockSignals(True)
+        self._input_channel_combo.clear()
+        if enabled:
+            for ch in caps.input_channels:
+                self._input_channel_combo.addItem(ch, ch)
+            if caps.input_channels:
+                self._input_settings_widget.set_channel(caps.input_channels[0])
+        else:
+            self._input_settings_widget.clear()
+        self._input_channel_combo.blockSignals(False)
+
+    @pyqtSlot(int)
+    def _on_input_channel_changed(self, index: int) -> None:
+        """Update the input settings widget when a different channel is selected.
+
+        Args:
+            index (int):
+                Index of the newly selected channel in the channel combo box.
+        """
+        channel = self._input_channel_combo.itemData(index)
+        if channel is not None:
+            self._input_settings_widget.set_channel(channel)
+
     def _rebuild_loop_groups(self, caps) -> None:
         """Rebuild per-loop control groups from the driver capabilities.
 
@@ -974,6 +1053,16 @@ class TemperatureControlPanel(QWidget):
         """Send the needle valve position to the engine."""
         self._engine.set_needle_valve(self._needle_spin.value())
 
+    @pyqtSlot()
+    def _on_read_needle(self) -> None:
+        """Read the current needle valve position from the instrument."""
+        position = self._engine.get_needle_valve()
+        if position is None:
+            return
+        self._needle_spin.blockSignals(True)
+        self._needle_spin.setValue(position)
+        self._needle_spin.blockSignals(False)
+
     @pyqtSlot(int)
     def _on_gas_auto_changed(self, state: int) -> None:
         """Send the gas auto mode toggle to the engine and update UI.
@@ -984,7 +1073,8 @@ class TemperatureControlPanel(QWidget):
         """
         auto = bool(state)
         self._engine.set_gas_auto(auto)
-        # Disable manual position when in auto mode.
+        # Disable manual position when in auto mode; Read is always available
+        # so the operator can check (and update) the current valve state.
         self._needle_spin.setEnabled(not auto)
         self._needle_apply_btn.setEnabled(not auto)
 
@@ -1327,6 +1417,235 @@ class _ZoneTableWidget(QWidget):
                 json.dump(data, fh, indent=2)
         except Exception as exc:
             QMessageBox.critical(self, "Save Zone Table", f"Failed to save file:\n{exc}")
+
+
+# ---------------------------------------------------------------------------
+# Input settings widget
+# ---------------------------------------------------------------------------
+
+#: Human-readable sensor type labels for Lakeshore controllers.
+_LAKESHORE_SENSOR_TYPES = [
+    (0, "Disabled"),
+    (1, "Diode"),
+    (2, "PTC RTD"),
+    (3, "NTC RTD"),
+    (4, "Thermocouple"),
+]
+
+#: Human-readable temperature units labels.
+_LAKESHORE_UNITS = [
+    (1, "Kelvin"),
+    (2, "Celsius"),
+    (3, "Sensor"),
+]
+
+
+class _InputSettingsWidget(QWidget):
+    """Self-contained widget for viewing and editing a single input channel's settings.
+
+    Displays sensor type, range, filter, and calibration curve assignment.
+    Provides Read and Apply buttons to synchronise with the connected
+    instrument via the engine.
+
+    Args:
+        engine (TemperatureControllerEngine):
+            Engine instance used to read and write settings.
+        parent (QWidget | None):
+            Optional Qt parent widget.
+    """
+
+    def __init__(
+        self, engine: TemperatureControllerEngine, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._engine = engine
+        self._channel: str = "A"
+        self._build()
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    def set_channel(self, channel: str) -> None:
+        """Set the active sensor channel and reset the editor state.
+
+        Changing channel clears the current form values so settings from a
+        previously selected channel are not shown or applied inadvertently.
+
+        Args:
+            channel (str):
+                Sensor channel identifier whose settings will subsequently
+                be edited.
+        """
+        if channel == self._channel:
+            return
+        self._channel = channel
+        self.clear()
+
+    def clear(self) -> None:
+        """Reset all fields to their default/blank state."""
+        self._sensor_type_combo.setCurrentIndex(0)
+        self._autorange_check.setChecked(False)
+        self._range_spin.setValue(0)
+        self._compensation_check.setChecked(False)
+        self._units_combo.setCurrentIndex(0)
+        self._filter_enable_check.setChecked(False)
+        self._filter_points_spin.setValue(1)
+        self._filter_window_spin.setValue(0.0)
+        self._curve_spin.setValue(0)
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
+
+    def _build(self) -> None:
+        """Assemble the form layout."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        # Sensor type
+        self._sensor_type_combo = QComboBox()
+        for code, label in _LAKESHORE_SENSOR_TYPES:
+            self._sensor_type_combo.addItem(label, code)
+        form.addRow("Sensor type:", self._sensor_type_combo)
+
+        # Autorange
+        self._autorange_check = QCheckBox("Enabled")
+        form.addRow("Autorange:", self._autorange_check)
+
+        # Manual range
+        self._range_spin = QSpinBox()
+        self._range_spin.setRange(0, 15)
+        self._range_spin.setToolTip("Manual range index (instrument-specific)")
+        form.addRow("Range:", self._range_spin)
+
+        # Compensation
+        self._compensation_check = QCheckBox("Enabled")
+        self._compensation_check.setToolTip("Current reversal compensation (diode/RTD inputs)")
+        form.addRow("Compensation:", self._compensation_check)
+
+        # Units
+        self._units_combo = QComboBox()
+        for code, label in _LAKESHORE_UNITS:
+            self._units_combo.addItem(label, code)
+        form.addRow("Units:", self._units_combo)
+
+        # Filter separator
+        filter_group = QGroupBox("Digital Filter")
+        filter_form = QFormLayout(filter_group)
+
+        self._filter_enable_check = QCheckBox("Enabled")
+        filter_form.addRow("Filter:", self._filter_enable_check)
+
+        self._filter_points_spin = QSpinBox()
+        self._filter_points_spin.setRange(1, 200)
+        self._filter_points_spin.setToolTip("Number of readings averaged (1 = no averaging)")
+        filter_form.addRow("Points:", self._filter_points_spin)
+
+        self._filter_window_spin = QDoubleSpinBox()
+        self._filter_window_spin.setRange(0.0, 10.0)
+        self._filter_window_spin.setDecimals(1)
+        self._filter_window_spin.setSuffix(" %")
+        self._filter_window_spin.setToolTip("Deviation window that resets the filter (0 = no windowing)")
+        filter_form.addRow("Window:", self._filter_window_spin)
+
+        # Curve number
+        self._curve_spin = QSpinBox()
+        self._curve_spin.setRange(0, 60)
+        self._curve_spin.setToolTip("Calibration curve number (0 = none)")
+        form.addRow("Calibration curve:", self._curve_spin)
+
+        layout.addLayout(form)
+        layout.addWidget(filter_group)
+
+        # Button row
+        btn_row = QHBoxLayout()
+        read_btn = QPushButton("Read")
+        read_btn.setToolTip("Read input channel settings from the instrument")
+        read_btn.clicked.connect(self._on_read)
+        apply_btn = QPushButton("Apply")
+        apply_btn.setToolTip("Write input channel settings to the instrument")
+        apply_btn.clicked.connect(self._on_apply)
+        btn_row.addWidget(read_btn)
+        btn_row.addWidget(apply_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+    # ------------------------------------------------------------------
+    # Button slots
+    # ------------------------------------------------------------------
+
+    @pyqtSlot()
+    def _on_read(self) -> None:
+        """Read input channel settings from the instrument via the engine."""
+        settings = self._engine.get_input_channel_settings(self._channel)
+        if settings is None:
+            QMessageBox.warning(self, "Input Settings", "No instrument connected or read failed.")
+            return
+        self._populate_from_settings(settings)
+
+    @pyqtSlot()
+    def _on_apply(self) -> None:
+        """Write current input channel settings to the instrument via the engine."""
+        settings = self._collect_settings()
+        self._engine.set_input_channel_settings(self._channel, settings)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _populate_from_settings(self, settings: InputChannelSettings) -> None:
+        """Update form widgets from *settings*.
+
+        Args:
+            settings (InputChannelSettings):
+                Settings read from the instrument.
+        """
+        if settings.sensor_type is not None:
+            idx = self._sensor_type_combo.findData(settings.sensor_type)
+            if idx >= 0:
+                self._sensor_type_combo.setCurrentIndex(idx)
+        if settings.autorange is not None:
+            self._autorange_check.setChecked(settings.autorange)
+        if settings.range_ is not None:
+            self._range_spin.setValue(settings.range_)
+        if settings.compensation is not None:
+            self._compensation_check.setChecked(settings.compensation)
+        if settings.units is not None:
+            idx = self._units_combo.findData(settings.units)
+            if idx >= 0:
+                self._units_combo.setCurrentIndex(idx)
+        if settings.filter_enabled is not None:
+            self._filter_enable_check.setChecked(settings.filter_enabled)
+        if settings.filter_points is not None:
+            self._filter_points_spin.setValue(settings.filter_points)
+        if settings.filter_window is not None:
+            self._filter_window_spin.setValue(settings.filter_window)
+        if settings.curve_number is not None:
+            self._curve_spin.setValue(settings.curve_number)
+
+    def _collect_settings(self) -> InputChannelSettings:
+        """Build an :class:`InputChannelSettings` from the current form values.
+
+        Returns:
+            (InputChannelSettings):
+                Settings ready to be sent to the instrument.
+        """
+        return InputChannelSettings(
+            sensor_type=self._sensor_type_combo.currentData(),
+            autorange=self._autorange_check.isChecked(),
+            range_=self._range_spin.value(),
+            compensation=self._compensation_check.isChecked(),
+            units=self._units_combo.currentData(),
+            filter_enabled=self._filter_enable_check.isChecked(),
+            filter_points=self._filter_points_spin.value(),
+            filter_window=self._filter_window_spin.value(),
+            curve_number=self._curve_spin.value(),
+        )
 
 
 # ---------------------------------------------------------------------------
