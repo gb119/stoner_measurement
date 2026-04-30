@@ -8,7 +8,6 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-import pyqtgraph as pg
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -27,6 +26,7 @@ from stoner_measurement.sweep import (
     MonitorAndFilterSweepGenerator,
     MultiSegmentRampSweepGenerator,
 )
+from stoner_measurement.ui.widgets import SISpinBox
 
 _TIMEOUT_FACTOR_DEFAULT = 2.0
 _SPINBOX_MAX_ABS = 1e9
@@ -101,7 +101,7 @@ class _StateSweepPage(QWidget):
         if len(type(plugin)._sweep_generator_classes) > 1:
             self._add_generator_combo(plugin, header_form)
 
-        timeout_factor_spin = pg.SpinBox()
+        timeout_factor_spin = SISpinBox()
         timeout_factor_spin.setOpts(bounds=(0.1, _SPINBOX_MAX_ABS), decimals=2, step=0.1)
         timeout_factor_spin.setValue(plugin.sweep_timeout_factor)
         timeout_factor_spin.setToolTip(

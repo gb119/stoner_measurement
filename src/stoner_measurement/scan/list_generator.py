@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.scan.base import BaseScanGenerator
+from stoner_measurement.ui.widgets import SISpinBox
 
 _SPINBOX_MAX_ABS = 1e9
 _DEFAULT_TARGET = 1.0
@@ -310,7 +311,7 @@ class ListScanWidget(QWidget):
     def _update_units(self, units: str) -> None:
         """Update the suffix of all target spinboxes to match *units*."""
         for row in range(self._table.rowCount()):
-            target_w: pg.SpinBox | None = self._table.cellWidget(row, 0)
+            target_w: SISpinBox | None = self._table.cellWidget(row, 0)
             if target_w is not None:
                 target_w.setOpts(suffix=units)
 
@@ -327,7 +328,7 @@ class ListScanWidget(QWidget):
             row = self._table.rowCount()
             self._table.insertRow(row)
 
-            target_spin = pg.SpinBox()
+            target_spin = SISpinBox()
             target_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True,
                                 suffix=self._generator.units)
             target_spin.setValue(float(target))
@@ -363,7 +364,7 @@ class ListScanWidget(QWidget):
             return
         stages: list[tuple[float, bool]] = []
         for row in range(self._table.rowCount()):
-            target_w: pg.SpinBox | None = self._table.cellWidget(row, 0)
+            target_w: SISpinBox | None = self._table.cellWidget(row, 0)
             measure_cb: QCheckBox | None = self._table.cellWidget(row, 1)
             if target_w is None or measure_cb is None:
                 continue
