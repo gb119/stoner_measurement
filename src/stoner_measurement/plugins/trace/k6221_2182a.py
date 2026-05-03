@@ -112,10 +112,10 @@ class Keithley6221_2182APlugin(TracePlugin):
         _filter_count (int):
             Number of readings averaged by the 2182A digital filter.
         _output_tlink (int):
-            Trigger-link line number (1 or 2) on which the 6221 outputs the
+            Trigger-link line number (1–6) on which the 6221 outputs the
             "source ready" trigger pulse to the 2182A.
         _input_tlink (int):
-            Trigger-link line number (1 or 2) on which the 6221 accepts the
+            Trigger-link line number (1–6) on which the 6221 accepts the
             "meter complete" trigger pulse from the 2182A.
 
     Keyword Parameters:
@@ -277,6 +277,11 @@ class Keithley6221_2182APlugin(TracePlugin):
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
             self._k6221.write(f'SYST:COMM:SER:SEND "{cmd}"')
         else:
+            if self._k2182a is None:
+                raise RuntimeError(
+                    "DIRECT_GPIB mode selected but no 2182A connection is open. "
+                    "Call connect() before sending commands to the 2182A."
+                )
             self._k2182a.write(cmd)
 
     def _nvm_query(self, cmd: str) -> str:
@@ -284,6 +289,11 @@ class Keithley6221_2182APlugin(TracePlugin):
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
             self._k6221.write(f'SYST:COMM:SER:SEND "{cmd}"')
             return self._k6221.query("SYST:COMM:SER:ENT?").strip()
+        if self._k2182a is None:
+            raise RuntimeError(
+                "DIRECT_GPIB mode selected but no 2182A connection is open. "
+                "Call connect() before querying the 2182A."
+            )
         return self._k2182a.query(cmd).strip()
 
     # ------------------------------------------------------------------
@@ -311,6 +321,8 @@ class Keithley6221_2182APlugin(TracePlugin):
             >>> # plugin.connect()  # requires real hardware
         """
         self._set_status(TraceStatus.CONNECTING)
+        transport_6221: GpibTransport | None = None
+        transport_2182a: GpibTransport | None = None
         try:
             transport_6221 = GpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
             transport_6221.open()
@@ -329,6 +341,15 @@ class Keithley6221_2182APlugin(TracePlugin):
                         f"Unexpected instrument at {self._2182a_resource!r}: {idn2!r}"
                     )
         except Exception:
+            # Clean up any partially-opened transports to avoid leaking VISA sessions.
+            for transport in (transport_2182a, transport_6221):
+                if transport is not None:
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
+            self._k6221 = None
+            self._k2182a = None
             self._set_status(TraceStatus.ERROR)
             raise
         self._set_status(TraceStatus.IDLE)
@@ -502,6 +523,11 @@ class Keithley6221_2182APlugin(TracePlugin):
             self._k6221.write("OUTP:STAT 0")
             raw = self._nvm_query("TRAC:DATA?")
             voltages = self._parse_csv_floats(raw)
+            if len(voltages) != n:
+                raise RuntimeError(
+                    f"2182A returned {len(voltages)} readings but expected {n}. "
+                    "The trace buffer may be incomplete."
+                )
         except Exception:
             # Attempt a clean abort on any failure.
             try:
@@ -594,7 +620,16 @@ class Keithley6221_2182APlugin(TracePlugin):
         self._6221_resource = data.get("resource_6221", self._6221_resource)
         self._2182a_resource = data.get("resource_2182a", self._2182a_resource)
         mode_str = data.get("connection_mode", self._connection_mode.value)
-        self._connection_mode = ConnectionMode(mode_str)
+        try:
+            self._connection_mode = ConnectionMode(mode_str)
+        except ValueError:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Unknown connection_mode value %r in saved config; "
+                "falling back to default (%s).",
+                mode_str,
+                self._connection_mode.value,
+            )
         self._compliance = float(data.get("compliance", self._compliance))
         self._source_delay = float(data.get("source_delay", self._source_delay))
         self._source_range = float(data.get("source_range", self._source_range))
@@ -612,10 +647,13 @@ class Keithley6221_2182APlugin(TracePlugin):
     def _plugin_config_tabs(self) -> QWidget:
         """Return a settings widget with all instrument and measurement controls.
 
-        Returns a :class:`~PyQt6.QtWidgets.QWidget` with four collapsible
-        group boxes:
+        Returns a :class:`~PyQt6.QtWidgets.QWidget` with four group boxes:
 
         * **Connection** — connection mode selector and VISA resource fields.
+          The mode combo and resource selectors are disabled while the plugin
+          is connected (i.e. while :attr:`status` is not
+          :attr:`~TraceStatus.IDLE` or :attr:`~TraceStatus.ERROR`) to prevent
+          inconsistent runtime state.
         * **Source** — compliance voltage, source delay, and current range.
         * **Measurement** — NPLC, voltage range, and digital filter controls.
         * **Trigger link** — output and input trigger-link line selectors.
@@ -652,6 +690,24 @@ class Keithley6221_2182APlugin(TracePlugin):
         res_2182a_label = QLabel("2182A GPIB resource:")
         res_2182a.setEnabled(self._connection_mode is ConnectionMode.DIRECT_GPIB)
         res_2182a_label.setEnabled(self._connection_mode is ConnectionMode.DIRECT_GPIB)
+
+        _conn_widgets = (mode_combo, res_6221, res_2182a)
+
+        def _update_conn_widgets_enabled() -> None:
+            """Disable connection controls while a connection is active."""
+            disconnected = self._status in (TraceStatus.IDLE, TraceStatus.ERROR)
+            for w in _conn_widgets:
+                w.setEnabled(disconnected)
+            # The 2182A resource selector has the extra DIRECT_GPIB constraint.
+            if disconnected:
+                direct = self._connection_mode is ConnectionMode.DIRECT_GPIB
+                res_2182a.setEnabled(direct)
+                res_2182a_label.setEnabled(direct)
+
+        # Keep connection controls in sync with status changes.
+        self.status_changed.connect(lambda _: _update_conn_widgets_enabled())
+        # Apply initial state.
+        _update_conn_widgets_enabled()
 
         def _on_mode_changed(index: int) -> None:
             mode = mode_combo.itemData(index)
