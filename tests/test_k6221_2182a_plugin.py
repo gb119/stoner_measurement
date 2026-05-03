@@ -31,7 +31,7 @@ def _make_plugin() -> Keithley6221_2182APlugin:
 
 class TestIdentity:
     def test_name(self, qapp):
-        assert _make_plugin().name == "Keithley6221_2182A"
+        assert _make_plugin().name == "k6221_dc_iv"
 
     def test_trace_title(self, qapp):
         assert _make_plugin().trace_title == "6221/2182A I-V"

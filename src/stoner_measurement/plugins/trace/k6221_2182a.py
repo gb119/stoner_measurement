@@ -179,15 +179,15 @@ class Keithley6221_2182APlugin(TracePlugin):
 
         Returns:
             (str):
-                ``"Keithley6221_2182A"``.
+                ``"k6221_dc_iv"``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().name
-            'Keithley6221_2182A'
+            'k6221_dc_iv'
         """
-        return "Keithley6221_2182A"
+        return "k6221_dc_iv"
 
     @property
     def trace_title(self) -> str:
