@@ -202,10 +202,12 @@ class VisaResourceComboBox(QWidget):
         resource_changed (pyqtSignal[str]):
             Emitted when the currently selected resource string changes.
         currentTextChanged (pyqtSignal[str]):
-            Alias for :attr:`resource_changed` that mirrors the standard
-            :class:`~PyQt6.QtWidgets.QComboBox` signal name, allowing this
-            widget to be used as a drop-in replacement wherever code connects
-            to ``currentTextChanged``.
+            Emitted whenever the selected or typed resource string changes,
+            mirroring the standard :class:`~PyQt6.QtWidgets.QComboBox` signal
+            name so that this widget can be used as a drop-in replacement
+            wherever code connects to ``currentTextChanged``.  This is a
+            separate signal from :attr:`resource_changed`; both are forwarded
+            from the inner combo box and carry the same value.
         refresh_requested (pyqtSignal):
             Emitted when the *Refresh* button is clicked.
 
@@ -320,9 +322,14 @@ class VisaResourceComboBox(QWidget):
         interface so that code written against a plain :class:`~PyQt6.QtWidgets.QComboBox`
         works unchanged with this widget.
 
+        When *text* is empty, the edit field is cleared to match the behaviour
+        of :meth:`~PyQt6.QtWidgets.QComboBox.setCurrentText` on an editable
+        combo box.
+
         Args:
             text (str):
-                VISA resource string to select.  An empty string is ignored.
+                VISA resource string to select.  An empty string clears the
+                current edit text.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -332,8 +339,12 @@ class VisaResourceComboBox(QWidget):
             >>> w.setCurrentText("GPIB0::5::INSTR")
             >>> w.current_resource()
             'GPIB0::5::INSTR'
+            >>> w.setCurrentText("")
+            >>> w.currentText()
+            ''
         """
         if not text:
+            self._combo.setEditText("")
             return
         self.set_resource(str(text))
 
