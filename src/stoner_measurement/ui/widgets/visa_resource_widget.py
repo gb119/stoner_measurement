@@ -271,9 +271,14 @@ class VisaResourceComboBox(QWidget):
         so that this widget can be used as a drop-in replacement for a plain
         :class:`~PyQt6.QtWidgets.QComboBox`.
 
+        Notes:
+            Unlike :meth:`current_resource`, this method returns the raw combo
+            text without stripping surrounding whitespace, in order to exactly
+            match the behaviour of :meth:`~PyQt6.QtWidgets.QComboBox.currentText`.
+
         Returns:
             (str):
-                The current text of the internal combo box.
+                The raw current text of the internal combo box.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
