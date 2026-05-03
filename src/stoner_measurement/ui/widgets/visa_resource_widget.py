@@ -201,6 +201,11 @@ class VisaResourceComboBox(QWidget):
     Attributes:
         resource_changed (pyqtSignal[str]):
             Emitted when the currently selected resource string changes.
+        currentTextChanged (pyqtSignal[str]):
+            Alias for :attr:`resource_changed` that mirrors the standard
+            :class:`~PyQt6.QtWidgets.QComboBox` signal name, allowing this
+            widget to be used as a drop-in replacement wherever code connects
+            to ``currentTextChanged``.
         refresh_requested (pyqtSignal):
             Emitted when the *Refresh* button is clicked.
 
@@ -216,6 +221,7 @@ class VisaResourceComboBox(QWidget):
     """
 
     resource_changed: pyqtSignal = pyqtSignal(str)
+    currentTextChanged: pyqtSignal = pyqtSignal(str)
     refresh_requested: pyqtSignal = pyqtSignal()
 
     def __init__(
@@ -257,6 +263,28 @@ class VisaResourceComboBox(QWidget):
             'GPIB0::2::INSTR'
         """
         return self._combo.currentText().strip()
+
+    def currentText(self) -> str:
+        """Return the currently selected or entered VISA resource string.
+
+        Mirrors the :meth:`~PyQt6.QtWidgets.QComboBox.currentText` interface
+        so that this widget can be used as a drop-in replacement for a plain
+        :class:`~PyQt6.QtWidgets.QComboBox`.
+
+        Returns:
+            (str):
+                The current text of the internal combo box.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
+            >>> w = VisaResourceComboBox(extra_resources=["GPIB0::2::INSTR"])
+            >>> w.setCurrentText("GPIB0::2::INSTR")
+            >>> w.currentText()
+            'GPIB0::2::INSTR'
+        """
+        return self._combo.currentText()
 
     def set_resource(self, resource: str) -> None:
         """Set the combo box to *resource*, adding it to the list if absent.
@@ -410,6 +438,7 @@ class VisaResourceComboBox(QWidget):
         self._combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._combo.setPlaceholderText(self._placeholder)
         self._combo.currentTextChanged.connect(self.resource_changed)
+        self._combo.currentTextChanged.connect(self.currentTextChanged)
         layout.addWidget(self._combo)
 
         self._refresh_btn = QPushButton("Refresh", self)
