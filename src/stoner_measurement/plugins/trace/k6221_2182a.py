@@ -20,6 +20,7 @@ The 2182A may be reached in two ways:
 from __future__ import annotations
 
 import enum
+import logging
 import time
 from collections.abc import Generator
 from typing import Any
@@ -623,7 +624,6 @@ class Keithley6221_2182APlugin(TracePlugin):
         try:
             self._connection_mode = ConnectionMode(mode_str)
         except ValueError:
-            import logging
             logging.getLogger(__name__).warning(
                 "Unknown connection_mode value %r in saved config; "
                 "falling back to default (%s).",
@@ -694,7 +694,7 @@ class Keithley6221_2182APlugin(TracePlugin):
         _conn_widgets = (mode_combo, res_6221, res_2182a)
 
         def _update_conn_widgets_enabled() -> None:
-            """Disable connection controls while a connection is active."""
+            """Enable/disable connection controls based on connection status."""
             disconnected = self._status in (TraceStatus.IDLE, TraceStatus.ERROR)
             for w in _conn_widgets:
                 w.setEnabled(disconnected)
