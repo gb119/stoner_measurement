@@ -464,8 +464,10 @@ class Keithley6221_2182APlugin(TracePlugin):
             raise RuntimeError("Not configured — call configure() before execute().")
 
         n = len(self._sweep_values)
-        # Estimate a generous timeout: n points × (NPLC/50 + source_delay) × safety factor
-        line_period = 1.0 / 50.0  # assume 50 Hz mains
+        # Estimate a generous timeout: n points × (NPLC/50 + source_delay) × safety factor.
+        # Assumes 50 Hz mains frequency; the timeout is conservative enough to also
+        # cover 60 Hz installations without adjustment.
+        line_period = 1.0 / 50.0
         point_time = self._nplc * line_period + self._source_delay
         timeout = max(_TIMEOUT_MIN, n * point_time * _TIMEOUT_FACTOR)
 
@@ -742,8 +744,8 @@ class Keithley6221_2182APlugin(TracePlugin):
             self._voltage_range = value
 
         def _on_filter_toggled(state: bool) -> None:
-            self._filter_enabled = bool(state)
-            filter_count_sb.setEnabled(bool(state))
+            self._filter_enabled = state
+            filter_count_sb.setEnabled(state)
 
         def _on_filter_count_changed(value: int) -> None:
             self._filter_count = value
