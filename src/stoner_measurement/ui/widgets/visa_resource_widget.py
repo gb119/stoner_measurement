@@ -280,6 +280,30 @@ class VisaResourceComboBox(QWidget):
             idx = self._combo.findText(resource)
         self._combo.setCurrentIndex(idx)
 
+    def setCurrentText(self, text: str) -> None:
+        """Select the given resource string, adding it if absent.
+
+        Provides compatibility with the :meth:`~PyQt6.QtWidgets.QComboBox.setCurrentText`
+        interface so that code written against a plain :class:`~PyQt6.QtWidgets.QComboBox`
+        works unchanged with this widget.
+
+        Args:
+            text (str):
+                VISA resource string to select.  An empty string is ignored.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
+            >>> w = VisaResourceComboBox()
+            >>> w.setCurrentText("GPIB0::5::INSTR")
+            >>> w.current_resource()
+            'GPIB0::5::INSTR'
+        """
+        if not text:
+            return
+        self.set_resource(str(text))
+
     def set_status(self, status: VisaResourceStatus) -> None:
         """Update the combo-box background colour to reflect *status*.
 
