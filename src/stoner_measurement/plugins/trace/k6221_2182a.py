@@ -682,10 +682,10 @@ class Keithley6221_2182APlugin(TracePlugin):
         mode_combo.addItem("Direct GPIB", ConnectionMode.DIRECT_GPIB)
         mode_combo.setCurrentIndex(0 if self._connection_mode is ConnectionMode.VIA_6221_SERIAL else 1)
 
-        res_6221 = VisaResourceComboBox(interface_filter=FILTER_GPIB)
+        res_6221 = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         res_6221.setCurrentText(self._6221_resource)
 
-        res_2182a = VisaResourceComboBox(interface_filter=FILTER_GPIB)
+        res_2182a = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         res_2182a.setCurrentText(self._2182a_resource)
         res_2182a_label = QLabel("2182A GPIB resource:")
         res_2182a.setEnabled(self._connection_mode is ConnectionMode.DIRECT_GPIB)
