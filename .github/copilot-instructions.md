@@ -7,6 +7,10 @@ It should provide user interface to set configuration settings epecific for part
 settings such as range, measurement time etc), and user interface to define a measurement sequence that should be rendered into python code and then exectured in
 a sequence engine. Code running in the sequence engine will communicate data and status to the user interface through asynchronous messaging.
 
+## UI guidelines
+
+In general favour the widgets defined in the ui.widgets package over stock qt ones. for quantities that have physical units, show the units in the widget and whete numbers outside the range 0.1-1000, support SI prefixes too.
+
 ## Docstring Formatting
 
 All docstrings for python functions, classes, methods and modules should confirm to the following:
