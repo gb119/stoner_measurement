@@ -33,13 +33,15 @@ class SIComboBox(QComboBox):
     :meth:`setFloatValue`.
 
     The :attr:`valueChanged` signal is emitted with the current item's float
-    data whenever the selection changes; items whose data is not a ``float``
-    suppress the signal.
+    data whenever the selection changes; items whose data cannot be cast to
+    ``float`` (i.e. ``float(data)`` raises :exc:`TypeError` or
+    :exc:`ValueError`) suppress the signal.  This means the signal fires for
+    stored ``float``, ``int``, and ``numpy.float64`` values, among others.
 
     Attributes:
         valueChanged (pyqtSignal[float]):
             Emitted with the new float value when the current index changes
-            and the selected item's data is a plain ``float``.
+            and the selected item's data is castable to ``float``.
 
     Keyword Parameters:
         unit (str):
@@ -246,7 +248,7 @@ class SIComboBox(QComboBox):
     # ------------------------------------------------------------------
 
     def _on_index_changed(self, index: int) -> None:
-        """Emit :attr:`valueChanged` when the selected item holds float data."""
+        """Emit :attr:`valueChanged` when the selected item's data is castable to float."""
         data = self.itemData(index)
         try:
             self.valueChanged.emit(float(data))

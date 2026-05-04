@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import math
 import time
 from collections.abc import Generator
 from typing import Any
@@ -72,6 +73,9 @@ _2182A_DIGITS_OPTIONS: tuple[int, ...] = (4, 5, 6, 7)
 #: any realistic 6221 output (minimum non-zero range: 100 pA) so that it catches
 #: only genuine zero-current points set by the scan generator.
 _ZERO_CURRENT_THRESHOLD: float = 1e-30
+
+#: Maximum compliance voltage supported by the 6221 (volts).
+_6221_MAX_COMPLIANCE_V: float = 105.0
 
 
 class ConnectionMode(enum.Enum):
@@ -378,9 +382,14 @@ class Keithley6221_2182APlugin(TracePlugin):
     ) -> Generator[tuple[str, float, float]]:
         """Acquire the sweep and yield all four derived channels.
 
-        Runs the hardware sweep via :meth:`execute`, then yields sample-index
-        vs. value pairs for each of the four derived channels in turn:
-        ``I(t)``, ``V(t)``, ``R(t)`` (= V/I), and ``P(t)`` (= I×V).
+        Runs the hardware sweep via :meth:`execute`, streaming results point by
+        point to avoid buffering the entire sweep in memory.  For each measured
+        ``(I, V)`` pair, four triples are yielded immediately:
+
+        * ``I(t)`` — programmed source current
+        * ``V(t)`` — measured voltage
+        * ``R(t)`` — resistance V/I (``float("nan")`` when I is effectively zero)
+        * ``P(t)`` — power I×V
 
         Args:
             parameters (dict[str, Any]):
@@ -388,7 +397,8 @@ class Keithley6221_2182APlugin(TracePlugin):
 
         Yields:
             (tuple[str, float, float]):
-                ``(channel_name, sample_index, value)`` triples.
+                ``(channel_name, sample_index, value)`` triples, interleaved
+                one full set of four per sweep point.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -397,19 +407,11 @@ class Keithley6221_2182APlugin(TracePlugin):
             >>> # plugin.connect(); plugin.configure()
             >>> # pts = list(plugin.execute_multichannel({}))  # requires real hardware
         """
-        pairs = list(self.execute(parameters))
-
-        for t, (i_val, _) in enumerate(pairs):
-            yield "I(t)", float(t), i_val
-
-        for t, (_, v_val) in enumerate(pairs):
-            yield "V(t)", float(t), v_val
-
-        for t, (i_val, v_val) in enumerate(pairs):
+        for t, (i_val, v_val) in enumerate(self.execute(parameters)):
             r = v_val / i_val if abs(i_val) > _ZERO_CURRENT_THRESHOLD else float("nan")
+            yield "I(t)", float(t), i_val
+            yield "V(t)", float(t), v_val
             yield "R(t)", float(t), r
-
-        for t, (i_val, v_val) in enumerate(pairs):
             yield "P(t)", float(t), i_val * v_val
 
     # ------------------------------------------------------------------
@@ -558,6 +560,13 @@ class Keithley6221_2182APlugin(TracePlugin):
             # ---- 6221: per-point compliance ----
             if self._compliance_mode is ComplianceMode.RESISTANCE:
                 comp_values = [abs(float(v)) * self._compliance_resistance for v in self._sweep_values]
+                max_comp = max(comp_values) if comp_values else 0.0
+                if max_comp > _6221_MAX_COMPLIANCE_V:
+                    raise ValueError(
+                        f"Resistance-mode compliance would reach {max_comp:.3g} V "
+                        f"(max {_6221_MAX_COMPLIANCE_V} V for the 6221). "
+                        "Reduce the compliance resistance or the sweep currents."
+                    )
             else:
                 comp_values = [self._compliance] * n
             self._k6221.configure_list_compliance(comp_values)
@@ -985,13 +994,16 @@ class Keithley6221_2182APlugin(TracePlugin):
             src_range_combo.addItem(
                 SIComboBox.format_si(rng, "A"), (SourceRangeMode.FIXED, rng)
             )
-        # Set the current selection
+        # Set the current selection: use math.isclose so that JSON round-trips
+        # and minor floating-point differences don't prevent the correct item
+        # from being re-selected.  _ZERO_CURRENT_THRESHOLD is reserved for
+        # zero-current detection in execute_multichannel().
         _cur_src_idx = 0
         for _i in range(src_range_combo.count()):
             _mode, _val = src_range_combo.itemData(_i)
             if _mode is self._source_range_mode:
                 if _mode is SourceRangeMode.FIXED:
-                    if abs(_val - self._source_range) < _ZERO_CURRENT_THRESHOLD:
+                    if math.isclose(_val, self._source_range, rel_tol=1e-9, abs_tol=1e-30):
                         _cur_src_idx = _i
                         break
                 else:

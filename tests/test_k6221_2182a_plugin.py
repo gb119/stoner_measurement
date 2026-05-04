@@ -439,6 +439,27 @@ class TestExecuteMultichannel:
         for ch in ("I(t)", "V(t)", "R(t)", "P(t)"):
             assert channels.count(ch) == 3
 
+    def test_multichannel_yields_interleaved_not_batched(self, qapp):
+        """Channels must be interleaved per-point, not batched per-channel.
+
+        The streaming implementation must yield I(t), V(t), R(t), P(t) for
+        point 0 before yielding any data for point 1, so that the base-class
+        measure() loop can update live charts as each point arrives.
+        """
+        from unittest.mock import patch
+
+        plugin = _make_plugin()
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.2)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            triples = list(plugin.execute_multichannel({}))
+
+        # First 4 triples must be the 4 channels for point t=0
+        first_four_channels = [ch for ch, _, _ in triples[:4]]
+        assert first_four_channels == ["I(t)", "V(t)", "R(t)", "P(t)"]
+        # Second 4 triples must be the 4 channels for point t=1
+        second_four_channels = [ch for ch, _, _ in triples[4:8]]
+        assert second_four_channels == ["I(t)", "V(t)", "R(t)", "P(t)"]
+
     def test_multichannel_resistance_values(self, qapp):
         """R(t) channel must equal V/I for each point."""
         from unittest.mock import patch
@@ -477,3 +498,73 @@ class TestExecuteMultichannel:
 
         r_vals = [y for ch, _, y in triples if ch == "R(t)"]
         assert math.isnan(r_vals[0])
+
+
+# ---------------------------------------------------------------------------
+# Compliance bounds validation
+# ---------------------------------------------------------------------------
+
+class TestComplianceBounds:
+    def test_voltage_mode_does_not_raise_below_limit(self, qapp):
+        """Fixed-voltage compliance at the limit must configure without error."""
+        from unittest.mock import MagicMock, patch
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._compliance_mode = ComplianceMode.VOLTAGE
+        plugin._compliance = 100.0  # below 105 V limit
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+
+        with patch.object(plugin._k6221, "configure_custom_sweep"), \
+             patch.object(plugin._k6221, "configure_list_compliance"), \
+             patch.object(plugin, "_nvm_write"), \
+             patch.object(plugin, "_nvm_query", return_value="1"):
+            # Should not raise
+            try:
+                plugin.configure()
+            except RuntimeError:
+                pass  # connect() not called; that's fine — we only care about ValueError
+
+    def test_resistance_mode_raises_when_compliance_exceeds_limit(self, qapp):
+        """Resistance-mode compliance exceeding 105 V must raise ValueError."""
+        from unittest.mock import MagicMock, patch
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._compliance_mode = ComplianceMode.RESISTANCE
+        plugin._compliance_resistance = 2000.0  # 2 kΩ
+        # 100 mA × 2 kΩ = 200 V > 105 V
+        plugin._sweep_values = np.array([0.1])
+
+        with patch.object(plugin._k6221, "configure_custom_sweep"), \
+             patch.object(plugin._k6221, "configure_list_compliance"):
+            with pytest.raises(ValueError, match="105"):
+                plugin.configure()
+
+    def test_resistance_mode_ok_within_limit(self, qapp):
+        """Resistance-mode compliance within 105 V must not raise."""
+        from unittest.mock import MagicMock, patch
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._compliance_mode = ComplianceMode.RESISTANCE
+        plugin._compliance_resistance = 100.0  # 100 Ω
+        # 1 mA × 100 Ω = 0.1 V — well within limit
+        plugin._sweep_values = np.array([1e-3])
+
+        # Should not raise ValueError; RuntimeError from missing setup is OK
+        with patch.object(plugin._k6221, "configure_custom_sweep"), \
+             patch.object(plugin._k6221, "configure_list_compliance"), \
+             patch.object(plugin, "_nvm_write"), \
+             patch.object(plugin, "_nvm_query", return_value="1"):
+            try:
+                plugin.configure()
+            except (RuntimeError, AttributeError):
+                pass
+            # ValueError would propagate through; reaching here means no bounds error
