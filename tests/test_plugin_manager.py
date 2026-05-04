@@ -61,6 +61,7 @@ class TestPluginManager:
         pm.discover()
         # The package registers these entry-points via pyproject.toml
         assert "dummy" in pm.plugins
+        assert "k6221_dc_iv" in pm.plugins
         assert "counter" in pm.plugins
         assert "sweep_time" in pm.plugins
         assert "save" in pm.plugins
