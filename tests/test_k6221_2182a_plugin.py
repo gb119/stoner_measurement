@@ -59,6 +59,11 @@ class TestIdentity:
     def test_channel_names(self, qapp):
         assert _make_plugin().channel_names == ["I(t)", "V(t)", "R(t)", "P(t)"]
 
+    def test_num_traces_matches_channel_names_length(self, qapp):
+        """num_traces must always equal len(channel_names) for consistency."""
+        plugin = _make_plugin()
+        assert plugin.num_traces == len(plugin.channel_names)
+
 
 # ---------------------------------------------------------------------------
 # Default attributes

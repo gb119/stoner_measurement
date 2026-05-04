@@ -202,9 +202,11 @@ class SIComboBox(QComboBox):
         """Select the item whose float data matches *value*.
 
         Items are compared with a relative tolerance of ``1e-9`` to handle
-        floating-point rounding, falling back to absolute tolerance for
-        values very close to zero.  If no exact match is found the selection
-        is not changed.
+        floating-point rounding, falling back to absolute tolerance of ``1e-30``
+        for values very close to zero (``abs_tol`` guards against false positives
+        near zero where relative comparison is unreliable; ``1e-300`` is used as
+        the minimum scale to avoid division-by-zero in the relative check).
+        If no exact match is found the selection is not changed.
 
         Args:
             value (float):
@@ -227,11 +229,15 @@ class SIComboBox(QComboBox):
                 item_val = float(data)
             except (TypeError, ValueError):
                 continue
-            abs_tol = 1e-30
-            rel_tol = 1e-9
+            # Use absolute tolerance (1e-30) to guard zero vs near-zero, and
+            # relative tolerance (1e-9) for larger values.  The scale floor of
+            # 1e-300 prevents division-by-zero in the relative comparison.
+            _ABS_TOL = 1e-30
+            _REL_TOL = 1e-9
+            _SCALE_FLOOR = 1e-300
             diff = abs(item_val - value)
-            scale = max(abs(item_val), abs(value), 1e-300)
-            if diff <= abs_tol or diff / scale <= rel_tol:
+            scale = max(abs(item_val), abs(value), _SCALE_FLOOR)
+            if diff <= _ABS_TOL or diff / scale <= _REL_TOL:
                 self.setCurrentIndex(i)
                 return
 

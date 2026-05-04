@@ -67,6 +67,12 @@ _2182A_NPLC_OPTIONS: tuple[float, ...] = (0.1, 1.0, 10.0)
 #: Supported display/data digits for the 2182A (number of digits integer, e.g. 4 → 4.5 digits).
 _2182A_DIGITS_OPTIONS: tuple[int, ...] = (4, 5, 6, 7)
 
+#: Currents whose absolute value is below this threshold (in amps) are treated as
+#: zero when computing R(t) = V/I.  The value is intentionally much smaller than
+#: any realistic 6221 output (minimum non-zero range: 100 pA) so that it catches
+#: only genuine zero-current points set by the scan generator.
+_ZERO_CURRENT_THRESHOLD: float = 1e-30
+
 
 class ConnectionMode(enum.Enum):
     """How the 2182A nanovoltmeter is connected to the system.
@@ -400,7 +406,7 @@ class Keithley6221_2182APlugin(TracePlugin):
             yield "V(t)", float(t), v_val
 
         for t, (i_val, v_val) in enumerate(pairs):
-            r = v_val / i_val if abs(i_val) > 1e-30 else float("nan")
+            r = v_val / i_val if abs(i_val) > _ZERO_CURRENT_THRESHOLD else float("nan")
             yield "R(t)", float(t), r
 
         for t, (i_val, v_val) in enumerate(pairs):
@@ -985,7 +991,7 @@ class Keithley6221_2182APlugin(TracePlugin):
             _mode, _val = src_range_combo.itemData(_i)
             if _mode is self._source_range_mode:
                 if _mode is SourceRangeMode.FIXED:
-                    if abs(_val - self._source_range) < 1e-30:
+                    if abs(_val - self._source_range) < _ZERO_CURRENT_THRESHOLD:
                         _cur_src_idx = _i
                         break
                 else:
@@ -1036,6 +1042,8 @@ class Keithley6221_2182APlugin(TracePlugin):
             nplc_combo.addItem(f"{_nplc_val:g} PLC", _nplc_val)
         _nplc_idx = 0
         for _i, _nv in enumerate(_2182A_NPLC_OPTIONS):
+            # NPLC options are 0.1 / 1.0 / 10.0 — 1e-9 absolute tolerance is
+            # more than sufficient to match any of these after JSON round-trip.
             if abs(_nv - self._nplc) < 1e-9:
                 _nplc_idx = _i
                 break

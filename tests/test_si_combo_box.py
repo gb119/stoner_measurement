@@ -25,6 +25,7 @@ class TestFormatSI:
         assert SIComboBox.format_si(100e-3, "V") == "100 mV"
 
     def test_pico(self):
+        # siFormat rounds 1e-10 into the pico range: 100 pA
         assert SIComboBox.format_si(1e-10, "A") == "100 pA"
 
     def test_unity(self):
