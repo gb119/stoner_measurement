@@ -370,7 +370,7 @@ class MeasurementApp(QMainWindow):
         self._act_settings.triggered.connect(self._on_settings)
 
     def _build_view_actions(self) -> None:
-        """Create view, temperature panel, and help QAction instances."""
+        """Create view, engine panel, and help QAction instances."""
         self._act_view_measurement = QAction("&Measurement", self)
         self._act_view_measurement.setStatusTip("Switch to the Measurement tab")
         self._act_view_measurement.triggered.connect(lambda: self._main_window.tabs.setCurrentIndex(0))
@@ -408,7 +408,7 @@ class MeasurementApp(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_menu_bar(self) -> None:
-        """Populate the menu bar with File, Sequence, View and Help menus."""
+        """Populate the menu bar with File, Sequence, View, Engines and Help menus."""
         menu_bar = self.menuBar()
 
         # File menu
@@ -444,14 +444,15 @@ class MeasurementApp(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self._act_show_log)
 
-        # Temperature menu
-        temp_menu = menu_bar.addMenu("&Temperature")
+        # Engines menu (contains per-engine submenus)
+        engines_menu = menu_bar.addMenu("&Engines")
+
+        temp_menu = engines_menu.addMenu(make_temperature_icon(), "&Temperature")
         temp_menu.addAction(self._act_show_temp_panel)
         temp_menu.addSeparator()
         temp_menu.addAction(self._act_stop_temp_engine)
 
-        # Magnet menu
-        magnet_menu = menu_bar.addMenu("&Magnet")
+        magnet_menu = engines_menu.addMenu(make_magnet_icon(), "&Magnet")
         magnet_menu.addAction(self._act_show_magnet_panel)
         magnet_menu.addSeparator()
         magnet_menu.addAction(self._act_stop_magnet_engine)
