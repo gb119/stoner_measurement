@@ -14,6 +14,10 @@ from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.transport.base import BaseTransport
 
+#: Maximum number of values the 6221 accepts in a single :SOUR:LIST:CURR or
+#: :SOUR:LIST:COMP command. Longer lists are split and appended in batches.
+_LIST_BATCH_SIZE: int = 100
+
 
 class Keithley6221(CurrentSource):
     """Driver for the Keithley 6221 precision AC/DC current source.
@@ -92,6 +96,11 @@ class Keithley6221(CurrentSource):
     def configure_sweep(self, config: CurrentSweepConfiguration) -> None:
         """Configure a built-in current sweep.
 
+        For ``LIST`` spacing the values list is written to the instrument in
+        batches of :data:`_LIST_BATCH_SIZE` (100) points using the
+        ``SOUR:LIST:CURR:APP`` append command so that sweeps longer than 100
+        points are handled transparently.
+
         Args:
             config (CurrentSweepConfiguration):
                 Sweep configuration.  For :attr:`~CurrentSweepSpacing.LIST`
@@ -101,14 +110,25 @@ class Keithley6221(CurrentSource):
             ValueError:
                 If ``config.spacing`` is ``LIST`` and ``config.values`` is
                 empty or ``None``.
+
+        Examples:
+            >>> from stoner_measurement.instruments.keithley.k6221 import Keithley6221, _LIST_BATCH_SIZE
+            >>> from stoner_measurement.instruments.current_source import (
+            ...     CurrentSweepConfiguration, CurrentSweepSpacing)
+            >>> from stoner_measurement.instruments.transport.base import BaseTransport
         """
         self.write(f":SOUR:SWE:SPAC {config.spacing.value}")
         if config.spacing is CurrentSweepSpacing.LIST:
             if not config.values:
                 raise ValueError("LIST sweep requires non-empty values.")
-            csv = ",".join(str(v) for v in config.values)
-            self.write(f":SOUR:LIST:CURR {csv}")
-            self.write(f":SOUR:SWE:POIN {len(config.values)}")
+            values = list(config.values)
+            n = len(values)
+            first_batch = ",".join(str(v) for v in values[:_LIST_BATCH_SIZE])
+            self.write(f":SOUR:LIST:CURR {first_batch}")
+            for start in range(_LIST_BATCH_SIZE, n, _LIST_BATCH_SIZE):
+                batch = ",".join(str(v) for v in values[start:start + _LIST_BATCH_SIZE])
+                self.write(f":SOUR:LIST:CURR:APP {batch}")
+            self.write(f":SOUR:SWE:POIN {n}")
         else:
             self.write(f":SOUR:SWE:STAR {config.start}")
             self.write(f":SOUR:SWE:STOP {config.stop}")
@@ -116,6 +136,34 @@ class Keithley6221(CurrentSource):
         self.write(f":SOUR:DEL {config.delay}")
         if config.count != 1:
             self.write(f":SOUR:SWE:COUN {config.count}")
+
+    def configure_list_compliance(self, values: list[float]) -> None:
+        """Configure per-point compliance voltages for a LIST sweep.
+
+        Sends the compliance voltage list to the instrument in batches of
+        :data:`_LIST_BATCH_SIZE` (100) points, using
+        ``SOUR:LIST:COMP:APP`` to append batches beyond the first.
+
+        Args:
+            values (list[float]):
+                Per-point compliance voltages in volts.  Must not be empty.
+
+        Raises:
+            ValueError:
+                If *values* is empty.
+
+        Examples:
+            >>> from stoner_measurement.instruments.keithley.k6221 import Keithley6221
+            >>> # k.configure_list_compliance([10.0, 10.0, 10.0])  # per-point compliance
+        """
+        if not values:
+            raise ValueError("values must be non-empty.")
+        n = len(values)
+        first_batch = ",".join(f"{v:.6e}" for v in values[:_LIST_BATCH_SIZE])
+        self.write(f":SOUR:LIST:COMP {first_batch}")
+        for start in range(_LIST_BATCH_SIZE, n, _LIST_BATCH_SIZE):
+            batch = ",".join(f"{v:.6e}" for v in values[start:start + _LIST_BATCH_SIZE])
+            self.write(f":SOUR:LIST:COMP:APP {batch}")
 
     def sweep_start(self) -> None:
         """Arm the configured sweep, making it ready for triggering."""

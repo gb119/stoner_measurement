@@ -9,11 +9,13 @@ import pytest
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
+    ComplianceMode,
     ConnectionMode,
     Keithley6221_2182APlugin,
+    SourceRangeMode,
     TraceStatus,
 )
-from stoner_measurement.scan import ListScanGenerator, SteppedScanGenerator
+from stoner_measurement.scan import FunctionScanGenerator, ListScanGenerator, SteppedScanGenerator
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +54,15 @@ class TestIdentity:
         assert _make_plugin().plugin_type == "trace"
 
     def test_num_traces(self, qapp):
-        assert _make_plugin().num_traces == 1
+        assert _make_plugin().num_traces == 4
+
+    def test_channel_names(self, qapp):
+        assert _make_plugin().channel_names == ["I(t)", "V(t)", "R(t)", "P(t)"]
+
+    def test_num_traces_matches_channel_names_length(self, qapp):
+        """num_traces must always equal len(channel_names) for consistency."""
+        plugin = _make_plugin()
+        assert plugin.num_traces == len(plugin.channel_names)
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +74,7 @@ class TestDefaults:
         assert _make_plugin()._connection_mode is ConnectionMode.VIA_6221_SERIAL
 
     def test_default_scan_generator_type(self, qapp):
-        assert isinstance(_make_plugin().scan_generator, SteppedScanGenerator)
+        assert isinstance(_make_plugin().scan_generator, FunctionScanGenerator)
 
     def test_scan_generator_units_are_amps(self, qapp):
         assert _make_plugin().scan_generator.units == "A"
@@ -98,8 +108,13 @@ class TestScanGenerator:
     def test_scan_generator_classes(self, qapp):
         plugin = _make_plugin()
         classes = plugin._scan_generator_classes
+        assert FunctionScanGenerator in classes
         assert SteppedScanGenerator in classes
         assert ListScanGenerator in classes
+
+    def test_function_generator_is_first(self, qapp):
+        plugin = _make_plugin()
+        assert plugin._scan_generator_classes[0] is FunctionScanGenerator
 
     def test_set_scan_generator_class_changes_type(self, qapp):
         plugin = _make_plugin()
@@ -109,7 +124,7 @@ class TestScanGenerator:
     def test_set_scan_generator_class_noop_if_same(self, qapp):
         plugin = _make_plugin()
         gen_before = plugin.scan_generator
-        plugin.set_scan_generator_class(SteppedScanGenerator)
+        plugin.set_scan_generator_class(FunctionScanGenerator)
         assert plugin.scan_generator is gen_before
 
 
@@ -122,8 +137,10 @@ class TestJsonRoundTrip:
         d = _make_plugin().to_json()
         for key in (
             "resource_6221", "resource_2182a", "connection_mode",
-            "compliance", "source_delay", "source_range",
+            "compliance_mode", "compliance", "compliance_resistance",
+            "source_delay", "source_range_mode", "source_range",
             "nplc", "voltage_range", "filter_enabled", "filter_count",
+            "analog_filter", "relative_enabled", "digits",
             "output_tlink", "input_tlink",
         ):
             assert key in d, f"Missing key: {key}"
@@ -131,10 +148,16 @@ class TestJsonRoundTrip:
     def test_to_json_default_values(self, qapp):
         d = _make_plugin().to_json()
         assert d["connection_mode"] == "via_6221_serial"
+        assert d["compliance_mode"] == "voltage"
         assert d["compliance"] == pytest.approx(10.0)
+        assert d["compliance_resistance"] == pytest.approx(1000.0)
+        assert d["source_range_mode"] == "BEST"
         assert d["nplc"] == pytest.approx(1.0)
         assert d["filter_enabled"] is False
         assert d["filter_count"] == 10
+        assert d["analog_filter"] is False
+        assert d["relative_enabled"] is False
+        assert d["digits"] == 6
         assert d["output_tlink"] == 1
         assert d["input_tlink"] == 2
 
@@ -148,6 +171,13 @@ class TestJsonRoundTrip:
         plugin._input_tlink = 4
         plugin._connection_mode = ConnectionMode.DIRECT_GPIB
         plugin._2182a_resource = "GPIB0::14::INSTR"
+        plugin._compliance_mode = ComplianceMode.RESISTANCE
+        plugin._compliance_resistance = 500.0
+        plugin._source_range_mode = SourceRangeMode.FIXED
+        plugin._source_range = 1e-3
+        plugin._analog_filter = True
+        plugin._relative_enabled = True
+        plugin._digits = 7
 
         restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
         assert isinstance(restored, Keithley6221_2182APlugin)
@@ -159,6 +189,47 @@ class TestJsonRoundTrip:
         assert restored._input_tlink == 4
         assert restored._connection_mode is ConnectionMode.DIRECT_GPIB
         assert restored._2182a_resource == "GPIB0::14::INSTR"
+        assert restored._compliance_mode is ComplianceMode.RESISTANCE
+        assert restored._compliance_resistance == pytest.approx(500.0)
+        assert restored._source_range_mode is SourceRangeMode.FIXED
+        assert restored._source_range == pytest.approx(1e-3)
+        assert restored._analog_filter is True
+        assert restored._relative_enabled is True
+        assert restored._digits == 7
+
+    def test_round_trip_unknown_compliance_mode_warns(self, qapp, caplog):
+        """An unknown compliance_mode value must not raise and must log a warning."""
+        plugin = _make_plugin()
+        data = plugin.to_json()
+        data["compliance_mode"] = "future_compliance_mode"
+
+        with caplog.at_level(logging.WARNING):
+            try:
+                restored = BasePlugin.from_json(data)
+            except ValueError:
+                pytest.fail(
+                    "_restore_from_json raised ValueError for an unknown "
+                    "compliance_mode instead of falling back gracefully."
+                )
+        assert isinstance(restored._compliance_mode, ComplianceMode)
+        assert any("future_compliance_mode" in r.message for r in caplog.records)
+
+    def test_round_trip_unknown_source_range_mode_warns(self, qapp, caplog):
+        """An unknown source_range_mode value must not raise and must log a warning."""
+        plugin = _make_plugin()
+        data = plugin.to_json()
+        data["source_range_mode"] = "future_range_mode"
+
+        with caplog.at_level(logging.WARNING):
+            try:
+                restored = BasePlugin.from_json(data)
+            except ValueError:
+                pytest.fail(
+                    "_restore_from_json raised ValueError for an unknown "
+                    "source_range_mode instead of falling back gracefully."
+                )
+        assert isinstance(restored._source_range_mode, SourceRangeMode)
+        assert any("future_range_mode" in r.message for r in caplog.records)
 
     def test_round_trip_preserves_scan_generator(self, qapp):
         plugin = _make_plugin()
@@ -314,3 +385,186 @@ class TestConfigTabsWidget:
         assert "Source (6221)" in titles
         assert "Measurement (2182A)" in titles
         assert "Trigger link" in titles
+
+
+# ---------------------------------------------------------------------------
+# New attributes — defaults and round-trip
+# ---------------------------------------------------------------------------
+
+class TestNewAttributes:
+    def test_compliance_mode_default(self, qapp):
+        assert _make_plugin()._compliance_mode is ComplianceMode.VOLTAGE
+
+    def test_compliance_resistance_default(self, qapp):
+        assert _make_plugin()._compliance_resistance == pytest.approx(1000.0)
+
+    def test_source_range_mode_default(self, qapp):
+        assert _make_plugin()._source_range_mode is SourceRangeMode.BEST
+
+    def test_analog_filter_default(self, qapp):
+        assert _make_plugin()._analog_filter is False
+
+    def test_relative_enabled_default(self, qapp):
+        assert _make_plugin()._relative_enabled is False
+
+    def test_digits_default(self, qapp):
+        assert _make_plugin()._digits == 6
+
+    def test_nplc_default(self, qapp):
+        assert _make_plugin()._nplc == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# execute_multichannel — four-channel output
+# ---------------------------------------------------------------------------
+
+class TestExecuteMultichannel:
+    def test_multichannel_yields_four_channels(self, qapp):
+        """execute_multichannel must yield data for all four channel names."""
+        from unittest.mock import MagicMock, patch
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3, 2e-3, 3e-3])
+
+        # Patch execute() to return predictable (I, V) pairs without hardware.
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.2), (3e-3, 0.3)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            triples = list(plugin.execute_multichannel({}))
+
+        channels = [ch for ch, _, _ in triples]
+        assert set(channels) == {"I(t)", "V(t)", "R(t)", "P(t)"}
+        # Each channel should have 3 points.
+        for ch in ("I(t)", "V(t)", "R(t)", "P(t)"):
+            assert channels.count(ch) == 3
+
+    def test_multichannel_yields_interleaved_not_batched(self, qapp):
+        """Channels must be interleaved per-point, not batched per-channel.
+
+        The streaming implementation must yield I(t), V(t), R(t), P(t) for
+        point 0 before yielding any data for point 1, so that the base-class
+        measure() loop can update live charts as each point arrives.
+        """
+        from unittest.mock import patch
+
+        plugin = _make_plugin()
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.2)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            triples = list(plugin.execute_multichannel({}))
+
+        # First 4 triples must be the 4 channels for point t=0
+        first_four_channels = [ch for ch, _, _ in triples[:4]]
+        assert first_four_channels == ["I(t)", "V(t)", "R(t)", "P(t)"]
+        # Second 4 triples must be the 4 channels for point t=1
+        second_four_channels = [ch for ch, _, _ in triples[4:8]]
+        assert second_four_channels == ["I(t)", "V(t)", "R(t)", "P(t)"]
+
+    def test_multichannel_resistance_values(self, qapp):
+        """R(t) channel must equal V/I for each point."""
+        from unittest.mock import patch
+
+        plugin = _make_plugin()
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            triples = list(plugin.execute_multichannel({}))
+
+        r_vals = [y for ch, _, y in triples if ch == "R(t)"]
+        assert r_vals[0] == pytest.approx(0.1 / 1e-3)
+        assert r_vals[1] == pytest.approx(0.4 / 2e-3)
+
+    def test_multichannel_power_values(self, qapp):
+        """P(t) channel must equal I×V for each point."""
+        from unittest.mock import patch
+
+        plugin = _make_plugin()
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            triples = list(plugin.execute_multichannel({}))
+
+        p_vals = [y for ch, _, y in triples if ch == "P(t)"]
+        assert p_vals[0] == pytest.approx(1e-3 * 0.1)
+        assert p_vals[1] == pytest.approx(2e-3 * 0.4)
+
+    def test_multichannel_zero_current_gives_nan_resistance(self, qapp):
+        """R(t) must be NaN when current is zero to avoid division by zero."""
+        import math
+        from unittest.mock import patch
+
+        plugin = _make_plugin()
+        fake_pairs = [(0.0, 0.5)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            triples = list(plugin.execute_multichannel({}))
+
+        r_vals = [y for ch, _, y in triples if ch == "R(t)"]
+        assert math.isnan(r_vals[0])
+
+
+# ---------------------------------------------------------------------------
+# Compliance bounds validation
+# ---------------------------------------------------------------------------
+
+class TestComplianceBounds:
+    def test_voltage_mode_does_not_raise_below_limit(self, qapp):
+        """Fixed-voltage compliance at the limit must configure without error."""
+        from unittest.mock import MagicMock, patch
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._compliance_mode = ComplianceMode.VOLTAGE
+        plugin._compliance = 100.0  # below 105 V limit
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+
+        with patch.object(plugin._k6221, "configure_custom_sweep"), \
+             patch.object(plugin._k6221, "configure_list_compliance"), \
+             patch.object(plugin, "_nvm_write"), \
+             patch.object(plugin, "_nvm_query", return_value="1"):
+            # Should not raise
+            try:
+                plugin.configure()
+            except RuntimeError:
+                pass  # connect() not called; that's fine — we only care about ValueError
+
+    def test_resistance_mode_raises_when_compliance_exceeds_limit(self, qapp):
+        """Resistance-mode compliance exceeding 105 V must raise ValueError."""
+        from unittest.mock import MagicMock, patch
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._compliance_mode = ComplianceMode.RESISTANCE
+        plugin._compliance_resistance = 2000.0  # 2 kΩ
+        # 100 mA × 2 kΩ = 200 V > 105 V
+        plugin._sweep_values = np.array([0.1])
+
+        with patch.object(plugin._k6221, "configure_custom_sweep"), \
+             patch.object(plugin._k6221, "configure_list_compliance"):
+            with pytest.raises(ValueError, match="105"):
+                plugin.configure()
+
+    def test_resistance_mode_ok_within_limit(self, qapp):
+        """Resistance-mode compliance within 105 V must not raise."""
+        from unittest.mock import MagicMock, patch
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._compliance_mode = ComplianceMode.RESISTANCE
+        plugin._compliance_resistance = 100.0  # 100 Ω
+        # 1 mA × 100 Ω = 0.1 V — well within limit
+        plugin._sweep_values = np.array([1e-3])
+
+        # Should not raise ValueError; RuntimeError from missing setup is OK
+        with patch.object(plugin._k6221, "configure_custom_sweep"), \
+             patch.object(plugin._k6221, "configure_list_compliance"), \
+             patch.object(plugin, "_nvm_write"), \
+             patch.object(plugin, "_nvm_query", return_value="1"):
+            try:
+                plugin.configure()
+            except (RuntimeError, AttributeError):
+                pass
+            # ValueError would propagate through; reaching here means no bounds error
