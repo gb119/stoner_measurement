@@ -1238,6 +1238,69 @@ class TestKeithley6221:
             b":SOUR:DEL 0.01\n",
         ]
 
+    def test_list_sweep_batching_over_100_points(self):
+        """LIST sweep with > 100 points must use SOUR:LIST:CURR:APP for overflow batches."""
+        from stoner_measurement.instruments.keithley.k6221 import _LIST_BATCH_SIZE
+        t = _null()
+        k = Keithley6221(transport=t)
+        values = tuple(float(i) * 1e-5 for i in range(150))
+        k.configure_custom_sweep(values)
+        writes = [w.decode().strip() for w in t.write_log]
+        assert writes[0] == ":SOUR:SWE:SPAC LIST"
+        # Second write: first 100 values
+        first_batch_cmd = writes[1]
+        assert first_batch_cmd.startswith(":SOUR:LIST:CURR ")
+        first_vals = first_batch_cmd[len(":SOUR:LIST:CURR "):].split(",")
+        assert len(first_vals) == _LIST_BATCH_SIZE
+        # Third write: append remaining 50
+        second_batch_cmd = writes[2]
+        assert second_batch_cmd.startswith(":SOUR:LIST:CURR:APP ")
+        second_vals = second_batch_cmd[len(":SOUR:LIST:CURR:APP "):].split(",")
+        assert len(second_vals) == 50
+        # Fourth write: POIN = 150
+        assert writes[3] == f":SOUR:SWE:POIN {len(values)}"
+
+    def test_list_sweep_exactly_100_points_no_append(self):
+        """A 100-point LIST sweep must not emit any SOUR:LIST:CURR:APP command."""
+        t = _null()
+        k = Keithley6221(transport=t)
+        values = tuple(float(i) * 1e-5 for i in range(100))
+        k.configure_custom_sweep(values)
+        writes = [w.decode().strip() for w in t.write_log]
+        app_cmds = [w for w in writes if w.startswith(":SOUR:LIST:CURR:APP")]
+        assert app_cmds == []
+
+    def test_configure_list_compliance_single_batch(self):
+        """configure_list_compliance with ≤ 100 values uses SOUR:LIST:COMP only."""
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.configure_list_compliance([5.0, 10.0, 15.0])
+        writes = [w.decode().strip() for w in t.write_log]
+        assert len(writes) == 1
+        assert writes[0].startswith(":SOUR:LIST:COMP ")
+        parts = writes[0][len(":SOUR:LIST:COMP "):].split(",")
+        assert len(parts) == 3
+
+    def test_configure_list_compliance_multi_batch(self):
+        """configure_list_compliance with > 100 values appends with SOUR:LIST:COMP:APP."""
+        t = _null()
+        k = Keithley6221(transport=t)
+        vals = [10.0] * 120
+        k.configure_list_compliance(vals)
+        writes = [w.decode().strip() for w in t.write_log]
+        assert writes[0].startswith(":SOUR:LIST:COMP ")
+        assert writes[1].startswith(":SOUR:LIST:COMP:APP ")
+        first_parts = writes[0][len(":SOUR:LIST:COMP "):].split(",")
+        second_parts = writes[1][len(":SOUR:LIST:COMP:APP "):].split(",")
+        assert len(first_parts) == 100
+        assert len(second_parts) == 20
+
+    def test_configure_list_compliance_empty_raises(self):
+        """configure_list_compliance with an empty list must raise ValueError."""
+        k = Keithley6221(transport=_null())
+        with pytest.raises(ValueError, match="non-empty"):
+            k.configure_list_compliance([])
+
     def test_convenience_configure_linear_sweep(self):
         """configure_linear_sweep delegates to configure_sweep with LIN spacing."""
         t = _null()
