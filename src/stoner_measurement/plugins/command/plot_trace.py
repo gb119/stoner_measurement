@@ -419,15 +419,16 @@ class PlotTraceCommand(CommandPlugin):
 
         col = self.column_key
         if col and hasattr(trace_data, "df") and col in trace_data.df.columns:
-            # Single specified column
+            # Single specified column — find positional match for y-error bars
             y_arr = np.asarray(trace_data.df[col].to_numpy(), dtype=float)
             y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
-            idx = y_cols.index(col) if col in y_cols else None
-            y_err: np.ndarray | None = (
-                trace_data.df[e_cols[idx]].to_numpy(dtype=float)
-                if idx is not None and idx < len(e_cols)
-                else (trace_data.df[e_cols[0]].to_numpy(dtype=float) if e_cols else None)
-            )
+            col_idx = y_cols.index(col) if col in y_cols else None
+            if col_idx is not None and col_idx < len(e_cols):
+                y_err: np.ndarray | None = trace_data.df[e_cols[col_idx]].to_numpy(dtype=float)
+            elif e_cols:
+                y_err = trace_data.df[e_cols[0]].to_numpy(dtype=float)
+            else:
+                y_err = None
             self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
         else:
             y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
