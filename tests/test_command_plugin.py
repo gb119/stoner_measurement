@@ -1373,7 +1373,7 @@ class TestPlotTraceCommand:
         cmd.column_key = "z"
 
         received: list[tuple] = []
-        cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye)))
         cmd.execute()
 
         assert len(received) == 1
@@ -1392,7 +1392,7 @@ class TestPlotTraceCommand:
         cmd.column_key = ""  # empty → use .y
 
         received: list[tuple] = []
-        cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye)))
         cmd.execute()
 
         assert len(received) == 1
@@ -1411,7 +1411,7 @@ class TestPlotTraceCommand:
         cmd.column_key = "nonexistent"
 
         received: list[tuple] = []
-        cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye)))
         cmd.execute()
 
         assert len(received) == 1
@@ -1465,6 +1465,210 @@ class TestPlotTraceCommand:
         widget = cmd.config_widget()
         combos = widget.findChildren(QComboBox)
         assert len(combos) >= 2
+
+    # ------------------------------------------------------------------
+    # Multicolumn and error-bar behaviour
+    # ------------------------------------------------------------------
+
+    def test_execute_multicolumn_emits_one_trace_per_y_column(self, qapp, engine):
+        """execute() emits plot_trace_with_errors once per COLUMN_ROLE_Y column."""
+        import pandas as pd
+
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+
+        df = pd.DataFrame(
+            {"V": [1.0, 2.0], "R": [10.0, 20.0]},
+            index=pd.Index([0.0, 1.0], name="x"),
+        )
+        td = TraceData(df=df, column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y})
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"src:ch": "td"}
+        cmd.trace_key = "src:ch"
+        cmd.column_key = ""
+
+        received: list[tuple] = []
+        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, list(y))))
+        cmd.execute()
+
+        assert len(received) == 2
+        titles = {r[0] for r in received}
+        assert "src:ch:V" in titles
+        assert "src:ch:R" in titles
+        v_row = next(r for r in received if r[0] == "src:ch:V")
+        r_row = next(r for r in received if r[0] == "src:ch:R")
+        assert v_row[1] == [1.0, 2.0]
+        assert r_row[1] == [10.0, 20.0]
+
+    def test_execute_multicolumn_does_not_emit_plot_trace(self, qapp, engine):
+        """execute() must NOT emit plot_trace (advanced-mode signal) in simple mode."""
+        import pandas as pd
+
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+
+        df = pd.DataFrame(
+            {"V": [1.0], "R": [10.0]},
+            index=pd.Index([0.0], name="x"),
+        )
+        td = TraceData(df=df, column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y})
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"src:ch": "td"}
+        cmd.trace_key = "src:ch"
+        cmd.column_key = ""
+
+        legacy: list = []
+        cmd.plot_trace.connect(lambda t, x, y: legacy.append(1))
+        cmd.execute()
+
+        assert legacy == []
+
+    def test_execute_single_column_with_y_error_bars(self, qapp, engine):
+        """execute() passes y-error bars from COLUMN_ROLE_E to plot_trace_with_errors."""
+        from stoner_measurement.plugins.trace.base import (
+            COLUMN_ROLE_E,
+            COLUMN_ROLE_Y,
+            TraceData,
+        )
+
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {"V": [1.0, 2.0], "e_V": [0.1, 0.2]},
+            index=pd.Index([0.0, 1.0], name="x"),
+        )
+        td = TraceData(
+            df=df,
+            column_roles={"V": COLUMN_ROLE_Y, "e_V": COLUMN_ROLE_E},
+        )
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"src:ch": "td"}
+        cmd.trace_key = "src:ch"
+        cmd.column_key = ""
+
+        received: list[tuple] = []
+        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, xe, list(ye))))
+        cmd.execute()
+
+        assert len(received) == 1
+        assert received[0][1] is None  # no x errors
+        np.testing.assert_allclose(received[0][2], [0.1, 0.2])
+
+    def test_execute_multicolumn_y_error_positional_match(self, qapp, engine):
+        """execute() matches e-columns positionally to y-columns."""
+        import pandas as pd
+
+        from stoner_measurement.plugins.trace.base import (
+            COLUMN_ROLE_E,
+            COLUMN_ROLE_Y,
+            TraceData,
+        )
+
+        df = pd.DataFrame(
+            {"V": [1.0, 2.0], "R": [10.0, 20.0], "e_V": [0.1, 0.2], "e_R": [1.0, 2.0]},
+            index=pd.Index([0.0, 1.0], name="x"),
+        )
+        td = TraceData(
+            df=df,
+            column_roles={
+                "V": COLUMN_ROLE_Y,
+                "R": COLUMN_ROLE_Y,
+                "e_V": COLUMN_ROLE_E,
+                "e_R": COLUMN_ROLE_E,
+            },
+        )
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"src:ch": "td"}
+        cmd.trace_key = "src:ch"
+        cmd.column_key = ""
+
+        received: dict[str, list] = {}
+        cmd.plot_trace_with_errors.connect(
+            lambda t, x, y, xe, ye: received.update({t: list(ye)})
+        )
+        cmd.execute()
+
+        assert "src:ch:V" in received
+        assert "src:ch:R" in received
+        np.testing.assert_allclose(received["src:ch:V"], [0.1, 0.2])
+        np.testing.assert_allclose(received["src:ch:R"], [1.0, 2.0])
+
+    def test_execute_multicolumn_shared_x_error(self, qapp, engine):
+        """execute() shares COLUMN_ROLE_D x-error across all y-columns."""
+        import pandas as pd
+
+        from stoner_measurement.plugins.trace.base import (
+            COLUMN_ROLE_D,
+            COLUMN_ROLE_Y,
+            TraceData,
+        )
+
+        df = pd.DataFrame(
+            {"V": [1.0, 2.0], "R": [10.0, 20.0], "d_I": [0.01, 0.01]},
+            index=pd.Index([0.0, 1.0], name="x"),
+        )
+        td = TraceData(
+            df=df,
+            column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y, "d_I": COLUMN_ROLE_D},
+        )
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"src:ch": "td"}
+        cmd.trace_key = "src:ch"
+        cmd.column_key = ""
+
+        received: dict[str, list] = {}
+        cmd.plot_trace_with_errors.connect(
+            lambda t, x, y, xe, ye: received.update({t: list(xe)})
+        )
+        cmd.execute()
+
+        assert "src:ch:V" in received
+        assert "src:ch:R" in received
+        np.testing.assert_allclose(received["src:ch:V"], [0.01, 0.01])
+        np.testing.assert_allclose(received["src:ch:R"], [0.01, 0.01])
+
+    def test_set_trace_with_errors_updates_plot_widget(self, qapp):
+        """PlotWidget.set_trace_with_errors updates trace data and creates error bars."""
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget()
+        widget.set_trace_with_errors(
+            "sig",
+            [0.0, 1.0, 2.0],
+            [1.0, 2.0, 3.0],
+            None,
+            [0.1, 0.1, 0.1],
+        )
+        assert widget.y_data("sig") == [1.0, 2.0, 3.0]
+        assert "sig" in widget._error_bar_items
+
+    def test_set_trace_with_errors_no_errors_no_error_bar_item(self, qapp):
+        """PlotWidget.set_trace_with_errors with no errors should not create an ErrorBarItem."""
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget()
+        widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, None)
+        assert widget.y_data("sig") == [2.0, 3.0]
+        assert "sig" not in widget._error_bar_items
+
+    def test_remove_trace_cleans_up_error_bar_item(self, qapp):
+        """remove_trace() must also remove the associated ErrorBarItem."""
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget()
+        widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
+        assert "sig" in widget._error_bar_items
+        widget.remove_trace("sig")
+        assert "sig" not in widget._error_bar_items
+        assert "sig" not in widget.trace_names
 
 
 # ---------------------------------------------------------------------------

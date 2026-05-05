@@ -323,6 +323,7 @@ class TestCurveFitSerialization:
             "class",
             "instance_name",
             "trace_key",
+            "column_key",
             "advanced_mode",
             "x_expr",
             "y_expr",
@@ -705,3 +706,117 @@ class TestCurveFitOptionalTraces:
         labels = {cb.text() for cb in checkboxes}
         assert any("initial" in lbl.lower() for lbl in labels)
         assert any("best" in lbl.lower() for lbl in labels)
+
+
+# ---------------------------------------------------------------------------
+# column_key — multicolumn TraceData support
+# ---------------------------------------------------------------------------
+
+
+class TestCurveFitColumnKey:
+    """Tests for CurveFitPlugin column_key attribute and multicolumn TraceData support."""
+
+    def _make_engine_with_multicolumn_trace(self):
+        """Return (engine, plugin) wired up with a two-y-column TraceData."""
+        import pandas as pd
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+
+        engine = SequenceEngine()
+        plugin = CurveFitPlugin()
+        engine.add_plugin("cf", plugin)
+
+        x = np.linspace(0.0, 1.0, 20)
+        df = pd.DataFrame(
+            {"V": 3.0 * x + 1.0, "R": 2.0 * x + 0.5},
+            index=pd.Index(x, name="x"),
+        )
+        td = TraceData(df=df, column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y})
+        engine._namespace["_td"] = td
+        engine._namespace["_traces"] = {"src:IV": "_td"}
+
+        plugin.advanced_mode = False
+        plugin.trace_key = "src:IV"
+        plugin.fit_code = "def fit(x, a, b): return a * x + b"
+        plugin.param_names = ["a", "b"]
+        return engine, plugin
+
+    def test_column_key_default_is_empty(self, qapp):
+        assert CurveFitPlugin().column_key == ""
+
+    def test_column_key_persisted_in_to_json(self, qapp):
+        p = CurveFitPlugin()
+        p.column_key = "V"
+        assert p.to_json()["column_key"] == "V"
+
+    def test_column_key_restored_from_json(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        p = CurveFitPlugin()
+        p.column_key = "R"
+        restored = BasePlugin.from_json(p.to_json())
+        assert isinstance(restored, CurveFitPlugin)
+        assert restored.column_key == "R"
+
+    def test_column_key_selects_specific_column(self, qapp):
+        engine, plugin = self._make_engine_with_multicolumn_trace()
+        plugin.column_key = "R"
+        result = plugin.transform({})
+        # R = 2.0 * x + 0.5
+        assert abs(result["a"] - 2.0) < 1e-4
+        assert abs(result["b"] - 0.5) < 1e-4
+        engine.shutdown()
+
+    def test_column_key_empty_uses_first_y_column(self, qapp):
+        engine, plugin = self._make_engine_with_multicolumn_trace()
+        plugin.column_key = ""
+        result = plugin.transform({})
+        # First COLUMN_ROLE_Y is "V": V = 3.0 * x + 1.0
+        assert abs(result["a"] - 3.0) < 1e-4
+        assert abs(result["b"] - 1.0) < 1e-4
+        engine.shutdown()
+
+    def test_initial_trace_uses_column_name_from_source(self, qapp):
+        """_compute_initial_trace preserves source column name in output DataFrame."""
+        engine, plugin = self._make_engine_with_multicolumn_trace()
+        plugin.column_key = "V"
+        plugin.show_initial_trace = True
+        result = plugin.transform({})
+        assert "initial_fit" in result
+        trace = result["initial_fit"]
+        assert "V" in trace.df.columns
+        engine.shutdown()
+
+    def test_best_fit_trace_uses_column_name_from_source(self, qapp):
+        """_compute_best_fit_trace preserves source column name in output DataFrame."""
+        engine, plugin = self._make_engine_with_multicolumn_trace()
+        plugin.column_key = "R"
+        plugin.show_best_fit_trace = True
+        result = plugin.transform({})
+        assert "best_fit" in result
+        trace = result["best_fit"]
+        assert "R" in trace.df.columns
+        engine.shutdown()
+
+    def test_initial_trace_generic_column_name_when_no_column_key(self, qapp):
+        """_compute_initial_trace uses first COLUMN_ROLE_Y column name when column_key=''."""
+        engine, plugin = self._make_engine_with_multicolumn_trace()
+        plugin.column_key = ""
+        plugin.show_initial_trace = True
+        result = plugin.transform({})
+        assert "initial_fit" in result
+        # The first COLUMN_ROLE_Y column is "V"
+        assert "V" in result["initial_fit"].df.columns
+        engine.shutdown()
+
+    def test_data_tab_has_column_combo(self, qapp):
+        """_build_data_tab returns a widget with a Column combo box."""
+        from PyQt6.QtWidgets import QComboBox
+
+        engine, plugin = self._make_engine_with_multicolumn_trace()
+        tabs = plugin.config_tabs()
+        data_widget = dict(tabs)["Data"]
+        combos = data_widget.findChildren(QComboBox)
+        assert len(combos) >= 2  # at least trace_combo and column_combo
+        engine.shutdown()

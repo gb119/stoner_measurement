@@ -1166,14 +1166,70 @@ class CurveFitPlugin(TransformPlugin):
         tabs.insert(1, ("Fit Function", fit_tab))
         return tabs
 
+    def _get_trace_columns(self, trace_key: str) -> list[str]:
+        """Return the DataFrame column names for the trace identified by *trace_key*.
+
+        Attempts to evaluate the trace expression in the engine namespace and
+        return :attr:`~stoner_measurement.plugins.trace.TraceData.columns` from
+        the result.  Returns an empty list if the trace has not yet been measured
+        or if the evaluation fails.
+
+        Args:
+            trace_key (str):
+                The trace catalogue key (same as :attr:`trace_key`).
+
+        Returns:
+            (list[str]):
+                Column names from the trace's DataFrame, or an empty list.
+        """
+        traces = self.engine_namespace.get("_traces", {})
+        if not trace_key or trace_key not in traces:
+            return []
+        try:
+            trace_data = self.eval(traces[trace_key])
+            cols = getattr(trace_data, "columns", None)
+            if isinstance(cols, list):
+                return cols
+        except Exception:
+            pass
+        return []
+
+    def _build_column_combo(self, widget: QWidget) -> QComboBox:
+        """Build a column-selection combo box for the given widget.
+
+        Populates the combo with the column names of the trace identified by
+        :attr:`trace_key`.  When the trace is not yet available a ``"(default)"``
+        placeholder item is shown and :attr:`column_key` is cleared.
+
+        Args:
+            widget (QWidget):
+                Parent widget for the new combo box.
+
+        Returns:
+            (QComboBox):
+                Configured column combo box.
+        """
+        combo = QComboBox(widget)
+        columns = self._get_trace_columns(self.trace_key)
+        if columns:
+            combo.addItems(columns)
+            if self.column_key in columns:
+                combo.setCurrentText(self.column_key)
+            else:
+                self.column_key = columns[0]
+                combo.setCurrentIndex(0)
+        else:
+            combo.addItem("(default)")
+        return combo
+
     def _create_data_source_widgets(
         self, widget: QWidget, traces: dict[str, str]
     ) -> dict[str, Any]:
         """Create the data source selection widgets for the *Data* tab.
 
-        Builds and returns the trace dropdown, advanced-mode checkbox, x/y
-        dropdowns, and y-uncertainty line edit together with the channel-items
-        mapping used by the signal handlers.
+        Builds and returns the trace dropdown, column dropdown,
+        advanced-mode checkbox, x/y dropdowns, and y-uncertainty line edit
+        together with the channel-items mapping used by the signal handlers.
 
         Args:
             widget (QWidget):
@@ -1184,9 +1240,9 @@ class CurveFitPlugin(TransformPlugin):
 
         Returns:
             (dict[str, Any]):
-                Dict with keys ``"trace_combo"``, ``"advanced_check"``,
-                ``"x_combo"``, ``"y_combo"``, ``"y_error_edit"``, and
-                ``"channel_items"``.
+                Dict with keys ``"trace_combo"``, ``"column_combo"``,
+                ``"advanced_check"``, ``"x_combo"``, ``"y_combo"``,
+                ``"y_error_edit"``, and ``"channel_items"``.
         """
         trace_keys = list(traces.keys())
         channel_items: dict[str, str] = {}
@@ -1204,6 +1260,8 @@ class CurveFitPlugin(TransformPlugin):
                 self.trace_key = trace_keys[0]
         else:
             trace_combo.addItem("(no traces available)")
+
+        column_combo = self._build_column_combo(widget)
 
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
@@ -1233,6 +1291,7 @@ class CurveFitPlugin(TransformPlugin):
 
         return {
             "trace_combo": trace_combo,
+            "column_combo": column_combo,
             "advanced_check": advanced_check,
             "x_combo": x_combo,
             "y_combo": y_combo,
@@ -1258,6 +1317,7 @@ class CurveFitPlugin(TransformPlugin):
         ws = self._create_data_source_widgets(widget, traces)
 
         layout.addRow("Trace:", ws["trace_combo"])
+        layout.addRow("Column:", ws["column_combo"])
         layout.addRow("Advanced mode:", ws["advanced_check"])
         layout.addRow("X data:", ws["x_combo"])
         layout.addRow("Y data:", ws["y_combo"])
@@ -1272,6 +1332,7 @@ class CurveFitPlugin(TransformPlugin):
 
         def _update_enabled(advanced: bool) -> None:
             ws["trace_combo"].setEnabled(not advanced)
+            ws["column_combo"].setEnabled(not advanced)
             ws["x_combo"].setEnabled(advanced)
             ws["y_combo"].setEnabled(advanced)
             ws["y_error_edit"].setEnabled(advanced)
@@ -1282,6 +1343,12 @@ class CurveFitPlugin(TransformPlugin):
         def _apply_trace(text: str) -> None:
             if text != "(no traces available)":
                 self.trace_key = text
+
+        def _apply_column(text: str) -> None:
+            if text != "(default)":
+                self.column_key = text
+            else:
+                self.column_key = ""
 
         def _apply_advanced(checked: bool) -> None:
             self.advanced_mode = checked
@@ -1298,6 +1365,7 @@ class CurveFitPlugin(TransformPlugin):
             self.y_error_expr = ws["y_error_edit"].text().strip()
 
         ws["trace_combo"].currentTextChanged.connect(_apply_trace)
+        ws["column_combo"].currentTextChanged.connect(_apply_column)
         ws["advanced_check"].toggled.connect(_apply_advanced)
         ws["x_combo"].currentTextChanged.connect(_apply_x)
         ws["y_combo"].currentTextChanged.connect(_apply_y)
@@ -1437,9 +1505,10 @@ class CurveFitPlugin(TransformPlugin):
 
         Returns:
             (dict[str, Any]):
-                Base dict extended with ``"trace_key"``, ``"advanced_mode"``,
-                ``"x_expr"``, ``"y_expr"``, ``"y_error_expr"``, ``"fit_code"``,
-                ``"param_names"``, ``"param_settings"``, ``"show_initial_trace"``,
+                Base dict extended with ``"trace_key"``, ``"column_key"``,
+                ``"advanced_mode"``, ``"x_expr"``, ``"y_expr"``,
+                ``"y_error_expr"``, ``"fit_code"``, ``"param_names"``,
+                ``"param_settings"``, ``"show_initial_trace"``,
                 and ``"show_best_fit_trace"``.
 
         Examples:
@@ -1456,6 +1525,7 @@ class CurveFitPlugin(TransformPlugin):
         """
         d = super().to_json()
         d["trace_key"] = self.trace_key
+        d["column_key"] = self.column_key
         d["advanced_mode"] = self.advanced_mode
         d["x_expr"] = self.x_expr
         d["y_expr"] = self.y_expr
@@ -1475,6 +1545,7 @@ class CurveFitPlugin(TransformPlugin):
                 Dict as produced by :meth:`to_json`.
         """
         self.trace_key = data.get("trace_key", "")
+        self.column_key = data.get("column_key", "")
         self.advanced_mode = data.get("advanced_mode", False)
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")

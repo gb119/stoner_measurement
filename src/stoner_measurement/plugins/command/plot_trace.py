@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.plugins.trace.base import COLUMN_ROLE_D, COLUMN_ROLE_E, COLUMN_ROLE_Y
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -80,9 +81,14 @@ class PlotTraceCommand(CommandPlugin):
     The plugin supports two operating modes selected via the configuration UI:
 
     * **Simple mode** — choose a single trace from the sequence's trace
-      catalogue.  The ``x`` and ``y`` arrays of the corresponding
-      :class:`~stoner_measurement.plugins.trace.TraceData` are used and the
-      trace key becomes the plot title.  Axis labels are also updated from the
+      catalogue.  When :attr:`column_key` is empty and the trace has multiple
+      :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y` columns,
+      every such column is plotted as a separate named trace with error bars
+      derived from the corresponding
+      :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_D` (x-error)
+      and :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_E`
+      (y-error) columns.  When :attr:`column_key` is set only the selected
+      column is plotted.  Axis labels are updated from
       :attr:`~stoner_measurement.plugins.trace.TraceData.names` and
       :attr:`~stoner_measurement.plugins.trace.TraceData.units` metadata.
     * **Advanced mode** — independently specify Python expressions for the
@@ -90,11 +96,11 @@ class PlotTraceCommand(CommandPlugin):
       from different trace channels.  The title expression is evaluated via
       :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`.
 
-    At runtime :meth:`execute` emits the :attr:`plot_trace` signal with the
-    resolved title string and the x/y NumPy arrays.  The
-    :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
-    setter automatically wires this signal (and the :attr:`plot_axis_labels`
-    signal) to the engine's
+    At runtime :meth:`execute` emits either the :attr:`plot_trace` signal
+    (advanced mode) or the :attr:`plot_trace_with_errors` signal (simple mode)
+    with the resolved title string, x/y arrays, and optional error-bar arrays.
+    The :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+    setter automatically wires these signals to the engine's
     :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.plot_widget`
     so that the data appears in the main plot window without any manual signal
     management in the application code.
@@ -103,6 +109,11 @@ class PlotTraceCommand(CommandPlugin):
         trace_key (str):
             Key in the ``_traces`` catalogue for simple mode.  Format is
             ``"{instance_name}:{channel_name}"``.  Defaults to ``""``.
+        column_key (str):
+            When non-empty, selects a specific DataFrame column from the
+            named trace for plotting.  When empty all
+            :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y`
+            columns are plotted.  Defaults to ``""``.
         advanced_mode (bool):
             When ``True``, ``x_expr``, ``y_expr`` and ``title_expr`` are used
             instead of ``trace_key``.  Defaults to ``False``.
@@ -120,14 +131,17 @@ class PlotTraceCommand(CommandPlugin):
             obtain the plot trace title in advanced mode.  Defaults to
             ``"'plot'"``.
         plot_trace (pyqtSignal[str, object, object]):
-            Emitted by :meth:`execute` with ``(title, x_array, y_array)``.
-            Automatically connected to
+            Emitted by :meth:`execute` in **advanced mode** with
+            ``(title, x_array, y_array)``.  Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace`
-            when the plugin is attached to a
-            :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`
-            whose
-            :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.plot_widget`
-            is set.
+            when the plugin is attached to an engine with a plot widget.
+        plot_trace_with_errors (pyqtSignal[str, object, object, object, object]):
+            Emitted by :meth:`execute` in **simple mode** with
+            ``(title, x_array, y_array, x_err, y_err)`` where *x_err* and
+            *y_err* may be ``None`` when no error columns are present.
+            Automatically connected to
+            :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_with_errors`
+            when the plugin is attached to an engine with a plot widget.
         plot_axis_labels (pyqtSignal[str, str]):
             Emitted by :meth:`execute` in simple mode with
             ``(x_label, y_label)`` derived from
@@ -158,8 +172,10 @@ class PlotTraceCommand(CommandPlugin):
         False
     """
 
-    #: Signal emitted by execute() — (title, x_array, y_array).
+    #: Signal emitted by execute() in advanced mode — (title, x_array, y_array).
     plot_trace = pyqtSignal(str, object, object)
+    #: Signal emitted by execute() in simple mode — (title, x_array, y_array, x_err, y_err).
+    plot_trace_with_errors = pyqtSignal(str, object, object, object, object)
     #: Signal emitted by execute() in simple mode — (x_label, y_label).
     plot_axis_labels = pyqtSignal(str, str)
     #: Signal emitted by execute() to ensure x-axis exists — (axis_name, axis_label).
@@ -237,6 +253,9 @@ class PlotTraceCommand(CommandPlugin):
                 old_set_trace = getattr(old_pw, "set_trace", None)
                 if old_set_trace is not None:
                     _safe_disconnect(self.plot_trace, old_set_trace)
+                old_set_trace_err = getattr(old_pw, "set_trace_with_errors", None)
+                if old_set_trace_err is not None:
+                    _safe_disconnect(self.plot_trace_with_errors, old_set_trace_err)
                 old_set_labels = getattr(old_pw, "set_default_axis_labels", None)
                 if old_set_labels is not None:
                     _safe_disconnect(self.plot_axis_labels, old_set_labels)
@@ -259,6 +278,9 @@ class PlotTraceCommand(CommandPlugin):
                 new_set_trace = getattr(new_pw, "set_trace", None)
                 if new_set_trace is not None:
                     self.plot_trace.connect(new_set_trace)
+                new_set_trace_err = getattr(new_pw, "set_trace_with_errors", None)
+                if new_set_trace_err is not None:
+                    self.plot_trace_with_errors.connect(new_set_trace_err)
                 new_set_labels = getattr(new_pw, "set_default_axis_labels", None)
                 if new_set_labels is not None:
                     self.plot_axis_labels.connect(new_set_labels)
@@ -294,22 +316,28 @@ class PlotTraceCommand(CommandPlugin):
     # ------------------------------------------------------------------
 
     def execute(self) -> None:
-        """Retrieve trace data from the engine namespace and emit :attr:`plot_trace`.
+        """Retrieve trace data from the engine namespace and emit plot signals.
 
         In **simple mode** the trace named by :attr:`trace_key` is looked up in
-        the ``_traces`` namespace catalogue.  The catalogue expression is
-        evaluated to obtain the
-        :class:`~stoner_measurement.plugins.trace.TraceData` object whose ``.x``
-        and ``.y`` arrays are used.  The trace key is used as the plot title.
+        the ``_traces`` namespace catalogue.  When :attr:`column_key` is set a
+        single column is plotted.  When :attr:`column_key` is empty and the
+        trace has multiple
+        :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y` columns,
+        every such column is plotted as a separate named trace (title
+        ``"{trace_key}:{col_name}"``).  Error bars are derived positionally:
+        the *i*-th ``COLUMN_ROLE_E`` column is used as symmetric y-error bars
+        for the *i*-th ``COLUMN_ROLE_Y`` column; the first ``COLUMN_ROLE_D``
+        column (if any) is used as symmetric x-error bars shared across all
+        y-columns.  The :attr:`plot_trace_with_errors` signal is emitted for
+        each plotted column.
 
         In **advanced mode** :attr:`x_expr`, :attr:`y_expr`, and
         :attr:`title_expr` are each evaluated against the engine namespace via
-        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` to obtain
-        the respective values.
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` and the
+        :attr:`plot_trace` signal ``(title, x_array, y_array)`` is emitted.
 
-        The :attr:`plot_trace` signal ``(title, x_array, y_array)`` is emitted
-        after the data are resolved.  Warnings are logged and execution is
-        skipped if required data are missing or expressions are empty.
+        Warnings are logged and execution is skipped if required data are
+        missing or expressions are empty.
 
         Raises:
             RuntimeError:
@@ -344,45 +372,115 @@ class PlotTraceCommand(CommandPlugin):
             x_data = self.eval(self.x_expr)
             y_data = self.eval(self.y_expr)
             title = str(self.eval(self.title_expr)) if self.title_expr else "plot"
-        else:
-            traces = self.engine_namespace.get("_traces", {})
-            if not self.trace_key or self.trace_key not in traces:
-                self.log.warning(
-                    "PlotTrace: trace %r not found in _traces catalogue — " "skipping plot.",
-                    self.trace_key,
-                )
-                return
-            trace_expr = traces[self.trace_key]
-            trace_data = self.eval(trace_expr)
-            try:
-                x_data = trace_data.x
-                col = self.column_key
-                if col and hasattr(trace_data, "df") and col in trace_data.df.columns:
-                    y_data = trace_data.df[col].to_numpy()
-                else:
-                    y_data = trace_data.y
-            except AttributeError:
-                self.log.warning(
-                    "PlotTrace: expression for trace %r did not return an object "
-                    "with .x/.y attributes — skipping plot.",
-                    self.trace_key,
-                )
-                return
-            title = self.trace_key
+            x_axis = self.x_axis_name or _DEFAULT_X_AXIS
+            y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
+            self.plot_ensure_x_axis.emit(x_axis, x_axis)
+            self.plot_ensure_y_axis.emit(y_axis, y_axis)
+            self.plot_trace.emit(
+                title,
+                np.asarray(x_data, dtype=float),
+                np.asarray(y_data, dtype=float),
+            )
+            self.plot_trace_axes.emit(title, x_axis, y_axis)
+            self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
+            return
 
-            self._emit_trace_axis_labels(trace_data)
+        # Simple mode
+        traces = self.engine_namespace.get("_traces", {})
+        if not self.trace_key or self.trace_key not in traces:
+            self.log.warning(
+                "PlotTrace: trace %r not found in _traces catalogue — skipping plot.",
+                self.trace_key,
+            )
+            return
+        trace_expr = traces[self.trace_key]
+        trace_data = self.eval(trace_expr)
+        try:
+            x_arr = np.asarray(trace_data.x, dtype=float)
+        except AttributeError:
+            self.log.warning(
+                "PlotTrace: expression for trace %r did not return an object "
+                "with .x/.y attributes — skipping plot.",
+                self.trace_key,
+            )
+            return
 
         x_axis = self.x_axis_name or _DEFAULT_X_AXIS
         y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
         self.plot_ensure_x_axis.emit(x_axis, x_axis)
         self.plot_ensure_y_axis.emit(y_axis, y_axis)
-        self.plot_trace.emit(
-            title,
-            np.asarray(x_data, dtype=float),
-            np.asarray(y_data, dtype=float),
+
+        # Resolve error columns
+        d_cols = trace_data.get_columns_by_role(COLUMN_ROLE_D)
+        e_cols = trace_data.get_columns_by_role(COLUMN_ROLE_E)
+        x_err: np.ndarray | None = (
+            trace_data.df[d_cols[0]].to_numpy(dtype=float) if d_cols else None
         )
+
+        col = self.column_key
+        if col and hasattr(trace_data, "df") and col in trace_data.df.columns:
+            # Single specified column
+            y_arr = np.asarray(trace_data.df[col].to_numpy(), dtype=float)
+            y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
+            idx = y_cols.index(col) if col in y_cols else None
+            y_err: np.ndarray | None = (
+                trace_data.df[e_cols[idx]].to_numpy(dtype=float)
+                if idx is not None and idx < len(e_cols)
+                else (trace_data.df[e_cols[0]].to_numpy(dtype=float) if e_cols else None)
+            )
+            self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
+        else:
+            y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
+            if not y_cols:
+                # Fall back to the .y property when no role annotations present
+                y_arr = np.asarray(trace_data.y, dtype=float)
+                y_err = trace_data.df[e_cols[0]].to_numpy(dtype=float) if e_cols else None
+                self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
+            elif len(y_cols) == 1:
+                y_arr = trace_data.df[y_cols[0]].to_numpy(dtype=float)
+                y_err = trace_data.df[e_cols[0]].to_numpy(dtype=float) if e_cols else None
+                self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
+            else:
+                # Multicolumn: emit one trace per COLUMN_ROLE_Y column
+                for i, y_col in enumerate(y_cols):
+                    title = f"{self.trace_key}:{y_col}"
+                    y_arr = trace_data.df[y_col].to_numpy(dtype=float)
+                    y_err = trace_data.df[e_cols[i]].to_numpy(dtype=float) if i < len(e_cols) else None
+                    self._emit_single_trace(title, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
+
+        self._emit_trace_axis_labels(trace_data)
+
+    def _emit_single_trace(
+        self,
+        title: str,
+        x_arr: np.ndarray,
+        y_arr: np.ndarray,
+        x_err: "np.ndarray | None",
+        y_err: "np.ndarray | None",
+        x_axis: str,
+        y_axis: str,
+    ) -> None:
+        """Emit :attr:`plot_trace_with_errors` and :attr:`plot_trace_axes` for one column.
+
+        Args:
+            title (str):
+                Name of the plot trace.
+            x_arr (np.ndarray):
+                x data array.
+            y_arr (np.ndarray):
+                y data array.
+            x_err (np.ndarray | None):
+                Symmetric x-error array, or ``None``.
+            y_err (np.ndarray | None):
+                Symmetric y-error array, or ``None``.
+            x_axis (str):
+                x-axis name.
+            y_axis (str):
+                y-axis name.
+        """
+        self.plot_trace_with_errors.emit(title, x_arr, y_arr, x_err, y_err)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
-        self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
+        self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_arr))
 
     # ------------------------------------------------------------------
     # Configuration UI
