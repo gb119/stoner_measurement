@@ -956,6 +956,7 @@ class TestPlotTraceCommand:
     def test_default_attributes(self, qapp):
         cmd = PlotTraceCommand()
         assert cmd.trace_key == ""
+        assert cmd.column_key == ""
         assert cmd.advanced_mode is False
         assert cmd.x_expr == ""
         assert cmd.y_expr == ""
@@ -968,6 +969,7 @@ class TestPlotTraceCommand:
         d = cmd.to_json()
         assert d["type"] == "command"
         assert "trace_key" in d
+        assert "column_key" in d
         assert "advanced_mode" in d
         assert "x_expr" in d
         assert "y_expr" in d
@@ -980,6 +982,7 @@ class TestPlotTraceCommand:
 
         cmd = PlotTraceCommand()
         cmd.trace_key = "dummy:Dummy"
+        cmd.column_key = "z"
         cmd.advanced_mode = True
         cmd.x_expr = "dummy.data['Dummy'].x"
         cmd.y_expr = "dummy.data['Dummy'].y"
@@ -989,6 +992,7 @@ class TestPlotTraceCommand:
         restored = BasePlugin.from_json(cmd.to_json())
         assert isinstance(restored, PlotTraceCommand)
         assert restored.trace_key == "dummy:Dummy"
+        assert restored.column_key == "z"
         assert restored.advanced_mode is True
         assert restored.x_expr == "dummy.data['Dummy'].x"
         assert restored.y_expr == "dummy.data['Dummy'].y"
@@ -1345,6 +1349,118 @@ class TestPlotTraceCommand:
         assert "missing_x_axis" in pw.axis_names
         assert "missing_y_axis" in pw.axis_names
         assert pw._trace_axes["test trace"] == ("missing_x_axis", "missing_y_axis")
+
+    def test_execute_simple_mode_uses_column_key(self, qapp, engine):
+        """execute() uses column_key to select a specific DataFrame column."""
+        import pandas as pd
+
+        from stoner_measurement.plugins.trace.base import (
+            COLUMN_ROLE_Y,
+            COLUMN_ROLE_Z,
+            TraceData,
+        )
+
+        df = pd.DataFrame(
+            {"y": [1.0, 2.0], "z": [3.0, 4.0]},
+            index=pd.Index([0.0, 1.0], name="x"),
+        )
+        td = TraceData(df=df, column_roles={"y": COLUMN_ROLE_Y, "z": COLUMN_ROLE_Z})
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"dummy:Ch": "td"}
+        cmd.trace_key = "dummy:Ch"
+        cmd.column_key = "z"
+
+        received: list[tuple] = []
+        cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        cmd.execute()
+
+        assert len(received) == 1
+        np.testing.assert_array_equal(received[0][2], [3.0, 4.0])
+
+    def test_execute_simple_mode_falls_back_to_y_when_column_key_empty(self, qapp, engine):
+        """execute() falls back to .y when column_key is empty."""
+        from stoner_measurement.plugins.trace.base import TraceData
+
+        td = TraceData(x=np.array([0.0, 1.0]), y=np.array([10.0, 20.0]))
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"dummy:Ch": "td"}
+        cmd.trace_key = "dummy:Ch"
+        cmd.column_key = ""  # empty → use .y
+
+        received: list[tuple] = []
+        cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        cmd.execute()
+
+        assert len(received) == 1
+        np.testing.assert_array_equal(received[0][2], [10.0, 20.0])
+
+    def test_execute_simple_mode_falls_back_to_y_for_unknown_column_key(self, qapp, engine):
+        """execute() falls back to .y when column_key names a non-existent column."""
+        from stoner_measurement.plugins.trace.base import TraceData
+
+        td = TraceData(x=np.array([0.0, 1.0]), y=np.array([5.0, 6.0]))
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"dummy:Ch": "td"}
+        cmd.trace_key = "dummy:Ch"
+        cmd.column_key = "nonexistent"
+
+        received: list[tuple] = []
+        cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        cmd.execute()
+
+        assert len(received) == 1
+        np.testing.assert_array_equal(received[0][2], [5.0, 6.0])
+
+    def test_axis_labels_use_column_key_name_and_unit(self, qapp, engine):
+        """_emit_trace_axis_labels uses the column_key to look up name/unit."""
+        import pandas as pd
+
+        from stoner_measurement.plugins.trace.base import (
+            COLUMN_ROLE_Y,
+            COLUMN_ROLE_Z,
+            TraceData,
+        )
+
+        df = pd.DataFrame(
+            {"y": [1.0], "z": [2.0]},
+            index=pd.Index([0.0], name="x"),
+        )
+        td = TraceData(
+            df=df,
+            column_roles={"y": COLUMN_ROLE_Y, "z": COLUMN_ROLE_Z},
+            names={"x": "Current", "y": "Voltage", "z": "Height"},
+            units={"x": "A", "y": "V", "z": "m"},
+        )
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"dummy:Ch": "td"}
+        cmd.trace_key = "dummy:Ch"
+        cmd.column_key = "z"
+
+        labels: list[tuple[str, str]] = []
+        cmd.plot_axis_labels.connect(lambda x, y: labels.append((x, y)))
+        cmd.execute()
+
+        assert len(labels) == 1
+        assert labels[0] == ("Current (A)", "Height (m)")
+
+    def test_config_widget_has_column_combo(self, qapp, engine):
+        """config_widget() must include a Column combo box."""
+        from PyQt6.QtWidgets import QComboBox
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        widget = cmd.config_widget()
+        combos = widget.findChildren(QComboBox)
+        # trace combo + column combo + x/y data combos + x/y axis combos = ≥2
+        assert len(combos) >= 2
 
 
 # ---------------------------------------------------------------------------

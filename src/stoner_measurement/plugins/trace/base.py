@@ -1,8 +1,14 @@
 """TracePlugin — abstract base class for plugins that collect (x, y) traces.
 
-Trace plugins acquire a complete sequence of (x, y) data points from one or
-more instrument channels.  Examples include current-voltage characteristics,
+Trace plugins acquire a complete sequence of data points from one or more
+instrument channels.  Examples include current-voltage characteristics,
 frequency sweeps, and time-series captures.
+
+Each measurement trace is represented by a :class:`TraceData` object that is
+backed by a :class:`pandas.DataFrame`.  The independent variable (*x*) is
+stored as the index; one or more dependent variable columns are stored as
+DataFrame columns, each annotated with a *role* string that describes what the
+column contains (primary y data, z data, error bars, etc.).
 
 All TracePlugin subclasses share a standard lifecycle API used by the sequence
 engine:
@@ -21,13 +27,13 @@ property and the :attr:`~TracePlugin.status_changed` signal using the
 
 from __future__ import annotations
 
-import dataclasses
 import enum
 from abc import abstractmethod
 from collections.abc import Generator, Iterator
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
+import pandas as pd
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -53,47 +59,93 @@ if TYPE_CHECKING:
     pass
 
 
-def _empty_array() -> np.ndarray:
-    """Return an empty one-dimensional float array (dataclass field default factory)."""
-    return np.array([], dtype=float)
+# ---------------------------------------------------------------------------
+# Column role constants
+# ---------------------------------------------------------------------------
+
+COLUMN_ROLE_Y: str = "y"
+"""Role tag identifying a column as the primary dependent variable."""
+
+COLUMN_ROLE_Z: str = "z"
+"""Role tag identifying a column as a secondary dependent variable."""
+
+COLUMN_ROLE_D_X: str = "d_x"
+"""Role tag identifying a column as x-axis uncertainty (error bar)."""
+
+COLUMN_ROLE_D_Y: str = "d_y"
+"""Role tag identifying a column as y-axis uncertainty (error bar)."""
+
+COLUMN_ROLE_D_Z: str = "d_z"
+"""Role tag identifying a column as z-axis uncertainty (error bar)."""
+
+_VALID_ROLES: frozenset[str] = frozenset(
+    {COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_D_X, COLUMN_ROLE_D_Y, COLUMN_ROLE_D_Z}
+)
 
 
-def _default_names() -> dict[str, str]:
-    """Return the default attribute-name → friendly-name mapping."""
-    return {"x": "x", "y": "y", "d": "", "e": ""}
-
-
-def _default_units() -> dict[str, str]:
-    """Return the default attribute-name → unit mapping."""
-    return {"x": "", "y": "", "d": "", "e": ""}
-
-
-@dataclasses.dataclass
 class TraceData:
-    """Container for a single measurement trace with optional error bars and metadata.
+    """Container for a measurement trace backed by a :class:`pandas.DataFrame`.
 
     Each :class:`TraceData` instance corresponds to one named channel produced by a
-    :class:`TracePlugin`.  The four array attributes store the data values; the two
-    mapping attributes provide human-readable labels and physical units for each axis.
+    :class:`TracePlugin`.  The independent variable (*x*) is stored as the DataFrame
+    index; one or more dependent variable columns are stored as DataFrame columns,
+    each annotated with a *role* string (see the ``COLUMN_ROLE_*`` constants).
+
+    Two construction paths are supported:
+
+    * **Legacy / backward-compatible path** — pass ``x``, ``y``, and optionally
+      ``d`` (x-error) and ``e`` (y-error) as NumPy arrays, together with optional
+      ``names`` and ``units`` dicts keyed by ``"x"``, ``"y"``, ``"d"``, ``"e"``.
+      A :class:`~pandas.DataFrame` is built automatically.
+    * **New-style path** — pass a pre-built :class:`~pandas.DataFrame` as ``df``
+      (index = x values, columns = dependent variable data) together with a
+      ``column_roles`` mapping and optional ``names`` / ``units`` dicts.  The
+      ``x``, ``y``, ``d``, and ``e`` positional arguments are ignored when ``df``
+      is provided.
 
     Attributes:
-        x (np.ndarray):
-            One-dimensional array of x-axis (independent variable) values.
-        y (np.ndarray):
-            One-dimensional array of y-axis (dependent variable) values.
-        d (np.ndarray):
-            One-dimensional array of x-axis error bars.  Empty by default.
-        e (np.ndarray):
-            One-dimensional array of y-axis error bars.  Empty by default.
+        column_roles (dict[str, str]):
+            Mapping from column name to role string.  Valid roles are the module
+            constants :data:`COLUMN_ROLE_Y`, :data:`COLUMN_ROLE_Z`,
+            :data:`COLUMN_ROLE_D_X`, :data:`COLUMN_ROLE_D_Y`, and
+            :data:`COLUMN_ROLE_D_Z`.
         names (dict[str, str]):
-            Mapping from attribute name (``"x"``, ``"y"``, ``"d"``, ``"e"``) to a
-            user-friendly display name.  For example ``{"x": "Current", "y": "Voltage"}``.
+            Mapping from axis/column identifier to a human-readable display name.
+            Key ``"x"`` addresses the index (independent variable); all other keys
+            are column names.  Legacy code may use ``{"x": …, "y": …, "d": …,
+            "e": …}`` and those keys continue to work.
         units (dict[str, str]):
-            Mapping from attribute name to physical unit string.  For example
-            ``{"x": "A", "y": "V"}``.
+            Mapping from axis/column identifier to a physical unit string.  Same
+            key conventions as ``names``.
+
+    Keyword Parameters:
+        x (np.ndarray | None):
+            Independent-variable values (legacy path).  Defaults to an empty
+            float array when omitted.
+        y (np.ndarray | None):
+            Primary dependent-variable values (legacy path).  Defaults to an
+            empty float array when omitted.
+        d (np.ndarray | None):
+            x-axis error-bar values (legacy path).  Omitted from the DataFrame
+            when ``None`` or an empty array.
+        e (np.ndarray | None):
+            y-axis error-bar values (legacy path).  Omitted from the DataFrame
+            when ``None`` or an empty array.
+        names (dict[str, str] | None):
+            Human-readable name mapping (both paths).
+        units (dict[str, str] | None):
+            Physical unit mapping (both paths).
+        df (pd.DataFrame | None):
+            Pre-built DataFrame for the new-style path.  The index must contain
+            the independent-variable values.  When provided, the ``x`` / ``y``
+            / ``d`` / ``e`` keyword arguments are ignored.
+        column_roles (dict[str, str] | None):
+            Column-name → role mapping for the new-style path.  Ignored when
+            ``df`` is ``None``.
 
     Examples:
         >>> import numpy as np
+        >>> from stoner_measurement.plugins.trace.base import TraceData, COLUMN_ROLE_Y
         >>> td = TraceData(x=np.array([0.0, 1.0]), y=np.array([0.0, 2.0]))
         >>> float(td.x[1])
         1.0
@@ -104,16 +156,268 @@ class TraceData:
         >>> x_arr, y_arr = td  # backward-compatible unpacking
         >>> float(x_arr[0])
         0.0
-        >>> td[0] is td.x
-        True
+        >>> td.get_columns_by_role(COLUMN_ROLE_Y)
+        ['y']
     """
 
-    x: np.ndarray = dataclasses.field(default_factory=_empty_array)
-    y: np.ndarray = dataclasses.field(default_factory=_empty_array)
-    d: np.ndarray = dataclasses.field(default_factory=_empty_array)
-    e: np.ndarray = dataclasses.field(default_factory=_empty_array)
-    names: dict[str, str] = dataclasses.field(default_factory=_default_names)
-    units: dict[str, str] = dataclasses.field(default_factory=_default_units)
+    def __init__(
+        self,
+        x: np.ndarray | None = None,
+        y: np.ndarray | None = None,
+        d: np.ndarray | None = None,
+        e: np.ndarray | None = None,
+        names: dict[str, str] | None = None,
+        units: dict[str, str] | None = None,
+        *,
+        df: pd.DataFrame | None = None,
+        column_roles: dict[str, str] | None = None,
+    ) -> None:
+        """Initialise a TraceData instance.
+
+        See class docstring for full parameter descriptions.
+        """
+        if df is not None:
+            # New-style path: caller supplies a ready-made DataFrame.
+            self._df: pd.DataFrame = df.copy()
+            self.column_roles: dict[str, str] = dict(column_roles) if column_roles is not None else {}
+            self.names: dict[str, str] = dict(names) if names is not None else {"x": "x"}
+            self.units: dict[str, str] = dict(units) if units is not None else {"x": ""}
+        else:
+            # Legacy / backward-compatible path.
+            x_arr = np.array([], dtype=float) if x is None else np.asarray(x, dtype=float)
+            y_arr = np.array([], dtype=float) if y is None else np.asarray(y, dtype=float)
+
+            col_data: dict[str, np.ndarray] = {"y": y_arr}
+            roles: dict[str, str] = {"y": COLUMN_ROLE_Y}
+
+            if d is not None:
+                d_arr = np.asarray(d, dtype=float)
+                if len(d_arr) > 0:
+                    col_data["d"] = d_arr
+                    roles["d"] = COLUMN_ROLE_D_X
+
+            if e is not None:
+                e_arr = np.asarray(e, dtype=float)
+                if len(e_arr) > 0:
+                    col_data["e"] = e_arr
+                    roles["e"] = COLUMN_ROLE_D_Y
+
+            self._df = pd.DataFrame(col_data, index=pd.Index(x_arr, name="x"))
+            self.column_roles = roles
+
+            if names is not None:
+                self.names = dict(names)
+            else:
+                self.names = {"x": "x", "y": "y"}
+                if "d" in col_data:
+                    self.names["d"] = ""
+                if "e" in col_data:
+                    self.names["e"] = ""
+
+            if units is not None:
+                self.units = dict(units)
+            else:
+                self.units = {"x": "", "y": ""}
+                if "d" in col_data:
+                    self.units["d"] = ""
+                if "e" in col_data:
+                    self.units["e"] = ""
+
+    # ------------------------------------------------------------------
+    # DataFrame-backed properties
+    # ------------------------------------------------------------------
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """The underlying :class:`pandas.DataFrame` (index = x, columns = data).
+
+        Returns:
+            (pd.DataFrame):
+                The backing DataFrame.  Callers should treat this as read-only
+                and use :meth:`add_column` to add new columns.
+
+        Examples:
+            >>> import numpy as np, pandas as pd
+            >>> from stoner_measurement.plugins.trace.base import TraceData
+            >>> td = TraceData(x=np.array([1.0, 2.0]), y=np.array([3.0, 4.0]))
+            >>> isinstance(td.df, pd.DataFrame)
+            True
+            >>> list(td.df.columns)
+            ['y']
+        """
+        return self._df
+
+    @property
+    def columns(self) -> list[str]:
+        """Ordered list of column names in the underlying DataFrame.
+
+        Returns:
+            (list[str]):
+                Column names in DataFrame order.
+
+        Examples:
+            >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import TraceData
+            >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
+            >>> td.columns
+            ['y']
+        """
+        return list(self._df.columns)
+
+    # ------------------------------------------------------------------
+    # Backward-compatible array properties
+    # ------------------------------------------------------------------
+
+    @property
+    def x(self) -> np.ndarray:
+        """Independent-variable values as a one-dimensional NumPy array.
+
+        Returns:
+            (np.ndarray):
+                The DataFrame index as a float64 array.
+
+        Examples:
+            >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import TraceData
+            >>> td = TraceData(x=np.array([0.0, 1.0]), y=np.array([2.0, 3.0]))
+            >>> td.x.tolist()
+            [0.0, 1.0]
+        """
+        return self._df.index.to_numpy(dtype=float)
+
+    @property
+    def y(self) -> np.ndarray:
+        """First :data:`COLUMN_ROLE_Y`-role column as a one-dimensional NumPy array.
+
+        Returns:
+            (np.ndarray):
+                The first ``"y"``-role column, or an empty float64 array if no
+                such column exists.
+
+        Examples:
+            >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import TraceData
+            >>> td = TraceData(x=np.array([0.0, 1.0]), y=np.array([2.0, 3.0]))
+            >>> td.y.tolist()
+            [2.0, 3.0]
+        """
+        cols = self.get_columns_by_role(COLUMN_ROLE_Y)
+        if not cols:
+            return np.array([], dtype=float)
+        return self._df[cols[0]].to_numpy(dtype=float)
+
+    @property
+    def d(self) -> np.ndarray:
+        """First :data:`COLUMN_ROLE_D_X`-role column as a one-dimensional NumPy array.
+
+        Returns:
+            (np.ndarray):
+                The first ``"d_x"``-role column, or an empty float64 array if no
+                such column exists.
+
+        Examples:
+            >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import TraceData
+            >>> td = TraceData(x=np.array([0.0]), y=np.array([1.0]))
+            >>> len(td.d)
+            0
+        """
+        cols = self.get_columns_by_role(COLUMN_ROLE_D_X)
+        if not cols:
+            return np.array([], dtype=float)
+        return self._df[cols[0]].to_numpy(dtype=float)
+
+    @property
+    def e(self) -> np.ndarray:
+        """First :data:`COLUMN_ROLE_D_Y`-role column as a one-dimensional NumPy array.
+
+        Returns:
+            (np.ndarray):
+                The first ``"d_y"``-role column, or an empty float64 array if no
+                such column exists.
+
+        Examples:
+            >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import TraceData
+            >>> td = TraceData(x=np.array([0.0]), y=np.array([1.0]))
+            >>> len(td.e)
+            0
+        """
+        cols = self.get_columns_by_role(COLUMN_ROLE_D_Y)
+        if not cols:
+            return np.array([], dtype=float)
+        return self._df[cols[0]].to_numpy(dtype=float)
+
+    # ------------------------------------------------------------------
+    # Multi-column API
+    # ------------------------------------------------------------------
+
+    def get_columns_by_role(self, role: str) -> list[str]:
+        """Return the names of all columns that carry *role*.
+
+        Args:
+            role (str):
+                One of the ``COLUMN_ROLE_*`` constants.
+
+        Returns:
+            (list[str]):
+                Column names (in insertion order) whose role matches *role*.
+                Empty list if no columns carry that role.
+
+        Examples:
+            >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import (
+            ...     TraceData, COLUMN_ROLE_Y, COLUMN_ROLE_D_Y,
+            ... )
+            >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
+            >>> td.get_columns_by_role(COLUMN_ROLE_Y)
+            ['y']
+            >>> td.get_columns_by_role(COLUMN_ROLE_D_Y)
+            []
+        """
+        return [col for col, r in self.column_roles.items() if r == role]
+
+    def add_column(self, name: str, data: np.ndarray, role: str) -> None:
+        """Add a new data column to this trace.
+
+        Args:
+            name (str):
+                Name for the new column.  Must not already exist in the
+                DataFrame.
+            data (np.ndarray):
+                One-dimensional data array whose length matches the number of
+                rows in the DataFrame.
+            role (str):
+                Role tag for the new column.  Must be one of the
+                ``COLUMN_ROLE_*`` constants.
+
+        Raises:
+            ValueError:
+                If *role* is not one of the recognised role constants.
+
+        Examples:
+            >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import (
+            ...     TraceData, COLUMN_ROLE_Y, COLUMN_ROLE_Z,
+            ... )
+            >>> td = TraceData(x=np.array([1.0, 2.0]), y=np.array([3.0, 4.0]))
+            >>> td.add_column("z", np.array([5.0, 6.0]), COLUMN_ROLE_Z)
+            >>> td.get_columns_by_role(COLUMN_ROLE_Z)
+            ['z']
+            >>> td.df["z"].tolist()
+            [5.0, 6.0]
+        """
+        if role not in _VALID_ROLES:
+            raise ValueError(
+                f"Invalid column role {role!r}. "
+                f"Valid roles are: {sorted(_VALID_ROLES)}"
+            )
+        self._df[name] = np.asarray(data, dtype=float)
+        self.column_roles[name] = role
+
+    # ------------------------------------------------------------------
+    # Backward-compatible iteration and indexing
+    # ------------------------------------------------------------------
 
     def __iter__(self) -> Iterator[np.ndarray]:
         """Yield ``x`` then ``y`` to support two-element tuple unpacking.
@@ -125,10 +429,11 @@ class TraceData:
             (np.ndarray):
                 ``x`` — the independent-variable array.
             (np.ndarray):
-                ``y`` — the dependent-variable array.
+                ``y`` — the primary dependent-variable array.
 
         Examples:
             >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import TraceData
             >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
             >>> a, b = td
             >>> float(a[0])
@@ -144,7 +449,8 @@ class TraceData:
 
         Args:
             index (int):
-                0 for ``x``, 1 for ``y``, 2 for ``d``, 3 for ``e``.
+                0 for ``x``, 1 for ``y``, 2 for ``d`` (x-error), 3 for ``e``
+                (y-error).
 
         Returns:
             (np.ndarray):
@@ -152,10 +458,11 @@ class TraceData:
 
         Raises:
             IndexError:
-                If *index* is out of the range 0–3.
+                If *index* is outside the range 0–3.
 
         Examples:
             >>> import numpy as np
+            >>> from stoner_measurement.plugins.trace.base import TraceData
             >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
             >>> float(td[0][0])
             1.0
@@ -666,8 +973,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         # xs/ys keys also serve as the set of channels seen so far.
         xs: dict[str, list[float]] = {}
         ys: dict[str, list[float]] = {}
-        names = {"x": self.x_label, "y": self.y_label, "d": "", "e": ""}
-        units = {"x": self.x_units, "y": self.y_units, "d": "", "e": ""}
+        names = {"x": self.x_label, "y": self.y_label}
+        units = {"x": self.x_units, "y": self.y_units}
         try:
             for channel, x, y in self.execute_multichannel(parameters):
                 if channel not in xs:
@@ -677,15 +984,17 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 ys[channel].append(y)
         finally:
             self._set_status(TraceStatus.DATA_AVAILABLE)
-        self.data = {
-            ch: TraceData(
-                x=np.array(xs[ch]),
-                y=np.array(ys[ch]),
+        self.data = {}
+        for ch in xs:
+            x_arr = np.array(xs[ch])
+            y_arr = np.array(ys[ch])
+            df = pd.DataFrame({"y": y_arr}, index=pd.Index(x_arr, name="x"))
+            self.data[ch] = TraceData(
+                df=df,
+                column_roles={"y": COLUMN_ROLE_Y},
                 names=names,
                 units=units,
             )
-            for ch in xs
-        }
         return self.data
 
     def disconnect(self) -> None:

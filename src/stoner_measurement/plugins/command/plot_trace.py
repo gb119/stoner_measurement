@@ -176,6 +176,7 @@ class PlotTraceCommand(CommandPlugin):
         # class-level attribute from BasePlugin.
         self._sequence_engine_ref: SequenceEngine | None = None
         self.trace_key: str = ""
+        self.column_key: str = ""
         self.advanced_mode: bool = False
         self.x_expr: str = ""
         self.y_expr: str = ""
@@ -355,7 +356,11 @@ class PlotTraceCommand(CommandPlugin):
             trace_data = self.eval(trace_expr)
             try:
                 x_data = trace_data.x
-                y_data = trace_data.y
+                col = self.column_key
+                if col and hasattr(trace_data, "df") and col in trace_data.df.columns:
+                    y_data = trace_data.df[col].to_numpy()
+                else:
+                    y_data = trace_data.y
             except AttributeError:
                 self.log.warning(
                     "PlotTrace: expression for trace %r did not return an object "
@@ -390,6 +395,9 @@ class PlotTraceCommand(CommandPlugin):
 
         * A **Trace** dropdown (simple mode) — populated from the current
           ``_traces`` catalogue in the engine namespace.
+        * A **Column** dropdown (simple mode) — selects which data column from
+          the trace to plot.  Populated from the columns of the selected trace
+          when available; defaults to the first ``"y"``-role column.
         * An **Advanced mode** checkbox — toggles between simple and advanced
           configuration.
         * An **X data** dropdown (advanced mode) — selects the array to use as
@@ -400,9 +408,9 @@ class PlotTraceCommand(CommandPlugin):
         * A **Title expression** line edit (advanced mode) — a Python
           expression evaluated to produce the plot title at runtime.
 
-        The simple-mode trace dropdown is disabled (greyed out) when advanced
-        mode is active; the advanced-mode controls are disabled when advanced
-        mode is inactive.
+        The simple-mode trace and column dropdowns are disabled (greyed out)
+        when advanced mode is active; the advanced-mode controls are disabled
+        when advanced mode is inactive.
 
         Keyword Parameters:
             parent (QWidget | None):
@@ -435,6 +443,7 @@ class PlotTraceCommand(CommandPlugin):
         channel_names = list(channel_items.keys())
 
         trace_combo = self._build_trace_combo(widget, trace_keys)
+        column_combo = self._build_column_combo(widget)
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
         x_combo = self._build_channel_combo(widget, channel_names, channel_items, self.x_expr, "x_expr")
@@ -448,6 +457,7 @@ class PlotTraceCommand(CommandPlugin):
         y_axis_combo = self._build_plot_axis_combo(widget, axes_pair[1], self.y_axis_name, "y_axis_name")
 
         layout.addRow("Trace:", trace_combo)
+        layout.addRow("Column:", column_combo)
         layout.addRow("Advanced mode:", advanced_check)
         layout.addRow("X data:", x_combo)
         layout.addRow("Y data:", y_combo)
@@ -464,7 +474,15 @@ class PlotTraceCommand(CommandPlugin):
         widget.setLayout(layout)
 
         self._wire_config_signals(
-            trace_combo, advanced_check, x_combo, y_combo, title_edit, x_axis_combo, y_axis_combo, channel_items
+            trace_combo,
+            column_combo,
+            advanced_check,
+            x_combo,
+            y_combo,
+            title_edit,
+            x_axis_combo,
+            y_axis_combo,
+            channel_items,
         )
         return widget
 
@@ -472,9 +490,11 @@ class PlotTraceCommand(CommandPlugin):
         names = getattr(trace_data, "names", {})
         units = getattr(trace_data, "units", {})
         x_name = names.get("x", "")
-        y_name = names.get("y", "")
+        # Use the column_key if set, otherwise fall back to the generic "y" key.
+        y_key = self.column_key if self.column_key else "y"
+        y_name = names.get(y_key, names.get("y", ""))
         x_unit = units.get("x", "")
-        y_unit = units.get("y", "")
+        y_unit = units.get(y_key, units.get("y", ""))
         if x_name.strip().lower() == "x" and not x_unit:
             x_name = ""
         if y_name.strip().lower() == "y" and not y_unit:
@@ -495,6 +515,48 @@ class PlotTraceCommand(CommandPlugin):
         else:
             combo.addItem("(no traces available)")
         return combo
+
+    def _build_column_combo(self, widget: QWidget) -> QComboBox:
+        combo = QComboBox(widget)
+        columns = self._get_trace_columns(self.trace_key)
+        if columns:
+            combo.addItems(columns)
+            if self.column_key in columns:
+                combo.setCurrentText(self.column_key)
+            else:
+                self.column_key = columns[0]
+                combo.setCurrentIndex(0)
+        else:
+            combo.addItem("(default)")
+        return combo
+
+    def _get_trace_columns(self, trace_key: str) -> list[str]:
+        """Return the DataFrame column names for the trace identified by *trace_key*.
+
+        Attempts to evaluate the trace expression in the engine namespace and
+        return :attr:`~stoner_measurement.plugins.trace.TraceData.columns` from
+        the result.  Returns an empty list if the trace has not yet been measured
+        or if the evaluation fails.
+
+        Args:
+            trace_key (str):
+                The trace catalogue key (same as :attr:`trace_key`).
+
+        Returns:
+            (list[str]):
+                Column names from the trace's DataFrame, or an empty list.
+        """
+        traces = self.engine_namespace.get("_traces", {})
+        if not trace_key or trace_key not in traces:
+            return []
+        try:
+            trace_data = self.eval(traces[trace_key])
+            cols = getattr(trace_data, "columns", None)
+            if isinstance(cols, list):
+                return cols
+        except Exception:
+            pass
+        return []
 
     def _build_channel_combo(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -534,6 +596,7 @@ class PlotTraceCommand(CommandPlugin):
     def _wire_config_signals(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         trace_combo: QComboBox,
+        column_combo: QComboBox,
         advanced_check: QCheckBox,
         x_combo: QComboBox,
         y_combo: QComboBox,
@@ -544,6 +607,7 @@ class PlotTraceCommand(CommandPlugin):
     ) -> None:
         def _update_enabled(advanced: bool) -> None:
             trace_combo.setEnabled(not advanced)
+            column_combo.setEnabled(not advanced)
             x_combo.setEnabled(advanced)
             y_combo.setEnabled(advanced)
             title_edit.setEnabled(advanced)
@@ -554,6 +618,12 @@ class PlotTraceCommand(CommandPlugin):
         def _apply_trace(text: str) -> None:
             if text != "(no traces available)":
                 self.trace_key = text
+
+        def _apply_column(text: str) -> None:
+            if text != "(default)":
+                self.column_key = text
+            else:
+                self.column_key = ""
 
         def _apply_x(text: str) -> None:
             if text != "(no channels available)":
@@ -567,6 +637,7 @@ class PlotTraceCommand(CommandPlugin):
             self.title_expr = title_edit.text().strip()
 
         trace_combo.currentTextChanged.connect(_apply_trace)
+        column_combo.currentTextChanged.connect(_apply_column)
         advanced_check.toggled.connect(lambda checked: setattr(self, "advanced_mode", checked))
         x_combo.currentTextChanged.connect(_apply_x)
         y_combo.currentTextChanged.connect(_apply_y)
@@ -599,6 +670,7 @@ class PlotTraceCommand(CommandPlugin):
         """
         d = super().to_json()
         d["trace_key"] = self.trace_key
+        d["column_key"] = self.column_key
         d["advanced_mode"] = self.advanced_mode
         d["x_expr"] = self.x_expr
         d["y_expr"] = self.y_expr
@@ -615,6 +687,7 @@ class PlotTraceCommand(CommandPlugin):
                 Serialised dict as produced by :meth:`to_json`.
         """
         self.trace_key = data.get("trace_key", "")
+        self.column_key = data.get("column_key", "")
         self.advanced_mode = data.get("advanced_mode", False)
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")

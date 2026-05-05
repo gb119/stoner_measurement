@@ -634,6 +634,8 @@ class TestCurveFitOptionalTraces:
         assert traces["fit1:best_fit"] == "fit1.data['best_fit']"
 
     def test_initial_trace_computed_in_transform(self, linear_plugin):
+        import pandas as pd
+
         from stoner_measurement.plugins.trace.base import TraceData
 
         plugin, _ = linear_plugin
@@ -643,8 +645,11 @@ class TestCurveFitOptionalTraces:
         assert isinstance(result["initial_fit"], TraceData)
         assert len(result["initial_fit"].x) == 30
         assert len(result["initial_fit"].y) == 30
+        assert isinstance(result["initial_fit"].df, pd.DataFrame)
 
     def test_best_fit_trace_computed_in_transform(self, linear_plugin):
+        import pandas as pd
+
         from stoner_measurement.plugins.trace.base import TraceData
 
         plugin, _ = linear_plugin
@@ -654,6 +659,7 @@ class TestCurveFitOptionalTraces:
         assert isinstance(result["best_fit"], TraceData)
         assert len(result["best_fit"].x) == 30
         assert len(result["best_fit"].y) == 30
+        assert isinstance(result["best_fit"].df, pd.DataFrame)
 
     def test_best_fit_trace_matches_optimal_params(self, linear_plugin):
         plugin, _ = linear_plugin

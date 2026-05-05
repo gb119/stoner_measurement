@@ -313,6 +313,7 @@ class TestTracePlugin:
     def test_measure_returns_complete_list(self, qapp):
         """measure() must return a dict mapping channel to TraceData, not a generator."""
         import numpy as np
+        import pandas as pd
 
         p = _SimpleTrace()
         result = p.measure({"n": 5})
@@ -320,6 +321,7 @@ class TestTracePlugin:
         td = result["SimpleTrace"]
         assert len(td.x) == 5
         assert isinstance(td.x, np.ndarray)
+        assert isinstance(td.df, pd.DataFrame)
         assert p.status is TraceStatus.DATA_AVAILABLE
 
     # ------------------------------------------------------------------
