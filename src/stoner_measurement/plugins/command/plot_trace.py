@@ -492,9 +492,9 @@ class PlotTraceCommand(CommandPlugin):
         x_name = names.get("x", "")
         # Use the column_key if set, otherwise fall back to the generic "y" key.
         y_key = self.column_key if self.column_key else "y"
-        y_name = names.get(y_key, names.get("y", ""))
+        y_name = names.get(y_key, "")
         x_unit = units.get("x", "")
-        y_unit = units.get(y_key, units.get("y", ""))
+        y_unit = units.get(y_key, "")
         if x_name.strip().lower() == "x" and not x_unit:
             x_name = ""
         if y_name.strip().lower() == "y" and not y_unit:

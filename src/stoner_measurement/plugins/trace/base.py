@@ -973,6 +973,9 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         # xs/ys keys also serve as the set of channels seen so far.
         xs: dict[str, list[float]] = {}
         ys: dict[str, list[float]] = {}
+        # names/units only need the axes that are actually present.  The legacy
+        # "d" and "e" sentinel keys are no longer included because the DataFrame
+        # has no error-bar columns until add_column() is called explicitly.
         names = {"x": self.x_label, "y": self.y_label}
         units = {"x": self.x_units, "y": self.y_units}
         try:

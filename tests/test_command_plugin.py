@@ -1452,14 +1452,18 @@ class TestPlotTraceCommand:
         assert labels[0] == ("Current (A)", "Height (m)")
 
     def test_config_widget_has_column_combo(self, qapp, engine):
-        """config_widget() must include a Column combo box."""
+        """config_widget() must include a Column combo box.
+
+        At minimum there should be two combo boxes: the trace combo and the
+        column combo.  In practice there are more (x/y data and x/y axis), but
+        we only assert the minimum here to keep the test robust.
+        """
         from PyQt6.QtWidgets import QComboBox
 
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
         widget = cmd.config_widget()
         combos = widget.findChildren(QComboBox)
-        # trace combo + column combo + x/y data combos + x/y axis combos = ≥2
         assert len(combos) >= 2
 
 
