@@ -13,9 +13,9 @@ are also re-exported for internal use and testing.
 """
 
 from stoner_measurement.plugins.trace.base import (
-    COLUMN_ROLE_D_X,
-    COLUMN_ROLE_D_Y,
-    COLUMN_ROLE_D_Z,
+    COLUMN_ROLE_D,
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_F,
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
     TraceData,
@@ -33,9 +33,9 @@ from stoner_measurement.plugins.trace.k6221_2182a import (
 )
 
 __all__ = [
-    "COLUMN_ROLE_D_X",
-    "COLUMN_ROLE_D_Y",
-    "COLUMN_ROLE_D_Z",
+    "COLUMN_ROLE_D",
+    "COLUMN_ROLE_E",
+    "COLUMN_ROLE_F",
     "COLUMN_ROLE_Y",
     "COLUMN_ROLE_Z",
     "ComplianceMode",

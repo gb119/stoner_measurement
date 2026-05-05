@@ -7,9 +7,9 @@ import pandas as pd
 import pytest
 
 from stoner_measurement.plugins.trace.base import (
-    COLUMN_ROLE_D_X,
-    COLUMN_ROLE_D_Y,
-    COLUMN_ROLE_D_Z,
+    COLUMN_ROLE_D,
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_F,
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
     TraceData,
@@ -27,23 +27,23 @@ class TestRoleConstants:
     def test_column_role_z(self):
         assert COLUMN_ROLE_Z == "z"
 
-    def test_column_role_d_x(self):
-        assert COLUMN_ROLE_D_X == "d_x"
+    def test_column_role_d(self):
+        assert COLUMN_ROLE_D == "d"
 
-    def test_column_role_d_y(self):
-        assert COLUMN_ROLE_D_Y == "d_y"
+    def test_column_role_e(self):
+        assert COLUMN_ROLE_E == "e"
 
-    def test_column_role_d_z(self):
-        assert COLUMN_ROLE_D_Z == "d_z"
+    def test_column_role_f(self):
+        assert COLUMN_ROLE_F == "f"
 
     def test_constants_exported_from_trace_package(self):
         from stoner_measurement.plugins.trace import (  # noqa: PLC0415
-            COLUMN_ROLE_D_X as DX,
+            COLUMN_ROLE_D as D,
             COLUMN_ROLE_Y as Y,
         )
 
         assert Y == "y"
-        assert DX == "d_x"
+        assert D == "d"
 
 
 # ---------------------------------------------------------------------------
@@ -128,13 +128,13 @@ class TestLegacyConstructor:
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
         assert td.column_roles["y"] == COLUMN_ROLE_Y
 
-    def test_d_column_role_is_d_x(self):
+    def test_d_column_role_is_d(self):
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]), d=np.array([0.1]))
-        assert td.column_roles["d"] == COLUMN_ROLE_D_X
+        assert td.column_roles["d"] == COLUMN_ROLE_D
 
-    def test_e_column_role_is_d_y(self):
+    def test_e_column_role_is_e(self):
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]), e=np.array([0.05]))
-        assert td.column_roles["e"] == COLUMN_ROLE_D_Y
+        assert td.column_roles["e"] == COLUMN_ROLE_E
 
     def test_x_is_numpy_array(self):
         td = TraceData(x=np.array([1.0, 2.0]), y=np.array([3.0, 4.0]))
@@ -254,13 +254,13 @@ class TestGetColumnsByRole:
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
         assert td.get_columns_by_role(COLUMN_ROLE_Y) == ["y"]
 
-    def test_d_x_role(self):
+    def test_d_role(self):
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]), d=np.array([0.1]))
-        assert td.get_columns_by_role(COLUMN_ROLE_D_X) == ["d"]
+        assert td.get_columns_by_role(COLUMN_ROLE_D) == ["d"]
 
-    def test_d_y_role(self):
+    def test_e_role(self):
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]), e=np.array([0.05]))
-        assert td.get_columns_by_role(COLUMN_ROLE_D_Y) == ["e"]
+        assert td.get_columns_by_role(COLUMN_ROLE_E) == ["e"]
 
     def test_missing_role_returns_empty(self):
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
@@ -303,10 +303,10 @@ class TestAddColumn:
         td.add_column("z", np.array([3.0]), COLUMN_ROLE_Z)
         assert td.column_roles["z"] == COLUMN_ROLE_Z
 
-    def test_add_d_z_column(self):
+    def test_add_f_column(self):
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
-        td.add_column("dz", np.array([0.01]), COLUMN_ROLE_D_Z)
-        assert td.column_roles["dz"] == COLUMN_ROLE_D_Z
+        td.add_column("dz", np.array([0.01]), COLUMN_ROLE_F)
+        assert td.column_roles["dz"] == COLUMN_ROLE_F
 
     def test_invalid_role_raises(self):
         td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
@@ -407,14 +407,14 @@ class TestMultiColumnData:
         td = TraceData(df=df, column_roles={"a": COLUMN_ROLE_Y, "b": COLUMN_ROLE_Y})
         np.testing.assert_array_equal(td.y, [1.0])
 
-    def test_d_x_column_via_add_column(self):
+    def test_d_column_via_add_column(self):
         td = TraceData(x=np.array([1.0, 2.0]), y=np.array([3.0, 4.0]))
-        td.add_column("dx_err", np.array([0.1, 0.2]), COLUMN_ROLE_D_X)
+        td.add_column("dx_err", np.array([0.1, 0.2]), COLUMN_ROLE_D)
         np.testing.assert_array_almost_equal(td.d, [0.1, 0.2])
 
-    def test_d_y_column_via_add_column(self):
+    def test_e_column_via_add_column(self):
         td = TraceData(x=np.array([1.0, 2.0]), y=np.array([3.0, 4.0]))
-        td.add_column("dy_err", np.array([0.01, 0.02]), COLUMN_ROLE_D_Y)
+        td.add_column("dy_err", np.array([0.01, 0.02]), COLUMN_ROLE_E)
         np.testing.assert_array_almost_equal(td.e, [0.01, 0.02])
 
     def test_names_for_extra_column(self):

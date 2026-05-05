@@ -69,17 +69,17 @@ COLUMN_ROLE_Y: str = "y"
 COLUMN_ROLE_Z: str = "z"
 """Role tag identifying a column as a secondary dependent variable."""
 
-COLUMN_ROLE_D_X: str = "d_x"
+COLUMN_ROLE_D: str = "d"
 """Role tag identifying a column as x-axis uncertainty (error bar)."""
 
-COLUMN_ROLE_D_Y: str = "d_y"
+COLUMN_ROLE_E: str = "e"
 """Role tag identifying a column as y-axis uncertainty (error bar)."""
 
-COLUMN_ROLE_D_Z: str = "d_z"
+COLUMN_ROLE_F: str = "f"
 """Role tag identifying a column as z-axis uncertainty (error bar)."""
 
 _VALID_ROLES: frozenset[str] = frozenset(
-    {COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_D_X, COLUMN_ROLE_D_Y, COLUMN_ROLE_D_Z}
+    {COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_D, COLUMN_ROLE_E, COLUMN_ROLE_F}
 )
 
 
@@ -107,8 +107,8 @@ class TraceData:
         column_roles (dict[str, str]):
             Mapping from column name to role string.  Valid roles are the module
             constants :data:`COLUMN_ROLE_Y`, :data:`COLUMN_ROLE_Z`,
-            :data:`COLUMN_ROLE_D_X`, :data:`COLUMN_ROLE_D_Y`, and
-            :data:`COLUMN_ROLE_D_Z`.
+            :data:`COLUMN_ROLE_D`, :data:`COLUMN_ROLE_E`, and
+            :data:`COLUMN_ROLE_F`.
         names (dict[str, str]):
             Mapping from axis/column identifier to a human-readable display name.
             Key ``"x"`` addresses the index (independent variable); all other keys
@@ -194,13 +194,13 @@ class TraceData:
                 d_arr = np.asarray(d, dtype=float)
                 if len(d_arr) > 0:
                     col_data["d"] = d_arr
-                    roles["d"] = COLUMN_ROLE_D_X
+                    roles["d"] = COLUMN_ROLE_D
 
             if e is not None:
                 e_arr = np.asarray(e, dtype=float)
                 if len(e_arr) > 0:
                     col_data["e"] = e_arr
-                    roles["e"] = COLUMN_ROLE_D_Y
+                    roles["e"] = COLUMN_ROLE_E
 
             self._df = pd.DataFrame(col_data, index=pd.Index(x_arr, name="x"))
             self.column_roles = roles
@@ -308,11 +308,11 @@ class TraceData:
 
     @property
     def d(self) -> np.ndarray:
-        """First :data:`COLUMN_ROLE_D_X`-role column as a one-dimensional NumPy array.
+        """First :data:`COLUMN_ROLE_D`-role column as a one-dimensional NumPy array.
 
         Returns:
             (np.ndarray):
-                The first ``"d_x"``-role column, or an empty float64 array if no
+                The first ``"d"``-role column, or an empty float64 array if no
                 such column exists.
 
         Examples:
@@ -322,18 +322,18 @@ class TraceData:
             >>> len(td.d)
             0
         """
-        cols = self.get_columns_by_role(COLUMN_ROLE_D_X)
+        cols = self.get_columns_by_role(COLUMN_ROLE_D)
         if not cols:
             return np.array([], dtype=float)
         return self._df[cols[0]].to_numpy(dtype=float)
 
     @property
     def e(self) -> np.ndarray:
-        """First :data:`COLUMN_ROLE_D_Y`-role column as a one-dimensional NumPy array.
+        """First :data:`COLUMN_ROLE_E`-role column as a one-dimensional NumPy array.
 
         Returns:
             (np.ndarray):
-                The first ``"d_y"``-role column, or an empty float64 array if no
+                The first ``"e"``-role column, or an empty float64 array if no
                 such column exists.
 
         Examples:
@@ -343,7 +343,7 @@ class TraceData:
             >>> len(td.e)
             0
         """
-        cols = self.get_columns_by_role(COLUMN_ROLE_D_Y)
+        cols = self.get_columns_by_role(COLUMN_ROLE_E)
         if not cols:
             return np.array([], dtype=float)
         return self._df[cols[0]].to_numpy(dtype=float)
@@ -367,12 +367,12 @@ class TraceData:
         Examples:
             >>> import numpy as np
             >>> from stoner_measurement.plugins.trace.base import (
-            ...     TraceData, COLUMN_ROLE_Y, COLUMN_ROLE_D_Y,
+            ...     TraceData, COLUMN_ROLE_Y, COLUMN_ROLE_E,
             ... )
             >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
             >>> td.get_columns_by_role(COLUMN_ROLE_Y)
             ['y']
-            >>> td.get_columns_by_role(COLUMN_ROLE_D_Y)
+            >>> td.get_columns_by_role(COLUMN_ROLE_E)
             []
         """
         return [col for col, r in self.column_roles.items() if r == role]
