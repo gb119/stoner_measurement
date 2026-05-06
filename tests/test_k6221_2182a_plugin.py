@@ -59,6 +59,13 @@ class TestIdentity:
     def test_channel_names(self, qapp):
         assert _make_plugin().channel_names == ["IV"]
 
+    def test_reported_values_include_channel_stats_when_enabled(self, qapp):
+        plugin = _make_plugin()
+        plugin._set_report_channel_statistics(True)
+        vals = plugin.reported_values()
+        assert "k6221_dc_iv:IV mean" in vals
+        assert "k6221_dc_iv:IV std" in vals
+
     def test_num_traces_matches_channel_names_length(self, qapp):
         """num_traces must always equal len(channel_names) for consistency."""
         plugin = _make_plugin()
