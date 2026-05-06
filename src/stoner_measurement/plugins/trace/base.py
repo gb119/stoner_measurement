@@ -1418,10 +1418,10 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         values: dict[str, str] = {}
         for channel in self.channel_names:
             values[f"{var}:{channel} mean"] = (
-                f"{var}._get_channel_statistic({channel!r}, 'mean')"
+                f"{var}.get_channel_statistic({channel!r}, 'mean')"
             )
             values[f"{var}:{channel} std"] = (
-                f"{var}._get_channel_statistic({channel!r}, 'std')"
+                f"{var}.get_channel_statistic({channel!r}, 'std')"
             )
         return values
 
@@ -1451,7 +1451,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             stats[channel] = {"mean": mean_val, "std": std_val}
         self.channel_statistics = stats
 
-    def _get_channel_statistic(self, channel: str, statistic: str) -> float:
+    def get_channel_statistic(self, channel: str, statistic: str) -> float:
         """Return a cached per-channel statistic, defaulting to ``nan``."""
         return float(self.channel_statistics.get(channel, {}).get(statistic, float("nan")))
 
@@ -1469,4 +1469,5 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             layout.insertWidget(0, checkbox)
             return
 
-        layout.addWidget(checkbox)
+        if hasattr(layout, "addWidget"):
+            layout.addWidget(checkbox)
