@@ -375,7 +375,7 @@ class TraceData:
             >>> td.get_columns_by_role(COLUMN_ROLE_E)
             []
         """
-        return [col for col, r in self.column_roles.items() if r == role]
+        return [col for col in self._df.columns if self.column_roles.get(col) == role]
 
     def add_column(self, name: str, data: np.ndarray, role: str) -> None:
         """Add a new data column to this trace.

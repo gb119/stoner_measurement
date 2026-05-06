@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_X_AXIS = "bottom"
 _DEFAULT_Y_AXIS = "left"
+_DEFAULT_COLUMN_OPTION = "(default)"
 
 
 def _format_axis_label(name: str, unit: str) -> str:
@@ -418,11 +419,13 @@ class PlotTraceCommand(CommandPlugin):
         )
 
         col = self.column_key
+        label_y_key = "y"
         if col and hasattr(trace_data, "df") and col in trace_data.df.columns:
             # Single specified column — find positional match for y-error bars
             y_arr = np.asarray(trace_data.df[col].to_numpy(), dtype=float)
             y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
             col_idx = y_cols.index(col) if col in y_cols else None
+            label_y_key = col
             if col_idx is not None and col_idx < len(e_cols):
                 y_err: np.ndarray | None = trace_data.df[e_cols[col_idx]].to_numpy(dtype=float)
             elif e_cols:
@@ -436,12 +439,15 @@ class PlotTraceCommand(CommandPlugin):
                 # Fall back to the .y property when no role annotations present
                 y_arr = np.asarray(trace_data.y, dtype=float)
                 y_err = trace_data.df[e_cols[0]].to_numpy(dtype=float) if e_cols else None
+                label_y_key = "y"
                 self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
             elif len(y_cols) == 1:
                 y_arr = trace_data.df[y_cols[0]].to_numpy(dtype=float)
                 y_err = trace_data.df[e_cols[0]].to_numpy(dtype=float) if e_cols else None
+                label_y_key = y_cols[0]
                 self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
             else:
+                label_y_key = y_cols[0]
                 # Multicolumn: emit one trace per COLUMN_ROLE_Y column
                 for i, y_col in enumerate(y_cols):
                     title = f"{self.trace_key}:{y_col}"
@@ -449,7 +455,7 @@ class PlotTraceCommand(CommandPlugin):
                     y_err = trace_data.df[e_cols[i]].to_numpy(dtype=float) if i < len(e_cols) else None
                     self._emit_single_trace(title, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
 
-        self._emit_trace_axis_labels(trace_data)
+        self._emit_trace_axis_labels(trace_data, label_y_key)
 
     def _emit_single_trace(
         self,
@@ -585,15 +591,14 @@ class PlotTraceCommand(CommandPlugin):
         )
         return widget
 
-    def _emit_trace_axis_labels(self, trace_data: Any) -> None:
+    def _emit_trace_axis_labels(self, trace_data: Any, y_key: str | None = None) -> None:
         names = getattr(trace_data, "names", {})
         units = getattr(trace_data, "units", {})
         x_name = names.get("x", "")
-        # Use the column_key if set, otherwise fall back to the generic "y" key.
-        y_key = self.column_key if self.column_key else "y"
-        y_name = names.get(y_key, "")
+        resolved_y_key = y_key if y_key else (self.column_key if self.column_key else "y")
+        y_name = names.get(resolved_y_key, "")
         x_unit = units.get("x", "")
-        y_unit = units.get(y_key, "")
+        y_unit = units.get(resolved_y_key, "")
         if x_name.strip().lower() == "x" and not x_unit:
             x_name = ""
         if y_name.strip().lower() == "y" and not y_unit:
@@ -617,17 +622,18 @@ class PlotTraceCommand(CommandPlugin):
 
     def _build_column_combo(self, widget: QWidget) -> QComboBox:
         combo = QComboBox(widget)
-        columns = self._get_trace_columns(self.trace_key)
-        if columns:
-            combo.addItems(columns)
-            if self.column_key in columns:
-                combo.setCurrentText(self.column_key)
-            else:
-                self.column_key = columns[0]
-                combo.setCurrentIndex(0)
-        else:
-            combo.addItem("(default)")
+        self._populate_column_combo(combo, self.trace_key)
         return combo
+
+    def _populate_column_combo(self, combo: QComboBox, trace_key: str) -> None:
+        columns = self._get_trace_columns(trace_key)
+        combo.clear()
+        combo.addItem(_DEFAULT_COLUMN_OPTION)
+        combo.addItems(columns)
+        if self.column_key and self.column_key in columns:
+            combo.setCurrentText(self.column_key)
+        else:
+            combo.setCurrentText(_DEFAULT_COLUMN_OPTION)
 
     def _get_trace_columns(self, trace_key: str) -> list[str]:
         """Return the DataFrame column names for the trace identified by *trace_key*.
@@ -717,9 +723,16 @@ class PlotTraceCommand(CommandPlugin):
         def _apply_trace(text: str) -> None:
             if text != "(no traces available)":
                 self.trace_key = text
+                columns = self._get_trace_columns(self.trace_key)
+                column_combo.blockSignals(True)
+                self._populate_column_combo(column_combo, self.trace_key)
+                if self.column_key not in columns:
+                    self.column_key = ""
+                    column_combo.setCurrentText(_DEFAULT_COLUMN_OPTION)
+                column_combo.blockSignals(False)
 
         def _apply_column(text: str) -> None:
-            if text != "(default)":
+            if text != _DEFAULT_COLUMN_OPTION:
                 self.column_key = text
             else:
                 self.column_key = ""

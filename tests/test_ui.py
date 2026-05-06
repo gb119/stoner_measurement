@@ -1340,6 +1340,15 @@ class TestPlotWidget:
         widget.assign_trace_axes("sig", x_axis="freq", y_axis="temp")
         assert widget._trace_axes["sig"] == ("freq", "temp")
 
+    def test_assign_trace_axes_moves_associated_error_bar_item(self, qapp):
+        widget = PlotWidget()
+        widget.add_y_axis("temp", "Temperature (K)")
+        widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
+        ebi = widget._error_bar_items["sig"]
+        widget.assign_trace_axes("sig", y_axis="temp")
+        assert widget._trace_axes["sig"] == ("bottom", "temp")
+        assert ebi.parentItem() is widget._pair_view_boxes[("bottom", "temp")].childGroup
+
     def test_ensure_y_axis_creates_new_axis(self, qapp):
         widget = PlotWidget()
         assert "new_axis" not in widget.axis_names

@@ -285,6 +285,23 @@ class TestGetColumnsByRole:
         td = TraceData(df=df, column_roles={"y": COLUMN_ROLE_Y, "z": COLUMN_ROLE_Z})
         assert td.get_columns_by_role(COLUMN_ROLE_Z) == ["z"]
 
+    def test_role_order_follows_dataframe_column_order(self):
+        df = pd.DataFrame(
+            {"y1": [1.0], "e1": [0.1], "y2": [2.0], "e2": [0.2]},
+            index=pd.Index([0.0], name="x"),
+        )
+        td = TraceData(
+            df=df,
+            column_roles={
+                "e2": COLUMN_ROLE_E,
+                "y2": COLUMN_ROLE_Y,
+                "e1": COLUMN_ROLE_E,
+                "y1": COLUMN_ROLE_Y,
+            },
+        )
+        assert td.get_columns_by_role(COLUMN_ROLE_Y) == ["y1", "y2"]
+        assert td.get_columns_by_role(COLUMN_ROLE_E) == ["e1", "e2"]
+
 
 # ---------------------------------------------------------------------------
 # add_column

@@ -1451,6 +1451,33 @@ class TestPlotTraceCommand:
         assert len(labels) == 1
         assert labels[0] == ("Current (A)", "Height (m)")
 
+    def test_axis_labels_fallback_to_resolved_y_column_when_column_key_invalid(self, qapp, engine):
+        """Axis label y metadata should come from the actual plotted y column."""
+        import pandas as pd
+
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+
+        df = pd.DataFrame({"V": [1.0], "R": [2.0]}, index=pd.Index([0.0], name="x"))
+        td = TraceData(
+            df=df,
+            column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y},
+            names={"x": "Current", "V": "Voltage", "R": "Resistance"},
+            units={"x": "A", "V": "V", "R": "ohm"},
+        )
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = td
+        engine._namespace["_traces"] = {"dummy:Ch": "td"}
+        cmd.trace_key = "dummy:Ch"
+        cmd.column_key = "missing"
+
+        labels: list[tuple[str, str]] = []
+        cmd.plot_axis_labels.connect(lambda x, y: labels.append((x, y)))
+        cmd.execute()
+
+        assert len(labels) == 1
+        assert labels[0] == ("Current (A)", "Voltage (V)")
+
     def test_config_widget_has_column_combo(self, qapp, engine):
         """config_widget() must include a Column combo box.
 
@@ -1465,6 +1492,41 @@ class TestPlotTraceCommand:
         widget = cmd.config_widget()
         combos = widget.findChildren(QComboBox)
         assert len(combos) >= 2
+
+    def test_config_widget_column_combo_repopulates_on_trace_change(self, qapp, engine):
+        import pandas as pd
+        from PyQt6.QtWidgets import QComboBox
+
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+
+        t1 = TraceData(
+            df=pd.DataFrame({"A": [1.0]}, index=pd.Index([0.0], name="x")),
+            column_roles={"A": COLUMN_ROLE_Y},
+        )
+        t2 = TraceData(
+            df=pd.DataFrame({"B": [2.0]}, index=pd.Index([0.0], name="x")),
+            column_roles={"B": COLUMN_ROLE_Y},
+        )
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        cmd.engine_namespace["t1"] = t1
+        cmd.engine_namespace["t2"] = t2
+        cmd.engine_namespace["_traces"] = {"src:t1": "t1", "src:t2": "t2"}
+        cmd.trace_key = "src:t1"
+        cmd.column_key = ""
+        widget = cmd.config_widget()
+        combos = widget.findChildren(QComboBox)
+
+        trace_combo = next(c for c in combos if c.findText("src:t1") >= 0 and c.findText("src:t2") >= 0)
+        column_combo = next(c for c in combos if c.findText("(default)") >= 0)
+        assert column_combo.findText("A") >= 0
+        assert column_combo.findText("B") == -1
+
+        trace_combo.setCurrentText("src:t2")
+
+        assert column_combo.findText("(default)") >= 0
+        assert column_combo.findText("B") >= 0
+        assert column_combo.findText("A") == -1
 
     # ------------------------------------------------------------------
     # Multicolumn and error-bar behaviour

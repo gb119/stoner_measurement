@@ -742,6 +742,42 @@ class TestCurveFitColumnKey:
         plugin.param_names = ["a", "b"]
         return engine, plugin
 
+    def _make_engine_with_multicolumn_error_trace(self):
+        """Return (engine, plugin) for two y-columns with two y-error columns."""
+        import pandas as pd
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_E, COLUMN_ROLE_Y, TraceData
+
+        engine = SequenceEngine()
+        plugin = CurveFitPlugin()
+        engine.add_plugin("cf", plugin)
+
+        x = np.linspace(0.0, 1.0, 5)
+        df = pd.DataFrame(
+            {
+                "V": 3.0 * x + 1.0,
+                "R": 2.0 * x + 0.5,
+                "e_V": np.full_like(x, 0.1),
+                "e_R": np.full_like(x, 2.0),
+            },
+            index=pd.Index(x, name="x"),
+        )
+        td = TraceData(
+            df=df,
+            column_roles={
+                "V": COLUMN_ROLE_Y,
+                "R": COLUMN_ROLE_Y,
+                "e_V": COLUMN_ROLE_E,
+                "e_R": COLUMN_ROLE_E,
+            },
+        )
+        engine._namespace["_td"] = td
+        engine._namespace["_traces"] = {"src:IV": "_td"}
+        plugin.advanced_mode = False
+        plugin.trace_key = "src:IV"
+        return engine, plugin
+
     def test_column_key_default_is_empty(self, qapp):
         assert CurveFitPlugin().column_key == ""
 
@@ -819,4 +855,49 @@ class TestCurveFitColumnKey:
         data_widget = dict(tabs)["Data"]
         combos = data_widget.findChildren(QComboBox)
         assert len(combos) >= 2  # at least trace_combo and column_combo
+        engine.shutdown()
+
+    def test_get_data_arrays_matches_sigma_to_selected_y_column(self, qapp):
+        engine, plugin = self._make_engine_with_multicolumn_error_trace()
+        plugin.column_key = "R"
+        _, _, sigma, _, _, _ = plugin._get_data_arrays()
+        assert sigma is not None
+        np.testing.assert_allclose(sigma, [2.0, 2.0, 2.0, 2.0, 2.0])
+        engine.shutdown()
+
+    def test_data_tab_column_combo_repopulates_on_trace_change(self, qapp):
+        import pandas as pd
+        from PyQt6.QtWidgets import QComboBox
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+
+        engine = SequenceEngine()
+        plugin = CurveFitPlugin()
+        engine.add_plugin("cf", plugin)
+
+        td1 = TraceData(
+            df=pd.DataFrame({"A": [1.0]}, index=pd.Index([0.0], name="x")),
+            column_roles={"A": COLUMN_ROLE_Y},
+        )
+        td2 = TraceData(
+            df=pd.DataFrame({"B": [2.0]}, index=pd.Index([0.0], name="x")),
+            column_roles={"B": COLUMN_ROLE_Y},
+        )
+        engine._namespace["td1"] = td1
+        engine._namespace["td2"] = td2
+        engine._namespace["_traces"] = {"src:t1": "td1", "src:t2": "td2"}
+        plugin.trace_key = "src:t1"
+
+        tabs = plugin.config_tabs()
+        data_widget = dict(tabs)["Data"]
+        combos = data_widget.findChildren(QComboBox)
+        trace_combo = next(c for c in combos if c.findText("src:t1") >= 0 and c.findText("src:t2") >= 0)
+        column_combo = next(c for c in combos if c.findText("(default)") >= 0)
+
+        assert column_combo.findText("A") >= 0
+        assert column_combo.findText("B") == -1
+        trace_combo.setCurrentText("src:t2")
+        assert column_combo.findText("B") >= 0
+        assert column_combo.findText("A") == -1
         engine.shutdown()

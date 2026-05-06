@@ -101,7 +101,7 @@ annotated with a *role* string from the ``COLUMN_ROLE_*`` constants.
 
     # Add a column to an existing trace
     from stoner_measurement.plugins.trace import COLUMN_ROLE_E
-    td.add_column("d_voltage", np.array([0.01, 0.01, 0.02]), COLUMN_ROLE_E)
+    td.add_column("e_voltage", np.array([0.01, 0.01, 0.02]), COLUMN_ROLE_E)
 
     # Query all columns with a particular role
     y_cols = td_multi.get_columns_by_role(COLUMN_ROLE_Y)

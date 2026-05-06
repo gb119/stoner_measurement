@@ -639,7 +639,12 @@ class PlotWidget(QWidget):
                 vb.addItem(ebi)
                 self._error_bar_items[trace_name] = ebi
         elif trace_name in self._error_bar_items:
-            vb.removeItem(self._error_bar_items.pop(trace_name))
+            ebi = self._error_bar_items.pop(trace_name)
+            parent = ebi.parentItem()
+            if hasattr(parent, "removeItem"):
+                parent.removeItem(ebi)
+            else:
+                vb.removeItem(ebi)
 
     @pyqtSlot()
     def mark_data_update_queued(self) -> None:
@@ -1014,6 +1019,10 @@ class PlotWidget(QWidget):
         if old_vb is not new_vb:
             old_vb.removeItem(curve)
             new_vb.addItem(curve)
+            if trace_name in self._error_bar_items:
+                ebi = self._error_bar_items[trace_name]
+                old_vb.removeItem(ebi)
+                new_vb.addItem(ebi)
 
         self._trace_axes[trace_name] = (x_axis, y_axis)
         self._refresh_trace_and_axis_controls()

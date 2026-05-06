@@ -161,6 +161,7 @@ def _has_p0_function(code: str) -> bool:
 # ---------------------------------------------------------------------------
 
 _INF = float("inf")
+_DEFAULT_COLUMN_OPTION = "(default)"
 _NAN = float("nan")
 
 
@@ -993,17 +994,23 @@ class CurveFitPlugin(TransformPlugin):
             source_units = dict(getattr(trace_data, "units", {}))
 
             col = self.column_key
+            y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
             if col and hasattr(trace_data, "df") and col in trace_data.df.columns:
                 y_data = trace_data.df[col].to_numpy(dtype=float)
                 y_col_name = col
             else:
                 y_data = trace_data.y
-                y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
                 y_col_name = y_cols[0] if y_cols else "y"
 
             e_cols = trace_data.get_columns_by_role(COLUMN_ROLE_E)
             if e_cols:
-                e = trace_data.df[e_cols[0]].to_numpy(dtype=float)
+                e: np.ndarray | None = None
+                if y_col_name in y_cols:
+                    y_idx = y_cols.index(y_col_name)
+                    if y_idx < len(e_cols):
+                        e = trace_data.df[e_cols[y_idx]].to_numpy(dtype=float)
+                if e is None:
+                    e = trace_data.df[e_cols[0]].to_numpy(dtype=float)
             else:
                 e = trace_data.e
             if len(e) == len(y_data) and np.any(e != 0):
@@ -1210,17 +1217,26 @@ class CurveFitPlugin(TransformPlugin):
                 Configured column combo box.
         """
         combo = QComboBox(widget)
-        columns = self._get_trace_columns(self.trace_key)
-        if columns:
-            combo.addItems(columns)
-            if self.column_key in columns:
-                combo.setCurrentText(self.column_key)
-            else:
-                self.column_key = columns[0]
-                combo.setCurrentIndex(0)
-        else:
-            combo.addItem("(default)")
+        self._populate_column_combo(combo, self.trace_key)
         return combo
+
+    def _populate_column_combo(self, combo: QComboBox, trace_key: str) -> None:
+        """Populate *combo* with ``(default)`` plus columns for *trace_key*.
+
+        Args:
+            combo (QComboBox):
+                Combo box to populate.
+            trace_key (str):
+                Trace key used to resolve available columns.
+        """
+        columns = self._get_trace_columns(trace_key)
+        combo.clear()
+        combo.addItem(_DEFAULT_COLUMN_OPTION)
+        combo.addItems(columns)
+        if self.column_key and self.column_key in columns:
+            combo.setCurrentText(self.column_key)
+        else:
+            combo.setCurrentText(_DEFAULT_COLUMN_OPTION)
 
     def _create_data_source_widgets(
         self, widget: QWidget, traces: dict[str, str]
@@ -1343,9 +1359,16 @@ class CurveFitPlugin(TransformPlugin):
         def _apply_trace(text: str) -> None:
             if text != "(no traces available)":
                 self.trace_key = text
+                columns = self._get_trace_columns(self.trace_key)
+                ws["column_combo"].blockSignals(True)
+                self._populate_column_combo(ws["column_combo"], self.trace_key)
+                if self.column_key not in columns:
+                    self.column_key = ""
+                    ws["column_combo"].setCurrentText(_DEFAULT_COLUMN_OPTION)
+                ws["column_combo"].blockSignals(False)
 
         def _apply_column(text: str) -> None:
-            if text != "(default)":
+            if text != _DEFAULT_COLUMN_OPTION:
                 self.column_key = text
             else:
                 self.column_key = ""
