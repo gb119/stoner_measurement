@@ -644,7 +644,10 @@ class PlotWidget(QWidget):
             if hasattr(parent, "removeItem"):
                 parent.removeItem(ebi)
             else:
-                vb.removeItem(ebi)
+                try:
+                    vb.removeItem(ebi)
+                except Exception:  # pragma: no cover - defensive cleanup
+                    pass
 
     @pyqtSlot()
     def mark_data_update_queued(self) -> None:

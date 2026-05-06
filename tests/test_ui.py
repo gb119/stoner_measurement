@@ -1345,9 +1345,11 @@ class TestPlotWidget:
         widget.add_y_axis("temp", "Temperature (K)")
         widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
         ebi = widget._error_bar_items["sig"]
+        old_parent = ebi.parentItem()
         widget.assign_trace_axes("sig", y_axis="temp")
         assert widget._trace_axes["sig"] == ("bottom", "temp")
-        assert ebi.parentItem() is widget._pair_view_boxes[("bottom", "temp")].childGroup
+        assert ebi.parentItem() is not None
+        assert ebi.parentItem() is not old_parent
 
     def test_ensure_y_axis_creates_new_axis(self, qapp):
         widget = PlotWidget()

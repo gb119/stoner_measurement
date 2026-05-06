@@ -595,7 +595,12 @@ class PlotTraceCommand(CommandPlugin):
         names = getattr(trace_data, "names", {})
         units = getattr(trace_data, "units", {})
         x_name = names.get("x", "")
-        resolved_y_key = y_key if y_key else (self.column_key if self.column_key else "y")
+        if y_key:
+            resolved_y_key = y_key
+        elif self.column_key:
+            resolved_y_key = self.column_key
+        else:
+            resolved_y_key = "y"
         y_name = names.get(resolved_y_key, "")
         x_unit = units.get("x", "")
         y_unit = units.get(resolved_y_key, "")
