@@ -641,6 +641,12 @@ class PlotTraceCommand(CommandPlugin):
         return combo
 
     def _populate_column_combo(self, combo: QComboBox, trace_key: str) -> None:
+        """Populate the column combo with ``(default)`` and trace columns.
+
+        Existing items are cleared before repopulation.  If
+        :attr:`column_key` is present in the available columns it is selected;
+        otherwise ``(default)`` is selected.
+        """
         columns = self._get_trace_columns(trace_key)
         combo.clear()
         combo.addItem(_DEFAULT_COLUMN_OPTION)
