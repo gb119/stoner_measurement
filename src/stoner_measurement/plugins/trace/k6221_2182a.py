@@ -23,10 +23,10 @@ import enum
 import logging
 import math
 import time
-from collections.abc import Generator
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -41,7 +41,13 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
-from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
+from stoner_measurement.plugins.trace.base import (
+    COLUMN_ROLE_Y,
+    COLUMN_ROLE_Z,
+    TraceData,
+    TracePlugin,
+    TraceStatus,
+)
 from stoner_measurement.scan import FunctionScanGenerator, ListScanGenerator, SteppedScanGenerator
 from stoner_measurement.ui.widgets import FILTER_GPIB, SIComboBox, SISpinBox, VisaResourceComboBox
 
@@ -144,12 +150,16 @@ class Keithley6221_2182APlugin(TracePlugin):
     The 2182A may be addressed directly over GPIB or through the 6221's built-in
     RS-232 serial relay interface.
 
-    After acquisition, four derived traces are available:
+    After acquisition, a single trace channel named ``"IV"`` is returned,
+    backed by a :class:`~pandas.DataFrame` with:
 
-    * **I(t)** — programmed source current at each point.
-    * **V(t)** — measured voltage at each point.
-    * **R(t)** — resistance V/I at each point.
-    * **P(t)** — power I×V at each point.
+    * **x** (index) — programmed source current in amps.
+    * **V** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y`) —
+      measured voltage in volts.
+    * **R** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Z`) —
+      resistance V/I in ohms (``float("nan")`` when I is effectively zero).
+    * **P** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Z`) —
+      power I×V in watts.
 
     Attributes:
         _6221_resource (str):
@@ -363,56 +373,100 @@ class Keithley6221_2182APlugin(TracePlugin):
 
     @property
     def channel_names(self) -> list[str]:
-        """Names of the four derived measurement channels.
+        """Name of the single multicolumn measurement channel.
 
         Returns:
             (list[str]):
-                ``["I(t)", "V(t)", "R(t)", "P(t)"]``.
+                ``["IV"]``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().channel_names
-            ['I(t)', 'V(t)', 'R(t)', 'P(t)']
+            ['IV']
         """
-        return ["I(t)", "V(t)", "R(t)", "P(t)"]
+        return ["IV"]
 
-    def execute_multichannel(
-        self, parameters: dict[str, Any]
-    ) -> Generator[tuple[str, float, float]]:
-        """Acquire the sweep and yield all four derived channels.
+    def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
+        """Acquire the sweep and return a single multicolumn ``"IV"`` trace.
 
-        Runs the hardware sweep via :meth:`execute`, streaming results point by
-        point to avoid buffering the entire sweep in memory.  For each measured
-        ``(I, V)`` pair, four triples are yielded immediately:
+        Runs the hardware sweep via :meth:`execute` to collect all ``(I, V)``
+        pairs, then builds a :class:`~stoner_measurement.plugins.trace.base.TraceData`
+        backed by a :class:`~pandas.DataFrame` with x = source current and
+        three dependent-variable columns:
 
-        * ``I(t)`` — programmed source current
-        * ``V(t)`` — measured voltage
-        * ``R(t)`` — resistance V/I (``float("nan")`` when I is effectively zero)
-        * ``P(t)`` — power I×V
+        * **V** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y`) —
+          measured voltage in volts.
+        * **R** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Z`) —
+          resistance V/I in ohms (``float("nan")`` when I is effectively zero).
+        * **P** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Z`) —
+          power I×V in watts.
+
+        The result is stored as :attr:`data` and also returned.
 
         Args:
             parameters (dict[str, Any]):
                 Step-specific overrides forwarded to :meth:`execute`.
 
-        Yields:
-            (tuple[str, float, float]):
-                ``(channel_name, sample_index, value)`` triples, interleaved
-                one full set of four per sweep point.
+        Returns:
+            (dict[str, TraceData]):
+                Single-entry mapping ``{"IV": trace_data}`` where
+                *trace_data* carries columns V, R, and P keyed by their
+                respective role constants.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = Keithley6221_2182APlugin()
             >>> # plugin.connect(); plugin.configure()
-            >>> # pts = list(plugin.execute_multichannel({}))  # requires real hardware
+            >>> # result = plugin.measure({})  # requires real hardware
         """
-        for t, (i_val, v_val) in enumerate(self.execute(parameters)):
-            r = v_val / i_val if abs(i_val) > _ZERO_CURRENT_THRESHOLD else float("nan")
-            yield "I(t)", float(t), i_val
-            yield "V(t)", float(t), v_val
-            yield "R(t)", float(t), r
-            yield "P(t)", float(t), i_val * v_val
+        self._set_status(TraceStatus.MEASURING)
+        try:
+            pairs = list(self.execute(parameters))
+        finally:
+            self._set_status(TraceStatus.DATA_AVAILABLE)
+
+        if pairs:
+            i_arr = np.array([i for i, _ in pairs], dtype=float)
+            v_arr = np.array([v for _, v in pairs], dtype=float)
+        else:
+            i_arr = np.array([], dtype=float)
+            v_arr = np.array([], dtype=float)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            r_arr = np.where(
+                np.abs(i_arr) > _ZERO_CURRENT_THRESHOLD,
+                v_arr / i_arr,
+                float("nan"),
+            )
+        p_arr = i_arr * v_arr
+
+        df = pd.DataFrame(
+            {"V": v_arr, "R": r_arr, "P": p_arr},
+            index=pd.Index(i_arr, name="x"),
+        )
+        column_roles = {
+            "V": COLUMN_ROLE_Y,
+            "R": COLUMN_ROLE_Z,
+            "P": COLUMN_ROLE_Z,
+        }
+        names = {
+            "x": self.x_label,
+            "V": "V",
+            "R": "R",
+            "P": "P",
+        }
+        units = {
+            "x": self.x_units,
+            "V": self.y_units,
+            "R": "Ω",
+            "P": "W",
+        }
+        self.data = {
+            "IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)
+        }
+        return self.data
 
     # ------------------------------------------------------------------
     # 2182A command routing helpers

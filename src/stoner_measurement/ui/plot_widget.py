@@ -127,6 +127,8 @@ class PlotWidget(QWidget):
         self._trace_data: dict[str, tuple[list[float], list[float]]] = {}
         # Per-trace plot item
         self._traces: dict[str, pg.PlotDataItem] = {}
+        # Per-trace error-bar item (optional)
+        self._error_bar_items: dict[str, pg.ErrorBarItem] = {}
         # Per-trace axis assignment: name → (x_axis_name, y_axis_name)
         self._trace_axes: dict[str, tuple[str, str]] = {}
         # Per-trace style: name → {"colour": str, "line": str, "point": str}
@@ -568,6 +570,83 @@ class PlotWidget(QWidget):
         finally:
             self._mark_data_update_processed()
 
+    @pyqtSlot(str, object, object, object, object)
+    def set_trace_with_errors(
+        self,
+        trace_name: str,
+        x_data: "Sequence[float]",
+        y_data: "Sequence[float]",
+        x_err: "Sequence[float] | None",
+        y_err: "Sequence[float] | None",
+    ) -> None:
+        """Replace the complete data series for a named trace, including error bars.
+
+        The trace is created automatically if it does not already exist.
+        Error bars are drawn using :class:`pyqtgraph.ErrorBarItem` when the
+        supplied error arrays are non-empty and contain at least one non-zero
+        value.  If a previous error-bar item exists for *trace_name* it is
+        updated in place; if the new call carries no error data the old item
+        is removed.
+
+        Args:
+            trace_name (str):
+                Name of the trace to update.
+            x_data (Sequence[float]):
+                New horizontal axis data.
+            y_data (Sequence[float]):
+                New vertical axis data.
+            x_err (Sequence[float] | None):
+                Symmetric x-axis error values (half-lengths), or ``None`` /
+                empty array for no x-error bars.
+            y_err (Sequence[float] | None):
+                Symmetric y-axis error values (half-lengths), or ``None`` /
+                empty array for no y-error bars.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> import numpy as np
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> widget = PlotWidget()
+            >>> widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.1])
+            >>> widget.y_data("sig")
+            [2.0, 3.0]
+        """
+        self.set_trace(trace_name, x_data, y_data)
+
+        x_arr = np.asarray(x_data, dtype=float)
+        y_arr = np.asarray(y_data, dtype=float)
+
+        x_err_arr = np.asarray(x_err, dtype=float) if x_err is not None else np.array([], dtype=float)
+        y_err_arr = np.asarray(y_err, dtype=float) if y_err is not None else np.array([], dtype=float)
+        has_x_err = len(x_err_arr) == len(x_arr) and np.any(x_err_arr != 0)
+        has_y_err = len(y_err_arr) == len(y_arr) and np.any(y_err_arr != 0)
+
+        x_ax, y_ax = self._trace_axes.get(trace_name, ("bottom", "left"))
+        vb = self._pair_view_boxes.get((x_ax, y_ax), self._plot_item.vb)
+
+        if has_x_err or has_y_err:
+            kwargs: dict = {"x": x_arr, "y": y_arr}
+            if has_x_err:
+                kwargs["left"] = x_err_arr
+                kwargs["right"] = x_err_arr
+            if has_y_err:
+                kwargs["top"] = y_err_arr
+                kwargs["bottom"] = y_err_arr
+            if trace_name in self._error_bar_items:
+                self._error_bar_items[trace_name].setData(**kwargs)
+            else:
+                ebi = pg.ErrorBarItem(**kwargs)
+                vb.addItem(ebi)
+                self._error_bar_items[trace_name] = ebi
+        elif trace_name in self._error_bar_items:
+            ebi = self._error_bar_items.pop(trace_name)
+            parent = ebi.parentItem()
+            if hasattr(parent, "removeItem"):
+                parent.removeItem(ebi)
+            else:
+                if ebi.parentItem() is vb.childGroup:
+                    vb.removeItem(ebi)
+
     @pyqtSlot()
     def mark_data_update_queued(self) -> None:
         """Record that a plot data update has been queued for processing."""
@@ -722,6 +801,8 @@ class PlotWidget(QWidget):
         x_ax, y_ax = self._trace_axes.pop(trace_name, ("bottom", "left"))
         vb = self._pair_view_boxes.get((x_ax, y_ax), self._plot_item.vb)
         vb.removeItem(curve)
+        if trace_name in self._error_bar_items:
+            vb.removeItem(self._error_bar_items.pop(trace_name))
         del self._trace_data[trace_name]
         self._trace_style.pop(trace_name, None)
         self._trace_line_width.pop(trace_name, None)
@@ -939,6 +1020,10 @@ class PlotWidget(QWidget):
         if old_vb is not new_vb:
             old_vb.removeItem(curve)
             new_vb.addItem(curve)
+            if trace_name in self._error_bar_items:
+                ebi = self._error_bar_items[trace_name]
+                old_vb.removeItem(ebi)
+                new_vb.addItem(ebi)
 
         self._trace_axes[trace_name] = (x_axis, y_axis)
         self._refresh_trace_and_axis_controls()

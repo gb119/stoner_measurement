@@ -20,6 +20,7 @@ import textwrap
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -35,7 +36,7 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
-from stoner_measurement.plugins.trace.base import TraceData
+from stoner_measurement.plugins.trace.base import COLUMN_ROLE_E, COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.ui.editor_widget import EditorWidget
 
@@ -160,6 +161,7 @@ def _has_p0_function(code: str) -> bool:
 # ---------------------------------------------------------------------------
 
 _INF = float("inf")
+_DEFAULT_COLUMN_OPTION = "(default)"
 _NAN = float("nan")
 
 
@@ -476,6 +478,7 @@ class CurveFitPlugin(TransformPlugin):
         super().__init__(parent)
         # Data selection (mirrors PlotTraceCommand)
         self.trace_key: str = ""
+        self.column_key: str = ""
         self.advanced_mode: bool = False
         self.x_expr: str = ""
         self.y_expr: str = ""
@@ -680,7 +683,7 @@ class CurveFitPlugin(TransformPlugin):
 
         # ---- 1. Retrieve x / y / sigma from the engine namespace ---------
         try:
-            x_data, y_data, sigma = self._get_data_arrays()
+            x_data, y_data, sigma, y_col_name, source_names, source_units = self._get_data_arrays()
         except Exception as exc:
             self.log.error("CurveFit: failed to retrieve data — %s", exc)
             return nan_result
@@ -711,7 +714,12 @@ class CurveFitPlugin(TransformPlugin):
         # ---- 4. Optionally compute the initial-parameter trace -----------
         result: dict[str, Any] = {}
         if self.show_initial_trace:
-            initial_trace = self._compute_initial_trace(fit_func, x_arr, p0)
+            initial_trace = self._compute_initial_trace(
+                fit_func, x_arr, p0,
+                y_col_name=y_col_name,
+                source_names=source_names,
+                source_units=source_units,
+            )
             if initial_trace is not None:
                 result[_INITIAL_TRACE_KEY] = initial_trace
 
@@ -726,13 +734,27 @@ class CurveFitPlugin(TransformPlugin):
 
         # ---- 7. Optionally compute the best-fit trace --------------------
         if self.show_best_fit_trace:
-            best_fit_trace = self._compute_best_fit_trace(fit_func, x_arr, popt)
+            best_fit_trace = self._compute_best_fit_trace(
+                fit_func, x_arr, popt,
+                y_col_name=y_col_name,
+                source_names=source_names,
+                source_units=source_units,
+            )
             if best_fit_trace is not None:
                 result[_BEST_FIT_TRACE_KEY] = best_fit_trace
 
         return result
 
-    def _compute_initial_trace(self, fit_func, x_arr: np.ndarray, p0) -> "TraceData | None":
+    def _compute_initial_trace(
+        self,
+        fit_func,
+        x_arr: np.ndarray,
+        p0,
+        *,
+        y_col_name: str = "y",
+        source_names: dict[str, str] | None = None,
+        source_units: dict[str, str] | None = None,
+    ) -> "TraceData | None":
         """Evaluate the fit function with initial parameters to produce a trace.
 
         Falls back to ``1.0`` for each parameter when *p0* is ``None`` so that
@@ -746,6 +768,16 @@ class CurveFitPlugin(TransformPlugin):
             p0:
                 Initial parameter values, or ``None``.
 
+        Keyword Parameters:
+            y_col_name (str):
+                Column name to use in the output DataFrame.  Defaults to ``"y"``.
+            source_names (dict[str, str] | None):
+                Human-readable name mapping from the source trace.  Used to
+                propagate axis labels to the output TraceData.
+            source_units (dict[str, str] | None):
+                Physical unit mapping from the source trace.  Used to
+                propagate units to the output TraceData.
+
         Returns:
             (TraceData | None):
                 Trace evaluated at the initial parameters, or ``None`` on
@@ -754,7 +786,20 @@ class CurveFitPlugin(TransformPlugin):
         p0_vals = p0 if p0 is not None else [1.0] * len(self.param_names)
         try:
             y_initial = fit_func(x_arr, *p0_vals)
-            return TraceData(x=x_arr, y=np.asarray(y_initial, dtype=float))
+            y_arr = np.asarray(y_initial, dtype=float)
+            names: dict[str, str] = dict(source_names or {})
+            names.setdefault("x", "x")
+            names.setdefault(y_col_name, y_col_name)
+            units: dict[str, str] = dict(source_units or {})
+            units.setdefault("x", "")
+            units.setdefault(y_col_name, "")
+            df = pd.DataFrame({y_col_name: y_arr}, index=pd.Index(x_arr, name="x"))
+            return TraceData(
+                df=df,
+                column_roles={y_col_name: COLUMN_ROLE_Y},
+                names=names,
+                units=units,
+            )
         except Exception as exc:
             self.log.warning("CurveFit: failed to compute initial trace — %s", exc)
             return None
@@ -834,7 +879,16 @@ class CurveFitPlugin(TransformPlugin):
             result[f"{pname}_err"] = float(perr[i]) if i < len(perr) else _NAN
         return result
 
-    def _compute_best_fit_trace(self, fit_func, x_arr: np.ndarray, popt: np.ndarray) -> "TraceData | None":
+    def _compute_best_fit_trace(
+        self,
+        fit_func,
+        x_arr: np.ndarray,
+        popt: np.ndarray,
+        *,
+        y_col_name: str = "y",
+        source_names: dict[str, str] | None = None,
+        source_units: dict[str, str] | None = None,
+    ) -> "TraceData | None":
         """Evaluate the fit function with optimal parameters to produce a trace.
 
         Args:
@@ -845,6 +899,16 @@ class CurveFitPlugin(TransformPlugin):
             popt (np.ndarray):
                 Optimal parameter values returned by ``curve_fit``.
 
+        Keyword Parameters:
+            y_col_name (str):
+                Column name to use in the output DataFrame.  Defaults to ``"y"``.
+            source_names (dict[str, str] | None):
+                Human-readable name mapping from the source trace.  Used to
+                propagate axis labels to the output TraceData.
+            source_units (dict[str, str] | None):
+                Physical unit mapping from the source trace.  Used to
+                propagate units to the output TraceData.
+
         Returns:
             (TraceData | None):
                 Trace evaluated at the optimal parameters, or ``None`` on
@@ -852,7 +916,20 @@ class CurveFitPlugin(TransformPlugin):
         """
         try:
             y_best = fit_func(x_arr, *popt)
-            return TraceData(x=x_arr, y=np.asarray(y_best, dtype=float))
+            y_arr = np.asarray(y_best, dtype=float)
+            names: dict[str, str] = dict(source_names or {})
+            names.setdefault("x", "x")
+            names.setdefault(y_col_name, y_col_name)
+            units: dict[str, str] = dict(source_units or {})
+            units.setdefault("x", "")
+            units.setdefault(y_col_name, "")
+            df = pd.DataFrame({y_col_name: y_arr}, index=pd.Index(x_arr, name="x"))
+            return TraceData(
+                df=df,
+                column_roles={y_col_name: COLUMN_ROLE_Y},
+                names=names,
+                units=units,
+            )
         except Exception as exc:
             self.log.warning("CurveFit: failed to compute best-fit trace — %s", exc)
             return None
@@ -863,14 +940,42 @@ class CurveFitPlugin(TransformPlugin):
 
     def _get_data_arrays(
         self,
-    ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+    ) -> tuple[
+        np.ndarray | None,
+        np.ndarray | None,
+        np.ndarray | None,
+        str,
+        dict[str, str],
+        dict[str, str],
+    ]:
         """Retrieve x, y and sigma arrays from the engine namespace.
 
+        In simple mode, :attr:`column_key` is used to select a specific column
+        from a multicolumn
+        :class:`~stoner_measurement.plugins.trace.base.TraceData`.  When
+        :attr:`column_key` is empty the first :data:`COLUMN_ROLE_Y` column is
+        used (backward-compatible behaviour).
+
         Returns:
-            (tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]):
-                ``(x_data, y_data, sigma)`` where *sigma* may be ``None``.
+            (tuple):
+                Six-element tuple ``(x_data, y_data, sigma, y_col_name,
+                source_names, source_units)``:
+
+                * *x_data* — independent-variable array, or ``None``.
+                * *y_data* — dependent-variable array, or ``None``.
+                * *sigma* — y-uncertainty array, or ``None``.
+                * *y_col_name* — column name used to select *y_data*.  ``"y"``
+                  in advanced mode.
+                * *source_names* — ``names`` mapping from the source trace
+                  (empty dict in advanced mode).
+                * *source_units* — ``units`` mapping from the source trace
+                  (empty dict in advanced mode).
         """
         sigma = None
+        y_col_name = "y"
+        source_names: dict[str, str] = {}
+        source_units: dict[str, str] = {}
+
         if self.advanced_mode:
             if not self.x_expr or not self.y_expr:
                 raise ValueError("x_expr and y_expr must be set in advanced mode.")
@@ -885,11 +990,33 @@ class CurveFitPlugin(TransformPlugin):
             trace_expr = traces[self.trace_key]
             trace_data = self.eval(trace_expr)
             x_data = trace_data.x
-            y_data = trace_data.y
-            e = getattr(trace_data, "e", None)
-            if e is not None and len(e) == len(y_data) and np.any(e != 0):
-                sigma = e
-        return x_data, y_data, sigma
+            source_names = dict(getattr(trace_data, "names", {}))
+            source_units = dict(getattr(trace_data, "units", {}))
+
+            col = self.column_key
+            y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
+            if col and hasattr(trace_data, "df") and col in trace_data.df.columns:
+                y_data = trace_data.df[col].to_numpy(dtype=float)
+                y_col_name = col
+            else:
+                y_data = trace_data.y
+                y_col_name = y_cols[0] if y_cols else "y"
+
+            e_cols = trace_data.get_columns_by_role(COLUMN_ROLE_E)
+            if e_cols:
+                error_array: np.ndarray | None = None
+                if y_col_name in y_cols:
+                    y_idx = y_cols.index(y_col_name)
+                    if y_idx < len(e_cols):
+                        error_array = trace_data.df[e_cols[y_idx]].to_numpy(dtype=float)
+                if error_array is None:
+                    error_array = trace_data.df[e_cols[0]].to_numpy(dtype=float)
+            else:
+                error_array = trace_data.e
+            if len(error_array) == len(y_data) and np.any(error_array != 0):
+                sigma = error_array
+
+        return x_data, y_data, sigma, y_col_name, source_names, source_units
 
     def _compile_fit_code(self):
         """Compile the fit code and return ``(fit_func, p0_func)``.
@@ -1046,14 +1173,83 @@ class CurveFitPlugin(TransformPlugin):
         tabs.insert(1, ("Fit Function", fit_tab))
         return tabs
 
+    def _get_trace_columns(self, trace_key: str) -> list[str]:
+        """Return the DataFrame column names for the trace identified by *trace_key*.
+
+        Attempts to evaluate the trace expression in the engine namespace and
+        return :attr:`~stoner_measurement.plugins.trace.TraceData.columns` from
+        the result.  Returns an empty list if the trace has not yet been measured
+        or if the evaluation fails.
+
+        Args:
+            trace_key (str):
+                The trace catalogue key (same as :attr:`trace_key`).
+
+        Returns:
+            (list[str]):
+                Column names from the trace's DataFrame, or an empty list.
+        """
+        traces = self.engine_namespace.get("_traces", {})
+        if not trace_key or trace_key not in traces:
+            return []
+        try:
+            trace_data = self.eval(traces[trace_key])
+            cols = getattr(trace_data, "columns", None)
+            if isinstance(cols, list):
+                return cols
+        except Exception:
+            pass
+        return []
+
+    def _build_column_combo(self, widget: QWidget) -> QComboBox:
+        """Build a column-selection combo box for the given widget.
+
+        Populates the combo with the column names of the trace identified by
+        :attr:`trace_key`.  When the trace is not yet available a ``"(default)"``
+        placeholder item is shown and :attr:`column_key` is cleared.
+
+        Args:
+            widget (QWidget):
+                Parent widget for the new combo box.
+
+        Returns:
+            (QComboBox):
+                Configured column combo box.
+        """
+        combo = QComboBox(widget)
+        self._populate_column_combo(combo, self.trace_key)
+        return combo
+
+    def _populate_column_combo(self, combo: QComboBox, trace_key: str) -> None:
+        """Populate *combo* with ``(default)`` plus columns for *trace_key*.
+
+        Existing combo entries are cleared first.  If :attr:`column_key`
+        matches one of the available columns it is selected; otherwise the
+        ``(default)`` entry is selected.
+
+        Args:
+            combo (QComboBox):
+                Combo box to populate.
+            trace_key (str):
+                Trace key used to resolve available columns.
+        """
+        columns = self._get_trace_columns(trace_key)
+        combo.clear()
+        combo.addItem(_DEFAULT_COLUMN_OPTION)
+        combo.addItems(columns)
+        if self.column_key and self.column_key in columns:
+            combo.setCurrentText(self.column_key)
+        else:
+            combo.setCurrentText(_DEFAULT_COLUMN_OPTION)
+
     def _create_data_source_widgets(
         self, widget: QWidget, traces: dict[str, str]
     ) -> dict[str, Any]:
         """Create the data source selection widgets for the *Data* tab.
 
-        Builds and returns the trace dropdown, advanced-mode checkbox, x/y
-        dropdowns, and y-uncertainty line edit together with the channel-items
-        mapping used by the signal handlers.
+        Builds and returns the trace dropdown, column dropdown,
+        advanced-mode checkbox, x/y dropdowns, and y-uncertainty line edit
+        together with the channel-items mapping used by the signal handlers.
 
         Args:
             widget (QWidget):
@@ -1064,9 +1260,9 @@ class CurveFitPlugin(TransformPlugin):
 
         Returns:
             (dict[str, Any]):
-                Dict with keys ``"trace_combo"``, ``"advanced_check"``,
-                ``"x_combo"``, ``"y_combo"``, ``"y_error_edit"``, and
-                ``"channel_items"``.
+                Dict with keys ``"trace_combo"``, ``"column_combo"``,
+                ``"advanced_check"``, ``"x_combo"``, ``"y_combo"``,
+                ``"y_error_edit"``, and ``"channel_items"``.
         """
         trace_keys = list(traces.keys())
         channel_items: dict[str, str] = {}
@@ -1084,6 +1280,8 @@ class CurveFitPlugin(TransformPlugin):
                 self.trace_key = trace_keys[0]
         else:
             trace_combo.addItem("(no traces available)")
+
+        column_combo = self._build_column_combo(widget)
 
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
@@ -1113,6 +1311,7 @@ class CurveFitPlugin(TransformPlugin):
 
         return {
             "trace_combo": trace_combo,
+            "column_combo": column_combo,
             "advanced_check": advanced_check,
             "x_combo": x_combo,
             "y_combo": y_combo,
@@ -1138,6 +1337,7 @@ class CurveFitPlugin(TransformPlugin):
         ws = self._create_data_source_widgets(widget, traces)
 
         layout.addRow("Trace:", ws["trace_combo"])
+        layout.addRow("Column:", ws["column_combo"])
         layout.addRow("Advanced mode:", ws["advanced_check"])
         layout.addRow("X data:", ws["x_combo"])
         layout.addRow("Y data:", ws["y_combo"])
@@ -1152,6 +1352,7 @@ class CurveFitPlugin(TransformPlugin):
 
         def _update_enabled(advanced: bool) -> None:
             ws["trace_combo"].setEnabled(not advanced)
+            ws["column_combo"].setEnabled(not advanced)
             ws["x_combo"].setEnabled(advanced)
             ws["y_combo"].setEnabled(advanced)
             ws["y_error_edit"].setEnabled(advanced)
@@ -1162,6 +1363,19 @@ class CurveFitPlugin(TransformPlugin):
         def _apply_trace(text: str) -> None:
             if text != "(no traces available)":
                 self.trace_key = text
+                columns = self._get_trace_columns(self.trace_key)
+                ws["column_combo"].blockSignals(True)
+                self._populate_column_combo(ws["column_combo"], self.trace_key)
+                if self.column_key not in columns:
+                    self.column_key = ""
+                    ws["column_combo"].setCurrentText(_DEFAULT_COLUMN_OPTION)
+                ws["column_combo"].blockSignals(False)
+
+        def _apply_column(text: str) -> None:
+            if text != _DEFAULT_COLUMN_OPTION:
+                self.column_key = text
+            else:
+                self.column_key = ""
 
         def _apply_advanced(checked: bool) -> None:
             self.advanced_mode = checked
@@ -1178,6 +1392,7 @@ class CurveFitPlugin(TransformPlugin):
             self.y_error_expr = ws["y_error_edit"].text().strip()
 
         ws["trace_combo"].currentTextChanged.connect(_apply_trace)
+        ws["column_combo"].currentTextChanged.connect(_apply_column)
         ws["advanced_check"].toggled.connect(_apply_advanced)
         ws["x_combo"].currentTextChanged.connect(_apply_x)
         ws["y_combo"].currentTextChanged.connect(_apply_y)
@@ -1317,9 +1532,10 @@ class CurveFitPlugin(TransformPlugin):
 
         Returns:
             (dict[str, Any]):
-                Base dict extended with ``"trace_key"``, ``"advanced_mode"``,
-                ``"x_expr"``, ``"y_expr"``, ``"y_error_expr"``, ``"fit_code"``,
-                ``"param_names"``, ``"param_settings"``, ``"show_initial_trace"``,
+                Base dict extended with ``"trace_key"``, ``"column_key"``,
+                ``"advanced_mode"``, ``"x_expr"``, ``"y_expr"``,
+                ``"y_error_expr"``, ``"fit_code"``, ``"param_names"``,
+                ``"param_settings"``, ``"show_initial_trace"``,
                 and ``"show_best_fit_trace"``.
 
         Examples:
@@ -1336,6 +1552,7 @@ class CurveFitPlugin(TransformPlugin):
         """
         d = super().to_json()
         d["trace_key"] = self.trace_key
+        d["column_key"] = self.column_key
         d["advanced_mode"] = self.advanced_mode
         d["x_expr"] = self.x_expr
         d["y_expr"] = self.y_expr
@@ -1355,6 +1572,7 @@ class CurveFitPlugin(TransformPlugin):
                 Dict as produced by :meth:`to_json`.
         """
         self.trace_key = data.get("trace_key", "")
+        self.column_key = data.get("column_key", "")
         self.advanced_mode = data.get("advanced_mode", False)
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")

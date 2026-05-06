@@ -7,8 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from stoner_measurement.plugins.trace import DummyPlugin
-from stoner_measurement.plugins.trace import TraceStatus
+from stoner_measurement.plugins.trace import DummyPlugin, TraceStatus
 from stoner_measurement.scan import SteppedScanGenerator
 
 
@@ -195,6 +194,7 @@ class TestDummyPlugin:
 
     def test_measure_yields_data(self, qapp):
         import numpy as np
+        import pandas as pd
 
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.4, step=0.1)
@@ -206,6 +206,18 @@ class TestDummyPlugin:
         assert isinstance(td.y, np.ndarray)
         assert len(td.x) == 5
         assert len(td.y) == 5
+        # New DataFrame-backed API
+        assert isinstance(td.df, pd.DataFrame)
+        assert "y" in td.df.columns
+
+    def test_measure_tracedata_has_column_roles(self, qapp):
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y
+
+        plugin = DummyPlugin()
+        _make_scan(plugin, end=0.2, step=0.1)
+        result = plugin.measure({})
+        td = result["Dummy"]
+        assert td.get_columns_by_role(COLUMN_ROLE_Y) == ["y"]
 
     def test_measure_status_data_available_after_completion(self, qapp):
         plugin = DummyPlugin()

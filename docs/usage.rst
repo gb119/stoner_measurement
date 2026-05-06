@@ -65,6 +65,59 @@ Plugin types
   :meth:`~stoner_measurement.plugins.trace.TracePlugin.disconnect` to manage
   hardware connections.
 
+Trace data structure
+~~~~~~~~~~~~~~~~~~~~
+
+Each :class:`~stoner_measurement.plugins.trace.TraceData` object returned by
+:meth:`~stoner_measurement.plugins.trace.TracePlugin.measure` is backed by a
+:class:`pandas.DataFrame`.  The independent variable (*x*) is the index; one
+or more dependent variable **columns** are stored in the DataFrame, each
+annotated with a *role* string from the ``COLUMN_ROLE_*`` constants.
+
+.. code-block:: python
+
+    from stoner_measurement.plugins.trace import (
+        TraceData,
+        COLUMN_ROLE_Y,
+        COLUMN_ROLE_Z,
+    )
+    import numpy as np
+    import pandas as pd
+
+    # Single-column trace (same as legacy API)
+    td = TraceData(x=np.array([0.0, 1.0, 2.0]), y=np.array([0.0, 1.0, 4.0]))
+
+    # Multi-column trace using the new-style DataFrame constructor
+    df = pd.DataFrame(
+        {"y": [0.0, 1.0, 4.0], "z": [0.0, 0.5, 2.0]},
+        index=pd.Index([0.0, 1.0, 2.0], name="x"),
+    )
+    td_multi = TraceData(
+        df=df,
+        column_roles={"y": COLUMN_ROLE_Y, "z": COLUMN_ROLE_Z},
+        names={"x": "Time", "y": "Voltage", "z": "Current"},
+        units={"x": "s", "y": "V", "z": "A"},
+    )
+
+    # Add a column to an existing trace
+    from stoner_measurement.plugins.trace import COLUMN_ROLE_E
+    td.add_column("e_voltage", np.array([0.01, 0.01, 0.02]), COLUMN_ROLE_E)
+
+    # Query all columns with a particular role
+    y_cols = td_multi.get_columns_by_role(COLUMN_ROLE_Y)
+
+The **legacy API** (``td.x``, ``td.y``, ``td.d``, ``td.e``,
+``TraceData(x=…, y=…, d=…, e=…)``) is fully preserved for backward
+compatibility.
+
+Selecting which column to plot
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the *Plot Trace* command's configuration widget a **Column** dropdown
+selects which DataFrame column provides the *y* data for the plot.  When left
+on ``(default)`` the first ``COLUMN_ROLE_Y``-role column is used.  Advanced
+mode still accepts arbitrary NumPy expressions.
+
 **State-control plugin** — subclass
 :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`:
 

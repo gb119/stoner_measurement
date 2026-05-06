@@ -1,7 +1,8 @@
 """Trace sub-package — plugins that collect (x, y) data traces from instruments.
 
-Exports :class:`TracePlugin` (abstract base), :class:`TraceData`, and
-:class:`TraceStatus` from :mod:`stoner_measurement.plugins.trace.base`,
+Exports :class:`TracePlugin` (abstract base), :class:`TraceData`,
+:class:`TraceStatus`, and the ``COLUMN_ROLE_*`` role constants from
+:mod:`stoner_measurement.plugins.trace.base`,
 :class:`DummyPlugin` from :mod:`stoner_measurement.plugins.trace.dummy`, and
 :class:`Keithley6221_2182APlugin` together with :class:`ConnectionMode`,
 :class:`ComplianceMode`, and :class:`SourceRangeMode` from
@@ -12,6 +13,11 @@ are also re-exported for internal use and testing.
 """
 
 from stoner_measurement.plugins.trace.base import (
+    COLUMN_ROLE_D,
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_F,
+    COLUMN_ROLE_Y,
+    COLUMN_ROLE_Z,
     TraceData,
     TracePlugin,
     TraceStatus,
@@ -27,6 +33,11 @@ from stoner_measurement.plugins.trace.k6221_2182a import (
 )
 
 __all__ = [
+    "COLUMN_ROLE_D",
+    "COLUMN_ROLE_E",
+    "COLUMN_ROLE_F",
+    "COLUMN_ROLE_Y",
+    "COLUMN_ROLE_Z",
     "ComplianceMode",
     "ConnectionMode",
     "DummyPlugin",

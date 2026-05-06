@@ -54,10 +54,10 @@ class TestIdentity:
         assert _make_plugin().plugin_type == "trace"
 
     def test_num_traces(self, qapp):
-        assert _make_plugin().num_traces == 4
+        assert _make_plugin().num_traces == 1
 
     def test_channel_names(self, qapp):
-        assert _make_plugin().channel_names == ["I(t)", "V(t)", "R(t)", "P(t)"]
+        assert _make_plugin().channel_names == ["IV"]
 
     def test_num_traces_matches_channel_names_length(self, qapp):
         """num_traces must always equal len(channel_names) for consistency."""
@@ -415,89 +415,210 @@ class TestNewAttributes:
 
 
 # ---------------------------------------------------------------------------
-# execute_multichannel — four-channel output
+# measure() — multicolumn DataFrame output
 # ---------------------------------------------------------------------------
 
-class TestExecuteMultichannel:
-    def test_multichannel_yields_four_channels(self, qapp):
-        """execute_multichannel must yield data for all four channel names."""
-        from unittest.mock import MagicMock, patch
+class TestMeasure:
+    def _patch_execute(self, plugin, fake_pairs):
+        from unittest.mock import patch
+        return patch.object(plugin, "execute", return_value=iter(fake_pairs))
+
+    def test_measure_returns_iv_key(self, qapp):
+        """measure() must return a dict with a single 'IV' key."""
+        from unittest.mock import patch
         import numpy as np
 
         plugin = _make_plugin()
-        plugin._k6221 = MagicMock()
-        plugin._sweep_values = np.array([1e-3, 2e-3, 3e-3])
+        plugin._k6221 = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
 
-        # Patch execute() to return predictable (I, V) pairs without hardware.
-        fake_pairs = [(1e-3, 0.1), (2e-3, 0.2), (3e-3, 0.3)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
-            triples = list(plugin.execute_multichannel({}))
-
-        channels = [ch for ch, _, _ in triples]
-        assert set(channels) == {"I(t)", "V(t)", "R(t)", "P(t)"}
-        # Each channel should have 3 points.
-        for ch in ("I(t)", "V(t)", "R(t)", "P(t)"):
-            assert channels.count(ch) == 3
-
-    def test_multichannel_yields_interleaved_not_batched(self, qapp):
-        """Channels must be interleaved per-point, not batched per-channel.
-
-        The streaming implementation must yield I(t), V(t), R(t), P(t) for
-        point 0 before yielding any data for point 1, so that the base-class
-        measure() loop can update live charts as each point arrives.
-        """
-        from unittest.mock import patch
-
-        plugin = _make_plugin()
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.2)]
         with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
-            triples = list(plugin.execute_multichannel({}))
+            result = plugin.measure({})
 
-        # First 4 triples must be the 4 channels for point t=0
-        first_four_channels = [ch for ch, _, _ in triples[:4]]
-        assert first_four_channels == ["I(t)", "V(t)", "R(t)", "P(t)"]
-        # Second 4 triples must be the 4 channels for point t=1
-        second_four_channels = [ch for ch, _, _ in triples[4:8]]
-        assert second_four_channels == ["I(t)", "V(t)", "R(t)", "P(t)"]
+        assert list(result.keys()) == ["IV"]
 
-    def test_multichannel_resistance_values(self, qapp):
-        """R(t) channel must equal V/I for each point."""
-        from unittest.mock import patch
+    def test_measure_x_is_source_current(self, qapp):
+        """The x-axis of the returned TraceData must be the source current."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
 
         plugin = _make_plugin()
-        fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.2)]
         with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
-            triples = list(plugin.execute_multichannel({}))
+            result = plugin.measure({})
 
-        r_vals = [y for ch, _, y in triples if ch == "R(t)"]
-        assert r_vals[0] == pytest.approx(0.1 / 1e-3)
-        assert r_vals[1] == pytest.approx(0.4 / 2e-3)
+        np.testing.assert_array_almost_equal(result["IV"].x, [1e-3, 2e-3])
 
-    def test_multichannel_power_values(self, qapp):
-        """P(t) channel must equal I×V for each point."""
-        from unittest.mock import patch
+    def test_measure_v_column_values(self, qapp):
+        """Column 'V' must hold the measured voltages."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
 
         plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
         with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
-            triples = list(plugin.execute_multichannel({}))
+            result = plugin.measure({})
 
-        p_vals = [y for ch, _, y in triples if ch == "P(t)"]
-        assert p_vals[0] == pytest.approx(1e-3 * 0.1)
-        assert p_vals[1] == pytest.approx(2e-3 * 0.4)
+        np.testing.assert_array_almost_equal(result["IV"].df["V"], [0.1, 0.4])
 
-    def test_multichannel_zero_current_gives_nan_resistance(self, qapp):
-        """R(t) must be NaN when current is zero to avoid division by zero."""
+    def test_measure_r_column_values(self, qapp):
+        """Column 'R' must hold V/I for each point."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+        import pytest
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            result = plugin.measure({})
+
+        r = result["IV"].df["R"].tolist()
+        assert r[0] == pytest.approx(0.1 / 1e-3)
+        assert r[1] == pytest.approx(0.4 / 2e-3)
+
+    def test_measure_p_column_values(self, qapp):
+        """Column 'P' must hold I×V for each point."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+        import pytest
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            result = plugin.measure({})
+
+        p = result["IV"].df["P"].tolist()
+        assert p[0] == pytest.approx(1e-3 * 0.1)
+        assert p[1] == pytest.approx(2e-3 * 0.4)
+
+    def test_measure_zero_current_r_is_nan(self, qapp):
+        """Column 'R' must be NaN when source current is zero."""
         import math
-        from unittest.mock import patch
+        import numpy as np
+        from unittest.mock import MagicMock, patch
 
         plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([0.0])
+
         fake_pairs = [(0.0, 0.5)]
         with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
-            triples = list(plugin.execute_multichannel({}))
+            result = plugin.measure({})
 
-        r_vals = [y for ch, _, y in triples if ch == "R(t)"]
-        assert math.isnan(r_vals[0])
+        assert math.isnan(result["IV"].df["R"].iloc[0])
+
+    def test_measure_column_roles(self, qapp):
+        """V must have COLUMN_ROLE_Y; R and P must have COLUMN_ROLE_Z."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, COLUMN_ROLE_Z
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3])
+
+        fake_pairs = [(1e-3, 0.1)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            result = plugin.measure({})
+
+        roles = result["IV"].column_roles
+        assert roles["V"] == COLUMN_ROLE_Y
+        assert roles["R"] == COLUMN_ROLE_Z
+        assert roles["P"] == COLUMN_ROLE_Z
+
+    def test_measure_units(self, qapp):
+        """Returned TraceData must carry correct physical units."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3])
+
+        fake_pairs = [(1e-3, 0.1)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            result = plugin.measure({})
+
+        units = result["IV"].units
+        assert units["x"] == "A"
+        assert units["V"] == "V"
+        assert units["R"] == "Ω"
+        assert units["P"] == "W"
+
+    def test_measure_names(self, qapp):
+        """Returned TraceData must carry correct axis names."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3])
+
+        fake_pairs = [(1e-3, 0.1)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            result = plugin.measure({})
+
+        names = result["IV"].names
+        assert names["x"] == "I"
+        assert names["V"] == "V"
+
+    def test_measure_status_is_data_available(self, qapp):
+        """Status must be DATA_AVAILABLE after a successful measure()."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3])
+
+        fake_pairs = [(1e-3, 0.1)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            plugin.measure({})
+
+        assert plugin.status is TraceStatus.DATA_AVAILABLE
+
+    def test_measure_stores_data_attr(self, qapp):
+        """Result must also be stored as plugin.data."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3])
+
+        fake_pairs = [(1e-3, 0.1)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            result = plugin.measure({})
+
+        assert plugin.data is result
+
+    def test_measure_empty_sweep(self, qapp):
+        """measure() must handle an empty sweep without raising."""
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([])
+
+        with patch.object(plugin, "execute", return_value=iter([])):
+            result = plugin.measure({})
+
+        assert "IV" in result
+        assert len(result["IV"].x) == 0
 
 
 # ---------------------------------------------------------------------------
