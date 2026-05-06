@@ -1004,17 +1004,17 @@ class CurveFitPlugin(TransformPlugin):
 
             e_cols = trace_data.get_columns_by_role(COLUMN_ROLE_E)
             if e_cols:
-                e: np.ndarray | None = None
+                error_array: np.ndarray | None = None
                 if y_col_name in y_cols:
                     y_idx = y_cols.index(y_col_name)
                     if y_idx < len(e_cols):
-                        e = trace_data.df[e_cols[y_idx]].to_numpy(dtype=float)
-                if e is None:
-                    e = trace_data.df[e_cols[0]].to_numpy(dtype=float)
+                        error_array = trace_data.df[e_cols[y_idx]].to_numpy(dtype=float)
+                if error_array is None:
+                    error_array = trace_data.df[e_cols[0]].to_numpy(dtype=float)
             else:
-                e = trace_data.e
-            if len(e) == len(y_data) and np.any(e != 0):
-                sigma = e
+                error_array = trace_data.e
+            if len(error_array) == len(y_data) and np.any(error_array != 0):
+                sigma = error_array
 
         return x_data, y_data, sigma, y_col_name, source_names, source_units
 

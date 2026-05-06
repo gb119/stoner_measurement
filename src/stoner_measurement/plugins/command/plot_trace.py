@@ -601,6 +601,10 @@ class PlotTraceCommand(CommandPlugin):
                 Explicit key for resolving y-axis metadata from ``names`` /
                 ``units``.  When ``None``, falls back to :attr:`column_key`
                 and then ``"y"``.
+
+        Notes:
+            Fallback priority for y-axis metadata is:
+            ``y_key`` argument → :attr:`column_key` → ``"y"``.
         """
         names = getattr(trace_data, "names", {})
         units = getattr(trace_data, "units", {})

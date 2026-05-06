@@ -644,10 +644,8 @@ class PlotWidget(QWidget):
             if hasattr(parent, "removeItem"):
                 parent.removeItem(ebi)
             else:
-                try:
+                if ebi.parentItem() is vb.childGroup:
                     vb.removeItem(ebi)
-                except RuntimeError:  # pragma: no cover - defensive cleanup
-                    pass
 
     @pyqtSlot()
     def mark_data_update_queued(self) -> None:
