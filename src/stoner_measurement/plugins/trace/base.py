@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
@@ -737,6 +738,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         self.scan_generator: BaseScanGenerator = self._scan_generator_class(parent=self)
         self._status: TraceStatus = TraceStatus.IDLE
         self.data: dict[str, TraceData] = {}
+        self._report_channel_statistics: bool = False
+        self.channel_statistics: dict[str, dict[str, float]] = {}
         self._cached_config_tabs: list | None = None
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
@@ -821,6 +824,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         data = super().to_json()
         data["scan_generator"] = self.scan_generator.to_json()
+        data["report_channel_statistics"] = self._report_channel_statistics
         return data
 
     def _restore_from_json(self, data: dict) -> None:
@@ -839,6 +843,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             gen = BaseScanGenerator.from_json(data["scan_generator"], parent=self)
             self.scan_generator = gen
             self.scan_generator_changed.emit()
+        if "report_channel_statistics" in data:
+            self._report_channel_statistics = bool(data["report_channel_statistics"])
 
     @property
     def status(self) -> TraceStatus:
@@ -998,6 +1004,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 names=names,
                 units=units,
             )
+        self._update_channel_statistics()
         return self.data
 
     def disconnect(self) -> None:
@@ -1177,6 +1184,11 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         ]
 
         settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
+        stats_check = QCheckBox("Report channel average and standard deviation outputs")
+        stats_check.setChecked(self._report_channel_statistics)
+        stats_check.toggled.connect(self._set_report_channel_statistics)
+        self._attach_statistics_checkbox(settings_widget, stats_check)
+
         tabs.append((f"{self.name} \u2013 Settings", settings_widget))
 
         about_tab = self._make_about_tab()
@@ -1388,3 +1400,92 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         var = self.instance_name
         return {f"{var}:{ch}": f"{var}.data['{ch}']" for ch in self.channel_names}
+
+    def reported_values(self) -> dict[str, str]:
+        """Return optional channel statistics as scalar value outputs.
+
+        When enabled, each channel contributes ``mean`` and ``std`` values.
+
+        Returns:
+            (dict[str, str]):
+                Mapping of ``"{instance_name}:{value_name}"`` to Python
+                expressions that read from :attr:`channel_statistics`.
+        """
+        if not self._report_channel_statistics:
+            return {}
+
+        var = self.instance_name
+        values: dict[str, str] = {}
+        for channel in self.channel_names:
+            values[f"{var}:{channel} mean"] = (
+                f"{var}.get_channel_statistic({channel!r}, 'mean')"
+            )
+            values[f"{var}:{channel} std"] = (
+                f"{var}.get_channel_statistic({channel!r}, 'std')"
+            )
+        return values
+
+    def _set_report_channel_statistics(self, enabled: bool) -> None:
+        """Enable/disable reporting of per-channel mean/std scalar outputs."""
+        self._report_channel_statistics = bool(enabled)
+        if not self._report_channel_statistics:
+            self.channel_statistics = {}
+            return
+        self._update_channel_statistics()
+
+    def _update_channel_statistics(self) -> None:
+        """Recalculate per-channel mean and standard deviation from :attr:`data`."""
+        if not self._report_channel_statistics:
+            self.channel_statistics = {}
+            return
+
+        stats: dict[str, dict[str, float]] = {}
+        for channel, trace_data in self.data.items():
+            y_values = np.asarray(trace_data.y, dtype=float)
+            if y_values.size == 0:
+                mean_val = float("nan")
+                std_val = float("nan")
+            else:
+                mean_val = float(np.mean(y_values))
+                std_val = float(np.std(y_values))
+            stats[channel] = {"mean": mean_val, "std": std_val}
+        self.channel_statistics = stats
+
+    def get_channel_statistic(self, channel: str, statistic: str) -> float:
+        """Return a cached per-channel statistic, defaulting to ``nan``.
+
+        Args:
+            channel (str):
+                Channel name key in :attr:`channel_statistics`.
+            statistic (str):
+                Statistic key for the channel (for example ``"mean"`` or ``"std"``).
+
+        Returns:
+            (float):
+                Cached statistic value, or ``nan`` if unavailable.
+        """
+        return float(self.channel_statistics.get(channel, {}).get(statistic, float("nan")))
+
+    def _attach_statistics_checkbox(self, settings_widget: QWidget, checkbox: QCheckBox) -> None:
+        """Attach the statistics checkbox to the top of the settings widget.
+
+        Args:
+            settings_widget (QWidget):
+                Settings tab widget to augment.
+            checkbox (QCheckBox):
+                Checkbox controlling channel statistics output reporting.
+        """
+        layout = settings_widget.layout()
+        if layout is None:
+            layout = QVBoxLayout(settings_widget)
+
+        if isinstance(layout, QFormLayout):
+            layout.insertRow(0, checkbox)
+            return
+
+        if hasattr(layout, "insertWidget"):
+            layout.insertWidget(0, checkbox)
+            return
+
+        if hasattr(layout, "addWidget"):
+            layout.addWidget(checkbox)

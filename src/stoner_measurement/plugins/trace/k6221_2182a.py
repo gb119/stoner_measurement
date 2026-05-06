@@ -466,6 +466,7 @@ class Keithley6221_2182APlugin(TracePlugin):
         self.data = {
             "IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)
         }
+        self._update_channel_statistics()
         return self.data
 
     # ------------------------------------------------------------------

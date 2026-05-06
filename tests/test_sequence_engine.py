@@ -593,6 +593,14 @@ class TestDataCatalogs:
         assert len(cat) > 0
         assert any("counter" in k for k in cat)
 
+    def test_values_catalog_includes_trace_statistics_when_enabled(self, engine):
+        plugin = DummyPlugin()
+        plugin._set_report_channel_statistics(True)
+        engine.update_step_plugin_catalog([plugin])
+        cat = engine.values_catalog
+        assert "dummy:Dummy mean" in cat
+        assert "dummy:Dummy std" in cat
+
     def test_multiple_plugins_merged_in_catalogs(self, engine):
         from stoner_measurement.plugins.state_control import CounterPlugin
         trace_plugin = DummyPlugin()

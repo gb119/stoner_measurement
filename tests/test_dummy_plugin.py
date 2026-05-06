@@ -225,6 +225,27 @@ class TestDummyPlugin:
         plugin.measure({})
         assert plugin.status is TraceStatus.DATA_AVAILABLE
 
+    def test_reported_values_disabled_by_default(self, qapp):
+        plugin = DummyPlugin()
+        assert plugin.reported_values() == {}
+
+    def test_reported_values_enabled_lists_channel_stats(self, qapp):
+        plugin = DummyPlugin()
+        plugin._set_report_channel_statistics(True)
+        values = plugin.reported_values()
+        assert "dummy:Dummy mean" in values
+        assert "dummy:Dummy std" in values
+
+    def test_measure_updates_channel_statistics_when_enabled(self, qapp):
+        plugin = DummyPlugin()
+        _make_scan(plugin, end=2.0, step=1.0)  # I = [0, 1, 2]
+        plugin._set_report_channel_statistics(True)
+        plugin.measure({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0"})
+        stats = plugin.channel_statistics["Dummy"]
+        expected = np.array([0.0, 0.0, math.sqrt(3.0)])
+        assert stats["mean"] == pytest.approx(float(np.mean(expected)))
+        assert stats["std"] == pytest.approx(float(np.std(expected)))
+
     # ------------------------------------------------------------------
     # Trace detail properties
     # ------------------------------------------------------------------
@@ -361,6 +382,7 @@ class TestDummyPlugin:
         assert d["critical_current"] == "1.0"
         assert d["normal_resistance"] == "1.0"
         assert d["noise_level"] == "0.0"
+        assert d["report_channel_statistics"] is False
 
     def test_to_json_reflects_changed_settings(self, qapp):
         plugin = DummyPlugin()
@@ -381,12 +403,14 @@ class TestDummyPlugin:
         plugin._critical_current = "2.5"
         plugin._normal_resistance = "0.5"
         plugin._noise_level = "1e-3"
+        plugin._set_report_channel_statistics(True)
 
         restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
         assert isinstance(restored, DummyPlugin)
         assert restored._critical_current == "2.5"
         assert restored._normal_resistance == "0.5"
         assert restored._noise_level == "1e-3"
+        assert restored._report_channel_statistics is True
 
     def test_round_trip_default_settings(self, qapp):
         import json
