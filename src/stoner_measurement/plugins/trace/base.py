@@ -1183,16 +1183,11 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             (f"{self.name} \u2013 Scan", _ScanPage(self)),
         ]
 
-        settings_widget = QWidget()
-        settings_layout = QVBoxLayout(settings_widget)
-
+        settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
         stats_check = QCheckBox("Report channel average and standard deviation outputs")
         stats_check.setChecked(self._report_channel_statistics)
         stats_check.toggled.connect(self._set_report_channel_statistics)
-        settings_layout.addWidget(stats_check)
-
-        plugin_settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
-        settings_layout.addWidget(plugin_settings_widget)
+        self._attach_statistics_checkbox(settings_widget, stats_check)
 
         tabs.append((f"{self.name} \u2013 Settings", settings_widget))
 
@@ -1423,10 +1418,10 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         values: dict[str, str] = {}
         for channel in self.channel_names:
             values[f"{var}:{channel} mean"] = (
-                f"{var}.channel_statistics.get({channel!r}, {{}}).get('mean', float('nan'))"
+                f"{var}._get_channel_statistic({channel!r}, 'mean')"
             )
             values[f"{var}:{channel} std"] = (
-                f"{var}.channel_statistics.get({channel!r}, {{}}).get('std', float('nan'))"
+                f"{var}._get_channel_statistic({channel!r}, 'std')"
             )
         return values
 
@@ -1455,3 +1450,23 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 std_val = float(np.std(y_values))
             stats[channel] = {"mean": mean_val, "std": std_val}
         self.channel_statistics = stats
+
+    def _get_channel_statistic(self, channel: str, statistic: str) -> float:
+        """Return a cached per-channel statistic, defaulting to ``nan``."""
+        return float(self.channel_statistics.get(channel, {}).get(statistic, float("nan")))
+
+    def _attach_statistics_checkbox(self, settings_widget: QWidget, checkbox: QCheckBox) -> None:
+        """Attach the statistics checkbox to the top of the settings widget."""
+        layout = settings_widget.layout()
+        if layout is None:
+            layout = QVBoxLayout(settings_widget)
+
+        if isinstance(layout, QFormLayout):
+            layout.insertRow(0, checkbox)
+            return
+
+        if hasattr(layout, "insertWidget"):
+            layout.insertWidget(0, checkbox)
+            return
+
+        layout.addWidget(checkbox)
