@@ -646,7 +646,7 @@ class PlotWidget(QWidget):
             else:
                 try:
                     vb.removeItem(ebi)
-                except Exception:  # pragma: no cover - defensive cleanup
+                except (RuntimeError, ValueError):  # pragma: no cover - defensive cleanup
                     pass
 
     @pyqtSlot()

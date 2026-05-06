@@ -1223,6 +1223,10 @@ class CurveFitPlugin(TransformPlugin):
     def _populate_column_combo(self, combo: QComboBox, trace_key: str) -> None:
         """Populate *combo* with ``(default)`` plus columns for *trace_key*.
 
+        Existing combo entries are cleared first.  If :attr:`column_key`
+        matches one of the available columns it is selected; otherwise the
+        ``(default)`` entry is selected.
+
         Args:
             combo (QComboBox):
                 Combo box to populate.

@@ -592,6 +592,16 @@ class PlotTraceCommand(CommandPlugin):
         return widget
 
     def _emit_trace_axis_labels(self, trace_data: Any, y_key: str | None = None) -> None:
+        """Emit default axis labels resolved from trace metadata.
+
+        Args:
+            trace_data (Any):
+                Trace-like object providing ``names`` and ``units`` mappings.
+            y_key (str | None):
+                Explicit key for resolving y-axis metadata from ``names`` /
+                ``units``.  When ``None``, falls back to :attr:`column_key`
+                and then ``"y"``.
+        """
         names = getattr(trace_data, "names", {})
         units = getattr(trace_data, "units", {})
         x_name = names.get("x", "")
