@@ -1452,11 +1452,29 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         self.channel_statistics = stats
 
     def get_channel_statistic(self, channel: str, statistic: str) -> float:
-        """Return a cached per-channel statistic, defaulting to ``nan``."""
+        """Return a cached per-channel statistic, defaulting to ``nan``.
+
+        Args:
+            channel (str):
+                Channel name key in :attr:`channel_statistics`.
+            statistic (str):
+                Statistic key for the channel (for example ``"mean"`` or ``"std"``).
+
+        Returns:
+            (float):
+                Cached statistic value, or ``nan`` if unavailable.
+        """
         return float(self.channel_statistics.get(channel, {}).get(statistic, float("nan")))
 
     def _attach_statistics_checkbox(self, settings_widget: QWidget, checkbox: QCheckBox) -> None:
-        """Attach the statistics checkbox to the top of the settings widget."""
+        """Attach the statistics checkbox to the top of the settings widget.
+
+        Args:
+            settings_widget (QWidget):
+                Settings tab widget to augment.
+            checkbox (QCheckBox):
+                Checkbox controlling channel statistics output reporting.
+        """
         layout = settings_widget.layout()
         if layout is None:
             layout = QVBoxLayout(settings_widget)
