@@ -107,7 +107,7 @@ On Linux this is typically:
 
 The file name is derived from the plugin name, converted to lowercase with spaces
 and hyphens replaced by underscores. For example, the bundled defaults for the
-dummy plugin are packaged as `stoner_measurement.conf.plugins/dummy.yaml`
+dummy plugin are packaged in `stoner_measurement.conf.plugins` as `dummy.yaml`
 (`src/stoner_measurement/conf/plugins/dummy.yaml` in a source checkout), and a
 rig-specific override can be created at `~/.config/stoner_measurement/plugins/dummy.yaml`.
 
