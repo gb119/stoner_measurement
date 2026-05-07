@@ -25,6 +25,7 @@ dependencies = [
     "asteval>=1.0",
     "black>=24.1",
     "pandas>=2.0",
+    "platformdirs>=4.9",
     "PyYAML>=6.0",
     "PyQt6>=6.7",
     "pyqtgraph>=0.13",

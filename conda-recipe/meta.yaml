@@ -21,6 +21,7 @@ requirements:
   run:
     - python >=3.13
     - asteval >=1.0
+    - platformdirs >=4.9
     - pyyaml >=6.0
     - pandas >=2.0
     - pyqt >=6.7
