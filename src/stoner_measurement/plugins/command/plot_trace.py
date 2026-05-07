@@ -8,7 +8,9 @@ Two operating modes are supported:
 
 * **Simple mode** — the user selects a single named trace from the sequence's
   trace catalogue.  Both axes are taken from the :class:`~stoner_measurement.plugins.trace.TraceData`
-  object that the expression in the catalogue evaluates to.
+  object that the expression in the catalogue evaluates to.  A **transpose**
+  option is available in this mode to swap the x and y axes (and their
+  associated error bars and axis labels) when sending data to the plot window.
 * **Advanced mode** — the user independently selects the x data, y data, and
   plot title using Python expressions.  The expressions are evaluated against
   the live engine namespace via
@@ -115,6 +117,10 @@ class PlotTraceCommand(CommandPlugin):
             named trace for plotting.  When empty all
             :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y`
             columns are plotted.  Defaults to ``""``.
+        transpose (bool):
+            When ``True`` (simple mode only), swap the x and y arrays — and
+            their respective error bars and axis labels — before emitting the
+            plot signal.  Defaults to ``False``.
         advanced_mode (bool):
             When ``True``, ``x_expr``, ``y_expr`` and ``title_expr`` are used
             instead of ``trace_key``.  Defaults to ``False``.
@@ -194,6 +200,7 @@ class PlotTraceCommand(CommandPlugin):
         self._sequence_engine_ref: SequenceEngine | None = None
         self.trace_key: str = ""
         self.column_key: str = ""
+        self.transpose: bool = False
         self.advanced_mode: bool = False
         self.x_expr: str = ""
         self.y_expr: str = ""
@@ -469,6 +476,9 @@ class PlotTraceCommand(CommandPlugin):
     ) -> None:
         """Emit :attr:`plot_trace_with_errors` and :attr:`plot_trace_axes` for one column.
 
+        When :attr:`transpose` is ``True`` the x and y arrays (and their error
+        arrays) are swapped before emitting.
+
         Args:
             title (str):
                 Name of the plot trace.
@@ -485,6 +495,9 @@ class PlotTraceCommand(CommandPlugin):
             y_axis (str):
                 y-axis name.
         """
+        if self.transpose:
+            x_arr, y_arr = y_arr, x_arr
+            x_err, y_err = y_err, x_err
         self.plot_trace_with_errors.emit(title, x_arr, y_arr, x_err, y_err)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_arr))
@@ -549,6 +562,12 @@ class PlotTraceCommand(CommandPlugin):
 
         trace_combo = self._build_trace_combo(widget, trace_keys)
         column_combo = self._build_column_combo(widget)
+        transpose_check = QCheckBox(widget)
+        transpose_check.setChecked(self.transpose)
+        transpose_check.setToolTip(
+            "When checked, swap the x and y axes (and their error bars and axis labels) "
+            "before sending data to the plot window. Only applies in simple mode."
+        )
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
         x_combo = self._build_channel_combo(widget, channel_names, channel_items, self.x_expr, "x_expr")
@@ -563,6 +582,7 @@ class PlotTraceCommand(CommandPlugin):
 
         layout.addRow("Trace:", trace_combo)
         layout.addRow("Column:", column_combo)
+        layout.addRow("Transpose:", transpose_check)
         layout.addRow("Advanced mode:", advanced_check)
         layout.addRow("X data:", x_combo)
         layout.addRow("Y data:", y_combo)
@@ -581,6 +601,7 @@ class PlotTraceCommand(CommandPlugin):
         self._wire_config_signals(
             trace_combo,
             column_combo,
+            transpose_check,
             advanced_check,
             x_combo,
             y_combo,
@@ -624,6 +645,8 @@ class PlotTraceCommand(CommandPlugin):
             y_name = ""
         x_label = _format_axis_label(x_name, x_unit)
         y_label = _format_axis_label(y_name, y_unit)
+        if self.transpose:
+            x_label, y_label = y_label, x_label
         if x_label or y_label:
             self.plot_axis_labels.emit(x_label, y_label)
 
@@ -727,6 +750,7 @@ class PlotTraceCommand(CommandPlugin):
         self,
         trace_combo: QComboBox,
         column_combo: QComboBox,
+        transpose_check: QCheckBox,
         advanced_check: QCheckBox,
         x_combo: QComboBox,
         y_combo: QComboBox,
@@ -738,6 +762,7 @@ class PlotTraceCommand(CommandPlugin):
         def _update_enabled(advanced: bool) -> None:
             trace_combo.setEnabled(not advanced)
             column_combo.setEnabled(not advanced)
+            transpose_check.setEnabled(not advanced)
             x_combo.setEnabled(advanced)
             y_combo.setEnabled(advanced)
             title_edit.setEnabled(advanced)
@@ -775,6 +800,7 @@ class PlotTraceCommand(CommandPlugin):
 
         trace_combo.currentTextChanged.connect(_apply_trace)
         column_combo.currentTextChanged.connect(_apply_column)
+        transpose_check.toggled.connect(lambda checked: setattr(self, "transpose", checked))
         advanced_check.toggled.connect(lambda checked: setattr(self, "advanced_mode", checked))
         x_combo.currentTextChanged.connect(_apply_x)
         y_combo.currentTextChanged.connect(_apply_y)
@@ -792,8 +818,8 @@ class PlotTraceCommand(CommandPlugin):
         Returns:
             (dict[str, Any]):
                 Base dict from :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-                extended with ``"trace_key"``, ``"advanced_mode"``, ``"x_expr"``,
-                ``"y_expr"``, and ``"title_expr"``.
+                extended with ``"trace_key"``, ``"transpose"``, ``"advanced_mode"``,
+                ``"x_expr"``, ``"y_expr"``, and ``"title_expr"``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -808,6 +834,7 @@ class PlotTraceCommand(CommandPlugin):
         d = super().to_json()
         d["trace_key"] = self.trace_key
         d["column_key"] = self.column_key
+        d["transpose"] = self.transpose
         d["advanced_mode"] = self.advanced_mode
         d["x_expr"] = self.x_expr
         d["y_expr"] = self.y_expr
@@ -825,6 +852,7 @@ class PlotTraceCommand(CommandPlugin):
         """
         self.trace_key = data.get("trace_key", "")
         self.column_key = data.get("column_key", "")
+        self.transpose = data.get("transpose", False)
         self.advanced_mode = data.get("advanced_mode", False)
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")
