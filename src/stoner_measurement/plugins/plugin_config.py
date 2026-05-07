@@ -38,6 +38,9 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    except (OSError, UnicodeDecodeError):
+        logger.warning("Failed to read plugin config YAML at %s.", path, exc_info=True)
+        return {}
     except yaml.YAMLError:
         logger.warning("Failed to parse plugin config YAML at %s.", path, exc_info=True)
         return {}
