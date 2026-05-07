@@ -1014,10 +1014,29 @@ class TestPlotTraceCommand:
 
     def test_config_widget_has_advanced_checkbox(self, qapp):
         from PyQt6.QtWidgets import QCheckBox
-
+    
         widget = PlotTraceCommand().config_widget()
         checkboxes = widget.findChildren(QCheckBox)
-        assert len(checkboxes) == 1
+        assert len(checkboxes) >= 2
+    
+    
+    def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
+        from PyQt6.QtWidgets import QCheckBox
+    
+        cmd = PlotTraceCommand()
+        cmd.advanced_mode = False
+        widget = cmd.config_widget()
+        checkboxes = widget.findChildren(QCheckBox)
+    
+        advanced_checkbox = next(cb for cb in checkboxes if cb.isChecked() == cmd.advanced_mode)
+        # If both start False, prefer the non-transpose one by excluding the first checkbox.
+        if advanced_checkbox is checkboxes[0] and len(checkboxes) > 1:
+            advanced_checkbox = checkboxes[1]
+    
+        advanced_checkbox.setChecked(True)
+        assert cmd.advanced_mode is True
+        advanced_checkbox.setChecked(False)
+        assert cmd.advanced_mode is False
 
     def test_config_widget_has_title_lineedit(self, qapp):
         from PyQt6.QtWidgets import QLineEdit
@@ -1025,18 +1044,6 @@ class TestPlotTraceCommand:
         widget = PlotTraceCommand().config_widget()
         edits = widget.findChildren(QLineEdit)
         assert len(edits) == 1
-
-    def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox
-
-        cmd = PlotTraceCommand()
-        cmd.advanced_mode = False
-        widget = cmd.config_widget()
-        checkbox = widget.findChildren(QCheckBox)[0]
-        checkbox.setChecked(True)
-        assert cmd.advanced_mode is True
-        checkbox.setChecked(False)
-        assert cmd.advanced_mode is False
 
     def test_config_title_edit_updates_title_expr(self, qapp):
         from PyQt6.QtWidgets import QLineEdit
