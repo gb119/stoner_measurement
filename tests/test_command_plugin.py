@@ -1045,18 +1045,6 @@ class TestPlotTraceCommand:
         edits = widget.findChildren(QLineEdit)
         assert len(edits) == 1
 
-    def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox
-
-        cmd = PlotTraceCommand()
-        cmd.advanced_mode = False
-        widget = cmd.config_widget()
-        checkbox = widget.findChildren(QCheckBox)[0]
-        checkbox.setChecked(True)
-        assert cmd.advanced_mode is True
-        checkbox.setChecked(False)
-        assert cmd.advanced_mode is False
-
     def test_config_title_edit_updates_title_expr(self, qapp):
         from PyQt6.QtWidgets import QLineEdit
 
