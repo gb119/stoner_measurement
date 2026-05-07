@@ -498,7 +498,6 @@ class PlotTraceCommand(CommandPlugin):
         if self.transpose:
             x_arr, y_arr = y_arr, x_arr
             x_err, y_err = y_err, x_err
-            x_axis, y_axis = y_axis, x_axis
         self.plot_trace_with_errors.emit(title, x_arr, y_arr, x_err, y_err)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_arr))
