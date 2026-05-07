@@ -77,7 +77,7 @@ class TestPluginConfigIntegration:
 
         plugin = DummyPlugin()
 
-        assert plugin._critical_current == "3.0"
+        assert plugin.to_json()["critical_current"] == "3.0"
 
     def test_from_json_reapplies_machine_overlay_after_script_restore(self, monkeypatch, qapp):
         def _fake_load_plugin_config(plugin_name, *, machine_only=False):
@@ -97,4 +97,4 @@ class TestPluginConfigIntegration:
         restored = BasePlugin.from_json(data)
 
         assert isinstance(restored, DummyPlugin)
-        assert restored._critical_current == "9.0"
+        assert restored.to_json()["critical_current"] == "9.0"

@@ -568,9 +568,12 @@ class BasePlugin(ABC):
         when any settings are available.  If the merged config is empty, no
         restoration is performed and the constructor defaults are left intact.
         """
-        config = self._load_config()
-        if config:
-            self._restore_from_json(config)
+        self._apply_config_data(self._load_config())
+
+    def _apply_config_data(self, data: dict[str, Any]) -> None:
+        """Restore plugin state from *data* when configuration keys are present."""
+        if data:
+            self._restore_from_json(data)
 
     # ------------------------------------------------------------------
     # JSON serialisation
@@ -671,10 +674,10 @@ class BasePlugin(ABC):
         if "instance_name" in data:
             instance.instance_name = data["instance_name"]
         instance.disabled = bool(data.get("disabled", False))
-        instance._restore_from_json(data)  # noqa: SLF001
-        machine_config = load_plugin_config(instance.name, machine_only=True)
-        if machine_config:
-            instance._restore_from_json(machine_config)  # noqa: SLF001
+        instance._apply_config_data(data)  # noqa: SLF001
+        instance._apply_config_data(  # noqa: SLF001
+            load_plugin_config(instance.name, machine_only=True)
+        )
         return instance
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:

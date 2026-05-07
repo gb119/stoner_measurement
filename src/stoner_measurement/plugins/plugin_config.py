@@ -26,8 +26,10 @@ _BUNDLED_CONFIG_PACKAGE = "stoner_measurement.conf.plugins"
 
 def _plugin_config_stem(plugin_name: str) -> str:
     """Return the normalised file stem used for *plugin_name*."""
-    text = plugin_name.strip().lower().replace(" ", "_").replace("-", "_")
-    return text or "plugin"
+    text = plugin_name.strip()
+    if not text:
+        raise ValueError("plugin_name must not be empty")
+    return text.lower().replace(" ", "_").replace("-", "_")
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:
