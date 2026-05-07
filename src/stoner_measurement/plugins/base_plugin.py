@@ -548,7 +548,13 @@ class BasePlugin(ABC):
         """
 
     def _load_config(self) -> dict[str, Any]:
-        """Load the merged YAML configuration for this plugin."""
+        """Load the merged YAML configuration for this plugin.
+
+        Returns:
+            (dict[str, Any]):
+                The merged bundled and per-machine configuration mapping.
+                Returns ``{}`` when the plugin name is not available.
+        """
         try:
             plugin_name = self.name
         except (AttributeError, NotImplementedError):
@@ -556,7 +562,12 @@ class BasePlugin(ABC):
         return load_plugin_config(plugin_name)
 
     def _apply_initial_config(self) -> None:
-        """Apply the bundled and per-machine YAML configuration for this plugin."""
+        """Apply the bundled and per-machine YAML configuration for this plugin.
+
+        Calls :meth:`_restore_from_json` with the merged YAML configuration
+        when any settings are available.  If the merged config is empty, no
+        restoration is performed and the constructor defaults are left intact.
+        """
         config = self._load_config()
         if config:
             self._restore_from_json(config)

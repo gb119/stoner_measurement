@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.plugin_config import load_plugin_config, machine_config_path
 from stoner_measurement.plugins.trace import DummyPlugin
@@ -12,8 +10,8 @@ from stoner_measurement.plugins.trace import DummyPlugin
 class TestPluginConfigHelpers:
     """Tests for standalone plugin-config helper functions."""
 
-    def test_machine_config_path_normalises_plugin_name(self, monkeypatch):
-        root = Path("/tmp/test-plugin-config-root")
+    def test_machine_config_path_normalises_plugin_name(self, monkeypatch, tmp_path):
+        root = tmp_path / "config-root"
         monkeypatch.setattr(
             "stoner_measurement.plugins.plugin_config.platformdirs.user_config_dir",
             lambda appname: str(root),
