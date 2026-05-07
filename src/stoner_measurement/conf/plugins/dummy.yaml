@@ -1,15 +1,15 @@
-critical_current: "1.0"
-normal_resistance: "1.0"
-noise_level: "0.0"
-rounding_level: "0.0"
+critical_current: "0.5E-3"
+normal_resistance: "5.0E-3"
+noise_level: "1.0E-8"
+rounding_level: "1.0"
 scan_generator:
   type: FunctionScanGenerator
-  waveform: Sine
-  amplitude: 1.0
+  waveform: Triangle
+  amplitude: 1.0E-3
   offset: 0.0
   phase: 0.0
-  exponent: 1.0
+  exponent: 2.0
   periods: 1.0
-  num_points: 100
+  num_points: 501
   units: A
 report_channel_statistics: false
