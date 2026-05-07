@@ -82,7 +82,9 @@ log viewer window.
 
 ## Plugin configuration files
 
-Plugin defaults are stored as YAML files shipped with the package in:
+Plugin defaults are stored as YAML files shipped inside the
+`stoner_measurement.conf.plugins` package. In a source checkout these files live
+under:
 
 ```text
 src/stoner_measurement/conf/plugins/
@@ -105,9 +107,9 @@ On Linux this is typically:
 
 The file name is derived from the plugin name, converted to lowercase with spaces
 and hyphens replaced by underscores. For example, the bundled defaults for the
-dummy plugin live in `src/stoner_measurement/conf/plugins/dummy.yaml`, and a
-rig-specific override can be created at
-`~/.config/stoner_measurement/plugins/dummy.yaml`.
+dummy plugin are packaged as `stoner_measurement.conf.plugins/dummy.yaml`
+(`src/stoner_measurement/conf/plugins/dummy.yaml` in a source checkout), and a
+rig-specific override can be created at `~/.config/stoner_measurement/plugins/dummy.yaml`.
 
 When a plugin is instantiated, the bundled YAML is loaded first and then any
 per-machine YAML overlay is applied on top. To create a rig-specific setup, copy
