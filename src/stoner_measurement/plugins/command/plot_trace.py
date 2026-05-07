@@ -498,6 +498,7 @@ class PlotTraceCommand(CommandPlugin):
         if self.transpose:
             x_arr, y_arr = y_arr, x_arr
             x_err, y_err = y_err, x_err
+            x_axis, y_axis = y_axis, x_axis
         self.plot_trace_with_errors.emit(title, x_arr, y_arr, x_err, y_err)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_arr))
@@ -566,7 +567,7 @@ class PlotTraceCommand(CommandPlugin):
         transpose_check.setChecked(self.transpose)
         transpose_check.setToolTip(
             "When checked, swap the x and y axes (and their error bars and axis labels) "
-            "before sending data to the plot window. Only applies in simple mode."
+            "before sending data to the plot window.\nOnly applies in simple mode."
         )
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
