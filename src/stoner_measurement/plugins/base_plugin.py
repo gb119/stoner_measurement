@@ -551,7 +551,7 @@ class BasePlugin(ABC):
         """Load the merged YAML configuration for this plugin."""
         try:
             plugin_name = self.name
-        except Exception:
+        except (AttributeError, NotImplementedError):
             return {}
         return load_plugin_config(plugin_name)
 

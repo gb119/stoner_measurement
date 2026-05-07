@@ -85,7 +85,7 @@ log viewer window.
 Plugin defaults are stored as YAML files shipped with the package in:
 
 ```text
-src/stoner_measurement/plugins/config/
+src/stoner_measurement/conf/plugins/
 ```
 
 Each file contains keys matching the plugin's `to_json()` / `_restore_from_json()`
@@ -103,9 +103,9 @@ On Linux this is typically:
 ~/.config/stoner_measurement/plugins/
 ```
 
-The file name is derived from the plugin name, converted to lower-case with spaces
+The file name is derived from the plugin name, converted to lowercase with spaces
 and hyphens replaced by underscores. For example, the bundled defaults for the
-dummy plugin live in `src/stoner_measurement/plugins/config/dummy.yaml`, and a
+dummy plugin live in `src/stoner_measurement/conf/plugins/dummy.yaml`, and a
 rig-specific override can be created at
 `~/.config/stoner_measurement/plugins/dummy.yaml`.
 

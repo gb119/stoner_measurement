@@ -21,7 +21,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_BUNDLED_CONFIG_PACKAGE = "stoner_measurement.plugins.config"
+_BUNDLED_CONFIG_PACKAGE = "stoner_measurement.conf.plugins"
 
 
 def _plugin_config_stem(plugin_name: str) -> str:

@@ -74,8 +74,8 @@ details = "stoner_measurement.plugins.command.details:DetailsCommand"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"stoner_measurement.conf.plugins" = ["*.yaml"]
 "stoner_measurement.ui" = ["*.png"]
-"stoner_measurement.plugins.config" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
