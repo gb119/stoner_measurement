@@ -33,9 +33,9 @@ class TestDummyPlugin:
 
     def test_execute_empty_scan_yields_default_points(self, qapp):
         plugin = DummyPlugin()
-        # Default FunctionScanGenerator generates 100 points
+        # Default FunctionScanGenerator generates 501 points
         data = list(plugin.execute({}))
-        assert len(data) == 100
+        assert len(data) == 501
 
     def test_execute_yields_all_points_regardless_of_measure_flag(self, qapp):
         plugin = DummyPlugin()
@@ -60,8 +60,8 @@ class TestDummyPlugin:
     def test_execute_amplitude(self, qapp):
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.4, step=0.1)
-        # Default I_c=1.0 > all scan points (0…0.4), so all V must be 0
-        data = list(plugin.execute({}))
+        # Explicit I_c=1.0 > all scan points (0…0.4), so all V must be 0
+        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
         for _i, v in data:
             assert v == 0.0
 
@@ -74,7 +74,7 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0"}))
+        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
         assert len(data) == 3
         i_vals = [i for i, _v in data]
         v_vals = [v for _i, v in data]
@@ -240,7 +240,7 @@ class TestDummyPlugin:
         plugin = DummyPlugin()
         _make_scan(plugin, end=2.0, step=1.0)  # I = [0, 1, 2]
         plugin._set_report_channel_statistics(True)
-        plugin.measure({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0"})
+        plugin.measure({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"})
         stats = plugin.channel_statistics["Dummy"]
         expected = np.array([0.0, 0.0, math.sqrt(3.0)])
         assert stats["mean"] == pytest.approx(float(np.mean(expected)))
@@ -273,7 +273,7 @@ class TestDummyPlugin:
         assert DummyPlugin().y_label == "V"
 
     def test_default_noise_level(self, qapp):
-        assert DummyPlugin()._noise_level == "0.0"
+        assert DummyPlugin()._noise_level == "1.0E-8"
 
     def test_execute_zero_noise_is_exact(self, qapp):
         """V_n=0.0 must give exact RSJ values (no noise added)."""
@@ -282,7 +282,7 @@ class TestDummyPlugin:
             start=0.0, stages=[(2.0, 1.0, True)], parent=plugin
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0"}))
+        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
         v_vals = [v for _i, v in data]
         assert abs(v_vals[0]) < 1e-9       # I=0  → V=0
         assert abs(v_vals[1]) < 1e-9       # I=1  → V=0 (at I_c)
@@ -322,7 +322,7 @@ class TestDummyPlugin:
         assert any(abs(v - noiseless_v) > 1e-6 for _i, v in noisy)
 
     def test_default_normal_resistance(self, qapp):
-        assert DummyPlugin()._normal_resistance == "1.0"
+        assert DummyPlugin()._normal_resistance == "5.0E-3"
 
     def test_execute_negative_current_rsj(self, qapp):
         """RSJ output for negative currents should have negative voltage."""
@@ -333,7 +333,7 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0"}))
+        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
         # I=-2: V = -sqrt(4-1) = -sqrt(3)
         i_neg2 = next((v for i, v in data if abs(i - (-2.0)) < 1e-9), None)
         assert i_neg2 is not None
@@ -348,8 +348,8 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data1 = list(plugin.execute({"I_c": "1.0", "R_n": "1.0"}))
-        data2 = list(plugin.execute({"I_c": "1.0", "R_n": "2.0"}))
+        data1 = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
+        data2 = list(plugin.execute({"I_c": "1.0", "R_n": "2.0", "V_n": "0.0", "Rounding": "0.0"}))
         assert abs(data2[0][1] - 2.0 * data1[0][1]) < 1e-9
 
     def test_eval_expr_uses_engine_when_attached(self, qapp):
@@ -379,9 +379,9 @@ class TestDummyPlugin:
     def test_to_json_includes_settings(self, qapp):
         plugin = DummyPlugin()
         d = plugin.to_json()
-        assert d["critical_current"] == "1.0"
-        assert d["normal_resistance"] == "1.0"
-        assert d["noise_level"] == "0.0"
+        assert d["critical_current"] == "0.5E-3"
+        assert d["normal_resistance"] == "5.0E-3"
+        assert d["noise_level"] == "1.0E-8"
         assert d["report_channel_statistics"] is False
 
     def test_to_json_reflects_changed_settings(self, qapp):
@@ -420,6 +420,6 @@ class TestDummyPlugin:
         plugin = DummyPlugin()
         restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
         assert isinstance(restored, DummyPlugin)
-        assert restored._critical_current == "1.0"
-        assert restored._normal_resistance == "1.0"
-        assert restored._noise_level == "0.0"
+        assert restored._critical_current == "0.5E-3"
+        assert restored._normal_resistance == "5.0E-3"
+        assert restored._noise_level == "1.0E-8"
