@@ -270,6 +270,7 @@ class Keithley6221_2182APlugin(TracePlugin):
         self._k6221: Keithley6221 | None = None
         self._k2182a: Keithley2182A | None = None
         self._sweep_values: np.ndarray | None = None
+        self._apply_initial_config()
 
     # ------------------------------------------------------------------
     # Plugin identity

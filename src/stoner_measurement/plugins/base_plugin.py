@@ -36,6 +36,8 @@ import asteval
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QTextBrowser, QWidget
 
+from stoner_measurement.plugins.plugin_config import load_plugin_config
+
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
@@ -545,6 +547,20 @@ class BasePlugin(ABC):
                 New instance name.
         """
 
+    def _load_config(self) -> dict[str, Any]:
+        """Load the merged YAML configuration for this plugin."""
+        try:
+            plugin_name = self.name
+        except Exception:
+            return {}
+        return load_plugin_config(plugin_name)
+
+    def _apply_initial_config(self) -> None:
+        """Apply the bundled and per-machine YAML configuration for this plugin."""
+        config = self._load_config()
+        if config:
+            self._restore_from_json(config)
+
     # ------------------------------------------------------------------
     # JSON serialisation
     # ------------------------------------------------------------------
@@ -645,6 +661,9 @@ class BasePlugin(ABC):
             instance.instance_name = data["instance_name"]
         instance.disabled = bool(data.get("disabled", False))
         instance._restore_from_json(data)  # noqa: SLF001
+        machine_config = load_plugin_config(instance.name, machine_only=True)
+        if machine_config:
+            instance._restore_from_json(machine_config)  # noqa: SLF001
         return instance
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:

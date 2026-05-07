@@ -53,6 +53,7 @@ class DummyPlugin(TracePlugin):
         self._noise_level: str = "0.0"
         self._rounding_level = "0.0"
         self.scan_generator = FunctionScanGenerator()
+        self._apply_initial_config()
 
     @property
     def name(self) -> str:

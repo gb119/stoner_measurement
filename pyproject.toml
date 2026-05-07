@@ -25,6 +25,7 @@ dependencies = [
     "asteval>=1.0",
     "black>=24.1",
     "pandas>=2.0",
+    "PyYAML>=6.0",
     "PyQt6>=6.7",
     "pyqtgraph>=0.13",
     "numpy>=2.0",
@@ -73,6 +74,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "stoner_measurement.ui" = ["*.png"]
+"stoner_measurement.plugins.config" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
