@@ -36,6 +36,8 @@ import asteval
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QTextBrowser, QWidget
 
+from stoner_measurement.plugins.plugin_config import load_plugin_config
+
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
@@ -545,6 +547,34 @@ class BasePlugin(ABC):
                 New instance name.
         """
 
+    def _load_config(self) -> dict[str, Any]:
+        """Load the merged YAML configuration for this plugin.
+
+        Returns:
+            (dict[str, Any]):
+                The merged bundled and per-machine configuration mapping.
+                Returns ``{}`` when the plugin name is not available.
+        """
+        try:
+            plugin_name = self.name
+        except (AttributeError, NotImplementedError):
+            return {}
+        return load_plugin_config(plugin_name)
+
+    def _apply_initial_config(self) -> None:
+        """Apply the bundled and per-machine YAML configuration for this plugin.
+
+        Calls :meth:`_restore_from_json` with the merged YAML configuration
+        when any settings are available.  If the merged config is empty, no
+        restoration is performed and the constructor defaults are left intact.
+        """
+        self._apply_config_data(self._load_config())
+
+    def _apply_config_data(self, data: dict[str, Any]) -> None:
+        """Restore plugin state from *data* when configuration keys are present."""
+        if data:
+            self._restore_from_json(data)
+
     # ------------------------------------------------------------------
     # JSON serialisation
     # ------------------------------------------------------------------
@@ -644,7 +674,10 @@ class BasePlugin(ABC):
         if "instance_name" in data:
             instance.instance_name = data["instance_name"]
         instance.disabled = bool(data.get("disabled", False))
-        instance._restore_from_json(data)  # noqa: SLF001
+        instance._apply_config_data(data)  # noqa: SLF001
+        instance._apply_config_data(  # noqa: SLF001
+            load_plugin_config(instance.name, machine_only=True)
+        )
         return instance
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:

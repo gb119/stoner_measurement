@@ -80,6 +80,42 @@ log viewer window.
 3. Configure each step via the corresponding tab in the **right panel**.
 4. Click *Run* to render and execute the generated sequence script.
 
+## Plugin configuration files
+
+Plugin defaults are stored as YAML files shipped inside the
+`stoner_measurement.conf.plugins` package. In a source checkout these files live
+under:
+
+```text
+src/stoner_measurement/conf/plugins/
+```
+
+Each file contains keys matching the plugin's `to_json()` / `_restore_from_json()`
+settings, so the files can be edited outside the application.
+
+Per-machine overrides live in the user configuration directory under:
+
+```text
+<platformdirs.user_config_dir("stoner_measurement")>/plugins/
+```
+
+On Linux this is typically:
+
+```text
+~/.config/stoner_measurement/plugins/
+```
+
+The file name is derived from the plugin name, converted to lowercase with spaces
+and hyphens replaced by underscores. For example, the bundled defaults for the
+dummy plugin are packaged in `stoner_measurement.conf.plugins` as `dummy.yaml`
+(`src/stoner_measurement/conf/plugins/dummy.yaml` in a source checkout), and a
+rig-specific override can be created at `~/.config/stoner_measurement/plugins/dummy.yaml`.
+
+When a plugin is instantiated, the bundled YAML is loaded first and then any
+per-machine YAML overlay is applied on top. To create a rig-specific setup, copy
+the bundled YAML for the plugin you need and edit only the keys that differ on
+that measurement rig, such as VISA resource addresses.
+
 ## Documentation
 
 Full documentation — including the API reference, a guide to writing your own

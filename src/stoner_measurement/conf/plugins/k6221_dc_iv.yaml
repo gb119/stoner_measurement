@@ -1,0 +1,29 @@
+resource_6221: GPIB0::22::INSTR
+resource_2182a: GPIB0::7::INSTR
+connection_mode: via_6221_serial
+compliance_mode: voltage
+compliance: 10.0
+compliance_resistance: 1000.0
+source_delay: 0.001
+source_range_mode: BEST
+source_range: 0.001
+nplc: 1.0
+voltage_range: 0.0
+filter_enabled: false
+filter_count: 10
+analog_filter: false
+relative_enabled: false
+digits: 6
+output_tlink: 1
+input_tlink: 2
+scan_generator:
+  type: FunctionScanGenerator
+  waveform: Sine
+  amplitude: 1.0
+  offset: 0.0
+  phase: 0.0
+  exponent: 1.0
+  periods: 1.0
+  num_points: 100
+  units: A
+report_channel_statistics: false
