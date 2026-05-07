@@ -2,7 +2,7 @@
 
 This module supports a two-layer configuration scheme for plugins:
 
-* bundled defaults shipped inside :mod:`stoner_measurement.plugins.config`
+* bundled defaults shipped inside :mod:`stoner_measurement.conf.plugins`
 * per-machine overrides stored in the user's configuration directory
 
 Machine-specific values take precedence over the bundled defaults.
