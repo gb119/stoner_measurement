@@ -607,7 +607,9 @@ class SequenceEngine(QObject):
         super().__init__(parent)
         self._log_handler = _QtLogHandler(parent=self)
         root_logger = logging.getLogger(ROOT_LOGGER_NAME)
-        root_logger.setLevel(logging.DEBUG)
+        self._prev_root_log_level = root_logger.level
+        if root_logger.level == logging.NOTSET or root_logger.level > logging.DEBUG:
+            root_logger.setLevel(logging.DEBUG)
         root_logger.addHandler(self._log_handler)
 
         self._namespace = self._make_namespace()
@@ -1214,7 +1216,10 @@ class SequenceEngine(QObject):
         self._thread.wait(2000)
         if self._thread.isRunning():
             self._thread.terminate()
-        logging.getLogger(ROOT_LOGGER_NAME).removeHandler(self._log_handler)
+        root_logger = logging.getLogger(ROOT_LOGGER_NAME)
+        root_logger.removeHandler(self._log_handler)
+        root_logger.setLevel(self._prev_root_log_level)
+        self._log_handler.close()
 
     # ------------------------------------------------------------------
     # Status
