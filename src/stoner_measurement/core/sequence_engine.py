@@ -59,7 +59,14 @@ if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
 
 
-#: Logger name used for all sequence-engine and plugin log messages.
+#: Root logger name for the entire stoner_measurement package.  The Qt log
+#: handler is attached here so that every ``stoner_measurement.*`` child logger
+#: (instruments, temperature/magnet engines, plugins, etc.) is visible in the
+#: application log window.
+ROOT_LOGGER_NAME = "stoner_measurement"
+
+#: Logger name used for sequence-engine and plugin log messages.  Also used as
+#: the name of the ``log`` object injected into the sequence namespace.
 SEQUENCE_LOGGER_NAME = "stoner_measurement.sequence"
 
 #: Regex that matches (and removes) the ``# __SM_{n}__`` line-map marker comments
@@ -77,9 +84,9 @@ class _QtLogHandler(logging.Handler, QObject):
 
     Instances of this handler can be attached to a Python :class:`logging.Logger`
     so that log records are delivered to any Qt slot connected to
-    :attr:`record_emitted`.  This is used to route sequence-engine log messages
-    to the :class:`~stoner_measurement.ui.log_viewer.LogViewerWindow` without
-    blocking the engine thread.
+    :attr:`record_emitted`.  This is used to route all ``stoner_measurement``
+    log messages to the :class:`~stoner_measurement.ui.log_viewer.LogViewerWindow`
+    without blocking the originating thread.
 
     Args:
         parent (QObject | None):
@@ -599,9 +606,11 @@ class SequenceEngine(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._log_handler = _QtLogHandler(parent=self)
-        logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
-        logger.setLevel(logging.DEBUG)
-        logger.addHandler(self._log_handler)
+        root_logger = logging.getLogger(ROOT_LOGGER_NAME)
+        self._prev_root_log_level = root_logger.level
+        if root_logger.level == logging.NOTSET or root_logger.level > logging.DEBUG:
+            root_logger.setLevel(logging.DEBUG)
+        root_logger.addHandler(self._log_handler)
 
         self._namespace = self._make_namespace()
         self._namespace["wait_for_plot_ready"] = self.wait_for_plot_ready
@@ -1207,7 +1216,10 @@ class SequenceEngine(QObject):
         self._thread.wait(2000)
         if self._thread.isRunning():
             self._thread.terminate()
-        logging.getLogger(SEQUENCE_LOGGER_NAME).removeHandler(self._log_handler)
+        root_logger = logging.getLogger(ROOT_LOGGER_NAME)
+        root_logger.removeHandler(self._log_handler)
+        root_logger.setLevel(self._prev_root_log_level)
+        self._log_handler.close()
 
     # ------------------------------------------------------------------
     # Status
@@ -1215,15 +1227,19 @@ class SequenceEngine(QObject):
 
     @property
     def log_handler(self) -> _QtLogHandler:
-        """Qt log handler that forwards sequence log records as a signal.
+        """Qt log handler that forwards all ``stoner_measurement`` log records as a signal.
+
+        The handler is attached to the ``stoner_measurement`` root logger so
+        that every child logger in the package — including temperature/magnet
+        controller engines, instrument drivers and sequence plugins — is
+        captured.
 
         Connect :attr:`_QtLogHandler.record_emitted` to a slot that accepts a
-        :class:`logging.LogRecord` in order to receive all messages emitted
-        via the ``log`` object in the sequence namespace.
+        :class:`logging.LogRecord` in order to receive these messages.
 
         Returns:
             (_QtLogHandler):
-                The handler attached to the sequence logger.
+                The handler attached to the ``stoner_measurement`` root logger.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication

@@ -7,6 +7,7 @@ import logging
 import pytest
 
 from stoner_measurement.core.sequence_engine import (
+    ROOT_LOGGER_NAME,
     SEQUENCE_LOGGER_NAME,
     SequenceEngine,
     _QtLogHandler,
@@ -65,14 +66,14 @@ class TestSequenceEngineLogging:
         assert engine.namespace["log"].name == SEQUENCE_LOGGER_NAME
 
     def test_log_handler_attached(self, engine):
-        logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        logger = logging.getLogger(ROOT_LOGGER_NAME)
         assert engine.log_handler in logger.handlers
 
     def test_log_handler_removed_on_shutdown(self, qapp):
         eng = SequenceEngine()
         handler = eng.log_handler
         eng.shutdown()
-        logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        logger = logging.getLogger(ROOT_LOGGER_NAME)
         assert handler not in logger.handlers
 
     def test_log_handler_property_returns_handler(self, engine):
