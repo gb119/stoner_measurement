@@ -83,6 +83,12 @@ _ZERO_CURRENT_THRESHOLD: float = 1e-30
 #: Maximum compliance voltage supported by the 6221 (volts).
 _6221_MAX_COMPLIANCE_V: float = 105.0
 
+#: Terminator required by the 2182A when relaying commands via the 6221 serial port.
+_2182A_SERIAL_TERMINATOR: str = "\r\n"
+
+#: Maximum number of ``SYST:COMM:SER:ENT?`` chunks to read for one 2182A response.
+_MAX_SERIAL_ENTRY_CHUNKS: int = 64
+
 
 class ConnectionMode(enum.Enum):
     """How the 2182A nanovoltmeter is connected to the system.
@@ -474,10 +480,29 @@ class Keithley6221_2182APlugin(TracePlugin):
     # 2182A command routing helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _serial_send_payload(cmd: str) -> str:
+        """Return *cmd* with a single 2182A serial terminator and escaped quotes."""
+        command = cmd.rstrip("\r\n")
+        payload = f"{command}{_2182A_SERIAL_TERMINATOR}"
+        return payload.replace('"', '""')
+
+    def _read_serial_entry_chunk(self) -> str:
+        """Read one raw chunk from ``SYST:COMM:SER:ENT?`` without stripping CR/LF."""
+        protocol = self._k6221.protocol
+        terminator = getattr(protocol, "terminator", b"\n")
+        payload = protocol.format_query("SYST:COMM:SER:ENT?")
+        self._k6221.transport.write(payload)
+        raw = self._k6221.transport.read_until(terminator)
+        if raw.endswith(terminator):
+            raw = raw[: -len(terminator)]
+        return raw.decode("utf-8", errors="replace")
+
     def _nvm_write(self, cmd: str) -> None:
         """Send *cmd* to the 2182A using the active connection mode."""
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
-            self._k6221.write(f'SYST:COMM:SER:SEND "{cmd}"')
+            payload = self._serial_send_payload(cmd)
+            self._k6221.write(f'SYST:COMM:SER:SEND "{payload}"')
         else:
             if self._k2182a is None:
                 raise RuntimeError(
@@ -489,8 +514,19 @@ class Keithley6221_2182APlugin(TracePlugin):
     def _nvm_query(self, cmd: str) -> str:
         """Send *cmd* to the 2182A and return its response."""
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
-            self._k6221.write(f'SYST:COMM:SER:SEND "{cmd}"')
-            return self._k6221.query("SYST:COMM:SER:ENT?").strip()
+            payload = self._serial_send_payload(cmd)
+            self._k6221.write(f'SYST:COMM:SER:SEND "{payload}"')
+            parts: list[str] = []
+            for _ in range(_MAX_SERIAL_ENTRY_CHUNKS):
+                chunk = self._read_serial_entry_chunk()
+                parts.append(chunk)
+                combined = "".join(parts)
+                if combined.endswith(("\r\n", "\n", "\r")):
+                    return combined.rstrip("\r\n")
+            raise RuntimeError(
+                "Timed out reading 2182A serial relay response: "
+                "no CR/LF terminator received."
+            )
         if self._k2182a is None:
             raise RuntimeError(
                 "DIRECT_GPIB mode selected but no 2182A connection is open. "
