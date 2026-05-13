@@ -23,6 +23,7 @@ import enum
 import logging
 import math
 import time
+from collections.abc import Generator
 from typing import Any
 
 import numpy as np
