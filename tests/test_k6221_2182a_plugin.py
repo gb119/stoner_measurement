@@ -319,7 +319,7 @@ class TestNvmGuards:
 
         with patch.object(k6221_2182a_module, "_MAX_SERIAL_ENTRY_CHUNKS", 3):
             with patch.object(plugin, "_read_serial_entry_chunk", return_value="123"):
-                with pytest.raises(RuntimeError, match="no CR/LF terminator"):
+                with pytest.raises(RuntimeError, match="no line terminator"):
                     plugin._nvm_query("READ?")
 
     def test_nvm_write_direct_gpib_without_connection_raises(self, qapp):
