@@ -23,6 +23,7 @@ import enum
 import logging
 import math
 import time
+from collections.abc import Generator
 from typing import Any
 
 import numpy as np
@@ -82,6 +83,15 @@ _ZERO_CURRENT_THRESHOLD: float = 1e-30
 
 #: Maximum compliance voltage supported by the 6221 (volts).
 _6221_MAX_COMPLIANCE_V: float = 105.0
+
+#: Terminator required by the 2182A when relaying commands via the 6221 serial port.
+_2182A_SERIAL_TERMINATOR: str = "\r\n"
+
+#: Accepted end-of-response terminators when reading via the 6221 serial relay.
+_2182A_RESPONSE_TERMINATORS: tuple[str, ...] = ("\r\n", "\n", "\r")
+
+#: Maximum number of ``SYST:COMM:SER:ENT?`` chunks to read for one 2182A response.
+_MAX_SERIAL_ENTRY_CHUNKS: int = 64
 
 
 class ConnectionMode(enum.Enum):
@@ -474,10 +484,56 @@ class Keithley6221_2182APlugin(TracePlugin):
     # 2182A command routing helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _serial_send_payload(cmd: str) -> str:
+        """Return *cmd* with one 2182A serial terminator and escaped quotes.
+
+        Args:
+            cmd (str):
+                SCPI command to send to the 2182A.
+
+        Returns:
+            (str):
+                Command string with trailing CR/LF terminator and doubled
+                embedded quotes for safe inclusion in a SCPI quoted string.
+        """
+        command = cmd.rstrip("\r\n")
+        payload = f"{command}{_2182A_SERIAL_TERMINATOR}"
+        return payload.replace('"', '""')
+
+    def _read_serial_entry_chunk(self) -> str:
+        """Read one raw chunk from ``SYST:COMM:SER:ENT?`` without stripping CR/LF.
+
+        Returns:
+            (str):
+                One serial relay payload chunk returned by the 6221 for
+                ``SYST:COMM:SER:ENT?``, preserving any CR/LF from the 2182A
+                response while removing only the outer 6221 query terminator.
+        """
+        protocol = self._k6221.protocol
+        terminator = getattr(protocol, "terminator", b"\n")
+        payload = protocol.format_query("SYST:COMM:SER:ENT?")
+        self._k6221.transport.write(payload)
+        log_traffic = getattr(self._k6221, "_log_comms_traffic", None)
+        if callable(log_traffic):
+            log_traffic("TX", payload)
+        raw = self._k6221.transport.read_until(terminator)
+        if callable(log_traffic):
+            log_traffic("RX", raw)
+        if raw.endswith(terminator):
+            raw = raw[: -len(terminator)]
+        return raw.decode("utf-8", errors="replace")
+
     def _nvm_write(self, cmd: str) -> None:
-        """Send *cmd* to the 2182A using the active connection mode."""
+        """Send *cmd* to the 2182A using the active connection mode.
+
+        Args:
+            cmd (str):
+                SCPI command to send to the 2182A.
+        """
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
-            self._k6221.write(f'SYST:COMM:SER:SEND "{cmd}"')
+            payload = self._serial_send_payload(cmd)
+            self._k6221.write(f'SYST:COMM:SER:SEND "{payload}"')
         else:
             if self._k2182a is None:
                 raise RuntimeError(
@@ -487,10 +543,36 @@ class Keithley6221_2182APlugin(TracePlugin):
             self._k2182a.write(cmd)
 
     def _nvm_query(self, cmd: str) -> str:
-        """Send *cmd* to the 2182A and return its response."""
+        """Send *cmd* to the 2182A and return its response.
+
+        Args:
+            cmd (str):
+                SCPI query command to send to the 2182A.
+
+        Returns:
+            (str):
+                Query response string without trailing CR/LF terminator.
+
+        Raises:
+            RuntimeError:
+                If DIRECT_GPIB mode is selected but no 2182A is connected, or
+                if the serial relay path does not yield a line-terminated
+                response (CRLF/LF/CR) within the configured chunk limit.
+        """
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
-            self._k6221.write(f'SYST:COMM:SER:SEND "{cmd}"')
-            return self._k6221.query("SYST:COMM:SER:ENT?").strip()
+            payload = self._serial_send_payload(cmd)
+            self._k6221.write(f'SYST:COMM:SER:SEND "{payload}"')
+            parts: list[str] = []
+            for _ in range(_MAX_SERIAL_ENTRY_CHUNKS):
+                chunk = self._read_serial_entry_chunk()
+                parts.append(chunk)
+                combined = "".join(parts)
+                if combined.endswith(_2182A_RESPONSE_TERMINATORS):
+                    return combined.rstrip("\r\n")
+            raise RuntimeError(
+                "Timed out reading 2182A serial relay response: "
+                "no line terminator (CRLF/LF/CR) received."
+            )
         if self._k2182a is None:
             raise RuntimeError(
                 "DIRECT_GPIB mode selected but no 2182A connection is open. "
