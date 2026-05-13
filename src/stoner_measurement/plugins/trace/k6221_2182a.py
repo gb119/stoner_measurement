@@ -514,7 +514,12 @@ class Keithley6221_2182APlugin(TracePlugin):
         terminator = getattr(protocol, "terminator", b"\n")
         payload = protocol.format_query("SYST:COMM:SER:ENT?")
         self._k6221.transport.write(payload)
+        log_traffic = getattr(self._k6221, "_log_comms_traffic", None)
+        if callable(log_traffic):
+            log_traffic("TX", payload)
         raw = self._k6221.transport.read_until(terminator)
+        if callable(log_traffic):
+            log_traffic("RX", raw)
         if raw.endswith(terminator):
             raw = raw[: -len(terminator)]
         return raw.decode("utf-8", errors="replace")
@@ -551,8 +556,8 @@ class Keithley6221_2182APlugin(TracePlugin):
         Raises:
             RuntimeError:
                 If DIRECT_GPIB mode is selected but no 2182A is connected, or
-                if the serial relay path does not yield a CR/LF-terminated
-                response within the configured chunk limit.
+                if the serial relay path does not yield a line-terminated
+                response (CRLF/LF/CR) within the configured chunk limit.
         """
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
             payload = self._serial_send_payload(cmd)
@@ -566,7 +571,7 @@ class Keithley6221_2182APlugin(TracePlugin):
                     return combined.rstrip("\r\n")
             raise RuntimeError(
                 "Timed out reading 2182A serial relay response: "
-                "no CR/LF terminator received."
+                "no line terminator (CRLF/LF/CR) received."
             )
         if self._k2182a is None:
             raise RuntimeError(
