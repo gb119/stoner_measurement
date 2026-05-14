@@ -7,8 +7,8 @@ colour-coded list with fine-grained filtering controls.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -183,9 +183,13 @@ class LogSourcesWidget(QWidget):
     def set_selected_prefixes(self, prefixes: set[str] | None) -> None:
         """Apply *prefixes* as the current selection."""
         self._desired_prefixes = None if prefixes is None else set(prefixes)
-        for prefix, item in self._items_by_prefix.items():
-            check_state = self._check_state_for_prefix(prefix)
-            item.setCheckState(0, check_state)
+        self._tree.blockSignals(True)
+        try:
+            for prefix, item in self._items_by_prefix.items():
+                check_state = self._check_state_for_prefix(prefix)
+                item.setCheckState(0, check_state)
+        finally:
+            self._tree.blockSignals(False)
         self.sources_changed.emit()
 
     def register_source(self, name: str) -> None:
@@ -206,16 +210,24 @@ class LogSourcesWidget(QWidget):
     def select_all(self) -> None:
         """Select all currently discovered sources."""
         self._desired_prefixes = None
-        for item in self._items_by_prefix.values():
-            item.setCheckState(0, Qt.CheckState.Checked)
+        self._tree.blockSignals(True)
+        try:
+            for item in self._items_by_prefix.values():
+                item.setCheckState(0, Qt.CheckState.Checked)
+        finally:
+            self._tree.blockSignals(False)
         self.sources_changed.emit()
 
     @pyqtSlot()
     def deselect_all(self) -> None:
         """Deselect all currently discovered sources."""
         self._desired_prefixes = set()
-        for item in self._items_by_prefix.values():
-            item.setCheckState(0, Qt.CheckState.Unchecked)
+        self._tree.blockSignals(True)
+        try:
+            for item in self._items_by_prefix.values():
+                item.setCheckState(0, Qt.CheckState.Unchecked)
+        finally:
+            self._tree.blockSignals(False)
         self.sources_changed.emit()
 
     def _check_state_for_prefix(self, prefix: str) -> Qt.CheckState:
@@ -285,6 +297,7 @@ class LogViewerWindow(QWidget):
         self._filter_state = LogFilterState()
         self._file_log_state = FileLogState()
         self._file_handler: logging.FileHandler | None = None
+        self._restoring_settings = False
 
         self._output = QPlainTextEdit(self)
         self._output.setReadOnly(True)
@@ -659,26 +672,34 @@ class LogViewerWindow(QWidget):
 
     def _restore_settings(self) -> None:
         """Restore persisted viewer settings."""
+        self._restoring_settings = True
         settings = QSettings()
-        settings.beginGroup(_SETTINGS_GROUP)
-        self._set_combo_data(self._display_level, settings.value("display_min_level", logging.DEBUG, int))
-        self._set_combo_data(self._traffic_filter, settings.value("display_traffic_mode", "all"))
-        self._display_sources.set_selected_prefixes(
-            self._read_prefix_setting(settings, "display_enabled_prefixes")
-        )
+        try:
+            settings.beginGroup(_SETTINGS_GROUP)
+            self._set_combo_data(self._display_level, settings.value("display_min_level", logging.DEBUG, int))
+            self._set_combo_data(self._traffic_filter, settings.value("display_traffic_mode", "all", str))
+            self._display_sources.set_selected_prefixes(
+                self._read_prefix_setting(settings, "display_enabled_prefixes")
+            )
 
-        self._btn_display_sources.setChecked(settings.value("display_sources_visible", False, bool))
-        self._btn_file_logging.setChecked(settings.value("file_panel_visible", False, bool))
+            self._btn_display_sources.setChecked(settings.value("display_sources_visible", False, bool))
+            self._btn_file_logging.setChecked(settings.value("file_panel_visible", False, bool))
 
-        self._file_enabled.setChecked(settings.value("file_enabled", False, bool))
-        self._file_path.setText(settings.value("file_path", "", str))
-        self._set_combo_data(self._file_mode, settings.value("file_append", True, bool))
-        self._set_combo_data(self._file_level, settings.value("file_min_level", logging.DEBUG, int))
-        self._file_sources.set_selected_prefixes(self._read_prefix_setting(settings, "file_enabled_prefixes"))
-        settings.endGroup()
+            self._file_enabled.setChecked(settings.value("file_enabled", False, bool))
+            self._file_path.setText(settings.value("file_path", "", str))
+            self._set_combo_data(self._file_mode, settings.value("file_append", True, bool))
+            self._set_combo_data(self._file_level, settings.value("file_min_level", logging.DEBUG, int))
+            self._file_sources.set_selected_prefixes(
+                self._read_prefix_setting(settings, "file_enabled_prefixes")
+            )
+            settings.endGroup()
+        finally:
+            self._restoring_settings = False
 
     def _save_settings(self) -> None:
         """Persist viewer settings using :class:`QSettings`."""
+        if self._restoring_settings:
+            return
         settings = QSettings()
         settings.beginGroup(_SETTINGS_GROUP)
         settings.setValue("display_min_level", int(self._display_level.currentData() or logging.DEBUG))
