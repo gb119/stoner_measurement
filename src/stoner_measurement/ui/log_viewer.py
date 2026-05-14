@@ -363,7 +363,7 @@ class LogViewerWindow(QWidget):
         self._btn_file_apply = QPushButton("Apply", self._file_panel)
         self._btn_file_apply.clicked.connect(self._apply_file_logging)
         self._btn_file_stop = QPushButton("Stop", self._file_panel)
-        self._btn_file_stop.clicked.connect(self._stop_file_logging)
+        self._btn_file_stop.clicked.connect(self._on_stop_file_logging_clicked)
 
         self._build_layout()
         self._restore_settings()
@@ -660,7 +660,12 @@ class LogViewerWindow(QWidget):
         self._update_file_logging_status()
         self._save_settings()
 
-    def _stop_file_logging(self, _checked: bool = False, *, update_status: bool = True) -> None:
+    @pyqtSlot(bool)
+    def _on_stop_file_logging_clicked(self, _checked: bool = False) -> None:
+        """Handle clicks from the file-logging stop button."""
+        self._stop_file_logging()
+
+    def _stop_file_logging(self, *, update_status: bool = True) -> None:
         """Close the file handler if one is active."""
         if self._file_handler is not None:
             self._file_handler.flush()

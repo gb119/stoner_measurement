@@ -160,3 +160,19 @@ class TestLogViewerFileLogging:
         assert "file target" in log_text
         assert "ignore me" not in log_text
         assert viewer._file_status.text() == "Not logging"
+
+    def test_stop_button_slot_closes_file_handler(self, qapp, tmp_path):
+        _configure_test_settings(qapp, tmp_path)
+        viewer = LogViewerWindow()
+
+        file_path = tmp_path / "viewer.log"
+        viewer._file_enabled.setChecked(True)
+        viewer._file_path.setText(str(file_path))
+        viewer._apply_file_logging()
+
+        assert viewer._file_handler is not None
+
+        viewer._on_stop_file_logging_clicked(False)
+
+        assert viewer._file_handler is None
+        assert viewer._file_status.text() == "Not logging"
