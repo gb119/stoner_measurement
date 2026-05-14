@@ -1,24 +1,53 @@
 """Icon factories for the Stoner Measurement UI.
 
 Provides functions that create :class:`~PyQt6.QtGui.QIcon` objects used
-throughout the application.  Most icons are rendered programmatically so that
-no external image files are required; the application logo is loaded from
-bundled package data.
+throughout the application.  Where available, icons are loaded from bundled
+PNG resources under ``stoner_measurement/ui/resources/``; others are rendered
+programmatically.  Each loader falls back to a programmatic icon if the
+resource file cannot be found.
 """
 
 from __future__ import annotations
 
 import importlib.resources
+import importlib.resources.abc
 import math
 
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPixmap, QPolygonF
 
 
-def make_generate_icon(size: int = 32) -> QIcon:
-    """Create a gear-style icon for the *Generate Code* action.
+def _load_resource_icon(resource_path: str) -> QIcon | None:
+    """Load a PNG icon from the bundled resources directory.
 
-    Draws a simple eight-toothed gear with a transparent centre hole.
+    Args:
+        resource_path (str):
+            Path relative to the ``stoner_measurement.ui`` package root,
+            e.g. ``"resources/build.png"``.
+
+    Returns:
+        (QIcon | None):
+            The loaded icon, or ``None`` if the resource cannot be found or
+            the resulting icon is null.
+    """
+    try:
+        pkg = importlib.resources.files("stoner_measurement.ui")
+        parts = resource_path.split("/")
+        resource: importlib.resources.abc.Traversable = pkg
+        for part in parts:
+            resource = resource.joinpath(part)
+        with importlib.resources.as_file(resource) as path:
+            icon = QIcon(str(path))
+            return icon if not icon.isNull() else None
+    except (FileNotFoundError, ModuleNotFoundError):
+        return None
+
+
+def make_generate_icon(size: int = 32) -> QIcon:
+    """Create an icon for the *Generate Code* action.
+
+    Loads ``build.png`` from the bundled ``resources`` directory.  Falls back
+    to a programmatically drawn gear icon if the resource cannot be found.
 
     Keyword Parameters:
         size (int):
@@ -26,13 +55,21 @@ def make_generate_icon(size: int = 32) -> QIcon:
 
     Returns:
         (QIcon):
-            The rendered gear icon.
+            The build icon.
 
     Examples:
         >>> icon = make_generate_icon()
         >>> icon.isNull()
         False
     """
+    try:
+        icon = _load_resource_icon("resources/build.png")
+        if icon is not None:
+            return icon
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Programmatic fallback: eight-toothed gear.
     img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     img.fill(Qt.GlobalColor.transparent)
 
@@ -157,11 +194,10 @@ def make_temperature_icon(size: int = 32) -> QIcon:
 
 
 def make_log_icon(size: int = 32) -> QIcon:
-    """Create a simple document-with-lines icon for the *Show Log* action.
+    """Create an icon for the *Show Log* action.
 
-    Draws a white rectangle (page) with three horizontal lines representing
-    log entries, and a small coloured bullet on the left of each line to
-    suggest severity colouring.
+    Loads ``log.png`` from the bundled ``resources`` directory.  Falls back
+    to a programmatically drawn document icon if the resource cannot be found.
 
     Keyword Parameters:
         size (int):
@@ -169,7 +205,7 @@ def make_log_icon(size: int = 32) -> QIcon:
 
     Returns:
         (QIcon):
-            The rendered log icon.
+            The log icon.
 
     Examples:
         >>> icon = make_log_icon()
@@ -177,6 +213,14 @@ def make_log_icon(size: int = 32) -> QIcon:
         False
     """
     # pylint: disable=too-many-locals
+    try:
+        icon = _load_resource_icon("resources/log.png")
+        if icon is not None:
+            return icon
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Programmatic fallback: document with coloured log lines.
     img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     img.fill(Qt.GlobalColor.transparent)
 
