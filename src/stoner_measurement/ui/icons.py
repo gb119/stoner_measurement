@@ -10,10 +10,37 @@ resource file cannot be found.
 from __future__ import annotations
 
 import importlib.resources
+import importlib.resources.abc
 import math
 
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPixmap, QPolygonF
+
+
+def _load_resource_icon(resource_path: str) -> QIcon | None:
+    """Load a PNG icon from the bundled resources directory.
+
+    Args:
+        resource_path (str):
+            Path relative to the ``stoner_measurement.ui`` package root,
+            e.g. ``"resources/build.png"``.
+
+    Returns:
+        (QIcon | None):
+            The loaded icon, or ``None`` if the resource cannot be found or
+            the resulting icon is null.
+    """
+    try:
+        pkg = importlib.resources.files("stoner_measurement.ui")
+        parts = resource_path.split("/")
+        resource: importlib.resources.abc.Traversable = pkg
+        for part in parts:
+            resource = resource.joinpath(part)
+        with importlib.resources.as_file(resource) as path:
+            icon = QIcon(str(path))
+            return icon if not icon.isNull() else None
+    except (FileNotFoundError, ModuleNotFoundError):
+        return None
 
 
 def make_generate_icon(size: int = 32) -> QIcon:
@@ -36,13 +63,10 @@ def make_generate_icon(size: int = 32) -> QIcon:
         False
     """
     try:
-        pkg = importlib.resources.files("stoner_measurement.ui")
-        resource = pkg.joinpath("resources").joinpath("build.png")
-        with importlib.resources.as_file(resource) as path:
-            icon = QIcon(str(path))
-            if not icon.isNull():
-                return icon
-    except (FileNotFoundError, ModuleNotFoundError):
+        icon = _load_resource_icon("resources/build.png")
+        if icon is not None:
+            return icon
+    except Exception:  # noqa: BLE001
         pass
 
     # Programmatic fallback: eight-toothed gear.
@@ -190,13 +214,10 @@ def make_log_icon(size: int = 32) -> QIcon:
     """
     # pylint: disable=too-many-locals
     try:
-        pkg = importlib.resources.files("stoner_measurement.ui")
-        resource = pkg.joinpath("resources").joinpath("log.png")
-        with importlib.resources.as_file(resource) as path:
-            icon = QIcon(str(path))
-            if not icon.isNull():
-                return icon
-    except (FileNotFoundError, ModuleNotFoundError):
+        icon = _load_resource_icon("resources/log.png")
+        if icon is not None:
+            return icon
+    except Exception:  # noqa: BLE001
         pass
 
     # Programmatic fallback: document with coloured log lines.
