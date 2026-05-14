@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QSettings, Qt
 
 from stoner_measurement.ui.log_viewer import LogSourcesWidget, LogViewerWindow
 
@@ -59,6 +59,7 @@ class TestLogSourcesWidget:
         widget.register_source("stoner_measurement.sequence")
         widget.register_source("stoner_measurement.plugins.trace.dummy.DummyPlugin")
 
+        assert widget._group_items["sequence"].child(0).checkState(0) == Qt.CheckState.Unchecked
         assert widget.selected_prefixes == wanted
 
 
