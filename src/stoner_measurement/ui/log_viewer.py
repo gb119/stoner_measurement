@@ -431,7 +431,7 @@ class LogViewerWindow(QWidget):
         if self._record_matches_filter(record, self._filter_state):
             self._render_record(record)
         if self._file_handler is not None and self._record_matches_filter(record, self._file_log_state):
-            self._file_handler.emit(record)
+            self._file_handler.handle(record)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Stop file logging and persist settings before the window closes."""
