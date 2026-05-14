@@ -554,13 +554,31 @@ class LogViewerWindow(QWidget):
         self._file_log_state.enabled_prefixes = self._file_sources.selected_prefixes
         self._file_log_state.append = bool(self._file_mode.currentData())
 
+    def _logger_name_matches_prefix(self, logger_name: str, prefix: str) -> bool:
+        """Return ``True`` when *prefix* matches *logger_name* on a name boundary."""
+        return logger_name == prefix or logger_name.startswith(f"{prefix}.")
+
+    def _record_matches_enabled_prefixes(
+        self, record: logging.LogRecord, enabled_prefixes: set[str] | None
+    ) -> bool:
+        """Return ``True`` when *record* matches the most specific enabled prefix."""
+        if enabled_prefixes is None:
+            return True
+
+        matching_prefixes = [
+            prefix for prefix in enabled_prefixes if self._logger_name_matches_prefix(record.name, prefix)
+        ]
+        if not matching_prefixes:
+            return False
+
+        most_specific_prefix = max(matching_prefixes, key=len)
+        return most_specific_prefix in enabled_prefixes
+
     def _record_matches_filter(self, record: logging.LogRecord, state: LogFilterState | FileLogState) -> bool:
         """Return ``True`` when *record* passes *state*."""
         if record.levelno < state.min_level:
             return False
-        if state.enabled_prefixes is not None and not any(
-            record.name.startswith(prefix) for prefix in state.enabled_prefixes
-        ):
+        if not self._record_matches_enabled_prefixes(record, state.enabled_prefixes):
             return False
         return self._record_matches_traffic_mode(record, getattr(state, "traffic_mode", "all"))
 
