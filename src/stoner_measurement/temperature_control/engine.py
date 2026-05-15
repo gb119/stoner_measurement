@@ -172,8 +172,7 @@ class TemperatureControllerEngine(QObject):
         self._stable.clear()
         self._set_status(EngineStatus.CONNECTED)
         self._timer.start()
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(f"TemperatureControllerEngine: connected to {type(driver).__name__}")
+        logger.info(f"TemperatureControllerEngine: connected to {type(driver).__name__}")
 
     def disconnect_instrument(self) -> None:
         """Stop polling and release the driver reference."""
