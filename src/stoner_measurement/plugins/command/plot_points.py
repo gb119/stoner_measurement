@@ -366,6 +366,11 @@ class PlotPointsCommand(CommandPlugin):
                     exc,
                 )
                 continue
+            if not self._wait_for_plot_ready(timeout=None):
+                self.log.debug("PlotPoints: wait for plot readiness interrupted for %r.", label)
+                # Stop waiting/plotting for this step when interrupted
+                # (e.g. user stop requested).
+                return
             self.plot_ensure_x_axis.emit(x_axis, x_axis)
             self.plot_ensure_y_axis.emit(y_axis, y_axis)
             self.plot_update_queued.emit()

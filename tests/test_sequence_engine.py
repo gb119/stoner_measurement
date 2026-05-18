@@ -704,6 +704,49 @@ class TestDataCatalogs:
         engine.plot_widget = _BusyPlotWidget()
         assert engine.wait_for_plot_ready(timeout=0.01, poll_interval=0.001) is False
 
+    def test_wait_for_plot_ready_timeout_none_waits_until_ready(self, engine):
+        import threading
+
+        class _BusyThenIdlePlotWidget:
+            def __init__(self):
+                self._busy = True
+
+            def is_busy_for_data(self) -> bool:
+                return self._busy
+
+        widget = _BusyThenIdlePlotWidget()
+        engine.plot_widget = widget
+
+        def _release_busy_flag() -> None:
+            time.sleep(0.02)
+            widget._busy = False
+
+        release_thread = threading.Thread(target=_release_busy_flag, daemon=True)
+        release_thread.start()
+        started = time.monotonic()
+        assert engine.wait_for_plot_ready(timeout=None, poll_interval=0.001) is True
+        elapsed = time.monotonic() - started
+        release_thread.join(timeout=1.0)
+        # Allow a small scheduling margin below the 20 ms release delay.
+        assert elapsed >= 0.019
+
+    def test_wait_for_plot_ready_returns_false_when_stop_requested(self, engine):
+        import threading
+
+        class _BusyPlotWidget:
+            def is_busy_for_data(self) -> bool:
+                return True
+
+        engine.plot_widget = _BusyPlotWidget()
+        def _request_stop() -> None:
+            time.sleep(0.02)
+            engine.stop()
+
+        stop_thread = threading.Thread(target=_request_stop, daemon=True)
+        stop_thread.start()
+        assert engine.wait_for_plot_ready(timeout=None, poll_interval=0.001) is False
+        stop_thread.join(timeout=1.0)
+
 
 
 
