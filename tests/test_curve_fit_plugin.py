@@ -272,7 +272,7 @@ class TestCurveFitTransform:
             "    log.debug('fit debug message')\n"
             "    return a * x + b\n"
             "def p0(x, y):\n"
-            "    log.info('p0 debug message')\n"
+            "    log.info('p0 info message')\n"
             "    return (1.0, 0.0)\n"
         )
         plugin.param_names = ["a", "b"]
