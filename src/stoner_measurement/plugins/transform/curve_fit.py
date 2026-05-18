@@ -18,6 +18,7 @@ import functools
 import logging
 import math
 import textwrap
+from collections.abc import Callable
 from contextlib import redirect_stdout
 from io import StringIO
 from typing import TYPE_CHECKING, Any
@@ -957,7 +958,10 @@ class CurveFitPlugin(TransformPlugin):
             # The underlying Qt object may already be deleted during shutdown.
             pass
 
-    def _wrap_user_stdout_callable(self, func):
+    def _wrap_user_stdout_callable(
+        self,
+        func: Callable[..., Any] | None,
+    ) -> Callable[..., Any] | None:
         """Wrap a user callable so its stdout is forwarded to the console."""
         if func is None or self.sequence_engine is None:
             return func

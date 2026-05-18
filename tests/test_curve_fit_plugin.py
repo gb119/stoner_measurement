@@ -237,14 +237,19 @@ class TestCurveFitTransform:
             "        fit_printed = True\n"
             "    return a * x + b\n"
             "def p0(x, y):\n"
-            "    print('p0 debug line')\n"
+            "    print('p0 debug line 1')\n"
+            "    print('p0 debug line 2')\n"
             "    return (1.0, 0.0)\n"
         )
         plugin.param_names = ["a", "b"]
         plugin.transform({})
 
-        assert any("fit debug line" in text for text in output_chunks)
-        assert any("p0 debug line" in text for text in output_chunks)
+        captured = "".join(output_chunks)
+        assert "p0 debug line 1" in captured
+        assert "p0 debug line 2" in captured
+        assert "fit debug line" in captured
+        assert captured.index("p0 debug line 1") < captured.index("p0 debug line 2")
+        assert captured.index("p0 debug line 2") < captured.index("fit debug line")
         engine.shutdown()
 
     def test_user_fit_code_namespace_exposes_log_logger(self, qapp):
