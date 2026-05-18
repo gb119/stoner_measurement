@@ -2180,13 +2180,23 @@ class TestLakeshoreErrorHandling:
 
 class TestCheckForErrors:
     def test_check_for_errors_no_error(self):
-        t = _null(responses=[b'+0,"No error"\n'])
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x04
+
+        t = StubTransport(responses=[b'+0,"No error"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol())
         instr.check_for_errors()  # must not raise
         assert t.write_log == [b"SYST:ERR?\n"]
 
     def test_check_for_errors_raises_on_error(self):
-        t = _null(responses=[b'-113,"Undefined header"\n'])
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x04
+
+        t = StubTransport(responses=[b'-113,"Undefined header"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol())
         with pytest.raises(InstrumentError) as exc_info:
             instr.check_for_errors(command="*IDN")
@@ -2255,20 +2265,35 @@ class TestAutoCheckErrors:
         assert BaseInstrument(NullTransport(), ScpiProtocol()).auto_check_errors is True
 
     def test_auto_check_errors_query_raises_on_scpi_error(self):
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x04
+
         # The NullTransport serves: first the query response, then the SYST:ERR? response
-        t = _null(responses=[b"ACME\n", b'-113,"Undefined header"\n'])
+        t = StubTransport(responses=[b"ACME\n", b'-113,"Undefined header"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         with pytest.raises(InstrumentError, match="Undefined header"):
             instr.query("*IDN?")
 
     def test_auto_check_errors_query_no_raise_when_queue_clear(self):
-        t = _null(responses=[b"ACME\n", b'+0,"No error"\n'])
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x04
+
+        t = StubTransport(responses=[b"ACME\n", b'+0,"No error"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         result = instr.query("*IDN?")
         assert result == "ACME"
 
     def test_auto_check_errors_write_raises_on_scpi_error(self):
-        t = _null(responses=[b'-113,"Undefined header"\n'])
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x04
+
+        t = StubTransport(responses=[b'-113,"Undefined header"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         with pytest.raises(InstrumentError):
             instr.write("BAD CMD")
@@ -2321,13 +2346,18 @@ class TestIdentityAndQueueClearing:
         assert instr.confirm_identity() == "VENDOR,MODEL2,SN,FW"
 
     def test_check_for_errors_clears_remaining_queue_entries(self, caplog):
-        t = _null(
+        class StubTransport(NullTransport):
+            def read_status_byte(self) -> int:
+                return 0x04
+
+        t = StubTransport(
             responses=[
                 b'-113,"First error"\n',
                 b'-114,"Second error"\n',
                 b'+0,"No error"\n',
             ]
         )
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol())
         with caplog.at_level(logging.ERROR, logger="stoner_measurement.sequence.comms"):
             with pytest.raises(InstrumentError, match="First error"):
