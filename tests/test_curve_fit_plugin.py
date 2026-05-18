@@ -13,6 +13,7 @@ from stoner_measurement.plugins.transform.curve_fit import (
     _has_p0_function,
     _ParamTableWidget,
     _parse_fit_params,
+    _si_scale_and_prefix,
 )
 
 # ---------------------------------------------------------------------------
@@ -55,15 +56,50 @@ class TestHasP0Function:
         assert not _has_p0_function("not valid !!!!")
 
 
+class TestSiScaleAndPrefix:
+    def test_kilo(self):
+        scale, prefix = _si_scale_and_prefix(1234.0)
+        assert scale == pytest.approx(1000.0)
+        assert prefix == "k"
+
+    def test_milli(self):
+        scale, prefix = _si_scale_and_prefix(0.00456)
+        assert scale == pytest.approx(0.001)
+        assert prefix == "m"
+
+    def test_unity(self):
+        scale, prefix = _si_scale_and_prefix(12.3)
+        assert scale == pytest.approx(1.0)
+        assert prefix == ""
+
+    def test_zero(self):
+        scale, prefix = _si_scale_and_prefix(0.0)
+        assert scale == pytest.approx(1.0)
+        assert prefix == ""
+
+    def test_mega(self):
+        scale, prefix = _si_scale_and_prefix(2.5e7)
+        assert scale == pytest.approx(1e6)
+        assert prefix == "M"
+
+    def test_nano(self):
+        scale, prefix = _si_scale_and_prefix(4.5e-8)
+        assert scale == pytest.approx(1e-9)
+        assert prefix == "n"
+
+
 class TestFormatValueWithUncertainty:
     def test_formats_with_matching_precision(self):
         assert _format_value_with_uncertainty(12.345, 0.67) == "12.3 ± 0.7"
 
-    def test_rounds_integer_scale_uncertainty(self):
-        assert _format_value_with_uncertainty(1234.0, 230.0) == "1200 ± 200"
+    def test_applies_si_prefix_for_large_values(self):
+        assert _format_value_with_uncertainty(1234.0, 230.0) == "1.2 ± 0.2 k"
 
     def test_preserves_decimal_precision_when_rounding_to_one(self):
         assert _format_value_with_uncertainty(1.23, 0.96) == "1.2 ± 1.0"
+
+    def test_applies_si_prefix_for_small_values(self):
+        assert _format_value_with_uncertainty(0.00456, 0.00034) == "4.6 ± 0.3 m"
 
     def test_returns_empty_for_non_finite_values(self):
         assert _format_value_with_uncertainty(np.nan, 0.1) == ""

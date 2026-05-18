@@ -168,12 +168,56 @@ _INF = float("inf")
 _DEFAULT_COLUMN_OPTION = "(default)"
 _NAN = float("nan")
 
+# Mapping from SI tier (power-of-1000 exponent) to SI prefix symbol.
+_SI_PREFIXES: dict[int, str] = {
+    -8: "y", -7: "z", -6: "a", -5: "f", -4: "p",
+    -3: "n", -2: "µ", -1: "m", 0: "",
+    1: "k", 2: "M", 3: "G", 4: "T", 5: "P",
+    6: "E", 7: "Z", 8: "Y",
+}
+
+
+def _si_scale_and_prefix(value: float) -> tuple[float, str]:
+    """Return ``(scale, si_prefix)`` so that ``abs(value) / scale`` is in ``[1, 1000)``.
+
+    The scale is a power of 1000 (10^(3*tier)).  Returns ``(1.0, "")`` when *value*
+    is zero.
+
+    Args:
+        value (float):
+            The physical quantity to be scaled.
+
+    Returns:
+        (float):
+            Scale factor — divide *value* by this to obtain the display mantissa.
+        (str):
+            SI prefix symbol corresponding to the scale, e.g. ``"k"``, ``"µ"``,
+            or ``""`` for unity scale.
+
+    Examples:
+        >>> _si_scale_and_prefix(1234.0)
+        (1000.0, 'k')
+        >>> _si_scale_and_prefix(0.00456)
+        (0.001, 'm')
+        >>> _si_scale_and_prefix(0.0)
+        (1.0, '')
+    """
+    abs_val = abs(value)
+    if abs_val == 0.0:
+        return 1.0, ""
+    tier = int(math.floor(math.log10(abs_val) / 3))
+    tier = max(-8, min(8, tier))
+    scale = 10.0 ** (3 * tier)
+    return scale, _SI_PREFIXES.get(tier, "")
+
 
 def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
-    """Format a fitted value as ``value ± uncertainty``.
+    """Format a fitted value as ``value ± uncertainty [SI prefix]``.
 
-    The uncertainty is rounded to one significant figure and the value is
-    rounded to the same decimal precision.
+    An SI prefix is chosen so that the displayed value mantissa falls in the
+    range ``[1, 1000)``.  Both the value and the uncertainty are divided by the
+    same SI scale factor before formatting.  The uncertainty is rounded to one
+    significant figure and the value is rounded to the same decimal precision.
 
     Args:
         value (Any):
@@ -183,7 +227,16 @@ def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
 
     Returns:
         (str):
-            Formatted text, or an empty string when the inputs are not finite.
+            Formatted text such as ``"1.2 ± 0.2 k"`` or ``"12.3 ± 0.7"``,
+            or an empty string when the inputs are not finite.
+
+    Examples:
+        >>> _format_value_with_uncertainty(12.345, 0.67)
+        '12.3 ± 0.7'
+        >>> _format_value_with_uncertainty(1234.0, 230.0)
+        '1.2 ± 0.2 k'
+        >>> _format_value_with_uncertainty(0.00456, 0.00034)
+        '4.6 ± 0.3 m'
     """
     try:
         value_float = float(value)
@@ -193,13 +246,17 @@ def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
     if not math.isfinite(value_float) or not math.isfinite(uncertainty_float) or uncertainty_float <= 0.0:
         return ""
 
-    rounded_uncertainty = float(f"{uncertainty_float:.1g}")
+    scale, si_prefix = _si_scale_and_prefix(value_float)
+    scaled_value = value_float / scale
+    scaled_uncertainty = uncertainty_float / scale
+
+    rounded_uncertainty = float(f"{scaled_uncertainty:.1g}")
     if rounded_uncertainty <= 0.0 or not math.isfinite(rounded_uncertainty):
         return ""
 
-    exponent = math.floor(math.log10(abs(uncertainty_float)))
+    exponent = math.floor(math.log10(abs(scaled_uncertainty)))
     decimals = -exponent
-    rounded_value = round(value_float, decimals)
+    rounded_value = round(scaled_value, decimals)
 
     if decimals > 0:
         value_text = f"{rounded_value:.{decimals}f}"
@@ -207,6 +264,9 @@ def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
     else:
         value_text = f"{rounded_value:.0f}"
         uncertainty_text = f"{rounded_uncertainty:.0f}"
+
+    if si_prefix:
+        return f"{value_text} ± {uncertainty_text} {si_prefix}"
     return f"{value_text} ± {uncertainty_text}"
 
 
