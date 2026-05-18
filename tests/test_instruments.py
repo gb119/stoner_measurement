@@ -129,6 +129,18 @@ def _null(responses=None):
     return t
 
 
+class _NullTransportWithEsb(NullTransport):
+    """Null transport variant that reports ESB set for SCPI error polling tests."""
+
+    def read_status_byte(self) -> int:
+        """Return a status byte with IEEE 488.2 Event Status Bit (bit 2) set.
+
+        Returns:
+            (int): ``0x04`` so tests exercise the SCPI error-queue polling path.
+        """
+        return 0x04
+
+
 # ---------------------------------------------------------------------------
 # ABC enforcement
 # ---------------------------------------------------------------------------
@@ -2180,22 +2192,14 @@ class TestLakeshoreErrorHandling:
 
 class TestCheckForErrors:
     def test_check_for_errors_no_error(self):
-        class StubTransport(NullTransport):
-            def read_status_byte(self) -> int:
-                return 0x04
-
-        t = StubTransport(responses=[b'+0,"No error"\n'])
+        t = _NullTransportWithEsb(responses=[b'+0,"No error"\n'])
         t.open()
         instr = BaseInstrument(t, ScpiProtocol())
         instr.check_for_errors()  # must not raise
         assert t.write_log == [b"SYST:ERR?\n"]
 
     def test_check_for_errors_raises_on_error(self):
-        class StubTransport(NullTransport):
-            def read_status_byte(self) -> int:
-                return 0x04
-
-        t = StubTransport(responses=[b'-113,"Undefined header"\n'])
+        t = _NullTransportWithEsb(responses=[b'-113,"Undefined header"\n'])
         t.open()
         instr = BaseInstrument(t, ScpiProtocol())
         with pytest.raises(InstrumentError) as exc_info:
@@ -2265,34 +2269,22 @@ class TestAutoCheckErrors:
         assert BaseInstrument(NullTransport(), ScpiProtocol()).auto_check_errors is True
 
     def test_auto_check_errors_query_raises_on_scpi_error(self):
-        class StubTransport(NullTransport):
-            def read_status_byte(self) -> int:
-                return 0x04
-
         # The NullTransport serves: first the query response, then the SYST:ERR? response
-        t = StubTransport(responses=[b"ACME\n", b'-113,"Undefined header"\n'])
+        t = _NullTransportWithEsb(responses=[b"ACME\n", b'-113,"Undefined header"\n'])
         t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         with pytest.raises(InstrumentError, match="Undefined header"):
             instr.query("*IDN?")
 
     def test_auto_check_errors_query_no_raise_when_queue_clear(self):
-        class StubTransport(NullTransport):
-            def read_status_byte(self) -> int:
-                return 0x04
-
-        t = StubTransport(responses=[b"ACME\n", b'+0,"No error"\n'])
+        t = _NullTransportWithEsb(responses=[b"ACME\n", b'+0,"No error"\n'])
         t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         result = instr.query("*IDN?")
         assert result == "ACME"
 
     def test_auto_check_errors_write_raises_on_scpi_error(self):
-        class StubTransport(NullTransport):
-            def read_status_byte(self) -> int:
-                return 0x04
-
-        t = StubTransport(responses=[b'-113,"Undefined header"\n'])
+        t = _NullTransportWithEsb(responses=[b'-113,"Undefined header"\n'])
         t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         with pytest.raises(InstrumentError):
@@ -2346,11 +2338,7 @@ class TestIdentityAndQueueClearing:
         assert instr.confirm_identity() == "VENDOR,MODEL2,SN,FW"
 
     def test_check_for_errors_clears_remaining_queue_entries(self, caplog):
-        class StubTransport(NullTransport):
-            def read_status_byte(self) -> int:
-                return 0x04
-
-        t = StubTransport(
+        t = _NullTransportWithEsb(
             responses=[
                 b'-113,"First error"\n',
                 b'-114,"Second error"\n',

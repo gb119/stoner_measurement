@@ -123,8 +123,7 @@ class NullTransport(BaseTransport):
         """Return a clear IEEE 488.2 status byte for simulated links.
 
         Returns:
-            (int):
-                Always ``0x00`` to indicate that no event status bits are set.
+            (int): Always ``0x00`` to indicate that no event status bits are set.
         """
         return 0x00
 
