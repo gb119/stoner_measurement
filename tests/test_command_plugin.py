@@ -1123,7 +1123,8 @@ class TestPlotTraceCommand:
 
         assert len(received) == 1
         assert received[0][0] == "busy-trace"
-        assert elapsed >= 0.015
+        # Allow a small scheduling margin below the 20 ms release delay.
+        assert elapsed >= 0.019
         assert pw.is_busy_for_data() is False
 
     def test_execute_simple_mode_missing_trace_key_logs_warning(self, qapp, engine):
@@ -2585,7 +2586,8 @@ class TestPlotPointsCommand:
         assert pw.trace_names == ["My Y"]
         assert pw.x_data("My Y") == [1.0]
         assert pw.y_data("My Y") == [5.0]
-        assert elapsed >= 0.015
+        # Allow a small scheduling margin below the 20 ms release delay.
+        assert elapsed >= 0.019
         assert pw.is_busy_for_data() is False
 
     def test_execute_skips_missing_y_key(self, qapp, engine):

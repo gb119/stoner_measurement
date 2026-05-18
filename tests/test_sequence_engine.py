@@ -727,7 +727,8 @@ class TestDataCatalogs:
         assert engine.wait_for_plot_ready(timeout=None, poll_interval=0.001) is True
         elapsed = time.monotonic() - started
         release_thread.join(timeout=1.0)
-        assert elapsed >= 0.015
+        # Allow a small scheduling margin below the 20 ms release delay.
+        assert elapsed >= 0.019
 
     def test_wait_for_plot_ready_returns_false_when_stop_requested(self, engine):
         import threading
