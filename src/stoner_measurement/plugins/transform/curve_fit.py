@@ -760,7 +760,7 @@ class CurveFitPlugin(TransformPlugin):
         y_col_name: str = "y",
         source_names: dict[str, str] | None = None,
         source_units: dict[str, str] | None = None,
-    ) -> "TraceData | None":
+    ) -> TraceData | None:
         """Evaluate the fit function with initial parameters to produce a trace.
 
         Falls back to ``1.0`` for each parameter when *p0* is ``None`` so that
@@ -818,7 +818,7 @@ class CurveFitPlugin(TransformPlugin):
         sigma_arr,
         p0,
         bounds,
-    ) -> "tuple[np.ndarray, np.ndarray] | None":
+    ) -> tuple[np.ndarray, np.ndarray] | None:
         """Run ``scipy.optimize.curve_fit`` and return ``(popt, pcov)``.
 
         Handles :exc:`ImportError` when scipy is absent and any other
@@ -894,7 +894,7 @@ class CurveFitPlugin(TransformPlugin):
         y_col_name: str = "y",
         source_names: dict[str, str] | None = None,
         source_units: dict[str, str] | None = None,
-    ) -> "TraceData | None":
+    ) -> TraceData | None:
         """Evaluate the fit function with optimal parameters to produce a trace.
 
         Args:
@@ -1066,7 +1066,7 @@ class CurveFitPlugin(TransformPlugin):
 
             ns["np"] = _np
             ns["numpy"] = _np
-            ns["log"] = (logging.getLogger(SEQUENCE_LOGGER_NAME),)
+            ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
         except ImportError:
             pass
         exec(compile(self.fit_code, "<fit_code>", "exec"), ns)  # noqa: S102
@@ -1435,7 +1435,7 @@ class CurveFitPlugin(TransformPlugin):
 
         return widget
 
-    def _build_fit_tab(self, parent: QWidget | None) -> tuple[QWidget, "EditorWidget"]:
+    def _build_fit_tab(self, parent: QWidget | None) -> tuple[QWidget, EditorWidget]:
         """Build the *Fit Function* tab widget.
 
         Args:

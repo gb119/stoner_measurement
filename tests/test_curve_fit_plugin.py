@@ -247,6 +247,36 @@ class TestCurveFitTransform:
         assert any("p0 debug line" in text for text in output_chunks)
         engine.shutdown()
 
+    def test_user_fit_code_namespace_exposes_log_logger(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = CurveFitPlugin()
+        engine.add_plugin("curve_fit", plugin)
+
+        x = np.linspace(0.0, 1.0, 30)
+        y = 4.0 * x + 0.0
+        engine._namespace["_x"] = x
+        engine._namespace["_y"] = y
+
+        plugin.advanced_mode = True
+        plugin.x_expr = "_x"
+        plugin.y_expr = "_y"
+        plugin.fit_code = (
+            "def fit(x, a, b):\n"
+            "    log.debug('fit debug message')\n"
+            "    return a * x + b\n"
+            "def p0(x, y):\n"
+            "    log.info('p0 debug message')\n"
+            "    return (1.0, 0.0)\n"
+        )
+        plugin.param_names = ["a", "b"]
+        result = plugin.transform({})
+
+        assert abs(result["a"] - 4.0) < 1e-5
+        assert abs(result["b"] - 0.0) < 1e-5
+        engine.shutdown()
+
     def test_with_bounds(self, qapp):
         from stoner_measurement.core.sequence_engine import SequenceEngine
 
