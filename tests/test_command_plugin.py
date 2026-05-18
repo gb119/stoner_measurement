@@ -1088,6 +1088,30 @@ class TestPlotTraceCommand:
 
         assert received == []
 
+    def test_execute_advanced_mode_skips_when_plot_widget_busy(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        pw.mark_data_update_queued()
+        engine.plot_widget = pw
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0, 2.0])
+        engine._namespace["my_y"] = np.array([4.0, 5.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'busy-trace'"
+
+        received: list[tuple] = []
+        cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        cmd.execute()
+
+        assert received == []
+        assert "busy-trace" not in pw.trace_names
+        assert pw.is_busy_for_data() is True
+
     def test_execute_simple_mode_missing_trace_key_logs_warning(self, qapp, engine):
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
@@ -1202,6 +1226,7 @@ class TestPlotTraceCommand:
         engine = SequenceEngine()
         try:
             mock_pw = MagicMock()
+            mock_pw.is_busy_for_data = MagicMock(return_value=False)
             mock_pw.set_trace = MagicMock()
             mock_pw.set_default_axis_labels = MagicMock()
             mock_pw.assign_trace_axes = MagicMock()
@@ -2513,6 +2538,26 @@ class TestPlotPointsCommand:
         cmd.plot_point.connect(lambda _l, _x, _y: received.append(1))
         cmd.execute()
         assert received == []
+
+    def test_execute_skips_when_plot_widget_busy(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        pw.mark_data_update_queued()
+        engine.plot_widget = pw
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
+
+        cmd.execute()
+
+        assert pw.trace_names == []
+        assert pw.is_busy_for_data() is True
 
     def test_execute_skips_missing_y_key(self, qapp, engine):
         cmd = PlotPointsCommand()

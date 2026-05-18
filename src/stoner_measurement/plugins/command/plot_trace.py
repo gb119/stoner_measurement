@@ -185,6 +185,8 @@ class PlotTraceCommand(CommandPlugin):
     plot_trace_with_errors = pyqtSignal(str, object, object, object, object)
     #: Signal emitted by execute() in simple mode — (x_label, y_label).
     plot_axis_labels = pyqtSignal(str, str)
+    #: Signal emitted by execute() before each queued trace update.
+    plot_update_queued = pyqtSignal()
     #: Signal emitted by execute() to ensure x-axis exists — (axis_name, axis_label).
     plot_ensure_x_axis = pyqtSignal(str, str)
     #: Signal emitted by execute() to ensure y-axis exists — (axis_name, axis_label).
@@ -270,6 +272,9 @@ class PlotTraceCommand(CommandPlugin):
                 old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
                 if old_assign_axes is not None:
                     _safe_disconnect(self.plot_trace_axes, old_assign_axes)
+                old_mark_queued = getattr(old_pw, "mark_data_update_queued", None)
+                if old_mark_queued is not None:
+                    _safe_disconnect(self.plot_update_queued, old_mark_queued)
                 old_ensure_x_axis = getattr(old_pw, "ensure_x_axis", None)
                 if old_ensure_x_axis is not None:
                     _safe_disconnect(self.plot_ensure_x_axis, old_ensure_x_axis)
@@ -295,6 +300,9 @@ class PlotTraceCommand(CommandPlugin):
                 new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
                 if new_assign_axes is not None:
                     self.plot_trace_axes.connect(new_assign_axes)
+                new_mark_queued = getattr(new_pw, "mark_data_update_queued", None)
+                if new_mark_queued is not None:
+                    self.plot_update_queued.connect(new_mark_queued)
                 new_ensure_x_axis = getattr(new_pw, "ensure_x_axis", None)
                 if new_ensure_x_axis is not None:
                     self.plot_ensure_x_axis.connect(new_ensure_x_axis)
@@ -322,6 +330,16 @@ class PlotTraceCommand(CommandPlugin):
     # ------------------------------------------------------------------
     # Execute
     # ------------------------------------------------------------------
+
+    def _is_plot_ready_for_data(self) -> bool:
+        """Return ``True`` when the plot widget can accept another data update."""
+        engine = self.sequence_engine
+        if engine is None:
+            return True
+        wait_for_plot_ready = getattr(engine, "wait_for_plot_ready", None)
+        if not callable(wait_for_plot_ready):
+            return True
+        return bool(wait_for_plot_ready(timeout=0.0))
 
     def execute(self) -> None:
         """Retrieve trace data from the engine namespace and emit plot signals.
@@ -380,10 +398,14 @@ class PlotTraceCommand(CommandPlugin):
             x_data = self.eval(self.x_expr)
             y_data = self.eval(self.y_expr)
             title = str(self.eval(self.title_expr)) if self.title_expr else "plot"
+            if not self._is_plot_ready_for_data():
+                self.log.debug("PlotTrace: plot widget busy; skipping trace %r.", title)
+                return
             x_axis = self.x_axis_name or _DEFAULT_X_AXIS
             y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
             self.plot_ensure_x_axis.emit(x_axis, x_axis)
             self.plot_ensure_y_axis.emit(y_axis, y_axis)
+            self.plot_update_queued.emit()
             self.plot_trace.emit(
                 title,
                 np.asarray(x_data, dtype=float),
@@ -495,9 +517,13 @@ class PlotTraceCommand(CommandPlugin):
             y_axis (str):
                 y-axis name.
         """
+        if not self._is_plot_ready_for_data():
+            self.log.debug("PlotTrace: plot widget busy; skipping trace %r.", title)
+            return
         if self.transpose:
             x_arr, y_arr = y_arr, x_arr
             x_err, y_err = y_err, x_err
+        self.plot_update_queued.emit()
         self.plot_trace_with_errors.emit(title, x_arr, y_arr, x_err, y_err)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_arr))

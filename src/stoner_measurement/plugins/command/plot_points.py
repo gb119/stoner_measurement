@@ -278,6 +278,16 @@ class PlotPointsCommand(CommandPlugin):
     # Execute
     # ------------------------------------------------------------------
 
+    def _is_plot_ready_for_data(self) -> bool:
+        """Return ``True`` when the plot widget can accept another data update."""
+        engine = self.sequence_engine
+        if engine is None:
+            return True
+        wait_for_plot_ready = getattr(engine, "wait_for_plot_ready", None)
+        if not callable(wait_for_plot_ready):
+            return True
+        return bool(wait_for_plot_ready(timeout=0.0))
+
     def execute(self) -> None:
         """Read x and y scalar values and emit :attr:`plot_point` for each y series.
 
@@ -365,6 +375,9 @@ class PlotPointsCommand(CommandPlugin):
                     y_expr,
                     exc,
                 )
+                continue
+            if not self._is_plot_ready_for_data():
+                self.log.debug("PlotPoints: plot widget busy; skipping point for %r.", label)
                 continue
             self.plot_ensure_x_axis.emit(x_axis, x_axis)
             self.plot_ensure_y_axis.emit(y_axis, y_axis)
