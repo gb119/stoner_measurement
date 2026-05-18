@@ -204,6 +204,7 @@ class _OxfordTemperatureControllerBase(TemperatureController):
 class OxfordITC503(_OxfordTemperatureControllerBase):
     """Concrete driver for the Oxford Instruments ITC503 temperature controller."""
 
+    _EXPECTED_IDENTITY_TOKENS = ("ITC503",)
     _ITC503_HEATER_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=3,
@@ -337,6 +338,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
     """Concrete driver for the Oxford Instruments Mercury Temperature Controller."""
 
+    _EXPECTED_IDENTITY_TOKENS = ("MERCURY",)
     _MERCURY_HEATER_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=4,

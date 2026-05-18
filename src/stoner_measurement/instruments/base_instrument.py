@@ -13,6 +13,8 @@ import logging
 from abc import ABC
 from typing import TYPE_CHECKING
 
+from stoner_measurement.instruments.errors import InstrumentError
+
 if TYPE_CHECKING:
     from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.transport.base import BaseTransport
@@ -51,7 +53,7 @@ class BaseInstrument(ABC):
         auto_check_errors (bool):
             When ``True``, :meth:`write` and :meth:`query` automatically
             call :meth:`check_for_errors` after each operation.  Defaults
-            to ``False``.
+            to ``True``.
 
     Examples:
         >>> from stoner_measurement.instruments.transport import NullTransport
@@ -74,7 +76,7 @@ class BaseInstrument(ABC):
         transport: BaseTransport,
         protocol: BaseProtocol,
         *,
-        auto_check_errors: bool = False,
+        auto_check_errors: bool = True,
     ) -> None:
         """Initialise the instrument with a transport and protocol.
 
@@ -89,7 +91,7 @@ class BaseInstrument(ABC):
             auto_check_errors (bool):
                 When ``True``, automatically call :meth:`check_for_errors`
                 after every :meth:`write` and :meth:`query`.  Defaults to
-                ``False``.
+                ``True``.
         """
         self.transport = transport
         self.protocol = protocol
@@ -267,7 +269,15 @@ class BaseInstrument(ABC):
         response = self.read()
         if self.auto_check_errors:
             if self.protocol.errors_in_response:
-                self.protocol.check_error(response, command=command)
+                try:
+                    self.protocol.check_error(response, command=command)
+                except InstrumentError:
+                    self._comms_logger.error(
+                        "Instrument reported error during query %r: %s",
+                        command,
+                        response,
+                    )
+                    raise
             else:
                 self.check_for_errors(command=command)
         return response
@@ -319,16 +329,67 @@ class BaseInstrument(ABC):
         if stb is not None and not (stb & _IEEE488_ESB_BIT):
             return
 
-        # Query the instrument's error queue.
+        response = self._query_error_queue_once()
+        try:
+            self.protocol.check_error(response, command=command)
+        except InstrumentError:
+            self._comms_logger.error(
+                "Instrument reported command error after %r: %s",
+                command,
+                response,
+            )
+            self._clear_error_queue()
+            raise
+
+    def _query_error_queue_once(self) -> str:
+        """Return one parsed response from the protocol error query."""
         error_query = self.protocol.error_query
+        if error_query is None:
+            return ""
         payload = self.protocol.format_query(error_query)
         self.transport.write(payload)
         self._log_comms_traffic("TX", payload)
         terminator = getattr(self.protocol, "terminator", b"\n")
         raw = self.transport.read_until(terminator)
         self._log_comms_traffic("RX", raw)
-        response = self.protocol.parse_response(raw)
-        self.protocol.check_error(response, command=command)
+        return self.protocol.parse_response(raw)
+
+    def _clear_error_queue(self, *, max_entries: int = 16) -> None:
+        """Drain protocol error queue entries, logging each cleared error."""
+        if self.protocol.errors_in_response or self.protocol.error_query is None:
+            return
+        for _ in range(max_entries):
+            response = self._query_error_queue_once()
+            if response.strip() == "":
+                break
+            try:
+                self.protocol.check_error(response, command=None)
+            except InstrumentError as exc:
+                self._comms_logger.error("Cleared queued instrument error: %s", exc)
+                continue
+            break
+
+    def confirm_identity(self) -> str:
+        """Query and validate the identity string against expected tokens."""
+        tokens = tuple(getattr(self, "_EXPECTED_IDENTITY_TOKENS", ()))
+        if not tokens and hasattr(self, "_MODEL"):
+            model = getattr(self, "_MODEL")
+            if model:
+                tokens = (str(model),)
+        if not tokens:
+            return ""
+
+        identity = self.identify()
+        identity_upper = identity.upper()
+        if not all(str(token).upper() in identity_upper for token in tokens):
+            expected = ", ".join(str(token) for token in tokens)
+            message = (
+                f"Unexpected instrument identity {identity!r}; "
+                f"expected token(s): {expected}."
+            )
+            self._comms_logger.error(message)
+            raise InstrumentError(message)
+        return identity
 
     def _log_comms_traffic(self, direction: str, payload: bytes) -> None:
         """Emit a transcript log entry for one instrument I/O event.

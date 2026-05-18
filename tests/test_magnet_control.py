@@ -29,7 +29,6 @@ from stoner_measurement.magnet_control.types import (
     MagnetStabilityConfig,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers — fake driver
 # ---------------------------------------------------------------------------
@@ -331,8 +330,10 @@ class TestEngineLifecycle:
         driver = _make_fake_driver()
         engine.connect_instrument(driver)
         assert engine.status == MagnetEngineStatus.CONNECTED
+        assert driver.is_connected
         engine.disconnect_instrument()
         assert engine.status == MagnetEngineStatus.DISCONNECTED
+        assert not driver.is_connected
         engine.shutdown()
 
     def test_connect_after_shutdown_raises(self, qapp):
@@ -354,6 +355,17 @@ class TestEngineLifecycle:
         engine.set_stability_config(cfg)
         assert engine._stability_config.tolerance_t == pytest.approx(0.005)
         assert engine._stability_config.window_s == pytest.approx(20.0)
+        engine.shutdown()
+
+    def test_reconnect_disconnects_previous_driver(self, qapp):
+        engine = MagnetControllerEngine()
+        first = _make_fake_driver()
+        second = _make_fake_driver()
+        engine.connect_instrument(first)
+        assert first.is_connected
+        engine.connect_instrument(second)
+        assert not first.is_connected
+        assert second.is_connected
         engine.shutdown()
 
 

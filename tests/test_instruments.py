@@ -2251,8 +2251,8 @@ class TestCheckForErrors:
 
 
 class TestAutoCheckErrors:
-    def test_auto_check_errors_default_is_false(self):
-        assert BaseInstrument(NullTransport(), ScpiProtocol()).auto_check_errors is False
+    def test_auto_check_errors_default_is_true(self):
+        assert BaseInstrument(NullTransport(), ScpiProtocol()).auto_check_errors is True
 
     def test_auto_check_errors_query_raises_on_scpi_error(self):
         # The NullTransport serves: first the query response, then the SYST:ERR? response

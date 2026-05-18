@@ -59,6 +59,8 @@ class Lakeshore525(MagnetController, MagnetSupply):
         >>> mps.disconnect()
     """
 
+    _EXPECTED_IDENTITY_TOKENS = ("MODEL525",)
+
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the Lakeshore 525 driver.
 

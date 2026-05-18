@@ -277,8 +277,10 @@ class TestEngineLifecycle:
         driver = _FakeTC(NullTransport(), LakeshoreProtocol())
         engine.connect_instrument(driver)
         assert engine.status == EngineStatus.CONNECTED
+        assert driver.is_connected
         engine.disconnect_instrument()
         assert engine.status == EngineStatus.DISCONNECTED
+        assert not driver.is_connected
         engine.shutdown()
 
     def test_set_poll_interval_minimum_enforced(self, qapp):
@@ -292,6 +294,17 @@ class TestEngineLifecycle:
         cfg = StabilityConfig(tolerance_k=0.5, window_s=30.0)
         engine.set_stability_config(cfg)
         assert engine._stability_config.tolerance_k == pytest.approx(0.5)
+        engine.shutdown()
+
+    def test_reconnect_disconnects_previous_driver(self, qapp):
+        engine = TemperatureControllerEngine()
+        first = _make_fake_tc()
+        second = _make_fake_tc()
+        engine.connect_instrument(first)
+        assert first.is_connected
+        engine.connect_instrument(second)
+        assert not first.is_connected
+        assert second.is_connected
         engine.shutdown()
 
 
@@ -731,8 +744,6 @@ class TestEngineZoneTable:
         engine.shutdown()
 
     def test_get_zone_table_handles_partial_failure(self, qapp):
-        from stoner_measurement.instruments.temperature_controller import ZoneEntry
-
         engine = TemperatureControllerEngine()
         driver = _make_fake_tc()
 

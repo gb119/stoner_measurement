@@ -30,7 +30,13 @@ from stoner_measurement.temperature_control.types import (
 )
 
 if TYPE_CHECKING:
-    from stoner_measurement.instruments.temperature_controller import InputChannelSettings, ZoneEntry
+    from stoner_measurement.instruments.protocol.base import BaseProtocol
+    from stoner_measurement.instruments.temperature_controller import (
+        InputChannelSettings,
+        TemperatureController,
+        ZoneEntry,
+    )
+    from stoner_measurement.instruments.transport.base import BaseTransport
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +160,10 @@ class TemperatureControllerEngine(QObject):
 
         Args:
             driver (TemperatureController):
-                A fully constructed and already-opened
+                A fully constructed
                 :class:`~stoner_measurement.instruments.temperature_controller.TemperatureController`
-                instance.
+                instance. The engine opens it (if needed), verifies identity,
+                and takes ownership of its lifecycle.
 
         Raises:
             RuntimeError:
@@ -165,6 +172,12 @@ class TemperatureControllerEngine(QObject):
         if self._status == EngineStatus.STOPPED:
             raise RuntimeError("Engine has been shut down and cannot accept new connections.")
         self._timer.stop()
+        if self._driver is not None:
+            self._disconnect_driver(self._driver, log_context="before replacing temperature controller")
+        if not driver.is_connected:
+            driver.connect()
+        else:
+            driver.confirm_identity()
         self._driver = driver
         self._history.clear()
         self._at_setpoint_since.clear()
@@ -174,9 +187,16 @@ class TemperatureControllerEngine(QObject):
         self._timer.start()
         logger.info(f"TemperatureControllerEngine: connected to {type(driver).__name__}")
 
+    def connect_driver(self, driver_cls: type[TemperatureController], transport: BaseTransport, protocol: BaseProtocol) -> None:
+        """Instantiate a temperature driver and connect it."""
+        driver = driver_cls(transport=transport, protocol=protocol)
+        self.connect_instrument(driver)
+
     def disconnect_instrument(self) -> None:
         """Stop polling and release the driver reference."""
         self._timer.stop()
+        if self._driver is not None:
+            self._disconnect_driver(self._driver, log_context="on disconnect")
         self._driver = None
         self._history.clear()
         self._at_setpoint_since.clear()
@@ -184,6 +204,11 @@ class TemperatureControllerEngine(QObject):
         self._stable.clear()
         self._set_status(EngineStatus.DISCONNECTED)
         logger.info("TemperatureControllerEngine: disconnected.")
+
+    @property
+    def connected_driver(self) -> TemperatureController | None:
+        """Return the currently connected driver instance."""
+        return self._driver
 
     def set_setpoint(self, loop: int, value: float) -> None:
         """Set the temperature setpoint for *loop*.
@@ -726,15 +751,20 @@ class TemperatureControllerEngine(QObject):
         """
         self._timer.stop()
         if self._driver is not None:
-            try:
-                self._driver.disconnect()
-            except Exception:
-                logger.exception("Error while disconnecting temperature controller on shutdown")
+            self._disconnect_driver(self._driver, log_context="on shutdown")
         self._driver = None
         self._set_status(EngineStatus.STOPPED)
         if TemperatureControllerEngine._singleton is self:
             TemperatureControllerEngine._singleton = None
         logger.info("TemperatureControllerEngine: shut down.")
+
+    def _disconnect_driver(self, driver: TemperatureController, *, log_context: str) -> None:
+        """Disconnect *driver*, logging exceptions."""
+        try:
+            if driver.is_connected:
+                driver.disconnect()
+        except Exception:
+            logger.exception("Error while disconnecting temperature controller %s", log_context)
 
     # ------------------------------------------------------------------
     # Polling

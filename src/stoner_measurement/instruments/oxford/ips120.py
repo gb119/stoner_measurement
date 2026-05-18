@@ -54,6 +54,8 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         >>> mps.disconnect()
     """
 
+    _EXPECTED_IDENTITY_TOKENS = ("IPS120",)
+
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the Oxford IPS120 driver.
 

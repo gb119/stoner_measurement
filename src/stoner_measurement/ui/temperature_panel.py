@@ -848,18 +848,19 @@ class TemperatureControlPanel(QWidget):
                 protocol = OxfordProtocol()
             else:
                 protocol = LakeshoreProtocol()
-            transport.open()
-            driver = driver_cls(transport=transport, protocol=protocol)
+            self._engine.connect_driver(driver_cls, transport=transport, protocol=protocol)
         except Exception:
-            logger.exception("Failed to instantiate driver")
+            logger.exception("Failed to connect temperature controller")
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 
-        self._engine.connect_instrument(driver)
         self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
 
         # Populate control tab with loop groups.
         try:
+            driver = self._engine.connected_driver
+            if driver is None:
+                raise RuntimeError("Temperature engine did not retain connected driver.")
             caps = driver.get_capabilities()
             self._capabilities = caps
             self._rebuild_loop_groups(caps)

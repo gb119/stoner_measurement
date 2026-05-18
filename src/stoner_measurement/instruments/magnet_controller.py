@@ -315,6 +315,11 @@ class MagnetController(BaseInstrument):
         """
         super().__init__(transport=transport, protocol=protocol)
 
+    def connect(self) -> None:
+        """Open the connection and verify the controller identity."""
+        super().connect()
+        self.confirm_identity()
+
     @abstractmethod
     def get_model(self) -> str:
         """Return the instrument model identifier string.
