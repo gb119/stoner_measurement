@@ -211,6 +211,77 @@ class TestCurveFitTransform:
         assert abs(result["a"] - 4.0) < 1e-5
         engine.shutdown()
 
+    def test_stdout_from_user_fit_and_p0_is_forwarded_to_engine_output(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = CurveFitPlugin()
+        engine.add_plugin("curve_fit", plugin)
+
+        x = np.linspace(0.0, 1.0, 30)
+        y = 4.0 * x + 0.0
+        engine._namespace["_x"] = x
+        engine._namespace["_y"] = y
+        output_chunks: list[str] = []
+        engine.output.connect(output_chunks.append)
+
+        plugin.advanced_mode = True
+        plugin.x_expr = "_x"
+        plugin.y_expr = "_y"
+        plugin.fit_code = (
+            "fit_printed = False\n"
+            "def fit(x, a, b):\n"
+            "    global fit_printed\n"
+            "    if not fit_printed:\n"
+            "        print('fit debug line')\n"
+            "        fit_printed = True\n"
+            "    return a * x + b\n"
+            "def p0(x, y):\n"
+            "    print('p0 debug line 1')\n"
+            "    print('p0 debug line 2')\n"
+            "    return (1.0, 0.0)\n"
+        )
+        plugin.param_names = ["a", "b"]
+        plugin.transform({})
+
+        captured = "".join(output_chunks)
+        assert "p0 debug line 1" in captured
+        assert "p0 debug line 2" in captured
+        assert "fit debug line" in captured
+        assert captured.index("p0 debug line 1") < captured.index("p0 debug line 2")
+        assert captured.index("p0 debug line 2") < captured.index("fit debug line")
+        engine.shutdown()
+
+    def test_user_fit_code_namespace_exposes_log_logger(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = CurveFitPlugin()
+        engine.add_plugin("curve_fit", plugin)
+
+        x = np.linspace(0.0, 1.0, 30)
+        y = 4.0 * x + 0.0
+        engine._namespace["_x"] = x
+        engine._namespace["_y"] = y
+
+        plugin.advanced_mode = True
+        plugin.x_expr = "_x"
+        plugin.y_expr = "_y"
+        plugin.fit_code = (
+            "def fit(x, a, b):\n"
+            "    log.debug('fit debug message')\n"
+            "    return a * x + b\n"
+            "def p0(x, y):\n"
+            "    log.info('p0 info message')\n"
+            "    return (1.0, 0.0)\n"
+        )
+        plugin.param_names = ["a", "b"]
+        result = plugin.transform({})
+
+        assert abs(result["a"] - 4.0) < 1e-5
+        assert abs(result["b"] - 0.0) < 1e-5
+        engine.shutdown()
+
     def test_with_bounds(self, qapp):
         from stoner_measurement.core.sequence_engine import SequenceEngine
 

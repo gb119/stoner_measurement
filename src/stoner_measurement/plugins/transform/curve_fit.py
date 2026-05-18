@@ -14,9 +14,13 @@ Notes:
 from __future__ import annotations
 
 import ast
+import functools
 import logging
 import math
 import textwrap
+from collections.abc import Callable
+from contextlib import redirect_stdout
+from io import StringIO
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -707,6 +711,9 @@ class CurveFitPlugin(TransformPlugin):
             self.log.error("CurveFit: no function named 'fit' found in fit code.")
             return nan_result
 
+        fit_func = self._wrap_user_stdout_callable(fit_func)
+        p0_func = self._wrap_user_stdout_callable(p0_func)
+
         # ---- 3. Build p0 and bounds --------------------------------------
         p0 = self._build_p0(p0_func, x_arr, y_arr)
         bounds = self._build_bounds()
@@ -754,7 +761,7 @@ class CurveFitPlugin(TransformPlugin):
         y_col_name: str = "y",
         source_names: dict[str, str] | None = None,
         source_units: dict[str, str] | None = None,
-    ) -> "TraceData | None":
+    ) -> TraceData | None:
         """Evaluate the fit function with initial parameters to produce a trace.
 
         Falls back to ``1.0`` for each parameter when *p0* is ``None`` so that
@@ -812,7 +819,7 @@ class CurveFitPlugin(TransformPlugin):
         sigma_arr,
         p0,
         bounds,
-    ) -> "tuple[np.ndarray, np.ndarray] | None":
+    ) -> tuple[np.ndarray, np.ndarray] | None:
         """Run ``scipy.optimize.curve_fit`` and return ``(popt, pcov)``.
 
         Handles :exc:`ImportError` when scipy is absent and any other
@@ -888,7 +895,7 @@ class CurveFitPlugin(TransformPlugin):
         y_col_name: str = "y",
         source_names: dict[str, str] | None = None,
         source_units: dict[str, str] | None = None,
-    ) -> "TraceData | None":
+    ) -> TraceData | None:
         """Evaluate the fit function with optimal parameters to produce a trace.
 
         Args:
@@ -937,6 +944,38 @@ class CurveFitPlugin(TransformPlugin):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _emit_stdout_to_console(self, text: str) -> None:
+        """Emit captured stdout text to the script-tab console output signal."""
+        if not text:
+            return
+        engine = self.sequence_engine
+        if engine is None:
+            return
+        try:
+            engine.output.emit(text)
+        except RuntimeError:
+            # The underlying Qt object may already be deleted during shutdown.
+            pass
+
+    def _wrap_user_stdout_callable(
+        self,
+        func: Callable[..., Any] | None,
+    ) -> Callable[..., Any] | None:
+        """Wrap a user callable so its stdout is forwarded to the console."""
+        if func is None or self.sequence_engine is None:
+            return func
+
+        @functools.wraps(func)
+        def _wrapped(*args, **kwargs):
+            stream = StringIO()
+            try:
+                with redirect_stdout(stream):
+                    return func(*args, **kwargs)
+            finally:
+                self._emit_stdout_to_console(stream.getvalue())
+
+        return _wrapped
 
     def _get_data_arrays(
         self,
@@ -1031,7 +1070,7 @@ class CurveFitPlugin(TransformPlugin):
 
             ns["np"] = _np
             ns["numpy"] = _np
-            ns["log"] = (logging.getLogger(SEQUENCE_LOGGER_NAME),)
+            ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
         except ImportError:
             pass
         exec(compile(self.fit_code, "<fit_code>", "exec"), ns)  # noqa: S102
@@ -1400,7 +1439,7 @@ class CurveFitPlugin(TransformPlugin):
 
         return widget
 
-    def _build_fit_tab(self, parent: QWidget | None) -> tuple[QWidget, "EditorWidget"]:
+    def _build_fit_tab(self, parent: QWidget | None) -> tuple[QWidget, EditorWidget]:
         """Build the *Fit Function* tab widget.
 
         Args:
