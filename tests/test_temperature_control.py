@@ -307,6 +307,33 @@ class TestEngineLifecycle:
         assert second.is_connected
         engine.shutdown()
 
+    def test_connect_driver_instantiates_and_exposes_connected_driver(self, qapp):
+        from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
+        from stoner_measurement.instruments.transport import NullTransport
+
+        engine = TemperatureControllerEngine()
+        driver_cls = _make_fake_tc().__class__
+        engine.connect_driver(driver_cls, NullTransport(), LakeshoreProtocol())
+        assert engine.connected_driver is not None
+        assert isinstance(engine.connected_driver, driver_cls)
+        engine.disconnect_instrument()
+        assert engine.connected_driver is None
+        engine.shutdown()
+
+    def test_connect_driver_propagates_construction_errors(self, qapp):
+        from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
+        from stoner_measurement.instruments.transport import NullTransport
+
+        class _BrokenDriver:
+            def __init__(self, transport, protocol):
+                raise RuntimeError("boom")
+
+        engine = TemperatureControllerEngine()
+        with pytest.raises(RuntimeError, match="boom"):
+            engine.connect_driver(_BrokenDriver, NullTransport(), LakeshoreProtocol())
+        assert engine.connected_driver is None
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # Engine stability evaluation

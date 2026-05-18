@@ -342,7 +342,13 @@ class BaseInstrument(ABC):
             raise
 
     def _query_error_queue_once(self) -> str:
-        """Return one parsed response from the protocol error query."""
+        """Return one parsed response from the protocol error query.
+
+        Returns:
+            (str):
+                Parsed response payload from one error-queue poll, or an
+                empty string when the active protocol has no error query.
+        """
         error_query = self.protocol.error_query
         if error_query is None:
             return ""
@@ -355,7 +361,14 @@ class BaseInstrument(ABC):
         return self.protocol.parse_response(raw)
 
     def _clear_error_queue(self, *, max_entries: int = 16) -> None:
-        """Drain protocol error queue entries, logging each cleared error."""
+        """Drain protocol error queue entries, logging each cleared error.
+
+        Keyword Parameters:
+            max_entries (int):
+                Maximum number of queued entries to consume before stopping.
+                Defaults to ``16`` to prevent unbounded loops if an
+                instrument repeatedly reports fresh errors.
+        """
         if self.protocol.errors_in_response or self.protocol.error_query is None:
             return
         for _ in range(max_entries):
@@ -370,7 +383,18 @@ class BaseInstrument(ABC):
             break
 
     def confirm_identity(self) -> str:
-        """Query and validate the identity string against expected tokens."""
+        """Query and validate the identity string against expected tokens.
+
+        Returns:
+            (str):
+                The validated identity string, or an empty string when no
+                expected tokens are configured for this driver.
+
+        Raises:
+            InstrumentError:
+                If configured expected identity tokens are missing from the
+                instrument identity response.
+        """
         tokens = tuple(getattr(self, "_EXPECTED_IDENTITY_TOKENS", ()))
         if not tokens and hasattr(self, "_MODEL"):
             model = getattr(self, "_MODEL")

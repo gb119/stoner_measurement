@@ -860,7 +860,10 @@ class TemperatureControlPanel(QWidget):
         try:
             driver = self._engine.connected_driver
             if driver is None:
-                raise RuntimeError("Temperature engine did not retain connected driver.")
+                raise RuntimeError(
+                    "Driver connection failed: temperature engine returned None "
+                    "after connect_driver() call."
+                )
             caps = driver.get_capabilities()
             self._capabilities = caps
             self._rebuild_loop_groups(caps)

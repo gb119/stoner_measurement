@@ -2251,7 +2251,7 @@ class TestCheckForErrors:
 
 
 class TestAutoCheckErrors:
-    def test_auto_check_errors_default_is_true(self):
+    def test_auto_check_errors_default_true(self):
         assert BaseInstrument(NullTransport(), ScpiProtocol()).auto_check_errors is True
 
     def test_auto_check_errors_query_raises_on_scpi_error(self):
@@ -2292,6 +2292,48 @@ class TestAutoCheckErrors:
         instr.write("H1")
         # Only the command itself should be in the write log
         assert t.write_log == [b"H1\r"]
+
+
+class TestIdentityAndQueueClearing:
+    def test_confirm_identity_passes_for_expected_tokens(self):
+        class _IdentityInstr(BaseInstrument):
+            _EXPECTED_IDENTITY_TOKENS = ("MODEL1",)
+
+        t = _null(responses=[b"VENDOR,MODEL1,SN,FW\n"])
+        instr = _IdentityInstr(t, ScpiProtocol(), auto_check_errors=False)
+        assert instr.confirm_identity() == "VENDOR,MODEL1,SN,FW"
+
+    def test_confirm_identity_raises_for_mismatched_tokens(self):
+        class _IdentityInstr(BaseInstrument):
+            _EXPECTED_IDENTITY_TOKENS = ("MODEL1",)
+
+        t = _null(responses=[b"VENDOR,OTHER,SN,FW\n"])
+        instr = _IdentityInstr(t, ScpiProtocol(), auto_check_errors=False)
+        with pytest.raises(InstrumentError, match="Unexpected instrument identity"):
+            instr.confirm_identity()
+
+    def test_confirm_identity_uses_model_fallback(self):
+        class _ModelInstr(BaseInstrument):
+            _MODEL = "MODEL2"
+
+        t = _null(responses=[b"VENDOR,MODEL2,SN,FW\n"])
+        instr = _ModelInstr(t, ScpiProtocol(), auto_check_errors=False)
+        assert instr.confirm_identity() == "VENDOR,MODEL2,SN,FW"
+
+    def test_check_for_errors_clears_remaining_queue_entries(self, caplog):
+        t = _null(
+            responses=[
+                b'-113,"First error"\n',
+                b'-114,"Second error"\n',
+                b'+0,"No error"\n',
+            ]
+        )
+        instr = BaseInstrument(t, ScpiProtocol())
+        with caplog.at_level(logging.ERROR, logger="stoner_measurement.sequence.comms"):
+            with pytest.raises(InstrumentError, match="First error"):
+                instr.check_for_errors(command="BAD CMD")
+        assert t.write_log == [b"SYST:ERR?\n", b"SYST:ERR?\n", b"SYST:ERR?\n"]
+        assert any("Cleared queued instrument error" in record.getMessage() for record in caplog.records)
 
 
 

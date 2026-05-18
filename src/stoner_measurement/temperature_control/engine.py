@@ -188,7 +188,32 @@ class TemperatureControllerEngine(QObject):
         logger.info(f"TemperatureControllerEngine: connected to {type(driver).__name__}")
 
     def connect_driver(self, driver_cls: type[TemperatureController], transport: BaseTransport, protocol: BaseProtocol) -> None:
-        """Instantiate a temperature driver and connect it."""
+        """Instantiate a temperature driver and connect it.
+
+        Args:
+            driver_cls (type[TemperatureController]):
+                Concrete driver class to instantiate.
+            transport (BaseTransport):
+                Transport instance to pass to the driver constructor.
+            protocol (BaseProtocol):
+                Protocol instance to pass to the driver constructor.
+
+        Raises:
+            RuntimeError:
+                If the engine has been shut down.
+            Exception:
+                Any exception raised by driver construction or connection.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.instruments.lakeshore.temperature_controllers import Lakeshore335
+            >>> from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> engine = TemperatureControllerEngine()
+            >>> engine.connect_driver(Lakeshore335, NullTransport(), LakeshoreProtocol())  # doctest: +SKIP
+            >>> engine.shutdown()
+        """
         driver = driver_cls(transport=transport, protocol=protocol)
         self.connect_instrument(driver)
 
@@ -207,7 +232,20 @@ class TemperatureControllerEngine(QObject):
 
     @property
     def connected_driver(self) -> TemperatureController | None:
-        """Return the currently connected driver instance."""
+        """Return the currently connected driver instance.
+
+        Returns:
+            (TemperatureController | None):
+                Connected driver instance, or ``None`` when disconnected.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> engine = TemperatureControllerEngine()
+            >>> engine.connected_driver is None
+            True
+            >>> engine.shutdown()
+        """
         return self._driver
 
     def set_setpoint(self, loop: int, value: float) -> None:
@@ -759,7 +797,16 @@ class TemperatureControllerEngine(QObject):
         logger.info("TemperatureControllerEngine: shut down.")
 
     def _disconnect_driver(self, driver: TemperatureController, *, log_context: str) -> None:
-        """Disconnect *driver*, logging exceptions."""
+        """Disconnect *driver*, logging exceptions.
+
+        Args:
+            driver (TemperatureController):
+                Driver instance to disconnect.
+
+        Keyword Parameters:
+            log_context (str):
+                Context string included in disconnect failure logs.
+        """
         try:
             if driver.is_connected:
                 driver.disconnect()

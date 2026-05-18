@@ -368,6 +368,33 @@ class TestEngineLifecycle:
         assert second.is_connected
         engine.shutdown()
 
+    def test_connect_driver_instantiates_driver_class(self, qapp):
+        from stoner_measurement.instruments.oxford import OxfordIPS120
+        from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
+        from stoner_measurement.instruments.transport import NullTransport
+
+        engine = MagnetControllerEngine()
+        transport = NullTransport(responses=[b"VIPS120-10 3.07\r"])
+        engine.connect_driver(OxfordIPS120, transport, OxfordProtocol())
+        assert engine._driver is not None
+        assert isinstance(engine._driver, OxfordIPS120)
+        engine.disconnect_instrument()
+        engine.shutdown()
+
+    def test_connect_driver_propagates_construction_errors(self, qapp):
+        from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
+        from stoner_measurement.instruments.transport import NullTransport
+
+        class _BrokenDriver:
+            def __init__(self, transport, protocol):
+                raise RuntimeError("boom")
+
+        engine = MagnetControllerEngine()
+        with pytest.raises(RuntimeError, match="boom"):
+            engine.connect_driver(_BrokenDriver, NullTransport(), OxfordProtocol())
+        assert engine._driver is None
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # Command API no-ops when disconnected
