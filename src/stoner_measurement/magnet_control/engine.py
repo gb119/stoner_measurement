@@ -30,6 +30,8 @@ from stoner_measurement.magnet_control.types import (
 
 if TYPE_CHECKING:
     from stoner_measurement.instruments.magnet_controller import MagnetController, MagnetLimits
+    from stoner_measurement.instruments.protocol.base import BaseProtocol
+    from stoner_measurement.instruments.transport.base import BaseTransport
 
 logger = logging.getLogger(__name__)
 
@@ -159,9 +161,10 @@ class MagnetControllerEngine(QObject):
 
         Args:
             driver (MagnetController):
-                A fully constructed and already-opened
+                A fully constructed
                 :class:`~stoner_measurement.instruments.magnet_controller.MagnetController`
-                instance.
+                instance. The engine opens it (if needed), verifies identity,
+                and takes ownership of its lifecycle.
 
         Raises:
             RuntimeError:
@@ -170,6 +173,17 @@ class MagnetControllerEngine(QObject):
         if self._status == MagnetEngineStatus.STOPPED:
             raise RuntimeError("Engine has been shut down and cannot accept new connections.")
         self._timer.stop()
+        if self._driver is not None:
+            self._disconnect_driver(self._driver, log_context="before replacing magnet controller")
+        try:
+            if not driver.is_connected:
+                driver.connect()
+            else:
+                driver.confirm_identity()
+        except Exception:
+            self._driver = None
+            self._set_status(MagnetEngineStatus.DISCONNECTED)
+            raise
         self._driver = driver
         self._history.clear()
         self._at_target_since = None
@@ -179,9 +193,41 @@ class MagnetControllerEngine(QObject):
         self._timer.start()
         logger.info("MagnetControllerEngine: connected to %s", type(driver).__name__)
 
+    def connect_driver(self, driver_cls: type[MagnetController], transport: BaseTransport, protocol: BaseProtocol) -> None:
+        """Instantiate a magnet driver and connect it.
+
+        Args:
+            driver_cls (type[MagnetController]):
+                Concrete driver class to instantiate.
+            transport (BaseTransport):
+                Transport instance to pass to the driver constructor.
+            protocol (BaseProtocol):
+                Protocol instance to pass to the driver constructor.
+
+        Raises:
+            RuntimeError:
+                If the engine has been shut down.
+            Exception:
+                Any exception raised by driver construction or connection.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.instruments.oxford.ips120 import OxfordIPS120
+            >>> from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> engine = MagnetControllerEngine()
+            >>> engine.connect_driver(OxfordIPS120, NullTransport(), OxfordProtocol())  # doctest: +SKIP
+            >>> engine.shutdown()
+        """
+        driver = driver_cls(transport=transport, protocol=protocol)
+        self.connect_instrument(driver)
+
     def disconnect_instrument(self) -> None:
         """Stop polling and release the driver reference."""
         self._timer.stop()
+        if self._driver is not None:
+            self._disconnect_driver(self._driver, log_context="on disconnect")
         self._driver = None
         self._history.clear()
         self._at_target_since = None
@@ -409,15 +455,29 @@ class MagnetControllerEngine(QObject):
         """
         self._timer.stop()
         if self._driver is not None:
-            try:
-                self._driver.disconnect()
-            except Exception:
-                logger.exception("Error while disconnecting magnet controller on shutdown")
+            self._disconnect_driver(self._driver, log_context="on shutdown")
         self._driver = None
         self._set_status(MagnetEngineStatus.STOPPED)
         if MagnetControllerEngine._singleton is self:
             MagnetControllerEngine._singleton = None
         logger.info("MagnetControllerEngine: shut down.")
+
+    def _disconnect_driver(self, driver: MagnetController, *, log_context: str) -> None:
+        """Disconnect *driver*, logging exceptions.
+
+        Args:
+            driver (MagnetController):
+                Driver instance to disconnect.
+
+        Keyword Parameters:
+            log_context (str):
+                Context string included in disconnect failure logs.
+        """
+        try:
+            if driver.is_connected:
+                driver.disconnect()
+        except Exception:
+            logger.exception("Error while disconnecting magnet controller %s", log_context)
 
     # ------------------------------------------------------------------
     # Polling

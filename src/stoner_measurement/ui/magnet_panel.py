@@ -54,7 +54,6 @@ from stoner_measurement.magnet_control.engine import MagnetControllerEngine
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
-    MagnetStabilityConfig,
 )
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
@@ -771,14 +770,12 @@ class MagnetControlPanel(QWidget):
                 from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
 
                 protocol = LakeshoreProtocol()
-            transport.open()
-            driver = driver_cls(transport=transport, protocol=protocol)
+            self._engine.connect_driver(driver_cls, transport=transport, protocol=protocol)
         except Exception:
-            logger.exception("Failed to instantiate magnet driver")
+            logger.exception("Failed to connect magnet driver")
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 
-        self._engine.connect_instrument(driver)
         self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
 
         # Seed the engine with the UI-configured magnet constant and limits.

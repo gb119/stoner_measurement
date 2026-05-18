@@ -82,6 +82,7 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         >>> mps.disconnect()
     """
 
+    _EXPECTED_IDENTITY_TOKENS = ("MERCURY IPS",)
     _DEFAULT_UID = "PSU.M1"
 
     def __init__(

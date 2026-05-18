@@ -129,6 +129,18 @@ def _null(responses=None):
     return t
 
 
+class _NullTransportWithEsb(NullTransport):
+    """Null transport variant that reports ESB set for SCPI error polling tests."""
+
+    def read_status_byte(self) -> int:
+        """Return a status byte with IEEE 488.2 Event Status Bit (bit 2) set.
+
+        Returns:
+            (int): ``0x04`` so tests exercise the SCPI error-queue polling path.
+        """
+        return 0x04
+
+
 # ---------------------------------------------------------------------------
 # ABC enforcement
 # ---------------------------------------------------------------------------
@@ -2180,13 +2192,15 @@ class TestLakeshoreErrorHandling:
 
 class TestCheckForErrors:
     def test_check_for_errors_no_error(self):
-        t = _null(responses=[b'+0,"No error"\n'])
+        t = _NullTransportWithEsb(responses=[b'+0,"No error"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol())
         instr.check_for_errors()  # must not raise
         assert t.write_log == [b"SYST:ERR?\n"]
 
     def test_check_for_errors_raises_on_error(self):
-        t = _null(responses=[b'-113,"Undefined header"\n'])
+        t = _NullTransportWithEsb(responses=[b'-113,"Undefined header"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol())
         with pytest.raises(InstrumentError) as exc_info:
             instr.check_for_errors(command="*IDN")
@@ -2251,24 +2265,27 @@ class TestCheckForErrors:
 
 
 class TestAutoCheckErrors:
-    def test_auto_check_errors_default_is_false(self):
-        assert BaseInstrument(NullTransport(), ScpiProtocol()).auto_check_errors is False
+    def test_auto_check_errors_default_true(self):
+        assert BaseInstrument(NullTransport(), ScpiProtocol()).auto_check_errors is True
 
     def test_auto_check_errors_query_raises_on_scpi_error(self):
         # The NullTransport serves: first the query response, then the SYST:ERR? response
-        t = _null(responses=[b"ACME\n", b'-113,"Undefined header"\n'])
+        t = _NullTransportWithEsb(responses=[b"ACME\n", b'-113,"Undefined header"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         with pytest.raises(InstrumentError, match="Undefined header"):
             instr.query("*IDN?")
 
     def test_auto_check_errors_query_no_raise_when_queue_clear(self):
-        t = _null(responses=[b"ACME\n", b'+0,"No error"\n'])
+        t = _NullTransportWithEsb(responses=[b"ACME\n", b'+0,"No error"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         result = instr.query("*IDN?")
         assert result == "ACME"
 
     def test_auto_check_errors_write_raises_on_scpi_error(self):
-        t = _null(responses=[b'-113,"Undefined header"\n'])
+        t = _NullTransportWithEsb(responses=[b'-113,"Undefined header"\n'])
+        t.open()
         instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=True)
         with pytest.raises(InstrumentError):
             instr.write("BAD CMD")
@@ -2292,6 +2309,63 @@ class TestAutoCheckErrors:
         instr.write("H1")
         # Only the command itself should be in the write log
         assert t.write_log == [b"H1\r"]
+
+
+class TestIdentityAndQueueClearing:
+    def test_confirm_identity_passes_for_expected_tokens(self):
+        class _IdentityInstr(BaseInstrument):
+            _EXPECTED_IDENTITY_TOKENS = ("MODEL1",)
+
+        t = _null(responses=[b"VENDOR,MODEL1,SN,FW\n"])
+        instr = _IdentityInstr(t, ScpiProtocol(), auto_check_errors=False)
+        assert instr.confirm_identity() == "VENDOR,MODEL1,SN,FW"
+
+    def test_confirm_identity_raises_for_mismatched_tokens(self):
+        class _IdentityInstr(BaseInstrument):
+            _EXPECTED_IDENTITY_TOKENS = ("MODEL1",)
+
+        t = _null(responses=[b"VENDOR,OTHER,SN,FW\n"])
+        instr = _IdentityInstr(t, ScpiProtocol(), auto_check_errors=False)
+        with pytest.raises(InstrumentError, match="Unexpected instrument identity"):
+            instr.confirm_identity()
+
+    def test_confirm_identity_uses_model_fallback(self):
+        class _ModelInstr(BaseInstrument):
+            _MODEL = "MODEL2"
+
+        t = _null(responses=[b"VENDOR,MODEL2,SN,FW\n"])
+        instr = _ModelInstr(t, ScpiProtocol(), auto_check_errors=False)
+        assert instr.confirm_identity() == "VENDOR,MODEL2,SN,FW"
+
+    def test_check_for_errors_clears_remaining_queue_entries(self, caplog):
+        t = _NullTransportWithEsb(
+            responses=[
+                b'-113,"First error"\n',
+                b'-114,"Second error"\n',
+                b'+0,"No error"\n',
+            ]
+        )
+        t.open()
+        instr = BaseInstrument(t, ScpiProtocol())
+        with caplog.at_level(logging.ERROR, logger="stoner_measurement.sequence.comms"):
+            with pytest.raises(InstrumentError, match="First error"):
+                instr.check_for_errors(command="BAD CMD")
+        assert t.write_log == [b"SYST:ERR?\n", b"SYST:ERR?\n", b"SYST:ERR?\n"]
+        assert any("Cleared queued instrument error" in record.getMessage() for record in caplog.records)
+
+    def test_temperature_controller_connect_closes_on_identity_failure(self):
+        t = NullTransport(responses=[b"VENDOR,WRONGMODEL,SN,1.0\r\n"])
+        controller = Lakeshore335(t)
+        with pytest.raises(InstrumentError, match="Unexpected instrument identity"):
+            controller.connect()
+        assert not controller.is_connected
+
+    def test_magnet_controller_connect_closes_on_identity_failure(self):
+        t = NullTransport(responses=[b"VWRONGMODEL 3.07\r"])
+        controller = OxfordIPS120(t)
+        with pytest.raises(InstrumentError, match="Unexpected instrument identity"):
+            controller.connect()
+        assert not controller.is_connected
 
 
 

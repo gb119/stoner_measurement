@@ -119,6 +119,14 @@ class NullTransport(BaseTransport):
         """
         return self.read()
 
+    def read_status_byte(self) -> int:
+        """Return a clear IEEE 488.2 status byte for simulated links.
+
+        Returns:
+            (int): Always ``0x00`` to indicate that no event status bits are set.
+        """
+        return 0x00
+
     def queue_response(self, response: bytes) -> None:
         """Append *response* to the end of the response queue.
 

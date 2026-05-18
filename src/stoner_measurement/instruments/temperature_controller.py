@@ -477,6 +477,15 @@ class TemperatureController(BaseInstrument):
         """
         super().__init__(transport=transport, protocol=protocol)
 
+    def connect(self) -> None:
+        """Open the connection and verify the controller identity."""
+        super().connect()
+        try:
+            self.confirm_identity()
+        except Exception:
+            self.disconnect()
+            raise
+
     # ------------------------------------------------------------------
     # Core abstract methods — sensor inputs
     # ------------------------------------------------------------------
