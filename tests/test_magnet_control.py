@@ -373,14 +373,17 @@ class TestEngineLifecycle:
         first = _make_fake_driver()
         engine.connect_instrument(first)
 
-        class _BrokenDriver:
-            is_connected = False
+        def _make_broken_driver():
+            class _BrokenDriver:
+                is_connected = False
 
-            def connect(self):
-                raise RuntimeError("boom")
+                def connect(self):
+                    raise RuntimeError("boom")
+
+            return _BrokenDriver()
 
         with pytest.raises(RuntimeError, match="boom"):
-            engine.connect_instrument(_BrokenDriver())
+            engine.connect_instrument(_make_broken_driver())
         assert not first.is_connected
         assert engine._driver is None
         assert engine.status == MagnetEngineStatus.DISCONNECTED
