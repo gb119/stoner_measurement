@@ -177,6 +177,16 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         self.execute()
 
+    def _wait_for_plot_ready(self, timeout: float | None = None) -> bool:
+        """Wait until the attached plot widget can accept another data update."""
+        engine = self.sequence_engine
+        if engine is None:
+            return True
+        wait_for_plot_ready = getattr(engine, "wait_for_plot_ready", None)
+        if not callable(wait_for_plot_ready):
+            return True
+        return bool(wait_for_plot_ready(timeout=timeout))
+
     def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return configuration tabs combining general and plugin-specific settings.
 

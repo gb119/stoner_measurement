@@ -1088,7 +1088,10 @@ class TestPlotTraceCommand:
 
         assert received == []
 
-    def test_execute_advanced_mode_skips_when_plot_widget_busy(self, qapp, engine):
+    def test_execute_advanced_mode_waits_when_plot_widget_busy(self, qapp, engine):
+        import threading
+        import time
+
         from stoner_measurement.ui.plot_widget import PlotWidget
 
         pw = PlotWidget()
@@ -1106,11 +1109,20 @@ class TestPlotTraceCommand:
 
         received: list[tuple] = []
         cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
+        release_thread = threading.Thread(
+            target=lambda: (time.sleep(0.02), pw._mark_data_update_processed()),
+            daemon=True,
+        )
+        release_thread.start()
+        started = time.monotonic()
         cmd.execute()
+        elapsed = time.monotonic() - started
+        release_thread.join(timeout=1.0)
 
-        assert received == []
-        assert "busy-trace" not in pw.trace_names
-        assert pw.is_busy_for_data() is True
+        assert len(received) == 1
+        assert received[0][0] == "busy-trace"
+        assert elapsed >= 0.015
+        assert pw.is_busy_for_data() is False
 
     def test_execute_simple_mode_missing_trace_key_logs_warning(self, qapp, engine):
         cmd = PlotTraceCommand()
@@ -2539,7 +2551,10 @@ class TestPlotPointsCommand:
         cmd.execute()
         assert received == []
 
-    def test_execute_skips_when_plot_widget_busy(self, qapp, engine):
+    def test_execute_waits_when_plot_widget_busy(self, qapp, engine):
+        import threading
+        import time
+
         from stoner_measurement.ui.plot_widget import PlotWidget
 
         pw = PlotWidget()
@@ -2554,10 +2569,21 @@ class TestPlotPointsCommand:
         cmd.x_key = "p:x"
         cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
 
+        release_thread = threading.Thread(
+            target=lambda: (time.sleep(0.02), pw._mark_data_update_processed()),
+            daemon=True,
+        )
+        release_thread.start()
+        started = time.monotonic()
         cmd.execute()
+        elapsed = time.monotonic() - started
+        release_thread.join(timeout=1.0)
 
-        assert pw.trace_names == []
-        assert pw.is_busy_for_data() is True
+        assert pw.trace_names == ["My Y"]
+        assert pw.x_data("My Y") == [1.0]
+        assert pw.y_data("My Y") == [5.0]
+        assert elapsed >= 0.015
+        assert pw.is_busy_for_data() is False
 
     def test_execute_skips_missing_y_key(self, qapp, engine):
         cmd = PlotPointsCommand()

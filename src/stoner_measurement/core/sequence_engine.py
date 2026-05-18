@@ -671,7 +671,7 @@ class SequenceEngine(QObject):
 
     def wait_for_plot_ready(
         self,
-        timeout: float = _DEFAULT_PLOT_READY_TIMEOUT_SECONDS,
+        timeout: float | None = _DEFAULT_PLOT_READY_TIMEOUT_SECONDS,
         poll_interval: float = _DEFAULT_PLOT_READY_POLL_SECONDS,
     ) -> bool:
         """Block until the plot widget reports that it can accept more data.
@@ -681,9 +681,10 @@ class SequenceEngine(QObject):
         state-control loops.
 
         Keyword Parameters:
-            timeout (float):
+            timeout (float | None):
                 Maximum time to wait in seconds.  Values ``<= 0`` perform a
-                single non-blocking readiness check.
+                single non-blocking readiness check.  ``None`` waits
+                indefinitely until ready or interrupted by stop.
             poll_interval (float):
                 Delay between readiness checks while waiting.
 
@@ -700,13 +701,20 @@ class SequenceEngine(QObject):
         if not callable(is_busy):
             return True
 
-        if timeout <= 0:
+        if timeout is not None and timeout <= 0:
             return not bool(is_busy())
 
-        deadline = time.monotonic() + timeout
+        stop_event = getattr(self._thread, "_stop_event", None)
+        pause_event = getattr(self._thread, "_pause_event", None)
+        deadline = None if timeout is None else time.monotonic() + timeout
         sleep_for = max(float(poll_interval), 0.001)
         while bool(is_busy()):
-            if time.monotonic() >= deadline:
+            if stop_event is not None and stop_event.is_set():
+                return False
+            if pause_event is not None and not pause_event.is_set():
+                pause_event.wait(timeout=sleep_for)
+                continue
+            if deadline is not None and time.monotonic() >= deadline:
                 return False
             time.sleep(sleep_for)
         return True

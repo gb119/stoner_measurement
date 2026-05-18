@@ -331,16 +331,6 @@ class PlotTraceCommand(CommandPlugin):
     # Execute
     # ------------------------------------------------------------------
 
-    def _is_plot_ready_for_data(self) -> bool:
-        """Return ``True`` when the plot widget can accept another data update."""
-        engine = self.sequence_engine
-        if engine is None:
-            return True
-        wait_for_plot_ready = getattr(engine, "wait_for_plot_ready", None)
-        if not callable(wait_for_plot_ready):
-            return True
-        return bool(wait_for_plot_ready(timeout=0.0))
-
     def execute(self) -> None:
         """Retrieve trace data from the engine namespace and emit plot signals.
 
@@ -398,8 +388,8 @@ class PlotTraceCommand(CommandPlugin):
             x_data = self.eval(self.x_expr)
             y_data = self.eval(self.y_expr)
             title = str(self.eval(self.title_expr)) if self.title_expr else "plot"
-            if not self._is_plot_ready_for_data():
-                self.log.debug("PlotTrace: plot widget busy; skipping trace %r.", title)
+            if not self._wait_for_plot_ready(timeout=None):
+                self.log.debug("PlotTrace: wait for plot readiness interrupted for %r.", title)
                 return
             x_axis = self.x_axis_name or _DEFAULT_X_AXIS
             y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
@@ -491,8 +481,8 @@ class PlotTraceCommand(CommandPlugin):
         title: str,
         x_arr: np.ndarray,
         y_arr: np.ndarray,
-        x_err: "np.ndarray | None",
-        y_err: "np.ndarray | None",
+        x_err: np.ndarray | None,
+        y_err: np.ndarray | None,
         x_axis: str,
         y_axis: str,
     ) -> None:
@@ -517,8 +507,8 @@ class PlotTraceCommand(CommandPlugin):
             y_axis (str):
                 y-axis name.
         """
-        if not self._is_plot_ready_for_data():
-            self.log.debug("PlotTrace: plot widget busy; skipping trace %r.", title)
+        if not self._wait_for_plot_ready(timeout=None):
+            self.log.debug("PlotTrace: wait for plot readiness interrupted for %r.", title)
             return
         if self.transpose:
             x_arr, y_arr = y_arr, x_arr
