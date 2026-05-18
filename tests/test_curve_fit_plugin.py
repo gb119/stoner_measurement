@@ -94,8 +94,26 @@ class TestSiScaleAndPrefix:
         assert prefix == "k"
 
     def test_exact_milli_boundary(self):
-        # 0.001 should resolve to tier=-1 (milli)
+        # 0.001 should resolve to tier=-1 (milli), mantissa=1.0, which is in [0.1, 1000)
         scale, prefix = _si_scale_and_prefix(0.001)
+        assert scale == pytest.approx(0.001)
+        assert prefix == "m"
+
+    def test_sub_unity_stays_unscaled(self):
+        # 0.5 is in [0.1, 1000), so no SI prefix should be applied
+        scale, prefix = _si_scale_and_prefix(0.5)
+        assert scale == pytest.approx(1.0)
+        assert prefix == ""
+
+    def test_lower_boundary_stays_unscaled(self):
+        # 0.1 is exactly at the lower boundary, should stay at unity scale
+        scale, prefix = _si_scale_and_prefix(0.1)
+        assert scale == pytest.approx(1.0)
+        assert prefix == ""
+
+    def test_just_below_lower_boundary_uses_milli(self):
+        # 0.099 < 0.1, so should scale to milli (mantissa ~99 m)
+        scale, prefix = _si_scale_and_prefix(0.099)
         assert scale == pytest.approx(0.001)
         assert prefix == "m"
 
@@ -118,6 +136,10 @@ class TestFormatValueWithUncertainty:
 
     def test_applies_si_prefix_for_small_values(self):
         assert _format_value_with_uncertainty(0.00456, 0.00034) == "4.6 ± 0.3 m"
+
+    def test_sub_unity_value_no_si_prefix(self):
+        # 0.5 is in [0.1, 1000), so no prefix — value and uncertainty formatted at unity scale
+        assert _format_value_with_uncertainty(0.5, 0.03) == "0.50 ± 0.03"
 
     def test_negative_value_uses_same_si_prefix(self):
         assert _format_value_with_uncertainty(-1234.0, 230.0) == "-1.2 ± 0.2 k"

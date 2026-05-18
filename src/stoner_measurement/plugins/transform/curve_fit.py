@@ -178,10 +178,11 @@ _SI_PREFIXES: dict[int, str] = {
 
 
 def _si_scale_and_prefix(value: float) -> tuple[float, str]:
-    """Return ``(scale, si_prefix)`` so that ``abs(value) / scale`` is in ``[1, 1000)``.
+    """Return ``(scale, si_prefix)`` so that ``abs(value) / scale`` is in ``[0.1, 1000)``.
 
     The scale is a power of 1000 (10^(3*tier)).  Returns ``(1.0, "")`` when *value*
-    is zero.
+    is zero.  When *value* falls outside the range covered by the available SI prefixes
+    (yocto–yotta), the tier is clamped and the mantissa may fall outside ``[0.1, 1000)``.
 
     Args:
         value (float):
@@ -199,13 +200,15 @@ def _si_scale_and_prefix(value: float) -> tuple[float, str]:
         (1000.0, 'k')
         >>> _si_scale_and_prefix(0.00456)
         (0.001, 'm')
+        >>> _si_scale_and_prefix(0.5)
+        (1.0, '')
         >>> _si_scale_and_prefix(0.0)
         (1.0, '')
     """
     abs_val = abs(value)
     if abs_val == 0.0:
         return 1.0, ""
-    tier = int(math.floor(math.log10(abs_val) / 3))
+    tier = int(math.floor((math.log10(abs_val) + 1) / 3))
     tier = max(-8, min(8, tier))
     scale = 10.0 ** (3 * tier)
     return scale, _SI_PREFIXES.get(tier, "")
@@ -215,7 +218,7 @@ def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
     """Format a fitted value as ``value ± uncertainty [SI prefix]``.
 
     An SI prefix is chosen so that the displayed value mantissa falls in the
-    range ``[1, 1000)``.  Both the value and the uncertainty are divided by the
+    range ``[0.1, 1000)``.  Both the value and the uncertainty are divided by the
     same SI scale factor before formatting.  The uncertainty is rounded to one
     significant figure and the value is rounded to the same decimal precision.
 
