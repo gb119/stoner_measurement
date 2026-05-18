@@ -14,9 +14,12 @@ Notes:
 from __future__ import annotations
 
 import ast
+import functools
 import logging
 import math
 import textwrap
+from contextlib import redirect_stdout
+from io import StringIO
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -707,6 +710,9 @@ class CurveFitPlugin(TransformPlugin):
             self.log.error("CurveFit: no function named 'fit' found in fit code.")
             return nan_result
 
+        fit_func = self._wrap_user_stdout_callable(fit_func)
+        p0_func = self._wrap_user_stdout_callable(p0_func)
+
         # ---- 3. Build p0 and bounds --------------------------------------
         p0 = self._build_p0(p0_func, x_arr, y_arr)
         bounds = self._build_bounds()
@@ -937,6 +943,35 @@ class CurveFitPlugin(TransformPlugin):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _emit_stdout_to_console(self, text: str) -> None:
+        """Emit captured stdout text to the script-tab console output signal."""
+        if not text:
+            return
+        engine = self.sequence_engine
+        if engine is None:
+            return
+        try:
+            engine.output.emit(text)
+        except RuntimeError:
+            # The underlying Qt object may already be deleted during shutdown.
+            pass
+
+    def _wrap_user_stdout_callable(self, func):
+        """Wrap a user callable so its stdout is forwarded to the console."""
+        if func is None or self.sequence_engine is None:
+            return func
+
+        @functools.wraps(func)
+        def _wrapped(*args, **kwargs):
+            stream = StringIO()
+            try:
+                with redirect_stdout(stream):
+                    return func(*args, **kwargs)
+            finally:
+                self._emit_stdout_to_console(stream.getvalue())
+
+        return _wrapped
 
     def _get_data_arrays(
         self,
