@@ -175,10 +175,15 @@ class MagnetControllerEngine(QObject):
         self._timer.stop()
         if self._driver is not None:
             self._disconnect_driver(self._driver, log_context="before replacing magnet controller")
-        if not driver.is_connected:
-            driver.connect()
-        else:
-            driver.confirm_identity()
+        try:
+            if not driver.is_connected:
+                driver.connect()
+            else:
+                driver.confirm_identity()
+        except Exception:
+            self._driver = None
+            self._set_status(MagnetEngineStatus.DISCONNECTED)
+            raise
         self._driver = driver
         self._history.clear()
         self._at_target_since = None

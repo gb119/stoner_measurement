@@ -2335,6 +2335,20 @@ class TestIdentityAndQueueClearing:
         assert t.write_log == [b"SYST:ERR?\n", b"SYST:ERR?\n", b"SYST:ERR?\n"]
         assert any("Cleared queued instrument error" in record.getMessage() for record in caplog.records)
 
+    def test_temperature_controller_connect_closes_on_identity_failure(self):
+        t = NullTransport(responses=[b"VENDOR,WRONGMODEL,SN,1.0\r\n"])
+        controller = Lakeshore335(t)
+        with pytest.raises(InstrumentError, match="Unexpected instrument identity"):
+            controller.connect()
+        assert not controller.is_connected
+
+    def test_magnet_controller_connect_closes_on_identity_failure(self):
+        t = NullTransport(responses=[b"VWRONGMODEL 3.07\r"])
+        controller = OxfordIPS120(t)
+        with pytest.raises(InstrumentError, match="Unexpected instrument identity"):
+            controller.connect()
+        assert not controller.is_connected
+
 
 
 # ---------------------------------------------------------------------------

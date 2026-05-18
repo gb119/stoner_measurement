@@ -368,6 +368,24 @@ class TestEngineLifecycle:
         assert second.is_connected
         engine.shutdown()
 
+    def test_reconnect_failure_clears_engine_state(self, qapp):
+        engine = MagnetControllerEngine()
+        first = _make_fake_driver()
+        engine.connect_instrument(first)
+
+        class _BrokenDriver:
+            is_connected = False
+
+            def connect(self):
+                raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            engine.connect_instrument(_BrokenDriver())
+        assert not first.is_connected
+        assert engine._driver is None
+        assert engine.status == MagnetEngineStatus.DISCONNECTED
+        engine.shutdown()
+
     def test_connect_driver_instantiates_driver_class(self, qapp):
         from stoner_measurement.instruments.oxford import OxfordIPS120
         from stoner_measurement.instruments.protocol.oxford import OxfordProtocol

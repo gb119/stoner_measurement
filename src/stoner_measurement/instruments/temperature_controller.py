@@ -480,7 +480,11 @@ class TemperatureController(BaseInstrument):
     def connect(self) -> None:
         """Open the connection and verify the controller identity."""
         super().connect()
-        self.confirm_identity()
+        try:
+            self.confirm_identity()
+        except Exception:
+            self.disconnect()
+            raise
 
     # ------------------------------------------------------------------
     # Core abstract methods — sensor inputs

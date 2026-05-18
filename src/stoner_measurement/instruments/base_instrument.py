@@ -59,7 +59,9 @@ class BaseInstrument(ABC):
         >>> from stoner_measurement.instruments.transport import NullTransport
         >>> from stoner_measurement.instruments.protocol import ScpiProtocol
         >>> from stoner_measurement.instruments.base_instrument import BaseInstrument
-        >>> t = NullTransport(responses=[b"ACME,Model1,SN001,v1.0\\n"])
+        >>> t = NullTransport(
+        ...     responses=[b"ACME,Model1,SN001,v1.0\\n", b'+0,"No error"\\n']
+        ... )
         >>> instr = BaseInstrument(transport=t, protocol=ScpiProtocol())
         >>> instr.connect()
         >>> instr.is_connected
