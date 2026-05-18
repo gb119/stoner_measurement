@@ -87,6 +87,24 @@ class TestSiScaleAndPrefix:
         assert scale == pytest.approx(1e-9)
         assert prefix == "n"
 
+    def test_exact_kilo_boundary(self):
+        # 1000.0 should resolve to tier=1 (kilo)
+        scale, prefix = _si_scale_and_prefix(1000.0)
+        assert scale == pytest.approx(1000.0)
+        assert prefix == "k"
+
+    def test_exact_milli_boundary(self):
+        # 0.001 should resolve to tier=-1 (milli)
+        scale, prefix = _si_scale_and_prefix(0.001)
+        assert scale == pytest.approx(0.001)
+        assert prefix == "m"
+
+    def test_negative_value_same_prefix_as_positive(self):
+        pos_scale, pos_prefix = _si_scale_and_prefix(1234.0)
+        neg_scale, neg_prefix = _si_scale_and_prefix(-1234.0)
+        assert neg_scale == pytest.approx(pos_scale)
+        assert neg_prefix == pos_prefix
+
 
 class TestFormatValueWithUncertainty:
     def test_formats_with_matching_precision(self):
@@ -100,6 +118,9 @@ class TestFormatValueWithUncertainty:
 
     def test_applies_si_prefix_for_small_values(self):
         assert _format_value_with_uncertainty(0.00456, 0.00034) == "4.6 ± 0.3 m"
+
+    def test_negative_value_uses_same_si_prefix(self):
+        assert _format_value_with_uncertainty(-1234.0, 230.0) == "-1.2 ± 0.2 k"
 
     def test_returns_empty_for_non_finite_values(self):
         assert _format_value_with_uncertainty(np.nan, 0.1) == ""
