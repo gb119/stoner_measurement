@@ -717,10 +717,11 @@ class TestDataCatalogs:
         widget = _BusyThenIdlePlotWidget()
         engine.plot_widget = widget
 
-        release_thread = threading.Thread(
-            target=lambda: (time.sleep(0.02), setattr(widget, "_busy", False)),
-            daemon=True,
-        )
+        def _release_busy_flag() -> None:
+            time.sleep(0.02)
+            widget._busy = False
+
+        release_thread = threading.Thread(target=_release_busy_flag, daemon=True)
         release_thread.start()
         started = time.monotonic()
         assert engine.wait_for_plot_ready(timeout=None, poll_interval=0.001) is True
@@ -736,10 +737,11 @@ class TestDataCatalogs:
                 return True
 
         engine.plot_widget = _BusyPlotWidget()
-        stop_thread = threading.Thread(
-            target=lambda: (time.sleep(0.02), engine.stop()),
-            daemon=True,
-        )
+        def _request_stop() -> None:
+            time.sleep(0.02)
+            engine.stop()
+
+        stop_thread = threading.Thread(target=_request_stop, daemon=True)
         stop_thread.start()
         assert engine.wait_for_plot_ready(timeout=None, poll_interval=0.001) is False
         stop_thread.join(timeout=1.0)

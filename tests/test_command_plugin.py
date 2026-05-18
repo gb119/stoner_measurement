@@ -1109,10 +1109,12 @@ class TestPlotTraceCommand:
 
         received: list[tuple] = []
         cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
-        release_thread = threading.Thread(
-            target=lambda: (time.sleep(0.02), pw._mark_data_update_processed()),
-            daemon=True,
-        )
+        
+        def _release_plot_busy_flag() -> None:
+            time.sleep(0.02)
+            pw._mark_data_update_processed()
+
+        release_thread = threading.Thread(target=_release_plot_busy_flag, daemon=True)
         release_thread.start()
         started = time.monotonic()
         cmd.execute()
@@ -2569,10 +2571,11 @@ class TestPlotPointsCommand:
         cmd.x_key = "p:x"
         cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
 
-        release_thread = threading.Thread(
-            target=lambda: (time.sleep(0.02), pw._mark_data_update_processed()),
-            daemon=True,
-        )
+        def _release_plot_busy_flag() -> None:
+            time.sleep(0.02)
+            pw._mark_data_update_processed()
+
+        release_thread = threading.Thread(target=_release_plot_busy_flag, daemon=True)
         release_thread.start()
         started = time.monotonic()
         cmd.execute()
