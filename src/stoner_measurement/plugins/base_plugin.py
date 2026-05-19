@@ -921,6 +921,28 @@ class BasePlugin(ABC):
         about_widget.setHtml(about_html)
         return (f"{self.name} \u2013 About", about_widget)
 
+    def _get_cached_config_tabs(
+        self,
+        builder: Callable[[], list[tuple[str, QWidget]]],
+    ) -> list[tuple[str, QWidget]]:
+        """Return cached config tabs, building them once when needed.
+
+        Args:
+            builder (Callable[[], list[tuple[str, QWidget]]]):
+                Zero-argument callable that builds the config-tab widget list.
+
+        Returns:
+            (list[tuple[str, QWidget]]):
+                Cached list of ``(tab_title, widget)`` pairs for this plugin
+                instance.
+        """
+        cached = getattr(self, "_cached_config_tabs", None)
+        if cached is not None:
+            return cached
+        tabs = builder()
+        self._cached_config_tabs = tabs
+        return tabs
+
     def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return a list of ``(tab_title, widget)`` pairs for the config panel.
 
@@ -957,14 +979,17 @@ class BasePlugin(ABC):
             >>> tabs[1][0]
             'General'
         """
-        tabs = [
-            (self.name, self.config_widget(parent=parent)),
-            ("General", self._general_config_widget(parent=parent)),
-        ]
-        about_tab = self._make_about_tab()
-        if about_tab is not None:
-            tabs.append(about_tab)
-        return tabs
+        def _build_tabs() -> list[tuple[str, QWidget]]:
+            tabs = [
+                (self.name, self.config_widget(parent=parent)),
+                ("General", self._general_config_widget(parent=parent)),
+            ]
+            about_tab = self._make_about_tab()
+            if about_tab is not None:
+                tabs.append(about_tab)
+            return tabs
+
+        return self._get_cached_config_tabs(_build_tabs)
 
     def tooltip(self) -> str:
         """Return a short tooltip description for this plugin.

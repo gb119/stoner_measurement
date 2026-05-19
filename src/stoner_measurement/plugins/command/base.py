@@ -287,22 +287,25 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> tabs[0][0]
             'Noop'
         """
-        combined = QWidget(parent)
-        layout = QVBoxLayout(combined)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._general_config_widget())
-        separator = QFrame(combined)
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(separator)
-        layout.addWidget(self.config_widget())
-        layout.addStretch()
-        combined.setLayout(layout)
-        tabs = [(self.name, combined)]
-        about_tab = self._make_about_tab()
-        if about_tab is not None:
-            tabs.append(about_tab)
-        return tabs
+        def _build_tabs() -> list[tuple[str, QWidget]]:
+            combined = QWidget(parent)
+            layout = QVBoxLayout(combined)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(self._general_config_widget())
+            separator = QFrame(combined)
+            separator.setFrameShape(QFrame.Shape.HLine)
+            separator.setFrameShadow(QFrame.Shadow.Sunken)
+            layout.addWidget(separator)
+            layout.addWidget(self.config_widget())
+            layout.addStretch()
+            combined.setLayout(layout)
+            tabs = [(self.name, combined)]
+            about_tab = self._make_about_tab()
+            if about_tab is not None:
+                tabs.append(about_tab)
+            return tabs
+
+        return self._get_cached_config_tabs(_build_tabs)
 
     def generate_action_code(
         self,

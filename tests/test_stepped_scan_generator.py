@@ -33,6 +33,10 @@ class TestSteppedScanGenerator:
         gen = SteppedScanGenerator(start=3.5)
         assert gen.start == pytest.approx(3.5)
 
+    def test_legacy_stage_tuple_is_normalised_to_include_step_count(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.25, True)])
+        assert gen.stages == [(1.0, 0.25, 4, True)]
+
     # ------------------------------------------------------------------
     # generate()
     # ------------------------------------------------------------------
@@ -75,9 +79,21 @@ class TestSteppedScanGenerator:
         assert values.tolist().count(1.0) == 1
 
     def test_stage_matching_current_position_skipped(self, qapp):
-        """A stage where target == current should be skipped."""
-        gen = SteppedScanGenerator(start=1.0, stages=[(1.0, 0.5, True)])
-        assert len(gen.generate()) == 1  # only start point
+        """A zero-distance stage should contribute hold points."""
+        gen = SteppedScanGenerator(start=1.0, stages=[(1.0, 0.5, 3, True)])
+        assert np.allclose(gen.generate(), [1.0, 1.0, 1.0, 1.0])
+
+    def test_zero_distance_stage_uses_zero_step_size(self, qapp):
+        gen = SteppedScanGenerator(start=1.0, stages=[(1.0, 0.5, 3, True)])
+        assert gen.stages == [(1.0, 0.0, 3, True)]
+
+    def test_hold_stage_can_follow_ramp(self, qapp):
+        gen = SteppedScanGenerator(
+            start=0.0,
+            stages=[(10.0, 0.1, True), (10.0, 0.0, 100, True), (0.0, 0.1, True)],
+        )
+        assert gen.generate()[100] == pytest.approx(10.0)
+        assert np.allclose(gen.generate()[101:201], np.full(100, 10.0))
 
     def test_three_stages(self, qapp):
         gen = SteppedScanGenerator(
@@ -135,9 +151,17 @@ class TestSteppedScanGenerator:
     # Validation
     # ------------------------------------------------------------------
 
-    def test_invalid_zero_step_raises_value_error(self, qapp):
-        with pytest.raises(ValueError):
-            SteppedScanGenerator(start=0.0, stages=[(1.0, 0.0, True)])
+    def test_zero_step_size_caps_to_maximum_step_count(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.0, True)])
+        assert gen.stages == [(1.0, 0.0001, 10_000, True)]
+
+    def test_large_step_size_caps_to_minimum_step_count(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 10.0, True)])
+        assert gen.stages == [(1.0, 1.0, 1, True)]
+
+    def test_explicit_step_count_is_clamped_to_supported_range(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.1, 20_000, True)])
+        assert gen.stages == [(1.0, 0.0001, 10_000, True)]
 
     def test_invalid_negative_step_raises_value_error(self, qapp):
         with pytest.raises(ValueError):
@@ -366,14 +390,40 @@ class TestSteppedScanWidget:
         step_spin = widget._table.cellWidget(0, 1)
         step_spin.setValue(0.5)
         assert gen.stages[0][1] == pytest.approx(0.5)
+        assert gen.stages[0][2] == 2
+
+    def test_table_step_count_change_updates_generator(self, qapp):
+        gen = SteppedScanGenerator()
+        widget = SteppedScanWidget(generator=gen)
+        widget._add_btn.click()
+        num_steps_spin = widget._table.cellWidget(0, 2)
+        num_steps_spin.setValue(4)
+        assert gen.stages[0] == (1.0, 0.25, 4, True)
 
     def test_table_measure_change_updates_generator(self, qapp):
         gen = SteppedScanGenerator()
         widget = SteppedScanWidget(generator=gen)
         widget._add_btn.click()
-        measure_cb = widget._table.cellWidget(0, 2)
+        measure_cb = widget._table.cellWidget(0, 3)
         measure_cb.setChecked(False)
-        assert gen.stages[0][2] is False
+        assert gen.stages[0][3] is False
+
+    def test_start_change_updates_displayed_step_size(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, 2, True)])
+        widget = SteppedScanWidget(generator=gen)
+        widget._start_spin.setValue(0.5)
+        step_spin = widget._table.cellWidget(0, 1)
+        assert step_spin.value() == pytest.approx(0.25)
+
+    def test_small_step_size_is_capped_and_reflected_in_widget(self, qapp):
+        gen = SteppedScanGenerator()
+        widget = SteppedScanWidget(generator=gen)
+        widget._add_btn.click()
+        step_spin = widget._table.cellWidget(0, 1)
+        num_steps_spin = widget._table.cellWidget(0, 2)
+        step_spin.setValue(0.0)
+        assert num_steps_spin.value() == 10_000
+        assert step_spin.value() == pytest.approx(0.0001)
 
     # ------------------------------------------------------------------
     # Plot (Preview tab)

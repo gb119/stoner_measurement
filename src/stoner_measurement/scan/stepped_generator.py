@@ -1,9 +1,10 @@
 """Stepped scan generator and its configuration widget.
 
 :class:`SteppedScanGenerator` generates a sequence of values defined by a
-start value and a series of stages, each specifying a target, step size, and
-measurement flag.  :class:`SteppedScanWidget` provides a tabbed Qt widget for
-editing the stage table and previewing the resulting scan.
+start value and a series of stages, each specifying a target, step size,
+number of steps, and measurement flag. :class:`SteppedScanWidget` provides a
+tabbed Qt widget for editing the stage table and previewing the resulting
+scan.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTabWidget,
     QVBoxLayout,
@@ -28,9 +30,12 @@ from stoner_measurement.scan.base import BaseScanGenerator
 from stoner_measurement.ui.widgets import SISpinBox
 
 _SPINBOX_MAX_ABS = 1e9
-_MIN_STEP = 1e-9
+_MIN_STEP = 0.0
 _DEFAULT_TARGET = 1.0
 _DEFAULT_STEP = 0.1
+_DEFAULT_NUM_STEPS = 10
+_MIN_NUM_STEPS = 1
+_MAX_NUM_STEPS = 10_000
 
 
 class SteppedScanGenerator(BaseScanGenerator):
@@ -38,11 +43,11 @@ class SteppedScanGenerator(BaseScanGenerator):
 
     The sequence begins at *start* and advances through each stage in order.
     Within each stage the scan moves from the current position to *target* in
-    equal steps of *step_size*.  The number of steps is
-    ``round(abs(target − current) / step_size)``; if this rounds to zero the
-    stage contributes no points.  Successive stages share their boundary: the
-    last point of one stage is the first point of the next, so no values are
-    duplicated.
+    *num_steps* equal increments.  The displayed step size is derived from the
+    current position, target, and number of steps, and is therefore adjusted
+    automatically when the number of steps is capped or edited.  Zero-distance
+    stages are treated as holds and contribute repeated points at the current
+    value.
 
     Each stage carries a *measure* flag.  When ``True`` all points in that
     stage are recorded as measurements; when ``False`` they are positioning
@@ -52,14 +57,16 @@ class SteppedScanGenerator(BaseScanGenerator):
     Attributes:
         start (float):
             Initial value from which the first stage begins.
-        stages (list[tuple[float, float, bool]]):
-            Ordered list of ``(target, step_size, measure)`` stage definitions.
+        stages (list[tuple[float, float, int, bool]]):
+            Ordered list of ``(target, step_size, num_steps, measure)`` stage
+            definitions.
 
     Keyword Parameters:
         start (float):
             Initial scan value. Defaults to ``0.0``.
-        stages (list[tuple[float, float, bool]] | None):
-            Initial stage list. Defaults to an empty list.
+        stages (list[tuple[float, float, bool] | tuple[float, float, int, bool]] | None):
+            Initial stage list. Legacy ``(target, step_size, measure)`` tuples
+            are accepted and converted to the canonical four-field form.
         parent (QObject | None):
             Optional Qt parent object.
 
@@ -77,13 +84,13 @@ class SteppedScanGenerator(BaseScanGenerator):
         self,
         *,
         start: float = 0.0,
-        stages: list[tuple[float, float, bool]] | None = None,
+        stages: list[tuple[float, float, bool] | tuple[float, float, int, bool]] | None = None,
         parent: QObject | None = None,
     ) -> None:
         """Initialise the stepped scan generator."""
         super().__init__(parent)
         self._start = float(start)
-        self._stages: list[tuple[float, float, bool]] = []
+        self._stages: list[tuple[float, int, bool]] = []
         if stages:
             self.stages = stages  # use setter for validation
 
@@ -102,17 +109,72 @@ class SteppedScanGenerator(BaseScanGenerator):
         self._invalidate_cache()
 
     @property
-    def stages(self) -> list[tuple[float, float, bool]]:
-        """Ordered list of ``(target, step_size, measure)`` stage definitions."""
-        return list(self._stages)
+    def stages(self) -> list[tuple[float, float, int, bool]]:
+        """Ordered list of ``(target, step_size, num_steps, measure)`` stage definitions."""
+        result: list[tuple[float, float, int, bool]] = []
+        current = self._start
+        for target, num_steps, measure in self._stages:
+            result.append(
+                (target, self._step_size_for_stage(current, target, num_steps), num_steps, measure)
+            )
+            current = target
+        return result
 
     @stages.setter
-    def stages(self, value: list[tuple[float, float, bool]]) -> None:
-        for i, (_target, step, _measure) in enumerate(value):
-            if step <= 0:
-                raise ValueError(f"Step size must be positive; stage {i} has step={step!r}.")
-        self._stages = [(float(t), float(s), bool(m)) for t, s, m in value]
+    def stages(
+        self,
+        value: list[tuple[float, float, bool] | tuple[float, float, int, bool]],
+    ) -> None:
+        stages: list[tuple[float, int, bool]] = []
+        current = self._start
+        for i, stage in enumerate(value):
+            if len(stage) == 3:
+                target, step, measure = stage
+                step_value = float(step)
+                if step_value < 0:
+                    raise ValueError(f"Step size must be non-negative; stage {i} has step={step!r}.")
+                target_value = float(target)
+                num_steps = self._step_count_from_step_size(current, target_value, step_value)
+                stages.append((target_value, num_steps, bool(measure)))
+                current = target_value
+                continue
+            if len(stage) != 4:
+                raise ValueError(
+                    "Each stage must be a (target, step_size, measure) or "
+                    "(target, step_size, num_steps, measure) tuple."
+                )
+            target, step, num_steps, measure = stage
+            step_value = float(step)
+            if step_value < 0:
+                raise ValueError(f"Step size must be non-negative; stage {i} has step={step!r}.")
+            target_value = float(target)
+            stages.append((target_value, self._normalise_step_count(num_steps), bool(measure)))
+            current = target_value
+        self._stages = stages
         self._invalidate_cache()
+
+    @staticmethod
+    def _normalise_step_count(value: float | int) -> int:
+        """Clamp a step count to the supported range."""
+        return max(_MIN_NUM_STEPS, min(_MAX_NUM_STEPS, int(round(float(value)))))
+
+    @classmethod
+    def _step_count_from_step_size(cls, current: float, target: float, step_size: float) -> int:
+        """Derive a bounded step count from *step_size*."""
+        distance = abs(target - current)
+        if distance == 0.0:
+            return _MIN_NUM_STEPS
+        if step_size == 0.0:
+            return _MAX_NUM_STEPS
+        return cls._normalise_step_count(distance / step_size)
+
+    @staticmethod
+    def _step_size_for_stage(current: float, target: float, num_steps: int) -> float:
+        """Return the canonical step size for a stage."""
+        distance = abs(target - current)
+        if distance == 0.0:
+            return 0.0
+        return distance / num_steps
 
     # ------------------------------------------------------------------
     # Core computation helpers
@@ -122,16 +184,12 @@ class SteppedScanGenerator(BaseScanGenerator):
         """Compute per-stage scan point arrays."""
         result: list[tuple[np.ndarray, bool, int]] = []
         current = self._start
-        for stage_index, (target, step, measure) in enumerate(self._stages):
+        for stage_index, (target, num_steps, measure) in enumerate(self._stages):
             distance = abs(target - current)
             if distance == 0.0:
-                current = float(target)
-                continue
-            n = round(distance / step)
-            if n == 0:
-                current = float(target)
-                continue
-            pts = np.linspace(current, target, n + 1)[1:]
+                pts = np.full(num_steps, current, dtype=float)
+            else:
+                pts = np.linspace(current, target, num_steps + 1)[1:]
             result.append((pts, measure, stage_index))
             current = float(target)
         return result
@@ -229,8 +287,9 @@ class SteppedScanGenerator(BaseScanGenerator):
         Returns:
             (dict):
                 A dict with keys ``"type"``, ``"start"``, and ``"stages"``.
-                Each element of ``"stages"`` is a ``[target, step_size, measure]``
-                list suitable for direct JSON serialisation.
+                Each element of ``"stages"`` is a
+                ``[target, step_size, num_steps, measure]`` list suitable for
+                direct JSON serialisation.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -242,12 +301,12 @@ class SteppedScanGenerator(BaseScanGenerator):
             >>> d["start"]
             0.0
             >>> d["stages"]
-            [[1.0, 0.25, True]]
+            [[1.0, 0.25, 4, True]]
         """
         return {
             "type": "SteppedScanGenerator",
             "start": self._start,
-            "stages": [[t, s, m] for t, s, m in self._stages],
+            "stages": [list(stage) for stage in self.stages],
             "units": self._units,
         }
 
@@ -275,10 +334,13 @@ class SteppedScanGenerator(BaseScanGenerator):
             >>> restored.start
             2.0
             >>> restored.stages
-            [(4.0, 1.0, False)]
+            [(4.0, 1.0, 2, False)]
         """
-        stages = [(float(t), float(s), bool(m)) for t, s, m in data.get("stages", [])]
-        instance = cls(start=float(data.get("start", 0.0)), stages=stages, parent=parent)
+        instance = cls(
+            start=float(data.get("start", 0.0)),
+            stages=[tuple(stage) for stage in data.get("stages", [])],
+            parent=parent,
+        )
         instance.units = str(data.get("units", ""))
         return instance
 
@@ -290,8 +352,8 @@ class SteppedScanWidget(QWidget):
 
     * **Stages** — a :class:`~pyqtgraph.SpinBox` for the start value and a
       :class:`QTableWidget` where each row defines one stage (target, step
-      size, measure flag).  Rows can be added or removed with buttons below
-      the table.
+      size, number of steps, measure flag).  Rows can be added or removed with
+      buttons below the table.
     * **Preview** — a scatter plot showing scan points coloured green
       (``measure=True``) or red (``measure=False``).
 
@@ -343,8 +405,8 @@ class SteppedScanWidget(QWidget):
         start_form.addRow("Start:", self._start_spin)
         stages_layout.addLayout(start_form)
 
-        self._table = QTableWidget(0, 3)
-        self._table.setHorizontalHeaderLabels(["Target", "Step Size", "Measure"])
+        self._table = QTableWidget(0, 4)
+        self._table.setHorizontalHeaderLabels(["Target", "Step Size", "Steps", "Measure"])
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         stages_layout.addWidget(self._table)
 
@@ -399,8 +461,8 @@ class SteppedScanWidget(QWidget):
         # Populate table from existing generator stages without triggering updates.
         self._updating = True
         try:
-            for target, step, measure in self._generator.stages:
-                self._add_row(target, step, measure, update=False)
+            for target, step, num_steps, measure in self._generator.stages:
+                self._add_row(target, step, num_steps, measure, update=False)
         finally:
             self._updating = False
 
@@ -428,6 +490,7 @@ class SteppedScanWidget(QWidget):
         self,
         target: float = _DEFAULT_TARGET,
         step: float = _DEFAULT_STEP,
+        num_steps: int = _DEFAULT_NUM_STEPS,
         measure: bool = True,
         *,
         update: bool = True,
@@ -453,13 +516,19 @@ class SteppedScanWidget(QWidget):
                 siPrefix=True, suffix=self._generator.units,
             )
             step_spin.setValue(float(step))
-            step_spin.valueChanged.connect(self._on_table_changed)
+            step_spin.valueChanged.connect(self._on_step_size_changed)
             self._table.setCellWidget(row, 1, step_spin)
+
+            num_steps_spin = QSpinBox()
+            num_steps_spin.setRange(_MIN_NUM_STEPS, _MAX_NUM_STEPS)
+            num_steps_spin.setValue(int(num_steps))
+            num_steps_spin.valueChanged.connect(self._on_table_changed)
+            self._table.setCellWidget(row, 2, num_steps_spin)
 
             measure_cb = QCheckBox()
             measure_cb.setChecked(bool(measure))
             measure_cb.stateChanged.connect(self._on_table_changed)
-            self._table.setCellWidget(row, 2, measure_cb)
+            self._table.setCellWidget(row, 3, measure_cb)
         finally:
             self._updating = False
         if update:
@@ -482,20 +551,78 @@ class SteppedScanWidget(QWidget):
     def _on_start_changed(self, value: float) -> None:
         """Update generator start value."""
         self._generator.start = value
+        self._sync_table_to_generator()
 
-    def _on_table_changed(self) -> None:
+    def _sender_row(self) -> int | None:
+        """Return the table row containing the current sender widget."""
+        sender = self.sender()
+        if sender is None:
+            return None
+        for row in range(self._table.rowCount()):
+            for column in range(self._table.columnCount()):
+                if self._table.cellWidget(row, column) is sender:
+                    return row
+        return None
+
+    def _stage_values_from_row(self, row: int) -> tuple[float, float, int, bool] | None:
+        """Return the widget values for *row*."""
+        target_w: SISpinBox | None = self._table.cellWidget(row, 0)
+        step_w: SISpinBox | None = self._table.cellWidget(row, 1)
+        num_steps_w: QSpinBox | None = self._table.cellWidget(row, 2)
+        measure_cb: QCheckBox | None = self._table.cellWidget(row, 3)
+        if target_w is None or step_w is None or num_steps_w is None or measure_cb is None:
+            return None
+        return target_w.value(), step_w.value(), num_steps_w.value(), measure_cb.isChecked()
+
+    def _sync_table_to_generator(self) -> None:
+        """Update the table widgets to the generator's canonical stage values."""
+        stages = self._generator.stages
+        self._updating = True
+        try:
+            while self._table.rowCount() < len(stages):
+                self._add_row(update=False)
+            while self._table.rowCount() > len(stages):
+                self._table.removeRow(self._table.rowCount() - 1)
+            for row, (target, step, num_steps, measure) in enumerate(stages):
+                target_w: SISpinBox | None = self._table.cellWidget(row, 0)
+                step_w: SISpinBox | None = self._table.cellWidget(row, 1)
+                num_steps_w: QSpinBox | None = self._table.cellWidget(row, 2)
+                measure_cb: QCheckBox | None = self._table.cellWidget(row, 3)
+                if target_w is not None:
+                    target_w.setValue(target)
+                if step_w is not None:
+                    step_w.setValue(step)
+                if num_steps_w is not None:
+                    num_steps_w.setValue(num_steps)
+                if measure_cb is not None:
+                    measure_cb.setChecked(measure)
+        finally:
+            self._updating = False
+
+    def _update_generator_from_table(self, *, step_size_row: int | None = None) -> None:
         """Rebuild generator stages from the current table contents."""
         if self._updating:
             return
-        stages: list[tuple[float, float, bool]] = []
+        stages: list[tuple[float, float, bool] | tuple[float, float, int, bool]] = []
         for row in range(self._table.rowCount()):
-            target_w: SISpinBox | None = self._table.cellWidget(row, 0)
-            step_w: SISpinBox | None = self._table.cellWidget(row, 1)
-            measure_cb: QCheckBox | None = self._table.cellWidget(row, 2)
-            if target_w is None or step_w is None or measure_cb is None:
+            values = self._stage_values_from_row(row)
+            if values is None:
                 continue
-            stages.append((target_w.value(), step_w.value(), measure_cb.isChecked()))
+            target, step, num_steps, measure = values
+            if row == step_size_row:
+                stages.append((target, step, measure))
+            else:
+                stages.append((target, step, num_steps, measure))
         self._generator.stages = stages
+        self._sync_table_to_generator()
+
+    def _on_step_size_changed(self, *_args) -> None:
+        """Update the edited row using its current step size."""
+        self._update_generator_from_table(step_size_row=self._sender_row())
+
+    def _on_table_changed(self, *_args) -> None:
+        """Rebuild generator stages from the current table contents."""
+        self._update_generator_from_table()
 
     def _refresh_plot(self) -> None:
         """Re-render the scatter plot from the current generator values."""

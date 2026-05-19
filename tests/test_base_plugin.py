@@ -239,6 +239,14 @@ class TestBasePluginDefaults:
         tabs = plugin.config_tabs()
         assert tabs[-1][0] == "General"
 
+    def test_config_tabs_cache_widgets(self, qapp):
+        plugin = _MinimalPlugin()
+        tabs1 = plugin.config_tabs()
+        tabs2 = plugin.config_tabs()
+        for (title1, widget1), (title2, widget2) in zip(tabs1, tabs2):
+            assert title1 == title2
+            assert widget1 is widget2
+
     def test_about_html_returns_none_for_undocumented_plugin(self, qapp):
         plugin = _MinimalPlugin()
         assert plugin._about_html() is None
@@ -431,4 +439,3 @@ class TestGenerateInstantiationCode:
         plugin = _MinimalPlugin()
         lines = plugin.generate_instantiation_code()
         assert lines[-1] == ""
-

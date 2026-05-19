@@ -1408,12 +1408,15 @@ class CurveFitPlugin(TransformPlugin):
             >>> 'General' not in [t for t, _ in tabs]
             True
         """
-        tabs = super().config_tabs(parent)
-        fit_tab, param_tab = self._build_fit_and_param_tabs(parent)
-        # Insert Fit Function and Parameters after the Data tab (index 0).
-        tabs.insert(1, ("Parameters", param_tab))
-        tabs.insert(1, ("Fit Function", fit_tab))
-        return tabs
+        def _build_tabs() -> list[tuple[str, QWidget]]:
+            tabs = super(CurveFitPlugin, self).config_tabs(parent)
+            fit_tab, param_tab = self._build_fit_and_param_tabs(parent)
+            # Insert Fit Function and Parameters after the Data tab (index 0).
+            tabs.insert(1, ("Parameters", param_tab))
+            tabs.insert(1, ("Fit Function", fit_tab))
+            return tabs
+
+        return self._get_cached_config_tabs(_build_tabs)
 
     def _get_trace_columns(self, trace_key: str) -> list[str]:
         """Return the DataFrame column names for the trace identified by *trace_key*.
