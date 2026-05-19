@@ -968,7 +968,7 @@ class TestStateControlDataCollection:
         assert restored.collect_outputs == ["counter:Value"]
 
     def test_scan_config_has_output_catalogue_checkboxes(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox
+        from PyQt6.QtWidgets import QCheckBox, QScrollArea
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
         from stoner_measurement.plugins.state_control import CounterPlugin
@@ -989,11 +989,27 @@ class TestStateControlDataCollection:
             ),
             None,
         )
+        select_all_checkbox = next(
+            (
+                check
+                for check in scan_page.findChildren(QCheckBox)
+                if check.text() == "Use all catalogue outputs"
+            ),
+            None,
+        )
+        scroll_area = next(iter(scan_page.findChildren(QScrollArea)), None)
         assert value_checkbox is not None
         assert value_checkbox.isChecked()
+        assert select_all_checkbox is not None
+        assert select_all_checkbox.isChecked()
+        assert scroll_area is not None
         value_checkbox.setChecked(False)
+        assert not select_all_checkbox.isChecked()
         assert p.collect_outputs is not None
         assert "counter:Value" not in p.collect_outputs
+        select_all_checkbox.setChecked(True)
+        assert value_checkbox.isChecked()
+        assert p.collect_outputs is None
         engine.shutdown()
 
     def test_generate_action_code_includes_clear_when_clear_on_start(self, qapp):

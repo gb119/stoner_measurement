@@ -271,8 +271,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
         Keyword Parameters:
             outputs (list[str] | None):
-                Optional list of output names to include.  When ``None`` all
-                catalogue entries are included.
+                Optional list of output names to include.  Resolution order is:
+                explicit ``outputs`` argument first; then
+                :attr:`collect_outputs` when set; otherwise all values-catalogue
+                entries.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
