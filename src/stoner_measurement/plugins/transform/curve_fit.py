@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -642,6 +642,9 @@ class CurveFitPlugin(TransformPlugin):
         self.fit_code_syntax_error_line: int | None = None
         self.fit_code_syntax_error_message: str = ""
         self._param_table_widget: _ParamTableWidget | None = None
+        self._param_table_preview_timer = QTimer(self)
+        self._param_table_preview_timer.setSingleShot(True)
+        self._param_table_preview_timer.timeout.connect(self._refresh_param_table_preview)
 
     # ------------------------------------------------------------------
     # BasePlugin / TransformPlugin abstract interface
@@ -1324,6 +1327,12 @@ class CurveFitPlugin(TransformPlugin):
         values, _ = self._preview_used_initial_values()
         self._param_table_widget.update_used_initial_values(values)
 
+    def _schedule_param_table_preview_refresh(self, delay_ms: int = 150) -> None:
+        """Schedule a debounced parameter-table preview refresh."""
+        if self._param_table_widget is None:
+            return
+        self._param_table_preview_timer.start(delay_ms)
+
     def _update_param_names(self, code: str) -> None:
         """Update :attr:`param_names` by introspecting *code*.
 
@@ -1598,32 +1607,32 @@ class CurveFitPlugin(TransformPlugin):
                     self.column_key = ""
                     ws["column_combo"].setCurrentText(_DEFAULT_COLUMN_OPTION)
                 ws["column_combo"].blockSignals(False)
-            self._refresh_param_table_preview()
+            self._schedule_param_table_preview_refresh()
 
         def _apply_column(text: str) -> None:
             if text != _DEFAULT_COLUMN_OPTION:
                 self.column_key = text
             else:
                 self.column_key = ""
-            self._refresh_param_table_preview()
+            self._schedule_param_table_preview_refresh()
 
         def _apply_advanced(checked: bool) -> None:
             self.advanced_mode = checked
-            self._refresh_param_table_preview()
+            self._schedule_param_table_preview_refresh()
 
         def _apply_x(text: str) -> None:
             if text != "(no channels available)":
                 self.x_expr = ws["channel_items"].get(text, self.x_expr)
-            self._refresh_param_table_preview()
+            self._schedule_param_table_preview_refresh()
 
         def _apply_y(text: str) -> None:
             if text != "(no channels available)":
                 self.y_expr = ws["channel_items"].get(text, self.y_expr)
-            self._refresh_param_table_preview()
+            self._schedule_param_table_preview_refresh()
 
         def _apply_y_error() -> None:
             self.y_error_expr = ws["y_error_edit"].text().strip()
-            self._refresh_param_table_preview()
+            self._schedule_param_table_preview_refresh()
 
         ws["trace_combo"].currentTextChanged.connect(_apply_trace)
         ws["column_combo"].currentTextChanged.connect(_apply_column)
@@ -1736,7 +1745,7 @@ class CurveFitPlugin(TransformPlugin):
                 param_widget.set_parameters(self.param_names)
                 table_settings = param_widget.read_settings()
             self._merge_param_settings(table_settings, old_names + self.param_names)
-            self._refresh_param_table_preview()
+            self._schedule_param_table_preview_refresh()
 
         editor.textChanged.connect(_on_code_changed)
 
@@ -1744,7 +1753,7 @@ class CurveFitPlugin(TransformPlugin):
         def _on_table_changed() -> None:
             table_settings = param_widget.read_settings()
             self._merge_param_settings(table_settings, self.param_names)
-            self._refresh_param_table_preview()
+            self._schedule_param_table_preview_refresh()
 
         param_widget.settings_changed.connect(_on_table_changed)
 

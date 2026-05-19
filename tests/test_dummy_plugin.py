@@ -20,6 +20,13 @@ def _make_scan(plugin, end=0.4, step=0.1):
     return gen
 
 
+def _register_tab_widgets(qtbot, tabs):
+    """Register config-tab widgets with qtbot for safe teardown."""
+    for _title, widget in tabs:
+        qtbot.addWidget(widget)
+    return tabs
+
+
 class TestDummyPlugin:
     def test_name(self):
         plugin = DummyPlugin()
@@ -86,14 +93,14 @@ class TestDummyPlugin:
         assert abs(v_vals[2] - math.sqrt(3)) < 1e-9
         assert i_vals == pytest.approx([0.0, 1.0, 2.0])
 
-    def test_config_tabs_returns_three_tabs(self, qapp):
+    def test_config_tabs_returns_three_tabs(self, qapp, qtbot):
         plugin = DummyPlugin()
-        tabs = plugin.config_tabs()
+        tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
         assert len(tabs) == 3
 
-    def test_config_tabs_titles(self, qapp):
+    def test_config_tabs_titles(self, qapp, qtbot):
         plugin = DummyPlugin()
-        tabs = plugin.config_tabs()
+        tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
         titles = [t for t, _ in tabs]
         assert titles == [
             "Dummy \u2013 Scan",
@@ -101,16 +108,17 @@ class TestDummyPlugin:
             "Dummy \u2013 About",
         ]
 
-    def test_config_tabs_widgets_are_qwidgets(self, qapp):
+    def test_config_tabs_widgets_are_qwidgets(self, qapp, qtbot):
         from PyQt6.QtWidgets import QWidget
+
         plugin = DummyPlugin()
-        for _title, widget in plugin.config_tabs():
+        for _title, widget in _register_tab_widgets(qtbot, plugin.config_tabs()):
             assert isinstance(widget, QWidget)
 
-    def test_config_tabs_caches_widgets(self, qapp):
+    def test_config_tabs_caches_widgets(self, qapp, qtbot):
         """Subsequent calls to config_tabs() return the same widget instances."""
         plugin = DummyPlugin()
-        tabs1 = plugin.config_tabs()
+        tabs1 = _register_tab_widgets(qtbot, plugin.config_tabs())
         tabs2 = plugin.config_tabs()
         for (t1, w1), (t2, w2) in zip(tabs1, tabs2):
             assert t1 == t2
@@ -125,21 +133,22 @@ class TestDummyPlugin:
         plugin = DummyPlugin()
         assert isinstance(plugin.scan_generator, FunctionScanGenerator)
 
-    def test_scan_tab_is_first(self, qapp):
+    def test_scan_tab_is_first(self, qapp, qtbot):
         plugin = DummyPlugin()
-        tabs = plugin.config_tabs()
+        tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
         assert "Scan" in tabs[0][0]
         assert "Type" not in tabs[0][0]
 
-    def test_scan_tab_widget_is_qwidget(self, qapp):
+    def test_scan_tab_widget_is_qwidget(self, qapp, qtbot):
         from PyQt6.QtWidgets import QWidget
+
         plugin = DummyPlugin()
-        tabs = plugin.config_tabs()
+        tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
         assert isinstance(tabs[0][1], QWidget)
 
-    def test_about_tab_is_third(self, qapp):
+    def test_about_tab_is_third(self, qapp, qtbot):
         plugin = DummyPlugin()
-        tabs = plugin.config_tabs()
+        tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
         assert "About" in tabs[2][0]
 
     def test_about_html_returns_string(self, qapp):
@@ -148,10 +157,13 @@ class TestDummyPlugin:
         assert isinstance(html, str)
         assert "<h3>" in html
 
-    def test_plugin_config_tabs_returns_widget(self, qapp):
+    def test_plugin_config_tabs_returns_widget(self, qapp, qtbot):
         from PyQt6.QtWidgets import QWidget
+
         plugin = DummyPlugin()
-        assert isinstance(plugin._plugin_config_tabs(), QWidget)
+        widget = plugin._plugin_config_tabs()
+        qtbot.addWidget(widget)
+        assert isinstance(widget, QWidget)
 
     def test_set_scan_generator_class(self, qapp):
         from stoner_measurement.scan import FunctionScanGenerator
