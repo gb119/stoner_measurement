@@ -1328,7 +1328,16 @@ class CurveFitPlugin(TransformPlugin):
         self._param_table_widget.update_used_initial_values(values)
 
     def _schedule_param_table_preview_refresh(self, delay_ms: int = 150) -> None:
-        """Schedule a debounced parameter-table preview refresh."""
+        """Schedule a debounced parameter-table preview refresh.
+
+        Args:
+            delay_ms (int):
+                Delay in milliseconds before the preview refresh runs.
+
+        Returns:
+            None:
+                The refresh is scheduled on the internal single-shot timer.
+        """
         if self._param_table_widget is None:
             return
         self._param_table_preview_timer.start(delay_ms)
