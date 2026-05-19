@@ -213,14 +213,14 @@ class _StateScanPage(QWidget):
             checked_keys = [key for key, check in output_checks.items() if check.isChecked()]
             plugin.collect_outputs = None if checked_keys == all_keys else checked_keys
             sync_in_progress = True
-            select_all_outputs_check.setChecked(bool(all_keys) and checked_keys == all_keys)
+            select_all_outputs_check.setChecked(checked_keys == all_keys and bool(all_keys))
             sync_in_progress = False
 
         def _apply_select_all_outputs(state: int) -> None:
             nonlocal sync_in_progress
             if sync_in_progress:
                 return
-            if not bool(state):
+            if not state:
                 return
             sync_in_progress = True
             for checkbox in output_checks.values():
