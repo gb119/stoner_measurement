@@ -191,7 +191,13 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         return bool(wait_for_plot_ready(timeout=timeout))
 
     def _queue_plot_update_request(self, fallback_signal: Any | None = None) -> None:
-        """Register one pending plot update before emitting data signals."""
+        """Register one pending plot update before emitting data signals.
+
+        Keyword Parameters:
+            fallback_signal (Any | None):
+                Optional Qt signal to emit when the plot widget does not expose
+                ``mark_data_update_queued``.
+        """
         engine = self.sequence_engine
         if engine is None:
             if fallback_signal is not None:
@@ -210,7 +216,20 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         request_name: str,
         timeout: float = _DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS,
     ) -> None:
-        """Wait for one queued plot update to complete, or raise on timeout."""
+        """Wait for one queued plot update to complete, or raise on timeout.
+
+        Args:
+            request_name (str):
+                Human-readable label for the pending plot request.
+
+        Keyword Parameters:
+            timeout (float):
+                Maximum wait time in seconds for the plot widget acknowledgement.
+
+        Raises:
+            TimeoutError:
+                If the plot request is not acknowledged before *timeout*.
+        """
         if self._wait_for_plot_ready(timeout=timeout):
             return
         engine = self.sequence_engine
