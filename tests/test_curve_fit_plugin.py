@@ -719,6 +719,36 @@ class TestCurveFitConfigTabs:
         assert table._table.item(used_initial_row, b_col).text() == "-1.25"  # noqa: SLF001
         engine.shutdown()
 
+    def test_parameters_table_blanks_initial_preview_for_p0_length_mismatch(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        p = CurveFitPlugin()
+        engine.add_plugin("curve_fit", p)
+        engine._namespace["_x"] = np.array([0.0, 1.0])
+        engine._namespace["_y"] = np.array([1.0, 2.0])
+        p.advanced_mode = True
+        p.x_expr = "_x"
+        p.y_expr = "_y"
+        p.fit_code = (
+            "def fit(x, a, b):\n"
+            "    return a * x + b\n"
+            "def p0(x, y):\n"
+            "    return (2.5,)\n"
+        )
+        p.param_names = ["a", "b"]
+
+        tabs = p.config_tabs()
+        param_widget = dict(tabs)["Parameters"]
+        table = param_widget.findChildren(_ParamTableWidget)[0]
+        used_initial_row = _table_row_by_label(table, "Initial used")
+        a_col = _table_column_by_label(table, "a")
+        b_col = _table_column_by_label(table, "b")
+
+        assert table._table.item(used_initial_row, a_col).text() == ""  # noqa: SLF001
+        assert table._table.item(used_initial_row, b_col).text() == ""  # noqa: SLF001
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # _update_param_names

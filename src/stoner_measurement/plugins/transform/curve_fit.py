@@ -1312,6 +1312,8 @@ class CurveFitPlugin(TransformPlugin):
             values = self._build_p0(None, np.empty(0, dtype=float), np.empty(0, dtype=float))
 
         resolved_values = [1.0] * len(self.param_names) if values is None else list(values)
+        if len(resolved_values) != len(self.param_names):
+            return {}, uses_p0
         preview = {
             name: resolved_values[index] if index < len(resolved_values) else None
             for index, name in enumerate(self.param_names)
