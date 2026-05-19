@@ -1127,6 +1127,46 @@ class TestPlotTraceCommand:
         assert elapsed >= 0.019
         assert pw.is_busy_for_data() is False
 
+    def test_execute_advanced_mode_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
+        import stoner_measurement.plugins.command.base as command_base
+
+        class _NeverAckPlotWidget:
+            def __init__(self) -> None:
+                self._pending = 0
+
+            def mark_data_update_queued(self) -> None:
+                self._pending += 1
+
+            def is_busy_for_data(self) -> bool:
+                return self._pending > 0
+
+            def set_trace(self, _trace_name: str, _x_data: object, _y_data: object) -> None:
+                return
+
+            def ensure_x_axis(self, _name: str, _label: str) -> None:
+                return
+
+            def ensure_y_axis(self, _name: str, _label: str) -> None:
+                return
+
+            def assign_trace_axes(self, _trace_name: str, _x_axis: str, _y_axis: str) -> None:
+                return
+
+        monkeypatch.setattr(command_base, "_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS", 0.01)
+        engine.plot_widget = _NeverAckPlotWidget()
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0, 2.0])
+        engine._namespace["my_y"] = np.array([4.0, 5.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'timeout-trace'"
+
+        with pytest.raises(TimeoutError, match="plot response"):
+            cmd.execute()
+
     def test_execute_simple_mode_missing_trace_key_logs_warning(self, qapp, engine):
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
@@ -2589,6 +2629,45 @@ class TestPlotPointsCommand:
         # Allow a small scheduling margin below the 20 ms release delay.
         assert elapsed >= 0.019
         assert pw.is_busy_for_data() is False
+
+    def test_execute_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
+        import stoner_measurement.plugins.command.base as command_base
+
+        class _NeverAckPlotWidget:
+            def __init__(self) -> None:
+                self._pending = 0
+
+            def mark_data_update_queued(self) -> None:
+                self._pending += 1
+
+            def is_busy_for_data(self) -> bool:
+                return self._pending > 0
+
+            def append_point(self, _trace_name: str, _x: float, _y: float) -> None:
+                return
+
+            def ensure_x_axis(self, _name: str, _label: str) -> None:
+                return
+
+            def ensure_y_axis(self, _name: str, _label: str) -> None:
+                return
+
+            def assign_trace_axes(self, _trace_name: str, _x_axis: str, _y_axis: str) -> None:
+                return
+
+        monkeypatch.setattr(command_base, "_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS", 0.01)
+        engine.plot_widget = _NeverAckPlotWidget()
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
+
+        with pytest.raises(TimeoutError, match="plot response"):
+            cmd.execute()
 
     def test_execute_skips_missing_y_key(self, qapp, engine):
         cmd = PlotPointsCommand()
