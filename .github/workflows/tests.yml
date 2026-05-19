@@ -29,6 +29,7 @@ jobs:
             libxcb-keysyms1 \
             libxcb-randr0 \
             libxcb-render-util0 \
+            libxcb-shape0 \
             libxcb-xinerama0 \
             libxcb-xkb1 \
             libxcb-xinput0 \
@@ -54,10 +55,9 @@ jobs:
       - name: Run tests
         shell: bash -el {0}
         env:
-          QT_QPA_PLATFORM: offscreen
+          QT_QPA_PLATFORM: xcb
           QT_OPENGL: software
           LIBGL_ALWAYS_SOFTWARE: "1"
-          QT_DEBUG_PLUGINS: "1"
         run: |
           python -c "from PyQt6.QtCore import QLibraryInfo; print('Qt plugins:', QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))"
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
