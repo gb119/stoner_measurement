@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 
 from PyQt6.QtWidgets import QWidget
@@ -128,6 +129,51 @@ class TestStateSweepPlugin:
         plugin.collect()
         assert plugin.data.empty
 
+    def test_sweep_config_has_output_catalogue_checkboxes(self, qapp):
+        from PyQt6.QtWidgets import QCheckBox, QScrollArea
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        engine = SequenceEngine()
+        plugin = _TestSweepPlugin()
+        counter = CounterPlugin()
+        engine.add_plugin("testsweep", plugin)
+        engine.add_plugin("counter", counter)
+        engine.update_step_plugin_catalog([plugin, counter])
+        tabs = plugin.config_tabs()
+        sweep_page = tabs[0][1]
+        value_checkbox = next(
+            (
+                check
+                for check in sweep_page.findChildren(QCheckBox)
+                if check.text() == "counter:Value"
+            ),
+            None,
+        )
+        select_all_checkbox = next(
+            (
+                check
+                for check in sweep_page.findChildren(QCheckBox)
+                if check.text() == "Use all catalogue outputs"
+            ),
+            None,
+        )
+        scroll_area = next(iter(sweep_page.findChildren(QScrollArea)), None)
+        assert value_checkbox is not None
+        assert value_checkbox.isChecked()
+        assert select_all_checkbox is not None
+        assert select_all_checkbox.isChecked()
+        assert scroll_area is not None
+        value_checkbox.setChecked(False)
+        assert not select_all_checkbox.isChecked()
+        assert plugin.collect_outputs is not None
+        assert "counter:Value" not in plugin.collect_outputs
+        select_all_checkbox.setChecked(True)
+        assert value_checkbox.isChecked()
+        assert plugin.collect_outputs is None
+        engine.shutdown()
+
     def test_generate_action_code_uses_while_next(self, qapp):
         plugin = _TestSweepPlugin()
         lines = plugin.generate_action_code(1, [], lambda s, i: [])
@@ -179,10 +225,6 @@ class TestStateSweepPlugin:
         assert changed == [1.0, 2.5]
 
     def test_state_error_emitted_on_timeout(self, qapp):
-        import time
-        from collections.abc import Iterator
-        from PyQt6.QtWidgets import QWidget as _QW
-
         class _SlowGenerator(BaseSweepGenerator):
             def iter_points(self) -> Iterator[tuple[int, float, int, bool]]:
                 while True:
@@ -190,7 +232,7 @@ class TestStateSweepPlugin:
                     yield 0, 0.0, 0, True
 
             def config_widget(self, parent=None):
-                return _QW(parent)
+                return QWidget(parent)
 
             @classmethod
             def _from_json_data(cls, data, *, state_sweep=None, parent=None):
