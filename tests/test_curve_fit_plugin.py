@@ -16,6 +16,22 @@ from stoner_measurement.plugins.transform.curve_fit import (
     _si_scale_and_prefix,
 )
 
+
+def _table_row_by_label(table: _ParamTableWidget, label: str) -> int:
+    for row in range(table._table.rowCount()):  # noqa: SLF001
+        header_item = table._table.verticalHeaderItem(row)  # noqa: SLF001
+        if header_item is not None and header_item.text() == label:
+            return row
+    raise AssertionError(f"Row label {label!r} not found")
+
+
+def _table_column_by_label(table: _ParamTableWidget, label: str) -> int:
+    for col in range(table._table.columnCount()):  # noqa: SLF001
+        header_item = table._table.horizontalHeaderItem(col)  # noqa: SLF001
+        if header_item is not None and header_item.text() == label:
+            return col
+    raise AssertionError(f"Column label {label!r} not found")
+
 # ---------------------------------------------------------------------------
 # Module-level helper tests
 # ---------------------------------------------------------------------------
@@ -150,16 +166,30 @@ class TestFormatValueWithUncertainty:
 
 
 class TestParamTableWidget:
-    def test_has_fitted_column(self, qapp):
+    def test_has_parameter_columns_and_setting_rows(self, qapp):
         table = _ParamTableWidget()
-        assert table._table.columnCount() == 5  # noqa: SLF001
-        assert table._table.horizontalHeaderItem(4).text() == "Fitted"  # noqa: SLF001
+        table.set_parameters(["a", "b"])
+        assert table._table.columnCount() == 2  # noqa: SLF001
+        assert table._table.horizontalHeaderItem(0).text() == "a"  # noqa: SLF001
+        assert table._table.horizontalHeaderItem(1).text() == "b"  # noqa: SLF001
+        assert table._table.verticalHeaderItem(0).text() == "Min"  # noqa: SLF001
+        assert table._table.verticalHeaderItem(4).text() == "Fitted"  # noqa: SLF001
 
-    def test_updates_fitted_column_text(self, qapp):
+    def test_updates_fitted_row_text(self, qapp):
         table = _ParamTableWidget()
         table.set_parameters(["a"])
         table.update_fitted_results({"a": 12.345, "a_err": 0.67})
-        assert table._table.item(0, 4).text() == "12.3 ± 0.7"  # noqa: SLF001
+        fitted_row = _table_row_by_label(table, "Fitted")
+        a_col = _table_column_by_label(table, "a")
+        assert table._table.item(fitted_row, a_col).text() == "12.3 ± 0.7"  # noqa: SLF001
+
+    def test_updates_calculated_initial_row_text(self, qapp):
+        table = _ParamTableWidget()
+        table.set_parameters(["a"])
+        table.update_used_initial_values({"a": 12.345}, from_p0=True)
+        used_initial_row = _table_row_by_label(table, "Calculated initial")
+        a_col = _table_column_by_label(table, "a")
+        assert table._table.item(used_initial_row, a_col).text() == "12.345"  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------
@@ -647,14 +677,46 @@ class TestCurveFitConfigTabs:
         tabs = p.config_tabs()
         param_widget = dict(tabs)["Parameters"]
         table = param_widget.findChildren(_ParamTableWidget)[0]
-        assert table._table.item(0, 4).text() == ""  # noqa: SLF001
+        fitted_row = _table_row_by_label(table, "Fitted")
+        a_col = _table_column_by_label(table, "a")
+        assert table._table.item(fitted_row, a_col).text() == ""  # noqa: SLF001
 
         p.run({})
         qapp.processEvents()
 
-        fitted_cell = table._table.item(0, 4).text()  # noqa: SLF001
+        fitted_cell = table._table.item(fitted_row, a_col).text()  # noqa: SLF001
         assert fitted_cell
         assert "±" in fitted_cell
+        engine.shutdown()
+
+    def test_parameters_table_shows_calculated_initial_values_for_p0(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        p = CurveFitPlugin()
+        engine.add_plugin("curve_fit", p)
+        engine._namespace["_x"] = np.array([0.0, 1.0])
+        engine._namespace["_y"] = np.array([1.0, 2.0])
+        p.advanced_mode = True
+        p.x_expr = "_x"
+        p.y_expr = "_y"
+        p.fit_code = (
+            "def fit(x, a, b):\n"
+            "    return a * x + b\n"
+            "def p0(x, y):\n"
+            "    return (2.5, -1.25)\n"
+        )
+        p.param_names = ["a", "b"]
+
+        tabs = p.config_tabs()
+        param_widget = dict(tabs)["Parameters"]
+        table = param_widget.findChildren(_ParamTableWidget)[0]
+        used_initial_row = _table_row_by_label(table, "Calculated initial")
+        a_col = _table_column_by_label(table, "a")
+        b_col = _table_column_by_label(table, "b")
+
+        assert table._table.item(used_initial_row, a_col).text() == "2.5"  # noqa: SLF001
+        assert table._table.item(used_initial_row, b_col).text() == "-1.25"  # noqa: SLF001
         engine.shutdown()
 
 

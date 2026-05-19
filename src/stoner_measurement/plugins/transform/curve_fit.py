@@ -167,6 +167,12 @@ def _has_p0_function(code: str) -> bool:
 _INF = float("inf")
 _DEFAULT_COLUMN_OPTION = "(default)"
 _NAN = float("nan")
+_PARAM_TABLE_ROW_MIN = 0
+_PARAM_TABLE_ROW_INITIAL = 1
+_PARAM_TABLE_ROW_MAX = 2
+_PARAM_TABLE_ROW_USED_INITIAL = 3
+_PARAM_TABLE_ROW_FITTED = 4
+_PARAM_TABLE_ROW_LABELS = ["Min", "Initial", "Max", "Used initial", "Fitted"]
 
 # Mapping from SI tier (power-of-1000 exponent) to SI prefix symbol.
 _SI_PREFIXES: dict[int, str] = {
@@ -273,12 +279,23 @@ def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
     return f"{value_text} ± {uncertainty_text}"
 
 
+def _format_scalar_for_table(value: Any) -> str:
+    """Format a scalar value for display in the parameter table."""
+    try:
+        value_float = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(value_float):
+        return ""
+    return f"{value_float:.12g}"
+
+
 class _ParamTableWidget(QWidget):
     """Table widget for configuring per-parameter bounds and initial values.
 
-    Displays one row per parameter detected in the fit function.  Each row
-    has five columns: parameter name (read-only), minimum bound, initial
-    value, maximum bound, and fitted value with uncertainty.
+    Displays one column per parameter detected in the fit function.  The rows
+    show the minimum bound, editable initial value, maximum bound, the initial
+    values currently used by the fit, and the fitted value with uncertainty.
 
     Args:
         parent (QWidget | None):
@@ -300,18 +317,20 @@ class _ParamTableWidget(QWidget):
         self._build_ui()
         self.param_settings: dict[str, dict[str, float | None]] = {}
         self._fitted_text_by_param: dict[str, str] = {}
+        self._used_initial_text_by_param: dict[str, str] = {}
+        self._parameter_names: list[str] = []
 
     def _build_ui(self) -> None:
         """Build the table widget and surrounding layout."""
         layout = QVBoxLayout(self)
 
-        self._table = QTableWidget(0, 5, self)
-        self._table.setHorizontalHeaderLabels(["Parameter", "Min", "Initial", "Max", "Fitted"])
-        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        for col in (1, 2, 3, 4):
-            self._table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+        self._table = QTableWidget(len(_PARAM_TABLE_ROW_LABELS), 0, self)
+        self._table.setVerticalHeaderLabels(_PARAM_TABLE_ROW_LABELS)
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self._table.setToolTip(
-            "Leave Min/Initial/Max blank to use defaults.\n" "Min/Max constrain the curve fit; Initial sets p0."
+            "Leave Min/Initial/Max blank to use defaults.\n"
+            "Min/Max constrain the curve fit; Initial provides manual starting values."
         )
         self._table.itemChanged.connect(self.settings_changed)
         layout.addWidget(self._table)
@@ -319,7 +338,8 @@ class _ParamTableWidget(QWidget):
         note = QLabel(
             "<i>Blank fields use scipy defaults (unbounded, p0=1).  "
             "If a <code>p0</code> function is defined in the fit code, "
-            "the Initial column is ignored.</i>",
+            "the editable Initial row is ignored and the Calculated initial row "
+            "shows the values returned by <code>p0(x, y)</code>.</i>",
             self,
         )
         note.setWordWrap(True)
@@ -334,7 +354,7 @@ class _ParamTableWidget(QWidget):
         """Repopulate the table for the given parameter names.
 
         Existing values for parameters that are still present are preserved;
-        rows for removed parameters are discarded; new rows are added with
+        columns for removed parameters are discarded; new columns are added with
         blank cells.
 
         Args:
@@ -342,23 +362,30 @@ class _ParamTableWidget(QWidget):
                 Ordered parameter names as extracted from the fit function.
         """
         old_settings = self._read_table()
+        self._parameter_names = list(param_names)
 
-        self._table.setRowCount(0)
-        for name in param_names:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-
-            # Column 0: name (read-only)
-            name_item = QTableWidgetItem(name)
-            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self._table.setItem(row, 0, name_item)
-
-            prev = old_settings.get(name, {})
-            for col, key in ((1, "min"), (2, "initial"), (3, "max")):
-                val = prev.get(key)
-                text = "" if val is None else str(val)
-                self._table.setItem(row, col, QTableWidgetItem(text))
-            self._set_fitted_cell(row, self._fitted_text_by_param.get(name, ""))
+        blocked = self._table.blockSignals(True)
+        try:
+            self._table.setColumnCount(len(param_names))
+            self._table.setHorizontalHeaderLabels(param_names)
+            for col, name in enumerate(param_names):
+                prev = old_settings.get(name, {})
+                for row, key in (
+                    (_PARAM_TABLE_ROW_MIN, "min"),
+                    (_PARAM_TABLE_ROW_INITIAL, "initial"),
+                    (_PARAM_TABLE_ROW_MAX, "max"),
+                ):
+                    val = prev.get(key)
+                    text = "" if val is None else str(val)
+                    self._table.setItem(row, col, QTableWidgetItem(text))
+                self._set_read_only_cell(
+                    _PARAM_TABLE_ROW_USED_INITIAL,
+                    col,
+                    self._used_initial_text_by_param.get(name, ""),
+                )
+                self._set_read_only_cell(_PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, ""))
+        finally:
+            self._table.blockSignals(blocked)
 
     def read_settings(self) -> dict[str, dict[str, float | None]]:
         """Read current table values and return a settings dict.
@@ -384,7 +411,7 @@ class _ParamTableWidget(QWidget):
         self._fill_table(param_names, settings)
 
     def update_fitted_results(self, results: dict[str, Any]) -> None:
-        """Update the fitted-value column from a transform result dict.
+        """Update the fitted-value row from a transform result dict.
 
         Args:
             results (dict[str, Any]):
@@ -400,6 +427,17 @@ class _ParamTableWidget(QWidget):
         self._fitted_text_by_param = fitted_text_by_param
         self._apply_fitted_values()
 
+    def update_used_initial_values(self, values: dict[str, Any], *, from_p0: bool = False) -> None:
+        """Update the row showing the initial values currently used by the fit."""
+        self._used_initial_text_by_param = {
+            name: _format_scalar_for_table(values.get(name)) for name in self._iter_parameter_names()
+        }
+        self._set_row_label(
+            _PARAM_TABLE_ROW_USED_INITIAL,
+            "Calculated initial" if from_p0 else "Used initial",
+        )
+        self._apply_used_initial_values()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -407,23 +445,23 @@ class _ParamTableWidget(QWidget):
     def _read_table(self) -> dict[str, dict[str, float | None]]:
         """Read values from the table and return a settings dict."""
         result: dict[str, dict[str, float | None]] = {}
-        for row in range(self._table.rowCount()):
-            name_item = self._table.item(row, 0)
-            if name_item is None:
-                continue
-            name = name_item.text()
-            row_settings: dict[str, float | None] = {}
-            for col, key in ((1, "min"), (2, "initial"), (3, "max")):
+        for col, name in enumerate(self._iter_parameter_names()):
+            column_settings: dict[str, float | None] = {}
+            for row, key in (
+                (_PARAM_TABLE_ROW_MIN, "min"),
+                (_PARAM_TABLE_ROW_INITIAL, "initial"),
+                (_PARAM_TABLE_ROW_MAX, "max"),
+            ):
                 item = self._table.item(row, col)
                 text = item.text().strip() if item else ""
                 if text:
                     try:
-                        row_settings[key] = float(text)
+                        column_settings[key] = float(text)
                     except ValueError:
-                        row_settings[key] = None
+                        column_settings[key] = None
                 else:
-                    row_settings[key] = None
-            result[name] = row_settings
+                    column_settings[key] = None
+            result[name] = column_settings
         return result
 
     def _fill_table(
@@ -432,42 +470,70 @@ class _ParamTableWidget(QWidget):
         settings: dict[str, dict[str, float | None]],
     ) -> None:
         """Fill the table from *param_names* and *settings*."""
-        self._table.setRowCount(0)
-        for name in param_names:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            name_item = QTableWidgetItem(name)
-            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self._table.setItem(row, 0, name_item)
-            vals = settings.get(name, {})
-            for col, key in ((1, "min"), (2, "initial"), (3, "max")):
-                val = vals.get(key)
-                text = "" if val is None else str(val)
-                self._table.setItem(row, col, QTableWidgetItem(text))
-            self._set_fitted_cell(row, self._fitted_text_by_param.get(name, ""))
+        self._parameter_names = list(param_names)
+        blocked = self._table.blockSignals(True)
+        try:
+            self._table.setColumnCount(len(param_names))
+            self._table.setHorizontalHeaderLabels(param_names)
+            for col, name in enumerate(param_names):
+                vals = settings.get(name, {})
+                for row, key in (
+                    (_PARAM_TABLE_ROW_MIN, "min"),
+                    (_PARAM_TABLE_ROW_INITIAL, "initial"),
+                    (_PARAM_TABLE_ROW_MAX, "max"),
+                ):
+                    val = vals.get(key)
+                    text = "" if val is None else str(val)
+                    self._table.setItem(row, col, QTableWidgetItem(text))
+                self._set_read_only_cell(
+                    _PARAM_TABLE_ROW_USED_INITIAL,
+                    col,
+                    self._used_initial_text_by_param.get(name, ""),
+                )
+                self._set_read_only_cell(_PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, ""))
+        finally:
+            self._table.blockSignals(blocked)
 
     def _iter_parameter_names(self):
-        """Yield parameter names in table row order."""
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is None:
-                continue
-            yield item.text()
+        """Yield parameter names in table column order."""
+        yield from self._parameter_names
+
+    def _apply_used_initial_values(self) -> None:
+        """Apply cached used-initial text to the table."""
+        blocked = self._table.blockSignals(True)
+        try:
+            for col, name in enumerate(self._iter_parameter_names()):
+                self._set_read_only_cell(
+                    _PARAM_TABLE_ROW_USED_INITIAL,
+                    col,
+                    self._used_initial_text_by_param.get(name, ""),
+                )
+        finally:
+            self._table.blockSignals(blocked)
 
     def _apply_fitted_values(self) -> None:
         """Apply cached fitted-value text to the table."""
         blocked = self._table.blockSignals(True)
         try:
-            for row, name in enumerate(self._iter_parameter_names()):
-                self._set_fitted_cell(row, self._fitted_text_by_param.get(name, ""))
+            for col, name in enumerate(self._iter_parameter_names()):
+                self._set_read_only_cell(_PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, ""))
         finally:
             self._table.blockSignals(blocked)
 
-    def _set_fitted_cell(self, row: int, text: str) -> None:
-        """Set the read-only fitted-value cell for *row*."""
+    def _set_row_label(self, row: int, text: str) -> None:
+        """Set the vertical header label for *row*."""
+        header_item = self._table.verticalHeaderItem(row)
+        if header_item is None:
+            header_item = QTableWidgetItem(text)
+            self._table.setVerticalHeaderItem(row, header_item)
+        else:
+            header_item.setText(text)
+
+    def _set_read_only_cell(self, row: int, col: int, text: str) -> None:
+        """Set a read-only table cell."""
         item = QTableWidgetItem(text)
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        self._table.setItem(row, 4, item)
+        self._table.setItem(row, col, item)
 
 
 # ---------------------------------------------------------------------------
@@ -562,6 +628,7 @@ class CurveFitPlugin(TransformPlugin):
         # Latest syntax error state for fit_code (for UI feedback).
         self.fit_code_syntax_error_line: int | None = None
         self.fit_code_syntax_error_message: str = ""
+        self._param_table_widget: _ParamTableWidget | None = None
 
     # ------------------------------------------------------------------
     # BasePlugin / TransformPlugin abstract interface
@@ -1198,6 +1265,45 @@ class CurveFitPlugin(TransformPlugin):
             return None
         return (lower, upper)
 
+    def _preview_used_initial_values(self) -> tuple[dict[str, Any], bool]:
+        """Return the initial values currently used by the fit for table display."""
+        if not self.param_names:
+            return {}, False
+
+        try:
+            fit_func, p0_func = self._compile_fit_code()
+        except Exception:
+            return {}, False
+
+        if fit_func is None:
+            return {}, False
+
+        uses_p0 = p0_func is not None
+        if uses_p0:
+            try:
+                x_data, y_data, _, _, _, _ = self._get_data_arrays()
+            except Exception:
+                return {}, True
+            if x_data is None or y_data is None:
+                return {}, True
+            values = self._build_p0(p0_func, np.asarray(x_data, dtype=float), np.asarray(y_data, dtype=float))
+        else:
+            values = self._build_p0(None, np.empty(0, dtype=float), np.empty(0, dtype=float))
+
+        resolved_values = [1.0] * len(self.param_names) if values is None else list(values)
+        preview = {
+            name: resolved_values[index] if index < len(resolved_values) else None
+            for index, name in enumerate(self.param_names)
+        }
+        return preview, uses_p0
+
+    def _refresh_param_table_preview(self) -> None:
+        """Refresh the parameter-table preview rows for the current configuration."""
+        if self._param_table_widget is None:
+            return
+        values, uses_p0 = self._preview_used_initial_values()
+        self._param_table_widget.update_used_initial_values(values, from_p0=uses_p0)
+
     def _update_param_names(self, code: str) -> None:
         """Update :attr:`param_names` by introspecting *code*.
 
@@ -1472,26 +1578,32 @@ class CurveFitPlugin(TransformPlugin):
                     self.column_key = ""
                     ws["column_combo"].setCurrentText(_DEFAULT_COLUMN_OPTION)
                 ws["column_combo"].blockSignals(False)
+            self._refresh_param_table_preview()
 
         def _apply_column(text: str) -> None:
             if text != _DEFAULT_COLUMN_OPTION:
                 self.column_key = text
             else:
                 self.column_key = ""
+            self._refresh_param_table_preview()
 
         def _apply_advanced(checked: bool) -> None:
             self.advanced_mode = checked
+            self._refresh_param_table_preview()
 
         def _apply_x(text: str) -> None:
             if text != "(no channels available)":
                 self.x_expr = ws["channel_items"].get(text, self.x_expr)
+            self._refresh_param_table_preview()
 
         def _apply_y(text: str) -> None:
             if text != "(no channels available)":
                 self.y_expr = ws["channel_items"].get(text, self.y_expr)
+            self._refresh_param_table_preview()
 
         def _apply_y_error() -> None:
             self.y_error_expr = ws["y_error_edit"].text().strip()
+            self._refresh_param_table_preview()
 
         ws["trace_combo"].currentTextChanged.connect(_apply_trace)
         ws["column_combo"].currentTextChanged.connect(_apply_column)
@@ -1568,6 +1680,8 @@ class CurveFitPlugin(TransformPlugin):
         param_widget = _ParamTableWidget(param_container)
         param_widget.load_settings(self.param_settings, self.param_names)
         param_widget.update_fitted_results(self.data)
+        self._param_table_widget = param_widget
+        self._refresh_param_table_preview()
         param_layout.addWidget(param_widget)
 
         # Optional trace output checkboxes.
@@ -1602,6 +1716,7 @@ class CurveFitPlugin(TransformPlugin):
                 param_widget.set_parameters(self.param_names)
                 table_settings = param_widget.read_settings()
             self._merge_param_settings(table_settings, old_names + self.param_names)
+            self._refresh_param_table_preview()
 
         editor.textChanged.connect(_on_code_changed)
 
@@ -1609,9 +1724,15 @@ class CurveFitPlugin(TransformPlugin):
         def _on_table_changed() -> None:
             table_settings = param_widget.read_settings()
             self._merge_param_settings(table_settings, self.param_names)
+            self._refresh_param_table_preview()
 
         param_widget.settings_changed.connect(_on_table_changed)
-        self.transform_complete.connect(param_widget.update_fitted_results)
+
+        def _on_transform_complete(results: dict[str, Any]) -> None:
+            param_widget.update_fitted_results(results)
+            self._refresh_param_table_preview()
+
+        self.transform_complete.connect(_on_transform_complete)
 
         # ---- Wire trace checkboxes to attributes -----------------------
         def _on_initial_toggled(checked: bool) -> None:
