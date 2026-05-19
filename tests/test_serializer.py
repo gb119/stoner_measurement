@@ -30,7 +30,7 @@ class TestSteppedScanGeneratorJson:
     def test_to_json_stages_field(self, qapp):
         gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.25, True), (2.0, 0.5, False)])
         d = gen.to_json()
-        assert d["stages"] == [[1.0, 0.25, True], [2.0, 0.5, False]]
+        assert d["stages"] == [[1.0, 0.25, 4, True], [2.0, 0.5, 2, False]]
 
     def test_to_json_empty_stages(self, qapp):
         gen = SteppedScanGenerator(start=5.0)
@@ -49,7 +49,7 @@ class TestSteppedScanGeneratorJson:
         restored = BaseScanGenerator.from_json(gen.to_json())
         assert isinstance(restored, SteppedScanGenerator)
         assert restored.start == 0.5
-        assert restored.stages == [(1.0, 0.25, True)]
+        assert restored.stages == [(1.0, 0.25, 2, True)]
 
     def test_from_json_defaults_when_keys_absent(self, qapp):
         d = {"type": "SteppedScanGenerator"}
@@ -57,6 +57,12 @@ class TestSteppedScanGeneratorJson:
         assert isinstance(gen, SteppedScanGenerator)
         assert gen.start == 0.0
         assert gen.stages == []
+
+    def test_from_json_accepts_legacy_three_field_stages(self, qapp):
+        restored = BaseScanGenerator.from_json(
+            {"type": "SteppedScanGenerator", "start": 0.0, "stages": [[1.0, 0.25, True]]}
+        )
+        assert restored.stages == [(1.0, 0.25, 4, True)]
 
 
 class TestFunctionScanGeneratorJson:
@@ -204,7 +210,7 @@ class TestTracePluginJson:
         restored = BasePlugin.from_json(plugin.to_json())
         assert isinstance(restored.scan_generator, SteppedScanGenerator)
         assert restored.scan_generator.start == 0.5
-        assert restored.scan_generator.stages == [(2.0, 0.5, True)]
+        assert restored.scan_generator.stages == [(2.0, 0.5, 3, True)]
 
 
 class TestStateControlPluginJson:
@@ -235,7 +241,7 @@ class TestStateControlPluginJson:
         restored = BasePlugin.from_json(plugin.to_json())
         assert isinstance(restored.scan_generator, SteppedScanGenerator)
         assert restored.scan_generator.start == 1.0
-        assert restored.scan_generator.stages == [(5.0, 1.0, True)]
+        assert restored.scan_generator.stages == [(5.0, 1.0, 4, True)]
 
 
 class TestSequenceSerializer:
@@ -381,7 +387,7 @@ class TestJsonTextRoundTrip:
         assert restored.instance_name == "my_trace"
         assert isinstance(restored.scan_generator, SteppedScanGenerator)
         assert restored.scan_generator.start == 0.0
-        assert restored.scan_generator.stages == [(2.0, 1.0, True)]
+        assert restored.scan_generator.stages == [(2.0, 1.0, 2, True)]
 
     def test_state_control_plugin_json_text_round_trip(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -398,7 +404,7 @@ class TestJsonTextRoundTrip:
         assert restored.instance_name == "my_counter"
         assert isinstance(restored.scan_generator, SteppedScanGenerator)
         assert restored.scan_generator.start == -1.0
-        assert restored.scan_generator.stages == [(1.0, 0.5, True)]
+        assert restored.scan_generator.stages == [(1.0, 0.5, 4, True)]
 
     def test_full_sequence_json_text_round_trip(self, qapp):
         from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
@@ -427,7 +433,7 @@ class TestJsonTextRoundTrip:
         assert isinstance(restored_outer, CounterPlugin)
         assert restored_outer.instance_name == "field"
         assert isinstance(restored_outer.scan_generator, SteppedScanGenerator)
-        assert restored_outer.scan_generator.stages == [(10.0, 1.0, True)]
+        assert restored_outer.scan_generator.stages == [(10.0, 1.0, 10, True)]
 
         # Check the inner sub-step.
         assert len(restored_sub) == 1
