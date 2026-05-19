@@ -172,7 +172,7 @@ _PARAM_TABLE_ROW_INITIAL = 1
 _PARAM_TABLE_ROW_MAX = 2
 _PARAM_TABLE_ROW_USED_INITIAL = 3
 _PARAM_TABLE_ROW_FITTED = 4
-_PARAM_TABLE_ROW_LABELS = ["Min", "Initial", "Max", "Used initial", "Fitted"]
+_PARAM_TABLE_ROW_LABELS = ["Min", "Initial", "Max", "Initial used", "Fitted"]
 
 # Mapping from SI tier (power-of-1000 exponent) to SI prefix symbol.
 _SI_PREFIXES: dict[int, str] = {
@@ -280,7 +280,23 @@ def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
 
 
 def _format_scalar_for_table(value: Any) -> str:
-    """Format a scalar value for display in the parameter table."""
+    """Format a scalar value for display in the parameter table.
+
+    Args:
+        value (Any):
+            Value to format for display.
+
+    Returns:
+        (str):
+            Finite numeric values formatted with up to 12 significant figures,
+            or an empty string for non-numeric and non-finite inputs.
+
+    Examples:
+        >>> _format_scalar_for_table(12.345)
+        '12.345'
+        >>> _format_scalar_for_table(float("nan"))
+        ''
+    """
     try:
         value_float = float(value)
     except (TypeError, ValueError):
@@ -293,7 +309,7 @@ def _format_scalar_for_table(value: Any) -> str:
 class _ParamTableWidget(QWidget):
     """Table widget for configuring per-parameter bounds and initial values.
 
-    Displays one column per parameter detected in the fit function.  The rows
+    Displays one column per parameter detected in the fit function. The rows
     show the minimum bound, editable initial value, maximum bound, the initial
     values currently used by the fit, and the fitted value with uncertainty.
 
@@ -338,7 +354,7 @@ class _ParamTableWidget(QWidget):
         note = QLabel(
             "<i>Blank fields use scipy defaults (unbounded, p0=1).  "
             "If a <code>p0</code> function is defined in the fit code, "
-            "the editable Initial row is ignored and the Calculated initial row "
+            "the editable Initial row is ignored and the Initial used row "
             "shows the values returned by <code>p0(x, y)</code>.</i>",
             self,
         )
@@ -427,15 +443,12 @@ class _ParamTableWidget(QWidget):
         self._fitted_text_by_param = fitted_text_by_param
         self._apply_fitted_values()
 
-    def update_used_initial_values(self, values: dict[str, Any], *, from_p0: bool = False) -> None:
+    def update_used_initial_values(self, values: dict[str, Any]) -> None:
         """Update the row showing the initial values currently used by the fit."""
         self._used_initial_text_by_param = {
             name: _format_scalar_for_table(values.get(name)) for name in self._iter_parameter_names()
         }
-        self._set_row_label(
-            _PARAM_TABLE_ROW_USED_INITIAL,
-            "Calculated initial" if from_p0 else "Used initial",
-        )
+        self._set_row_label(_PARAM_TABLE_ROW_USED_INITIAL, "Initial used")
         self._apply_used_initial_values()
 
     # ------------------------------------------------------------------
@@ -1266,7 +1279,15 @@ class CurveFitPlugin(TransformPlugin):
         return (lower, upper)
 
     def _preview_used_initial_values(self) -> tuple[dict[str, Any], bool]:
-        """Return the initial values currently used by the fit for table display."""
+        """Return the initial values currently used by the fit for table display.
+
+        Returns:
+            (tuple[dict[str, Any], bool]):
+                A two-item tuple ``(values, uses_p0)`` where *values* maps each
+                parameter name to the initial value currently used by the fit
+                when it can be determined, and *uses_p0* indicates whether a
+                user-defined ``p0(x, y)`` function is active.
+        """
         if not self.param_names:
             return {}, False
 
@@ -1301,8 +1322,8 @@ class CurveFitPlugin(TransformPlugin):
         """Refresh the parameter-table preview rows for the current configuration."""
         if self._param_table_widget is None:
             return
-        values, uses_p0 = self._preview_used_initial_values()
-        self._param_table_widget.update_used_initial_values(values, from_p0=uses_p0)
+        values, _ = self._preview_used_initial_values()
+        self._param_table_widget.update_used_initial_values(values)
 
     def _update_param_names(self, code: str) -> None:
         """Update :attr:`param_names` by introspecting *code*.

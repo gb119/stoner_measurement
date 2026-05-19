@@ -186,8 +186,8 @@ class TestParamTableWidget:
     def test_updates_calculated_initial_row_text(self, qapp):
         table = _ParamTableWidget()
         table.set_parameters(["a"])
-        table.update_used_initial_values({"a": 12.345}, from_p0=True)
-        used_initial_row = _table_row_by_label(table, "Calculated initial")
+        table.update_used_initial_values({"a": 12.345})
+        used_initial_row = _table_row_by_label(table, "Initial used")
         a_col = _table_column_by_label(table, "a")
         assert table._table.item(used_initial_row, a_col).text() == "12.345"  # noqa: SLF001
 
@@ -711,7 +711,7 @@ class TestCurveFitConfigTabs:
         tabs = p.config_tabs()
         param_widget = dict(tabs)["Parameters"]
         table = param_widget.findChildren(_ParamTableWidget)[0]
-        used_initial_row = _table_row_by_label(table, "Calculated initial")
+        used_initial_row = _table_row_by_label(table, "Initial used")
         a_col = _table_column_by_label(table, "a")
         b_col = _table_column_by_label(table, "b")
 
