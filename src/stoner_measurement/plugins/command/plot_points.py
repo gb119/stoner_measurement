@@ -293,8 +293,9 @@ class PlotPointsCommand(CommandPlugin):
         corresponding series is skipped.
 
         Raises:
-            RuntimeError:
-                If the plugin is not attached to a sequence engine.
+            TimeoutError:
+                If the plot widget does not acknowledge a queued point update
+                before the response timeout expires.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -373,9 +374,10 @@ class PlotPointsCommand(CommandPlugin):
                 return
             self.plot_ensure_x_axis.emit(x_axis, x_axis)
             self.plot_ensure_y_axis.emit(y_axis, y_axis)
-            self.plot_update_queued.emit()
+            self._queue_plot_update_request(self.plot_update_queued)
             self.plot_point.emit(label, x_val, y_val)
             self.plot_trace_axes.emit(label, x_axis, y_axis)
+            self._wait_for_plot_response_or_raise(label)
             self.log.debug("PlotPoints: emitted point (%s, %g, %g)", label, x_val, y_val)
 
     # ------------------------------------------------------------------

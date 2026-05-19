@@ -21,11 +21,21 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Callable
+from typing import Protocol
 
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
+
+_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS = 0.25
+
+
+class _SignalEmitter(Protocol):
+    """Protocol for Qt-like signal objects exposing an ``emit()`` method."""
+
+    def emit(self) -> None:
+        """Emit the signal."""
 
 
 class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
@@ -186,6 +196,60 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         if not callable(wait_for_plot_ready):
             return True
         return bool(wait_for_plot_ready(timeout=timeout))
+
+    def _queue_plot_update_request(self, fallback_signal: _SignalEmitter | None = None) -> None:
+        """Register one pending plot update before emitting data signals.
+
+        Keyword Parameters:
+            fallback_signal (_SignalEmitter | None):
+                Optional Qt signal to emit when the plot widget does not expose
+                ``mark_data_update_queued``.
+        """
+        engine = self.sequence_engine
+        if engine is None:
+            if fallback_signal is not None:
+                fallback_signal.emit()
+            return
+        plot_widget = getattr(engine, "plot_widget", None)
+        mark_data_update_queued = getattr(plot_widget, "mark_data_update_queued", None)
+        if callable(mark_data_update_queued):
+            mark_data_update_queued()
+            return
+        if fallback_signal is not None:
+            fallback_signal.emit()
+
+    def _wait_for_plot_response_or_raise(
+        self,
+        request_name: str,
+        timeout: float | None = None,
+    ) -> None:
+        """Wait for one queued plot update to complete, or raise on timeout.
+
+        Args:
+            request_name (str):
+                Human-readable label for the pending plot request.
+
+        Keyword Parameters:
+            timeout (float | None):
+                Maximum wait time in seconds for the plot widget
+                acknowledgement. If ``None``, uses the module default.
+
+        Raises:
+            TimeoutError:
+                If the plot request is not acknowledged before *timeout*.
+        """
+        timeout_value = _DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS if timeout is None else timeout
+        if self._wait_for_plot_ready(timeout=timeout_value):
+            return
+        engine = self.sequence_engine
+        thread = getattr(engine, "_thread", None)
+        stop_event = getattr(thread, "_stop_event", None) if thread is not None else None
+        if stop_event is not None and stop_event.is_set():
+            self.log.debug("Plot update request %r interrupted by stop request.", request_name)
+            return
+        raise TimeoutError(
+            f"Timed out after {timeout_value:g} s waiting for plot response for {request_name!r}."
+        )
 
     def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return configuration tabs combining general and plugin-specific settings.

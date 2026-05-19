@@ -38,6 +38,34 @@ class _Noop(CommandPlugin):
             self.executed = [1]
 
 
+class _NeverAckPlotWidget:
+    """Test double that tracks queued updates but never acknowledges processing."""
+
+    def __init__(self) -> None:
+        self._pending = 0
+
+    def mark_data_update_queued(self) -> None:
+        self._pending += 1
+
+    def is_busy_for_data(self) -> bool:
+        return self._pending > 0
+
+    def set_trace(self, _trace_name: str, _x_data: object, _y_data: object) -> None:
+        pass
+
+    def append_point(self, _trace_name: str, _x: float, _y: float) -> None:
+        pass
+
+    def ensure_x_axis(self, _name: str, _label: str) -> None:
+        pass
+
+    def ensure_y_axis(self, _name: str, _label: str) -> None:
+        pass
+
+    def assign_trace_axes(self, _trace_name: str, _x_axis: str, _y_axis: str) -> None:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # CommandPlugin abstract contract
 # ---------------------------------------------------------------------------
@@ -1127,6 +1155,24 @@ class TestPlotTraceCommand:
         assert elapsed >= 0.019
         assert pw.is_busy_for_data() is False
 
+    def test_execute_advanced_mode_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
+        import stoner_measurement.plugins.command.base as command_base
+
+        monkeypatch.setattr(command_base, "_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS", 0.01)
+        engine.plot_widget = _NeverAckPlotWidget()
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0, 2.0])
+        engine._namespace["my_y"] = np.array([4.0, 5.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'timeout-trace'"
+
+        with pytest.raises(TimeoutError, match="plot response"):
+            cmd.execute()
+
     def test_execute_simple_mode_missing_trace_key_logs_warning(self, qapp, engine):
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
@@ -1767,6 +1813,27 @@ class TestPlotTraceCommand:
         widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, None)
         assert widget.y_data("sig") == [2.0, 3.0]
         assert "sig" not in widget._error_bar_items
+
+    def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qapp, monkeypatch):
+        """Pending update must stay busy until error-bar update completes."""
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget()
+        widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
+        error_bar_item = widget._error_bar_items["sig"]
+        original_set_data = error_bar_item.setData
+        observed_busy_states: list[bool] = []
+
+        def _wrapped_set_data(*args, **kwargs):
+            observed_busy_states.append(widget.is_busy_for_data())
+            return original_set_data(*args, **kwargs)
+
+        monkeypatch.setattr(error_bar_item, "setData", _wrapped_set_data)
+        widget.mark_data_update_queued()
+        widget.set_trace_with_errors("sig", [0.0, 1.0], [2.5, 3.5], None, [0.1, 0.2])
+
+        assert observed_busy_states == [True]
+        assert widget.is_busy_for_data() is False
 
     def test_remove_trace_cleans_up_error_bar_item(self, qapp):
         """remove_trace() must also remove the associated ErrorBarItem."""
@@ -2589,6 +2656,23 @@ class TestPlotPointsCommand:
         # Allow a small scheduling margin below the 20 ms release delay.
         assert elapsed >= 0.019
         assert pw.is_busy_for_data() is False
+
+    def test_execute_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
+        import stoner_measurement.plugins.command.base as command_base
+
+        monkeypatch.setattr(command_base, "_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS", 0.01)
+        engine.plot_widget = _NeverAckPlotWidget()
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y"}]
+
+        with pytest.raises(TimeoutError, match="plot response"):
+            cmd.execute()
 
     def test_execute_skips_missing_y_key(self, qapp, engine):
         cmd = PlotPointsCommand()

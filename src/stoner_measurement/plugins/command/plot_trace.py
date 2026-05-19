@@ -358,6 +358,9 @@ class PlotTraceCommand(CommandPlugin):
         Raises:
             RuntimeError:
                 If the plugin is not attached to a sequence engine.
+            TimeoutError:
+                If the plot widget does not acknowledge a queued data update
+                before the response timeout expires.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -395,13 +398,14 @@ class PlotTraceCommand(CommandPlugin):
             y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
             self.plot_ensure_x_axis.emit(x_axis, x_axis)
             self.plot_ensure_y_axis.emit(y_axis, y_axis)
-            self.plot_update_queued.emit()
+            self._queue_plot_update_request(self.plot_update_queued)
             self.plot_trace.emit(
                 title,
                 np.asarray(x_data, dtype=float),
                 np.asarray(y_data, dtype=float),
             )
             self.plot_trace_axes.emit(title, x_axis, y_axis)
+            self._wait_for_plot_response_or_raise(title)
             self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
             return
 
@@ -513,9 +517,10 @@ class PlotTraceCommand(CommandPlugin):
         if self.transpose:
             x_arr, y_arr = y_arr, x_arr
             x_err, y_err = y_err, x_err
-        self.plot_update_queued.emit()
+        self._queue_plot_update_request(self.plot_update_queued)
         self.plot_trace_with_errors.emit(title, x_arr, y_arr, x_err, y_err)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
+        self._wait_for_plot_response_or_raise(title)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_arr))
 
     # ------------------------------------------------------------------
