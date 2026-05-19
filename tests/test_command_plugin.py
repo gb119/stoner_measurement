@@ -1814,6 +1814,27 @@ class TestPlotTraceCommand:
         assert widget.y_data("sig") == [2.0, 3.0]
         assert "sig" not in widget._error_bar_items
 
+    def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qapp, monkeypatch):
+        """Pending update must stay busy until error-bar update completes."""
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget()
+        widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
+        error_bar_item = widget._error_bar_items["sig"]
+        original_set_data = error_bar_item.setData
+        observed_busy_states: list[bool] = []
+
+        def _wrapped_set_data(*args, **kwargs):
+            observed_busy_states.append(widget.is_busy_for_data())
+            return original_set_data(*args, **kwargs)
+
+        monkeypatch.setattr(error_bar_item, "setData", _wrapped_set_data)
+        widget.mark_data_update_queued()
+        widget.set_trace_with_errors("sig", [0.0, 1.0], [2.5, 3.5], None, [0.1, 0.2])
+
+        assert observed_busy_states == [True]
+        assert widget.is_busy_for_data() is False
+
     def test_remove_trace_cleans_up_error_bar_item(self, qapp):
         """remove_trace() must also remove the associated ErrorBarItem."""
         from stoner_measurement.ui.plot_widget import PlotWidget

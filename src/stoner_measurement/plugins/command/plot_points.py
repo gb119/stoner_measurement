@@ -293,8 +293,6 @@ class PlotPointsCommand(CommandPlugin):
         corresponding series is skipped.
 
         Raises:
-            RuntimeError:
-                If the plugin is not attached to a sequence engine.
             TimeoutError:
                 If the plot widget does not acknowledge a queued point update
                 before the response timeout expires.

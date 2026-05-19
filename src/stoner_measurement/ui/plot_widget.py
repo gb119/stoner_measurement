@@ -562,13 +562,22 @@ class PlotWidget(QWidget):
             [2.0, 3.0]
         """
         try:
-            curve = self._get_or_create_trace(trace_name)
-            xs = list(map(float, x_data))
-            ys = list(map(float, y_data))
-            self._trace_data[trace_name] = (xs, ys)
-            curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+            self._set_trace_data(trace_name, x_data, y_data)
         finally:
             self._mark_data_update_processed()
+
+    def _set_trace_data(
+        self,
+        trace_name: str,
+        x_data: Sequence[float],
+        y_data: Sequence[float],
+    ) -> None:
+        """Set the x/y arrays for a trace without touching update counters."""
+        curve = self._get_or_create_trace(trace_name)
+        xs = list(map(float, x_data))
+        ys = list(map(float, y_data))
+        self._trace_data[trace_name] = (xs, ys)
+        curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
 
     @pyqtSlot(str, object, object, object, object)
     def set_trace_with_errors(
@@ -611,41 +620,43 @@ class PlotWidget(QWidget):
             >>> widget.y_data("sig")
             [2.0, 3.0]
         """
-        self.set_trace(trace_name, x_data, y_data)
+        try:
+            self._set_trace_data(trace_name, x_data, y_data)
 
-        x_arr = np.asarray(x_data, dtype=float)
-        y_arr = np.asarray(y_data, dtype=float)
+            x_arr = np.asarray(x_data, dtype=float)
+            y_arr = np.asarray(y_data, dtype=float)
 
-        x_err_arr = np.asarray(x_err, dtype=float) if x_err is not None else np.array([], dtype=float)
-        y_err_arr = np.asarray(y_err, dtype=float) if y_err is not None else np.array([], dtype=float)
-        has_x_err = len(x_err_arr) == len(x_arr) and np.any(x_err_arr != 0)
-        has_y_err = len(y_err_arr) == len(y_arr) and np.any(y_err_arr != 0)
+            x_err_arr = np.asarray(x_err, dtype=float) if x_err is not None else np.array([], dtype=float)
+            y_err_arr = np.asarray(y_err, dtype=float) if y_err is not None else np.array([], dtype=float)
+            has_x_err = len(x_err_arr) == len(x_arr) and np.any(x_err_arr != 0)
+            has_y_err = len(y_err_arr) == len(y_arr) and np.any(y_err_arr != 0)
 
-        x_ax, y_ax = self._trace_axes.get(trace_name, ("bottom", "left"))
-        vb = self._pair_view_boxes.get((x_ax, y_ax), self._plot_item.vb)
+            x_ax, y_ax = self._trace_axes.get(trace_name, ("bottom", "left"))
+            vb = self._pair_view_boxes.get((x_ax, y_ax), self._plot_item.vb)
 
-        if has_x_err or has_y_err:
-            kwargs: dict = {"x": x_arr, "y": y_arr}
-            if has_x_err:
-                kwargs["left"] = x_err_arr
-                kwargs["right"] = x_err_arr
-            if has_y_err:
-                kwargs["top"] = y_err_arr
-                kwargs["bottom"] = y_err_arr
-            if trace_name in self._error_bar_items:
-                self._error_bar_items[trace_name].setData(**kwargs)
-            else:
-                ebi = pg.ErrorBarItem(**kwargs)
-                vb.addItem(ebi)
-                self._error_bar_items[trace_name] = ebi
-        elif trace_name in self._error_bar_items:
-            ebi = self._error_bar_items.pop(trace_name)
-            parent = ebi.parentItem()
-            if hasattr(parent, "removeItem"):
-                parent.removeItem(ebi)
-            else:
-                if ebi.parentItem() is vb.childGroup:
+            if has_x_err or has_y_err:
+                kwargs: dict = {"x": x_arr, "y": y_arr}
+                if has_x_err:
+                    kwargs["left"] = x_err_arr
+                    kwargs["right"] = x_err_arr
+                if has_y_err:
+                    kwargs["top"] = y_err_arr
+                    kwargs["bottom"] = y_err_arr
+                if trace_name in self._error_bar_items:
+                    self._error_bar_items[trace_name].setData(**kwargs)
+                else:
+                    ebi = pg.ErrorBarItem(**kwargs)
+                    vb.addItem(ebi)
+                    self._error_bar_items[trace_name] = ebi
+            elif trace_name in self._error_bar_items:
+                ebi = self._error_bar_items.pop(trace_name)
+                parent = ebi.parentItem()
+                if hasattr(parent, "removeItem"):
+                    parent.removeItem(ebi)
+                elif ebi.parentItem() is vb.childGroup:
                     vb.removeItem(ebi)
+        finally:
+            self._mark_data_update_processed()
 
     @pyqtSlot()
     def mark_data_update_queued(self) -> None:

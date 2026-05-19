@@ -221,7 +221,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     def _wait_for_plot_response_or_raise(
         self,
         request_name: str,
-        timeout: float = _DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS,
+        timeout: float | None = None,
     ) -> None:
         """Wait for one queued plot update to complete, or raise on timeout.
 
@@ -230,14 +230,16 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Human-readable label for the pending plot request.
 
         Keyword Parameters:
-            timeout (float):
-                Maximum wait time in seconds for the plot widget acknowledgement.
+            timeout (float | None):
+                Maximum wait time in seconds for the plot widget
+                acknowledgement. If ``None``, uses the module default.
 
         Raises:
             TimeoutError:
                 If the plot request is not acknowledged before *timeout*.
         """
-        if self._wait_for_plot_ready(timeout=timeout):
+        timeout_value = _DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS if timeout is None else timeout
+        if self._wait_for_plot_ready(timeout=timeout_value):
             return
         engine = self.sequence_engine
         thread = getattr(engine, "_thread", None)
@@ -246,7 +248,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             self.log.debug("Plot update request %r interrupted by stop request.", request_name)
             return
         raise TimeoutError(
-            f"Timed out after {timeout:g} s waiting for plot response for {request_name!r}."
+            f"Timed out after {timeout_value:g} s waiting for plot response for {request_name!r}."
         )
 
     def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
