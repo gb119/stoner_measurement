@@ -38,6 +38,34 @@ class _Noop(CommandPlugin):
             self.executed = [1]
 
 
+class _NeverAckPlotWidget:
+    """Test double that tracks queued updates but never acknowledges processing."""
+
+    def __init__(self) -> None:
+        self._pending = 0
+
+    def mark_data_update_queued(self) -> None:
+        self._pending += 1
+
+    def is_busy_for_data(self) -> bool:
+        return self._pending > 0
+
+    def set_trace(self, _trace_name: str, _x_data: object, _y_data: object) -> None:
+        return
+
+    def append_point(self, _trace_name: str, _x: float, _y: float) -> None:
+        return
+
+    def ensure_x_axis(self, _name: str, _label: str) -> None:
+        return
+
+    def ensure_y_axis(self, _name: str, _label: str) -> None:
+        return
+
+    def assign_trace_axes(self, _trace_name: str, _x_axis: str, _y_axis: str) -> None:
+        return
+
+
 # ---------------------------------------------------------------------------
 # CommandPlugin abstract contract
 # ---------------------------------------------------------------------------
@@ -1129,28 +1157,6 @@ class TestPlotTraceCommand:
 
     def test_execute_advanced_mode_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
         import stoner_measurement.plugins.command.base as command_base
-
-        class _NeverAckPlotWidget:
-            def __init__(self) -> None:
-                self._pending = 0
-
-            def mark_data_update_queued(self) -> None:
-                self._pending += 1
-
-            def is_busy_for_data(self) -> bool:
-                return self._pending > 0
-
-            def set_trace(self, _trace_name: str, _x_data: object, _y_data: object) -> None:
-                return
-
-            def ensure_x_axis(self, _name: str, _label: str) -> None:
-                return
-
-            def ensure_y_axis(self, _name: str, _label: str) -> None:
-                return
-
-            def assign_trace_axes(self, _trace_name: str, _x_axis: str, _y_axis: str) -> None:
-                return
 
         monkeypatch.setattr(command_base, "_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS", 0.01)
         engine.plot_widget = _NeverAckPlotWidget()
@@ -2632,28 +2638,6 @@ class TestPlotPointsCommand:
 
     def test_execute_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
         import stoner_measurement.plugins.command.base as command_base
-
-        class _NeverAckPlotWidget:
-            def __init__(self) -> None:
-                self._pending = 0
-
-            def mark_data_update_queued(self) -> None:
-                self._pending += 1
-
-            def is_busy_for_data(self) -> bool:
-                return self._pending > 0
-
-            def append_point(self, _trace_name: str, _x: float, _y: float) -> None:
-                return
-
-            def ensure_x_axis(self, _name: str, _label: str) -> None:
-                return
-
-            def ensure_y_axis(self, _name: str, _label: str) -> None:
-                return
-
-            def assign_trace_axes(self, _trace_name: str, _x_axis: str, _y_axis: str) -> None:
-                return
 
         monkeypatch.setattr(command_base, "_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS", 0.01)
         engine.plot_widget = _NeverAckPlotWidget()

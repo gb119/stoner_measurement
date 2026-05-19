@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import Any
+from typing import Protocol
 
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
@@ -29,6 +29,13 @@ from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 
 _DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS = 0.25
+
+
+class _SignalEmitter(Protocol):
+    """Protocol for Qt-like signal objects exposing an ``emit()`` method."""
+
+    def emit(self) -> None:
+        """Emit the signal."""
 
 
 class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
@@ -190,7 +197,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             return True
         return bool(wait_for_plot_ready(timeout=timeout))
 
-    def _queue_plot_update_request(self, fallback_signal: Any | None = None) -> None:
+    def _queue_plot_update_request(self, fallback_signal: _SignalEmitter | None = None) -> None:
         """Register one pending plot update before emitting data signals.
 
         Keyword Parameters:
@@ -233,7 +240,8 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         if self._wait_for_plot_ready(timeout=timeout):
             return
         engine = self.sequence_engine
-        stop_event = getattr(getattr(engine, "_thread", None), "_stop_event", None)
+        thread = getattr(engine, "_thread", None)
+        stop_event = getattr(thread, "_stop_event", None) if thread is not None else None
         if stop_event is not None and stop_event.is_set():
             self.log.debug("Plot update request %r interrupted by stop request.", request_name)
             return
