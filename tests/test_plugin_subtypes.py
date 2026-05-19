@@ -917,17 +917,40 @@ class TestStateControlDataCollection:
         assert "value" in p.data.columns
         engine.shutdown()
 
+    def test_collect_uses_selected_collect_outputs(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        engine = SequenceEngine()
+        p = _InstantState()
+        counter = CounterPlugin()
+        engine.add_plugin("instantstate", p)
+        engine.add_plugin("counter", counter)
+        engine.update_step_plugin_catalog([p, counter])
+        counter.value = 11.0
+        p.collect_filter = "True"
+        p.meas_flag = True
+        p.ix = 0
+        p.value = 2.0
+        p.collect_outputs = ["counter:Value"]
+        p.collect()
+        assert "counter:Value" in p.data.columns
+        assert "instantstate:Voltage" not in p.data.columns
+        engine.shutdown()
+
     def test_to_json_includes_data_collection_settings(self, qapp):
         p = _InstantState()
         p.collect_data = True
         p.clear_on_start = False
         p.collect_filter = "custom_expr"
         p.clear_filter = "another_expr"
+        p.collect_outputs = ["a:value", "b:value"]
         d = p.to_json()
         assert d["collect_data"] is True
         assert d["clear_on_start"] is False
         assert d["collect_filter"] == "custom_expr"
         assert d["clear_filter"] == "another_expr"
+        assert d["collect_outputs"] == ["a:value", "b:value"]
 
     def test_from_json_restores_data_collection_settings(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -936,11 +959,42 @@ class TestStateControlDataCollection:
         p.clear_on_start = False
         p.collect_filter = "my_filter"
         p.clear_filter = "other"
+        p.collect_outputs = ["counter:Value"]
         restored = BasePlugin.from_json(p.to_json())
         assert restored.collect_data is True
         assert restored.clear_on_start is False
         assert restored.collect_filter == "my_filter"
         assert restored.clear_filter == "other"
+        assert restored.collect_outputs == ["counter:Value"]
+
+    def test_scan_config_has_output_catalogue_checkboxes(self, qapp):
+        from PyQt6.QtWidgets import QCheckBox
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        engine = SequenceEngine()
+        p = _InstantState()
+        counter = CounterPlugin()
+        engine.add_plugin("instantstate", p)
+        engine.add_plugin("counter", counter)
+        engine.update_step_plugin_catalog([p, counter])
+        tabs = p.config_tabs()
+        scan_page = tabs[0][1]
+        value_checkbox = next(
+            (
+                check
+                for check in scan_page.findChildren(QCheckBox)
+                if check.text() == "counter:Value"
+            ),
+            None,
+        )
+        assert value_checkbox is not None
+        assert value_checkbox.isChecked()
+        value_checkbox.setChecked(False)
+        assert p.collect_outputs is not None
+        assert "counter:Value" not in p.collect_outputs
+        engine.shutdown()
 
     def test_generate_action_code_includes_clear_when_clear_on_start(self, qapp):
         p = _InstantState()

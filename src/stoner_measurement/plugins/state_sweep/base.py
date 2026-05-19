@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QLineEdit,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -161,11 +162,53 @@ class _StateSweepPage(QWidget):
 
         collect_filter_edit = QLineEdit(plugin.collect_filter)
         clear_filter_edit = QLineEdit(plugin.clear_filter)
+        output_checks_container = QWidget()
+        output_checks_layout = QVBoxLayout(output_checks_container)
+        output_checks_layout.setContentsMargins(0, 0, 0, 0)
+        output_checks_layout.setSpacing(2)
+        output_checks: dict[str, QCheckBox] = {}
+
+        def _available_outputs() -> list[str]:
+            values_catalog = plugin.engine_namespace.get("_values", {})
+            return sorted(str(key) for key in values_catalog)
+
+        def _clear_output_checkboxes() -> None:
+            while output_checks_layout.count() > 0:
+                item = output_checks_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+            output_checks.clear()
+
+        def _sync_collect_outputs_from_checkboxes() -> None:
+            all_keys = sorted(output_checks)
+            checked_keys = [key for key, check in output_checks.items() if check.isChecked()]
+            plugin.collect_outputs = None if checked_keys == all_keys else checked_keys
+
+        def _build_output_checkboxes() -> None:
+            _clear_output_checkboxes()
+            keys = _available_outputs()
+            selected = None if plugin.collect_outputs is None else set(plugin.collect_outputs)
+            if not keys:
+                output_checks_layout.addWidget(QLabel("No value outputs currently available."))
+                return
+            for key in keys:
+                checkbox = QCheckBox(key)
+                checkbox.setChecked(selected is None or key in selected)
+                checkbox.stateChanged.connect(_sync_collect_outputs_from_checkboxes)
+                output_checks_layout.addWidget(checkbox)
+                output_checks[key] = checkbox
+            _sync_collect_outputs_from_checkboxes()
+
+        refresh_outputs_button = QPushButton("Refresh output list")
+        refresh_outputs_button.clicked.connect(_build_output_checkboxes)
 
         data_form.addRow("Collect data:", collect_check)
         data_form.addRow("Clear on start:", clear_check)
         data_form.addRow("Collect filter:", collect_filter_edit)
         data_form.addRow("Clear filter:", clear_filter_edit)
+        data_form.addRow(refresh_outputs_button)
+        data_form.addRow("Collected outputs:", output_checks_container)
 
         collect_check.stateChanged.connect(lambda state: setattr(plugin, "collect_data", bool(state)))
         clear_check.stateChanged.connect(lambda state: setattr(plugin, "clear_on_start", bool(state)))
@@ -178,6 +221,7 @@ class _StateSweepPage(QWidget):
 
         collect_filter_edit.editingFinished.connect(_apply_collect_filter)
         clear_filter_edit.editingFinished.connect(_apply_clear_filter)
+        _build_output_checkboxes()
 
         data_widget = QWidget()
         data_widget.setLayout(data_form)

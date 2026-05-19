@@ -128,6 +128,35 @@ class TestStateSweepPlugin:
         plugin.collect()
         assert plugin.data.empty
 
+    def test_sweep_config_has_output_catalogue_checkboxes(self, qapp):
+        from PyQt6.QtWidgets import QCheckBox
+
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        engine = SequenceEngine()
+        plugin = _TestSweepPlugin()
+        counter = CounterPlugin()
+        engine.add_plugin("testsweep", plugin)
+        engine.add_plugin("counter", counter)
+        engine.update_step_plugin_catalog([plugin, counter])
+        tabs = plugin.config_tabs()
+        sweep_page = tabs[0][1]
+        value_checkbox = next(
+            (
+                check
+                for check in sweep_page.findChildren(QCheckBox)
+                if check.text() == "counter:Value"
+            ),
+            None,
+        )
+        assert value_checkbox is not None
+        assert value_checkbox.isChecked()
+        value_checkbox.setChecked(False)
+        assert plugin.collect_outputs is not None
+        assert "counter:Value" not in plugin.collect_outputs
+        engine.shutdown()
+
     def test_generate_action_code_uses_while_next(self, qapp):
         plugin = _TestSweepPlugin()
         lines = plugin.generate_action_code(1, [], lambda s, i: [])
@@ -180,7 +209,7 @@ class TestStateSweepPlugin:
 
     def test_state_error_emitted_on_timeout(self, qapp):
         import time
-        from collections.abc import Iterator
+
         from PyQt6.QtWidgets import QWidget as _QW
 
         class _SlowGenerator(BaseSweepGenerator):

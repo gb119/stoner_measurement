@@ -122,6 +122,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.clear_on_start: bool = True
         self.collect_filter: str = f"{self.instance_name}.meas_flag"
         self.clear_filter: str = "True"
+        self.collect_outputs: list[str] | None = None
         self._data: pd.DataFrame = pd.DataFrame()
         self._cached_config_tabs: list | None = None
 
@@ -303,7 +304,12 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
         ns = self.engine_namespace
         values_cat: dict[str, str] = ns.get("_values", {})
-        keys = [k for k in outputs if k in values_cat] if outputs is not None else list(values_cat.keys())
+        if outputs is not None:
+            keys = [k for k in outputs if k in values_cat]
+        elif self.collect_outputs is None:
+            keys = list(values_cat.keys())
+        else:
+            keys = [k for k in self.collect_outputs if k in values_cat]
 
         row: dict[str, Any] = {"value": self.value, "stage": self.stage}
         for key in keys:
@@ -348,6 +354,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         data["clear_on_start"] = self.clear_on_start
         data["collect_filter"] = self.collect_filter
         data["clear_filter"] = self.clear_filter
+        data["collect_outputs"] = None if self.collect_outputs is None else list(self.collect_outputs)
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -370,6 +377,14 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             self.collect_filter = str(data["collect_filter"])
         if "clear_filter" in data:
             self.clear_filter = str(data["clear_filter"])
+        if "collect_outputs" in data:
+            raw = data["collect_outputs"]
+            if raw is None:
+                self.collect_outputs = None
+            elif isinstance(raw, list):
+                self.collect_outputs = [str(item) for item in raw]
+            else:
+                self.collect_outputs = None
 
     # ------------------------------------------------------------------
     # Reported values
