@@ -114,7 +114,9 @@ class SteppedScanGenerator(BaseScanGenerator):
         result: list[tuple[float, float, int, bool]] = []
         current = self._start
         for target, num_steps, measure in self._stages:
-            result.append((target, self._step_size_for_stage(current, target, num_steps), num_steps, measure))
+            result.append(
+                (target, self._step_size_for_stage(current, target, num_steps), num_steps, measure)
+            )
             current = target
         return result
 
@@ -334,7 +336,11 @@ class SteppedScanGenerator(BaseScanGenerator):
             >>> restored.stages
             [(4.0, 1.0, 2, False)]
         """
-        instance = cls(start=float(data.get("start", 0.0)), stages=[tuple(stage) for stage in data.get("stages", [])], parent=parent)
+        instance = cls(
+            start=float(data.get("start", 0.0)),
+            stages=[tuple(stage) for stage in data.get("stages", [])],
+            parent=parent,
+        )
         instance.units = str(data.get("units", ""))
         return instance
 
