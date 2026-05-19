@@ -533,20 +533,23 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> 'General' not in [t for t, _ in tabs]
             True
         """
-        outer = QWidget(parent)
-        outer_layout = QVBoxLayout(outer)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.addWidget(self._general_config_widget(parent=outer))
-        separator = QFrame(outer)
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        outer_layout.addWidget(separator)
-        outer_layout.addWidget(self._build_data_tab(parent=outer))
-        outer_layout.addStretch()
-        outer.setLayout(outer_layout)
+        def _build_tabs() -> list[tuple[str, QWidget]]:
+            outer = QWidget(parent)
+            outer_layout = QVBoxLayout(outer)
+            outer_layout.setContentsMargins(0, 0, 0, 0)
+            outer_layout.addWidget(self._general_config_widget(parent=outer))
+            separator = QFrame(outer)
+            separator.setFrameShape(QFrame.Shape.HLine)
+            separator.setFrameShadow(QFrame.Shadow.Sunken)
+            outer_layout.addWidget(separator)
+            outer_layout.addWidget(self._build_data_tab(parent=outer))
+            outer_layout.addStretch()
+            outer.setLayout(outer_layout)
 
-        tabs: list[tuple[str, QWidget]] = [("Data", outer)]
-        about_tab = self._make_about_tab()
-        if about_tab is not None:
-            tabs.append(about_tab)
-        return tabs
+            tabs: list[tuple[str, QWidget]] = [("Data", outer)]
+            about_tab = self._make_about_tab()
+            if about_tab is not None:
+                tabs.append(about_tab)
+            return tabs
+
+        return self._get_cached_config_tabs(_build_tabs)

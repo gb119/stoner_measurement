@@ -625,6 +625,14 @@ class TestCurveFitConfigTabs:
         tables = param_widget.findChildren(_ParamTableWidget)
         assert len(tables) == 1
 
+    def test_config_tabs_cache_widgets(self, qapp):
+        p = CurveFitPlugin()
+        tabs1 = p.config_tabs()
+        tabs2 = p.config_tabs()
+        for (title1, widget1), (title2, widget2) in zip(tabs1, tabs2):
+            assert title1 == title2
+            assert widget1 is widget2
+
     def test_output_names_reflect_output_names_property(self, qapp):
         p = CurveFitPlugin()
         p.param_names = ["k", "c"]
