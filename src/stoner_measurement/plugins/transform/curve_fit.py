@@ -1314,10 +1314,7 @@ class CurveFitPlugin(TransformPlugin):
         resolved_values = [1.0] * len(self.param_names) if values is None else list(values)
         if len(resolved_values) != len(self.param_names):
             return {}, uses_p0
-        preview = {
-            name: resolved_values[index] if index < len(resolved_values) else None
-            for index, name in enumerate(self.param_names)
-        }
+        preview = {name: resolved_values[index] for index, name in enumerate(self.param_names)}
         return preview, uses_p0
 
     def _refresh_param_table_preview(self) -> None:
