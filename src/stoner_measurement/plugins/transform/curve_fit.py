@@ -1333,10 +1333,6 @@ class CurveFitPlugin(TransformPlugin):
         Args:
             delay_ms (int):
                 Delay in milliseconds before the preview refresh runs.
-
-        Returns:
-            None:
-                The refresh is scheduled on the internal single-shot timer.
         """
         if self._param_table_widget is None:
             return
