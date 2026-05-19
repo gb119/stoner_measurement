@@ -201,7 +201,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """Register one pending plot update before emitting data signals.
 
         Keyword Parameters:
-            fallback_signal (Any | None):
+            fallback_signal (_SignalEmitter | None):
                 Optional Qt signal to emit when the plot widget does not expose
                 ``mark_data_update_queued``.
         """

@@ -51,19 +51,19 @@ class _NeverAckPlotWidget:
         return self._pending > 0
 
     def set_trace(self, _trace_name: str, _x_data: object, _y_data: object) -> None:
-        return
+        pass
 
     def append_point(self, _trace_name: str, _x: float, _y: float) -> None:
-        return
+        pass
 
     def ensure_x_axis(self, _name: str, _label: str) -> None:
-        return
+        pass
 
     def ensure_y_axis(self, _name: str, _label: str) -> None:
-        return
+        pass
 
     def assign_trace_axes(self, _trace_name: str, _x_axis: str, _y_axis: str) -> None:
-        return
+        pass
 
 
 # ---------------------------------------------------------------------------
