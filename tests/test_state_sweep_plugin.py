@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 
 from PyQt6.QtWidgets import QWidget
@@ -208,10 +209,6 @@ class TestStateSweepPlugin:
         assert changed == [1.0, 2.5]
 
     def test_state_error_emitted_on_timeout(self, qapp):
-        import time
-
-        from PyQt6.QtWidgets import QWidget as _QW
-
         class _SlowGenerator(BaseSweepGenerator):
             def iter_points(self) -> Iterator[tuple[int, float, int, bool]]:
                 while True:
@@ -219,7 +216,7 @@ class TestStateSweepPlugin:
                     yield 0, 0.0, 0, True
 
             def config_widget(self, parent=None):
-                return _QW(parent)
+                return QWidget(parent)
 
             @classmethod
             def _from_json_data(cls, data, *, state_sweep=None, parent=None):
