@@ -184,12 +184,13 @@ class GpibTransport(BaseTransport):
             raise ConnectionError("GPIB transport is not open.")
         self._resource.write_raw(data)
 
-    def read(self, num_bytes: int = 4096) -> bytes:
-        """Read up to *num_bytes* from the GPIB instrument.
+    def read(self, num_bytes: int | None = None) -> bytes:
+        """Read one response frame from the GPIB instrument.
 
         Args:
-            num_bytes (int):
-                Maximum number of bytes to read.  Defaults to ``4096``.
+            num_bytes (int | None):
+                Optional maximum number of bytes to read.  When ``None``,
+                the protocol-defined frame-size limit is used.
 
         Returns:
             (bytes):
@@ -205,8 +206,9 @@ class GpibTransport(BaseTransport):
 
         if self._resource is None:
             raise ConnectionError("GPIB transport is not open.")
+        frame_limit = self._resolve_max_frame_size(num_bytes)
         try:
-            return self._resource.read_raw(num_bytes)
+            return self._resource.read_raw(frame_limit)
         except pyvisa.errors.VisaIOError as exc:
             raise TimeoutError(f"Timeout reading from GPIB address {self.address}: {exc}") from exc
 

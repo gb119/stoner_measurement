@@ -322,6 +322,20 @@ class TestNvmGuards:
                 with pytest.raises(RuntimeError, match="no line terminator"):
                     plugin._nvm_query("READ?")
 
+    def test_nvm_query_via_6221_serial_requires_lf_not_bare_cr(self, qapp):
+        from unittest.mock import MagicMock, patch
+
+        import stoner_measurement.plugins.trace.k6221_2182a as k6221_2182a_module
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+
+        with patch.object(k6221_2182a_module, "_MAX_SERIAL_ENTRY_CHUNKS", 2):
+            with patch.object(plugin, "_read_serial_entry_chunk", side_effect=["1.23\r", ""]):
+                with pytest.raises(RuntimeError, match="no line terminator"):
+                    plugin._nvm_query("READ?")
+
     def test_nvm_write_direct_gpib_without_connection_raises(self, qapp):
         plugin = _make_plugin()
         plugin._connection_mode = ConnectionMode.DIRECT_GPIB

@@ -87,8 +87,8 @@ _6221_MAX_COMPLIANCE_V: float = 105.0
 #: Terminator required by the 2182A when relaying commands via the 6221 serial port.
 _2182A_SERIAL_TERMINATOR: str = "\r\n"
 
-#: Accepted end-of-response terminators when reading via the 6221 serial relay.
-_2182A_RESPONSE_TERMINATORS: tuple[str, ...] = ("\r\n", "\n", "\r")
+#: End-of-response terminator for 2182A serial relay responses.
+_2182A_RESPONSE_TERMINATOR: str = "\n"
 
 #: Maximum number of ``SYST:COMM:SER:ENT?`` chunks to read for one 2182A response.
 _MAX_SERIAL_ENTRY_CHUNKS: int = 64
@@ -557,7 +557,7 @@ class Keithley6221_2182APlugin(TracePlugin):
             RuntimeError:
                 If DIRECT_GPIB mode is selected but no 2182A is connected, or
                 if the serial relay path does not yield a line-terminated
-                response (CRLF/LF/CR) within the configured chunk limit.
+                response (LF) within the configured chunk limit.
         """
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
             payload = self._serial_send_payload(cmd)
@@ -567,11 +567,11 @@ class Keithley6221_2182APlugin(TracePlugin):
                 chunk = self._read_serial_entry_chunk()
                 parts.append(chunk)
                 combined = "".join(parts)
-                if combined.endswith(_2182A_RESPONSE_TERMINATORS):
+                if combined.endswith(_2182A_RESPONSE_TERMINATOR):
                     return combined.rstrip("\r\n")
             raise RuntimeError(
                 "Timed out reading 2182A serial relay response: "
-                "no line terminator (CRLF/LF/CR) received."
+                "no line terminator (LF) received."
             )
         if self._k2182a is None:
             raise RuntimeError(

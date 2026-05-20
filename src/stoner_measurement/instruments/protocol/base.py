@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+DEFAULT_MAX_FRAME_SIZE = 4096
+
 
 class BaseProtocol(ABC):
     """Abstract base for all instrument communication protocols.
@@ -95,6 +97,17 @@ class BaseProtocol(ABC):
             True
         """
         return None
+
+    @property
+    def max_frame_size(self) -> int:
+        """Maximum number of response bytes expected for one protocol frame.
+
+        Returns:
+            (int):
+                Default frame-size limit used by transports when reading a
+                single response frame.
+        """
+        return DEFAULT_MAX_FRAME_SIZE
 
     @abstractmethod
     def format_command(self, command: str) -> bytes:

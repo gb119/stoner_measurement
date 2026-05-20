@@ -11,6 +11,8 @@ import re
 import urllib.parse
 from abc import ABC, abstractmethod
 
+from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE
+
 # Matches the start of a VISA resource string and captures the prefix for
 # later classification.  ASRL resources may have a non-numeric path component
 # (e.g. "ASRL/dev/ttyUSB0::INSTR"), so any non-colon characters are allowed
@@ -54,6 +56,8 @@ class BaseTransport(ABC):
         self._timeout: float = timeout
         self._is_open: bool = False
         self._protocol: object | None = None
+        self._max_frame_size: int = DEFAULT_MAX_FRAME_SIZE
+        self._read_terminator: bytes | None = None
 
     @property
     def timeout(self) -> float:
@@ -130,12 +134,13 @@ class BaseTransport(ABC):
         """
 
     @abstractmethod
-    def read(self, num_bytes: int = 4096) -> bytes:
-        """Read up to *num_bytes* from the instrument.
+    def read(self, num_bytes: int | None = None) -> bytes:
+        """Read one response frame from the instrument.
 
         Args:
-            num_bytes (int):
-                Maximum number of bytes to read.  Defaults to ``4096``.
+            num_bytes (int | None):
+                Optional maximum frame size for this call.  When ``None``,
+                the transport uses the protocol-defined frame-size limit.
 
         Returns:
             (bytes):
@@ -151,8 +156,8 @@ class BaseTransport(ABC):
     def read_until(self, terminator: bytes = b"\n") -> bytes:
         """Read bytes from the instrument until *terminator* is encountered.
 
-        The default implementation calls :meth:`read` one byte at a time.
-        Subclasses may override this with a more efficient implementation.
+        The default implementation repeatedly calls :meth:`read` and appends
+        complete frames until *terminator* is found.
 
         Args:
             terminator (bytes):
@@ -179,8 +184,8 @@ class BaseTransport(ABC):
         """
         buf = b""
         while True:
-            byte = self.read(1)
-            buf += byte
+            chunk = self.read()
+            buf += chunk
             if buf.endswith(terminator):
                 break
         return buf
@@ -197,7 +202,38 @@ class BaseTransport(ABC):
                 Protocol instance used by the owning instrument.
         """
         self._protocol = protocol
+        frame_size = getattr(protocol, "max_frame_size", DEFAULT_MAX_FRAME_SIZE)
+        try:
+            frame_size = int(frame_size)
+        except (TypeError, ValueError):
+            frame_size = DEFAULT_MAX_FRAME_SIZE
+        if frame_size <= 0:
+            frame_size = DEFAULT_MAX_FRAME_SIZE
+        self._max_frame_size = frame_size
+
+        terminator = getattr(protocol, "terminator", None)
+        if isinstance(terminator, bytes):
+            self._read_terminator = terminator
+        elif isinstance(terminator, str):
+            self._read_terminator = terminator.encode("latin-1")
+        else:
+            self._read_terminator = None
         self._apply_protocol(protocol)
+
+    def _resolve_max_frame_size(self, num_bytes: int | None = None) -> int:
+        """Return the frame-size limit to use for a read operation.
+
+        Args:
+            num_bytes (int | None):
+                Optional per-call limit.
+
+        Returns:
+            (int):
+                Effective frame-size limit in bytes.
+        """
+        if num_bytes is None:
+            return self._max_frame_size
+        return max(1, int(num_bytes))
 
     def _apply_protocol(self, protocol: object) -> None:
         """Apply protocol-specific settings to an active transport.
