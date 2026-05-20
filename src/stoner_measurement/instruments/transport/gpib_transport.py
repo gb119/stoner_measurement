@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 #: Regular expression that parses a GPIB VISA resource string of the form
 #: ``"GPIB<board>::<address>::INSTR"``.
 _GPIB_RESOURCE_RE = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
+_DEFAULT_GPIB_READ_TERMINATOR = "\n"
 
 
 class GpibTransport(BaseTransport):
@@ -75,6 +76,7 @@ class GpibTransport(BaseTransport):
         self.board = board
         self._resource: pyvisa.resources.GPIBInstrument | None = None
         self._rm: pyvisa.ResourceManager | None = None
+        self._read_termination: str = _DEFAULT_GPIB_READ_TERMINATOR
 
     @classmethod
     def from_resource_string(cls, resource_string: str, timeout: float = 2.0) -> GpibTransport:
@@ -150,6 +152,8 @@ class GpibTransport(BaseTransport):
             self._rm = pyvisa.ResourceManager()
             self._resource = self._rm.open_resource(self.resource_string)
             self._resource.timeout = int(self._timeout * 1000)  # pyvisa uses milliseconds
+            self._resource.send_end = True
+            self._resource.read_termination = self._read_termination
             self._is_open = True
         except pyvisa.VisaIOError as exc:
             raise ConnectionError(f"Cannot open GPIB resource {self.resource_string!r}: {exc}") from exc
@@ -228,6 +232,22 @@ class GpibTransport(BaseTransport):
         """
         if self._resource is not None:
             self._resource.timeout = int(value * 1000)
+
+    def _apply_protocol(self, protocol: object) -> None:
+        """Apply protocol-specific read termination settings.
+
+        Args:
+            protocol (object):
+                Protocol instance supplied by the owning instrument.
+        """
+        terminator = getattr(protocol, "terminator", _DEFAULT_GPIB_READ_TERMINATOR)
+        if isinstance(terminator, bytes):
+            read_termination = terminator.decode("latin-1")
+        else:
+            read_termination = str(terminator)
+        self._read_termination = read_termination
+        if self._resource is not None:
+            self._resource.read_termination = self._read_termination
 
     def read_status_byte(self) -> int | None:
         """Return the IEEE 488.2 status byte via a GPIB serial poll.

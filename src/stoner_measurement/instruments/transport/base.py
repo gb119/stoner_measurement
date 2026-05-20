@@ -53,6 +53,7 @@ class BaseTransport(ABC):
         """
         self._timeout: float = timeout
         self._is_open: bool = False
+        self._protocol: object | None = None
 
     @property
     def timeout(self) -> float:
@@ -183,6 +184,31 @@ class BaseTransport(ABC):
             if buf.endswith(terminator):
                 break
         return buf
+
+    def set_protocol(self, protocol: object) -> None:
+        """Bind a protocol instance to this transport.
+
+        Transports that need protocol-specific framing details (for example, a
+        read terminator) can override :meth:`_apply_protocol` to consume the
+        supplied protocol object.
+
+        Args:
+            protocol (object):
+                Protocol instance used by the owning instrument.
+        """
+        self._protocol = protocol
+        self._apply_protocol(protocol)
+
+    def _apply_protocol(self, protocol: object) -> None:
+        """Apply protocol-specific settings to an active transport.
+
+        The base implementation is a no-op.  Subclasses may override this when
+        the underlying link layer supports protocol-driven configuration.
+
+        Args:
+            protocol (object):
+                Protocol instance previously provided via :meth:`set_protocol`.
+        """
 
     def flush(self) -> None:
         """Flush any pending data in the transport buffers.
