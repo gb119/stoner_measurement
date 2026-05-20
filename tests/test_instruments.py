@@ -2687,7 +2687,7 @@ class TestGpibProtocolTermination:
         resource = _FakeResource()
         return resource, lambda: _FakeResourceManager(resource)
 
-    def test_gpib_protocol_set_before_open_applies_terminator_and_eoi(self, monkeypatch):
+    def test_gpib_protocol_applied_before_open_configures_resource(self, monkeypatch):
         pytest.importorskip("pyvisa")
         import pyvisa
 
@@ -2716,6 +2716,7 @@ class TestGpibProtocolTermination:
         transport.open()
         transport.set_protocol(OxfordProtocol())
         assert resource.read_termination == "\r"
+        assert resource.send_end is True
         transport.close()
 
     def test_asrl_unix_device(self):

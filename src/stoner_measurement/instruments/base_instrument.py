@@ -197,7 +197,8 @@ class BaseInstrument(ABC):
         """Read a response from the instrument.
 
         Reads raw bytes from the transport and parses them using
-        :attr:`protocol`.
+        :attr:`protocol`.  Any protocol-specific response framing (for
+        example, terminator handling) is delegated to the transport layer.
 
         Returns:
             (str):

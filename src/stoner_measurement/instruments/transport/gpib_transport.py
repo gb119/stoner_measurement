@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 #: Regular expression that parses a GPIB VISA resource string of the form
 #: ``"GPIB<board>::<address>::INSTR"``.
 _GPIB_RESOURCE_RE = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
+_DEFAULT_GPIB_READ_TERMINATOR = "\n"
 
 
 class GpibTransport(BaseTransport):
@@ -75,7 +76,7 @@ class GpibTransport(BaseTransport):
         self.board = board
         self._resource: pyvisa.resources.GPIBInstrument | None = None
         self._rm: pyvisa.ResourceManager | None = None
-        self._read_termination: str | None = None
+        self._read_termination: str = _DEFAULT_GPIB_READ_TERMINATOR
 
     @classmethod
     def from_resource_string(cls, resource_string: str, timeout: float = 2.0) -> GpibTransport:
@@ -239,7 +240,7 @@ class GpibTransport(BaseTransport):
             protocol (object):
                 Protocol instance supplied by the owning instrument.
         """
-        terminator = getattr(protocol, "terminator", b"\n")
+        terminator = getattr(protocol, "terminator", _DEFAULT_GPIB_READ_TERMINATOR)
         if isinstance(terminator, bytes):
             read_termination = terminator.decode("latin-1")
         else:
