@@ -370,6 +370,8 @@ class TemperatureControllerEngine(QObject):
 
         parsed_host, sep, parsed_port = raw.rpartition(":")
         if not sep:
+            if raw.isdigit():
+                return host, int(raw)
             return raw, port
 
         parsed_host = parsed_host.strip()
