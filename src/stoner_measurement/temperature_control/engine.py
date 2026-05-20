@@ -341,16 +341,33 @@ class TemperatureControllerEngine(QObject):
         Returns:
             (tuple[str, int]):
                 Parsed ``(host, port)`` tuple.
+
+        Raises:
+            ValueError:
+                If a port is supplied but is not a valid integer.
         """
         host = "192.168.0.1"
         port = 5025
         raw = address.strip()
         if not raw:
             return host, port
+
         parsed_host, sep, parsed_port = raw.rpartition(":")
-        if sep and parsed_host.strip():
-            return parsed_host.strip(), int(parsed_port.strip())
-        return raw, port
+        if not sep:
+            return raw, port
+
+        parsed_host = parsed_host.strip()
+        parsed_port = parsed_port.strip()
+
+        if not parsed_port:
+            return (parsed_host or host), port
+
+        try:
+            parsed_port_value = int(parsed_port)
+        except ValueError as exc:
+            raise ValueError(f"Invalid Ethernet port in address {address!r}: {parsed_port!r}") from exc
+
+        return (parsed_host or host), parsed_port_value
 
     def disconnect_instrument(self) -> None:
         """Stop polling and release the driver reference."""
