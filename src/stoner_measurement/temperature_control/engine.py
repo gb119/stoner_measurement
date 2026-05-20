@@ -381,7 +381,11 @@ class TemperatureControllerEngine(QObject):
         try:
             parsed_port_value = int(parsed_port)
         except ValueError as exc:
-            raise ValueError(f"Invalid Ethernet port in address {address!r}: {parsed_port!r}") from exc
+            raise ValueError(
+                "Invalid Ethernet port in address "
+                f"{address!r}: {parsed_port!r}. Expected format "
+                "'<host>:<port>'."
+            ) from exc
 
         return (parsed_host or host), parsed_port_value
 

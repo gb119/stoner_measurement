@@ -376,6 +376,12 @@ class TestEngineLifecycle:
         assert engine._parse_ethernet_address(":4000") == ("192.168.0.1", 4000)
         engine.shutdown()
 
+    def test_parse_ethernet_address_invalid_port_message(self, qapp):
+        engine = TemperatureControllerEngine()
+        with pytest.raises(ValueError, match="Invalid Ethernet port in address"):
+            engine._parse_ethernet_address("10.0.0.1:not-a-port")
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # Engine stability evaluation
