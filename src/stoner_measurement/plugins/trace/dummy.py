@@ -11,8 +11,8 @@ from collections.abc import Generator
 from typing import Any
 
 import numpy as np
-from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
 from scipy.constants import Boltzmann as kb
+from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
 
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
 from stoner_measurement.scan import FunctionScanGenerator
