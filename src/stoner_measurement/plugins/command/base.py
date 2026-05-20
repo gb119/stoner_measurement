@@ -192,10 +192,9 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         engine = self.sequence_engine
         if engine is None:
             return True
-        wait_for_plot_ready = getattr(engine, "wait_for_plot_ready", None)
-        if not callable(wait_for_plot_ready):
+        if not hasattr(engine, "wait_for_plot_ready"):
             return True
-        return bool(wait_for_plot_ready(timeout=timeout))
+        return bool(engine.wait_for_plot_ready(timeout=timeout))
 
     def _queue_plot_update_request(self, fallback_signal: _SignalEmitter | None = None) -> None:
         """Register one pending plot update before emitting data signals.
@@ -211,9 +210,8 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 fallback_signal.emit()
             return
         plot_widget = getattr(engine, "plot_widget", None)
-        mark_data_update_queued = getattr(plot_widget, "mark_data_update_queued", None)
-        if callable(mark_data_update_queued):
-            mark_data_update_queued()
+        if plot_widget is not None and hasattr(plot_widget, "mark_data_update_queued"):
+            plot_widget.mark_data_update_queued()
             return
         if fallback_signal is not None:
             fallback_signal.emit()

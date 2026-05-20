@@ -741,14 +741,15 @@ class BasePlugin(ABC):
         # so that an external revert (e.g. collision detected by the dock
         # panel) is immediately visible to the user.  Only plugins that
         # sub-class QObject carry the instance_name_changed signal.
-        if hasattr(self, "instance_name_changed"):
+        name_changed_signal = getattr(self, "instance_name_changed", None)
+        if name_changed_signal is not None:
             # Disconnect any stale sync callback left by a previous call
             # (relevant when config_tabs() recreates the widget on every
             # selection rather than caching it).
             prev_sync = getattr(self, "_name_edit_sync", None)
             if prev_sync is not None:
                 try:
-                    self.instance_name_changed.disconnect(prev_sync)  # type: ignore[attr-defined]
+                    name_changed_signal.disconnect(prev_sync)
                 except (TypeError, RuntimeError):
                     pass
 
@@ -767,15 +768,11 @@ class BasePlugin(ABC):
                     # The underlying C++ widget has been destroyed; remove
                     # this stale connection.
                     try:
-                        self.instance_name_changed.disconnect(  # type: ignore[attr-defined]
-                            _sync_name_edit  # pylint: disable=no-member
-                        )
+                        name_changed_signal.disconnect(_sync_name_edit)
                     except (TypeError, RuntimeError):
                         pass
 
-            self.instance_name_changed.connect(  # type: ignore[attr-defined]  # pylint: disable=no-member
-                _sync_name_edit
-            )
+            name_changed_signal.connect(_sync_name_edit)
             self._name_edit_sync = _sync_name_edit  # type: ignore[attr-defined]
 
         layout.addRow("Instance name:", name_edit)

@@ -510,16 +510,16 @@ class Keithley6221_2182APlugin(TracePlugin):
                 ``SYST:COMM:SER:ENT?``, preserving any CR/LF from the 2182A
                 response while removing only the outer 6221 query terminator.
         """
-        protocol = self._k6221.protocol
+        instrument = self._k6221
+        if instrument is None:
+            raise RuntimeError("Keithley 6221 is not connected.")
+        protocol = instrument.protocol
         terminator = getattr(protocol, "terminator", b"\n")
         payload = protocol.format_query("SYST:COMM:SER:ENT?")
-        self._k6221.transport.write(payload)
-        log_traffic = getattr(self._k6221, "_log_comms_traffic", None)
-        if callable(log_traffic):
-            log_traffic("TX", payload)
-        raw = self._k6221.transport.read_until(terminator)
-        if callable(log_traffic):
-            log_traffic("RX", raw)
+        instrument.transport.write(payload)
+        instrument._log_comms_traffic("TX", payload)
+        raw = instrument.transport.read_until(terminator)
+        instrument._log_comms_traffic("RX", raw)
         if raw.endswith(terminator):
             raw = raw[: -len(terminator)]
         return raw.decode("utf-8", errors="replace")

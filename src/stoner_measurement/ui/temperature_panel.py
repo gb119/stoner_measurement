@@ -1290,27 +1290,28 @@ class _ZoneTableWidget(QWidget):
         """
         entries = []
         for row in range(self._table.rowCount()):
-
-            def _dval(col: int) -> float:
-                w = self._table.cellWidget(row, col)
-                return w.value() if w is not None else 0.0
-
-            def _ival(col: int) -> int:
-                w = self._table.cellWidget(row, col)
-                return w.value() if w is not None else 0
-
             entries.append(
                 ZoneEntry(
-                    upper_bound=_dval(_COL_UPPER),
-                    p=_dval(_COL_P),
-                    i=_dval(_COL_I),
-                    d=_dval(_COL_D),
-                    ramp_rate=_dval(_COL_RAMP),
-                    heater_range=_ival(_COL_RANGE),
-                    heater_output=_dval(_COL_OUTPUT),
+                    upper_bound=self._double_value(row, _COL_UPPER),
+                    p=self._double_value(row, _COL_P),
+                    i=self._double_value(row, _COL_I),
+                    d=self._double_value(row, _COL_D),
+                    ramp_rate=self._double_value(row, _COL_RAMP),
+                    heater_range=self._int_value(row, _COL_RANGE),
+                    heater_output=self._double_value(row, _COL_OUTPUT),
                 )
             )
         return entries
+
+    def _double_value(self, row: int, column: int) -> float:
+        """Return a float value from the zone table."""
+        widget = self._table.cellWidget(row, column)
+        return widget.value() if widget is not None else 0.0
+
+    def _int_value(self, row: int, column: int) -> int:
+        """Return an integer value from the zone table."""
+        widget = self._table.cellWidget(row, column)
+        return widget.value() if widget is not None else 0
 
     def _renumber_zones(self) -> None:
         """Refresh the read-only zone-number column after row additions/removals."""

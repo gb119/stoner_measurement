@@ -24,7 +24,6 @@ from stoner_measurement.instruments.source_meter import (
     SourceSweepConfiguration,
     SweepSpacing,
     TriggerModelConfiguration,
-    TriggerSource,
 )
 from stoner_measurement.instruments.transport.base import BaseTransport
 

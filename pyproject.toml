@@ -95,3 +95,11 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
+
+[tool.pylint.typecheck]
+ignored-modules = [
+    "PyQt6",
+    "PyQt6.QtCore",
+    "PyQt6.QtGui",
+    "PyQt6.QtWidgets",
+]
