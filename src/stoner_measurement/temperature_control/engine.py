@@ -266,6 +266,14 @@ class TemperatureControllerEngine(QObject):
 
         Missing values default to ``"/dev/ttyUSB0"`` for the port and
         ``9600`` for the baud rate.
+
+        Args:
+            address (str):
+                Serial address string.
+
+        Returns:
+            (tuple[str, int]):
+                Parsed ``(port, baud_rate)`` tuple.
         """
         port = "/dev/ttyUSB0"
         baud = 9600
@@ -285,6 +293,14 @@ class TemperatureControllerEngine(QObject):
 
         Empty values default to ``"192.168.0.1"`` and ``5025``. If only a
         host is provided, the default port is used.
+
+        Args:
+            address (str):
+                Ethernet address string.
+
+        Returns:
+            (tuple[str, int]):
+                Parsed ``(host, port)`` tuple.
         """
         host = "192.168.0.1"
         port = 5025
