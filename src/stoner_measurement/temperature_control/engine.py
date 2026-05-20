@@ -38,11 +38,13 @@ from stoner_measurement.temperature_control.types import (
 )
 
 if TYPE_CHECKING:
+    from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.temperature_controller import (
         InputChannelSettings,
         TemperatureController,
         ZoneEntry,
     )
+    from stoner_measurement.instruments.transport.base import BaseTransport
 logger = logging.getLogger(__name__)
 
 #: Number of timestamped readings kept per channel for rate-of-change estimation.
@@ -238,7 +240,7 @@ class TemperatureControllerEngine(QObject):
             raise ValueError(f"Unknown temperature driver: {driver_name!r}")
         return driver_cls
 
-    def _build_transport(self, transport_name: str, address: str):
+    def _build_transport(self, transport_name: str, address: str) -> BaseTransport:
         """Instantiate a transport from a transport type and address string."""
         kind = transport_name.strip().lower()
         if kind == "serial":
@@ -254,7 +256,7 @@ class TemperatureControllerEngine(QObject):
             return NullTransport()
         raise ValueError(f"Unsupported transport type: {transport_name!r}")
 
-    def _build_protocol(self, driver_name: str):
+    def _build_protocol(self, driver_name: str) -> BaseProtocol:
         """Instantiate the default protocol for a driver name."""
         name = driver_name.lower()
         if "oxford" in name or "itc" in name or "mercury" in name:
