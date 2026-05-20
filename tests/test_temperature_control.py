@@ -373,12 +373,12 @@ class TestEngineLifecycle:
 
     def test_parse_ethernet_address_missing_host_uses_default(self, qapp):
         engine = TemperatureControllerEngine()
-        assert engine._parse_ethernet_address(":4000") == ("192.168.0.1", 4000)
+        assert engine._parse_ethernet_address(":4000") == ("localhost", 4000)
         engine.shutdown()
 
     def test_parse_ethernet_address_port_only_uses_default_host(self, qapp):
         engine = TemperatureControllerEngine()
-        assert engine._parse_ethernet_address("4000") == ("192.168.0.1", 4000)
+        assert engine._parse_ethernet_address("4000") == ("localhost", 4000)
         engine.shutdown()
 
     def test_parse_ethernet_address_invalid_port_message(self, qapp):
