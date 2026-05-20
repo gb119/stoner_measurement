@@ -262,7 +262,11 @@ class TemperatureControllerEngine(QObject):
         return LakeshoreProtocol()
 
     def _parse_serial_address(self, address: str) -> tuple[str, int]:
-        """Parse ``port=<device>;baud=<rate>`` serial address strings."""
+        """Parse serial address strings in ``port=<device>;baud=<rate>`` format.
+
+        Missing values default to ``"/dev/ttyUSB0"`` for the port and
+        ``9600`` for the baud rate.
+        """
         port = "/dev/ttyUSB0"
         baud = 9600
         for part in (p.strip() for p in address.split(";") if p.strip()):
@@ -277,7 +281,11 @@ class TemperatureControllerEngine(QObject):
         return port, baud
 
     def _parse_ethernet_address(self, address: str) -> tuple[str, int]:
-        """Parse ``<host>:<port>`` Ethernet address strings."""
+        """Parse Ethernet address strings in ``<host>:<port>`` format.
+
+        Empty values default to ``"192.168.0.1"`` and ``5025``. If only a
+        host is provided, the default port is used.
+        """
         host = "192.168.0.1"
         port = 5025
         raw = address.strip()
