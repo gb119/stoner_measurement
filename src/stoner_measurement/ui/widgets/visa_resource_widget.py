@@ -8,8 +8,8 @@ reflect the connection status of the associated instrument.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import Enum, IntEnum
-from typing import Sequence
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
@@ -135,14 +135,21 @@ def list_visa_resources(
     """
     try:
         import pyvisa
-
-        rm = pyvisa.ResourceManager()
-        resources_info = rm.list_resources_info()
-        rm.close()
     except ImportError:
         return []
-    except (pyvisa.Error, OSError):
+
+    rm = None
+    try:
+        rm = pyvisa.ResourceManager()
+        resources_info = rm.list_resources_info()
+    except (pyvisa.Error, OSError, ValueError):
         return []
+    finally:
+        if rm is not None:
+            try:
+                rm.close()
+            except (pyvisa.Error, OSError, ValueError):
+                pass
     result: list[str] = []
     interface_type_ints = None if resource_filter is None else {int(t) for t in resource_filter}
     for resource_string, info in resources_info.items():

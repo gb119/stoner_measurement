@@ -604,7 +604,7 @@ class LogViewerWindow(QWidget):
         level_name = record.levelname
         try:
             message = record.getMessage()
-        except (TypeError, KeyError):
+        except (TypeError, KeyError, ValueError):
             message = str(record.msg)
         return f"[{timestamp}] {level_name:8s} {message}"
 
