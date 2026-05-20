@@ -697,18 +697,17 @@ class SequenceEngine(QObject):
         if plot_widget is None:
             return True
 
-        is_busy = getattr(plot_widget, "is_busy_for_data", None)
-        if not callable(is_busy):
+        if not hasattr(plot_widget, "is_busy_for_data"):
             return True
 
         if timeout is not None and timeout <= 0:
-            return not bool(is_busy())
+            return not bool(plot_widget.is_busy_for_data())
 
         stop_event = getattr(self._thread, "_stop_event", None)
         pause_event = getattr(self._thread, "_pause_event", None)
         deadline = None if timeout is None else time.monotonic() + timeout
         sleep_for = max(float(poll_interval), 0.001)
-        while bool(is_busy()):
+        while bool(plot_widget.is_busy_for_data()):
             if stop_event is not None and stop_event.is_set():
                 return False
             if pause_event is not None and not pause_event.is_set():
@@ -1390,9 +1389,6 @@ class SequenceEngine(QObject):
             True
             >>> engine.shutdown()
         """
-        # Import here to avoid circular imports at module level.
-        from stoner_measurement.plugins.base_plugin import BasePlugin
-
         header = [
             "# Sequence script — auto-generated from sequence tree.",
             "# Edit as needed, then click Run.",

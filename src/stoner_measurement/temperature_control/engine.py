@@ -198,7 +198,7 @@ class TemperatureControllerEngine(QObject):
         self._stable.clear()
         self._set_status(EngineStatus.CONNECTED)
         self._timer.start()
-        logger.info(f"TemperatureControllerEngine: connected to {type(driver).__name__}")
+        logger.info("TemperatureControllerEngine: connected to %s", type(driver).__name__)
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
         """Instantiate and connect a temperature controller from identifiers.

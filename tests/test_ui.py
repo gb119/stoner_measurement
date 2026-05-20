@@ -681,8 +681,9 @@ class TestDockPanel:
     def test_sequence_tree_factory_wired(self, plugin_manager):
         """DockPanel wires _make_new_step_item as the tree's new-item factory."""
         panel = DockPanel(plugin_manager=plugin_manager)
-        # Bound methods compare equal when they wrap the same function and instance.
-        assert panel._sequence_tree._new_item_factory == panel._make_new_step_item
+        factory = panel._sequence_tree._new_item_factory
+        assert getattr(factory, "__self__", None) is panel
+        assert getattr(factory, "__func__", None) is panel._make_new_step_item.__func__
 
     def test_set_new_item_factory_can_be_replaced(self, plugin_manager):
         """set_new_item_factory replaces the factory callable."""

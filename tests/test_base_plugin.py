@@ -43,8 +43,6 @@ class TestRstRoleToShort:
         return pattern.search(text)
 
     def test_simple_name(self):
-        m = self._match(":meth:`execute`")
-        import re
         class _FakeMatch:
             def group(self, n):
                 return "execute"

@@ -11,8 +11,8 @@ from collections.abc import Generator
 from typing import Any
 
 import numpy as np
-from scipy.constants import Boltzmann as kb, eV
 from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
+from scipy.constants import Boltzmann as kb
 
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
 from stoner_measurement.scan import FunctionScanGenerator
@@ -240,21 +240,29 @@ class DummyPlugin(TracePlugin):
         v_n_expr = str(parameters.get("V_n", self._noise_level))
         rounding = self._eval_expr(str(parameters.get("Rounding", self._rounding_level)))
 
-        I = self.scan_generator.generate()
+        current_values = self.scan_generator.generate()
         if rounding > 0:
-            dIc=np.sqrt(4*kb*rounding*1E10/r_n)
-            data = np.empty((I.size, 100))
-            for ix, ic_ix in enumerate(np.random.normal(loc=i_c, scale=dIc, size=100)):
-                data[:, ix] = np.where(np.abs(I) < ic_ix, 0.0, r_n * np.sign(I) * np.sqrt(np.abs(I**2 - ic_ix**2)))
-            V = data.mean(axis=1)
+            d_ic = np.sqrt(4 * kb * rounding * 1e10 / r_n)
+            data = np.empty((current_values.size, 100))
+            for ix, ic_ix in enumerate(np.random.normal(loc=i_c, scale=d_ic, size=100)):
+                data[:, ix] = np.where(
+                    np.abs(current_values) < ic_ix,
+                    0.0,
+                    r_n * np.sign(current_values) * np.sqrt(np.abs(current_values**2 - ic_ix**2)),
+                )
+            voltage_values = data.mean(axis=1)
         else:
-            V = np.where(np.abs(I) < i_c, 0.0, r_n * np.sign(I) * np.sqrt(np.abs(I**2 - i_c**2)))
+            voltage_values = np.where(
+                np.abs(current_values) < i_c,
+                0.0,
+                r_n * np.sign(current_values) * np.sqrt(np.abs(current_values**2 - i_c**2)),
+            )
 
         v_n = self._eval_expr(v_n_expr)
         if v_n > 0.0:
-            V += np.random.normal(0, v_n, V.size)
+            voltage_values += np.random.normal(0, v_n, voltage_values.size)
 
-        yield from zip(I, V)
+        yield from zip(current_values, voltage_values)
 
     def to_json(self) -> dict[str, Any]:
         """Serialise this plugin's configuration, including RSJ model parameters.

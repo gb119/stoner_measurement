@@ -441,7 +441,7 @@ class TestSteppedScanWidget:
         gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, False)])
         widget = SteppedScanWidget(generator=gen)
         x_red, _ = widget._red_scatter.getData()
-        n_false = int((~gen.flags).sum())
+        n_false = int(np.logical_not(gen.flags).sum())
         assert x_red is not None
         assert len(x_red) == n_false
 
@@ -452,7 +452,7 @@ class TestSteppedScanWidget:
         )
         widget = SteppedScanWidget(generator=gen)
         n_true = int(gen.flags.sum())
-        n_false = int((~gen.flags).sum())
+        n_false = int(np.logical_not(gen.flags).sum())
         x_green, _ = widget._green_scatter.getData()
         x_red, _ = widget._red_scatter.getData()
         assert len(x_green) == n_true

@@ -146,6 +146,7 @@ class _NullTransportWithEsb(NullTransport):
 # ---------------------------------------------------------------------------
 
 
+# pylint: disable=abstract-class-instantiated
 class TestAbstractEnforcement:
     """Abstract enforcement for the instrument hierarchy.
 
@@ -3571,7 +3572,6 @@ class TestOxfordMercuryIPS:
         assert m.magnet_constant == pytest.approx(0.5)
 
     def test_status_ramping(self):
-        uid = "PSU.M1"
         t = _null(responses=[
             b"STAT:DEV:PSU.M1:PSU:ACTN:RTOS\n",
             b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+0.50000T\n",

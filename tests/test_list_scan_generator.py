@@ -357,7 +357,7 @@ class TestListScanWidget:
         gen = ListScanGenerator(stages=[(1.0, False), (2.0, False)])
         widget = ListScanWidget(generator=gen)
         x_red, _ = widget._red_scatter.getData()
-        n_false = int((~gen.flags).sum())
+        n_false = int(np.logical_not(gen.flags).sum())
         assert x_red is not None
         assert len(x_red) == n_false
 
@@ -365,7 +365,7 @@ class TestListScanWidget:
         gen = ListScanGenerator(stages=[(1.0, True), (2.0, False), (3.0, True)])
         widget = ListScanWidget(generator=gen)
         n_true = int(gen.flags.sum())
-        n_false = int((~gen.flags).sum())
+        n_false = int(np.logical_not(gen.flags).sum())
         x_green, _ = widget._green_scatter.getData()
         x_red, _ = widget._red_scatter.getData()
         assert len(x_green) == n_true
