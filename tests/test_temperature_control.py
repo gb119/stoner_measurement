@@ -337,6 +337,45 @@ class TestEngineLifecycle:
         assert engine.connected_driver is None
         engine.shutdown()
 
+    def test_connect_driver_unknown_driver_name_raises(self, qapp):
+        engine = TemperatureControllerEngine()
+        with pytest.raises(ValueError, match="Unknown temperature driver"):
+            engine.connect_driver("NotADriver", "Null", "")
+        engine.shutdown()
+
+    def test_connect_driver_unsupported_transport_raises(self, qapp):
+        from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
+
+        engine = TemperatureControllerEngine()
+        driver_cls = _make_fake_tc().__class__
+        engine._resolve_driver_class = lambda _name: driver_cls
+        engine._build_protocol = lambda _driver: LakeshoreProtocol()
+        with pytest.raises(ValueError, match="Unsupported transport type"):
+            engine.connect_driver("FakeDriver", "InvalidTransport", "")
+        engine.shutdown()
+
+    def test_resolve_driver_class_rejects_non_temperature_driver(self, monkeypatch, qapp):
+        from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
+
+        monkeypatch.setattr(InstrumentDriverManager, "discover", lambda self: None)
+        monkeypatch.setattr(InstrumentDriverManager, "get", lambda self, _name: object)
+
+        engine = TemperatureControllerEngine()
+        with pytest.raises(ValueError, match="not a temperature-controller driver"):
+            engine._resolve_driver_class("object")
+        engine.shutdown()
+
+    def test_parse_serial_address_invalid_baud_message(self, qapp):
+        engine = TemperatureControllerEngine()
+        with pytest.raises(ValueError, match="Invalid serial baud in address"):
+            engine._parse_serial_address("port=/dev/ttyUSB2;baud=fast")
+        engine.shutdown()
+
+    def test_parse_ethernet_address_missing_host_uses_default(self, qapp):
+        engine = TemperatureControllerEngine()
+        assert engine._parse_ethernet_address(":4000") == ("192.168.0.1", 4000)
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # Engine stability evaluation

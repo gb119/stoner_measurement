@@ -248,11 +248,15 @@ class MagnetControllerEngine(QObject):
             ValueError:
                 If no driver is registered with the requested name.
         """
+        from stoner_measurement.instruments.magnet_controller import MagnetController
+
         manager = InstrumentDriverManager()
         manager.discover()
         driver_cls = manager.get(driver_name)
         if driver_cls is None:
             raise ValueError(f"Unknown magnet driver: {driver_name!r}")
+        if not issubclass(driver_cls, MagnetController):
+            raise ValueError(f"Driver {driver_name!r} is not a magnet-controller driver")
         return driver_cls
 
     def _build_transport(self, transport_name: str, address: str) -> BaseTransport:
@@ -327,7 +331,15 @@ class MagnetControllerEngine(QObject):
             if key == "port" and value.strip():
                 port = value.strip()
             elif key == "baud":
-                baud = int(value.strip())
+                raw_baud = value.strip()
+                try:
+                    baud = int(raw_baud)
+                except ValueError as exc:
+                    raise ValueError(
+                        "Invalid serial baud in address "
+                        f"{address!r}: {raw_baud!r}. Expected format "
+                        "'port=<device>;baud=<rate>'."
+                    ) from exc
         return port, baud
 
     def _parse_ethernet_address(self, address: str) -> tuple[str, int]:
@@ -350,9 +362,24 @@ class MagnetControllerEngine(QObject):
         if not raw:
             return host, port
         parsed_host, sep, parsed_port = raw.rpartition(":")
-        if sep and parsed_host.strip():
-            return parsed_host.strip(), int(parsed_port.strip())
-        return raw, port
+        if not sep:
+            return raw, port
+
+        parsed_host = parsed_host.strip()
+        parsed_port = parsed_port.strip()
+        if not parsed_port:
+            return (parsed_host or host), port
+
+        try:
+            parsed_port_value = int(parsed_port)
+        except ValueError as exc:
+            raise ValueError(
+                "Invalid Ethernet port in address "
+                f"{address!r}: {parsed_port!r}. Expected format "
+                "'<host>:<port>'."
+            ) from exc
+
+        return (parsed_host or host), parsed_port_value
 
     def disconnect_instrument(self) -> None:
         """Stop polling and release the driver reference."""

@@ -246,11 +246,19 @@ class TemperatureControllerEngine(QObject):
             ValueError:
                 If no driver is registered with the requested name.
         """
+        from stoner_measurement.instruments.temperature_controller import (
+            TemperatureController,
+        )
+
         manager = InstrumentDriverManager()
         manager.discover()
         driver_cls = manager.get(driver_name)
         if driver_cls is None:
             raise ValueError(f"Unknown temperature driver: {driver_name!r}")
+        if not issubclass(driver_cls, TemperatureController):
+            raise ValueError(
+                f"Driver {driver_name!r} is not a temperature-controller driver"
+            )
         return driver_cls
 
     def _build_transport(self, transport_name: str, address: str) -> BaseTransport:
@@ -325,7 +333,15 @@ class TemperatureControllerEngine(QObject):
             if key == "port" and value.strip():
                 port = value.strip()
             elif key == "baud":
-                baud = int(value.strip())
+                raw_baud = value.strip()
+                try:
+                    baud = int(raw_baud)
+                except ValueError as exc:
+                    raise ValueError(
+                        "Invalid serial baud in address "
+                        f"{address!r}: {raw_baud!r}. Expected format "
+                        "'port=<device>;baud=<rate>'."
+                    ) from exc
         return port, baud
 
     def _parse_ethernet_address(self, address: str) -> tuple[str, int]:

@@ -420,6 +420,50 @@ class TestEngineLifecycle:
         assert engine._driver is None
         engine.shutdown()
 
+    def test_connect_driver_unknown_driver_name_raises(self, qapp):
+        engine = MagnetControllerEngine()
+        with pytest.raises(ValueError, match="Unknown magnet driver"):
+            engine.connect_driver("NotADriver", "Null", "")
+        engine.shutdown()
+
+    def test_connect_driver_unsupported_transport_raises(self, qapp):
+        from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
+
+        engine = MagnetControllerEngine()
+        engine._resolve_driver_class = lambda _name: _make_fake_driver().__class__
+        engine._build_protocol = lambda _driver: OxfordProtocol()
+        with pytest.raises(ValueError, match="Unsupported transport type"):
+            engine.connect_driver("FakeDriver", "InvalidTransport", "")
+        engine.shutdown()
+
+    def test_resolve_driver_class_rejects_non_magnet_driver(self, monkeypatch, qapp):
+        from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
+
+        monkeypatch.setattr(InstrumentDriverManager, "discover", lambda self: None)
+        monkeypatch.setattr(InstrumentDriverManager, "get", lambda self, _name: object)
+
+        engine = MagnetControllerEngine()
+        with pytest.raises(ValueError, match="not a magnet-controller driver"):
+            engine._resolve_driver_class("object")
+        engine.shutdown()
+
+    def test_parse_serial_address_invalid_baud_message(self, qapp):
+        engine = MagnetControllerEngine()
+        with pytest.raises(ValueError, match="Invalid serial baud in address"):
+            engine._parse_serial_address("port=/dev/ttyUSB5;baud=bad")
+        engine.shutdown()
+
+    def test_parse_ethernet_address_missing_host_uses_default(self, qapp):
+        engine = MagnetControllerEngine()
+        assert engine._parse_ethernet_address(":4000") == ("192.168.0.1", 4000)
+        engine.shutdown()
+
+    def test_parse_ethernet_address_invalid_port_message(self, qapp):
+        engine = MagnetControllerEngine()
+        with pytest.raises(ValueError, match="Invalid Ethernet port in address"):
+            engine._parse_ethernet_address("10.0.0.1:not-a-port")
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # Command API no-ops when disconnected
