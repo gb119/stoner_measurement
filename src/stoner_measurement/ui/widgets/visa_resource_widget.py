@@ -143,6 +143,8 @@ def list_visa_resources(
         rm = pyvisa.ResourceManager()
         resources_info = rm.list_resources_info()
     except (pyvisa.Error, OSError, ValueError):
+        # PyVISA raises ValueError when no VISA backend is installed; treat
+        # that the same as "no resources available" for widget construction.
         return []
     finally:
         if rm is not None:
