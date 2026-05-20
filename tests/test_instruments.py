@@ -2654,12 +2654,8 @@ class TestFromUriVisaResourceStrings:
 
 
 class TestGpibProtocolTermination:
-    def test_gpib_open_applies_protocol_terminator_and_eoi(self, monkeypatch):
-        pytest.importorskip("pyvisa")
-        import pyvisa
-
-        from stoner_measurement.instruments.transport import GpibTransport
-
+    @staticmethod
+    def _make_fake_gpib_resource_manager():
         class _FakeResource:
             def __init__(self):
                 self.timeout = None
@@ -2689,7 +2685,16 @@ class TestGpibProtocolTermination:
                 pass
 
         resource = _FakeResource()
-        monkeypatch.setattr(pyvisa, "ResourceManager", lambda: _FakeResourceManager(resource))
+        return resource, lambda: _FakeResourceManager(resource)
+
+    def test_gpib_protocol_set_before_open_applies_terminator_and_eoi(self, monkeypatch):
+        pytest.importorskip("pyvisa")
+        import pyvisa
+
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        resource, rm_factory = self._make_fake_gpib_resource_manager()
+        monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
 
         transport = GpibTransport(address=22)
         transport.set_protocol(LakeshoreProtocol())
@@ -2704,36 +2709,8 @@ class TestGpibProtocolTermination:
 
         from stoner_measurement.instruments.transport import GpibTransport
 
-        class _FakeResource:
-            def __init__(self):
-                self.timeout = None
-                self.read_termination = None
-                self.send_end = None
-
-            def close(self):
-                pass
-
-            def read_stb(self):
-                return 0x00
-
-            def write_raw(self, _data):
-                pass
-
-            def read_raw(self, _num_bytes=4096):
-                return b""
-
-        class _FakeResourceManager:
-            def __init__(self, resource):
-                self._resource = resource
-
-            def open_resource(self, _resource_string):
-                return self._resource
-
-            def close(self):
-                pass
-
-        resource = _FakeResource()
-        monkeypatch.setattr(pyvisa, "ResourceManager", lambda: _FakeResourceManager(resource))
+        resource, rm_factory = self._make_fake_gpib_resource_manager()
+        monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
 
         transport = GpibTransport(address=22)
         transport.open()
