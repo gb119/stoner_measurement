@@ -310,11 +310,38 @@ class TemperatureControllerEngine(QObject):
         return LakeshoreProtocol()
 
     def _parse_serial_address(self, address: str) -> tuple[str, int]:
-        """Parse serial address strings in ``port=<device>;baud=<rate>`` format."""
+        """Parse serial address strings in ``port=<device>;baud=<rate>`` format.
+
+        Args:
+            address (str):
+                Serial address string (for example
+                ``"port=/dev/ttyUSB0;baud=9600"``).
+
+        Returns:
+            (tuple[str, int]):
+                Parsed ``(port, baud_rate)`` tuple.
+
+        Raises:
+            ValueError:
+                If a baud value is supplied but cannot be parsed as an integer.
+        """
         return parse_serial_address(address)
 
     def _parse_ethernet_address(self, address: str) -> tuple[str, int]:
-        """Parse Ethernet address strings in ``<host>:<port>`` format."""
+        """Parse Ethernet address strings in ``<host>:<port>`` format.
+
+        Args:
+            address (str):
+                Ethernet address string (for example ``"localhost:5025"``).
+
+        Returns:
+            (tuple[str, int]):
+                Parsed ``(host, port)`` tuple.
+
+        Raises:
+            ValueError:
+                If a port is supplied but is not a valid integer.
+        """
         return parse_ethernet_address(address)
 
     def disconnect_instrument(self) -> None:
