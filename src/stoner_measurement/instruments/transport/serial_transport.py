@@ -200,7 +200,7 @@ class SerialTransport(BaseTransport):
             buffer.extend(chunk)
             if terminator and buffer.endswith(terminator):
                 return bytes(buffer)
-            if terminator is None:
+            if terminator is None and len(buffer) >= frame_limit:
                 return bytes(buffer)
 
         if not buffer:
