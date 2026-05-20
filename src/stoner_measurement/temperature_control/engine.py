@@ -232,7 +232,20 @@ class TemperatureControllerEngine(QObject):
         self.connect_instrument(driver)
 
     def _resolve_driver_class(self, driver_name: str) -> type[TemperatureController]:
-        """Resolve a temperature-controller driver class by name."""
+        """Resolve a temperature-controller driver class by name.
+
+        Args:
+            driver_name (str):
+                Registered driver name.
+
+        Returns:
+            (type[TemperatureController]):
+                Resolved driver class.
+
+        Raises:
+            ValueError:
+                If no driver is registered with the requested name.
+        """
         manager = InstrumentDriverManager()
         manager.discover()
         driver_cls = manager.get(driver_name)
@@ -241,7 +254,22 @@ class TemperatureControllerEngine(QObject):
         return driver_cls
 
     def _build_transport(self, transport_name: str, address: str) -> BaseTransport:
-        """Instantiate a transport from a transport type and address string."""
+        """Instantiate a transport from a transport type and address string.
+
+        Args:
+            transport_name (str):
+                Transport type name.
+            address (str):
+                Transport address string.
+
+        Returns:
+            (BaseTransport):
+                Instantiated transport object.
+
+        Raises:
+            ValueError:
+                If the transport name is unsupported.
+        """
         kind = transport_name.strip().lower()
         if kind == "serial":
             port, baud = self._parse_serial_address(address)
@@ -257,7 +285,16 @@ class TemperatureControllerEngine(QObject):
         raise ValueError(f"Unsupported transport type: {transport_name!r}")
 
     def _build_protocol(self, driver_name: str) -> BaseProtocol:
-        """Instantiate the default protocol for a driver name."""
+        """Instantiate the default protocol for a driver name.
+
+        Args:
+            driver_name (str):
+                Registered driver name.
+
+        Returns:
+            (BaseProtocol):
+                Protocol instance selected for the driver family.
+        """
         name = driver_name.lower()
         if "oxford" in name or "itc" in name or "mercury" in name:
             return OxfordProtocol()
@@ -271,7 +308,8 @@ class TemperatureControllerEngine(QObject):
 
         Args:
             address (str):
-                Serial address string.
+                Serial address string (for example
+                ``"port=/dev/ttyUSB0;baud=9600"``).
 
         Returns:
             (tuple[str, int]):
@@ -298,7 +336,7 @@ class TemperatureControllerEngine(QObject):
 
         Args:
             address (str):
-                Ethernet address string.
+                Ethernet address string (for example ``"192.168.0.1:5025"``).
 
         Returns:
             (tuple[str, int]):
