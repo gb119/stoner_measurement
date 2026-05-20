@@ -313,7 +313,10 @@ class TestEngineLifecycle:
 
         engine = TemperatureControllerEngine()
         driver_cls = _make_fake_tc().__class__
-        engine.connect_driver(driver_cls, NullTransport(), LakeshoreProtocol())
+        engine._resolve_driver_class = lambda _name: driver_cls
+        engine._build_transport = lambda _transport, _address: NullTransport()
+        engine._build_protocol = lambda _driver: LakeshoreProtocol()
+        engine.connect_driver("FakeDriver", "Null", "")
         assert engine.connected_driver is not None
         assert isinstance(engine.connected_driver, driver_cls)
         engine.disconnect_instrument()
@@ -321,17 +324,67 @@ class TestEngineLifecycle:
         engine.shutdown()
 
     def test_connect_driver_propagates_construction_errors(self, qapp):
-        from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
-        from stoner_measurement.instruments.transport import NullTransport
-
         class _BrokenDriver:
             def __init__(self, transport, protocol):
                 raise RuntimeError("boom")
 
         engine = TemperatureControllerEngine()
+        engine._resolve_driver_class = lambda _name: _BrokenDriver
+        engine._build_transport = lambda _transport, _address: object()
+        engine._build_protocol = lambda _driver: object()
         with pytest.raises(RuntimeError, match="boom"):
-            engine.connect_driver(_BrokenDriver, NullTransport(), LakeshoreProtocol())
+            engine.connect_driver("BrokenDriver", "Null", "")
         assert engine.connected_driver is None
+        engine.shutdown()
+
+    def test_connect_driver_unknown_driver_name_raises(self, qapp):
+        engine = TemperatureControllerEngine()
+        with pytest.raises(ValueError, match="Unknown temperature driver"):
+            engine.connect_driver("NotADriver", "Null", "")
+        engine.shutdown()
+
+    def test_connect_driver_unsupported_transport_raises(self, qapp):
+        from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
+
+        engine = TemperatureControllerEngine()
+        driver_cls = _make_fake_tc().__class__
+        engine._resolve_driver_class = lambda _name: driver_cls
+        engine._build_protocol = lambda _driver: LakeshoreProtocol()
+        with pytest.raises(ValueError, match="Unsupported transport type"):
+            engine.connect_driver("FakeDriver", "InvalidTransport", "")
+        engine.shutdown()
+
+    def test_resolve_driver_class_rejects_non_temperature_driver(self, monkeypatch, qapp):
+        from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
+
+        monkeypatch.setattr(InstrumentDriverManager, "discover", lambda self: None)
+        monkeypatch.setattr(InstrumentDriverManager, "get", lambda self, _name: object)
+
+        engine = TemperatureControllerEngine()
+        with pytest.raises(ValueError, match="not a temperature-controller driver"):
+            engine._resolve_driver_class("object")
+        engine.shutdown()
+
+    def test_parse_serial_address_invalid_baud_message(self, qapp):
+        engine = TemperatureControllerEngine()
+        with pytest.raises(ValueError, match="Invalid serial baud in address"):
+            engine._parse_serial_address("port=/dev/ttyUSB2;baud=fast")
+        engine.shutdown()
+
+    def test_parse_ethernet_address_missing_host_uses_default(self, qapp):
+        engine = TemperatureControllerEngine()
+        assert engine._parse_ethernet_address(":4000") == ("192.168.0.1", 4000)
+        engine.shutdown()
+
+    def test_parse_ethernet_address_port_only_uses_default_host(self, qapp):
+        engine = TemperatureControllerEngine()
+        assert engine._parse_ethernet_address("4000") == ("192.168.0.1", 4000)
+        engine.shutdown()
+
+    def test_parse_ethernet_address_invalid_port_message(self, qapp):
+        engine = TemperatureControllerEngine()
+        with pytest.raises(ValueError, match="Invalid Ethernet port in address"):
+            engine._parse_ethernet_address("10.0.0.1:not-a-port")
         engine.shutdown()
 
 
