@@ -18,7 +18,7 @@ References:
 from __future__ import annotations
 
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.protocol.base import BaseProtocol
+from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE, BaseProtocol
 
 #: Terminator appended to every outgoing Oxford message.
 OXFORD_TERMINATOR = b"\r"
@@ -69,15 +69,34 @@ class OxfordProtocol(BaseProtocol):
         """
         return True
 
-    def __init__(self, terminator: bytes = OXFORD_TERMINATOR) -> None:
+    def __init__(
+        self,
+        terminator: bytes = OXFORD_TERMINATOR,
+        *,
+        max_frame_size: int = DEFAULT_MAX_FRAME_SIZE,
+    ) -> None:
         """Initialise the Oxford Instruments protocol.
 
         Keyword Parameters:
             terminator (bytes):
                 Byte sequence appended to every outgoing message.
                 Defaults to ``b"\\r"``.
+            max_frame_size (int):
+                Maximum number of response bytes expected in one frame.
+                Defaults to ``4096``.
         """
         self.terminator = terminator
+        self._max_frame_size = max_frame_size
+
+    @property
+    def max_frame_size(self) -> int:
+        """Maximum response-frame size expected for one Oxford reply.
+
+        Returns:
+            (int):
+                Maximum number of bytes to read for one Oxford response.
+        """
+        return self._max_frame_size
 
     def format_command(self, command: str) -> bytes:
         """Format an Oxford Instruments command for transmission.

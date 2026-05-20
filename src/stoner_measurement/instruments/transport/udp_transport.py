@@ -103,12 +103,13 @@ class UdpTransport(BaseTransport):
             raise ConnectionError("UDP transport is not open.")
         self._socket.send(data)
 
-    def read(self, num_bytes: int = 4096) -> bytes:
+    def read(self, num_bytes: int | None = None) -> bytes:
         """Receive up to *num_bytes* from the instrument.
 
         Args:
-            num_bytes (int):
-                Maximum number of bytes to read per datagram.  Defaults to ``4096``.
+            num_bytes (int | None):
+                Optional maximum number of bytes to read per datagram.
+                When ``None``, the protocol-defined frame-size limit is used.
 
         Returns:
             (bytes):
@@ -122,8 +123,9 @@ class UdpTransport(BaseTransport):
         """
         if self._socket is None:
             raise ConnectionError("UDP transport is not open.")
+        frame_limit = self._resolve_max_frame_size(num_bytes)
         try:
-            return self._socket.recv(num_bytes)
+            return self._socket.recv(frame_limit)
         except TimeoutError as exc:
             raise TimeoutError(f"No data received from {self.host}:{self.port} within {self._timeout}s.") from exc
 

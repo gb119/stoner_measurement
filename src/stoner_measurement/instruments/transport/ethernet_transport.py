@@ -49,6 +49,7 @@ class EthernetTransport(BaseTransport):
         self.host = host
         self.port = port
         self._socket: socket.socket | None = None
+        self._pending_read_data = b""
 
     def open(self) -> None:
         """Connect to the instrument over TCP.
@@ -90,12 +91,13 @@ class EthernetTransport(BaseTransport):
             raise ConnectionError("Ethernet transport is not open.")
         self._socket.sendall(data)
 
-    def read(self, num_bytes: int = 4096) -> bytes:
-        """Receive up to *num_bytes* from the instrument.
+    def read(self, num_bytes: int | None = None) -> bytes:
+        """Receive one response frame from the instrument.
 
         Args:
-            num_bytes (int):
-                Maximum number of bytes to read.  Defaults to ``4096``.
+            num_bytes (int | None):
+                Optional maximum frame size for this read.  When ``None``,
+                the protocol-defined frame-size limit is used.
 
         Returns:
             (bytes):
@@ -109,13 +111,49 @@ class EthernetTransport(BaseTransport):
         """
         if self._socket is None:
             raise ConnectionError("Ethernet transport is not open.")
+        frame_limit = self._resolve_max_frame_size(num_bytes)
+        terminator = self._read_terminator
+        buffer = bytearray()
+
+        if self._pending_read_data:
+            buffer.extend(self._pending_read_data)
+            self._pending_read_data = b""
+            if terminator:
+                marker = bytes(buffer).find(terminator)
+                if marker != -1:
+                    end = marker + len(terminator)
+                    self._pending_read_data = bytes(buffer[end:])
+                    return bytes(buffer[:end])
+            elif len(buffer) >= frame_limit:
+                self._pending_read_data = bytes(buffer[frame_limit:])
+                return bytes(buffer[:frame_limit])
+            elif buffer:
+                return bytes(buffer)
+
         try:
-            data = self._socket.recv(num_bytes)
+            while len(buffer) < frame_limit:
+                chunk = self._socket.recv(frame_limit - len(buffer))
+                if not chunk:
+                    break
+                buffer.extend(chunk)
+                if terminator:
+                    marker = bytes(buffer).find(terminator)
+                    if marker != -1:
+                        end = marker + len(terminator)
+                        self._pending_read_data = bytes(buffer[end:])
+                        return bytes(buffer[:end])
+                else:
+                    return bytes(buffer)
         except TimeoutError as exc:
             raise TimeoutError(f"No data received from {self.host}:{self.port} within {self._timeout}s.") from exc
-        if not data:
+        if not buffer:
             raise TimeoutError(f"Connection closed by {self.host}:{self.port}.")
-        return data
+        if terminator and not bytes(buffer).endswith(terminator):
+            raise TimeoutError(
+                f"Incomplete response frame from {self.host}:{self.port}: "
+                f"terminator {terminator!r} not received within {frame_limit} bytes."
+            )
+        return bytes(buffer)
 
     def flush(self) -> None:
         """Drain any unread data from the socket receive buffer.
@@ -125,6 +163,7 @@ class EthernetTransport(BaseTransport):
         """
         if self._socket is None:
             return
+        self._pending_read_data = b""
         self._socket.setblocking(False)
         try:
             while True:

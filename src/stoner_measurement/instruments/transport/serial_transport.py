@@ -165,12 +165,13 @@ class SerialTransport(BaseTransport):
             raise ConnectionError("Serial port is not open.")
         self._serial.write(data)
 
-    def read(self, num_bytes: int = 4096) -> bytes:
-        """Read up to *num_bytes* from the serial port.
+    def read(self, num_bytes: int | None = None) -> bytes:
+        """Read one response frame from the serial port.
 
         Args:
-            num_bytes (int):
-                Maximum number of bytes to read.  Defaults to ``4096``.
+            num_bytes (int | None):
+                Optional maximum frame size for this read.  When ``None``,
+                the protocol-defined frame-size limit is used.
 
         Returns:
             (bytes):
@@ -184,10 +185,32 @@ class SerialTransport(BaseTransport):
         """
         if self._serial is None or not self._serial.is_open:
             raise ConnectionError("Serial port is not open.")
-        data = self._serial.read(num_bytes)
-        if not data:
+        frame_limit = self._resolve_max_frame_size(num_bytes)
+        terminator = self._read_terminator
+        buffer = bytearray()
+
+        while len(buffer) < frame_limit:
+            remaining = frame_limit - len(buffer)
+            if terminator:
+                chunk = self._serial.read_until(terminator, size=remaining)
+            else:
+                chunk = self._serial.read(remaining)
+            if not chunk:
+                break
+            buffer.extend(chunk)
+            if terminator and buffer.endswith(terminator):
+                return bytes(buffer)
+            if terminator is None:
+                return bytes(buffer)
+
+        if not buffer:
             raise TimeoutError(f"No data received from {self.port!r} within {self._timeout}s.")
-        return data
+        if terminator and not buffer.endswith(terminator):
+            raise TimeoutError(
+                f"Incomplete response frame from {self.port!r}: "
+                f"terminator {terminator!r} not received within {frame_limit} bytes."
+            )
+        return bytes(buffer)
 
     def read_until(self, terminator: bytes = b"\n") -> bytes:
         """Read from the serial port until *terminator* is received.
