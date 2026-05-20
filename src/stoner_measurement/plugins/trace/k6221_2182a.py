@@ -28,6 +28,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyvisa
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -92,6 +93,12 @@ _2182A_RESPONSE_TERMINATOR: str = "\n"
 
 #: Maximum number of ``SYST:COMM:SER:ENT?`` chunks to read for one 2182A response.
 _MAX_SERIAL_ENTRY_CHUNKS: int = 64
+
+_CLEANUP_EXCEPTIONS: tuple[type[Exception], ...] = (
+    OSError,
+    RuntimeError,
+    pyvisa.Error,
+)
 
 
 class ConnectionMode(enum.Enum):
@@ -630,7 +637,7 @@ class Keithley6221_2182APlugin(TracePlugin):
                 if transport is not None:
                     try:
                         transport.close()
-                    except Exception:
+                    except _CLEANUP_EXCEPTIONS:
                         pass
             self._k6221 = None
             self._k2182a = None
@@ -844,7 +851,7 @@ class Keithley6221_2182APlugin(TracePlugin):
             try:
                 self._k6221.write("SOUR:SWE:ABOR")
                 self._k6221.write("OUTP:STAT 0")
-            except Exception:
+            except _CLEANUP_EXCEPTIONS:
                 pass
             raise
 
@@ -870,11 +877,11 @@ class Keithley6221_2182APlugin(TracePlugin):
                 try:
                     if instr is self._k6221:
                         instr.write("OUTP:STAT 0")
-                except Exception:
+                except _CLEANUP_EXCEPTIONS:
                     pass
                 try:
                     instr.disconnect()
-                except Exception:
+                except _CLEANUP_EXCEPTIONS:
                     pass
         self._k6221 = None
         self._k2182a = None

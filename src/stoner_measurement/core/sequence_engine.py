@@ -1635,7 +1635,7 @@ class SequenceEngine(QObject):
             return black.format_str(code, mode=black.Mode(line_length=199))
         except ImportError:
             pass
-        except Exception:
+        except ValueError:
             logging.getLogger(SEQUENCE_LOGGER_NAME).warning(
                 "black formatting failed; using unformatted code", exc_info=True
             )

@@ -919,6 +919,6 @@ class MagnetControlPanel(QWidget):
                     self._aux_plot.removeItem(curve)
                 else:
                     self._field_plot.removeItem(curve)
-            except Exception:
+            except RuntimeError:
                 pass
         self._chart_curves.clear()

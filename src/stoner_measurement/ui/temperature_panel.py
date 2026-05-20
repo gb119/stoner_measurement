@@ -1110,7 +1110,7 @@ class TemperatureControlPanel(QWidget):
                     self._aux_plot.removeItem(curve)
                 else:
                     self._temp_plot.removeItem(curve)
-            except Exception:
+            except RuntimeError:
                 pass
         self._chart_curves.clear()
 
@@ -1379,7 +1379,7 @@ class _ZoneTableWidget(QWidget):
                 )
                 for item in data
             ]
-        except Exception as exc:
+        except (OSError, KeyError, TypeError, ValueError) as exc:
             QMessageBox.critical(self, "Load Zone Table", f"Failed to load file:\n{exc}")
             return
         self._populate_table(entries)
@@ -1408,7 +1408,7 @@ class _ZoneTableWidget(QWidget):
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, indent=2)
-        except Exception as exc:
+        except OSError as exc:
             QMessageBox.critical(self, "Save Zone Table", f"Failed to save file:\n{exc}")
 
 
