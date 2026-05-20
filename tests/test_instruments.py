@@ -236,6 +236,34 @@ class TestBaseInstrument:
         k = Keithley2400(transport=t)
         assert k.read() == "+1.0"
 
+    def test_read_uses_transport_read_not_read_until(self):
+        class _ReadOnlyTransport(NullTransport):
+            def read(self, num_bytes: int = 4096) -> bytes:
+                return b"ACME,MODEL,SN,FW\r\n"
+
+            def read_until(self, terminator: bytes = b"\n") -> bytes:
+                raise AssertionError("read_until should not be called")
+
+        t = _ReadOnlyTransport()
+        t.open()
+        instr = BaseInstrument(t, ScpiProtocol(terminator=b"\r\n"))
+        assert instr.read() == "ACME,MODEL,SN,FW"
+
+    def test_constructor_binds_protocol_to_transport(self):
+        class _ProtocolAwareTransport(NullTransport):
+            def __init__(self):
+                super().__init__()
+                self.bound_protocol = None
+
+            def set_protocol(self, protocol: object) -> None:
+                super().set_protocol(protocol)
+                self.bound_protocol = protocol
+
+        transport = _ProtocolAwareTransport()
+        protocol = LakeshoreProtocol()
+        BaseInstrument(transport, protocol)
+        assert transport.bound_protocol is protocol
+
     def test_identify(self):
         t = _null(responses=[b"KEITHLEY,2400,SN,v1\n"])
         k = Keithley2400(transport=t)
@@ -2623,6 +2651,95 @@ class TestFromUriVisaResourceStrings:
         assert isinstance(t, EthernetTransport)
         assert t.host == "192.168.1.100"
         assert t.port == 5025
+
+
+class TestGpibProtocolTermination:
+    def test_gpib_open_applies_protocol_terminator_and_eoi(self, monkeypatch):
+        pytest.importorskip("pyvisa")
+        import pyvisa
+
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        class _FakeResource:
+            def __init__(self):
+                self.timeout = None
+                self.read_termination = None
+                self.send_end = None
+
+            def close(self):
+                pass
+
+            def read_stb(self):
+                return 0x00
+
+            def write_raw(self, _data):
+                pass
+
+            def read_raw(self, _num_bytes=4096):
+                return b""
+
+        class _FakeResourceManager:
+            def __init__(self, resource):
+                self._resource = resource
+
+            def open_resource(self, _resource_string):
+                return self._resource
+
+            def close(self):
+                pass
+
+        resource = _FakeResource()
+        monkeypatch.setattr(pyvisa, "ResourceManager", lambda: _FakeResourceManager(resource))
+
+        transport = GpibTransport(address=22)
+        transport.set_protocol(LakeshoreProtocol())
+        transport.open()
+        assert resource.read_termination == "\r\n"
+        assert resource.send_end is True
+        transport.close()
+
+    def test_gpib_protocol_set_after_open_updates_read_termination(self, monkeypatch):
+        pytest.importorskip("pyvisa")
+        import pyvisa
+
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        class _FakeResource:
+            def __init__(self):
+                self.timeout = None
+                self.read_termination = None
+                self.send_end = None
+
+            def close(self):
+                pass
+
+            def read_stb(self):
+                return 0x00
+
+            def write_raw(self, _data):
+                pass
+
+            def read_raw(self, _num_bytes=4096):
+                return b""
+
+        class _FakeResourceManager:
+            def __init__(self, resource):
+                self._resource = resource
+
+            def open_resource(self, _resource_string):
+                return self._resource
+
+            def close(self):
+                pass
+
+        resource = _FakeResource()
+        monkeypatch.setattr(pyvisa, "ResourceManager", lambda: _FakeResourceManager(resource))
+
+        transport = GpibTransport(address=22)
+        transport.open()
+        transport.set_protocol(OxfordProtocol())
+        assert resource.read_termination == "\r"
+        transport.close()
 
     def test_asrl_unix_device(self):
         serial = pytest.importorskip("serial")  # noqa: F841

@@ -98,6 +98,7 @@ class BaseInstrument(ABC):
         """
         self.transport = transport
         self.protocol = protocol
+        self.transport.set_protocol(protocol)
         self.auto_check_errors = auto_check_errors
         self._comms_logger = logging.getLogger(
             f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}"
@@ -195,8 +196,8 @@ class BaseInstrument(ABC):
     def read(self) -> str:
         """Read a response from the instrument.
 
-        Reads until the protocol's terminator character is received and
-        parses the raw bytes using :attr:`protocol`.
+        Reads raw bytes from the transport and parses them using
+        :attr:`protocol`.
 
         Returns:
             (str):
@@ -219,8 +220,7 @@ class BaseInstrument(ABC):
             '+1.234'
             >>> instr.disconnect()
         """
-        terminator = getattr(self.protocol, "terminator", b"\n")
-        raw = self.transport.read_until(terminator)
+        raw = self.transport.read()
         self._log_comms_traffic("RX", raw)
         return self.protocol.parse_response(raw)
 
@@ -358,8 +358,7 @@ class BaseInstrument(ABC):
         payload = self.protocol.format_query(error_query)
         self.transport.write(payload)
         self._log_comms_traffic("TX", payload)
-        terminator = getattr(self.protocol, "terminator", b"\n")
-        raw = self.transport.read_until(terminator)
+        raw = self.transport.read()
         self._log_comms_traffic("RX", raw)
         return self.protocol.parse_response(raw)
 
