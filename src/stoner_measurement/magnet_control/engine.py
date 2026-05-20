@@ -355,6 +355,10 @@ class MagnetControllerEngine(QObject):
         Returns:
             (tuple[str, int]):
                 Parsed ``(host, port)`` tuple.
+
+        Raises:
+            ValueError:
+                If a port is supplied but is not a valid integer.
         """
         host = "192.168.0.1"
         port = 5025
