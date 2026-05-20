@@ -119,7 +119,7 @@ class EthernetTransport(BaseTransport):
             buffer.extend(self._pending_read_data)
             self._pending_read_data = b""
             if terminator:
-                marker = bytes(buffer).find(terminator)
+                marker = buffer.find(terminator)
                 if marker != -1:
                     end = marker + len(terminator)
                     self._pending_read_data = bytes(buffer[end:])
@@ -135,7 +135,7 @@ class EthernetTransport(BaseTransport):
                     break
                 buffer.extend(chunk)
                 if terminator:
-                    marker = bytes(buffer).find(terminator)
+                    marker = buffer.find(terminator)
                     if marker != -1:
                         end = marker + len(terminator)
                         self._pending_read_data = bytes(buffer[end:])
@@ -144,7 +144,7 @@ class EthernetTransport(BaseTransport):
             raise TimeoutError(f"No data received from {self.host}:{self.port} within {self._timeout}s.") from exc
         if not buffer:
             raise TimeoutError(f"Connection closed by {self.host}:{self.port}.")
-        if terminator and not bytes(buffer).endswith(terminator):
+        if terminator and not buffer.endswith(terminator):
             raise TimeoutError(
                 f"Incomplete response frame from {self.host}:{self.port}: "
                 f"terminator {terminator!r} not received within {frame_limit} bytes."

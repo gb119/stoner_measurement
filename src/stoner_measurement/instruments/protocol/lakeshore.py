@@ -83,7 +83,7 @@ class LakeshoreProtocol(BaseProtocol):
                 Defaults to ``b"\\r\\n"``.
             max_frame_size (int):
                 Maximum number of response bytes expected in one frame.
-                Defaults to ``4096``.
+                Defaults to ``DEFAULT_MAX_FRAME_SIZE`` (``4096``).
         """
         self.terminator = terminator
         self._max_frame_size = max_frame_size
