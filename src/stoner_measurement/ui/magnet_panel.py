@@ -42,6 +42,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.instruments.addressing import (
+    DEFAULT_ETHERNET_HOST,
+    DEFAULT_ETHERNET_PORT,
+)
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.magnet_controller import MagnetController
 from stoner_measurement.magnet_control.engine import MagnetControllerEngine
@@ -345,10 +349,10 @@ class MagnetControlPanel(QWidget):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(0, 0, 0, 0)
-        self._eth_host_edit = _line_edit("192.168.0.1")
+        self._eth_host_edit = _line_edit(DEFAULT_ETHERNET_HOST)
         self._eth_port_spin = QSpinBox()
         self._eth_port_spin.setRange(1, 65535)
-        self._eth_port_spin.setValue(5025)
+        self._eth_port_spin.setValue(DEFAULT_ETHERNET_PORT)
         form.addRow("Host:", self._eth_host_edit)
         form.addRow("Port:", self._eth_port_spin)
         return w
