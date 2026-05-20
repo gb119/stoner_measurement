@@ -630,7 +630,7 @@ class Keithley6221_2182APlugin(TracePlugin):
                 if transport is not None:
                     try:
                         transport.close()
-                    except Exception:
+                    except (OSError, RuntimeError):
                         pass
             self._k6221 = None
             self._k2182a = None
@@ -844,7 +844,7 @@ class Keithley6221_2182APlugin(TracePlugin):
             try:
                 self._k6221.write("SOUR:SWE:ABOR")
                 self._k6221.write("OUTP:STAT 0")
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
             raise
 
@@ -870,11 +870,11 @@ class Keithley6221_2182APlugin(TracePlugin):
                 try:
                     if instr is self._k6221:
                         instr.write("OUTP:STAT 0")
-                except Exception:
+                except (OSError, RuntimeError):
                     pass
                 try:
                     instr.disconnect()
-                except Exception:
+                except (OSError, RuntimeError):
                     pass
         self._k6221 = None
         self._k2182a = None

@@ -141,9 +141,8 @@ def list_visa_resources(
         rm.close()
     except ImportError:
         return []
-    except Exception:  # noqa: BLE001 – pyvisa.Error and OSError from missing VISA library
+    except (pyvisa.Error, OSError):
         return []
-
     result: list[str] = []
     interface_type_ints = None if resource_filter is None else {int(t) for t in resource_filter}
     for resource_string, info in resources_info.items():

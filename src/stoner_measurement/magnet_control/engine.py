@@ -742,7 +742,7 @@ def _qapp():
         from PyQt6.QtWidgets import QApplication
 
         return QApplication.instance()
-    except Exception:
+    except (ImportError, RuntimeError):
         return None
 
 
