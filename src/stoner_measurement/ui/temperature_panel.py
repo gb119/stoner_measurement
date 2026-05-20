@@ -902,7 +902,7 @@ class TemperatureControlPanel(QWidget):
             resource = self._gpib_resource_combo.current_resource() or "GPIB0::2::INSTR"
             return "GPIB", resource
         if index == 2:  # Ethernet
-            host = self._eth_host_edit.text().strip()
+            host = self._eth_host_edit.text().strip() or "localhost"
             port = self._eth_port_spin.value()
             return "Ethernet", f"{host}:{port}"
         return "Null", ""
