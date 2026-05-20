@@ -30,6 +30,12 @@ def parse_serial_address(address: str) -> tuple[str, int]:
     Raises:
         ValueError:
             If a baud value is supplied but cannot be parsed as an integer.
+
+    Examples:
+        >>> parse_serial_address("")
+        ('/dev/ttyUSB0', 9600)
+        >>> parse_serial_address("port=/dev/ttyUSB1;baud=19200")
+        ('/dev/ttyUSB1', 19200)
     """
     port = DEFAULT_SERIAL_PORT
     baud = DEFAULT_SERIAL_BAUD
@@ -70,6 +76,14 @@ def parse_ethernet_address(address: str) -> tuple[str, int]:
     Raises:
         ValueError:
             If a port is supplied but is not a valid integer.
+
+    Examples:
+        >>> parse_ethernet_address("")
+        ('localhost', 5025)
+        >>> parse_ethernet_address(":4000")
+        ('localhost', 4000)
+        >>> parse_ethernet_address("labpc")
+        ('labpc', 5025)
     """
     host = DEFAULT_ETHERNET_HOST
     port = DEFAULT_ETHERNET_PORT
