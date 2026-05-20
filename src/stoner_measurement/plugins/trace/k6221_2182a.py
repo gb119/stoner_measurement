@@ -517,9 +517,9 @@ class Keithley6221_2182APlugin(TracePlugin):
         terminator = getattr(protocol, "terminator", b"\n")
         payload = protocol.format_query("SYST:COMM:SER:ENT?")
         instrument.transport.write(payload)
-        instrument._log_comms_traffic("TX", payload)  # noqa: SLF001
+        instrument._log_comms_traffic("TX", payload)
         raw = instrument.transport.read_until(terminator)
-        instrument._log_comms_traffic("RX", raw)  # noqa: SLF001
+        instrument._log_comms_traffic("RX", raw)
         if raw.endswith(terminator):
             raw = raw[: -len(terminator)]
         return raw.decode("utf-8", errors="replace")
