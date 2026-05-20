@@ -140,8 +140,6 @@ class EthernetTransport(BaseTransport):
                         end = marker + len(terminator)
                         self._pending_read_data = bytes(buffer[end:])
                         return bytes(buffer[:end])
-                elif len(buffer) >= frame_limit:
-                    return bytes(buffer)
         except TimeoutError as exc:
             raise TimeoutError(f"No data received from {self.host}:{self.port} within {self._timeout}s.") from exc
         if not buffer:
