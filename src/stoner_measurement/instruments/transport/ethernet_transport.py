@@ -58,6 +58,7 @@ class EthernetTransport(BaseTransport):
             ConnectionError:
                 If the TCP connection cannot be established.
         """
+        self._pending_read_data = b""
         try:
             self._socket = socket.create_connection((self.host, self.port), timeout=self._timeout)
             self._socket.settimeout(self._timeout)
@@ -74,6 +75,7 @@ class EthernetTransport(BaseTransport):
                 pass
             self._socket.close()
             self._socket = None
+        self._pending_read_data = b""
         self._is_open = False
 
     def write(self, data: bytes) -> None:

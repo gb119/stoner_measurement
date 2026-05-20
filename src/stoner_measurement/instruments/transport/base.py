@@ -11,12 +11,13 @@ import re
 import urllib.parse
 from abc import ABC, abstractmethod
 
+from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE
+
 # Matches the start of a VISA resource string and captures the prefix for
 # later classification.  ASRL resources may have a non-numeric path component
 # (e.g. "ASRL/dev/ttyUSB0::INSTR"), so any non-colon characters are allowed
 # after the prefix rather than digits only.
 _VISA_RE = re.compile(r"^(GPIB|TCPIP|ASRL)[^:]*::", re.IGNORECASE)
-_DEFAULT_MAX_FRAME_SIZE = 4096
 
 
 class BaseTransport(ABC):
@@ -55,7 +56,7 @@ class BaseTransport(ABC):
         self._timeout: float = timeout
         self._is_open: bool = False
         self._protocol: object | None = None
-        self._max_frame_size: int = _DEFAULT_MAX_FRAME_SIZE
+        self._max_frame_size: int = DEFAULT_MAX_FRAME_SIZE
         self._read_terminator: bytes | None = None
 
     @property
@@ -201,13 +202,13 @@ class BaseTransport(ABC):
                 Protocol instance used by the owning instrument.
         """
         self._protocol = protocol
-        frame_size = getattr(protocol, "max_frame_size", _DEFAULT_MAX_FRAME_SIZE)
+        frame_size = getattr(protocol, "max_frame_size", DEFAULT_MAX_FRAME_SIZE)
         try:
             frame_size = int(frame_size)
         except (TypeError, ValueError):
-            frame_size = _DEFAULT_MAX_FRAME_SIZE
+            frame_size = DEFAULT_MAX_FRAME_SIZE
         if frame_size <= 0:
-            frame_size = _DEFAULT_MAX_FRAME_SIZE
+            frame_size = DEFAULT_MAX_FRAME_SIZE
         self._max_frame_size = frame_size
 
         terminator = getattr(protocol, "terminator", None)
