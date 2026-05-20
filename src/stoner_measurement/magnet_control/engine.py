@@ -20,6 +20,14 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSlot
 
+from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
+from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
+from stoner_measurement.instruments.transport import (
+    EthernetTransport,
+    GpibTransport,
+    NullTransport,
+    SerialTransport,
+)
 from stoner_measurement.magnet_control.pubsub import MagnetPublisher
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
@@ -30,8 +38,6 @@ from stoner_measurement.magnet_control.types import (
 
 if TYPE_CHECKING:
     from stoner_measurement.instruments.magnet_controller import MagnetController, MagnetLimits
-    from stoner_measurement.instruments.protocol.base import BaseProtocol
-    from stoner_measurement.instruments.transport.base import BaseTransport
 
 logger = logging.getLogger(__name__)
 
@@ -193,35 +199,96 @@ class MagnetControllerEngine(QObject):
         self._timer.start()
         logger.info("MagnetControllerEngine: connected to %s", type(driver).__name__)
 
-    def connect_driver(self, driver_cls: type[MagnetController], transport: BaseTransport, protocol: BaseProtocol) -> None:
-        """Instantiate a magnet driver and connect it.
+    def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
+        """Instantiate and connect a magnet controller from identifiers.
 
         Args:
-            driver_cls (type[MagnetController]):
-                Concrete driver class to instantiate.
-            transport (BaseTransport):
-                Transport instance to pass to the driver constructor.
-            protocol (BaseProtocol):
-                Protocol instance to pass to the driver constructor.
+            driver_name (str):
+                Registered instrument driver name.
+            transport_name (str):
+                Transport type name (``"Serial"``, ``"GPIB"``,
+                ``"Ethernet"``, or ``"Null"``).
+            address (str):
+                Transport address string. Serial format is
+                ``"port=<device>;baud=<rate>"``.
 
         Raises:
             RuntimeError:
                 If the engine has been shut down.
             Exception:
-                Any exception raised by driver construction or connection.
+                Any exception raised while resolving or connecting the driver.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.instruments.oxford.ips120 import OxfordIPS120
-            >>> from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
-            >>> from stoner_measurement.instruments.transport import NullTransport
             >>> engine = MagnetControllerEngine()
-            >>> engine.connect_driver(OxfordIPS120, NullTransport(), OxfordProtocol())  # doctest: +SKIP
+            >>> engine.connect_driver("OxfordIPS120", "Null", "")  # doctest: +SKIP
             >>> engine.shutdown()
         """
+        driver_cls = self._resolve_driver_class(driver_name)
+        transport = self._build_transport(transport_name, address)
+        protocol = self._build_protocol(driver_name)
         driver = driver_cls(transport=transport, protocol=protocol)
         self.connect_instrument(driver)
+
+    def _resolve_driver_class(self, driver_name: str) -> type[MagnetController]:
+        """Resolve a magnet-controller driver class by name."""
+        manager = InstrumentDriverManager()
+        manager.discover()
+        driver_cls = manager.get(driver_name)
+        if driver_cls is None:
+            raise ValueError(f"Unknown magnet driver: {driver_name!r}")
+        return driver_cls
+
+    def _build_transport(self, transport_name: str, address: str):
+        """Instantiate a transport from a transport type and address string."""
+        kind = transport_name.strip().lower()
+        if kind == "serial":
+            port, baud = self._parse_serial_address(address)
+            return SerialTransport(port=port, baud_rate=baud)
+        if kind == "gpib":
+            resource = address.strip() or "GPIB0::2::INSTR"
+            return GpibTransport.from_resource_string(resource)
+        if kind == "ethernet":
+            host, port = self._parse_ethernet_address(address)
+            return EthernetTransport(host=host, port=port)
+        if kind in {"null", "null (test)"}:
+            return NullTransport()
+        raise ValueError(f"Unsupported transport type: {transport_name!r}")
+
+    def _build_protocol(self, driver_name: str):
+        """Instantiate the default protocol for a driver name."""
+        name = driver_name.lower()
+        if "oxford" in name or "ips" in name:
+            return OxfordProtocol()
+        return LakeshoreProtocol()
+
+    def _parse_serial_address(self, address: str) -> tuple[str, int]:
+        """Parse ``port=<device>;baud=<rate>`` serial address strings."""
+        port = "/dev/ttyUSB0"
+        baud = 9600
+        for part in (p.strip() for p in address.split(";") if p.strip()):
+            key, sep, value = part.partition("=")
+            if sep != "=":
+                continue
+            key = key.strip().lower()
+            if key == "port" and value.strip():
+                port = value.strip()
+            elif key == "baud":
+                baud = int(value.strip())
+        return port, baud
+
+    def _parse_ethernet_address(self, address: str) -> tuple[str, int]:
+        """Parse ``<host>:<port>`` Ethernet address strings."""
+        host = "192.168.0.1"
+        port = 5025
+        raw = address.strip()
+        if not raw:
+            return host, port
+        parsed_host, sep, parsed_port = raw.rpartition(":")
+        if sep and parsed_host.strip():
+            return parsed_host.strip(), int(parsed_port.strip())
+        return raw, port
 
     def disconnect_instrument(self) -> None:
         """Stop polling and release the driver reference."""

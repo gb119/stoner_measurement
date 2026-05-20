@@ -395,24 +395,28 @@ class TestEngineLifecycle:
         from stoner_measurement.instruments.transport import NullTransport
 
         engine = MagnetControllerEngine()
-        transport = NullTransport(responses=[b"VIPS120-10 3.07\r"])
-        engine.connect_driver(OxfordIPS120, transport, OxfordProtocol())
+        engine._resolve_driver_class = lambda _name: OxfordIPS120
+        engine._build_transport = (
+            lambda _transport, _address: NullTransport(responses=[b"VIPS120-10 3.07\r"])
+        )
+        engine._build_protocol = lambda _driver: OxfordProtocol()
+        engine.connect_driver("OxfordIPS120", "Null", "")
         assert engine._driver is not None
         assert isinstance(engine._driver, OxfordIPS120)
         engine.disconnect_instrument()
         engine.shutdown()
 
     def test_connect_driver_propagates_construction_errors(self, qapp):
-        from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
-        from stoner_measurement.instruments.transport import NullTransport
-
         class _BrokenDriver:
             def __init__(self, transport, protocol):
                 raise RuntimeError("boom")
 
         engine = MagnetControllerEngine()
+        engine._resolve_driver_class = lambda _name: _BrokenDriver
+        engine._build_transport = lambda _transport, _address: object()
+        engine._build_protocol = lambda _driver: object()
         with pytest.raises(RuntimeError, match="boom"):
-            engine.connect_driver(_BrokenDriver, NullTransport(), OxfordProtocol())
+            engine.connect_driver("BrokenDriver", "Null", "")
         assert engine._driver is None
         engine.shutdown()
 

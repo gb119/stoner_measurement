@@ -313,7 +313,10 @@ class TestEngineLifecycle:
 
         engine = TemperatureControllerEngine()
         driver_cls = _make_fake_tc().__class__
-        engine.connect_driver(driver_cls, NullTransport(), LakeshoreProtocol())
+        engine._resolve_driver_class = lambda _name: driver_cls
+        engine._build_transport = lambda _transport, _address: NullTransport()
+        engine._build_protocol = lambda _driver: LakeshoreProtocol()
+        engine.connect_driver("FakeDriver", "Null", "")
         assert engine.connected_driver is not None
         assert isinstance(engine.connected_driver, driver_cls)
         engine.disconnect_instrument()
@@ -321,16 +324,16 @@ class TestEngineLifecycle:
         engine.shutdown()
 
     def test_connect_driver_propagates_construction_errors(self, qapp):
-        from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
-        from stoner_measurement.instruments.transport import NullTransport
-
         class _BrokenDriver:
             def __init__(self, transport, protocol):
                 raise RuntimeError("boom")
 
         engine = TemperatureControllerEngine()
+        engine._resolve_driver_class = lambda _name: _BrokenDriver
+        engine._build_transport = lambda _transport, _address: object()
+        engine._build_protocol = lambda _driver: object()
         with pytest.raises(RuntimeError, match="boom"):
-            engine.connect_driver(_BrokenDriver, NullTransport(), LakeshoreProtocol())
+            engine.connect_driver("BrokenDriver", "Null", "")
         assert engine.connected_driver is None
         engine.shutdown()
 

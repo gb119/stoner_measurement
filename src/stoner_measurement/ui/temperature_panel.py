@@ -60,12 +60,6 @@ from stoner_measurement.instruments.temperature_controller import (
     TemperatureController,
     ZoneEntry,
 )
-from stoner_measurement.instruments.transport import (
-    EthernetTransport,
-    GpibTransport,
-    NullTransport,
-    SerialTransport,
-)
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
@@ -825,30 +819,20 @@ class TemperatureControlPanel(QWidget):
 
     @pyqtSlot()
     def _on_connect(self) -> None:
-        """Build transport + driver and tell the engine to connect."""
+        """Send selected connection settings to the engine and connect."""
         driver_cls = self._driver_combo.currentData()
         if driver_cls is None:
             return
         transport_index = self._transport_combo.currentIndex()
         self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTING)
-        try:
-            transport = self._build_transport(transport_index)
-        except Exception:
-            logger.exception("Failed to build transport")
-            self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
-            return
 
         try:
-            from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
-            from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
-
-            # Select a default protocol based on driver name heuristics.
-            name = self._driver_combo.currentText().lower()
-            if "oxford" in name or "itc" in name or "mercury" in name:
-                protocol = OxfordProtocol()
-            else:
-                protocol = LakeshoreProtocol()
-            self._engine.connect_driver(driver_cls, transport=transport, protocol=protocol)
+            transport_name, address = self._selected_transport(transport_index)
+            self._engine.connect_driver(
+                driver_name=self._driver_combo.currentText(),
+                transport_name=transport_name,
+                address=address,
+            )
         except Exception:
             logger.exception("Failed to connect temperature controller")
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
@@ -899,29 +883,29 @@ class TemperatureControlPanel(QWidget):
         elif transport_index == 1:
             self._gpib_resource_combo.set_status(status)
 
-    def _build_transport(self, index: int):
-        """Instantiate the selected transport.
+    def _selected_transport(self, index: int) -> tuple[str, str]:
+        """Return selected transport type and address string.
 
         Args:
             index (int):
                 Index of the selected transport in the transport combo box.
 
         Returns:
-            (BaseTransport):
-                The constructed transport instance (not yet opened).
+            (tuple[str, str]):
+                Selected transport name and address.
         """
         if index == 0:  # Serial
             port = self._serial_port_combo.current_resource() or "/dev/ttyUSB0"
             baud = self._serial_baud_combo.currentData()
-            return SerialTransport(port=port, baud_rate=baud)
+            return "Serial", f"port={port};baud={baud}"
         if index == 1:  # GPIB
             resource = self._gpib_resource_combo.current_resource() or "GPIB0::2::INSTR"
-            return GpibTransport.from_resource_string(resource)
+            return "GPIB", resource
         if index == 2:  # Ethernet
             host = self._eth_host_edit.text().strip()
             port = self._eth_port_spin.value()
-            return EthernetTransport(host=host, port=port)
-        return NullTransport()  # Null (test)
+            return "Ethernet", f"{host}:{port}"
+        return "Null", ""
 
     @pyqtSlot()
     def _on_disconnect(self) -> None:
