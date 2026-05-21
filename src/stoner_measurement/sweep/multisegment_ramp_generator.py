@@ -25,6 +25,7 @@ from stoner_measurement.ui.widgets import SISpinBox
 
 _DEFAULT_POLL_SECONDS = 0.05
 _SPINBOX_MAX_ABS = 1e9
+_FLOAT_TOLERANCE = 1e-12
 
 
 class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
@@ -339,7 +340,7 @@ class MultiSegmentRampSweepWidget(QWidget):
                 if low <= target_value <= high:
                     fraction = abs(target_value - current) / segment_distance
                     return elapsed + (fraction * duration)
-            elif abs(target_value - target_value_for_segment) < 1e-12:
+            elif abs(target_value - target_value_for_segment) < _FLOAT_TOLERANCE:
                 return elapsed
             elapsed += duration
             current = target_value_for_segment
