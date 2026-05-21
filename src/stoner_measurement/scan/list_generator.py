@@ -240,6 +240,7 @@ class ListScanWidget(QWidget):
         super().__init__(parent)
         self._generator = generator
         self._updating = False
+        self._highlighted_row = -1
         self._build_ui()
         self._connect_signals()
         self._refresh_plot()
@@ -405,15 +406,20 @@ class ListScanWidget(QWidget):
 
     def _clear_current_row_highlight(self) -> None:
         """Clear current-row highlighting from the table."""
-        for row in range(self._table.rowCount()):
-            self._set_row_style(row, "")
+        if self._highlighted_row >= 0:
+            self._set_row_style(self._highlighted_row, "")
+            self._highlighted_row = -1
 
     def _on_current_point_changed(self, index: int, _value: float) -> None:
         """Highlight the active table row for the current scan point."""
-        self._clear_current_row_highlight()
         if index < 0:
+            self._clear_current_row_highlight()
             return
+        if self._highlighted_row == index:
+            return
+        self._clear_current_row_highlight()
         self._set_row_style(index, _CURRENT_ROW_STYLE)
+        self._highlighted_row = index
 
     def get_generator(self) -> ListScanGenerator:
         """Return the :class:`ListScanGenerator` bound to this widget.

@@ -363,7 +363,8 @@ class TestSweepGenerators:
         ix, value, _stage, _measure = next(gen)
         x, y = widget._current_marker.getData()  # noqa: SLF001
         assert x is not None and y is not None
-        assert x.tolist() == [float(ix)]
+        assert widget._current_marker in widget._preview.getPlotItem().items  # noqa: SLF001
+        assert x.tolist() == [abs(value - gen.start) / abs(gen.segments[0][1])]
         assert y[0] == value
 
     def test_multisegment_estimated_duration_simple(self, qapp):

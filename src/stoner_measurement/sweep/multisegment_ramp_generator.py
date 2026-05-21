@@ -305,6 +305,7 @@ class MultiSegmentRampSweepWidget(QWidget):
 
     def _refresh_preview(self) -> None:
         self._preview.clear()
+        self._preview.addItem(self._current_marker)
         current = float(self._generator.start)
         current_time = 0.0
         for target, rate, measure in self._generator.segments:
@@ -322,12 +323,35 @@ class MultiSegmentRampSweepWidget(QWidget):
         """Clear the current-point marker from the preview."""
         self._current_marker.setData(x=[], y=[])
 
+    def _elapsed_time_for_value(self, value: float) -> float:
+        """Estimate elapsed sweep time for *value* in the current segment plan."""
+        current = float(self._generator.start)
+        elapsed = 0.0
+        target_value = float(value)
+        for target, rate, _measure in self._generator.segments:
+            target_value_for_segment = float(target)
+            rate_magnitude = abs(float(rate))
+            segment_distance = abs(target_value_for_segment - current)
+            duration = segment_distance / rate_magnitude if rate_magnitude > 0.0 else 0.0
+            if segment_distance > 0.0:
+                low = min(current, target_value_for_segment)
+                high = max(current, target_value_for_segment)
+                if low <= target_value <= high:
+                    fraction = abs(target_value - current) / segment_distance
+                    return elapsed + (fraction * duration)
+            elif abs(target_value - target_value_for_segment) < 1e-12:
+                return elapsed
+            elapsed += duration
+            current = target_value_for_segment
+        return elapsed
+
     def _on_current_point_changed(self, index: int, value: float) -> None:
-        """Move the current-point marker to *(index, value)*."""
+        """Move the current-point marker to *(elapsed_time, value)*."""
         if index < 0:
             self._clear_current_marker()
             return
-        self._current_marker.setData(x=[float(index)], y=[float(value)])
+        elapsed_time = self._elapsed_time_for_value(float(value))
+        self._current_marker.setData(x=[elapsed_time], y=[float(value)])
 
     def _on_start_changed(self, value: float) -> None:
         self._generator.start = float(value)
