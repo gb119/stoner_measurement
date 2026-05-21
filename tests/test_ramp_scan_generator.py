@@ -110,6 +110,15 @@ class TestRampScanWidget:
         _x, y = widget._curve.getData()
         assert np.allclose(y, gen.values)
 
+    def test_current_point_marker_tracks_iteration(self, qapp):
+        gen = RampScanGenerator(num_points=6)
+        widget = RampScanWidget(generator=gen)
+        next(iter(gen))
+        x, y = widget._current_marker.getData()
+        assert x is not None and y is not None
+        assert x.tolist() == [0.0]
+        assert y[0] == pytest.approx(gen.values[0])
+
     # ------------------------------------------------------------------
     # units — widget suffix propagation
     # ------------------------------------------------------------------

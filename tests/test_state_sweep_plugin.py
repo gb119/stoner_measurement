@@ -224,6 +224,19 @@ class TestStateSweepPlugin:
         next(plugin)  # exhausted
         assert changed == [1.0, 2.5]
 
+    def test_current_point_changed_emitted_at_each_point(self, qapp):
+        plugin = _TestSweepPlugin()
+        plugin.sweep_generator = _FiniteSweepGenerator(
+            points=[(0, 1.0, 0, True), (1, 2.5, 0, True)], state_sweep=plugin, parent=plugin
+        )
+        emitted: list[tuple[int, float]] = []
+        plugin.sweep_generator.current_point_changed.connect(lambda index, value: emitted.append((index, value)))
+        plugin._begin_sweep()
+        next(plugin)
+        next(plugin)
+        next(plugin)  # exhausted
+        assert emitted == [(0, 1.0), (1, 2.5)]
+
     def test_state_error_emitted_on_timeout(self, qapp):
         class _SlowGenerator(BaseSweepGenerator):
             def iter_points(self) -> Iterator[tuple[int, float, int, bool]]:
@@ -337,6 +350,22 @@ class TestSweepGenerators:
         stages = {stage for _ix, _value, stage, _measure in points}
         assert stages == {0, 1}
         assert points[0][3] is True
+
+    def test_multisegment_widget_current_marker_tracks_generator(self, qapp):
+        plugin = _TrackingRampSweep()
+        gen = MultiSegmentRampSweepGenerator(
+            start=0.0,
+            segments=[(0.2, 0.1, True)],
+            poll_seconds=0.0,
+            state_sweep=plugin,
+        )
+        widget = gen.config_widget()
+        ix, value, _stage, _measure = next(gen)
+        x, y = widget._current_marker.getData()  # noqa: SLF001
+        assert x is not None and y is not None
+        assert widget._current_marker in widget._preview.getPlotItem().items  # noqa: SLF001
+        assert x.tolist() == [abs(value - gen.start) / abs(gen.segments[0][1])]
+        assert y[0] == value
 
     def test_multisegment_estimated_duration_simple(self, qapp):
         gen = MultiSegmentRampSweepGenerator(

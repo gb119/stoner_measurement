@@ -42,7 +42,8 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
       similarly caches the result of :meth:`measure_flags`.
     * **Change notification** — the :attr:`values_changed` signal is emitted
       whenever a parameter is updated; :attr:`current_value_changed` is
-      emitted on every iteration step with the current output value.
+      emitted on every iteration step with the current output value, and
+      :attr:`current_point_changed` with ``(index, value)``.
     * **Units** — the :attr:`units` property stores a physical unit string
       (e.g. ``"V"``, ``"T"``).  When set, :attr:`units_changed` is emitted
       so that connected configuration widgets can update their spinbox
@@ -56,6 +57,9 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
             Emitted on each iteration step with the current output value as
             a ``float`` argument.  Consumers can connect this signal to a
             display widget to show the current scan position.
+        current_point_changed (pyqtSignal):
+            Emitted on each iteration step with the current ``(index, value)``
+            pair so preview widgets can mark the active point.
         units_changed (pyqtSignal):
             Emitted with the new unit string whenever :attr:`units` is set.
 
@@ -77,6 +81,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
 
     values_changed = pyqtSignal()
     current_value_changed = pyqtSignal(float)
+    current_point_changed = pyqtSignal(int, float)
     units_changed = pyqtSignal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -421,4 +426,5 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         stage = int(self.point_stage_indices[self._index])
         self._index += 1
         self.current_value_changed.emit(value)
+        self.current_point_changed.emit(index, value)
         return index, value, measure, stage

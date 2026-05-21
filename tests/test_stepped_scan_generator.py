@@ -473,6 +473,15 @@ class TestSteppedScanWidget:
         assert y_green is not None
         assert np.allclose(y_green, gen.values)
 
+    def test_current_point_marker_tracks_iteration(self, qapp):
+        gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
+        widget = SteppedScanWidget(generator=gen)
+        next(iter(gen))
+        x, y = widget._current_marker.getData()
+        assert x is not None and y is not None
+        assert x.tolist() == [0.0]
+        assert y[0] == pytest.approx(gen.values[0])
+
     def test_no_red_points_when_all_measure_true(self, qapp):
         gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
         widget = SteppedScanWidget(generator=gen)

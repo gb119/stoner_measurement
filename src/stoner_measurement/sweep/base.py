@@ -22,6 +22,7 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
 
     values_changed = pyqtSignal()
     current_value_changed = pyqtSignal(float)
+    current_point_changed = pyqtSignal(int, float)
 
     def __init__(self, *, state_sweep: StateSweepPlugin | None = None, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -51,6 +52,7 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
             self._iterator = iter(self.iter_points())
         ix, value, stage, measure_flag = next(self._iterator)
         self.current_value_changed.emit(float(value))
+        self.current_point_changed.emit(int(ix), float(value))
         return int(ix), float(value), int(stage), bool(measure_flag)
 
     @abstractmethod

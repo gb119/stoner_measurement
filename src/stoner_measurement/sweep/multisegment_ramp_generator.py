@@ -25,6 +25,7 @@ from stoner_measurement.ui.widgets import SISpinBox
 
 _DEFAULT_POLL_SECONDS = 0.05
 _SPINBOX_MAX_ABS = 1e9
+_FLOAT_TOLERANCE = 1e-12
 
 
 class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
@@ -228,8 +229,17 @@ class MultiSegmentRampSweepWidget(QWidget):
         self._preview = pg.PlotWidget(self)
         self._preview.setLabel("bottom", "Time")
         self._preview.setLabel("left", "Value")
+        self._current_marker = pg.ScatterPlotItem(
+            pen=pg.mkPen(color=(255, 220, 0), width=2),
+            brush=pg.mkBrush(0, 0, 0, 0),
+            symbol="o",
+            size=12,
+        )
+        self._preview.addItem(self._current_marker)
         root.addWidget(self._preview)
         root.addWidget(QLabel("Preview uses green/red segment lines for measure true/false.", self))
+        self._generator.values_changed.connect(self._clear_current_marker)
+        self._generator.current_point_changed.connect(self._on_current_point_changed)
 
     def _build_target_spin(self, value: float) -> SISpinBox:
         spin = SISpinBox(self._table)
@@ -296,6 +306,7 @@ class MultiSegmentRampSweepWidget(QWidget):
 
     def _refresh_preview(self) -> None:
         self._preview.clear()
+        self._preview.addItem(self._current_marker)
         current = float(self._generator.start)
         current_time = 0.0
         for target, rate, measure in self._generator.segments:
@@ -307,6 +318,41 @@ class MultiSegmentRampSweepWidget(QWidget):
             self._preview.plot(x_vals, y_vals, pen=pen)
             current = float(target)
             current_time += duration
+        self._clear_current_marker()
+
+    def _clear_current_marker(self) -> None:
+        """Clear the current-point marker from the preview."""
+        self._current_marker.setData(x=[], y=[])
+
+    def _elapsed_time_for_value(self, value: float) -> float:
+        """Estimate elapsed sweep time for *value* in the current segment plan."""
+        current = float(self._generator.start)
+        elapsed = 0.0
+        target_value = float(value)
+        for target, rate, _measure in self._generator.segments:
+            target_value_for_segment = float(target)
+            rate_magnitude = abs(float(rate))
+            segment_distance = abs(target_value_for_segment - current)
+            duration = segment_distance / rate_magnitude if rate_magnitude > 0.0 else 0.0
+            if segment_distance > 0.0:
+                low = min(current, target_value_for_segment)
+                high = max(current, target_value_for_segment)
+                if low <= target_value <= high:
+                    fraction = abs(target_value - current) / segment_distance
+                    return elapsed + (fraction * duration)
+            elif abs(target_value - target_value_for_segment) < _FLOAT_TOLERANCE:
+                return elapsed
+            elapsed += duration
+            current = target_value_for_segment
+        return elapsed
+
+    def _on_current_point_changed(self, index: int, value: float) -> None:
+        """Move the current-point marker to *(elapsed_time, value)*."""
+        if index < 0:
+            self._clear_current_marker()
+            return
+        elapsed_time = self._elapsed_time_for_value(float(value))
+        self._current_marker.setData(x=[elapsed_time], y=[float(value)])
 
     def _on_start_changed(self, value: float) -> None:
         self._generator.start = float(value)

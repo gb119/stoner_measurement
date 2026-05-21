@@ -387,6 +387,14 @@ class TestListScanWidget:
         assert y_green is not None
         assert np.allclose(y_green, gen.values)
 
+    def test_current_row_highlight_tracks_iteration(self, qapp):
+        gen = ListScanGenerator(stages=[(1.0, True), (2.0, False)])
+        widget = ListScanWidget(generator=gen)
+        next(iter(gen))
+        target_w = widget._table.cellWidget(0, 0)
+        assert target_w is not None
+        assert "background-color" in target_w.styleSheet()
+
     def test_no_red_points_when_all_measure_true(self, qapp):
         gen = ListScanGenerator(stages=[(1.0, True), (2.0, True)])
         widget = ListScanWidget(generator=gen)
