@@ -655,6 +655,32 @@ class TestEnginePublisher:
         assert state.reading is None
         engine.shutdown()
 
+    def test_read_controller_state_returns_fresh_snapshot(self, qapp):
+        engine = MagnetControllerEngine()
+        driver = _make_fake_driver(field=1.5, current=12.0)
+        engine.connect_instrument(driver)
+
+        state = engine.read_controller_state()
+
+        assert state is not None
+        assert state.reading is not None
+        assert state.reading.field == pytest.approx(1.5)
+        assert state.reading.current == pytest.approx(12.0)
+        engine.shutdown()
+
+    def test_get_limits_returns_driver_limits(self, qapp):
+        engine = MagnetControllerEngine()
+        driver = _make_fake_driver()
+        engine.connect_instrument(driver)
+
+        limits = engine.get_limits()
+
+        assert limits is not None
+        assert limits.max_current == pytest.approx(100.0)
+        assert limits.max_field == pytest.approx(10.0)
+        assert limits.max_ramp_rate == pytest.approx(1.0)
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # MagnetControlPanel widget smoke tests

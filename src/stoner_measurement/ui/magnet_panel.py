@@ -437,7 +437,7 @@ class MagnetControlPanel(QWidget):
         # Persistent switch heater group.
         heater_group = QGroupBox("Persistent Switch Heater")
         heater_form = QFormLayout(heater_group)
-        heater_button_layout = QHBoxLayout()
+        heater_btn_row = QHBoxLayout()
         self._btn_heater_on = QPushButton("Heater On")
         self._btn_heater_on.clicked.connect(self._on_heater_on)
         self._btn_heater_off = QPushButton("Heater Off")
@@ -445,13 +445,13 @@ class MagnetControlPanel(QWidget):
         self._btn_read_heater = QPushButton("Read")
         self._btn_read_heater.setToolTip("Read the current heater state from the controller")
         self._btn_read_heater.clicked.connect(self._on_read_heater)
-        heater_button_layout.addWidget(self._btn_heater_on)
-        heater_button_layout.addWidget(self._btn_heater_off)
-        heater_button_layout.addWidget(self._btn_read_heater)
-        heater_button_layout.addStretch()
+        heater_btn_row.addWidget(self._btn_heater_on)
+        heater_btn_row.addWidget(self._btn_heater_off)
+        heater_btn_row.addWidget(self._btn_read_heater)
+        heater_btn_row.addStretch()
         self._heater_state_label = QLabel("—")
         heater_form.addRow("State:", self._heater_state_label)
-        heater_form.addRow("", heater_button_layout)
+        heater_form.addRow("", heater_btn_row)
         layout.addWidget(heater_group)
 
         # Magnet constants group.
@@ -607,7 +607,7 @@ class MagnetControlPanel(QWidget):
         if state.magnet_constant is not None and state.magnet_constant > 0:
             self._magnet_constant = state.magnet_constant
 
-        self._set_heater_state_label(state.reading.heater_on if state.reading is not None else None)
+        self._set_heater_state_label(self._heater_on_from_state(state))
         self._update_chart(state, now_ts)
 
         self._updated_label.setText(
@@ -922,8 +922,7 @@ class MagnetControlPanel(QWidget):
         state = self._read_controller_state_or_warn("Persistent Switch Heater")
         if state is None:
             return
-        heater_on = state.reading.heater_on if state.reading is not None else None
-        self._set_heater_state_label(heater_on)
+        self._set_heater_state_label(self._heater_on_from_state(state))
 
     @pyqtSlot()
     def _on_apply_limits(self) -> None:
@@ -975,6 +974,19 @@ class MagnetControlPanel(QWidget):
             self._heater_state_label.setText("Off")
         else:
             self._heater_state_label.setText("Unknown")
+
+    def _heater_on_from_state(self, state: MagnetEngineState) -> bool | None:
+        """Return the heater readback from a controller state snapshot.
+
+        Args:
+            state (MagnetEngineState):
+                Controller state snapshot.
+
+        Returns:
+            (bool | None):
+                Heater state, or ``None`` when unavailable.
+        """
+        return state.reading.heater_on if state.reading is not None else None
 
     def _read_controller_state_or_warn(self, title: str) -> MagnetEngineState | None:
         """Read current controller state and show a warning if unavailable.
