@@ -53,7 +53,7 @@ class TestInstrumentDriverManager:
         assert "Lakeshore335" in discovered
         assert "Lakeshore336" in discovered
         assert "Lakeshore340" in discovered
-        assert "Lakeshore525" in discovered
+        assert "Lakeshore625" in discovered
         assert "LakeshoreM81CurrentSource" in discovered
         assert "OxfordIPS120" in discovered
         assert "OxfordITC503" in discovered
@@ -66,7 +66,7 @@ class TestInstrumentDriverManager:
         manager = InstrumentDriverManager()
         manager.discover()
         magnets = manager.drivers_by_type(MagnetController)
-        assert "Lakeshore525" in magnets
+        assert "Lakeshore625" in magnets
         assert "OxfordIPS120" in magnets
         assert "OxfordMercuryIPS" in magnets
         assert "Keithley2400" not in magnets
@@ -78,7 +78,7 @@ class TestInstrumentDriverManager:
         assert "Keithley2400" in source_meters
         assert "Keithley2410" in source_meters
         assert "Keithley2450" in source_meters
-        assert "Lakeshore525" not in source_meters
+        assert "Lakeshore625" not in source_meters
 
     def test_drivers_by_type_filters_current_sources(self):
         manager = InstrumentDriverManager()
@@ -87,7 +87,7 @@ class TestInstrumentDriverManager:
         assert "Keithley6221" in current_sources
         assert "LakeshoreM81CurrentSource" in current_sources
         assert "Keithley2400" not in current_sources
-        assert "Lakeshore525" not in current_sources
+        assert "Lakeshore625" not in current_sources
 
     def test_drivers_by_type_filters_electrometers(self):
         manager = InstrumentDriverManager()

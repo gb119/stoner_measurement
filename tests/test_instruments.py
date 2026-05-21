@@ -57,6 +57,7 @@ from stoner_measurement.instruments.lakeshore import (
     Lakeshore336,
     Lakeshore340,
     Lakeshore525,
+    Lakeshore625,
     LakeshoreM81CurrentSource,
     LakeshoreM81LockIn,
 )
@@ -1636,31 +1637,31 @@ class TestLakeshoreM81CurrentSource:
 
 
 # ---------------------------------------------------------------------------
-# Lakeshore525 concrete driver
+# Lakeshore625 concrete driver
 # ---------------------------------------------------------------------------
 
 
-class TestLakeshore525:
+class TestLakeshore625:
     def test_default_protocol_is_lakeshore(self):
-        m = Lakeshore525(transport=NullTransport())
+        m = Lakeshore625(transport=NullTransport())
         assert isinstance(m.protocol, LakeshoreProtocol)
 
     def test_identify_and_model_and_firmware(self):
         t = _null(
             responses=[
-                b"LAKESHORE,MODEL525,SN001,1.2.3\r\n",
-                b"LAKESHORE,MODEL525,SN001,1.2.3\r\n",
-                b"LAKESHORE,MODEL525,SN001,1.2.3\r\n",
+                b"LAKESHORE,MODEL625,SN001,1.2.3\r\n",
+                b"LAKESHORE,MODEL625,SN001,1.2.3\r\n",
+                b"LAKESHORE,MODEL625,SN001,1.2.3\r\n",
             ]
         )
-        m = Lakeshore525(transport=t)
-        assert m.identify() == "LAKESHORE,MODEL525,SN001,1.2.3"
-        assert m.get_model() == "MODEL525"
+        m = Lakeshore625(transport=t)
+        assert m.identify() == "LAKESHORE,MODEL625,SN001,1.2.3"
+        assert m.get_model() == "MODEL625"
         assert m.get_firmware_version() == "1.2.3"
 
     def test_reading_properties_send_correct_commands(self):
         t = _null(responses=[b"2.5\r\n", b"0.75\r\n", b"1.2\r\n"])
-        m = Lakeshore525(transport=t)
+        m = Lakeshore625(transport=t)
         assert m.current == pytest.approx(2.5)
         assert m.field == pytest.approx(0.75)
         assert m.voltage == pytest.approx(1.2)
@@ -1668,12 +1669,12 @@ class TestLakeshore525:
 
     def test_current_uses_first_value_from_comma_separated_response(self):
         t = _null(responses=[b"2.5,OK\r\n"])
-        m = Lakeshore525(transport=t)
+        m = Lakeshore625(transport=t)
         assert m.current == pytest.approx(2.5)
 
     def test_set_target_and_ramp_commands(self):
         t = _null()
-        m = Lakeshore525(transport=t)
+        m = Lakeshore625(transport=t)
         m.set_target_current(3.0)
         m.set_target_field(0.9)
         m.ramp_to_target()
@@ -1681,7 +1682,7 @@ class TestLakeshore525:
 
     def test_heater_methods_and_property(self):
         t = _null(responses=[b"1\r\n"])
-        m = Lakeshore525(transport=t)
+        m = Lakeshore625(transport=t)
         m.heater_on()
         m.heater_off()
         assert m.heater is True
@@ -1697,7 +1698,7 @@ class TestLakeshore525:
                 b"0\r\n",
             ]
         )
-        m = Lakeshore525(transport=t)
+        m = Lakeshore625(transport=t)
         status = m.status
         assert status.state.value == "at_target"
         assert status.at_target is True
@@ -1708,7 +1709,7 @@ class TestLakeshore525:
         assert t.write_log == [b"OPSTR?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n", b"PSH?\r\n"]
 
     def test_set_magnet_constant_validation(self):
-        m = Lakeshore525(transport=_null())
+        m = Lakeshore625(transport=_null())
         with pytest.raises(ValueError, match="positive"):
             m.set_magnet_constant(0.0)
         with pytest.raises(ValueError, match="positive"):
@@ -1716,12 +1717,12 @@ class TestLakeshore525:
 
     def test_query_float_raises_for_unparseable_numeric_response(self):
         t = _null(responses=[b"not-a-float\r\n"])
-        m = Lakeshore525(transport=t)
+        m = Lakeshore625(transport=t)
         with pytest.raises(ValueError):
             _ = m.current
 
     def test_wait_for_ramp_raises_timeout_when_stuck_ramping(self, monkeypatch):
-        m = Lakeshore525(transport=_null())
+        m = Lakeshore625(transport=_null())
 
         def _always_ramping(_self):
             return MagnetStatus(
@@ -1735,9 +1736,13 @@ class TestLakeshore525:
                 message="ramping",
             )
 
-        monkeypatch.setattr(Lakeshore525, "status", property(_always_ramping))
+        monkeypatch.setattr(Lakeshore625, "status", property(_always_ramping))
         with pytest.raises(TimeoutError):
             m._wait_for_ramp_complete(timeout=0.01, poll_period=0.0)
+
+    def test_lakeshore525_is_alias_for_lakeshore625(self):
+        """Lakeshore525 is a backward-compatibility alias for Lakeshore625."""
+        assert Lakeshore525 is Lakeshore625
 
 
 # ---------------------------------------------------------------------------
@@ -1906,19 +1911,24 @@ class TestLakeshoreTemperatureControllers:
         assert caps_336.input_channels == ("A", "B", "C", "D")
         assert caps_340.input_channels == ("A", "B")
         # Zone and input settings capabilities
-        for caps in (caps_335, caps_336, caps_340):
+        for caps in (caps_335, caps_336):
             assert caps.has_zone is True
             assert caps.has_input_settings is True
+        # 340 does not support ZONE/ZONE? commands
+        assert caps_340.has_zone is False
+        assert caps_340.has_input_settings is True
 
     def test_lakeshore336_get_num_zones(self):
         tc = Lakeshore336(transport=_null())
         assert tc.get_num_zones(1) == 10
         assert tc.get_num_zones(2) == 10
+        assert tc.get_num_zones(3) == 10
+        assert tc.get_num_zones(4) == 10
 
     def test_lakeshore336_get_num_zones_invalid_loop(self):
         tc = Lakeshore336(transport=_null())
         with pytest.raises(ValueError):
-            tc.get_num_zones(3)
+            tc.get_num_zones(5)
 
     def test_lakeshore336_get_zone(self):
         t = _null(responses=[b"100.0,50.0,10.0,0.5,25.0,2\r\n"])
@@ -1998,6 +2008,49 @@ class TestLakeshoreTemperatureControllers:
         settings = InputChannelSettings(curve_number=5)
         tc.set_input_channel_settings("A", settings)
         assert t.write_log == [b"INCRV A,5\r\n"]
+
+    def test_lakeshore340_get_input_channel_uses_cset(self):
+        # CSET? returns: input_index, units, onoff, powerup_enable
+        t = _null(responses=[b"2,1,1,0\r\n"])
+        tc = Lakeshore340(transport=t)
+        assert tc.get_input_channel(1) == "B"
+        assert t.write_log == [b"CSET? 1\r\n"]
+
+    def test_lakeshore340_set_input_channel_uses_cset(self):
+        # First CSET? reads current params, then CSET writes updated input index
+        t = _null(responses=[b"1,1,1,0\r\n"])
+        tc = Lakeshore340(transport=t)
+        tc.set_input_channel(1, "B")
+        assert t.write_log == [b"CSET? 1\r\n", b"CSET 1,2,1,1,0\r\n"]
+
+    def test_lakeshore340_get_loop_mode_uses_cmode(self):
+        t = _null(responses=[b"1\r\n"])
+        tc = Lakeshore340(transport=t)
+        assert tc.get_loop_mode(1) is ControlMode.CLOSED_LOOP
+        assert t.write_log == [b"CMODE? 1\r\n"]
+
+    def test_lakeshore340_set_loop_mode_uses_cmode(self):
+        t = _null()
+        tc = Lakeshore340(transport=t)
+        tc.set_loop_mode(1, ControlMode.OPEN_LOOP)
+        assert t.write_log == [b"CMODE 1,3\r\n"]
+
+    def test_lakeshore340_zone_methods_raise_not_implemented(self):
+        tc = Lakeshore340(transport=_null())
+        with pytest.raises(NotImplementedError):
+            tc.get_num_zones(1)
+        with pytest.raises(NotImplementedError):
+            tc.get_zone(1, 1)
+        with pytest.raises(NotImplementedError):
+            zone = ZoneEntry(
+                upper_bound=100.0, p=50.0, i=10.0, d=0.0, ramp_rate=0.0, heater_range=1, heater_output=0.0
+            )
+            tc.set_zone(1, 1, zone)
+
+    def test_lakeshore336_loop_numbers(self):
+        caps = Lakeshore336(transport=_null()).get_capabilities()
+        assert caps.loop_numbers == (1, 2, 3, 4)
+        assert caps.num_loops == 4
 
 
 # ---------------------------------------------------------------------------

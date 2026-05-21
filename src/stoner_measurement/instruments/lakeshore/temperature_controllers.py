@@ -21,6 +21,7 @@ _STATUS_OVERRANGE_BIT = 0x20
 _STATUS_UNDERRANGE_BIT = 0x10
 _STATUS_FAULT_BIT = 0x80
 
+# 335/336 OUTMODE control mode codes (0-based, 0=Off)
 _MODE_TO_CODE = {
     ControlMode.OFF: 0,
     ControlMode.CLOSED_LOOP: 1,
@@ -29,6 +30,14 @@ _MODE_TO_CODE = {
     ControlMode.MONITOR: 4,
 }
 _CODE_TO_MODE = {value: key for key, value in _MODE_TO_CODE.items()}
+
+# 340 CMODE control mode codes (1-based, no Off mode)
+_LS340_MODE_TO_CODE = {
+    ControlMode.CLOSED_LOOP: 1,
+    ControlMode.ZONE: 2,
+    ControlMode.OPEN_LOOP: 3,
+}
+_LS340_CODE_TO_MODE = {value: key for key, value in _LS340_MODE_TO_CODE.items()}
 
 
 class _LakeshoreTemperatureControllerBase(TemperatureController):
@@ -444,25 +453,47 @@ class Lakeshore335(_LakeshoreTemperatureControllerBase):
 
 
 class Lakeshore336(_LakeshoreTemperatureControllerBase):
-    """Concrete driver for the Lakeshore 336 temperature controller."""
+    """Concrete driver for the Lakeshore 336 temperature controller.
+
+    The 336 has four sensor inputs (A–D) and four independently controlled
+    outputs (1–4).  Outputs 1 and 2 are warm heater outputs; outputs 3 and 4
+    are analog/auxiliary warm outputs.  Zone control is fully supported via the
+    ``ZONE`` / ``ZONE?`` commands.
+    """
 
     _MODEL = "MODEL336"
-    _LS336_RANGES = ("Off", "Low", "Medium", "High")
+    _LS336_WARM_RANGES = ("Off", "Low", "Medium", "High")
+    _LS336_AUX_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=4,
-        num_loops=2,
+        num_loops=4,
         input_channels=("A", "B", "C", "D"),
-        loop_numbers=(1, 2),
+        loop_numbers=(1, 2, 3, 4),
         has_ramp=True,
         has_pid=True,
         has_zone=True,
         has_input_settings=True,
-        heater_range_labels={1: _LS336_RANGES, 2: _LS336_RANGES},
+        heater_range_labels={
+            1: _LS336_WARM_RANGES,
+            2: _LS336_WARM_RANGES,
+            3: _LS336_AUX_RANGES,
+            4: _LS336_AUX_RANGES,
+        },
     )
 
 
 class Lakeshore340(_LakeshoreTemperatureControllerBase):
-    """Concrete driver for the Lakeshore 340 temperature controller."""
+    """Concrete driver for the Lakeshore 340 temperature controller.
+
+    The 340 uses a different command set from the 335/336:
+
+    * Input-channel assignment is configured via ``CSET`` / ``CSET?`` rather
+      than ``OUTMODE`` / ``OUTMODE?``.
+    * Control mode is set via ``CMODE`` / ``CMODE?`` rather than the mode
+      field of ``OUTMODE``.
+    * Zone-table commands (``ZONE`` / ``ZONE?``) are not available on the 340;
+      zone control must be configured through the front panel.
+    """
 
     _MODEL = "MODEL340"
     _LS340_LOOP1_RANGES = ("Off", "0.5 W", "5 W", "50 W", "500 W", "5 kW")
@@ -474,7 +505,175 @@ class Lakeshore340(_LakeshoreTemperatureControllerBase):
         loop_numbers=(1, 2),
         has_ramp=True,
         has_pid=True,
-        has_zone=True,
+        has_zone=False,
         has_input_settings=True,
         heater_range_labels={1: _LS340_LOOP1_RANGES, 2: _LS340_LOOP2_RANGES},
     )
+
+    def get_input_channel(self, loop: int) -> str:
+        """Return the channel assigned to *loop* via ``CSET?``.
+
+        Args:
+            loop (int):
+                Control loop number (1 or 2).
+
+        Returns:
+            (str):
+                Channel label (``"A"`` or ``"B"``).
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
+            >>> ctrl = Lakeshore340(transport=NullTransport())
+            >>> # ctrl.get_input_channel(1)  # requires live instrument
+        """
+        input_index, _, _, _ = self._get_cset(loop)
+        return self._channel_from_index(input_index)
+
+    def set_input_channel(self, loop: int, channel: str) -> None:
+        """Assign *channel* to *loop* via ``CSET``, preserving other parameters.
+
+        Args:
+            loop (int):
+                Control loop number (1 or 2).
+            channel (str):
+                Channel label to assign (``"A"`` or ``"B"``).
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
+            >>> ctrl = Lakeshore340(transport=NullTransport())
+            >>> # ctrl.set_input_channel(1, "B")  # requires live instrument
+        """
+        _, units, onoff, powerup_enable = self._get_cset(loop)
+        self.write(
+            f"CSET {self._normalise_loop(loop)},{self._channel_to_index(channel)}"
+            f",{units},{onoff},{powerup_enable}"
+        )
+
+    def get_loop_mode(self, loop: int) -> ControlMode:
+        """Return the control mode for *loop* via ``CMODE?``.
+
+        Args:
+            loop (int):
+                Control loop number (1 or 2).
+
+        Returns:
+            (ControlMode):
+                Current control mode.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
+            >>> ctrl = Lakeshore340(transport=NullTransport())
+            >>> # ctrl.get_loop_mode(1)  # requires live instrument
+        """
+        code = self._parse_int_token(self.query(f"CMODE? {self._normalise_loop(loop)}"))
+        return _LS340_CODE_TO_MODE.get(code, ControlMode.CLOSED_LOOP)
+
+    def set_loop_mode(self, loop: int, mode: ControlMode) -> None:
+        """Set the control mode for *loop* via ``CMODE``.
+
+        Args:
+            loop (int):
+                Control loop number (1 or 2).
+            mode (ControlMode):
+                Desired control mode.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
+            >>> from stoner_measurement.instruments.temperature_controller import ControlMode
+            >>> ctrl = Lakeshore340(transport=NullTransport())
+            >>> # ctrl.set_loop_mode(1, ControlMode.CLOSED_LOOP)  # requires live instrument
+        """
+        code = _LS340_MODE_TO_CODE.get(mode, _LS340_MODE_TO_CODE[ControlMode.CLOSED_LOOP])
+        self.write(f"CMODE {self._normalise_loop(loop)},{code}")
+
+    def get_num_zones(self, loop: int) -> int:
+        """Raise :exc:`NotImplementedError` — the 340 does not support zone commands.
+
+        Args:
+            loop (int):
+                Control loop number (unused).
+
+        Raises:
+            NotImplementedError:
+                Always, because ``ZONE`` / ``ZONE?`` are not available on the
+                Lakeshore 340.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
+            >>> ctrl = Lakeshore340(transport=NullTransport())
+            >>> ctrl.get_num_zones(1)
+            Traceback (most recent call last):
+                ...
+            NotImplementedError: Lakeshore 340 does not support zone table commands.
+        """
+        raise NotImplementedError("Lakeshore 340 does not support zone table commands.")
+
+    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry:
+        """Raise :exc:`NotImplementedError` — the 340 does not support zone commands.
+
+        Args:
+            loop (int):
+                Control loop number (unused).
+            zone_index (int):
+                Zone entry index (unused).
+
+        Raises:
+            NotImplementedError:
+                Always, because ``ZONE`` / ``ZONE?`` are not available on the
+                Lakeshore 340.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
+            >>> ctrl = Lakeshore340(transport=NullTransport())
+            >>> ctrl.get_zone(1, 1)
+            Traceback (most recent call last):
+                ...
+            NotImplementedError: Lakeshore 340 does not support zone table commands.
+        """
+        raise NotImplementedError("Lakeshore 340 does not support zone table commands.")
+
+    def set_zone(self, loop: int, zone_index: int, entry: ZoneEntry) -> None:
+        """Raise :exc:`NotImplementedError` — the 340 does not support zone commands.
+
+        Args:
+            loop (int):
+                Control loop number (unused).
+            zone_index (int):
+                Zone entry index (unused).
+            entry (ZoneEntry):
+                Zone entry (unused).
+
+        Raises:
+            NotImplementedError:
+                Always, because ``ZONE`` / ``ZONE?`` are not available on the
+                Lakeshore 340.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
+            >>> from stoner_measurement.instruments.temperature_controller import ZoneEntry
+            >>> ctrl = Lakeshore340(transport=NullTransport())
+            >>> zone = ZoneEntry(upper_bound=100.0, p=50.0, i=10.0, d=0.0, ramp_rate=0.0, heater_range=1, heater_output=0.0)
+            >>> ctrl.set_zone(1, 1, zone)
+            Traceback (most recent call last):
+                ...
+            NotImplementedError: Lakeshore 340 does not support zone table commands.
+        """
+        raise NotImplementedError("Lakeshore 340 does not support zone table commands.")
+
+    def _get_cset(self, loop: int) -> tuple[int, int, int, int]:
+        """Return ``(input_index, units, onoff, powerup_enable)`` for *loop*.
+
+        Queries ``CSET? <loop>`` and parses the four-field CSV response.
+        """
+        values = self._parse_csv_floats(
+            self.query(f"CSET? {self._normalise_loop(loop)}"),
+            minimum_length=4,
+        )
+        return int(values[0]), int(values[1]), int(values[2]), int(values[3])
