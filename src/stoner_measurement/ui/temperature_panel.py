@@ -932,6 +932,7 @@ class TemperatureControlPanel(QWidget):
         self._input_channel_combo.blockSignals(True)
         self._input_channel_combo.clear()
         self._input_channel_combo.blockSignals(False)
+        self._input_settings_widget.set_curve_names({})
         self._input_settings_widget.clear()
         # Reset address widget colours to disconnected state.
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
@@ -995,11 +996,13 @@ class TemperatureControlPanel(QWidget):
         self._input_channel_combo.blockSignals(True)
         self._input_channel_combo.clear()
         if enabled:
+            self._input_settings_widget.set_curve_names(self._engine.get_calibration_curve_names())
             for ch in caps.input_channels:
                 self._input_channel_combo.addItem(ch, ch)
             if caps.input_channels:
                 self._input_settings_widget.set_channel(caps.input_channels[0])
         else:
+            self._input_settings_widget.set_curve_names({})
             self._input_settings_widget.clear()
         self._input_channel_combo.blockSignals(False)
 
@@ -1431,6 +1434,7 @@ _LAKESHORE_UNITS = [
     (2, "Celsius"),
     (3, "Sensor"),
 ]
+_MAX_CALIBRATION_CURVE = 60
 
 
 class _InputSettingsWidget(QWidget):
@@ -1453,6 +1457,7 @@ class _InputSettingsWidget(QWidget):
         super().__init__(parent)
         self._engine = engine
         self._channel: str = "A"
+        self._curve_names: dict[int, str] = {}
         self._build()
 
     # ------------------------------------------------------------------
@@ -1475,6 +1480,22 @@ class _InputSettingsWidget(QWidget):
         self._channel = channel
         self.clear()
 
+    def set_curve_names(self, curve_names: dict[int, str]) -> None:
+        """Update calibration-curve selector labels.
+
+        Args:
+            curve_names (dict[int, str]):
+                Mapping from curve number to human-readable curve name.
+        """
+        selected_curve = self._selected_curve_number()
+        self._curve_names = {}
+        for number, name in curve_names.items():
+            stripped_name = name.strip()
+            if stripped_name:
+                self._curve_names[number] = stripped_name
+        self._rebuild_curve_options()
+        self._set_selected_curve(selected_curve)
+
     def clear(self) -> None:
         """Reset all fields to their default/blank state."""
         self._sensor_type_combo.setCurrentIndex(0)
@@ -1485,7 +1506,7 @@ class _InputSettingsWidget(QWidget):
         self._filter_enable_check.setChecked(False)
         self._filter_points_spin.setValue(1)
         self._filter_window_spin.setValue(0.0)
-        self._curve_spin.setValue(0)
+        self._set_selected_curve(0)
 
     # ------------------------------------------------------------------
     # UI construction
@@ -1546,11 +1567,11 @@ class _InputSettingsWidget(QWidget):
         self._filter_window_spin.setToolTip("Deviation window that resets the filter (0 = no windowing)")
         filter_form.addRow("Window:", self._filter_window_spin)
 
-        # Curve number
-        self._curve_spin = QSpinBox()
-        self._curve_spin.setRange(0, 60)
-        self._curve_spin.setToolTip("Calibration curve number (0 = none)")
-        form.addRow("Calibration curve:", self._curve_spin)
+        # Curve number / name
+        self._curve_combo = QComboBox()
+        self._curve_combo.setToolTip("Calibration curve (0 = none)")
+        self._rebuild_curve_options()
+        form.addRow("Calibration curve:", self._curve_combo)
 
         layout.addLayout(form)
         layout.addWidget(filter_group)
@@ -1619,7 +1640,7 @@ class _InputSettingsWidget(QWidget):
         if settings.filter_window is not None:
             self._filter_window_spin.setValue(settings.filter_window)
         if settings.curve_number is not None:
-            self._curve_spin.setValue(settings.curve_number)
+            self._set_selected_curve(settings.curve_number)
 
     def _collect_settings(self) -> InputChannelSettings:
         """Build an :class:`InputChannelSettings` from the current form values.
@@ -1637,8 +1658,31 @@ class _InputSettingsWidget(QWidget):
             filter_enabled=self._filter_enable_check.isChecked(),
             filter_points=self._filter_points_spin.value(),
             filter_window=self._filter_window_spin.value(),
-            curve_number=self._curve_spin.value(),
+            curve_number=self._selected_curve_number(),
         )
+
+    def _rebuild_curve_options(self) -> None:
+        """Populate the calibration-curve selector from cached names.
+
+        Curve 0 is always present as the "no curve assigned" option.
+        """
+        self._curve_combo.blockSignals(True)
+        self._curve_combo.clear()
+        for curve_number in range(0, _MAX_CALIBRATION_CURVE + 1):
+            curve_name = self._curve_names.get(curve_number)
+            label = f"{curve_name} ({curve_number})" if curve_name else str(curve_number)
+            self._curve_combo.addItem(label, curve_number)
+        self._curve_combo.blockSignals(False)
+
+    def _selected_curve_number(self) -> int:
+        """Return the currently selected calibration-curve number."""
+        data = self._curve_combo.currentData()
+        return int(data) if data is not None else 0
+
+    def _set_selected_curve(self, curve_number: int) -> None:
+        """Select *curve_number* in the calibration-curve combo box."""
+        index = self._curve_combo.findData(int(curve_number))
+        self._curve_combo.setCurrentIndex(index if index >= 0 else 0)
 
 
 # ---------------------------------------------------------------------------

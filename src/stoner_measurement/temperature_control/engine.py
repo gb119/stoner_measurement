@@ -787,6 +787,24 @@ class TemperatureControllerEngine(QObject):
         except Exception:
             logger.exception("Failed to set input channel settings for channel %s", channel)
 
+    def get_calibration_curve_names(self) -> dict[int, str]:
+        """Return calibration-curve names reported by the connected driver.
+
+        Returns an empty mapping when no instrument is connected or when the
+        driver fails to provide curve metadata.
+
+        Returns:
+            (dict[int, str]):
+                Mapping from curve number to curve name.
+        """
+        if self._driver is None:
+            return {}
+        try:
+            return self._driver.get_calibration_curve_names()
+        except Exception:
+            logger.exception("Failed to read calibration curve names")
+            return {}
+
     def _safe_read_loop(self, func, loop: int, description: str, default):
         """Invoke *func(loop)*, returning *default* and logging on any error.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from typing import ClassVar
 
 from stoner_measurement.instruments.protocol.base import BaseProtocol
@@ -52,6 +53,7 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
             transport=transport,
             protocol=protocol if protocol is not None else LakeshoreProtocol(),
         )
+        self._calibration_curve_names_cache: dict[int, str] | None = None
 
     def identify(self) -> str:
         """Return the instrument identity string."""
@@ -160,6 +162,33 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
     def get_capabilities(self) -> ControllerCapabilities:
         """Return static driver capabilities."""
         return self._CAPABILITIES
+
+    def get_calibration_curve_names(self) -> dict[int, str]:
+        """Return calibration-curve names reported by the controller.
+
+        On first call this queries ``CRVHDR?`` for curve numbers 1–60 and
+        extracts the human-readable curve name from each response until the
+        controller reports an unsupported curve. The discovered mapping is
+        cached and reused on subsequent calls.
+
+        Returns:
+            (dict[int, str]):
+                Mapping from curve number to curve name.
+        """
+        if self._calibration_curve_names_cache is not None:
+            return self._calibration_curve_names_cache
+
+        names: dict[int, str] = {}
+        for curve_number in range(1, 61):
+            try:
+                response = self.query(f"CRVHDR? {curve_number}")
+            except Exception:
+                break
+            name = self._parse_curve_header_name(response)
+            if name:
+                names[curve_number] = name
+        self._calibration_curve_names_cache = names
+        return self._calibration_curve_names_cache
 
     def get_num_zones(self, loop: int) -> int:
         """Return the number of zone-table entries for *loop*.
@@ -416,6 +445,25 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
         if len(tokens) < minimum_length:
             raise ValueError(f"Expected at least {minimum_length} values, got {response!r}.")
         return [float(token) for token in tokens]
+
+    def _parse_curve_header_name(self, response: str) -> str:
+        """Extract the curve-name field from a ``CRVHDR?`` response.
+
+        Args:
+            response (str):
+                Raw ``CRVHDR?`` response string containing CSV fields with the
+                curve name in the first field.
+        """
+        payload = response.strip()
+        if not payload:
+            return ""
+        try:
+            row = next(csv.reader([payload], skipinitialspace=True), [])
+        except csv.Error:
+            return ""
+        if row:
+            return row[0].strip()
+        return ""
 
     def _get_outmode(self, loop: int) -> tuple[int, int, int]:
         """Return ``(mode, input_channel_index, powerup_enable)`` for *loop*."""

@@ -1972,6 +1972,26 @@ class TestLakeshoreTemperatureControllers:
         assert settings.curve_number == 22
         assert t.write_log == [b"INTYPE? A\r\n", b"FILTER? A\r\n", b"INCRV? A\r\n"]
 
+    def test_lakeshore336_get_calibration_curve_names(self):
+        from unittest.mock import MagicMock
+
+        tc = Lakeshore336(transport=_null())
+        tc.query = MagicMock(
+            side_effect=[
+                "Standard Diode,0,0,0,0",
+                '"Cernox, 1k, custom",0,0,0,0',
+            ]
+            + [RuntimeError("unsupported curve")] * 58
+        )
+        names = tc.get_calibration_curve_names()
+        assert names == {
+            1: "Standard Diode",
+            2: "Cernox, 1k, custom",
+        }
+        assert tc.query.call_count == 3
+        assert tc.get_calibration_curve_names() == names
+        assert tc.query.call_count == 3
+
     def test_lakeshore336_set_input_channel_settings_all_fields(self):
         t = _null()
         tc = Lakeshore336(transport=t)
