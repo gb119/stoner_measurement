@@ -455,8 +455,8 @@ class Lakeshore335(_LakeshoreTemperatureControllerBase):
 class Lakeshore336(_LakeshoreTemperatureControllerBase):
     """Concrete driver for the Lakeshore 336 temperature controller.
 
-    The 336 has four sensor inputs (A–D) and four independently controlled
-    outputs (1–4).  Outputs 1 and 2 are warm heater outputs; outputs 3 and 4
+    The 336 has four sensor inputs (A-D) and four independently controlled
+    outputs (1-4).  Outputs 1 and 2 are warm heater outputs; outputs 3 and 4
     are analog/auxiliary warm outputs.  Zone control is fully supported via the
     ``ZONE`` / ``ZONE?`` commands.
     """
