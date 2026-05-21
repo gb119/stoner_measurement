@@ -748,13 +748,17 @@ class TestMagnetControlPanel:
         panel._on_apply_limits()
         assert panel._magnet_constant == pytest.approx(0.05)
 
-    def test_read_ramp_updates_ramp_rate_spin_boxes(self, qapp):
+    def test_read_ramp_updates_ramp_rate_spin_boxes(self, monkeypatch, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         panel = MagnetControlPanel()
-        panel._engine.read_controller_state = lambda: MagnetEngineState(  # type: ignore[method-assign]
-            ramp_rate_field=0.8,
-            ramp_rate_current=12.5,
+        monkeypatch.setattr(
+            panel._engine,
+            "read_controller_state",
+            lambda: MagnetEngineState(
+                ramp_rate_field=0.8,
+                ramp_rate_current=12.5,
+            ),
         )
 
         panel._on_read_ramp()
@@ -762,33 +766,41 @@ class TestMagnetControlPanel:
         assert panel._ramp_field_spin.value() == pytest.approx(0.8)
         assert panel._ramp_current_spin.value() == pytest.approx(12.5)
 
-    def test_read_target_updates_target_field_spin_box(self, qapp):
+    def test_read_target_updates_target_field_spin_box(self, monkeypatch, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         panel = MagnetControlPanel()
-        panel._engine.read_controller_state = lambda: MagnetEngineState(  # type: ignore[method-assign]
-            target_field=1.75,
-            magnet_constant=0.1,
+        monkeypatch.setattr(
+            panel._engine,
+            "read_controller_state",
+            lambda: MagnetEngineState(
+                target_field=1.75,
+                magnet_constant=0.1,
+            ),
         )
 
         panel._on_read_target()
 
         assert panel._target_field_spin.value() == pytest.approx(1.75)
 
-    def test_read_heater_updates_heater_state_label(self, qapp):
+    def test_read_heater_updates_heater_state_label(self, monkeypatch, qapp):
         from stoner_measurement.instruments.magnet_controller import MagnetState
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         panel = MagnetControlPanel()
-        panel._engine.read_controller_state = lambda: MagnetEngineState(  # type: ignore[method-assign]
-            reading=MagnetReading(
-                timestamp=datetime.now(tz=UTC),
-                field=1.0,
-                current=10.0,
-                voltage=0.1,
-                heater_on=False,
-                state=MagnetState.STANDBY,
-                at_target=False,
+        monkeypatch.setattr(
+            panel._engine,
+            "read_controller_state",
+            lambda: MagnetEngineState(
+                reading=MagnetReading(
+                    timestamp=datetime.now(tz=UTC),
+                    field=1.0,
+                    current=10.0,
+                    voltage=0.1,
+                    heater_on=False,
+                    state=MagnetState.STANDBY,
+                    at_target=False,
+                ),
             ),
         )
 
@@ -800,7 +812,7 @@ class TestMagnetControlPanel:
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         panel = MagnetControlPanel()
-        panel._engine.read_controller_state = lambda: None  # type: ignore[method-assign]
+        monkeypatch.setattr(panel._engine, "read_controller_state", lambda: None)
         calls: list[tuple[str, str]] = []
 
         def _fake_warning(_parent, title, text):
@@ -813,18 +825,26 @@ class TestMagnetControlPanel:
 
         assert calls == [("Ramp Rate", "No instrument connected or read failed.")]
 
-    def test_read_limits_updates_limit_widgets(self, qapp):
+    def test_read_limits_updates_limit_widgets(self, monkeypatch, qapp):
         from stoner_measurement.instruments.magnet_controller import MagnetLimits
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         panel = MagnetControlPanel()
-        panel._engine.read_controller_state = lambda: MagnetEngineState(  # type: ignore[method-assign]
-            magnet_constant=0.075,
+        monkeypatch.setattr(
+            panel._engine,
+            "read_controller_state",
+            lambda: MagnetEngineState(
+                magnet_constant=0.075,
+            ),
         )
-        panel._engine.get_limits = lambda: MagnetLimits(  # type: ignore[method-assign]
-            max_current=88.0,
-            max_field=7.5,
-            max_ramp_rate=0.9,
+        monkeypatch.setattr(
+            panel._engine,
+            "get_limits",
+            lambda: MagnetLimits(
+                max_current=88.0,
+                max_field=7.5,
+                max_ramp_rate=0.9,
+            ),
         )
 
         panel._on_read_limits()

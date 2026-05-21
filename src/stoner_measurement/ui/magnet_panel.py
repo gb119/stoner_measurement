@@ -868,8 +868,12 @@ class MagnetControlPanel(QWidget):
         state = self._read_controller_state_or_warn("Target Field")
         if state is None:
             return
-        if state.target_field is not None:
-            self._target_field_spin.setValue(state.target_field)
+        self._target_field_spin.blockSignals(True)
+        try:
+            if state.target_field is not None:
+                self._target_field_spin.setValue(state.target_field)
+        finally:
+            self._target_field_spin.blockSignals(False)
         self._on_target_field_changed(self._target_field_spin.value())
 
     @pyqtSlot()
