@@ -721,3 +721,38 @@ class TestMagnetControlPanel:
         # Engine has no driver connected — set_magnet_constant should be a no-op.
         panel._on_apply_limits()
         assert panel._magnet_constant == pytest.approx(0.05)
+
+    def test_read_ramp_updates_ramp_rate_spin_boxes(self, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        panel._engine.read_controller_state = lambda: MagnetEngineState(  # type: ignore[method-assign]
+            ramp_rate_field=0.8,
+            ramp_rate_current=12.5,
+        )
+
+        panel._on_read_ramp()
+
+        assert panel._ramp_field_spin.value() == pytest.approx(0.8)
+        assert panel._ramp_current_spin.value() == pytest.approx(12.5)
+
+    def test_read_limits_updates_limit_widgets(self, qapp):
+        from stoner_measurement.instruments.magnet_controller import MagnetLimits
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        panel._engine.read_controller_state = lambda: MagnetEngineState(  # type: ignore[method-assign]
+            magnet_constant=0.075,
+        )
+        panel._engine.get_limits = lambda: MagnetLimits(  # type: ignore[method-assign]
+            max_current=88.0,
+            max_field=7.5,
+            max_ramp_rate=0.9,
+        )
+
+        panel._on_read_limits()
+
+        assert panel._magnet_const_spin.value() == pytest.approx(0.075)
+        assert panel._max_current_spin.value() == pytest.approx(88.0)
+        assert panel._max_field_spin.value() == pytest.approx(7.5)
+        assert panel._max_ramp_spin.value() == pytest.approx(0.9)

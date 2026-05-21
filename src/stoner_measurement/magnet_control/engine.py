@@ -526,6 +526,43 @@ class MagnetControllerEngine(QObject):
         ms = max(100, ms)
         self._timer.setInterval(ms)
 
+    def read_controller_state(self) -> MagnetEngineState | None:
+        """Read the current controller state immediately and publish it.
+
+        Returns:
+            (MagnetEngineState | None):
+                Freshly read engine state, or ``None`` when no controller is
+                connected or the read fails.
+        """
+        if self._driver is None:
+            return None
+        try:
+            state = self._build_state()
+        except Exception:
+            logger.exception("MagnetControllerEngine: read-state error")
+            self._set_status(MagnetEngineStatus.ERROR)
+            return None
+
+        self._set_status(MagnetEngineStatus.POLLING)
+        self.publisher.reading_updated.emit(state.reading)
+        self.publisher.state_updated.emit(state)
+        return state
+
+    def get_limits(self) -> MagnetLimits | None:
+        """Return the controller limits from the connected driver.
+
+        Returns:
+            (MagnetLimits | None):
+                Active limits, or ``None`` when disconnected or unavailable.
+        """
+        if self._driver is None:
+            return None
+        try:
+            return self._driver.limits
+        except Exception:
+            logger.exception("MagnetControllerEngine: failed to read limits")
+            return None
+
     def get_engine_state(self) -> MagnetEngineState:
         """Return a snapshot of the current engine state without polling.
 
@@ -605,18 +642,7 @@ class MagnetControllerEngine(QObject):
     @pyqtSlot()
     def _poll(self) -> None:
         """Query the instrument, compute derived quantities, and publish results."""
-        if self._driver is None:
-            return
-        try:
-            state = self._build_state()
-        except Exception:
-            logger.exception("MagnetControllerEngine: poll error")
-            self._set_status(MagnetEngineStatus.ERROR)
-            return
-
-        self._set_status(MagnetEngineStatus.POLLING)
-        self.publisher.reading_updated.emit(state.reading)
-        self.publisher.state_updated.emit(state)
+        self.read_controller_state()
 
     def _build_state(self) -> MagnetEngineState:
         """Query the driver and return a full :class:`MagnetEngineState`.
