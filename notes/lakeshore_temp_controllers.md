@@ -74,11 +74,11 @@ RDGST? <input>
 ## 🔷 3. SETPOINT / RAMP
 
 ```text
-SETP `<loop>`,<value>
-SETP? `<loop>`
+SETP <loop>,<value>
+SETP? <loop>
 
-RAMP `<loop>`,<on/off>,<rate>
-RAMP? `<loop>`
+RAMP <loop>,<on/off>,<rate>
+RAMP? <loop>
 ```
 
 | Command | 340 | 335 | 336 |
@@ -88,11 +88,11 @@ RAMP? `<loop>`
 
 ### Diff evolution
 
-| Model | Interpretation of `<loop>` |
-| ----- | -------------------------- |
-| 340   | implicit control loop      |
-| 335   | output 1 or 2              |
-| 336   | output 1–4                 |
+| Model | Interpretation of loop placeholder |
+| ----- | ---------------------------------- |
+| 340   | implicit control loop              |
+| 335   | output 1 or 2                      |
+| 336   | output 1–4                         |
 
 ⚠️ **Progression**
 
@@ -107,8 +107,8 @@ RAMP? `<loop>`
 ## 🔷 4. PID CONTROL
 
 ```text
-PID `<loop>`,<P>,<I>,<D>
-PID? `<loop>`
+PID <loop>,<P>,<I>,<D>
+PID? <loop>
 ```
 
 | 340 | 335 | 336 |
@@ -132,8 +132,8 @@ PID? `<loop>`
 ## 🔷 5. OUTPUT RANGE
 
 ```text
-RANGE `<loop>`,<range>
-RANGE? `<loop>`
+RANGE <loop>,<range>
+RANGE? <loop>
 ```
 
 | 340 | 335 | 336 |
@@ -157,8 +157,8 @@ RANGE? `<loop>`
 ## 🔷 6. MANUAL OUTPUT
 
 ```text
-MOUT `<loop>`,<percent>
-MOUT? `<loop>`
+MOUT <loop>,<percent>
+MOUT? <loop>
 ```
 
 | 340 | 335 | 336 |
@@ -178,8 +178,8 @@ MOUT? `<loop>`
 ## 🔷 7. CONTROL MODE
 
 ```text
-CMODE `<loop>`,<mode>
-CMODE? `<loop>`
+CMODE <loop>,<mode>
+CMODE? <loop>
 ```
 
 | 340 | 335 | 336 |
@@ -332,7 +332,7 @@ ZONE?
 
 ## 🔷 14. 336‑ONLY ADDITIONS / EXTENSIONS
 
-### Not many _new_ command names, but
+### Capability expansions rather than new command names
 
 - Expanded addressing:
 
@@ -406,7 +406,7 @@ ALARM
 
 ## ✅ Final (driver-level view)
 
-### The command evolution is
+### Command evolution
 
 ```text
 340: legacy + hardware-specific (capacitance, expansion)

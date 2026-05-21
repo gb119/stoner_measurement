@@ -4,55 +4,55 @@
 
 This is an application for carrying out scientific measurements by communicating
 with lab instruments via USB/Serial/GPIB/Ethernet interfaces. It should provide
-user interface to set configuration settings epecific for particular measuements
-(e.g. intrsuments, communications addresses, instrument specific settings such
-as range, measurement time etc), and user interface to define a measurement
-sequence that should be rendered into python code and then exectured in a
-sequence engine. Code running in the sequence engine will communicate data and
-status to the user interface through asynchronous messaging.
+user interface to set configuration settings specific for particular
+measurements (e.g. instruments, communications addresses, instrument specific
+settings such as range, measurement time etc), and user interface to define a
+measurement sequence that should be rendered into python code and then executed
+in a sequence engine. Code running in the sequence engine will communicate data
+and status to the user interface through asynchronous messaging.
 
 ## UI guidelines
 
 In general favour the widgets defined in the ui.widgets package over stock qt
 ones. for quantities that have physical units, show the units in the widget and
-whete numbers outside the range 0.1-1000, support SI prefixes too.
+where numbers outside the range 0.1-1000, support SI prefixes too.
 
 ## Docstring Formatting
 
 All docstrings for python functions, classes, methods and modules should confirm
 to the following:
 
-- Generally the format is based on Google stadnard
+- Generally the format is based on Google standard
 - Written in British English
-- There is a one line suymmary that starts on the same line as the opening
-  quotes and terminated with a period.
+- There is a one line summary that starts on the same line as the opening quotes
+  and terminated with a period.
 - All public classes, methods and functions should conform to the following:
-  - The position areguments are described in an Args: section, the keyword
+  - The position arguments are described in an Args: section, the keyword
     parameters in a "Keyword Parameters:" section.
   - Parameters are listed as "name (type):" then a newline and indent with the
-    descritpion.
+    description.
   - Return values are in a "Returns:" section. For single return values the
     format is "(type):" newline and indent and then description. Tuples
-    (multiple return values) are given a sequyence of single value blocks.
+    (multiple return values) are given a sequence of single value blocks.
   - Exceptions that are specifically raised are in a "Raises:" section.
-  - Class atributes are in a "Attributes:" section and follow a similar
+  - Class attributes are in a "Attributes:" section and follow a similar
     structure to parameters.
   - Any details of the algorithm etc are in a "Notes:" section.
   - Public methods and functions should have examples of usage in an "Examples:"
     section
   - The Class constructor should be documented in the class docstring rather
-    than the **init** method's docstring.
+    than the `__init__` method's docstring.
 
-- Private mthods, functions should conform to the following:
+- Private methods, functions should conform to the following:
   - If the function or method is called outside of the same scope (e.g. in an
     inherited class or different module) then it should be documented as a
-    publuc method or function
-  - Otherwise, only the summary needs to be probided and other sections are
+    public method or function
+  - Otherwise, only the summary needs to be provided and other sections are
     optional.
 
 - Modules should conform to the following:
   - The docstring should include a brief overview of the contents of the module,
-    higlighting common aspects of te contents.
+    highlighting common aspects of the contents.
 
 ## Code formatting
 
@@ -69,7 +69,7 @@ following.
 
 ### imports
 
-Group ipmorts as follows:
+Group imports as follows:
 
 - standard library imports
 - well known third party packages such as numpy, matplotlib, scipy, pandas
@@ -83,7 +83,7 @@ from the same module into one statement.
 
 - For user examples, the line length is 79 characters, for all other files use
   119 characters.
-- Otherwise folow black coding standards.
+- Otherwise follow black coding standards.
 - Avoid line splits that are not compatible with the versions of python
   specified in the package building scripts.
 - remove trailing whitespace at the end of lines
