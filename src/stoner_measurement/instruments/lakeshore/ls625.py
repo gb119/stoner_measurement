@@ -22,6 +22,7 @@ _STATE_MAP = {
     "persistent": MagnetState.PERSISTENT,
     "fault": MagnetState.FAULT,
     "quench": MagnetState.QUENCH,
+    "quiescent": MagnetState.QUIESCENT,
 }
 
 _ACTIVE_RAMP_STATES = {MagnetState.RAMPING}
