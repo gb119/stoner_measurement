@@ -411,6 +411,8 @@ class ListScanWidget(QWidget):
     def _on_current_point_changed(self, index: int, _value: float) -> None:
         """Highlight the active table row for the current scan point."""
         self._clear_current_row_highlight()
+        if index < 0:
+            return
         self._set_row_style(index, _CURRENT_ROW_STYLE)
 
     def get_generator(self) -> ListScanGenerator:

@@ -330,6 +330,9 @@ class ArbitraryFunctionScanWidget(QWidget):
 
     def _on_current_point_changed(self, index: int, value: float) -> None:
         """Move the current-point marker to *(index, value)*."""
+        if index < 0:
+            self._clear_current_marker()
+            return
         self._current_marker.setData(x=np.array([float(index)]), y=np.array([float(value)]))
 
     def get_generator(self) -> ArbitraryFunctionScanGenerator:
