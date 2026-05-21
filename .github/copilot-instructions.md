@@ -2,82 +2,98 @@
 
 ## Project Context
 
-This is an application for carrying out scientific measurements by communicating with lab instruments via USB/Serial/GPIB/Ethernet interfaces.
-It should provide user interface to set configuration settings epecific for particular measuements (e.g. intrsuments, communications addresses, instrument specific
-settings such as range, measurement time etc), and user interface to define a measurement sequence that should be rendered into python code and then exectured in
-a sequence engine. Code running in the sequence engine will communicate data and status to the user interface through asynchronous messaging.
+This is an application for carrying out scientific measurements by communicating
+with lab instruments via USB/Serial/GPIB/Ethernet interfaces. It should provide
+user interface to set configuration settings specific for particular
+measurements (e.g. instruments, communications addresses, instrument specific
+settings such as range, measurement time etc), and user interface to define a
+measurement sequence that should be rendered into python code and then executed
+in a sequence engine. Code running in the sequence engine will communicate data
+and status to the user interface through asynchronous messaging.
 
 ## UI guidelines
 
-In general favour the widgets defined in the ui.widgets package over stock qt ones. for quantities that have physical units, show the units in the widget and whete numbers outside the range 0.1-1000, support SI prefixes too.
+In general favour the widgets defined in the ui.widgets package over stock qt
+ones. for quantities that have physical units, show the units in the widget and
+where numbers outside the range 0.1-1000, support SI prefixes too.
 
 ## Docstring Formatting
 
-All docstrings for python functions, classes, methods and modules should confirm to the following:
+All docstrings for python functions, classes, methods and modules should confirm
+to the following:
 
-- Generally the format is based on Google stadnard
+- Generally the format is based on Google standard
 - Written in British English
-- There is a one line suymmary that starts on the same line as the opening quotes and terminated with a period.
+- There is a one line summary that starts on the same line as the opening quotes
+  and terminated with a period.
 - All public classes, methods and functions should conform to the following:
-
-  - The position areguments are described in an Args: section, the keyword parameters in a
-    "Keyword Parameters:" section.
-  - Parameters are listed as "name (type):" then a newline and indent with the descritpion.
-  - Return values are in a "Returns:" section. For single return values the format is "(type):" newline and
-    indent and then description. Tuples (multiple return values) are given a sequyence of single value
-    blocks.
+  - The position arguments are described in an Args: section, the keyword
+    parameters in a "Keyword Parameters:" section.
+  - Parameters are listed as "name (type):" then a newline and indent with the
+    description.
+  - Return values are in a "Returns:" section. For single return values the
+    format is "(type):" newline and indent and then description. Tuples
+    (multiple return values) are given a sequence of single value blocks.
   - Exceptions that are specifically raised are in a "Raises:" section.
-  - Class atributes are in a "Attributes:" section and follow a similar structure to parameters.
+  - Class attributes are in a "Attributes:" section and follow a similar
+    structure to parameters.
   - Any details of the algorithm etc are in a "Notes:" section.
-  - Public methods and functions should have examples of usage in an "Examples:" section
-  - The Class constructor should be documented in the class docstring rather than the __init__ method's docstring.
+  - Public methods and functions should have examples of usage in an "Examples:"
+    section
+  - The Class constructor should be documented in the class docstring rather
+    than the `__init__` method's docstring.
 
-- Private mthods, functions should conform to the following:
-
-  - If the function or method is called outside of the same scope (e.g. in an inherited class or different
-    module) then it should be documented as a publuc method or function
-  - Otherwise, only the summary needs to be probided and other sections are optional.
+- Private methods, functions should conform to the following:
+  - If the function or method is called outside of the same scope (e.g. in an
+    inherited class or different module) then it should be documented as a
+    public method or function
+  - Otherwise, only the summary needs to be provided and other sections are
+    optional.
 
 - Modules should conform to the following:
-
-  - The docstring should include a brief overview of the contents of the module, higlighting common aspects
-    of te contents.
+  - The docstring should include a brief overview of the contents of the module,
+    highlighting common aspects of the contents.
 
 ## Code formatting
 
 ### Class, function, method and variable naming conventions
 
-The following apply to entities created by copilot. Unless specifically instructed, do not rename
-existing entities that do not conform to the following.
+The following apply to entities created by copilot. Unless specifically
+instructed, do not rename existing entities that do not conform to the
+following.
 
 - Classes should follow PascalCase conventions
-- functions, methods and variables not in module level scope follow snake_case conventions
+- functions, methods and variables not in module level scope follow snake_case
+  conventions
 - Variables in the module level scope follow CAPITAL case convention
 
 ### imports
 
-Group ipmorts as follows:
+Group imports as follows:
 
 - standard library imports
 - well known third party packages such as numpy, matplotlib, scipy, pandas
 - other third party packages
 - imports from within this package, including relative imports
 
-Within each group, sort imports alphabetically. Where possible combine imports from the same module into one statement.
+Within each group, sort imports alphabetically. Where possible combine imports
+from the same module into one statement.
 
 ### Line length
 
-- For user examples, the line length is 79 characters, for all other files use 119 characters.
-- Otherwise folow black coding standards.
+- For user examples, the line length is 79 characters, for all other files use
+  119 characters.
+- Otherwise follow black coding standards.
 - Avoid line splits that are not compatible with the versions of python
   specified in the package building scripts.
 - remove trailing whitespace at the end of lines
-- Ensure blank lines only contain an end of line character and not any other whitespace.
+- Ensure blank lines only contain an end of line character and not any other
+  whitespace.
 
 ## Issues and Bugs discovered during copilot operations
 
-If a new issue or bug is discovered during editing or creating other features, create a GitHub issue to track it.
-When creating issues, include:
+If a new issue or bug is discovered during editing or creating other features,
+create a GitHub issue to track it. When creating issues, include:
 
 - A clear, descriptive title
 - The file path and line number where the issue occurs
@@ -86,13 +102,15 @@ When creating issues, include:
 - Suggested fixes or approaches (if known)
 - Appropriate labels (bug, enhancement, documentation, etc.)
 
-If a GitHub issue is fixed during your work, close the issue with a reference to the commit or PR that fixed it.
+If a GitHub issue is fixed during your work, close the issue with a reference to
+the commit or PR that fixed it.
 
 ## Markdown Formatting
 
 When changing markdown files, follow these guidelines:
 
-- Use markdownlint to identify errors in markdown formatting and fix any it flags.
+- Use markdownlint to identify errors in markdown formatting and fix any it
+  flags.
 - Use a maximum line length of 119 characters.
 - Use British English spellings in text except where code requires differently.
 - Pay particular attention to spacing around lists, headers and code blocks.
