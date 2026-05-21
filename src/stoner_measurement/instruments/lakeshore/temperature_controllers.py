@@ -53,6 +53,7 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
             transport=transport,
             protocol=protocol if protocol is not None else LakeshoreProtocol(),
         )
+        self._calibration_curve_names_cache: dict[int, str] | None = None
 
     def identify(self) -> str:
         """Return the instrument identity string."""
@@ -165,23 +166,28 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
     def get_calibration_curve_names(self) -> dict[int, str]:
         """Return calibration-curve names reported by the controller.
 
-        Queries ``CRVHDR?`` for curve numbers 1–60 and extracts the
-        human-readable curve name from each response. Curves that fail to query
-        or report a blank name are omitted from the returned mapping.
+        On first call this queries ``CRVHDR?`` for curve numbers 1–60 and
+        extracts the human-readable curve name from each response until the
+        controller reports an unsupported curve. The discovered mapping is
+        cached and reused on subsequent calls.
 
         Returns:
             (dict[int, str]):
                 Mapping from curve number to curve name.
         """
+        if self._calibration_curve_names_cache is not None:
+            return dict(self._calibration_curve_names_cache)
+
         names: dict[int, str] = {}
         for curve_number in range(1, 61):
             try:
                 response = self.query(f"CRVHDR? {curve_number}")
             except Exception:
-                continue
+                break
             name = self._parse_curve_header_name(response)
             if name:
                 names[curve_number] = name
+        self._calibration_curve_names_cache = dict(names)
         return names
 
     def get_num_zones(self, loop: int) -> int:

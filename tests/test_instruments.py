@@ -1988,6 +1988,9 @@ class TestLakeshoreTemperatureControllers:
             1: "Standard Diode",
             2: "Cernox, 1k, custom",
         }
+        assert tc.query.call_count == 3
+        assert tc.get_calibration_curve_names() == names
+        assert tc.query.call_count == 3
 
     def test_lakeshore336_set_input_channel_settings_all_fields(self):
         t = _null()

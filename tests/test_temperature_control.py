@@ -680,12 +680,12 @@ class TestTemperatureControlPanel:
         # Reset.
         panel._on_gas_auto_changed(0)
 
-    def test_input_settings_curve_selector_uses_curve_names(self, qapp):
+    def test_input_settings_curve_selector_uses_curve_names(self, qapp, monkeypatch):
         from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
         panel = TemperatureControlPanel()
-        panel._engine.get_calibration_curve_names = lambda: {5: "Standard Diode"}
+        monkeypatch.setattr(panel._engine, "get_calibration_curve_names", lambda: {5: "Standard Diode"})
 
         panel._configure_input_settings_tab(
             ControllerCapabilities(
