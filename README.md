@@ -63,11 +63,11 @@ The main window contains a Measurement workspace and a Script Editor workspace.
 
 The Measurement workspace is divided into three panels:
 
-|Panel|Description|
-|---|---|
-|**Left (25 %)**|Plugin list, sequence tree, and monitoring widgets.|
-|**Central (50 %)**|Live PyQtGraph plotting area for sequence data.|
-|**Right (25 %)**|Tabbed configuration panel for selected plugins/steps.|
+| Panel              | Description                                            |
+| ------------------ | ------------------------------------------------------ |
+| **Left (25 %)**    | Plugin list, sequence tree, and monitoring widgets.    |
+| **Central (50 %)** | Live PyQtGraph plotting area for sequence data.        |
+| **Right (25 %)**   | Tabbed configuration panel for selected plugins/steps. |
 
 Menus and toolbar actions support sequence/script creation, opening/saving,
 run/pause/stop, Python code generation from the sequence tree, and opening the
@@ -75,10 +75,10 @@ log viewer window.
 
 ## Running a measurement
 
-1. Select a plugin in the **left panel** and click *Add Step*.
+1. Select a plugin in the **left panel** and click _Add Step_.
 2. Repeat for each step you need.
 3. Configure each step via the corresponding tab in the **right panel**.
-4. Click *Run* to render and execute the generated sequence script.
+4. Click _Run_ to render and execute the generated sequence script.
 
 ## Plugin configuration files
 
@@ -90,8 +90,9 @@ under:
 src/stoner_measurement/conf/plugins/
 ```
 
-Each file contains keys matching the plugin's `to_json()` / `_restore_from_json()`
-settings, so the files can be edited outside the application.
+Each file contains keys matching the plugin's `to_json()` /
+`_restore_from_json()` settings, so the files can be edited outside the
+application.
 
 Per-machine overrides live in the user configuration directory under:
 
@@ -105,11 +106,12 @@ On Linux this is typically:
 ~/.config/stoner_measurement/plugins/
 ```
 
-The file name is derived from the plugin name, converted to lowercase with spaces
-and hyphens replaced by underscores. For example, the bundled defaults for the
-dummy plugin are packaged in `stoner_measurement.conf.plugins` as `dummy.yaml`
-(`src/stoner_measurement/conf/plugins/dummy.yaml` in a source checkout), and a
-rig-specific override can be created at `~/.config/stoner_measurement/plugins/dummy.yaml`.
+The file name is derived from the plugin name, converted to lowercase with
+spaces and hyphens replaced by underscores. For example, the bundled defaults
+for the dummy plugin are packaged in `stoner_measurement.conf.plugins` as
+`dummy.yaml` (`src/stoner_measurement/conf/plugins/dummy.yaml` in a source
+checkout), and a rig-specific override can be created at
+`~/.config/stoner_measurement/plugins/dummy.yaml`.
 
 When a plugin is instantiated, the bundled YAML is loaded first and then any
 per-machine YAML overlay is applied on top. To create a rig-specific setup, copy
@@ -125,4 +127,4 @@ plugins and instrument drivers, and contribution guidelines — is available at:
 
 ## Licence
 
-Distributed under the MIT Licence.  See [LICENSE](LICENSE) for details.
+Distributed under the MIT Licence. See [LICENSE](LICENSE) for details.
