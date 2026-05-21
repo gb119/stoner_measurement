@@ -451,8 +451,15 @@ class SteppedScanWidget(QWidget):
             symbol="o",
             size=8,
         )
+        self._current_marker = pg.ScatterPlotItem(
+            pen=pg.mkPen(color=(255, 220, 0), width=2),
+            brush=pg.mkBrush(0, 0, 0, 0),
+            symbol="o",
+            size=12,
+        )
         self._plot_widget.addItem(self._green_scatter)
         self._plot_widget.addItem(self._red_scatter)
+        self._plot_widget.addItem(self._current_marker)
         preview_layout.addWidget(self._plot_widget)
         self._tabs.addTab(preview_widget, "Preview")
 
@@ -472,6 +479,7 @@ class SteppedScanWidget(QWidget):
         self._add_btn.clicked.connect(self._add_default_row)
         self._remove_btn.clicked.connect(self._remove_selected_row)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.current_point_changed.connect(self._on_current_point_changed)
         self._generator.units_changed.connect(self._update_units)
         self._update_units(self._generator.units)
 
@@ -639,6 +647,15 @@ class SteppedScanWidget(QWidget):
             self._red_scatter.setData(x=indices[red_mask], y=values[red_mask])
         else:
             self._red_scatter.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))
+        self._clear_current_marker()
+
+    def _clear_current_marker(self) -> None:
+        """Clear the current-point marker from the preview."""
+        self._current_marker.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))
+
+    def _on_current_point_changed(self, index: int, value: float) -> None:
+        """Move the current-point marker to *(index, value)*."""
+        self._current_marker.setData(x=np.array([float(index)]), y=np.array([float(value)]))
 
     def get_generator(self) -> SteppedScanGenerator:
         """Return the :class:`SteppedScanGenerator` bound to this widget.

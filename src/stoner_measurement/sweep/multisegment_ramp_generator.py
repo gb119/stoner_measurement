@@ -228,8 +228,17 @@ class MultiSegmentRampSweepWidget(QWidget):
         self._preview = pg.PlotWidget(self)
         self._preview.setLabel("bottom", "Time")
         self._preview.setLabel("left", "Value")
+        self._current_marker = pg.ScatterPlotItem(
+            pen=pg.mkPen(color=(255, 220, 0), width=2),
+            brush=pg.mkBrush(0, 0, 0, 0),
+            symbol="o",
+            size=12,
+        )
+        self._preview.addItem(self._current_marker)
         root.addWidget(self._preview)
         root.addWidget(QLabel("Preview uses green/red segment lines for measure true/false.", self))
+        self._generator.values_changed.connect(self._clear_current_marker)
+        self._generator.current_point_changed.connect(self._on_current_point_changed)
 
     def _build_target_spin(self, value: float) -> SISpinBox:
         spin = SISpinBox(self._table)
@@ -307,6 +316,19 @@ class MultiSegmentRampSweepWidget(QWidget):
             self._preview.plot(x_vals, y_vals, pen=pen)
             current = float(target)
             current_time += duration
+        self._preview.addItem(self._current_marker)
+        self._clear_current_marker()
+
+    def _clear_current_marker(self) -> None:
+        """Clear the current-point marker from the preview."""
+        self._current_marker.setData(x=[], y=[])
+
+    def _on_current_point_changed(self, index: int, value: float) -> None:
+        """Move the current-point marker to *(index, value)*."""
+        if index < 0:
+            self._clear_current_marker()
+            return
+        self._current_marker.setData(x=[float(index)], y=[float(value)])
 
     def _on_start_changed(self, value: float) -> None:
         self._generator.start = float(value)

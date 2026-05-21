@@ -274,6 +274,13 @@ class RampScanWidget(QWidget):
             )
             axis.setPen(axis_pen)
         self._curve = self._plot_widget.plot(pen=pg.mkPen(color="yellow", width=2.5))
+        self._current_marker = pg.ScatterPlotItem(
+            pen=pg.mkPen(color=(255, 220, 0), width=2),
+            brush=pg.mkBrush(0, 0, 0, 0),
+            symbol="o",
+            size=12,
+        )
+        self._plot_widget.addItem(self._current_marker)
         root_layout.addWidget(self._plot_widget)
         self.setLayout(root_layout)
 
@@ -285,6 +292,7 @@ class RampScanWidget(QWidget):
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self._base_spin.valueChanged.connect(self._on_base_changed)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.current_point_changed.connect(self._on_current_point_changed)
         self._generator.units_changed.connect(self._update_units)
         self._update_units(self._generator.units)
 
@@ -318,6 +326,15 @@ class RampScanWidget(QWidget):
         values = self._generator.values
         x_vals = np.arange(len(values), dtype=float)
         self._curve.setData(x_vals, values)
+        self._clear_current_marker()
+
+    def _clear_current_marker(self) -> None:
+        """Clear the current-point marker from the preview."""
+        self._current_marker.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))
+
+    def _on_current_point_changed(self, index: int, value: float) -> None:
+        """Move the current-point marker to *(index, value)*."""
+        self._current_marker.setData(x=np.array([float(index)]), y=np.array([float(value)]))
 
     def get_generator(self) -> RampScanGenerator:
         """Return the :class:`RampScanGenerator` bound to this widget."""

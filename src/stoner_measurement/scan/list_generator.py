@@ -28,6 +28,7 @@ from stoner_measurement.ui.widgets import SISpinBox
 
 _SPINBOX_MAX_ABS = 1e9
 _DEFAULT_TARGET = 1.0
+_CURRENT_ROW_STYLE = "background-color: rgb(120, 110, 20);"
 
 
 class ListScanGenerator(BaseScanGenerator):
@@ -305,6 +306,7 @@ class ListScanWidget(QWidget):
         self._add_btn.clicked.connect(self._add_default_row)
         self._remove_btn.clicked.connect(self._remove_selected_row)
         self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.current_point_changed.connect(self._on_current_point_changed)
         self._generator.units_changed.connect(self._update_units)
         self._update_units(self._generator.units)
 
@@ -375,6 +377,7 @@ class ListScanWidget(QWidget):
         """Re-render the scatter plot from the current generator values."""
         values = self._generator.values
         flags = self._generator.flags
+        self._clear_current_row_highlight()
         if len(values) == 0:
             self._green_scatter.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))
             self._red_scatter.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))
@@ -390,6 +393,25 @@ class ListScanWidget(QWidget):
             self._red_scatter.setData(x=indices[red_mask], y=values[red_mask])
         else:
             self._red_scatter.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))
+
+    def _set_row_style(self, row: int, style: str) -> None:
+        """Apply a stylesheet to all widgets in *row*."""
+        if row < 0 or row >= self._table.rowCount():
+            return
+        for col in range(self._table.columnCount()):
+            cell_widget = self._table.cellWidget(row, col)
+            if cell_widget is not None:
+                cell_widget.setStyleSheet(style)
+
+    def _clear_current_row_highlight(self) -> None:
+        """Clear current-row highlighting from the table."""
+        for row in range(self._table.rowCount()):
+            self._set_row_style(row, "")
+
+    def _on_current_point_changed(self, index: int, _value: float) -> None:
+        """Highlight the active table row for the current scan point."""
+        self._clear_current_row_highlight()
+        self._set_row_style(index, _CURRENT_ROW_STYLE)
 
     def get_generator(self) -> ListScanGenerator:
         """Return the :class:`ListScanGenerator` bound to this widget.

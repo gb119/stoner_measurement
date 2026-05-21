@@ -134,6 +134,15 @@ class TestArbitraryFunctionScanWidget:
         _x, y = widget._curve.getData()
         assert np.allclose(y, gen.values)
 
+    def test_current_point_marker_tracks_iteration(self, qapp):
+        gen = ArbitraryFunctionScanGenerator(num_points=8)
+        widget = ArbitraryFunctionScanWidget(generator=gen)
+        next(iter(gen))
+        x, y = widget._current_marker.getData()
+        assert x is not None and y is not None
+        assert x.tolist() == [0.0]
+        assert y[0] == gen.values[0]
+
     def test_namespace_label_is_present(self, qapp):
         """Widget includes a label advertising the available namespace."""
         widget = ArbitraryFunctionScanWidget(generator=ArbitraryFunctionScanGenerator())

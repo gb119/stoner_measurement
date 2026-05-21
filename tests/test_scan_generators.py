@@ -158,6 +158,13 @@ class TestBaseScanGenerator:
         list(gen)
         assert emitted == [1.0, 2.0, 3.0]
 
+    def test_current_point_changed_emitted_with_index_and_value(self, qapp):
+        gen = self._Minimal()
+        emitted: list[tuple[int, float]] = []
+        gen.current_point_changed.connect(lambda index, value: emitted.append((index, value)))
+        list(gen)
+        assert emitted == [(0, 1.0), (1, 2.0), (2, 3.0)]
+
     # ------------------------------------------------------------------
     # units property
     # ------------------------------------------------------------------
@@ -593,6 +600,15 @@ class TestFunctionScanWidget:
         gen.amplitude = 5.0  # triggers values_changed → _refresh_plot
         _x, y = widget._curve.getData()
         assert np.allclose(y, gen.values)
+
+    def test_current_point_marker_tracks_iteration(self, qapp):
+        gen = FunctionScanGenerator(num_points=5)
+        widget = FunctionScanWidget(generator=gen)
+        next(iter(gen))
+        x, y = widget._current_marker.getData()
+        assert x is not None and y is not None
+        assert x.tolist() == [0.0]
+        assert y[0] == pytest.approx(gen.values[0])
 
     def test_periods_spinbox_updates_generator(self, qapp):
         gen = FunctionScanGenerator(periods=1.0)
