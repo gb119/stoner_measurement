@@ -441,17 +441,23 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
         return [float(token) for token in tokens]
 
     def _parse_curve_header_name(self, response: str) -> str:
-        """Extract the curve-name field from a ``CRVHDR?`` response."""
+        """Extract the curve-name field from a ``CRVHDR?`` response.
+
+        Args:
+            response (str):
+                Raw ``CRVHDR?`` response string containing CSV fields with the
+                curve name in the first field.
+        """
         payload = response.strip()
         if not payload:
             return ""
         try:
             row = next(csv.reader([payload], skipinitialspace=True), [])
         except csv.Error:
-            row = []
+            return ""
         if row:
             return row[0].strip()
-        return payload.split(",", maxsplit=1)[0].strip().strip('"')
+        return ""
 
     def _get_outmode(self, loop: int) -> tuple[int, int, int]:
         """Return ``(mode, input_channel_index, powerup_enable)`` for *loop*."""

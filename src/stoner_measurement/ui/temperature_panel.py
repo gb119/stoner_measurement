@@ -1488,7 +1488,11 @@ class _InputSettingsWidget(QWidget):
                 Mapping from curve number to human-readable curve name.
         """
         selected_curve = self._selected_curve_number()
-        self._curve_names = {number: name for number, name in curve_names.items() if name.strip()}
+        self._curve_names = {}
+        for number, name in curve_names.items():
+            stripped_name = name.strip()
+            if stripped_name:
+                self._curve_names[number] = stripped_name
         self._rebuild_curve_options()
         self._set_selected_curve(selected_curve)
 
@@ -1658,7 +1662,10 @@ class _InputSettingsWidget(QWidget):
         )
 
     def _rebuild_curve_options(self) -> None:
-        """Populate the calibration-curve selector from cached names."""
+        """Populate the calibration-curve selector from cached names.
+
+        Curve 0 is always present as the "no curve assigned" option.
+        """
         self._curve_combo.blockSignals(True)
         self._curve_combo.clear()
         for curve_number in range(0, _MAX_CALIBRATION_CURVE + 1):
