@@ -437,7 +437,7 @@ class MagnetControlPanel(QWidget):
         # Persistent switch heater group.
         heater_group = QGroupBox("Persistent Switch Heater")
         heater_form = QFormLayout(heater_group)
-        heater_layout = QHBoxLayout()
+        heater_button_layout = QHBoxLayout()
         self._btn_heater_on = QPushButton("Heater On")
         self._btn_heater_on.clicked.connect(self._on_heater_on)
         self._btn_heater_off = QPushButton("Heater Off")
@@ -445,13 +445,13 @@ class MagnetControlPanel(QWidget):
         self._btn_read_heater = QPushButton("Read")
         self._btn_read_heater.setToolTip("Read the current heater state from the controller")
         self._btn_read_heater.clicked.connect(self._on_read_heater)
-        heater_layout.addWidget(self._btn_heater_on)
-        heater_layout.addWidget(self._btn_heater_off)
-        heater_layout.addWidget(self._btn_read_heater)
-        heater_layout.addStretch()
+        heater_button_layout.addWidget(self._btn_heater_on)
+        heater_button_layout.addWidget(self._btn_heater_off)
+        heater_button_layout.addWidget(self._btn_read_heater)
+        heater_button_layout.addStretch()
         self._heater_state_label = QLabel("—")
         heater_form.addRow("State:", self._heater_state_label)
-        heater_form.addRow("", heater_layout)
+        heater_form.addRow("", heater_button_layout)
         layout.addWidget(heater_group)
 
         # Magnet constants group.
@@ -945,7 +945,7 @@ class MagnetControlPanel(QWidget):
     @pyqtSlot()
     def _on_read_limits(self) -> None:
         """Read magnet constant and limits from the controller and update the UI."""
-        state = self._read_controller_state_or_warn("Magnet Constants && Limits")
+        state = self._read_controller_state_or_warn("Magnet Constants & Limits")
         if state is None:
             return
         if state.magnet_constant is not None and state.magnet_constant > 0:
