@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from typing import ClassVar
 
 from stoner_measurement.instruments.protocol.base import BaseProtocol
@@ -160,6 +161,28 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
     def get_capabilities(self) -> ControllerCapabilities:
         """Return static driver capabilities."""
         return self._CAPABILITIES
+
+    def get_calibration_curve_names(self) -> dict[int, str]:
+        """Return calibration-curve names reported by the controller.
+
+        Queries ``CRVHDR?`` for curve numbers 1–60 and extracts the
+        human-readable curve name from each response. Curves that fail to query
+        or report a blank name are omitted from the returned mapping.
+
+        Returns:
+            (dict[int, str]):
+                Mapping from curve number to curve name.
+        """
+        names: dict[int, str] = {}
+        for curve_number in range(1, 61):
+            try:
+                response = self.query(f"CRVHDR? {curve_number}")
+            except Exception:
+                continue
+            name = self._parse_curve_header_name(response)
+            if name:
+                names[curve_number] = name
+        return names
 
     def get_num_zones(self, loop: int) -> int:
         """Return the number of zone-table entries for *loop*.
@@ -416,6 +439,19 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
         if len(tokens) < minimum_length:
             raise ValueError(f"Expected at least {minimum_length} values, got {response!r}.")
         return [float(token) for token in tokens]
+
+    def _parse_curve_header_name(self, response: str) -> str:
+        """Extract the curve-name field from a ``CRVHDR?`` response."""
+        payload = response.strip()
+        if not payload:
+            return ""
+        try:
+            row = next(csv.reader([payload], skipinitialspace=True), [])
+        except csv.Error:
+            row = []
+        if row:
+            return row[0].strip()
+        return payload.split(",", maxsplit=1)[0].strip().strip('"')
 
     def _get_outmode(self, loop: int) -> tuple[int, int, int]:
         """Return ``(mode, input_channel_index, powerup_enable)`` for *loop*."""

@@ -680,6 +680,29 @@ class TestTemperatureControlPanel:
         # Reset.
         panel._on_gas_auto_changed(0)
 
+    def test_input_settings_curve_selector_uses_curve_names(self, qapp):
+        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._engine.get_calibration_curve_names = lambda: {5: "Standard Diode"}
+
+        panel._configure_input_settings_tab(
+            ControllerCapabilities(
+                num_inputs=1,
+                num_loops=1,
+                input_channels=("A",),
+                loop_numbers=(1,),
+                has_input_settings=True,
+            )
+        )
+
+        curve_combo = panel._input_settings_widget._curve_combo
+        named_curve_index = curve_combo.findData(5)
+        assert named_curve_index >= 0
+        assert curve_combo.itemText(named_curve_index) == "Standard Diode (5)"
+        assert curve_combo.itemText(curve_combo.findData(2)) == "2"
+
 
 # ---------------------------------------------------------------------------
 # Engine zone table methods
@@ -856,4 +879,21 @@ class TestEngineZoneTable:
             ZoneEntry(upper_bound=50.0, p=10.0, i=1.0, d=0.0, ramp_rate=5.0, heater_range=1, heater_output=0.0)
         ]
         engine.set_zone_table(1, entries)  # no exception expected
+        engine.shutdown()
+
+
+class TestEngineCalibrationCurveNames:
+    def test_returns_empty_mapping_when_disconnected(self, qapp):
+        engine = TemperatureControllerEngine()
+        assert engine.get_calibration_curve_names() == {}
+        engine.shutdown()
+
+    def test_returns_driver_curve_names(self, qapp):
+        from unittest.mock import MagicMock
+
+        engine = TemperatureControllerEngine()
+        driver = _make_fake_tc()
+        driver.get_calibration_curve_names = MagicMock(return_value={7: "Cernox"})
+        engine.connect_instrument(driver)
+        assert engine.get_calibration_curve_names() == {7: "Cernox"}
         engine.shutdown()

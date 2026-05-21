@@ -1523,6 +1523,20 @@ class TemperatureController(BaseInstrument):
             "Check get_capabilities().has_user_curves before calling this method."
         )
 
+    def get_calibration_curve_names(self) -> dict[int, str]:
+        """Return available calibration-curve names keyed by curve number.
+
+        Controllers that can provide curve metadata should override this method
+        and return a mapping of curve number to a human-readable name or
+        description. Controllers that do not expose curve names should return an
+        empty mapping.
+
+        Returns:
+            (dict[int, str]):
+                Mapping from calibration curve number to display name.
+        """
+        return {}
+
     # ------------------------------------------------------------------
     # Optional methods — input channel settings
     # ------------------------------------------------------------------
