@@ -387,7 +387,11 @@ class MagnetControlPanel(QWidget):
         self._btn_go = QPushButton("Go To Field")
         self._btn_go.setToolTip("Set the target and begin ramping")
         self._btn_go.clicked.connect(self._on_go_to_field)
+        self._btn_read_target = QPushButton("Read")
+        self._btn_read_target.setToolTip("Read the current target field from the controller state")
+        self._btn_read_target.clicked.connect(self._on_read_target)
         go_btn_row.addWidget(self._btn_go)
+        go_btn_row.addWidget(self._btn_read_target)
         go_btn_row.addStretch()
         target_form.addRow("", go_btn_row)
         layout.addWidget(target_group)
@@ -409,7 +413,11 @@ class MagnetControlPanel(QWidget):
         ramp_btn_row = QHBoxLayout()
         self._btn_apply_ramp = QPushButton("Apply Ramp Rates")
         self._btn_apply_ramp.clicked.connect(self._on_apply_ramp)
+        self._btn_read_ramp = QPushButton("Read")
+        self._btn_read_ramp.setToolTip("Read current ramp rates from the controller state")
+        self._btn_read_ramp.clicked.connect(self._on_read_ramp)
         ramp_btn_row.addWidget(self._btn_apply_ramp)
+        ramp_btn_row.addWidget(self._btn_read_ramp)
         ramp_btn_row.addStretch()
         ramp_form.addRow("", ramp_btn_row)
         layout.addWidget(ramp_group)
@@ -428,14 +436,22 @@ class MagnetControlPanel(QWidget):
 
         # Persistent switch heater group.
         heater_group = QGroupBox("Persistent Switch Heater")
-        heater_layout = QHBoxLayout(heater_group)
+        heater_form = QFormLayout(heater_group)
+        heater_btn_row = QHBoxLayout()
         self._btn_heater_on = QPushButton("Heater On")
         self._btn_heater_on.clicked.connect(self._on_heater_on)
         self._btn_heater_off = QPushButton("Heater Off")
         self._btn_heater_off.clicked.connect(self._on_heater_off)
-        heater_layout.addWidget(self._btn_heater_on)
-        heater_layout.addWidget(self._btn_heater_off)
-        heater_layout.addStretch()
+        self._btn_read_heater = QPushButton("Read")
+        self._btn_read_heater.setToolTip("Read the current heater state from the controller")
+        self._btn_read_heater.clicked.connect(self._on_read_heater)
+        heater_btn_row.addWidget(self._btn_heater_on)
+        heater_btn_row.addWidget(self._btn_heater_off)
+        heater_btn_row.addWidget(self._btn_read_heater)
+        heater_btn_row.addStretch()
+        self._heater_state_label = QLabel("—")
+        heater_form.addRow("State:", self._heater_state_label)
+        heater_form.addRow("", heater_btn_row)
         layout.addWidget(heater_group)
 
         # Magnet constants group.
@@ -465,7 +481,11 @@ class MagnetControlPanel(QWidget):
         limits_btn_row = QHBoxLayout()
         self._btn_apply_limits = QPushButton("Apply Constants && Limits")
         self._btn_apply_limits.clicked.connect(self._on_apply_limits)
+        self._btn_read_limits = QPushButton("Read")
+        self._btn_read_limits.setToolTip("Read magnet constant and limits from the controller")
+        self._btn_read_limits.clicked.connect(self._on_read_limits)
         limits_btn_row.addWidget(self._btn_apply_limits)
+        limits_btn_row.addWidget(self._btn_read_limits)
         limits_btn_row.addStretch()
         const_form.addRow("", limits_btn_row)
         layout.addWidget(const_group)
@@ -587,6 +607,7 @@ class MagnetControlPanel(QWidget):
         if state.magnet_constant is not None and state.magnet_constant > 0:
             self._magnet_constant = state.magnet_constant
 
+        self._set_heater_state_label(self._heater_on_from_state(state))
         self._update_chart(state, now_ts)
 
         self._updated_label.setText(
@@ -842,10 +863,35 @@ class MagnetControlPanel(QWidget):
         self._engine.ramp_to_field(field)
 
     @pyqtSlot()
+    def _on_read_target(self) -> None:
+        """Read the current target field and update the target widgets."""
+        state = self._read_controller_state_or_warn("Target Field")
+        if state is None:
+            return
+        self._target_field_spin.blockSignals(True)
+        try:
+            if state.target_field is not None:
+                self._target_field_spin.setValue(state.target_field)
+        finally:
+            self._target_field_spin.blockSignals(False)
+        self._on_target_field_changed(self._target_field_spin.value())
+
+    @pyqtSlot()
     def _on_apply_ramp(self) -> None:
         """Apply the ramp rate settings to the engine."""
         self._engine.set_ramp_rate_field(self._ramp_field_spin.value())
         self._engine.set_ramp_rate_current(self._ramp_current_spin.value())
+
+    @pyqtSlot()
+    def _on_read_ramp(self) -> None:
+        """Read current ramp-rate settings and update the UI."""
+        state = self._read_controller_state_or_warn("Ramp Rate")
+        if state is None:
+            return
+        if state.ramp_rate_field is not None:
+            self._ramp_field_spin.setValue(state.ramp_rate_field)
+        if state.ramp_rate_current is not None:
+            self._ramp_current_spin.setValue(state.ramp_rate_current)
 
     @pyqtSlot()
     def _on_pause_ramp(self) -> None:
@@ -875,6 +921,14 @@ class MagnetControlPanel(QWidget):
         self._engine.heater_off()
 
     @pyqtSlot()
+    def _on_read_heater(self) -> None:
+        """Read the current persistent-switch heater state."""
+        state = self._read_controller_state_or_warn("Persistent Switch Heater")
+        if state is None:
+            return
+        self._set_heater_state_label(self._heater_on_from_state(state))
+
+    @pyqtSlot()
     def _on_apply_limits(self) -> None:
         """Apply magnet constant and limits from the UI to the engine."""
         from stoner_measurement.instruments.magnet_controller import MagnetLimits
@@ -890,6 +944,70 @@ class MagnetControlPanel(QWidget):
         self._engine.set_limits(limits)
         # Refresh the equivalent-current label.
         self._on_target_field_changed(self._target_field_spin.value())
+
+    @pyqtSlot()
+    def _on_read_limits(self) -> None:
+        """Read magnet constant and limits from the controller and update the UI."""
+        state = self._read_controller_state_or_warn("Magnet Constants & Limits")
+        if state is None:
+            return
+        if state.magnet_constant is not None and state.magnet_constant > 0:
+            self._magnet_constant = state.magnet_constant
+            self._magnet_const_spin.setValue(state.magnet_constant)
+
+        limits = self._engine.get_limits()
+        if limits is not None:
+            self._max_current_spin.setValue(limits.max_current)
+            if limits.max_field is not None:
+                self._max_field_spin.setValue(limits.max_field)
+            if limits.max_ramp_rate is not None:
+                self._max_ramp_spin.setValue(limits.max_ramp_rate)
+
+        self._on_target_field_changed(self._target_field_spin.value())
+
+    def _set_heater_state_label(self, heater_on: bool | None) -> None:
+        """Update the heater state label text.
+
+        Args:
+            heater_on (bool | None):
+                ``True`` for on, ``False`` for off, or ``None`` when unknown.
+        """
+        if heater_on is True:
+            self._heater_state_label.setText("On")
+        elif heater_on is False:
+            self._heater_state_label.setText("Off")
+        else:
+            self._heater_state_label.setText("Unknown")
+
+    def _heater_on_from_state(self, state: MagnetEngineState) -> bool | None:
+        """Return the heater readback from a controller state snapshot.
+
+        Args:
+            state (MagnetEngineState):
+                Controller state snapshot.
+
+        Returns:
+            (bool | None):
+                Heater state, or ``None`` when unavailable.
+        """
+        return state.reading.heater_on if state.reading is not None else None
+
+    def _read_controller_state_or_warn(self, title: str) -> MagnetEngineState | None:
+        """Read current controller state and show a warning if unavailable.
+
+        Args:
+            title (str):
+                Dialog title used when showing a warning.
+
+        Returns:
+            (MagnetEngineState | None):
+                Fresh controller state, or ``None`` when unavailable.
+        """
+        state = self._engine.read_controller_state()
+        if state is not None:
+            return state
+        QMessageBox.warning(self, title, "No instrument connected or read failed.")
+        return None
 
     # ------------------------------------------------------------------
     # Chart tab slots
