@@ -176,7 +176,7 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
                 Mapping from curve number to curve name.
         """
         if self._calibration_curve_names_cache is not None:
-            return dict(self._calibration_curve_names_cache)
+            return self._calibration_curve_names_cache
 
         names: dict[int, str] = {}
         for curve_number in range(1, 61):
@@ -187,8 +187,8 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
             name = self._parse_curve_header_name(response)
             if name:
                 names[curve_number] = name
-        self._calibration_curve_names_cache = dict(names)
-        return names
+        self._calibration_curve_names_cache = names
+        return self._calibration_curve_names_cache
 
     def get_num_zones(self, loop: int) -> int:
         """Return the number of zone-table entries for *loop*.
