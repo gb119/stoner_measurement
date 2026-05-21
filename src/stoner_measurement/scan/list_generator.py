@@ -28,7 +28,7 @@ from stoner_measurement.ui.widgets import SISpinBox
 
 _SPINBOX_MAX_ABS = 1e9
 _DEFAULT_TARGET = 1.0
-_CURRENT_ROW_STYLE = "background-color: rgb(120, 110, 20);"
+_CURRENT_ROW_STYLE = "background-color: rgb(255, 220, 0);"
 
 
 class ListScanGenerator(BaseScanGenerator):

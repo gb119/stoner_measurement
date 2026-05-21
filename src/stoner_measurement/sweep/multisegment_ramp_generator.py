@@ -316,7 +316,6 @@ class MultiSegmentRampSweepWidget(QWidget):
             self._preview.plot(x_vals, y_vals, pen=pen)
             current = float(target)
             current_time += duration
-        self._preview.addItem(self._current_marker)
         self._clear_current_marker()
 
     def _clear_current_marker(self) -> None:
