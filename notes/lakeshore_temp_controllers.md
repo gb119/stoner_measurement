@@ -88,11 +88,11 @@ RAMP? <loop>
 
 ### Diff evolution
 
-| Model | Interpretation of loop placeholder |
-| ----- | ---------------------------------- |
-| 340   | implicit control loop              |
-| 335   | output 1 or 2                      |
-| 336   | output 1–4                         |
+| Model | Meaning of loop argument |
+| ----- | ------------------------ |
+| 340   | implicit control loop    |
+| 335   | output 1 or 2            |
+| 336   | output 1–4               |
 
 ⚠️ **Progression**
 
@@ -379,7 +379,7 @@ CRVPT
 ALARM
 ```
 
-### Zone-control evolution pattern
+### Evolution pattern
 
 ```text
 340 → loop-centric, implicit hardware
