@@ -84,7 +84,7 @@ Concrete classes currently included in the package:
   :class:`~stoner_measurement.instruments.oxford.OxfordITC503`,
   :class:`~stoner_measurement.instruments.oxford.OxfordMercuryTemperatureController`
 * Magnet controller drivers:
-  :class:`~stoner_measurement.instruments.lakeshore.Lakeshore525`,
+  :class:`~stoner_measurement.instruments.lakeshore.Lakeshore625`,
   :class:`~stoner_measurement.instruments.oxford.OxfordIPS120`
 
 .. automodule:: stoner_measurement.instruments
