@@ -736,6 +736,57 @@ class TestMagnetControlPanel:
         assert panel._ramp_field_spin.value() == pytest.approx(0.8)
         assert panel._ramp_current_spin.value() == pytest.approx(12.5)
 
+    def test_read_target_updates_target_field_spin_box(self, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        panel._engine.read_controller_state = lambda: MagnetEngineState(  # type: ignore[method-assign]
+            target_field=1.75,
+            magnet_constant=0.1,
+        )
+
+        panel._on_read_target()
+
+        assert panel._target_field_spin.value() == pytest.approx(1.75)
+
+    def test_read_heater_updates_heater_state_label(self, qapp):
+        from stoner_measurement.instruments.magnet_controller import MagnetState
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        panel._engine.read_controller_state = lambda: MagnetEngineState(  # type: ignore[method-assign]
+            reading=MagnetReading(
+                timestamp=datetime.now(tz=UTC),
+                field=1.0,
+                current=10.0,
+                voltage=0.1,
+                heater_on=False,
+                state=MagnetState.STANDBY,
+                at_target=False,
+            ),
+        )
+
+        panel._on_read_heater()
+
+        assert panel._heater_state_label.text() == "Off"
+
+    def test_read_ramp_warns_when_state_unavailable(self, monkeypatch, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        panel._engine.read_controller_state = lambda: None  # type: ignore[method-assign]
+        calls: list[tuple[str, str]] = []
+
+        def _fake_warning(_parent, title, text):
+            calls.append((title, text))
+            return 0
+
+        monkeypatch.setattr("stoner_measurement.ui.magnet_panel.QMessageBox.warning", _fake_warning)
+
+        panel._on_read_ramp()
+
+        assert calls == [("Ramp Rate", "No instrument connected or read failed.")]
+
     def test_read_limits_updates_limit_widgets(self, qapp):
         from stoner_measurement.instruments.magnet_controller import MagnetLimits
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
