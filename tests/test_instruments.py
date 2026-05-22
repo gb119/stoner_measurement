@@ -408,6 +408,9 @@ class TestOxfordProtocol:
     def test_parse_response_strips_echo_char(self):
         assert OxfordProtocol().parse_response(b"R1.234\r", command="R1") == "1.234"
 
+    def test_parse_response_legacy_fallback_without_command(self):
+        assert OxfordProtocol().parse_response(b"R1.234\r") == "1.234"
+
     def test_parse_response_single_char(self):
         # Degenerate one-char response with no command context (fallback path).
         assert OxfordProtocol().parse_response(b"R") == "R"
