@@ -2716,12 +2716,12 @@ class TestIdentityAndQueueClearing:
 
 
 # ---------------------------------------------------------------------------
-# Instrument locking and connect-time buffer flush
+# Instrument locking and connect-time buffer flush.
 # ---------------------------------------------------------------------------
 
 
 class TestInstrumentLocking:
-    """Tests for the RLock serialisation of write/query/check_for_errors."""
+    """Tests for the RLock serialization of write/query/check_for_errors."""
 
     def test_instrument_has_rlock(self):
         """BaseInstrument carries an RLock accessible as _lock."""
