@@ -333,10 +333,6 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         """Return the ITC503 command that sets the heater range index."""
         return f"H{range_}"
 
-    def _pid_query(self, loop: int) -> str:
-        """Return the ITC503 query command for reading PID parameters."""
-        return "R8"
-
     def get_pid(self, loop: int) -> PIDParameters:
         """Return PID parameters for *loop*.
 
