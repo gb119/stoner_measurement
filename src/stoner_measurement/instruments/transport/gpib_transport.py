@@ -8,6 +8,7 @@ at construction time if it is not installed.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 #: ``"GPIB<board>::<address>::INSTR"``.
 _GPIB_RESOURCE_RE = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
 _DEFAULT_GPIB_READ_TERMINATOR = "\n"
+logger = logging.getLogger(__name__)
 
 
 class GpibTransport(BaseTransport):
@@ -273,3 +275,23 @@ class GpibTransport(BaseTransport):
         if self._resource is None:
             return None
         return int(self._resource.read_stb())
+
+    def flush(self) -> None:
+        """Send IEEE 488.2 Device Clear to the instrument and reset the interface.
+
+        Calls the PyVISA ``clear()`` method, which sends the Selected Device
+        Clear (SDC) message over the GPIB bus.  This resets the instrument's
+        parser and discards any bytes queued in its output buffer, preventing
+        stale responses from old commands being misread after a reconnect.
+
+        If the resource is not open or Device Clear fails, the exception is
+        ignored and logged at debug level.
+        """
+        if self._resource is None:
+            return
+        import pyvisa
+
+        try:
+            self._resource.clear()
+        except pyvisa.VisaIOError as exc:
+            logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)

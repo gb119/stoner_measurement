@@ -10,6 +10,7 @@ instrument by holding references to a :class:`BaseTransport` and a
 from __future__ import annotations
 
 import logging
+import threading
 from abc import ABC
 from typing import TYPE_CHECKING
 
@@ -103,6 +104,7 @@ class BaseInstrument(ABC):
         self._comms_logger = logging.getLogger(
             f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}"
         )
+        self._lock = threading.RLock()
 
     @property
     def is_connected(self) -> bool:
@@ -125,6 +127,12 @@ class BaseInstrument(ABC):
     def connect(self) -> None:
         """Open the transport connection to the instrument.
 
+        After opening the transport, any data accumulated in the transport
+        buffer since the last session is discarded via
+        :meth:`~stoner_measurement.instruments.transport.base.BaseTransport.flush`
+        so that stale responses from previous commands cannot be misread as
+        replies to new queries.
+
         Raises:
             ConnectionError:
                 If the underlying transport cannot be opened.
@@ -140,6 +148,7 @@ class BaseInstrument(ABC):
             >>> instr.disconnect()
         """
         self.transport.open()
+        self.transport.flush()
 
     def disconnect(self) -> None:
         """Close the transport connection to the instrument.
@@ -164,6 +173,10 @@ class BaseInstrument(ABC):
         protocol uses an error queue (not response-embedded errors),
         :meth:`check_for_errors` is called after the command is sent.
 
+        A reentrant lock (:attr:`_lock`) is held for the entire write and
+        optional error-check cycle so that two concurrent callers cannot
+        interleave their write/read sequences on the same instrument.
+
         Args:
             command (str):
                 Command string in the instrument's command language.
@@ -187,11 +200,12 @@ class BaseInstrument(ABC):
             [b'OUTP ON\\n']
             >>> instr.disconnect()
         """
-        payload = self.protocol.format_command(command)
-        self.transport.write(payload)
-        self._log_comms_traffic("TX", payload)
-        if self.auto_check_errors and not self.protocol.errors_in_response:
-            self.check_for_errors(command=command)
+        with self._lock:
+            payload = self.protocol.format_command(command)
+            self.transport.write(payload)
+            self._log_comms_traffic("TX", payload)
+            if self.auto_check_errors and not self.protocol.errors_in_response:
+                self.check_for_errors(command=command)
 
     def read(self, *, command: str | None = None) -> str:
         """Read a response from the instrument.
@@ -246,6 +260,10 @@ class BaseInstrument(ABC):
         * For error-queue protocols (SCPI), :meth:`check_for_errors` is called
           after the response is returned.
 
+        A reentrant lock (:attr:`_lock`) is held for the entire write-read cycle
+        (including any error check) so that two concurrent callers cannot
+        interleave their write/read sequences on the same instrument.
+
         Args:
             command (str):
                 Query string in the instrument's command language.
@@ -274,24 +292,25 @@ class BaseInstrument(ABC):
             'ACME,1,SN,v1'
             >>> instr.disconnect()
         """
-        payload = self.protocol.format_query(command)
-        self.transport.write(payload)
-        self._log_comms_traffic("TX", payload)
-        response = self.read(command=command)
-        if self.auto_check_errors:
-            if self.protocol.errors_in_response:
-                try:
-                    self.protocol.check_error(response, command=command)
-                except InstrumentError:
-                    self._comms_logger.error(
-                        "Instrument reported error during query %r: %s",
-                        command,
-                        response,
-                    )
-                    raise
-            else:
-                self.check_for_errors(command=command)
-        return response
+        with self._lock:
+            payload = self.protocol.format_query(command)
+            self.transport.write(payload)
+            self._log_comms_traffic("TX", payload)
+            response = self.read(command=command)
+            if self.auto_check_errors:
+                if self.protocol.errors_in_response:
+                    try:
+                        self.protocol.check_error(response, command=command)
+                    except InstrumentError:
+                        self._comms_logger.error(
+                            "Instrument reported error during query %r: %s",
+                            command,
+                            response,
+                        )
+                        raise
+                else:
+                    self.check_for_errors(command=command)
+            return response
 
     def check_for_errors(self, *, command: str | None = None) -> None:
         """Poll the instrument for errors and raise if one is found.
@@ -310,6 +329,11 @@ class BaseInstrument(ABC):
         3. Otherwise (or if the ESB bit is set) the protocol's
            :attr:`~BaseProtocol.error_query` command is sent and
            :meth:`~BaseProtocol.check_error` is called on the response.
+
+        A reentrant lock (:attr:`_lock`) is held during the error-queue
+        write-read cycle, preventing interleaving with concurrent callers.
+        Because :attr:`_lock` is reentrant, this method is safe to call
+        from within an already-locked :meth:`write` or :meth:`query`.
 
         Keyword Parameters:
             command (str | None):
@@ -331,26 +355,27 @@ class BaseInstrument(ABC):
             >>> instr.check_for_errors()   # no exception — queue is clear
             >>> instr.disconnect()
         """
-        if self.protocol.errors_in_response or self.protocol.error_query is None:
-            return
+        with self._lock:
+            if self.protocol.errors_in_response or self.protocol.error_query is None:
+                return
 
-        # If the transport can provide an out-of-band status byte (e.g. GPIB
-        # serial poll), check the ESB bit first to avoid an unnecessary query.
-        stb = self.transport.read_status_byte()
-        if stb is not None and not (stb & _IEEE488_ESB_BIT):
-            return
+            # If the transport can provide an out-of-band status byte (e.g. GPIB
+            # serial poll), check the ESB bit first to avoid an unnecessary query.
+            stb = self.transport.read_status_byte()
+            if stb is not None and not (stb & _IEEE488_ESB_BIT):
+                return
 
-        response = self._query_error_queue_once()
-        try:
-            self.protocol.check_error(response, command=command)
-        except InstrumentError:
-            self._comms_logger.error(
-                "Instrument reported command error after %r: %s",
-                command,
-                response,
-            )
-            self._clear_error_queue()
-            raise
+            response = self._query_error_queue_once()
+            try:
+                self.protocol.check_error(response, command=command)
+            except InstrumentError:
+                self._comms_logger.error(
+                    "Instrument reported command error after %r: %s",
+                    command,
+                    response,
+                )
+                self._clear_error_queue()
+                raise
 
     def _query_error_queue_once(self) -> str:
         """Return one parsed response from the protocol error query.
