@@ -1,4 +1,4 @@
-"""Abstract interfaces for stepper motor controller instruments."""
+"""Abstract interfaces for motor controller instruments."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class StepperMotorStatus:
-    """Consolidated status snapshot of a stepper motor controller.
+class MotorStatus:
+    """Consolidated status snapshot of a motor controller.
 
     Attributes:
         current_angle (float):
@@ -36,8 +36,8 @@ class StepperMotorStatus:
     homed: bool | None = None
 
 
-class StepperMotor(Protocol):
-    """Protocol describing the expected stepper motor interface."""
+class Motor(Protocol):
+    """Protocol describing the expected motor interface."""
 
     def connect(self) -> None:
         """Open the controller connection."""
@@ -93,11 +93,11 @@ class StepperMotor(Protocol):
         ...
 
 
-class StepperMotorController(BaseInstrument):
-    """Abstract base class for stepper motor controller drivers."""
+class MotorController(BaseInstrument):
+    """Abstract base class for motor controller drivers."""
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol) -> None:
-        """Initialise the stepper motor controller base class.
+        """Initialise the motor controller base class.
 
         Args:
             transport (BaseTransport):
@@ -153,9 +153,9 @@ class StepperMotorController(BaseInstrument):
         """Return ``True`` when current and target positions are within tolerance."""
 
     @property
-    def status(self) -> StepperMotorStatus:
-        """Return a consolidated stepper-motor status snapshot."""
-        return StepperMotorStatus(
+    def status(self) -> MotorStatus:
+        """Return a consolidated motor status snapshot."""
+        return MotorStatus(
             current_angle=self.get_position(),
             target_angle=self.get_target_position(),
             moving=self.is_moving(),
@@ -175,4 +175,5 @@ class StepperMotorController(BaseInstrument):
             if self.has_reached_target_position(tolerance=tolerance):
                 return
             time.sleep(poll_period)
-        raise TimeoutError("Timed out waiting for stepper motor to reach target position.")
+        raise TimeoutError("Timed out waiting for motor to reach target position.")
+
