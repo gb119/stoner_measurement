@@ -81,7 +81,7 @@ class ThorlabsHDR50(StepperMotorController):
     def set_velocity(self, velocity: float) -> None:
         """Set motion velocity in degrees per second."""
         if velocity <= 0:
-            raise ValueError("velocity must be positive.")
+            raise ValueError(f"velocity must be positive, got {velocity}.")
         self._ensure_connected()
         if self._call_first_available(
             ("setup_velocity",),
@@ -96,7 +96,7 @@ class ThorlabsHDR50(StepperMotorController):
     def set_acceleration(self, acceleration: float) -> None:
         """Set motion acceleration in degrees per second squared."""
         if acceleration <= 0:
-            raise ValueError("acceleration must be positive.")
+            raise ValueError(f"acceleration must be positive, got {acceleration}.")
         self._ensure_connected()
         if self._call_first_available(
             ("setup_velocity",),
@@ -158,7 +158,7 @@ class ThorlabsHDR50(StepperMotorController):
     def has_reached_target_position(self, tolerance: float = 0.01) -> bool:
         """Return ``True`` when not moving and current angle matches target."""
         if tolerance < 0:
-            raise ValueError("tolerance must be non-negative.")
+            raise ValueError(f"tolerance must be non-negative, got {tolerance}.")
         target = self.get_target_position()
         if target is None:
             return not self.is_moving()

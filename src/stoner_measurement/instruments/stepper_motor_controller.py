@@ -97,7 +97,14 @@ class StepperMotorController(BaseInstrument):
     """Abstract base class for stepper motor controller drivers."""
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol) -> None:
-        """Initialise the stepper motor controller base class."""
+        """Initialise the stepper motor controller base class.
+
+        Args:
+            transport (BaseTransport):
+                Transport layer used for physical I/O.
+            protocol (BaseProtocol):
+                Protocol layer used for command formatting/parsing.
+        """
         super().__init__(transport=transport, protocol=protocol)
 
     def connect(self) -> None:
