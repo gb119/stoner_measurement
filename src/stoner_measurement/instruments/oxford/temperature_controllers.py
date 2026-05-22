@@ -322,8 +322,8 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         """
         self._normalise_loop(loop)
         status_reply = self.query("X").strip()
-        tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply)}
-        return _CODE_TO_MODE.get(tokens.get("A", 1), ControlMode.CLOSED_LOOP)
+        status_tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply)}
+        return _CODE_TO_MODE.get(status_tokens.get("A", 1), ControlMode.CLOSED_LOOP)
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
         """Return the ITC503 command that sets the control mode."""
