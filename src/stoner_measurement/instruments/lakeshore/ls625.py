@@ -138,6 +138,7 @@ class Lakeshore625(MagnetController, MagnetSupply):
         try:
             bits = int(raw)
         except ValueError:
+            self._comms_logger.warning("RDGST? returned unexpected response %r; defaulting to STANDBY", raw)
             bits = 0
         if bits & _RDGST_QUENCH_BIT:
             state = MagnetState.QUENCH
