@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.stepper_motor_controller import StepperMotorController
 from stoner_measurement.instruments.thorlabs import ThorlabsHDR50
@@ -158,7 +159,7 @@ class TestThorlabsHDR50:
 
         wrong_motor = _WrongMotor(serial="9999")
         driver = ThorlabsHDR50(serial_number="9999", motor_factory=lambda _s: wrong_motor)
-        with pytest.raises(Exception, match="identity"):
+        with pytest.raises(InstrumentError, match="identity"):
             driver.connect()
         assert wrong_motor.closed is True
         assert driver.is_connected is False
