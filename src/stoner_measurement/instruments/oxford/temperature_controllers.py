@@ -304,10 +304,6 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         """Return the ITC503 command that sets the setpoint to *value* K."""
         return f"T{value}"
 
-    def _mode_query(self, loop: int) -> str:
-        """Return the ITC503 query command for reading the control mode."""
-        return "X"
-
     def get_loop_mode(self, loop: int) -> ControlMode:
         """Return control mode for *loop*.
 
