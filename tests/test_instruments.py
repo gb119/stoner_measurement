@@ -2103,9 +2103,11 @@ class TestOxfordTemperatureControllers:
             responses=[
                 b"R4.2\r",
                 b"R10.0\r",
-                b"R1\r",
+                b"X00A1C0H1P0\r",
                 b"R22.5\r",
-                b"R30.0,4.0,0.0\r",
+                b"R30.0\r",
+                b"R4.0\r",
+                b"R0.0\r",
                 b"R1,0.8\r",
                 b"R1,0.8\r",
             ]
@@ -2123,15 +2125,32 @@ class TestOxfordTemperatureControllers:
         assert t.write_log == [
             b"R1\r",
             b"R0\r",
-            b"R20\r",
+            b"X\r",
             b"R5\r",
-            b"R8,R9,R10\r",
+            b"R8\r",
+            b"R9\r",
+            b"R10\r",
             b"R21\r",
             b"T12.0\r",
             b"A2\r",
             b"R21\r",
             b"S1,0.8\r",
         ]
+
+    @pytest.mark.parametrize(
+        ("status_response", "expected_mode"),
+        [
+            (b"X00A0C0H1P0\r", ControlMode.OFF),
+            (b"X00A2C0H1P0\r", ControlMode.OPEN_LOOP),
+            (b"X00A3C0H1P0\r", ControlMode.MONITOR),
+            (b"X00C0H1P0\r", ControlMode.CLOSED_LOOP),
+        ],
+    )
+    def test_itc503_get_loop_mode_maps_status_a_token(self, status_response, expected_mode):
+        t = _null(responses=[status_response])
+        tc = OxfordITC503(transport=t)
+        assert tc.get_loop_mode(1) is expected_mode
+        assert t.write_log == [b"X\r"]
 
     def test_itc503_identify_handles_non_echo_v_response(self):
         t = _null(responses=[b"ITC503 Version 1.11 (c) OXFORD 1997\r"])
