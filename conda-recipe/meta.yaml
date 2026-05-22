@@ -28,6 +28,7 @@ requirements:
     - pyqtgraph >=0.13
     - numpy >=2.0
   run_constrained:
+    - pylablib
     - pyserial >=3.5
     - pyvisa >=1.13
 
@@ -43,6 +44,7 @@ test:
     - stoner_measurement.instruments.transport
     - stoner_measurement.instruments.protocol
     - stoner_measurement.instruments.keithley
+    - stoner_measurement.instruments.thorlabs
   commands:
     - stoner-measurement --help || true
 

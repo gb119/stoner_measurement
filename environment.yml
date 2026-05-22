@@ -27,6 +27,7 @@ dependencies:
   - pytokens>=0.4.1
   - scipy>=1.17.1
   # Instrument communication
+  - pylablib
   - pyserial>=3.5
   - pyvisa>=1.13
   # Testing

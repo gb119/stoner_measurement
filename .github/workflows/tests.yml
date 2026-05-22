@@ -50,7 +50,7 @@ jobs:
       - name: Install package and test dependencies
         shell: bash -el {0}
         run: |
-          pip install -e ".[dev]"
+          pip install -e ".[dev,instruments]"
 
       - name: Run tests
         shell: bash -el {0}
