@@ -9,8 +9,7 @@ import pytest
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.motor_controller import MotorController
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
-from stoner_measurement.instruments.thorlabs import ThorlabsHDR50
-from stoner_measurement.instruments.thorlabs.kdc101_kprmte import ThorlabsKDC101KPRMTE
+from stoner_measurement.instruments.thorlabs import ThorlabsHDR50, ThorlabsKDC101KPRMTE
 from stoner_measurement.instruments.transport import NullTransport
 
 
