@@ -273,3 +273,23 @@ class GpibTransport(BaseTransport):
         if self._resource is None:
             return None
         return int(self._resource.read_stb())
+
+    def flush(self) -> None:
+        """Send IEEE 488.2 Device Clear to the instrument and reset the interface.
+
+        Calls the PyVISA ``clear()`` method, which sends the Selected Device
+        Clear (SDC) message over the GPIB bus.  This resets the instrument's
+        parser and discards any bytes queued in its output buffer, preventing
+        stale responses from old commands being misread after a reconnect.
+
+        If the resource is not open or the instrument does not support Device
+        Clear, the error is silently ignored.
+        """
+        if self._resource is None:
+            return
+        import pyvisa
+
+        try:
+            self._resource.clear()
+        except pyvisa.VisaIOError:
+            pass

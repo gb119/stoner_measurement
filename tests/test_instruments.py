@@ -2716,7 +2716,115 @@ class TestIdentityAndQueueClearing:
 
 
 # ---------------------------------------------------------------------------
-# UdpTransport
+# Instrument locking and connect-time buffer flush
+# ---------------------------------------------------------------------------
+
+
+class TestInstrumentLocking:
+    """Tests for the RLock serialisation of write/query/check_for_errors."""
+
+    def test_instrument_has_rlock(self):
+        """BaseInstrument carries an RLock accessible as _lock."""
+        import threading
+
+        instr = BaseInstrument(NullTransport(), ScpiProtocol())
+        assert isinstance(instr._lock, type(threading.RLock()))
+
+    def test_connect_flushes_transport(self):
+        """connect() calls transport.flush() after opening the transport."""
+
+        class _FlushCountingTransport(NullTransport):
+            def __init__(self):
+                super().__init__()
+                self.flush_count = 0
+
+            def flush(self) -> None:
+                self.flush_count += 1
+
+        t = _FlushCountingTransport()
+        instr = BaseInstrument(t, ScpiProtocol())
+        instr.connect()
+        assert t.flush_count == 1
+
+    def test_query_holds_lock_during_write_read(self):
+        """The instrument lock is held throughout the write-read cycle of query()."""
+        import threading
+
+        lock_was_held = []
+        barrier = threading.Barrier(2, timeout=2)
+
+        class _BarrierTransport(NullTransport):
+            """Transport that synchronises with the test thread during read()."""
+
+            def read(self, num_bytes: int | None = None) -> bytes:
+                barrier.wait()  # rendezvous: test thread now checks the lock
+                barrier.wait()  # wait for test thread to finish its check
+                return b"response\n"
+
+        t = _BarrierTransport()
+        t.open()
+        instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=False)
+
+        def do_query():
+            instr.query("CMD")
+
+        thread = threading.Thread(target=do_query, daemon=True)
+        thread.start()
+        barrier.wait()  # wait until transport.read() is entered (lock held)
+        # Try to acquire the lock non-blockingly; it should be held by the query thread.
+        acquired = instr._lock.acquire(blocking=False)
+        if acquired:
+            instr._lock.release()
+        lock_was_held.append(not acquired)
+        barrier.wait()  # let the query thread proceed
+        thread.join(timeout=2)
+
+        assert lock_was_held == [True], "Lock should be held by query thread during read()"
+
+    def test_concurrent_queries_do_not_interleave(self):
+        """Two concurrent query() calls are serialised so writes and reads stay paired."""
+        import threading
+
+        events: list[str] = []
+        events_lock = threading.Lock()
+
+        class _LoggingTransport(NullTransport):
+            def write(self, data: bytes) -> None:
+                super().write(data)
+                with events_lock:
+                    events.append(f"W:{data.strip().decode()}")
+
+            def read(self, num_bytes: int | None = None) -> bytes:
+                # Yield briefly so the other thread can attempt to interleave.
+                import time
+
+                time.sleep(0.005)
+                last_write = self.write_log[-1].strip().decode() if self.write_log else "?"
+                with events_lock:
+                    events.append(f"R:{last_write}")
+                return f"{last_write}-resp\n".encode()
+
+        t = _LoggingTransport()
+        t.open()
+        instr = BaseInstrument(t, ScpiProtocol(), auto_check_errors=False)
+
+        results = []
+
+        def do_query(cmd):
+            results.append(instr.query(cmd))
+
+        t1 = threading.Thread(target=do_query, args=("A",), daemon=True)
+        t2 = threading.Thread(target=do_query, args=("B",), daemon=True)
+        t1.start()
+        t2.start()
+        t1.join(timeout=2)
+        t2.join(timeout=2)
+
+        # Each write must be immediately followed by the matching read.
+        for i in range(0, len(events) - 1, 2):
+            w_cmd = events[i][2:]  # strip "W:"
+            r_cmd = events[i + 1][2:]  # strip "R:"
+            assert w_cmd == r_cmd, f"Write {w_cmd!r} was not paired with its read; got {r_cmd!r}"
 # ---------------------------------------------------------------------------
 
 
