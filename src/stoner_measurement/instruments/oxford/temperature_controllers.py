@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import ClassVar
 
 from stoner_measurement.instruments.protocol.base import BaseProtocol
@@ -23,6 +24,7 @@ _MODE_TO_CODE = {
     ControlMode.MONITOR: 3,
 }
 _CODE_TO_MODE = {value: key for key, value in _MODE_TO_CODE.items()}
+_STATUS_TOKEN_RE = re.compile(r"([A-Za-z])(\d+)")
 
 
 class _OxfordTemperatureControllerBase(TemperatureController):
@@ -304,7 +306,14 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
     def _mode_query(self, loop: int) -> str:
         """Return the ITC503 query command for reading the control mode."""
-        return "R20"
+        return "X"
+
+    def get_loop_mode(self, loop: int) -> ControlMode:
+        """Return control mode for *loop*."""
+        self._normalise_loop(loop)
+        status_reply = self.query("X").strip()
+        tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_RE.findall(status_reply)}
+        return _CODE_TO_MODE.get(tokens.get("A", 1), ControlMode.CLOSED_LOOP)
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
         """Return the ITC503 command that sets the control mode."""
@@ -320,7 +329,16 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
     def _pid_query(self, loop: int) -> str:
         """Return the ITC503 query command for reading PID parameters."""
-        return "R8,R9,R10"
+        return "R8"
+
+    def get_pid(self, loop: int) -> PIDParameters:
+        """Return PID parameters for *loop*."""
+        self._normalise_loop(loop)
+        return PIDParameters(
+            p=self._query_float("R8"),
+            i=self._query_float("R9"),
+            d=self._query_float("R10"),
+        )
 
     def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
         """Return the ITC503 command that sets PID parameters."""

@@ -2103,9 +2103,11 @@ class TestOxfordTemperatureControllers:
             responses=[
                 b"R4.2\r",
                 b"R10.0\r",
-                b"R1\r",
+                b"X00A1C0H1P0\r",
                 b"R22.5\r",
-                b"R30.0,4.0,0.0\r",
+                b"R30.0\r",
+                b"R4.0\r",
+                b"R0.0\r",
                 b"R1,0.8\r",
                 b"R1,0.8\r",
             ]
@@ -2123,9 +2125,11 @@ class TestOxfordTemperatureControllers:
         assert t.write_log == [
             b"R1\r",
             b"R0\r",
-            b"R20\r",
+            b"X\r",
             b"R5\r",
-            b"R8,R9,R10\r",
+            b"R8\r",
+            b"R9\r",
+            b"R10\r",
             b"R21\r",
             b"T12.0\r",
             b"A2\r",
