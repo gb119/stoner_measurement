@@ -1704,9 +1704,10 @@ class TestLakeshore625:
         assert t.write_log == [b"PSH 1\r\n", b"PSH 0\r\n", b"PSH?\r\n"]
 
     def test_status_maps_state(self):
+        # RDGST? returns numeric bit-coded status: bit 1 (0x02) = AT_TARGET
         t = _null(
             responses=[
-                b"at_target\r\n",
+                b"2\r\n",
                 b"1.1\r\n",
                 b"0.3\r\n",
                 b"0.2\r\n",
@@ -1721,7 +1722,68 @@ class TestLakeshore625:
         assert status.field == pytest.approx(0.3)
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
-        assert t.write_log == [b"OPSTR?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n", b"PSH?\r\n"]
+        assert t.write_log == [b"RDGST?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n", b"PSH?\r\n"]
+
+    def test_status_maps_ramping_state(self):
+        # RDGST? bit 0 (0x01) = RAMPING
+        t = _null(
+            responses=[
+                b"1\r\n",
+                b"0.5\r\n",
+                b"0.1\r\n",
+                b"0.1\r\n",
+                b"1\r\n",
+            ]
+        )
+        m = Lakeshore625(transport=t)
+        status = m.status
+        assert status.state.value == "ramping"
+        assert status.at_target is False
+
+    def test_status_maps_fault_state(self):
+        # RDGST? bit 2 (0x04) = FAULT
+        t = _null(
+            responses=[
+                b"4\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0\r\n",
+            ]
+        )
+        m = Lakeshore625(transport=t)
+        status = m.status
+        assert status.state.value == "fault"
+
+    def test_status_maps_quench_state(self):
+        # RDGST? bit 3 (0x08) = QUENCH
+        t = _null(
+            responses=[
+                b"8\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0\r\n",
+            ]
+        )
+        m = Lakeshore625(transport=t)
+        status = m.status
+        assert status.state.value == "quench"
+
+    def test_status_standby_when_no_bits_set(self):
+        # RDGST? returns 0 = STANDBY
+        t = _null(
+            responses=[
+                b"0\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0\r\n",
+            ]
+        )
+        m = Lakeshore625(transport=t)
+        status = m.status
+        assert status.state.value == "standby"
 
     def test_set_magnet_constant_validation(self):
         m = Lakeshore625(transport=_null())
@@ -1789,7 +1851,7 @@ class TestOxfordIPS120:
         assert m.current == pytest.approx(2.5)
         assert m.field == pytest.approx(0.75)
         assert m.voltage == pytest.approx(1.2)
-        assert t.write_log == [b"R1\r", b"R7\r", b"R5\r"]
+        assert t.write_log == [b"R1\r", b"R7\r", b"R2\r"]
 
     def test_set_target_and_ramp_commands(self):
         t = _null()
@@ -1797,7 +1859,7 @@ class TestOxfordIPS120:
         m.set_target_current(3.0)
         m.set_ramp_rate_current(0.2)
         m.ramp_to_target()
-        assert t.write_log == [b"J3.0\r", b"T0.2\r", b"A1\r"]
+        assert t.write_log == [b"I3.0\r", b"S0.2\r", b"A1\r"]
 
     def test_heater_methods_and_property(self):
         t = _null(responses=[b"X00A0C0H1P0\r"])
@@ -1825,7 +1887,7 @@ class TestOxfordIPS120:
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
         assert status.persistent is True
-        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R5\r"]
+        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r"]
 
     def test_set_magnet_constant_validation(self):
         m = OxfordIPS120(transport=_null())
@@ -1841,7 +1903,7 @@ class TestOxfordIPS120:
         m = OxfordIPS120(transport=t)
         m.set_magnet_constant(0.5)
         m.set_target_field(1.0)
-        assert t.write_log == [b"J2.0\r"]
+        assert t.write_log == [b"I2.0\r"]
 
     def test_query_float_raises_for_unparseable_numeric_response(self):
         t = _null(responses=[b"Rnot-a-float\r"])

@@ -37,6 +37,7 @@ R3   → Persistent current
 R4   → Ramp rate
 R5   → Current limit
 R6   → Voltage limit
+R7   → Measured field (when fitted / field mode active)
 ```
 
 ***
@@ -287,7 +288,7 @@ S<value> → Set ramp rate
 ## ✅ Readback commands
 
 ```
-R0–R6 → System registers  
+R0–R7 → System registers  
 X     → Full status string  
 ```
 
@@ -338,6 +339,7 @@ H0
 R1   → current  
 R2   → voltage  
 R4   → ramp rate  
+R7   → field  
 X    → full system state  
 ```
 
