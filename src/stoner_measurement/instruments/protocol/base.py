@@ -139,12 +139,17 @@ class BaseProtocol(ABC):
         """
 
     @abstractmethod
-    def parse_response(self, raw: bytes) -> str:
+    def parse_response(self, raw: bytes, *, command: str | None = None) -> str:
         """Parse a raw response from the instrument.
 
         Args:
             raw (bytes):
                 Raw bytes as returned by the transport layer.
+
+        Keyword Parameters:
+            command (str | None):
+                Command/query string that produced *raw*, when available.
+                Defaults to ``None``.
 
         Returns:
             (str):

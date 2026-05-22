@@ -193,12 +193,19 @@ class BaseInstrument(ABC):
         if self.auto_check_errors and not self.protocol.errors_in_response:
             self.check_for_errors(command=command)
 
-    def read(self) -> str:
+    def read(self, *, command: str | None = None) -> str:
         """Read a response from the instrument.
 
         Reads raw bytes from the transport and parses them using
         :attr:`protocol`.  Any protocol-specific response framing (for
         example, terminator handling) is delegated to the transport layer.
+
+        Keyword Parameters:
+            command (str | None):
+                Command/query string that produced this response, when
+                known. Passed to
+                :meth:`~stoner_measurement.instruments.protocol.base.BaseProtocol.parse_response`.
+                Defaults to ``None``.
 
         Returns:
             (str):
@@ -223,7 +230,7 @@ class BaseInstrument(ABC):
         """
         raw = self.transport.read()
         self._log_comms_traffic("RX", raw)
-        return self.protocol.parse_response(raw)
+        return self.protocol.parse_response(raw, command=command)
 
     def query(self, command: str) -> str:
         """Send a query and return the instrument's response.
@@ -270,7 +277,7 @@ class BaseInstrument(ABC):
         payload = self.protocol.format_query(command)
         self.transport.write(payload)
         self._log_comms_traffic("TX", payload)
-        response = self.read()
+        response = self.read(command=command)
         if self.auto_check_errors:
             if self.protocol.errors_in_response:
                 try:
@@ -361,7 +368,7 @@ class BaseInstrument(ABC):
         self._log_comms_traffic("TX", payload)
         raw = self.transport.read()
         self._log_comms_traffic("RX", raw)
-        return self.protocol.parse_response(raw)
+        return self.protocol.parse_response(raw, command=error_query)
 
     def _clear_error_queue(self, *, max_entries: int = 16) -> None:
         """Drain protocol error queue entries, logging each cleared error.
