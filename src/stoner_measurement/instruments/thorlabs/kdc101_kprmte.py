@@ -1,4 +1,4 @@
-"""Thorlabs HDR50 rotation stage driver via pylablib/Kinesis."""
+"""Thorlabs KDC101 + KPRMTE motor stage driver via pylablib/Kinesis."""
 
 from __future__ import annotations
 
@@ -13,15 +13,10 @@ _MotorFactory = Callable[[str], Any]
 _MISSING = object()
 
 
-class ThorlabsHDR50(MotorController):
-    """Driver for Thorlabs HDR50 driven through pylablib's Kinesis API.
+class ThorlabsKDC101KPRMTE(MotorController):
+    """Driver for a Thorlabs KDC101 controller with a KPRMTE servo stage."""
 
-    This driver is intentionally tolerant of small pylablib API naming
-    differences and tries common method names for velocity, acceleration, and
-    homing operations.
-    """
-
-    _EXPECTED_IDENTITY_TOKENS = ("HDR50", "THORLABS")
+    _EXPECTED_IDENTITY_TOKENS = ("KDC101", "KPRMTE", "THORLABS")
 
     def __init__(
         self,
@@ -29,7 +24,7 @@ class ThorlabsHDR50(MotorController):
         *,
         motor_factory: _MotorFactory | None = None,
     ) -> None:
-        """Initialise the HDR50 driver.
+        """Initialise the KDC101 + KPRMTE driver.
 
         Args:
             serial_number (str):
@@ -73,12 +68,12 @@ class ThorlabsHDR50(MotorController):
         self._motor = None
 
     def identify(self) -> str:
-        """Return an HDR50 identity string."""
+        """Return a KDC101 + KPRMTE identity string."""
         if self._motor is None:
-            return f"Thorlabs,HDR50,{self._serial_number}"
+            return f"Thorlabs,KDC101-KPRMTE,{self._serial_number}"
         model = self._call_first_available(("get_model",), default=None)
         if model is None:
-            model = self._query_kinesis_description() or "HDR50"
+            model = self._query_kinesis_description() or "KDC101-KPRMTE"
         serial = self._call_first_available(("get_serial", "get_serial_number"), default=self._serial_number)
         return f"Thorlabs,{model},{serial}"
 
@@ -170,7 +165,7 @@ class ThorlabsHDR50(MotorController):
 
     @property
     def status(self) -> MotorStatus:
-        """Return a consolidated HDR50 status snapshot."""
+        """Return a consolidated KDC101 + KPRMTE status snapshot."""
         return MotorStatus(
             current_angle=self.get_position(),
             target_angle=self.get_target_position(),
@@ -180,7 +175,7 @@ class ThorlabsHDR50(MotorController):
 
     def _ensure_connected(self) -> None:
         if self._motor is None:
-            raise ConnectionError("Thorlabs HDR50 is not connected.")
+            raise ConnectionError("Thorlabs KDC101 + KPRMTE is not connected.")
 
     def _build_motor(self) -> Any:
         factory = self._motor_factory
@@ -209,11 +204,7 @@ class ThorlabsHDR50(MotorController):
         return default
 
     def _query_kinesis_description(self) -> str | None:
-        """Look up this serial number in pylablib's Kinesis device list.
-
-        Returns the device description string if found, or ``None`` when the
-        device is not listed or pylablib is unavailable.
-        """
+        """Look up this serial number in pylablib's Kinesis device list."""
         try:
             from pylablib.devices import Thorlabs  # pylint: disable=import-outside-toplevel
 
@@ -230,3 +221,4 @@ class ThorlabsHDR50(MotorController):
             if callable(func):
                 return bool(func())
         return None
+
