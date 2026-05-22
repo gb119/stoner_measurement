@@ -244,7 +244,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         return self.query("V")
 
     def get_heater_range(self, loop: int) -> int:
-        """Return the current heater range index (0=off, 1=on) for *loop*.
+        """Return the current heater range index from the ``X`` status ``H`` token for *loop*.
 
         Args:
             loop (int):
@@ -252,7 +252,10 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
         Returns:
             (int):
-                0 when the heater output is zero (off), 1 otherwise.
+                Integer value of the ``H`` status token: 0 means the heater is off;
+                higher values select progressively higher power ranges (e.g. 1, 2, …
+                up to the instrument maximum). The exact number of ranges depends on
+                the heater fitted to the instrument.
         """
         self._normalise_loop(loop)
         status_tokens = self._read_status_tokens()
@@ -522,10 +525,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         status_reply = self.query("X").strip()
         status_tokens: dict[str, int] = {}
         for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply):
-            try:
-                status_tokens[letter.upper()] = int(value)
-            except ValueError as exc:
-                raise ValueError(f"Invalid status token in X response: {letter}{value!r}.") from exc
+            status_tokens[letter.upper()] = int(value)
         return status_tokens
 
     def _normalise_pid_table_row(self, row: int) -> int:

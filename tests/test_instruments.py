@@ -2246,6 +2246,20 @@ class TestOxfordTemperatureControllers:
         assert tc.get_loop_mode(1) is expected_mode
         assert t.write_log == [b"X\r"]
 
+    @pytest.mark.parametrize(
+        ("status_response", "expected"),
+        [
+            (b"X00A1C0S0H1P0\r", False),
+            (b"X00A1C0S1H1P0\r", True),
+            (b"X00A1C0S5H1P0\r", True),
+        ],
+    )
+    def test_itc503_get_ramp_enabled_maps_status_s_token(self, status_response, expected):
+        t = _null(responses=[status_response])
+        tc = OxfordITC503(transport=t)
+        assert tc.get_ramp_enabled(1) is expected
+        assert t.write_log == [b"X\r"]
+
     def test_itc503_identify_handles_non_echo_v_response(self):
         t = _null(responses=[b"ITC503 Version 1.11 (c) OXFORD 1997\r"])
         tc = OxfordITC503(transport=t)
