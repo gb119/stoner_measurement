@@ -223,6 +223,9 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the ITC503 driver."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else OxfordProtocol())
+        # The ITC503 does not expose a Chapter 9 register for a continuous
+        # temperature ramp rate, so a software-side value is maintained for
+        # API compatibility.
         self._ramp_rate: float = 0.0
 
     def identify(self) -> str:
@@ -358,8 +361,20 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         )
 
     def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
-        """ITC503 requires separate ``P``/``I``/``D`` commands."""
-        raise NotImplementedError("ITC503 PID set requires separate P, I and D commands.")
+        """Return the legacy base-hook for PID command composition.
+
+        This base hook is not supported for ITC503.
+
+        ITC503 PID updates require three separate commands (``P``, ``I``,
+        ``D``). This method intentionally raises because :meth:`set_pid`
+        must be used for correct command sequencing.
+
+        Raises:
+            NotImplementedError:
+                Always raised because ITC503 requires three separate PID
+                commands emitted by :meth:`set_pid`.
+        """
+        raise NotImplementedError("ITC503 PID set requires separate P, I and D commands; use set_pid() instead.")
 
     def get_ramp_rate(self, loop: int) -> float:
         """Return ramp rate in Kelvin per minute for *loop*.
@@ -391,17 +406,50 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self.write("S1" if enabled else "S0")
 
     def _ramp_query(self, loop: int) -> str:
-        """ITC503 sweep/ramp state is read from ``X`` status, not a ramp register."""
-        raise NotImplementedError("ITC503 ramp state is reported in X status tokens.")
+        """Return the legacy base-hook for ramp-state query composition.
+
+        This base hook is not supported for ITC503.
+
+        ITC503 reports sweep state through ``X`` status tokens. Use
+        :meth:`get_ramp_enabled` instead of this base hook.
+
+        Raises:
+            NotImplementedError:
+                Always raised because ITC503 ramp state is read from ``X``
+                status tokens via :meth:`get_ramp_enabled`.
+        """
+        raise NotImplementedError("ITC503 ramp state is reported in X status tokens; use get_ramp_enabled() instead.")
 
     def _ramp_command(self, loop: int, enabled: bool, rate: float) -> str:
-        """ITC503 sweep/ramp control uses ``S0``/``S1`` commands."""
-        raise NotImplementedError("ITC503 ramp control uses S0/S1 commands.")
+        """Return the legacy base-hook for ramp command composition.
+
+        This base hook is not supported for ITC503.
+
+        ITC503 sweep control uses direct ``S0``/``S1`` commands emitted by
+        :meth:`set_ramp_enabled`; there is no combined ``enabled,rate`` form.
+
+        Raises:
+            NotImplementedError:
+                Always raised because ITC503 ramp enable/disable is sent via
+                :meth:`set_ramp_enabled`.
+        """
+        raise NotImplementedError("ITC503 ramp control uses S0/S1 commands; use set_ramp_enabled() instead.")
 
     def _read_status_tokens(self) -> dict[str, int]:
-        """Query ``X`` and parse status tokens into a dictionary."""
+        """Query ``X`` and parse status tokens into a dictionary.
+
+        Returns:
+            (dict[str, int]):
+                Mapping from token letters to their parsed integer values.
+        """
         status_reply = self.query("X").strip()
-        return {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply)}
+        status_tokens: dict[str, int] = {}
+        for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply):
+            try:
+                status_tokens[letter.upper()] = int(value)
+            except ValueError as exc:
+                raise ValueError(f"Invalid status token in X response: {letter}{value!r}.") from exc
+        return status_tokens
 
 
 class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
