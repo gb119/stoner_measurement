@@ -2108,8 +2108,6 @@ class TestOxfordTemperatureControllers:
                 b"R30.0\r",
                 b"R4.0\r",
                 b"R0.0\r",
-                b"R1,0.8\r",
-                b"R1,0.8\r",
             ]
         )
         tc = OxfordITC503(transport=t)
@@ -2118,9 +2116,11 @@ class TestOxfordTemperatureControllers:
         assert tc.get_loop_mode(1) is ControlMode.CLOSED_LOOP
         assert tc.get_heater_output(1) == pytest.approx(22.5)
         assert tc.get_pid(1) == PIDParameters(30.0, 4.0, 0.0)
-        assert tc.get_ramp_rate(1) == pytest.approx(0.8)
+        assert tc.get_ramp_rate(1) == pytest.approx(0.0)
         tc.set_setpoint(1, 12.0)
         tc.set_loop_mode(1, ControlMode.OPEN_LOOP)
+        tc.set_input_channel(1, "B")
+        tc.set_pid(1, 30.0, 4.0, 0.0)
         tc.set_ramp_enabled(1, True)
         assert t.write_log == [
             b"R1\r",
@@ -2130,12 +2130,106 @@ class TestOxfordTemperatureControllers:
             b"R8\r",
             b"R9\r",
             b"R10\r",
-            b"R21\r",
             b"T12.0\r",
             b"A2\r",
-            b"R21\r",
-            b"S1,0.8\r",
+            b"C1\r",
+            b"P30.0\r",
+            b"I4.0\r",
+            b"D0.0\r",
+            b"S1\r",
         ]
+
+    def test_itc503_get_heater_range_reads_x_status_h_token(self):
+        t = _null(responses=[b"X00A1C0H1P0\r", b"X00A1C0H0P0\r"])
+        tc = OxfordITC503(transport=t)
+        assert tc.get_heater_range(1) == 1
+        assert tc.get_heater_range(1) == 0
+        assert t.write_log == [b"X\r", b"X\r"]
+
+    def test_itc503_get_gas_flow_uses_r7_register(self):
+        t = _null(responses=[b"R55.0\r"])
+        tc = OxfordITC503(transport=t)
+        assert tc.get_gas_flow() == pytest.approx(55.0)
+        assert t.write_log == [b"R7\r"]
+
+    def test_itc503_get_num_zones(self):
+        tc = OxfordITC503(transport=_null())
+        assert tc.get_num_zones(1) == 16
+
+    def test_itc503_get_num_zones_invalid_loop(self):
+        tc = OxfordITC503(transport=_null())
+        with pytest.raises(ValueError):
+            tc.get_num_zones(2)
+
+    def test_itc503_get_zone_uses_pointer_and_q_commands(self):
+        t = _null(responses=[b"Q10.0\r", b"Q20.0\r", b"Q30.0\r", b"Q40.0\r"])
+        tc = OxfordITC503(transport=t)
+        zone = tc.get_zone(1, 1)
+        assert zone == ZoneEntry(
+            upper_bound=10.0,
+            p=20.0,
+            i=30.0,
+            d=40.0,
+            ramp_rate=0.0,
+            heater_range=0,
+            heater_output=0.0,
+        )
+        assert t.write_log == [
+            b"x1\r",
+            b"y1\r",
+            b"q\r",
+            b"x1\r",
+            b"y2\r",
+            b"q\r",
+            b"x1\r",
+            b"y3\r",
+            b"q\r",
+            b"x1\r",
+            b"y4\r",
+            b"q\r",
+        ]
+
+    def test_itc503_set_zone_uses_pointer_and_p_commands(self):
+        t = _null()
+        tc = OxfordITC503(transport=t)
+        zone = ZoneEntry(
+            upper_bound=12.5,
+            p=30.0,
+            i=4.0,
+            d=0.5,
+            ramp_rate=9.0,
+            heater_range=1,
+            heater_output=25.0,
+        )
+        tc.set_zone(1, 2, zone)
+        assert t.write_log == [
+            b"x2\r",
+            b"y1\r",
+            b"p12.5\r",
+            b"x2\r",
+            b"y2\r",
+            b"p30.0\r",
+            b"x2\r",
+            b"y3\r",
+            b"p4.0\r",
+            b"x2\r",
+            b"y4\r",
+            b"p0.5\r",
+        ]
+
+    def test_itc503_zone_row_validation(self):
+        tc = OxfordITC503(transport=_null())
+        with pytest.raises(ValueError, match="PID-table row"):
+            tc.get_zone(1, 0)
+        with pytest.raises(ValueError, match="PID-table row"):
+            tc.set_zone(1, 17, ZoneEntry(100.0, 30.0, 5.0, 1.0, 0.0, 0, 0.0))
+
+    def test_itc503_zone_row_upper_bound_is_valid(self):
+        t = _null(responses=[b"Q100.0\r", b"Q30.0\r", b"Q5.0\r", b"Q1.0\r"])
+        tc = OxfordITC503(transport=t)
+        zone = tc.get_zone(1, 16)
+        assert zone.upper_bound == pytest.approx(100.0)
+        assert t.write_log[:3] == [b"x16\r", b"y1\r", b"q\r"]
 
     @pytest.mark.parametrize(
         ("status_response", "expected_mode"),
@@ -2150,6 +2244,20 @@ class TestOxfordTemperatureControllers:
         t = _null(responses=[status_response])
         tc = OxfordITC503(transport=t)
         assert tc.get_loop_mode(1) is expected_mode
+        assert t.write_log == [b"X\r"]
+
+    @pytest.mark.parametrize(
+        ("status_response", "expected"),
+        [
+            (b"X00A1C0S0H1P0\r", False),
+            (b"X00A1C0S1H1P0\r", True),
+            (b"X00A1C0S5H1P0\r", True),
+        ],
+    )
+    def test_itc503_get_ramp_enabled_maps_status_s_token(self, status_response, expected):
+        t = _null(responses=[status_response])
+        tc = OxfordITC503(transport=t)
+        assert tc.get_ramp_enabled(1) is expected
         assert t.write_log == [b"X\r"]
 
     def test_itc503_identify_handles_non_echo_v_response(self):
@@ -2195,6 +2303,7 @@ class TestOxfordTemperatureControllers:
         caps_mercury = OxfordMercuryTemperatureController(transport=_null()).get_capabilities()
         assert caps_itc.has_cryogen_control is True
         assert caps_itc.has_gas_auto_mode is True
+        assert caps_itc.has_zone is True
         assert caps_mercury.has_cryogen_control is True
         assert caps_mercury.loop_numbers == (1, 2)
 

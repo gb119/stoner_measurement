@@ -14,6 +14,7 @@ from stoner_measurement.instruments.temperature_controller import (
     PIDParameters,
     SensorStatus,
     TemperatureController,
+    ZoneEntry,
 )
 from stoner_measurement.instruments.transport.base import BaseTransport
 
@@ -137,6 +138,14 @@ class _OxfordTemperatureControllerBase(TemperatureController):
         try:
             return float(token)
         except ValueError as exc:
+            # Some Oxford replies include an echoed command letter where the
+            # instrument uppercases the echo (e.g. ``Q10.0`` for query ``q``).
+            # Accept a single leading alphabetic prefix when present.
+            if len(token) > 1 and token[:1].isalpha():
+                try:
+                    return float(token[1:])
+                except ValueError:
+                    pass
             raise ValueError(f"Invalid numeric response for {command!r}: {token!r}.") from exc
 
     def _parse_csv_floats(self, response: str, *, minimum_length: int) -> list[float]:
@@ -207,6 +216,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     """Concrete driver for the Oxford Instruments ITC503 temperature controller."""
 
     _EXPECTED_IDENTITY_TOKENS = ("ITC503",)
+    _PID_TABLE_ROWS = 16
     _ITC503_HEATER_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=3,
@@ -215,6 +225,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         loop_numbers=(1,),
         has_ramp=True,
         has_pid=True,
+        has_zone=True,
         has_cryogen_control=True,
         has_gas_auto_mode=True,
         heater_range_labels={1: _ITC503_HEATER_RANGES},
@@ -223,13 +234,17 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the ITC503 driver."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else OxfordProtocol())
+        # The ITC503 does not expose a Chapter 9 register for a continuous
+        # temperature ramp rate, so a software-side value is maintained for
+        # API compatibility.
+        self._ramp_rate: float = 0.0
 
     def identify(self) -> str:
         """Return identity string."""
         return self.query("V")
 
     def get_heater_range(self, loop: int) -> int:
-        """Return the current heater range index (0=off, 1=on) for *loop*.
+        """Return the current heater range index from the ``X`` status ``H`` token for *loop*.
 
         Args:
             loop (int):
@@ -237,17 +252,18 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
         Returns:
             (int):
-                0 when the heater output is zero (off), 1 otherwise.
+                Integer value of the ``H`` status token: 0 means the heater is off;
+                higher values select progressively higher power ranges (e.g. 1, 2, …
+                up to the instrument maximum). The exact number of ranges depends on
+                the heater fitted to the instrument.
         """
         self._normalise_loop(loop)
-        # ITC503 does not have a dedicated range-read command; infer from
-        # the heater output: zero output implies off, any non-zero implies on.
-        output = self._query_float("R5")
-        return 0 if output == 0.0 else 1
+        status_tokens = self._read_status_tokens()
+        return int(status_tokens.get("H", 0))
 
     def get_gas_flow(self) -> float:
         """Return the gas-flow needle valve position as a percentage."""
-        return self._query_float("R6")
+        return self._query_float("R7")
 
     def set_gas_flow(self, percent: float) -> None:
         """Set the gas-flow needle valve position to *percent* open."""
@@ -293,7 +309,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
     def _input_command(self, loop: int, channel: str) -> str:
         """Return the ITC503 command that assigns *channel* to the heater loop."""
-        channel_code = {"A": 1, "B": 2, "C": 3}[channel]
+        channel_code = {"A": 0, "B": 1, "C": 2}[channel]
         return f"C{channel_code}"
 
     def _setpoint_query(self, loop: int) -> str:
@@ -317,8 +333,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
                 response ``A`` token.
         """
         self._normalise_loop(loop)
-        status_reply = self.query("X").strip()
-        status_tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply)}
+        status_tokens = self._read_status_tokens()
         return _CODE_TO_MODE.get(status_tokens.get("A", 1), ControlMode.CLOSED_LOOP)
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
@@ -332,6 +347,13 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def _heater_range_command(self, loop: int, range_: int) -> str:
         """Return the ITC503 command that sets the heater range index."""
         return f"H{range_}"
+
+    def set_pid(self, loop: int, p: float, i: float, d: float) -> None:
+        """Set PID parameters for *loop*."""
+        self._normalise_loop(loop)
+        self.write(f"P{p}")
+        self.write(f"I{i}")
+        self.write(f"D{d}")
 
     def get_pid(self, loop: int) -> PIDParameters:
         """Return PID parameters for *loop*.
@@ -353,16 +375,199 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         )
 
     def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
-        """Return the ITC503 command that sets PID parameters."""
-        return f"P{p},I{i},D{d}"
+        """Return the legacy base-hook for PID command composition.
+
+        This base hook is not supported for ITC503.
+
+        ITC503 PID updates require three separate commands (``P``, ``I``,
+        ``D``). This method intentionally raises because :meth:`set_pid`
+        must be used for correct command sequencing.
+
+        Raises:
+            NotImplementedError:
+                Always raised because ITC503 requires three separate PID
+                commands emitted by :meth:`set_pid`.
+        """
+        raise NotImplementedError("ITC503 PID set requires separate P, I and D commands; use set_pid() instead.")
+
+    def get_ramp_rate(self, loop: int) -> float:
+        """Return ramp rate in Kelvin per minute for *loop*.
+
+        The ITC503 does not expose a readback register for a continuous ramp
+        rate; this returns the last value set via :meth:`set_ramp_rate`.
+        """
+        self._normalise_loop(loop)
+        return self._ramp_rate
+
+    def set_ramp_rate(self, loop: int, rate: float) -> None:
+        """Set ramp rate in Kelvin per minute for *loop*.
+
+        ITC503 sweep start/stop is controlled via ``S`` commands, without a
+        direct ramp-rate command in Chapter 9.
+        """
+        self._normalise_loop(loop)
+        self._ramp_rate = float(rate)
+
+    def get_ramp_enabled(self, loop: int) -> bool:
+        """Return whether sweep/ramp execution is active for *loop*."""
+        self._normalise_loop(loop)
+        status_tokens = self._read_status_tokens()
+        return int(status_tokens.get("S", 0)) > 0
+
+    def set_ramp_enabled(self, loop: int, enabled: bool) -> None:
+        """Enable or disable sweep/ramp execution for *loop*."""
+        self._normalise_loop(loop)
+        self.write("S1" if enabled else "S0")
+
+    def get_num_zones(self, loop: int) -> int:
+        """Return the number of ITC503 auto-PID table rows for *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (int):
+                Number of auto-PID table rows supported by the ITC503.
+        """
+        self._normalise_loop(loop)
+        return self._PID_TABLE_ROWS
+
+    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry:
+        """Return auto-PID table row *zone_index* for *loop*.
+
+        The ITC503 Chapter 10 auto-PID table is addressed through the ``x``
+        (row) and ``y`` (column) pointer commands, read back via ``q``.
+        Fields not present in the ITC503 table (ramp rate, heater range and
+        heater output) are returned as ``0`` for API compatibility.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            zone_index (int):
+                Auto-PID table row index (1-based, 1–16).
+
+        Returns:
+            (ZoneEntry):
+                Zone entry populated from the ITC503 auto-PID table row.
+        """
+        self._normalise_loop(loop)
+        row = self._normalise_pid_table_row(zone_index)
+        return ZoneEntry(
+            upper_bound=self._query_pid_table_value(row, 1),
+            p=self._query_pid_table_value(row, 2),
+            i=self._query_pid_table_value(row, 3),
+            d=self._query_pid_table_value(row, 4),
+            ramp_rate=0.0,
+            heater_range=0,
+            heater_output=0.0,
+        )
+
+    def set_zone(self, loop: int, zone_index: int, entry: ZoneEntry) -> None:
+        """Write auto-PID table row *zone_index* for *loop*.
+
+        Only the ITC503 auto-PID table fields are programmable here: upper
+        boundary, P, I and D.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            zone_index (int):
+                Auto-PID table row index (1-based, 1–16).
+            entry (ZoneEntry):
+                Zone parameters to write. Only ``upper_bound``, ``p``, ``i``,
+                and ``d`` are written by the ITC503 auto-PID table commands.
+        """
+        self._normalise_loop(loop)
+        row = self._normalise_pid_table_row(zone_index)
+        self._write_pid_table_value(row, 1, entry.upper_bound)
+        self._write_pid_table_value(row, 2, entry.p)
+        self._write_pid_table_value(row, 3, entry.i)
+        self._write_pid_table_value(row, 4, entry.d)
 
     def _ramp_query(self, loop: int) -> str:
-        """Return the ITC503 query command for reading ramp state and rate."""
-        return "R21"
+        """Return the legacy base-hook for ramp-state query composition.
+
+        This base hook is not supported for ITC503.
+
+        ITC503 reports sweep state through ``X`` status tokens. Use
+        :meth:`get_ramp_enabled` instead of this base hook.
+
+        Raises:
+            NotImplementedError:
+                Always raised because ITC503 ramp state is read from ``X``
+                status tokens via :meth:`get_ramp_enabled`.
+        """
+        raise NotImplementedError("ITC503 ramp state is reported in X status tokens; use get_ramp_enabled() instead.")
 
     def _ramp_command(self, loop: int, enabled: bool, rate: float) -> str:
-        """Return the ITC503 command that sets the ramp state and rate."""
-        return f"S{int(enabled)},{rate}"
+        """Return the legacy base-hook for ramp command composition.
+
+        This base hook is not supported for ITC503.
+
+        ITC503 sweep control uses direct ``S0``/``S1`` commands emitted by
+        :meth:`set_ramp_enabled`; there is no combined ``enabled,rate`` form.
+
+        Raises:
+            NotImplementedError:
+                Always raised because ITC503 ramp enable/disable is sent via
+                :meth:`set_ramp_enabled`.
+        """
+        raise NotImplementedError("ITC503 ramp control uses S0/S1 commands; use set_ramp_enabled() instead.")
+
+    def _read_status_tokens(self) -> dict[str, int]:
+        """Query ``X`` and parse status tokens into a dictionary.
+
+        Returns:
+            (dict[str, int]):
+                Mapping from token letters to their parsed integer values.
+        """
+        status_reply = self.query("X").strip()
+        status_tokens: dict[str, int] = {}
+        for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply):
+            status_tokens[letter.upper()] = int(value)
+        return status_tokens
+
+    def _normalise_pid_table_row(self, row: int) -> int:
+        """Validate ITC503 auto-PID table row index."""
+        if not 1 <= row <= self._PID_TABLE_ROWS:
+            raise ValueError(f"Invalid PID-table row {row}; expected 1-{self._PID_TABLE_ROWS}.")
+        return row
+
+    def _set_pid_table_pointer(self, row: int, column: int) -> None:
+        """Set ITC503 auto-PID table pointer to *row*/*column*."""
+        self.write(f"x{row}")
+        self.write(f"y{column}")
+
+    def _query_pid_table_value(self, row: int, column: int) -> float:
+        """Read one ITC503 auto-PID table value addressed by *row*/*column*.
+
+        Args:
+            row (int):
+                Auto-PID table row index.
+            column (int):
+                Auto-PID table column index.
+
+        Returns:
+            (float):
+                Parsed numeric value from the selected table cell.
+        """
+        self._set_pid_table_pointer(row, column)
+        return self._query_float("q")
+
+    def _write_pid_table_value(self, row: int, column: int, value: float) -> None:
+        """Write one ITC503 auto-PID table value addressed by *row*/*column*.
+
+        Args:
+            row (int):
+                Auto-PID table row index.
+            column (int):
+                Auto-PID table column index.
+            value (float):
+                Value to write to the selected table cell.
+        """
+        self._set_pid_table_pointer(row, column)
+        self.write(f"p{value}")
 
 
 class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
