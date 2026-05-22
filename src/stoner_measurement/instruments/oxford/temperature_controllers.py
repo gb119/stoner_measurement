@@ -24,7 +24,7 @@ _MODE_TO_CODE = {
     ControlMode.MONITOR: 3,
 }
 _CODE_TO_MODE = {value: key for key, value in _MODE_TO_CODE.items()}
-_STATUS_TOKEN_RE = re.compile(r"([A-Za-z])(\d+)")
+_STATUS_TOKEN_REGEX = re.compile(r"([A-Za-z])(\d+)")
 
 
 class _OxfordTemperatureControllerBase(TemperatureController):
@@ -309,10 +309,20 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         return "X"
 
     def get_loop_mode(self, loop: int) -> ControlMode:
-        """Return control mode for *loop*."""
+        """Return control mode for *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (ControlMode):
+                Current control mode decoded from the ITC503 ``X`` status
+                response ``A`` token.
+        """
         self._normalise_loop(loop)
         status_reply = self.query("X").strip()
-        tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_RE.findall(status_reply)}
+        tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply)}
         return _CODE_TO_MODE.get(tokens.get("A", 1), ControlMode.CLOSED_LOOP)
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
@@ -332,7 +342,17 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         return "R8"
 
     def get_pid(self, loop: int) -> PIDParameters:
-        """Return PID parameters for *loop*."""
+        """Return PID parameters for *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (PIDParameters):
+                PID parameters read via separate ITC503 ``R8``, ``R9``, and
+                ``R10`` queries.
+        """
         self._normalise_loop(loop)
         return PIDParameters(
             p=self._query_float("R8"),
