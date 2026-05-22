@@ -180,7 +180,7 @@ class OxfordProtocol(BaseProtocol):
             return decoded
 
         if command:
-            first_command_char = command.strip()[:1]
+            first_command_char = command[:1]
             if first_command_char and decoded.startswith(first_command_char):
                 return decoded[1:]
             return decoded
