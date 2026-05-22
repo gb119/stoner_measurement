@@ -110,11 +110,6 @@ from stoner_measurement.instruments.source_meter import (
     TriggerModelConfiguration,
     TriggerSource,
 )
-from stoner_measurement.instruments.stepper_motor_controller import (
-    StepperMotor,
-    StepperMotorController,
-    StepperMotorStatus,
-)
 from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
     ControllerCapabilities,
@@ -185,9 +180,6 @@ __all__ = [
     "SourceMeterCapabilities",
     "SourceMode",
     "SourceSweepConfiguration",
-    "StepperMotor",
-    "StepperMotorController",
-    "StepperMotorStatus",
     "SweepSpacing",
     "ThorlabsHDR50",
     "ThorlabsKDC101KPRMTE",

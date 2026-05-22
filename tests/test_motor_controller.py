@@ -9,7 +9,6 @@ import pytest
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.motor_controller import MotorController
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
-from stoner_measurement.instruments.stepper_motor_controller import StepperMotorController
 from stoner_measurement.instruments.thorlabs import ThorlabsHDR50
 from stoner_measurement.instruments.thorlabs.kdc101_kprmte import ThorlabsKDC101KPRMTE
 from stoner_measurement.instruments.transport import NullTransport
@@ -18,11 +17,6 @@ from stoner_measurement.instruments.transport import NullTransport
 def test_motor_controller_is_abstract():
     with pytest.raises(TypeError):
         MotorController(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
-
-
-def test_stepper_motor_controller_alias_is_abstract():
-    with pytest.raises(TypeError):
-        StepperMotorController(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
 
 
 @dataclass
