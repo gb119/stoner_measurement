@@ -1785,6 +1785,40 @@ class TestLakeshore625:
         status = m.status
         assert status.state.value == "standby"
 
+    def test_status_unknown_for_unparseable_rdgst_response(self, caplog):
+        t = _null(
+            responses=[
+                b"not-an-int\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0\r\n",
+            ]
+        )
+        m = Lakeshore625(transport=t)
+        with caplog.at_level(logging.WARNING, logger="stoner_measurement.sequence.comms"):
+            status = m.status
+        assert status.state is MagnetState.UNKNOWN
+        assert status.at_target is False
+        assert any("marking status UNKNOWN" in record.getMessage() for record in caplog.records)
+
+    def test_status_unknown_for_unhandled_rdgst_bits(self, caplog):
+        t = _null(
+            responses=[
+                b"16\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0.0\r\n",
+                b"0\r\n",
+            ]
+        )
+        m = Lakeshore625(transport=t)
+        with caplog.at_level(logging.WARNING, logger="stoner_measurement.sequence.comms"):
+            status = m.status
+        assert status.state is MagnetState.UNKNOWN
+        assert status.at_target is False
+        assert any("unhandled status bits 0x10" in record.getMessage() for record in caplog.records)
+
     def test_set_magnet_constant_validation(self):
         m = Lakeshore625(transport=_null())
         with pytest.raises(ValueError, match="positive"):

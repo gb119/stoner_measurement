@@ -138,18 +138,22 @@ class Lakeshore625(MagnetController, MagnetSupply):
         try:
             bits = int(raw)
         except ValueError:
-            self._comms_logger.warning("RDGST? returned unexpected response %r; defaulting to STANDBY", raw)
-            bits = 0
-        if bits & _RDGST_QUENCH_BIT:
-            state = MagnetState.QUENCH
-        elif bits & _RDGST_FAULT_BIT:
-            state = MagnetState.FAULT
-        elif bits & _RDGST_RAMPING_BIT:
-            state = MagnetState.RAMPING
-        elif bits & _RDGST_AT_TARGET_BIT:
-            state = MagnetState.AT_TARGET
+            self._comms_logger.warning("RDGST? returned unexpected response %r; marking status UNKNOWN", raw)
+            state = MagnetState.UNKNOWN
         else:
-            state = MagnetState.STANDBY
+            if bits & _RDGST_QUENCH_BIT:
+                state = MagnetState.QUENCH
+            elif bits & _RDGST_FAULT_BIT:
+                state = MagnetState.FAULT
+            elif bits & _RDGST_RAMPING_BIT:
+                state = MagnetState.RAMPING
+            elif bits & _RDGST_AT_TARGET_BIT:
+                state = MagnetState.AT_TARGET
+            elif bits == 0:
+                state = MagnetState.STANDBY
+            else:
+                self._comms_logger.warning("RDGST? returned unhandled status bits 0x%X; marking status UNKNOWN", bits)
+                state = MagnetState.UNKNOWN
         at_target = state in _TERMINAL_RAMP_STATES
         return MagnetStatus(
             state=state,
