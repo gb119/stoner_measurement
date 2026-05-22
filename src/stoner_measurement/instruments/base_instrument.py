@@ -128,7 +128,8 @@ class BaseInstrument(ABC):
         """Open the transport connection to the instrument.
 
         After opening the transport, any data accumulated in the transport
-        buffer since the last session is discarded via :meth:`~BaseTransport.flush`
+        buffer since the last session is discarded via
+        :meth:`~stoner_measurement.instruments.transport.base.BaseTransport.flush`
         so that stale responses from previous commands cannot be misread as
         replies to new queries.
 

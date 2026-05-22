@@ -2778,6 +2778,7 @@ class TestInstrumentLocking:
         lock_was_held.append(not acquired)
         barrier.wait()  # let the query thread proceed
         thread.join(timeout=2)
+        assert not thread.is_alive(), "query() worker thread did not finish; possible deadlock"
 
         assert lock_was_held == [True], "Lock should be held by query thread during read()"
 
@@ -2819,6 +2820,8 @@ class TestInstrumentLocking:
         t2.start()
         t1.join(timeout=2)
         t2.join(timeout=2)
+        assert not t1.is_alive(), "First query thread did not finish; possible deadlock"
+        assert not t2.is_alive(), "Second query thread did not finish; possible deadlock"
 
         # Each write must be immediately followed by the matching read.
         for i in range(0, len(events) - 1, 2):

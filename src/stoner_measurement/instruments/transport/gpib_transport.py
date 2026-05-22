@@ -8,6 +8,7 @@ at construction time if it is not installed.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 #: ``"GPIB<board>::<address>::INSTR"``.
 _GPIB_RESOURCE_RE = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
 _DEFAULT_GPIB_READ_TERMINATOR = "\n"
+logger = logging.getLogger(__name__)
 
 
 class GpibTransport(BaseTransport):
@@ -282,8 +284,8 @@ class GpibTransport(BaseTransport):
         parser and discards any bytes queued in its output buffer, preventing
         stale responses from old commands being misread after a reconnect.
 
-        If the resource is not open or the instrument does not support Device
-        Clear, the error is silently ignored.
+        If the resource is not open or Device Clear fails, the exception is
+        ignored and logged at debug level.
         """
         if self._resource is None:
             return
@@ -291,5 +293,5 @@ class GpibTransport(BaseTransport):
 
         try:
             self._resource.clear()
-        except pyvisa.VisaIOError:
-            pass
+        except pyvisa.VisaIOError as exc:
+            logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)
