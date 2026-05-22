@@ -415,7 +415,7 @@ class TestOxfordProtocol:
     def test_parse_response_single_char_with_command(self):
         assert OxfordProtocol().parse_response(b"R", command="R1") == "R"
 
-    def test_parse_response_does_not_strip_non_matching_lead_char(self):
+    def test_parse_response_preserves_non_matching_char(self):
         assert (
             OxfordProtocol().parse_response(
                 b"ITC503 Version 1.11 (c) OXFORD 1997\r",
