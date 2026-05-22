@@ -25,8 +25,8 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.magnet_controller.MagnetController` — abstract type
 * :class:`~stoner_measurement.instruments.source_meter.SourceMeter` — abstract type
 * :class:`~stoner_measurement.instruments.current_source.CurrentSource` — abstract type
- * :class:`~stoner_measurement.instruments.lockin_amplifier.LockInAmplifier` — abstract type
- * :class:`~stoner_measurement.instruments.stepper_motor_controller.StepperMotorController` — abstract type
+* :class:`~stoner_measurement.instruments.lockin_amplifier.LockInAmplifier` — abstract type
+* :class:`~stoner_measurement.instruments.stepper_motor_controller.StepperMotorController` — abstract type
 * :class:`~stoner_measurement.instruments.dmm.DigitalMultimeter` — abstract type
 * :class:`~stoner_measurement.instruments.electrometer.Electrometer` — abstract type
 * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
@@ -45,8 +45,8 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.oxford.OxfordIPS120` — concrete magnet supply driver
 * :class:`~stoner_measurement.instruments.oxford.OxfordMercuryIPS` — concrete magnet supply driver
 * :class:`~stoner_measurement.instruments.srs.SRS830` — concrete lock-in amplifier driver
- * :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81LockIn` — concrete lock-in amplifier driver
- * :class:`~stoner_measurement.instruments.thorlabs.ThorlabsHDR50` — concrete stepper motor driver
+* :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81LockIn` — concrete lock-in amplifier driver
+* :class:`~stoner_measurement.instruments.thorlabs.ThorlabsHDR50` — concrete stepper motor driver
 """
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument

@@ -138,3 +138,27 @@ class TestThorlabsHDR50:
 
         motor.moving = False
         driver.wait_for_target_position(timeout=0.1, poll_period=0.0)
+
+    def test_connect_fails_on_identity_mismatch(self):
+        """connect() must close the motor and raise when identity check fails."""
+
+        @dataclass
+        class _WrongMotor:
+            serial: str
+            closed: bool = False
+
+            def get_model(self) -> str:
+                return "K-CUBE"
+
+            def get_serial_number(self) -> str:
+                return self.serial
+
+            def close(self) -> None:
+                self.closed = True
+
+        wrong_motor = _WrongMotor(serial="9999")
+        driver = ThorlabsHDR50(serial_number="9999", motor_factory=lambda _s: wrong_motor)
+        with pytest.raises(Exception, match="identity"):
+            driver.connect()
+        assert wrong_motor.closed is True
+        assert driver.is_connected is False

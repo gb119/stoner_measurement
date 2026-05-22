@@ -60,6 +60,11 @@ class ThorlabsHDR50(StepperMotorController):
         if self._motor is not None:
             return
         self._motor = self._build_motor()
+        try:
+            self.confirm_identity()
+        except Exception:
+            self.disconnect()
+            raise
 
     def disconnect(self) -> None:
         """Close the pylablib/Kinesis connection."""
@@ -74,7 +79,9 @@ class ThorlabsHDR50(StepperMotorController):
         """Return an HDR50 identity string."""
         if self._motor is None:
             return f"Thorlabs,HDR50,{self._serial_number}"
-        model = self._call_first_available(("get_model",), default="HDR50")
+        model = self._call_first_available(("get_model",), default=None)
+        if model is None:
+            model = self._query_kinesis_description() or "HDR50"
         serial = self._call_first_available(("get_serial", "get_serial_number"), default=self._serial_number)
         return f"Thorlabs,{model},{serial}"
 
@@ -203,6 +210,20 @@ class ThorlabsHDR50(StepperMotorController):
                 return func(*args, **cleaned_kwargs)
             return func(*args)
         return default
+
+    def _query_kinesis_description(self) -> str | None:
+        """Look up this serial number in pylablib's Kinesis device list.
+
+        Returns the device description string if found, or ``None`` when the
+        device is not listed or pylablib is unavailable.
+        """
+        try:
+            from pylablib.devices import Thorlabs  # pylint: disable=import-outside-toplevel
+
+            devices = dict(Thorlabs.list_kinesis_devices())
+            return devices.get(self._serial_number)
+        except Exception:
+            return None
 
     def _read_homed_state(self) -> bool | None:
         if self._motor is None:

@@ -28,7 +28,7 @@ requirements:
     - pyqtgraph >=0.13
     - numpy >=2.0
   run_constrained:
-    - pylablib
+    - pylablib >=1.4
     - pyserial >=3.5
     - pyvisa >=1.13
 
