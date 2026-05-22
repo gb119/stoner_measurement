@@ -59,6 +59,7 @@ class TestInstrumentDriverManager:
         assert "OxfordITC503" in discovered
         assert "OxfordMercuryIPS" in discovered
         assert "OxfordMercuryTemperatureController" in discovered
+        assert "ThorlabsHDR50" in discovered
         assert "SRS830" in discovered
         assert "LakeshoreM81LockIn" in discovered
 
