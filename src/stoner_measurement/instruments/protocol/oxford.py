@@ -161,6 +161,11 @@ class OxfordProtocol(BaseProtocol):
                 Response payload with any matching echo character and the
                 terminator removed.
 
+        Notes:
+            When *command* is not provided, this method uses legacy
+            behaviour and strips the first character for multi-character
+            responses.
+
         Examples:
             >>> from stoner_measurement.instruments.protocol import OxfordProtocol
             >>> OxfordProtocol().parse_response(b'R1.234\\r', command="R1")

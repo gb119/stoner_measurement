@@ -409,7 +409,7 @@ class TestOxfordProtocol:
         assert OxfordProtocol().parse_response(b"R1.234\r", command="R1") == "1.234"
 
     def test_parse_response_single_char(self):
-        # Degenerate one-char response: no stripping of payload
+        # Degenerate one-char response: no stripping of payload in fallback path.
         assert OxfordProtocol().parse_response(b"R") == "R"
 
     def test_parse_response_single_char_with_command(self):
