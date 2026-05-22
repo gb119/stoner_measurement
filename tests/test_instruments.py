@@ -2108,8 +2108,6 @@ class TestOxfordTemperatureControllers:
                 b"R30.0\r",
                 b"R4.0\r",
                 b"R0.0\r",
-                b"R1,0.8\r",
-                b"R1,0.8\r",
             ]
         )
         tc = OxfordITC503(transport=t)
@@ -2118,9 +2116,11 @@ class TestOxfordTemperatureControllers:
         assert tc.get_loop_mode(1) is ControlMode.CLOSED_LOOP
         assert tc.get_heater_output(1) == pytest.approx(22.5)
         assert tc.get_pid(1) == PIDParameters(30.0, 4.0, 0.0)
-        assert tc.get_ramp_rate(1) == pytest.approx(0.8)
+        assert tc.get_ramp_rate(1) == pytest.approx(0.0)
         tc.set_setpoint(1, 12.0)
         tc.set_loop_mode(1, ControlMode.OPEN_LOOP)
+        tc.set_input_channel(1, "B")
+        tc.set_pid(1, 30.0, 4.0, 0.0)
         tc.set_ramp_enabled(1, True)
         assert t.write_log == [
             b"R1\r",
@@ -2130,12 +2130,27 @@ class TestOxfordTemperatureControllers:
             b"R8\r",
             b"R9\r",
             b"R10\r",
-            b"R21\r",
             b"T12.0\r",
             b"A2\r",
-            b"R21\r",
-            b"S1,0.8\r",
+            b"C1\r",
+            b"P30.0\r",
+            b"I4.0\r",
+            b"D0.0\r",
+            b"S1\r",
         ]
+
+    def test_itc503_get_heater_range_reads_x_status_h_token(self):
+        t = _null(responses=[b"X00A1C0H1P0\r", b"X00A1C0H0P0\r"])
+        tc = OxfordITC503(transport=t)
+        assert tc.get_heater_range(1) == 1
+        assert tc.get_heater_range(1) == 0
+        assert t.write_log == [b"X\r", b"X\r"]
+
+    def test_itc503_get_gas_flow_uses_r7_register(self):
+        t = _null(responses=[b"R55.0\r"])
+        tc = OxfordITC503(transport=t)
+        assert tc.get_gas_flow() == pytest.approx(55.0)
+        assert t.write_log == [b"R7\r"]
 
     @pytest.mark.parametrize(
         ("status_response", "expected_mode"),

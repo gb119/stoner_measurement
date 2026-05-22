@@ -223,6 +223,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the ITC503 driver."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else OxfordProtocol())
+        self._ramp_rate: float = 0.0
 
     def identify(self) -> str:
         """Return identity string."""
@@ -240,14 +241,12 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
                 0 when the heater output is zero (off), 1 otherwise.
         """
         self._normalise_loop(loop)
-        # ITC503 does not have a dedicated range-read command; infer from
-        # the heater output: zero output implies off, any non-zero implies on.
-        output = self._query_float("R5")
-        return 0 if output == 0.0 else 1
+        status_tokens = self._read_status_tokens()
+        return int(status_tokens.get("H", 0))
 
     def get_gas_flow(self) -> float:
         """Return the gas-flow needle valve position as a percentage."""
-        return self._query_float("R6")
+        return self._query_float("R7")
 
     def set_gas_flow(self, percent: float) -> None:
         """Set the gas-flow needle valve position to *percent* open."""
@@ -293,7 +292,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
     def _input_command(self, loop: int, channel: str) -> str:
         """Return the ITC503 command that assigns *channel* to the heater loop."""
-        channel_code = {"A": 1, "B": 2, "C": 3}[channel]
+        channel_code = {"A": 0, "B": 1, "C": 2}[channel]
         return f"C{channel_code}"
 
     def _setpoint_query(self, loop: int) -> str:
@@ -317,8 +316,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
                 response ``A`` token.
         """
         self._normalise_loop(loop)
-        status_reply = self.query("X").strip()
-        status_tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply)}
+        status_tokens = self._read_status_tokens()
         return _CODE_TO_MODE.get(status_tokens.get("A", 1), ControlMode.CLOSED_LOOP)
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
@@ -332,6 +330,13 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def _heater_range_command(self, loop: int, range_: int) -> str:
         """Return the ITC503 command that sets the heater range index."""
         return f"H{range_}"
+
+    def set_pid(self, loop: int, p: float, i: float, d: float) -> None:
+        """Set PID parameters for *loop*."""
+        self._normalise_loop(loop)
+        self.write(f"P{p}")
+        self.write(f"I{i}")
+        self.write(f"D{d}")
 
     def get_pid(self, loop: int) -> PIDParameters:
         """Return PID parameters for *loop*.
@@ -353,16 +358,50 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         )
 
     def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
-        """Return the ITC503 command that sets PID parameters."""
-        return f"P{p},I{i},D{d}"
+        """ITC503 requires separate ``P``/``I``/``D`` commands."""
+        raise NotImplementedError("ITC503 PID set requires separate P, I and D commands.")
+
+    def get_ramp_rate(self, loop: int) -> float:
+        """Return ramp rate in Kelvin per minute for *loop*.
+
+        The ITC503 does not expose a readback register for a continuous ramp
+        rate; this returns the last value set via :meth:`set_ramp_rate`.
+        """
+        self._normalise_loop(loop)
+        return self._ramp_rate
+
+    def set_ramp_rate(self, loop: int, rate: float) -> None:
+        """Set ramp rate in Kelvin per minute for *loop*.
+
+        ITC503 sweep start/stop is controlled via ``S`` commands, without a
+        direct ramp-rate command in Chapter 9.
+        """
+        self._normalise_loop(loop)
+        self._ramp_rate = float(rate)
+
+    def get_ramp_enabled(self, loop: int) -> bool:
+        """Return whether sweep/ramp execution is active for *loop*."""
+        self._normalise_loop(loop)
+        status_tokens = self._read_status_tokens()
+        return int(status_tokens.get("S", 0)) > 0
+
+    def set_ramp_enabled(self, loop: int, enabled: bool) -> None:
+        """Enable or disable sweep/ramp execution for *loop*."""
+        self._normalise_loop(loop)
+        self.write("S1" if enabled else "S0")
 
     def _ramp_query(self, loop: int) -> str:
-        """Return the ITC503 query command for reading ramp state and rate."""
-        return "R21"
+        """ITC503 sweep/ramp state is read from ``X`` status, not a ramp register."""
+        raise NotImplementedError("ITC503 ramp state is reported in X status tokens.")
 
     def _ramp_command(self, loop: int, enabled: bool, rate: float) -> str:
-        """Return the ITC503 command that sets the ramp state and rate."""
-        return f"S{int(enabled)},{rate}"
+        """ITC503 sweep/ramp control uses ``S0``/``S1`` commands."""
+        raise NotImplementedError("ITC503 ramp control uses S0/S1 commands.")
+
+    def _read_status_tokens(self) -> dict[str, int]:
+        """Query ``X`` and parse status tokens into a dictionary."""
+        status_reply = self.query("X").strip()
+        return {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply)}
 
 
 class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
