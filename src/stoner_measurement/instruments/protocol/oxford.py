@@ -163,11 +163,11 @@ class OxfordProtocol(BaseProtocol):
 
         Examples:
             >>> from stoner_measurement.instruments.protocol import OxfordProtocol
-            >>> OxfordProtocol().parse_response(b'R1.234\\r')
+            >>> OxfordProtocol().parse_response(b'R1.234\\r', command="R1")
             '1.234'
             >>> OxfordProtocol().parse_response(b'ITC503 Version 1.11\\r', command="V")
             'ITC503 Version 1.11'
-            >>> OxfordProtocol().parse_response(b'S$A0C0H1L0R0B0\\r')
+            >>> OxfordProtocol().parse_response(b'S$A0C0H1L0R0B0\\r', command="S")
             '$A0C0H1L0R0B0'
         """
         decoded = raw.decode("ascii", errors="replace").strip()

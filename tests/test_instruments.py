@@ -412,6 +412,9 @@ class TestOxfordProtocol:
         # Degenerate one-char response: no stripping of payload
         assert OxfordProtocol().parse_response(b"R") == "R"
 
+    def test_parse_response_single_char_with_command(self):
+        assert OxfordProtocol().parse_response(b"R", command="R1") == "R"
+
     def test_parse_response_does_not_strip_non_matching_lead_char(self):
         assert (
             OxfordProtocol().parse_response(
