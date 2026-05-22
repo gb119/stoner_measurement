@@ -406,11 +406,20 @@ class TestOxfordProtocol:
         assert OxfordProtocol().format_query("R1") == b"R1\r"
 
     def test_parse_response_strips_echo_char(self):
-        assert OxfordProtocol().parse_response(b"R1.234\r") == "1.234"
+        assert OxfordProtocol().parse_response(b"R1.234\r", command="R1") == "1.234"
 
     def test_parse_response_single_char(self):
         # Degenerate one-char response: no stripping of payload
         assert OxfordProtocol().parse_response(b"R") == "R"
+
+    def test_parse_response_does_not_strip_non_matching_lead_char(self):
+        assert (
+            OxfordProtocol().parse_response(
+                b"ITC503 Version 1.11 (c) OXFORD 1997\r",
+                command="V",
+            )
+            == "ITC503 Version 1.11 (c) OXFORD 1997"
+        )
 
     def test_check_error_no_error(self):
         OxfordProtocol().check_error("1.234")  # must not raise
@@ -2117,6 +2126,11 @@ class TestOxfordTemperatureControllers:
             b"R21\r",
             b"S1,0.8\r",
         ]
+
+    def test_itc503_identify_handles_non_echo_v_response(self):
+        t = _null(responses=[b"ITC503 Version 1.11 (c) OXFORD 1997\r"])
+        tc = OxfordITC503(transport=t)
+        assert tc.identify() == "ITC503 Version 1.11 (c) OXFORD 1997"
 
     def test_mercury_core_methods(self):
         t = _null(

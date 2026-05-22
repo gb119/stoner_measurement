@@ -134,7 +134,7 @@ class LakeshoreProtocol(BaseProtocol):
         """
         return query.encode("ascii") + self.terminator
 
-    def parse_response(self, raw: bytes) -> str:
+    def parse_response(self, raw: bytes, *, command: str | None = None) -> str:
         """Parse a raw Lakeshore response.
 
         Decodes the bytes as ASCII and strips surrounding whitespace,

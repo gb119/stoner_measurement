@@ -137,33 +137,51 @@ class OxfordProtocol(BaseProtocol):
         """
         return query.encode("ascii") + self.terminator
 
-    def parse_response(self, raw: bytes) -> str:
+    def parse_response(self, raw: bytes, *, command: str | None = None) -> str:
         """Parse a raw Oxford Instruments response.
 
-        Oxford responses echo the command letter as their first character.
-        This method strips the leading echo character, the trailing
-        carriage return, and any surrounding whitespace.
+        Oxford responses often echo the command letter as their first
+        character. This method strips that leading echo character only
+        when it matches the first character of *command*, then strips
+        the trailing carriage return and surrounding whitespace.
 
         Args:
             raw (bytes):
                 Raw bytes received from the instrument.
 
+        Keyword Parameters:
+            command (str | None):
+                Command/query string that produced *raw*.  When provided,
+                a leading echoed command character is removed only if it
+                matches the first character of this command.  Defaults to
+                ``None``.
+
         Returns:
             (str):
-                Response payload with the echo character and terminator removed.
+                Response payload with any matching echo character and the
+                terminator removed.
 
         Examples:
             >>> from stoner_measurement.instruments.protocol import OxfordProtocol
             >>> OxfordProtocol().parse_response(b'R1.234\\r')
             '1.234'
+            >>> OxfordProtocol().parse_response(b'ITC503 Version 1.11\\r', command="V")
+            'ITC503 Version 1.11'
             >>> OxfordProtocol().parse_response(b'S$A0C0H1L0R0B0\\r')
             '$A0C0H1L0R0B0'
         """
         decoded = raw.decode("ascii", errors="replace").strip()
-        # Strip the leading command-echo character (first character)
-        if len(decoded) > 1:
-            return decoded[1:]
-        return decoded
+        if len(decoded) <= 1:
+            return decoded
+
+        if command:
+            command_lead = command.strip()[:1]
+            if command_lead and decoded.startswith(command_lead):
+                return decoded[1:]
+            return decoded
+
+        # Backward-compatible fallback when command context is unavailable.
+        return decoded[1:]
 
     def check_error(self, response: str, *, command: str | None = None) -> None:
         """Raise :exc:`~stoner_measurement.instruments.errors.InstrumentError` if *response* indicates an Oxford error.
