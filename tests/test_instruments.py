@@ -2152,6 +2152,73 @@ class TestOxfordTemperatureControllers:
         assert tc.get_gas_flow() == pytest.approx(55.0)
         assert t.write_log == [b"R7\r"]
 
+    def test_itc503_get_num_zones(self):
+        tc = OxfordITC503(transport=_null())
+        assert tc.get_num_zones(1) == 16
+
+    def test_itc503_get_zone_uses_pointer_and_q_commands(self):
+        t = _null(responses=[b"Q10.0\r", b"Q20.0\r", b"Q30.0\r", b"Q40.0\r"])
+        tc = OxfordITC503(transport=t)
+        zone = tc.get_zone(1, 1)
+        assert zone == ZoneEntry(
+            upper_bound=10.0,
+            p=20.0,
+            i=30.0,
+            d=40.0,
+            ramp_rate=0.0,
+            heater_range=0,
+            heater_output=0.0,
+        )
+        assert t.write_log == [
+            b"x1\r",
+            b"y1\r",
+            b"q\r",
+            b"x1\r",
+            b"y2\r",
+            b"q\r",
+            b"x1\r",
+            b"y3\r",
+            b"q\r",
+            b"x1\r",
+            b"y4\r",
+            b"q\r",
+        ]
+
+    def test_itc503_set_zone_uses_pointer_and_p_commands(self):
+        t = _null()
+        tc = OxfordITC503(transport=t)
+        zone = ZoneEntry(
+            upper_bound=12.5,
+            p=30.0,
+            i=4.0,
+            d=0.5,
+            ramp_rate=9.0,
+            heater_range=1,
+            heater_output=25.0,
+        )
+        tc.set_zone(1, 2, zone)
+        assert t.write_log == [
+            b"x2\r",
+            b"y1\r",
+            b"p12.5\r",
+            b"x2\r",
+            b"y2\r",
+            b"p30.0\r",
+            b"x2\r",
+            b"y3\r",
+            b"p4.0\r",
+            b"x2\r",
+            b"y4\r",
+            b"p0.5\r",
+        ]
+
+    def test_itc503_zone_row_validation(self):
+        tc = OxfordITC503(transport=_null())
+        with pytest.raises(ValueError, match="PID-table row"):
+            tc.get_zone(1, 0)
+        with pytest.raises(ValueError, match="PID-table row"):
+            tc.set_zone(1, 17, ZoneEntry(100.0, 30.0, 5.0, 1.0, 0.0, 0, 0.0))
+
     @pytest.mark.parametrize(
         ("status_response", "expected_mode"),
         [
@@ -2210,6 +2277,7 @@ class TestOxfordTemperatureControllers:
         caps_mercury = OxfordMercuryTemperatureController(transport=_null()).get_capabilities()
         assert caps_itc.has_cryogen_control is True
         assert caps_itc.has_gas_auto_mode is True
+        assert caps_itc.has_zone is True
         assert caps_mercury.has_cryogen_control is True
         assert caps_mercury.loop_numbers == (1, 2)
 

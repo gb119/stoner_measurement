@@ -14,6 +14,7 @@ from stoner_measurement.instruments.temperature_controller import (
     PIDParameters,
     SensorStatus,
     TemperatureController,
+    ZoneEntry,
 )
 from stoner_measurement.instruments.transport.base import BaseTransport
 
@@ -137,6 +138,11 @@ class _OxfordTemperatureControllerBase(TemperatureController):
         try:
             return float(token)
         except ValueError as exc:
+            if len(token) > 1 and token[:1].isalpha():
+                try:
+                    return float(token[1:])
+                except ValueError:
+                    pass
             raise ValueError(f"Invalid numeric response for {command!r}: {token!r}.") from exc
 
     def _parse_csv_floats(self, response: str, *, minimum_length: int) -> list[float]:
@@ -207,6 +213,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     """Concrete driver for the Oxford Instruments ITC503 temperature controller."""
 
     _EXPECTED_IDENTITY_TOKENS = ("ITC503",)
+    _PID_TABLE_ROWS = 16
     _ITC503_HEATER_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=3,
@@ -215,6 +222,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         loop_numbers=(1,),
         has_ramp=True,
         has_pid=True,
+        has_zone=True,
         has_cryogen_control=True,
         has_gas_auto_mode=True,
         heater_range_labels={1: _ITC503_HEATER_RANGES},
@@ -405,6 +413,42 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self._normalise_loop(loop)
         self.write("S1" if enabled else "S0")
 
+    def get_num_zones(self, loop: int) -> int:
+        """Return the number of ITC503 auto-PID table rows for *loop*."""
+        self._normalise_loop(loop)
+        return self._PID_TABLE_ROWS
+
+    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry:
+        """Return auto-PID table row *zone_index* for *loop*.
+
+        The ITC503 Chapter 10 auto-PID table is addressed through the ``x``
+        (row) and ``y`` (column) pointer commands, read back via ``q``.
+        """
+        self._normalise_loop(loop)
+        row = self._normalise_pid_table_row(zone_index)
+        return ZoneEntry(
+            upper_bound=self._query_pid_table_value(row, 1),
+            p=self._query_pid_table_value(row, 2),
+            i=self._query_pid_table_value(row, 3),
+            d=self._query_pid_table_value(row, 4),
+            ramp_rate=0.0,
+            heater_range=0,
+            heater_output=0.0,
+        )
+
+    def set_zone(self, loop: int, zone_index: int, entry: ZoneEntry) -> None:
+        """Write auto-PID table row *zone_index* for *loop*.
+
+        Only the ITC503 auto-PID table fields are programmable here: upper
+        boundary, P, I and D.
+        """
+        self._normalise_loop(loop)
+        row = self._normalise_pid_table_row(zone_index)
+        self._write_pid_table_value(row, 1, entry.upper_bound)
+        self._write_pid_table_value(row, 2, entry.p)
+        self._write_pid_table_value(row, 3, entry.i)
+        self._write_pid_table_value(row, 4, entry.d)
+
     def _ramp_query(self, loop: int) -> str:
         """Return the legacy base-hook for ramp-state query composition.
 
@@ -450,6 +494,27 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
             except ValueError as exc:
                 raise ValueError(f"Invalid status token in X response: {letter}{value!r}.") from exc
         return status_tokens
+
+    def _normalise_pid_table_row(self, row: int) -> int:
+        """Validate ITC503 auto-PID table row index."""
+        if not 1 <= row <= self._PID_TABLE_ROWS:
+            raise ValueError(f"Invalid PID-table row {row}; expected 1-{self._PID_TABLE_ROWS}.")
+        return row
+
+    def _set_pid_table_pointer(self, row: int, column: int) -> None:
+        """Set ITC503 auto-PID table pointer to *row*/*column*."""
+        self.write(f"x{row}")
+        self.write(f"y{column}")
+
+    def _query_pid_table_value(self, row: int, column: int) -> float:
+        """Read one ITC503 auto-PID table value addressed by *row*/*column*."""
+        self._set_pid_table_pointer(row, column)
+        return self._query_float("q")
+
+    def _write_pid_table_value(self, row: int, column: int, value: float) -> None:
+        """Write one ITC503 auto-PID table value addressed by *row*/*column*."""
+        self._set_pid_table_pointer(row, column)
+        self.write(f"p{value}")
 
 
 class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
