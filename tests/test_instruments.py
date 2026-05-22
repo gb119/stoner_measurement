@@ -2156,6 +2156,11 @@ class TestOxfordTemperatureControllers:
         tc = OxfordITC503(transport=_null())
         assert tc.get_num_zones(1) == 16
 
+    def test_itc503_get_num_zones_invalid_loop(self):
+        tc = OxfordITC503(transport=_null())
+        with pytest.raises(ValueError):
+            tc.get_num_zones(2)
+
     def test_itc503_get_zone_uses_pointer_and_q_commands(self):
         t = _null(responses=[b"Q10.0\r", b"Q20.0\r", b"Q30.0\r", b"Q40.0\r"])
         tc = OxfordITC503(transport=t)
@@ -2218,6 +2223,13 @@ class TestOxfordTemperatureControllers:
             tc.get_zone(1, 0)
         with pytest.raises(ValueError, match="PID-table row"):
             tc.set_zone(1, 17, ZoneEntry(100.0, 30.0, 5.0, 1.0, 0.0, 0, 0.0))
+
+    def test_itc503_zone_row_upper_bound_is_valid(self):
+        t = _null(responses=[b"Q100.0\r", b"Q30.0\r", b"Q5.0\r", b"Q1.0\r"])
+        tc = OxfordITC503(transport=t)
+        zone = tc.get_zone(1, 16)
+        assert zone.upper_bound == pytest.approx(100.0)
+        assert t.write_log[:3] == [b"x16\r", b"y1\r", b"q\r"]
 
     @pytest.mark.parametrize(
         ("status_response", "expected_mode"),

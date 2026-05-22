@@ -138,6 +138,9 @@ class _OxfordTemperatureControllerBase(TemperatureController):
         try:
             return float(token)
         except ValueError as exc:
+            # Some Oxford replies include an echoed command letter where the
+            # instrument uppercases the echo (e.g. ``Q10.0`` for query ``q``).
+            # Accept a single leading alphabetic prefix when present.
             if len(token) > 1 and token[:1].isalpha():
                 try:
                     return float(token[1:])
@@ -414,7 +417,16 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self.write("S1" if enabled else "S0")
 
     def get_num_zones(self, loop: int) -> int:
-        """Return the number of ITC503 auto-PID table rows for *loop*."""
+        """Return the number of ITC503 auto-PID table rows for *loop*.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+
+        Returns:
+            (int):
+                Number of auto-PID table rows supported by the ITC503.
+        """
         self._normalise_loop(loop)
         return self._PID_TABLE_ROWS
 
@@ -423,6 +435,18 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
         The ITC503 Chapter 10 auto-PID table is addressed through the ``x``
         (row) and ``y`` (column) pointer commands, read back via ``q``.
+        Fields not present in the ITC503 table (ramp rate, heater range and
+        heater output) are returned as ``0`` for API compatibility.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            zone_index (int):
+                Auto-PID table row index (1-based, 1–16).
+
+        Returns:
+            (ZoneEntry):
+                Zone entry populated from the ITC503 auto-PID table row.
         """
         self._normalise_loop(loop)
         row = self._normalise_pid_table_row(zone_index)
@@ -441,6 +465,15 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
         Only the ITC503 auto-PID table fields are programmable here: upper
         boundary, P, I and D.
+
+        Args:
+            loop (int):
+                Control loop number (1-based).
+            zone_index (int):
+                Auto-PID table row index (1-based, 1–16).
+            entry (ZoneEntry):
+                Zone parameters to write. Only ``upper_bound``, ``p``, ``i``,
+                and ``d`` are written by the ITC503 auto-PID table commands.
         """
         self._normalise_loop(loop)
         row = self._normalise_pid_table_row(zone_index)
@@ -507,12 +540,32 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self.write(f"y{column}")
 
     def _query_pid_table_value(self, row: int, column: int) -> float:
-        """Read one ITC503 auto-PID table value addressed by *row*/*column*."""
+        """Read one ITC503 auto-PID table value addressed by *row*/*column*.
+
+        Args:
+            row (int):
+                Auto-PID table row index.
+            column (int):
+                Auto-PID table column index.
+
+        Returns:
+            (float):
+                Parsed numeric value from the selected table cell.
+        """
         self._set_pid_table_pointer(row, column)
         return self._query_float("q")
 
     def _write_pid_table_value(self, row: int, column: int, value: float) -> None:
-        """Write one ITC503 auto-PID table value addressed by *row*/*column*."""
+        """Write one ITC503 auto-PID table value addressed by *row*/*column*.
+
+        Args:
+            row (int):
+                Auto-PID table row index.
+            column (int):
+                Auto-PID table column index.
+            value (float):
+                Value to write to the selected table cell.
+        """
         self._set_pid_table_pointer(row, column)
         self.write(f"p{value}")
 
