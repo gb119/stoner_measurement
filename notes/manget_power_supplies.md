@@ -31,8 +31,8 @@ This is organised as a **true mapping table**:
 
 | Function       | Lake Shore 625 | IPS120   | Mercury IPS          | Notes                   |
 | -------------- | -------------- | -------- | -------------------- | ----------------------- |
-| Set ramp rate  | `RATE <val>`   | `S<val>` | `SET:...:RCST <val>` | Same role               |
-| Read ramp rate | `RATE?`        | `R4`     | `READ:...:RCST?`     | IPS120 register         |
+| Set ramp rate  | `RATE <val>`   | `S<val>` | `SET:...:RSET <val>` | Same role               |
+| Read ramp rate | `RATE?`        | `R4`     | `READ:...:RSET?`     | IPS120 register         |
 | Rate units     | A/s            | A/s      | A/s or T/s           | Mercury depends on mode |
 
 ***
@@ -146,7 +146,7 @@ X     → status
 
 ```
 SET:DEV:...:CURR
-SET:DEV:...:RCST
+SET:DEV:...:RSET
 SET:DEV:...:ACTN
 SET:DEV:...:ENAB
 SET:DEV:...:SWHT
@@ -197,7 +197,7 @@ READ:DEV:...:STAT?
 | Physical concept | LS625  | IPS120 | Mercury     |
 | ---------------- | ------ | ------ | ----------- |
 | Target           | `SETI` | `I`    | `CURR`      |
-| Ramp rate        | `RATE` | `S`    | `RCST`      |
+| Ramp rate        | `RATE` | `S`    | `RSET`      |
 | Start            | `RAMP` | `A1`   | `ACTN RTOS` |
 | Stop             | `STOP` | `A0`   | `ACTN HOLD` |
 | Zero             | `ZERO` | `A2`   | `ACTN RTOZ` |

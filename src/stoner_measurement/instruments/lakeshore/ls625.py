@@ -15,15 +15,11 @@ from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
 from stoner_measurement.instruments.transport.base import BaseTransport
 
-_STATE_MAP = {
-    "standby": MagnetState.STANDBY,
-    "ramping": MagnetState.RAMPING,
-    "at_target": MagnetState.AT_TARGET,
-    "persistent": MagnetState.PERSISTENT,
-    "fault": MagnetState.FAULT,
-    "quench": MagnetState.QUENCH,
-    "quiescent": MagnetState.QUIESCENT,
-}
+# RDGST? returns a numeric bit-coded operating status (Chapter 5, Lake Shore 625 manual).
+_RDGST_RAMPING_BIT = 0x01   # Bit 0: output is actively sweeping
+_RDGST_AT_TARGET_BIT = 0x02  # Bit 1: output has reached programmed setpoint
+_RDGST_FAULT_BIT = 0x04     # Bit 2: power supply fault condition
+_RDGST_QUENCH_BIT = 0x08    # Bit 3: quench protection active
 
 _ACTIVE_RAMP_STATES = {MagnetState.RAMPING}
 _TERMINAL_RAMP_STATES = {
@@ -131,12 +127,33 @@ class Lakeshore625(MagnetController, MagnetSupply):
     def status(self) -> MagnetStatus:
         """Return consolidated magnet status.
 
+        Queries ``RDGST?`` which returns a numeric bit-coded operating status
+        (Chapter 5, Lake Shore 625 manual).
+
         Returns:
             (MagnetStatus):
                 Snapshot of controller state and key readings.
         """
-        state_reply = self.query("OPSTR?").strip().lower()
-        state = _STATE_MAP.get(state_reply, MagnetState.UNKNOWN)
+        raw = self.query("RDGST?").strip()
+        try:
+            bits = int(raw)
+        except ValueError:
+            self._comms_logger.warning("RDGST? returned unexpected response %r; marking status UNKNOWN", raw)
+            state = MagnetState.UNKNOWN
+        else:
+            if bits & _RDGST_QUENCH_BIT:
+                state = MagnetState.QUENCH
+            elif bits & _RDGST_FAULT_BIT:
+                state = MagnetState.FAULT
+            elif bits & _RDGST_RAMPING_BIT:
+                state = MagnetState.RAMPING
+            elif bits & _RDGST_AT_TARGET_BIT:
+                state = MagnetState.AT_TARGET
+            elif bits == 0:
+                state = MagnetState.STANDBY
+            else:
+                self._comms_logger.warning("RDGST? returned unhandled status bits 0x%X; marking status UNKNOWN", bits)
+                state = MagnetState.UNKNOWN
         at_target = state in _TERMINAL_RAMP_STATES
         return MagnetStatus(
             state=state,
@@ -146,7 +163,7 @@ class Lakeshore625(MagnetController, MagnetSupply):
             persistent=False,
             heater_on=self.heater,
             at_target=at_target,
-            message=state_reply,
+            message=raw,
         )
 
     @property

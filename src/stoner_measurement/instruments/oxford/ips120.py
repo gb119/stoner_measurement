@@ -131,7 +131,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             (float):
                 Measured output voltage in volts.
         """
-        return self._query_float("R5")
+        return self._query_float("R2")
 
     @property
     def status(self) -> MagnetStatus:
@@ -198,7 +198,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             current (float):
                 Target current in amps.
         """
-        self.write(f"J{current}")
+        self.write(f"I{current}")
 
     def set_target_field(self, field: float) -> None:
         """Set the target field in tesla.
@@ -216,7 +216,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             rate (float):
                 Ramp rate in amps per minute.
         """
-        self.write(f"T{rate}")
+        self.write(f"S{rate}")
 
     def set_ramp_rate_field(self, rate: float) -> None:
         """Set the field ramp rate in tesla per minute.
@@ -288,8 +288,8 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         self.write("A0")
 
     def abort_ramp(self) -> None:
-        """Abort ramping immediately."""
-        self.write("A4")
+        """Abort ramping immediately by clamping the output."""
+        self.write("A3")
 
     def heater_on(self) -> None:
         """Enable the persistent switch heater."""
