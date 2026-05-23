@@ -546,9 +546,9 @@ class MagnetControlPanel(QWidget):
             (QWidget):
                 The assembled status bar.
         """
-        bar = QWidget()
-        bar.setFixedHeight(28)
-        bar_layout = QHBoxLayout(bar)
+        status_bar = QWidget()
+        status_bar.setFixedHeight(28)
+        bar_layout = QHBoxLayout(status_bar)
         bar_layout.setContentsMargins(4, 2, 4, 2)
         bar_layout.setSpacing(12)
 
@@ -562,7 +562,7 @@ class MagnetControlPanel(QWidget):
 
         self._updated_label = QLabel("Last updated: —")
         bar_layout.addWidget(self._updated_label)
-        return bar
+        return status_bar
 
     # ------------------------------------------------------------------
     # Signal connections

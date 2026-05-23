@@ -1211,14 +1211,9 @@ class CurveFitPlugin(TransformPlugin):
                 The compiled ``fit`` and optional ``p0`` callables.
         """
         ns: dict[str, Any] = {"__builtins__": __builtins__}
-        try:
-            import numpy as _np  # noqa: PLC0415
-
-            ns["np"] = _np
-            ns["numpy"] = _np
-            ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
-        except ImportError:
-            pass
+        ns["np"] = np
+        ns["numpy"] = np
+        ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
         exec(compile(self.fit_code, "<fit_code>", "exec"), ns)  # noqa: S102
         fit_func = ns.get("fit")
         p0_func = ns.get("p0")
@@ -1409,7 +1404,7 @@ class CurveFitPlugin(TransformPlugin):
             True
         """
         def _build_tabs() -> list[tuple[str, QWidget]]:
-            tabs = super(CurveFitPlugin, self).config_tabs(parent)
+            tabs = super().config_tabs(parent)
             fit_tab, param_tab = self._build_fit_and_param_tabs(parent)
             # Insert Fit Function and Parameters after the Data tab (index 0).
             tabs.insert(1, ("Parameters", param_tab))

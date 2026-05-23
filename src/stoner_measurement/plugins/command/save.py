@@ -676,8 +676,6 @@ class SaveCommand(CommandPlugin):
         path_edit.editingFinished.connect(_apply_path)
 
         def _browse_path() -> None:
-            import pathlib
-
             from stoner_measurement.ui.settings_dialog import (
                 KEY_DEFAULT_DATA_DIR,
                 make_app_settings,

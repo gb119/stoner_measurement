@@ -576,9 +576,9 @@ class TemperatureControlPanel(QWidget):
             (QWidget):
                 The assembled status bar.
         """
-        bar = QWidget()
-        bar.setFixedHeight(28)
-        layout = QHBoxLayout(bar)
+        status_bar = QWidget()
+        status_bar.setFixedHeight(28)
+        layout = QHBoxLayout(status_bar)
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setSpacing(12)
 
@@ -596,7 +596,7 @@ class TemperatureControlPanel(QWidget):
         self._updated_label = QLabel("Last updated: —")
         layout.addWidget(self._updated_label)
 
-        return bar
+        return status_bar
 
     # ------------------------------------------------------------------
     # Signal connections
@@ -1888,8 +1888,8 @@ class _LoopControlGroup(QGroupBox):
         heater_output: float,
         mode,
         *,
-        heater_range: int | None = None,
-        input_channel: str | None = None,
+        _heater_range: int | None = None,
+        _input_channel: str | None = None,
     ) -> None:
         """Refresh live-readback labels from the engine polling state.
 

@@ -50,10 +50,12 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
 
     @property
     def rows(self) -> list[tuple[str, bool, float]]:
+        """Return configured monitor rows as ``(expression, percent, limit)`` tuples."""
         return list(self._rows)
 
     @rows.setter
     def rows(self, value: list[tuple[str, bool, float]]) -> None:
+        """Set configured monitor rows as ``(expression, percent, limit)`` tuples."""
         cleaned: list[tuple[str, bool, float]] = []
         for expr, as_percent, limit in value:
             cleaned.append((str(expr), bool(as_percent), float(limit)))
@@ -62,28 +64,34 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
 
     @property
     def timeout(self) -> float:
+        """Return timeout between forced measurements in seconds."""
         return self._timeout
 
     @timeout.setter
     def timeout(self, value: float) -> None:
+        """Set timeout between forced measurements in seconds."""
         self._timeout = max(0.0, float(value))
         self._invalidate()
 
     @property
     def termination_condition(self) -> str:
+        """Return the expression used to terminate iteration when truthy."""
         return self._termination_condition
 
     @termination_condition.setter
     def termination_condition(self, value: str) -> None:
+        """Set the expression used to terminate iteration when truthy."""
         self._termination_condition = str(value)
         self._invalidate()
 
     @property
     def poll_seconds(self) -> float:
+        """Return polling interval between state evaluations in seconds."""
         return self._poll_seconds
 
     @poll_seconds.setter
     def poll_seconds(self, value: float) -> None:
+        """Set polling interval between state evaluations in seconds."""
         self._poll_seconds = max(0.0, float(value))
         self._invalidate()
 

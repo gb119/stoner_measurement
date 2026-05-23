@@ -36,7 +36,9 @@ class _OxfordTemperatureControllerBase(TemperatureController):
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol) -> None:
         """Initialise the Oxford temperature controller driver."""
         super().__init__(transport=transport, protocol=protocol)
-        self._loop_input: dict[int, str] = {loop: self._CAPABILITIES.input_channels[0] for loop in self._CAPABILITIES.loop_numbers}
+        self._loop_input: dict[int, str] = {
+            loop: self._CAPABILITIES.input_channels[0] for loop in self._CAPABILITIES.loop_numbers
+        }
         self._gas_auto: bool = False
 
     def get_temperature(self, channel: str) -> float:

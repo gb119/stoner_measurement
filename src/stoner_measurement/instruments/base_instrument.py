@@ -362,7 +362,7 @@ class BaseInstrument(ABC):
             # If the transport can provide an out-of-band status byte (e.g. GPIB
             # serial poll), check the ESB bit first to avoid an unnecessary query.
             stb = self.transport.read_status_byte()
-            if stb is not None and not (stb & _IEEE488_ESB_BIT):
+            if stb is not None and not stb & _IEEE488_ESB_BIT:
                 return
 
             response = self._query_error_queue_once()

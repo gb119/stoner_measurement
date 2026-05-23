@@ -76,7 +76,7 @@ class _KeithleyElectrometerBase(Electrometer):
 
     def set_nplc(self, value: float) -> None:
         """Set integration time in power-line cycles."""
-        if not (_NPLC_MIN <= value <= _NPLC_MAX):
+        if not _NPLC_MIN <= value <= _NPLC_MAX:
             raise ValueError(f"NPLC {value} out of range [{_NPLC_MIN}, {_NPLC_MAX}].")
         self.write(f":SENS:CURR:NPLC {value}")
 

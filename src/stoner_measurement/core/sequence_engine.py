@@ -304,7 +304,7 @@ class _EngineThread(QThread):
             kind = item[0]
             if kind == "quit":
                 break
-            elif kind == "command":
+            if kind == "command":
                 self._exec_command(item[1], out_stream, err_stream)
             elif kind == "script":
                 # item is ("script", code_str, customised, line_map)

@@ -281,7 +281,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
             ValueError:
                 If *harmonic* is outside the permitted range.
         """
-        if not (1 <= harmonic <= self._MAX_HARMONIC):
+        if not 1 <= harmonic <= self._MAX_HARMONIC:
             raise ValueError(f"Harmonic must be an integer between 1 and {self._MAX_HARMONIC}.")
         self.write(f":SENS{self._sense_slot}:LIA:HARM {harmonic}")
 

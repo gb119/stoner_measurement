@@ -267,7 +267,9 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
             >>> from stoner_measurement.instruments.lakeshore import Lakeshore336
             >>> from stoner_measurement.instruments.temperature_controller import ZoneEntry
             >>> ctrl = Lakeshore336(transport=NullTransport())
-            >>> zone = ZoneEntry(upper_bound=100.0, p=50.0, i=10.0, d=0.0, ramp_rate=0.0, heater_range=1, heater_output=0.0)
+            >>> zone = ZoneEntry(
+            ...     upper_bound=100.0, p=50.0, i=10.0, d=0.0, ramp_rate=0.0, heater_range=1, heater_output=0.0
+            ... )
             >>> # ctrl.set_zone(1, 1, zone)  # requires live instrument
         """
         self.write(
@@ -367,7 +369,9 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
                 sensor_type = settings.sensor_type if settings.sensor_type is not None else int(current_vals[0])
                 autorange = settings.autorange if settings.autorange is not None else bool(int(current_vals[1]))
                 range_ = settings.range_ if settings.range_ is not None else int(current_vals[2])
-                compensation = settings.compensation if settings.compensation is not None else bool(int(current_vals[3]))
+                compensation = (
+                    settings.compensation if settings.compensation is not None else bool(int(current_vals[3]))
+                )
                 units = settings.units if settings.units is not None else int(current_vals[4])
             else:
                 # All INTYPE fields are explicitly provided; no hardware read needed.
@@ -386,7 +390,9 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
             # Read current FILTER values only for fields not explicitly set.
             if any(f is None for f in filter_fields):
                 current_f = self._parse_csv_floats(self.query(f"FILTER? {ch}"), minimum_length=3)
-                filter_enabled = settings.filter_enabled if settings.filter_enabled is not None else bool(int(current_f[0]))
+                filter_enabled = (
+                    settings.filter_enabled if settings.filter_enabled is not None else bool(int(current_f[0]))
+                )
                 filter_points = settings.filter_points if settings.filter_points is not None else int(current_f[1])
                 filter_window = settings.filter_window if settings.filter_window is not None else current_f[2]
             else:
@@ -707,7 +713,9 @@ class Lakeshore340(_LakeshoreTemperatureControllerBase):
             >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
             >>> from stoner_measurement.instruments.temperature_controller import ZoneEntry
             >>> ctrl = Lakeshore340(transport=NullTransport())
-            >>> zone = ZoneEntry(upper_bound=100.0, p=50.0, i=10.0, d=0.0, ramp_rate=0.0, heater_range=1, heater_output=0.0)
+            >>> zone = ZoneEntry(
+            ...     upper_bound=100.0, p=50.0, i=10.0, d=0.0, ramp_rate=0.0, heater_range=1, heater_output=0.0
+            ... )
             >>> ctrl.set_zone(1, 1, zone)
             Traceback (most recent call last):
                 ...
