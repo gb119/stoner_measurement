@@ -153,7 +153,7 @@ class SourceRangeMode(enum.Enum):
     FIXED = "FIXED"
 
 
-class Keithley6221_2182APlugin(TracePlugin):
+class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     """Trace plugin for the Keithley 6221 / 2182A synchronised list sweep.
 
     The 6221 is programmed with the full current list derived from the active

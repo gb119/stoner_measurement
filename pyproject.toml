@@ -109,7 +109,7 @@ ignored-modules = [
 max-line-length = 119
 
 [tool.pylint.basic]
-method-rgx = "([a-z_][a-z0-9_]{1,30}|[a-z]+(?:[A-Z][a-z0-9]+)+)$"
+method-rgx = "([a-z_][a-z0-9_]*|[a-z]+(?:[A-Z][a-z0-9]+)+)$"
 
 [tool.pylint.messages_control]
 disable = [

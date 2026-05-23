@@ -212,7 +212,7 @@ class LoopSettings:
             Current manual heater output percentage (0–100 %), populated when
             :attr:`mode` is :attr:`~stoner_measurement.instruments.temperature_controller.ControlMode.OPEN_LOOP`
             and the driver supports
-            :meth:`~stoner_measurement.instruments.temperature_controller.TemperatureController.set_manual_heater_output`.
+            ``TemperatureController.set_manual_heater_output``.
             ``None`` in all other modes.
 
     Examples:

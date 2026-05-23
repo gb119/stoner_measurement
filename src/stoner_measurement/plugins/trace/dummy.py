@@ -353,8 +353,8 @@ class DummyPlugin(TracePlugin):
         v_n_edit = QLineEdit(self._noise_level)
         v_n_edit.setToolTip(tooltip + " Use '0.0' for noiseless output.")
 
-        Rounding_edit = QLineEdit(self._rounding_level)
-        Rounding_edit.setToolTip(tooltip + " Set scale for Ic variation.")
+        rounding_edit = QLineEdit(self._rounding_level)
+        rounding_edit.setToolTip(tooltip + " Set scale for Ic variation.")
 
         def _update_i_c() -> None:
             self._critical_current = i_c_edit.text().strip()
@@ -366,17 +366,17 @@ class DummyPlugin(TracePlugin):
             self._noise_level = v_n_edit.text().strip()
 
         def _update_rounding() -> None:
-            self._rounding_level = Rounding_edit.text().strip()
+            self._rounding_level = rounding_edit.text().strip()
 
         i_c_edit.editingFinished.connect(_update_i_c)
         r_n_edit.editingFinished.connect(_update_r_n)
         v_n_edit.editingFinished.connect(_update_v_n)
-        Rounding_edit.editingFinished.connect(_update_rounding)
+        rounding_edit.editingFinished.connect(_update_rounding)
 
         layout.addRow("Critical current I_c (A):", i_c_edit)
         layout.addRow("Normal resistance R_n (\u03a9):", r_n_edit)
         layout.addRow("Noise level V_n (V):", v_n_edit)
-        layout.addRow("Thermal noise (K):", Rounding_edit)
+        layout.addRow("Thermal noise (K):", rounding_edit)
         return widget
 
     def _about_html(self) -> str:
