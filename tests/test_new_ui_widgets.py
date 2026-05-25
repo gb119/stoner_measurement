@@ -322,6 +322,7 @@ class TestMeasurementApp:
         try:
             expected = [
                 ("Running", _STATUS_BACKGROUND_RUNNING_COLOR),
+                ("Running step 1", _STATUS_BACKGROUND_RUNNING_COLOR),
                 ("Paused", _STATUS_BACKGROUND_PAUSED_COLOR),
                 ("Error", _STATUS_BACKGROUND_ERROR_COLOR),
                 ("Idle", _STATUS_BACKGROUND_DEFAULT_COLOR),

@@ -319,7 +319,11 @@ class MeasurementApp(QMainWindow):
             "Paused": _STATUS_BACKGROUND_PAUSED_COLOR,
             "Error": _STATUS_BACKGROUND_ERROR_COLOR,
         }
-        background_colour = colour_by_status.get(status, _STATUS_BACKGROUND_DEFAULT_COLOR)
+        background_colour = _STATUS_BACKGROUND_DEFAULT_COLOR
+        for state, colour in colour_by_status.items():
+            if status.startswith(state):
+                background_colour = colour
+                break
         self._show_status_message(status, background_colour)
 
     def _build_file_actions(self, style: QStyle) -> None:
