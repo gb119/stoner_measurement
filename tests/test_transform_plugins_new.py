@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from PyQt6.QtWidgets import QWidget
 
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
@@ -110,6 +111,27 @@ class TestSavitzkyGolayPlugin:
         td = result["savgol"]
         np.testing.assert_allclose(td.y, 2.0 * x, atol=0.15)
 
+    def test_savgol_clamps_and_persists_polyorder_and_derivative(self, engine):
+        plugin = SavitzkyGolayPlugin()
+        engine.add_plugin("savgol_filter", plugin)
+
+        x = np.linspace(-1.0, 1.0, 11)
+        y = x**2
+        engine._namespace["_x"] = x
+        engine._namespace["_y"] = y
+
+        plugin.advanced_mode = True
+        plugin.x_expr = "_x"
+        plugin.y_expr = "_y"
+        plugin.window_length = 5
+        plugin.polyorder = 9
+        plugin.derivative_order = 7
+
+        result = plugin.transform({})
+        assert "savgol" in result
+        assert plugin.polyorder == 4
+        assert plugin.derivative_order == 4
+
 
 class TestFourierTransformPlugin:
     def test_forward_fft_resamples_non_uniform_data_and_shifts_frequency(self, engine):
@@ -168,3 +190,38 @@ class TestFourierTransformPlugin:
         expected = signal / np.max(np.abs(signal))
         corr = np.corrcoef(reconstructed, expected)[0, 1]
         assert corr > 0.99
+
+    def test_inverse_fft_reciprocal_unit_simplifies_prefixed_unit(self, engine):
+        plugin = FourierTransformPlugin()
+        engine.add_plugin("fourier_transform", plugin)
+
+        x = np.linspace(0.0, 1.0, 32)
+        y = np.exp(1j * 2.0 * np.pi * x)
+        trace = TraceData(
+            df=pd.DataFrame({"spec": y}, index=pd.Index(x, name="x")),
+            column_roles={"spec": COLUMN_ROLE_Y},
+            units={"x": "1/s"},
+        )
+        engine._namespace["_fft_trace"] = trace
+        engine._namespace["_traces"] = {"fft": "_fft_trace"}
+
+        plugin.trace_key = "fft"
+        plugin.column_key = "spec"
+        plugin.inverse = True
+
+        result = plugin.transform({})
+        assert result["fft"].units["x"] == "s"
+
+    def test_data_source_widgets_default_y_expression_uses_y_channel(self, engine, qapp):
+        plugin = FourierTransformPlugin()
+        engine.add_plugin("fourier_transform", plugin)
+        engine._namespace["_traces"] = {"trace": "_trace"}
+        engine._namespace["_trace"] = TraceData(
+            df=pd.DataFrame({"y": np.arange(3, dtype=float)}, index=pd.Index(np.arange(3, dtype=float), name="x")),
+            column_roles={"y": COLUMN_ROLE_Y},
+        )
+
+        widget = QWidget()
+        ws = plugin._create_data_source_widgets(widget, engine._namespace["_traces"])
+
+        assert ws["y_combo"].currentText().endswith(" (y)")

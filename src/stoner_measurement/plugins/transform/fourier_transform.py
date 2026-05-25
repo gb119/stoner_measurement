@@ -274,4 +274,6 @@ def _reciprocal_unit(unit: str) -> str:
     """Return reciprocal unit text where practical."""
     if not unit:
         return ""
+    if unit.startswith("1/"):
+        return unit.removeprefix("1/")
     return f"1/{unit}"

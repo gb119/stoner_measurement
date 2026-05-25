@@ -80,6 +80,8 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         polyorder = max(0, int(self.polyorder))
         polyorder = min(polyorder, window_length - 1)
         derivative_order = min(max(0, int(self.derivative_order)), polyorder)
+        self.polyorder = polyorder
+        self.derivative_order = derivative_order
 
         delta = _estimate_spacing(x_arr)
 

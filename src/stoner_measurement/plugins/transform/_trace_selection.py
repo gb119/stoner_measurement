@@ -103,8 +103,12 @@ class TraceChannelSelectionMixin:
         if channel_names:
             y_combo.addItems(channel_names)
             if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
-                self.y_expr = channel_items[channel_names[0]]
-                y_combo.setCurrentIndex(0)
+                default_y_index = next(
+                    (index for index, name in enumerate(channel_names) if name.endswith(" (y)")),
+                    0,
+                )
+                self.y_expr = channel_items[channel_names[default_y_index]]
+                y_combo.setCurrentIndex(default_y_index)
         else:
             y_combo.addItem("(no channels available)")
 
