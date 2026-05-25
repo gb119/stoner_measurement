@@ -1071,16 +1071,21 @@ class TestPlotTraceCommand:
 
         widget = PlotTraceCommand().config_widget()
         edits = widget.findChildren(QLineEdit)
-        assert len(edits) == 1
+        # title_expr edit + colour edit + internal spinbox edits
+        assert len(edits) >= 2
 
     def test_config_title_edit_updates_title_expr(self, qapp):
         from PyQt6.QtWidgets import QLineEdit
 
         cmd = PlotTraceCommand()
+        cmd.title_expr = "'original'"
         widget = cmd.config_widget()
-        edit = widget.findChildren(QLineEdit)[0]
-        edit.setText("'new title'")
-        edit.editingFinished.emit()
+        edits = widget.findChildren(QLineEdit)
+        # Find the title edit by its current text (title_expr value).
+        title_edit = next((e for e in edits if e.text() == "'original'"), None)
+        assert title_edit is not None
+        title_edit.setText("'new title'")
+        title_edit.editingFinished.emit()
         assert cmd.title_expr == "'new title'"
 
     def test_execute_advanced_mode_emits_plot_trace(self, qapp, engine):
@@ -1845,6 +1850,176 @@ class TestPlotTraceCommand:
         widget.remove_trace("sig")
         assert "sig" not in widget._error_bar_items
         assert "sig" not in widget.trace_names
+
+    # ------------------------------------------------------------------
+    # Format / style attribute tests
+    # ------------------------------------------------------------------
+
+    def test_default_format_attributes(self, qapp):
+        cmd = PlotTraceCommand()
+        assert cmd.colour == ""
+        assert cmd.line_style == ""
+        assert cmd.point_style == ""
+        assert cmd.line_width == 0.0
+        assert cmd.point_size == 0.0
+
+    def test_to_json_includes_format_fields(self, qapp):
+        cmd = PlotTraceCommand()
+        d = cmd.to_json()
+        assert "colour" in d
+        assert "line_style" in d
+        assert "point_style" in d
+        assert "line_width" in d
+        assert "point_size" in d
+
+    def test_restore_from_json_round_trip_includes_format(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        cmd = PlotTraceCommand()
+        cmd.colour = "red"
+        cmd.line_style = "dash"
+        cmd.point_style = "circle"
+        cmd.line_width = 3.0
+        cmd.point_size = 10.0
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, PlotTraceCommand)
+        assert restored.colour == "red"
+        assert restored.line_style == "dash"
+        assert restored.point_style == "circle"
+        assert restored.line_width == 3.0
+        assert restored.point_size == 10.0
+
+    def test_restore_from_json_format_defaults_when_absent(self, qapp):
+        """Old JSON with no format fields restores with empty defaults."""
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        old_json = {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_trace",
+            "trace_key": "",
+            "column_key": "",
+            "transpose": False,
+            "advanced_mode": False,
+            "x_expr": "",
+            "y_expr": "",
+            "title_expr": "'plot'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+        }
+        restored = BasePlugin.from_json(old_json)
+        assert isinstance(restored, PlotTraceCommand)
+        assert restored.colour == ""
+        assert restored.line_style == ""
+        assert restored.point_style == ""
+        assert restored.line_width == 0.0
+        assert restored.point_size == 0.0
+
+    def test_execute_advanced_mode_emits_style_signal(self, qapp, engine):
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0, 2.0])
+        engine._namespace["my_y"] = np.array([3.0, 4.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'styled'"
+        cmd.colour = "red"
+        cmd.line_style = "dash"
+        cmd.point_style = "circle"
+        cmd.line_width = 3.0
+        cmd.point_size = 10.0
+
+        style_signals: list[tuple] = []
+        cmd.plot_trace_style.connect(lambda name, style: style_signals.append((name, style)))
+        cmd.execute()
+
+        assert len(style_signals) == 1
+        name, style = style_signals[0]
+        assert name == "styled"
+        assert style["colour"] == "red"
+        assert style["line_style"] == "dash"
+        assert style["point_style"] == "circle"
+        assert style["line_width"] == 3.0
+        assert style["point_size"] == 10.0
+
+    def test_execute_advanced_mode_no_style_signal_when_defaults(self, qapp, engine):
+        """No style signal emitted when all format attributes are at their defaults."""
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0])
+        engine._namespace["my_y"] = np.array([2.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'t'"
+
+        style_signals: list = []
+        cmd.plot_trace_style.connect(lambda n, s: style_signals.append(s))
+        cmd.execute()
+
+        assert style_signals == []
+
+    def test_config_widget_has_colour_edit(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = PlotTraceCommand()
+        cmd.colour = "blue"
+        widget = cmd.config_widget()
+        edits = widget.findChildren(QLineEdit)
+        colour_edit = next((e for e in edits if e.text() == "blue"), None)
+        assert colour_edit is not None
+
+    def test_config_colour_edit_updates_colour(self, qapp):
+        from PyQt6.QtWidgets import QLineEdit
+
+        cmd = PlotTraceCommand()
+        cmd.colour = "blue"
+        widget = cmd.config_widget()
+        edits = widget.findChildren(QLineEdit)
+        colour_edit = next((e for e in edits if e.text() == "blue"), None)
+        assert colour_edit is not None
+        colour_edit.setText("green")
+        colour_edit.editingFinished.emit()
+        assert cmd.colour == "green"
+
+    def test_plot_widget_set_trace_style_from_dict(self, qapp):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        widget.set_trace_style_from_dict("sig", {"colour": "red", "line_style": "dash"})
+        assert widget._trace_style["sig"]["line"] == "dash"
+
+    def test_plot_widget_set_trace_style_from_dict_empty_is_noop(self, qapp):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        original_style = dict(widget._trace_style["sig"])
+        widget.set_trace_style_from_dict("sig", {})
+        assert widget._trace_style["sig"] == original_style
+
+    def test_plot_trace_style_signal_wired_to_plot_widget(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["my_x"] = np.array([1.0])
+        engine._namespace["my_y"] = np.array([2.0])
+        cmd.advanced_mode = True
+        cmd.x_expr = "my_x"
+        cmd.y_expr = "my_y"
+        cmd.title_expr = "'t'"
+        cmd.colour = "red"
+        cmd.line_style = "dash"
+        cmd.execute()
+
+        # The plot widget should now have the style applied.
+        assert pw._trace_style.get("t", {}).get("line") == "dash"
 
 
 # ---------------------------------------------------------------------------
@@ -2829,3 +3004,143 @@ class TestPlotPointsCommand:
         cmd.execute()
         assert "brand_new_x_axis" in pw.axis_names
         assert pw._trace_axes["My Y"] == ("brand_new_x_axis", "left")
+
+    # ------------------------------------------------------------------
+    # Format / style attribute tests for PlotPointsCommand
+    # ------------------------------------------------------------------
+
+    def test_to_json_preserves_format_fields_in_y_entries(self, qapp):
+        cmd = PlotPointsCommand()
+        cmd.x_key = "p:x"
+        cmd.y_entries = [
+            {
+                "key": "p:y",
+                "label": "My Y",
+                "y_axis": "left",
+                "colour": "red",
+                "line_style": "dash",
+                "point_style": "circle",
+                "line_width": 2.5,
+                "point_size": 9.0,
+            }
+        ]
+        d = cmd.to_json()
+        entry = d["y_entries"][0]
+        assert entry["colour"] == "red"
+        assert entry["line_style"] == "dash"
+        assert entry["point_style"] == "circle"
+        assert entry["line_width"] == 2.5
+        assert entry["point_size"] == 9.0
+
+    def test_restore_from_json_round_trip_preserves_format(self, qapp):
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        cmd = PlotPointsCommand()
+        cmd.x_key = "p:x"
+        cmd.y_entries = [
+            {
+                "key": "p:y",
+                "label": "My Y",
+                "y_axis": "left",
+                "colour": "blue",
+                "line_style": "dot",
+                "point_style": "square",
+                "line_width": 1.5,
+                "point_size": 6.0,
+            }
+        ]
+        restored = BasePlugin.from_json(cmd.to_json())
+        assert isinstance(restored, PlotPointsCommand)
+        entry = restored.y_entries[0]
+        assert entry["colour"] == "blue"
+        assert entry["line_style"] == "dot"
+        assert entry["point_style"] == "square"
+        assert entry["line_width"] == 1.5
+        assert entry["point_size"] == 6.0
+
+    def test_execute_emits_style_signal_for_y_entry_with_format(self, qapp, engine):
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x_val", "p:y": "p_y_val"}
+        engine._namespace["p_x_val"] = 1.0
+        engine._namespace["p_y_val"] = 2.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [
+            {
+                "key": "p:y",
+                "label": "Series",
+                "y_axis": "left",
+                "colour": "red",
+                "line_style": "dash",
+                "point_style": "circle",
+                "line_width": 3.0,
+                "point_size": 10.0,
+            }
+        ]
+
+        style_signals: list[tuple] = []
+        cmd.plot_trace_style.connect(lambda name, style: style_signals.append((name, style)))
+        cmd.execute()
+
+        assert len(style_signals) == 1
+        name, style = style_signals[0]
+        assert name == "Series"
+        assert style["colour"] == "red"
+        assert style["line_style"] == "dash"
+        assert style["point_style"] == "circle"
+        assert style["line_width"] == 3.0
+        assert style["point_size"] == 10.0
+
+    def test_execute_no_style_signal_when_entry_has_no_format(self, qapp, engine):
+        """No style signal is emitted when the y-entry has no format overrides."""
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x_val", "p:y": "p_y_val"}
+        engine._namespace["p_x_val"] = 1.0
+        engine._namespace["p_y_val"] = 2.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [{"key": "p:y", "label": "Series", "y_axis": "left"}]
+
+        style_signals: list = []
+        cmd.plot_trace_style.connect(lambda n, s: style_signals.append(s))
+        cmd.execute()
+
+        assert style_signals == []
+
+    def test_plot_points_style_signal_wired_to_plot_widget(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x_val", "p:y": "p_y_val"}
+        engine._namespace["p_x_val"] = 1.0
+        engine._namespace["p_y_val"] = 2.0
+        cmd.x_key = "p:x"
+        cmd.y_entries = [
+            {
+                "key": "p:y",
+                "label": "Styled",
+                "y_axis": "left",
+                "colour": "green",
+                "line_style": "dot",
+            }
+        ]
+
+        cmd.execute()
+
+        assert pw._trace_style.get("Styled", {}).get("line") == "dot"
+
+    def test_config_widget_has_format_columns(self, qapp, engine):
+        from PyQt6.QtWidgets import QDoubleSpinBox
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        cmd.y_entries = [{"key": "p:y", "label": "My Y", "y_axis": "left"}]
+        widget = cmd.config_widget()
+        # Should have spinboxes for line_width and point_size.
+        spinboxes = widget.findChildren(QDoubleSpinBox)
+        assert len(spinboxes) >= 2

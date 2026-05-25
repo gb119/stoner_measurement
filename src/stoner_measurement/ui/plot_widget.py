@@ -787,6 +787,56 @@ class PlotWidget(QWidget):
             curve.setSymbolPen(pen)
         curve.setSymbolSize(self._trace_point_size.get(trace_name, _DEFAULT_POINT_SIZE))
 
+    @pyqtSlot(str, object)
+    def set_trace_style_from_dict(self, trace_name: str, style: dict) -> None:
+        """Apply visual style properties supplied in a dict from a command plugin.
+
+        Calls :meth:`set_trace_style` using only the keys present in *style*
+        that carry non-empty, non-zero values.  Unknown keys are silently
+        ignored so that callers do not need to know the exact parameter names.
+
+        Args:
+            trace_name (str):
+                Name of the trace to style.
+            style (dict):
+                Mapping containing any subset of ``"colour"``, ``"line_style"``,
+                ``"point_style"``, ``"line_width"``, and ``"point_size"``.
+                Empty string values and zero numeric values are treated as
+                *"use widget default"* and are not forwarded to
+                :meth:`set_trace_style`.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> widget = PlotWidget()
+            >>> widget.append_point("sig", 0.0, 1.0)
+            >>> widget.set_trace_style_from_dict("sig", {"colour": "red", "line_style": "dash"})
+            >>> widget._trace_style["sig"]["colour"]
+            '#ff0000'
+            >>> widget._trace_style["sig"]["line"]
+            'dash'
+        """
+        if not style:
+            return
+        colour = style.get("colour") or None
+        line_style = style.get("line_style") or None
+        point_style = style.get("point_style") or None
+        raw_width = style.get("line_width")
+        line_width = float(raw_width) if raw_width else None
+        raw_size = style.get("point_size")
+        point_size = float(raw_size) if raw_size else None
+        try:
+            self.set_trace_style(
+                trace_name,
+                colour=colour,
+                line_style=line_style,
+                point_style=point_style,
+                line_width=line_width,
+                point_size=point_size,
+            )
+        except ValueError:
+            pass
+
     def remove_trace(self, trace_name: str) -> None:
         """Remove a named trace and all its data.
 
