@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from PyQt6.QtWidgets import QComboBox, QFormLayout, QWidget
 
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
 from stoner_measurement.plugins.transform._trace_selection import TraceChannelSelectionMixin
 from stoner_measurement.plugins.transform.base import TransformPlugin
 
@@ -28,7 +28,6 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         self.y_expr: str = ""
 
         self.inverse: bool = False
-        self.output_component: str = "magnitude"
 
     @property
     def name(self) -> str:
@@ -81,23 +80,40 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
             x_out, y_out, x_unit = self._forward_transform(x_uniform, y_uniform)
             default_x_name = "frequency"
 
-        output_col = _output_column_name(y_col_name, self.output_component)
-        y_component = _select_output_component(y_out, self.output_component)
-
-        df = pd.DataFrame({output_col: y_component}, index=pd.Index(x_out, name="x"))
+        component_columns = _component_column_names(y_col_name)
+        df = pd.DataFrame(
+            {
+                component_columns["magnitude"]: np.abs(y_out),
+                component_columns["real"]: np.real(y_out),
+                component_columns["imag"]: np.imag(y_out),
+                component_columns["angle"]: np.angle(y_out),
+            },
+            index=pd.Index(x_out, name="x"),
+        )
 
         names = dict(source_names)
         names.setdefault("x", default_x_name)
-        names.setdefault(output_col, output_col)
+        for component, column_name in component_columns.items():
+            names.setdefault(column_name, column_name)
 
         units = dict(source_units)
         units["x"] = x_unit
-        units.setdefault(output_col, source_units.get(y_col_name, ""))
+        value_unit = source_units.get(y_col_name, "")
+        for component, column_name in component_columns.items():
+            if component == "angle":
+                units.setdefault(column_name, "rad")
+            else:
+                units.setdefault(column_name, value_unit)
 
         return {
             _OUTPUT_TRACE_KEY: TraceData(
                 df=df,
-                column_roles={output_col: COLUMN_ROLE_Y},
+                column_roles={
+                    component_columns["magnitude"]: COLUMN_ROLE_Y,
+                    component_columns["real"]: COLUMN_ROLE_Z,
+                    component_columns["imag"]: COLUMN_ROLE_Z,
+                    component_columns["angle"]: COLUMN_ROLE_Z,
+                },
                 names=names,
                 units=units,
             )
@@ -160,20 +176,13 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         mode_combo.addItem("Inverse Fourier transform", True)
         mode_combo.setCurrentIndex(1 if self.inverse else 0)
 
-        output_combo = QComboBox(widget)
-        output_combo.addItems(["magnitude", "real", "imag", "phase"])
-        if self.output_component in {"magnitude", "real", "imag", "phase"}:
-            output_combo.setCurrentText(self.output_component)
-
         layout.addRow("Mode:", mode_combo)
-        layout.addRow("Output component:", output_combo)
 
         def _apply_mode(index: int) -> None:
             value = mode_combo.itemData(index)
             self.inverse = bool(value)
 
         mode_combo.currentIndexChanged.connect(_apply_mode)
-        output_combo.currentTextChanged.connect(lambda text: setattr(self, "output_component", text))
 
         widget.setLayout(layout)
         return widget
@@ -197,7 +206,6 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         data["x_expr"] = self.x_expr
         data["y_expr"] = self.y_expr
         data["inverse"] = self.inverse
-        data["output_component"] = self.output_component
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -208,7 +216,6 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")
         self.inverse = bool(data.get("inverse", False))
-        self.output_component = data.get("output_component", "magnitude")
 
 
 def _sort_xy(x_arr: np.ndarray, y_arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -248,21 +255,14 @@ def _mean_spacing(x_arr: np.ndarray) -> float:
     return float(np.mean(positive_diffs))
 
 
-def _select_output_component(values: np.ndarray, output_component: str) -> np.ndarray:
-    """Return selected scalar component from complex transform data."""
-    if output_component == "real":
-        return np.real(values)
-    if output_component == "imag":
-        return np.imag(values)
-    if output_component == "phase":
-        return np.angle(values)
-    return np.abs(values)
-
-
-def _output_column_name(base_name: str, output_component: str) -> str:
-    """Return output y-column name from component and source base name."""
-    suffix = output_component
-    return f"{base_name}_{suffix}"
+def _component_column_names(base_name: str) -> dict[str, str]:
+    """Return output column names for all Fourier data components."""
+    return {
+        "magnitude": f"{base_name}_magnitude",
+        "real": f"{base_name}_real",
+        "imag": f"{base_name}_imag",
+        "angle": f"{base_name}_angle",
+    }
 
 
 def _reciprocal_unit(unit: str) -> str:

@@ -133,7 +133,7 @@ class TraceChannelSelectionMixin:
         layout.addRow("Y data:", ws["y_combo"])
         layout.addRow(
             QLabel(
-                "<i>In advanced mode expressions are evaluated against the engine namespace at runtime.</i>",
+                "<i>In advanced mode, expressions are evaluated against the engine namespace at runtime.</i>",
             )
         )
 

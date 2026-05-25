@@ -127,15 +127,16 @@ class TestFourierTransformPlugin:
         plugin.x_expr = "_x"
         plugin.y_expr = "_y"
         plugin.inverse = False
-        plugin.output_component = "magnitude"
 
         result = plugin.transform({})
         td = result["fft"]
 
+        assert {"y_magnitude", "y_real", "y_imag", "y_angle"}.issubset(set(td.df.columns))
         mid = len(td.x) // 2
         assert abs(td.x[mid]) < 1e-9
         peak_frequency = abs(td.x[int(np.argmax(td.y))])
         assert abs(peak_frequency - frequency) < 1.0
+        np.testing.assert_allclose(td.df["y_magnitude"].to_numpy(dtype=float), np.abs(td.df["y_real"] + 1j * td.df["y_imag"]))
 
     def test_inverse_fft_recovers_signal_shape(self, engine):
         plugin = FourierTransformPlugin()
@@ -155,12 +156,13 @@ class TestFourierTransformPlugin:
         plugin.x_expr = "_f"
         plugin.y_expr = "_spec"
         plugin.inverse = True
-        plugin.output_component = "real"
 
         result = plugin.transform({})
         td = result["fft"]
 
-        reconstructed = td.y / np.max(np.abs(td.y))
+        assert {"y_magnitude", "y_real", "y_imag", "y_angle"}.issubset(set(td.df.columns))
+        reconstructed = td.df["y_real"].to_numpy(dtype=float)
+        reconstructed = reconstructed / np.max(np.abs(reconstructed))
         expected = signal / np.max(np.abs(signal))
         corr = np.corrcoef(reconstructed, expected)[0, 1]
         assert corr > 0.99
