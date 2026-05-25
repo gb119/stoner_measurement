@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import sys
 import textwrap
 from typing import Any
 
@@ -177,11 +178,25 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         scan = namespace.get("scan")
         return scan if callable(scan) else None
 
+    def _report_scan_exception(self, context: str, exc: Exception) -> None:
+        """Report scan-function execution failures to logs and stderr.
+
+        Args:
+            context (str):
+                Human-readable context describing where evaluation failed.
+            exc (Exception):
+                Exception instance raised by compile/evaluation logic.
+        """
+        logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        logger.exception(context)
+        print(f"{context}: {exc}", file=sys.stderr)
+
     def generate(self) -> np.ndarray:
         """Compute the sequence by evaluating ``scan(ix, omega)``."""
         try:
             scan_function = self._compile_scan_function()
-        except Exception:
+        except Exception as exc:
+            self._report_scan_exception("Failed to compile arbitrary scan function", exc)
             return np.full(self._num_points, np.nan, dtype=float)
         if scan_function is None:
             return np.full(self._num_points, np.nan, dtype=float)
@@ -191,7 +206,8 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         for ix in range(self._num_points):
             try:
                 values[ix] = float(scan_function(ix, omega))
-            except Exception:
+            except Exception as exc:
+                self._report_scan_exception(f"Error evaluating arbitrary scan function at ix={ix}", exc)
                 values[ix] = np.nan
         return values
 

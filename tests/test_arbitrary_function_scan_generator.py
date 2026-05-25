@@ -7,6 +7,7 @@ import logging
 import numpy as np
 from PyQt6.QtWidgets import QLabel, QWidget
 
+from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.scan import (
     ArbitraryFunctionScanGenerator,
     ArbitraryFunctionScanWidget,
@@ -41,6 +42,52 @@ class TestArbitraryFunctionScanGenerator:
         assert np.isnan(values[2])
         assert np.isfinite(values[[0, 1, 3, 4]]).all()
 
+    def test_runtime_error_reporting(self, qapp, capsys):
+        code = "def scan(ix, omega):\n    return 1 / (ix - 2)\n"
+        gen = ArbitraryFunctionScanGenerator(num_points=5, code=code)
+
+        records: list[logging.LogRecord] = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        handler = _Capture()
+        logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        logger.addHandler(handler)
+        try:
+            values = gen.generate()
+        finally:
+            logger.removeHandler(handler)
+
+        captured = capsys.readouterr()
+        assert np.isnan(values[2])
+        assert any("Error evaluating arbitrary scan function at ix=2" in r.getMessage() for r in records)
+        assert "Error evaluating arbitrary scan function at ix=2" in captured.err
+
+    def test_compile_error_reporting(self, qapp, capsys):
+        code = "def scan(ix, omega)\n    return ix\n"
+        gen = ArbitraryFunctionScanGenerator(num_points=5, code=code)
+
+        records: list[logging.LogRecord] = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        handler = _Capture()
+        logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        logger.addHandler(handler)
+        try:
+            values = gen.generate()
+        finally:
+            logger.removeHandler(handler)
+
+        captured = capsys.readouterr()
+        assert np.isnan(values).all()
+        assert any("Failed to compile arbitrary scan function" in r.getMessage() for r in records)
+        assert "Failed to compile arbitrary scan function" in captured.err
+
     def test_scan_function_can_use_builtin_abs(self, qapp):
         code = "def scan(ix, omega):\n    return abs(ix - 5)\n"
         gen = ArbitraryFunctionScanGenerator(num_points=11, code=code)
@@ -63,8 +110,6 @@ class TestArbitraryFunctionScanGenerator:
 
     def test_log_object_is_correct_logger(self, qapp):
         """The log object injected into the namespace is the sequence logger."""
-        from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
-
         records: list[logging.LogRecord] = []
 
         class _Capture(logging.Handler):
