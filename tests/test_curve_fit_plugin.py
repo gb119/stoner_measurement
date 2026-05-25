@@ -9,6 +9,7 @@ import pytest
 
 from stoner_measurement.plugins.transform import CurveFitPlugin
 from stoner_measurement.plugins.transform.curve_fit import (
+    _format_value_with_reference,
     _format_value_with_uncertainty,
     _has_p0_function,
     _ParamTableWidget,
@@ -165,6 +166,15 @@ class TestFormatValueWithUncertainty:
         assert _format_value_with_uncertainty(1.0, np.nan) == ""
 
 
+class TestFormatValueWithReference:
+    def test_formats_to_match_reference_precision_and_prefix(self):
+        assert _format_value_with_reference(0.012345, 0.012303, 0.000002) == "12.345 m"
+
+    def test_returns_empty_for_invalid_reference(self):
+        assert _format_value_with_reference(1.0, 1.0, 0.0) == ""
+        assert _format_value_with_reference(1.0, np.nan, 0.1) == ""
+
+
 class TestParamTableWidget:
     def test_has_parameter_columns_and_setting_rows(self, qapp):
         table = _ParamTableWidget()
@@ -190,6 +200,15 @@ class TestParamTableWidget:
         used_initial_row = _table_row_by_label(table, "Initial used")
         a_col = _table_column_by_label(table, "a")
         assert table._table.item(used_initial_row, a_col).text() == "12.345"  # noqa: SLF001
+
+    def test_initial_used_matches_fitted_display_scaling_and_precision(self, qapp):
+        table = _ParamTableWidget()
+        table.set_parameters(["a"])
+        table.update_fitted_results({"a": 0.012303, "a_err": 0.000002})
+        table.update_used_initial_values({"a": 0.012345})
+        used_initial_row = _table_row_by_label(table, "Initial used")
+        a_col = _table_column_by_label(table, "a")
+        assert table._table.item(used_initial_row, a_col).text() == "12.345 m"  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------
