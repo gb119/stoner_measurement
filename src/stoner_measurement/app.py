@@ -19,7 +19,12 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.ui.icons import make_generate_icon, make_log_icon, make_magnet_icon, make_temperature_icon
+from stoner_measurement.ui.icons import (
+    make_generate_icon,
+    make_log_icon,
+    make_magnet_icon,
+    make_temperature_icon,
+)
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
 from stoner_measurement.ui.settings_dialog import (
@@ -28,6 +33,11 @@ from stoner_measurement.ui.settings_dialog import (
     SettingsDialog,
     make_app_settings,
 )
+
+_STATUS_BACKGROUND_DEFAULT_COLOR = "#6b7280"
+_STATUS_BACKGROUND_RUNNING_COLOR = "#2e7d32"
+_STATUS_BACKGROUND_PAUSED_COLOR = "#ef6c00"
+_STATUS_BACKGROUND_ERROR_COLOR = "#c62828"
 
 
 class MeasurementApp(QMainWindow):
@@ -92,8 +102,8 @@ class MeasurementApp(QMainWindow):
         # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
-        self._status_bar.showMessage("Ready")
-        self._engine.status_changed.connect(self._status_bar.showMessage)
+        self._show_status_message("Ready")
+        self._engine.status_changed.connect(self._on_engine_status_changed)
 
         # Wire the console to the engine --------------------------------------
         console = self._main_window.script_tab.console
@@ -275,6 +285,46 @@ class MeasurementApp(QMainWindow):
         self._main_window.tabs.currentChanged.connect(self._on_tab_changed)
         # Initialise labels for the default (Measurement) tab -----------
         self._on_tab_changed(self._main_window.tabs.currentIndex())
+
+    def _show_status_message(
+        self,
+        message: str,
+        background_colour: str = _STATUS_BACKGROUND_DEFAULT_COLOR,
+    ) -> None:
+        """Show a status-bar message and apply a coloured background.
+
+        Args:
+            message (str):
+                Text to show in the status bar.
+            background_colour (str):
+                CSS colour value used for the status bar background.
+        """
+        self._status_bar.showMessage(message)
+        self._status_bar.setStyleSheet(
+            "QStatusBar { "
+            f"background-color: {background_colour}; "
+            "color: white; } "
+            "QStatusBar::item { border: none; }"
+        )
+
+    def _on_engine_status_changed(self, status: str) -> None:
+        """Update status text and colour in response to sequence-engine status changes.
+
+        Args:
+            status (str):
+                Current sequence engine state string.
+        """
+        colour_by_status = {
+            "Running": _STATUS_BACKGROUND_RUNNING_COLOR,
+            "Paused": _STATUS_BACKGROUND_PAUSED_COLOR,
+            "Error": _STATUS_BACKGROUND_ERROR_COLOR,
+        }
+        background_colour = _STATUS_BACKGROUND_DEFAULT_COLOR
+        for state, colour in colour_by_status.items():
+            if status.startswith(state):
+                background_colour = colour
+                break
+        self._show_status_message(status, background_colour)
 
     def _build_file_actions(self, style: QStyle) -> None:
         """Create file-related QAction instances."""
@@ -833,7 +883,7 @@ class MeasurementApp(QMainWindow):
         pane.mark_clean()
         self._main_window.script_tab._update_tab_title(pane)  # noqa: SLF001
         self._update_window_title()
-        self._status_bar.showMessage(f"Saved {pane.path.name}")
+        self._show_status_message(f"Saved {pane.path.name}")
 
     def _on_run(self) -> None:
         """Dispatch the Run action to the appropriate handler for the active tab.
