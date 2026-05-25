@@ -534,6 +534,7 @@ class PlotPointsCommand(CommandPlugin):
 
             def _build_one_column(entry: dict, i: int) -> tuple:
                 grid_column = i + 1
+                series_layout.setColumnStretch(grid_column, 1)
 
                 header = QLabel(f"<b>Series {i + 1}</b>", series_container)
                 series_layout.addWidget(header, 0, grid_column)
@@ -591,7 +592,7 @@ class PlotPointsCommand(CommandPlugin):
                 line_width_spin.setSingleStep(0.5)
                 line_width_spin.setDecimals(1)
                 line_width_spin.setSpecialValueText("def")
-                line_width_spin.setFixedWidth(55)
+                line_width_spin.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 line_width_spin.setValue(float(entry.get("line_width", 0.0)))
 
                 point_size_spin = QDoubleSpinBox(series_container)
@@ -599,7 +600,7 @@ class PlotPointsCommand(CommandPlugin):
                 point_size_spin.setSingleStep(1.0)
                 point_size_spin.setDecimals(1)
                 point_size_spin.setSpecialValueText("def")
-                point_size_spin.setFixedWidth(55)
+                point_size_spin.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 point_size_spin.setValue(float(entry.get("point_size", 0.0)))
 
                 remove_btn = QPushButton("Remove", series_container)
@@ -666,7 +667,7 @@ class PlotPointsCommand(CommandPlugin):
                     return _apply_y_axis
 
                 def _make_colour_handler(idx: int) -> Any:
-                    def _apply_colour(_idx: int = idx) -> None:
+                    def _apply_colour(_checked: bool = False, _idx: int = idx) -> None:
                         btn = column_widgets[_idx][3]
                         current = self.y_entries[_idx].get("colour", "")
                         chosen = self._choose_colour(current, f"Select colour for series {_idx + 1}", btn)
@@ -804,6 +805,9 @@ class PlotPointsCommand(CommandPlugin):
             colour (str):
                 Colour string (hex, named, or empty for auto).
         """
+        if not button.objectName():
+            button.setObjectName(f"colour_btn_{id(button)}")
+        btn_id = button.objectName()
         if not colour:
             button.setText("(auto)")
             button.setStyleSheet("")
@@ -814,7 +818,7 @@ class PlotPointsCommand(CommandPlugin):
             return
         hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
         button.setText(hex_colour)
-        button.setStyleSheet(f"QPushButton {{ background-color: {hex_colour}; }}")
+        button.setStyleSheet(f"QPushButton#{btn_id} {{ background-color: {hex_colour}; }}")
 
     def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
         """Open a colour picker and return the selected hex colour or current value.
