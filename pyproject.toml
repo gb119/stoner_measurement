@@ -94,6 +94,9 @@ ignore = ["E501"]
 source = ["stoner_measurement"]
 branch = true
 
+[tool.pylint.master]
+ignore = ["tests"]
+
 [tool.coverage.report]
 show_missing = true
 
