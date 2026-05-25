@@ -1404,7 +1404,7 @@ class CurveFitPlugin(TransformPlugin):
             True
         """
         def _build_tabs() -> list[tuple[str, QWidget]]:
-            tabs = super().config_tabs(parent)
+            tabs = super(CurveFitPlugin, self).config_tabs(parent)
             fit_tab, param_tab = self._build_fit_and_param_tabs(parent)
             # Insert Fit Function and Parameters after the Data tab (index 0).
             tabs.insert(1, ("Parameters", param_tab))
