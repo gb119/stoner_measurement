@@ -128,12 +128,22 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
     @property
     def index(self) -> int:
-        """Current zero-based iteration index."""
+        """Current zero-based iteration index.
+
+        Returns:
+            (int):
+                The current iteration index.
+        """
         return int(self.ix)
 
     @index.setter
     def index(self, value: SupportsInt) -> None:
-        """Set the current zero-based iteration index from an int-coercible value."""
+        """Set the current zero-based iteration index from an int-coercible value.
+
+        Args:
+            value (typing.SupportsInt):
+                The value to coerce and store as the current iteration index.
+        """
         self.ix = int(value)
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
