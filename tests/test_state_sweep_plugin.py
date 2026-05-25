@@ -103,6 +103,7 @@ class TestStateSweepPlugin:
         plugin._begin_sweep()
         assert next(plugin) is True
         assert plugin.ix == 0
+        assert plugin.index == 0
         assert plugin.value == 1.0
         assert next(plugin) is False
 

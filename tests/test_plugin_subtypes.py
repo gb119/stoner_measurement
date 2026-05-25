@@ -408,6 +408,27 @@ class TestStateControlPlugin:
         p.ramp_to(7.5, poll_interval=0.0)
         assert p.get_state() == 7.5
 
+    def test_execute_sequence_with_arbitrary_scan_uses_evaluated_values(self, qapp):
+        from stoner_measurement.scan import ArbitraryFunctionScanGenerator
+
+        p = _InstantState()
+        p.scan_generator = ArbitraryFunctionScanGenerator(
+            num_points=5,
+            code="def scan(ix, omega):\n    return ix * omega\n",
+            parent=p,
+        )
+        visited: list[float] = []
+        p.execute_sequence([lambda: visited.append(float(p.value))])
+        expected = [0.0, 1.2566370614359172, 2.5132741228718345, 3.7699111843077517, 5.026548245743669]
+        assert visited == expected
+
+    def test_index_property_aliases_ix(self, qapp):
+        p = _InstantState()
+        p.ix = 3
+        assert p.index == 3
+        p.index = 9
+        assert p.ix == 9
+
     def test_ramp_to_out_of_range_emits_error(self, qapp):
         class _LimitedState(_InstantState):
             @property
@@ -749,7 +770,9 @@ class TestReportedTraces:
         p = _InstantState()
         vals = p.reported_values()
         assert "instantstate:Voltage" in vals
+        assert "instantstate:Index" in vals
         assert vals["instantstate:Voltage"] == "instantstate.value"
+        assert vals["instantstate:Index"] == "instantstate.index"
 
     def test_state_control_plugin_reported_traces_empty(self, qapp):
         assert _InstantState().reported_traces() == {}

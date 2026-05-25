@@ -126,6 +126,15 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self._data: pd.DataFrame = pd.DataFrame()
         self._cached_config_tabs: list | None = None
 
+    @property
+    def index(self) -> int:
+        """Current zero-based iteration index."""
+        return int(self.ix)
+
+    @index.setter
+    def index(self, value: int) -> None:
+        self.ix = int(value)
+
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` and auto-update :attr:`collect_filter`."""
         default_filter = f"{old_name}.meas_flag"
@@ -396,11 +405,13 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         """Return a mapping of the state quantity to a Python expression.
 
         Reports the current iteration set-point as a scalar value, accessible
-        via ``"{instance_name}.value"``.
+        via ``"{instance_name}.value"``, and the current iteration index via
+        ``"{instance_name}.index"``.
 
         Returns:
             (dict[str, str]):
-                Single-entry dict ``{"{instance_name}:{state_name}": "{instance_name}.value"}``.
+                Two-entry dict with ``"{instance_name}:{state_name}"`` and
+                ``"{instance_name}:Index"`` mappings.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -408,10 +419,13 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> p = CounterPlugin()
             >>> vals = p.reported_values()
-            >>> list(vals.keys())
-            ['counter:Value']
             >>> vals['counter:Value']
             'counter.value'
+            >>> vals['counter:Index']
+            'counter.index'
         """
         var = self.instance_name
-        return {f"{var}:{self.state_name}": f"{var}.value"}
+        return {
+            f"{var}:{self.state_name}": f"{var}.value",
+            f"{var}:Index": f"{var}.index",
+        }
