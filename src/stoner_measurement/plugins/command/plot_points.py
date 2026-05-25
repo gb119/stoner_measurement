@@ -566,6 +566,7 @@ class PlotPointsCommand(CommandPlugin):
                     y_axis_entry.setEditText(entry_y_axis)
 
                 colour_button = QPushButton(series_container)
+                colour_button.setObjectName(f"colour_btn_{i}")
                 colour_button.setToolTip(
                     "Click to choose a colour. Right-click to reset to automatic (no colour override)."
                 )
@@ -805,9 +806,7 @@ class PlotPointsCommand(CommandPlugin):
             colour (str):
                 Colour string (hex, named, or empty for auto).
         """
-        if not button.objectName():
-            button.setObjectName(f"colour_btn_{id(button)}")
-        btn_id = button.objectName()
+        btn_id = button.objectName() or f"colour_btn_{id(button)}"
         if not colour:
             button.setText("(auto)")
             button.setStyleSheet("")
