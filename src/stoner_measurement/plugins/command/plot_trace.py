@@ -1045,7 +1045,7 @@ class PlotTraceCommand(CommandPlugin):
             self.title_expr = title_edit.text().strip()
 
         def _apply_colour() -> None:
-            self.colour = self._choose_colour(self.colour, "Select trace colour", colour_button)
+            self.colour = self._choose_colour(self.colour, "Select trace colour")
             self._update_colour_button(colour_button, self.colour)
 
         def _reset_colour_to_auto(pos: Any) -> None:
