@@ -603,8 +603,6 @@ class PlotPointsCommand(CommandPlugin):
                     (combo, label_edit, y_axis_entry, colour_edit,
                      line_style_combo, point_style_combo, line_width_spin, point_size_spin, remove_btn)
                 )
-                return (combo, label_edit, y_axis_entry, colour_edit,
-                        line_style_combo, point_style_combo, line_width_spin, point_size_spin, remove_btn)
 
             for i, entry in enumerate(self.y_entries):
                 _build_one_row(entry, i)
@@ -768,12 +766,12 @@ def _entry_style_dict(entry: dict) -> dict:
         style["line_style"] = entry["line_style"]
     if entry.get("point_style"):
         style["point_style"] = entry["point_style"]
-    lw = entry.get("line_width", 0.0)
-    if lw and float(lw) > 0.0:
-        style["line_width"] = float(lw)
-    ps = entry.get("point_size", 0.0)
-    if ps and float(ps) > 0.0:
-        style["point_size"] = float(ps)
+    lw = float(entry.get("line_width", 0.0))
+    if lw > 0.0:
+        style["line_width"] = lw
+    ps = float(entry.get("point_size", 0.0))
+    if ps > 0.0:
+        style["point_size"] = ps
     return style
 
 

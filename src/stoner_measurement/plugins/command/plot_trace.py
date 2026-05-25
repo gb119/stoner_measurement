@@ -870,11 +870,11 @@ class PlotTraceCommand(CommandPlugin):
             combo.setCurrentIndex(0)
             setattr(self, attr, options[0])
 
-        def _on_changed(text: str) -> None:
+        def _on_changed(_i: int) -> None:
             idx = combo.currentIndex()
             setattr(self, attr, options[idx] if idx < len(options) else "")
 
-        combo.currentIndexChanged.connect(lambda _i: _on_changed(combo.currentText()))
+        combo.currentIndexChanged.connect(_on_changed)
         return combo
 
     def _build_format_spinbox(

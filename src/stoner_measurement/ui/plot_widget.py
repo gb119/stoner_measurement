@@ -821,10 +821,11 @@ class PlotWidget(QWidget):
         colour = style.get("colour") or None
         line_style = style.get("line_style") or None
         point_style = style.get("point_style") or None
+        # Zero is treated as "use widget default" — only forward positive values.
         raw_width = style.get("line_width")
-        line_width = float(raw_width) if raw_width else None
+        line_width = float(raw_width) if raw_width is not None and float(raw_width) > 0 else None
         raw_size = style.get("point_size")
-        point_size = float(raw_size) if raw_size else None
+        point_size = float(raw_size) if raw_size is not None and float(raw_size) > 0 else None
         try:
             self.set_trace_style(
                 trace_name,
