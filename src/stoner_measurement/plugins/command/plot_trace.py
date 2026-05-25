@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QWidget,
 )
@@ -731,11 +732,21 @@ class PlotTraceCommand(CommandPlugin):
     def _build_colour_button(self, widget: QWidget, colour: str) -> QPushButton:
         """Build a colour selector button matching the plot panel behaviour."""
         button = QPushButton(widget)
+        button.setToolTip(
+            "Click to choose a colour. Right-click to reset to automatic (no colour override)."
+        )
         self._update_colour_button(button, colour)
         return button
 
     def _update_colour_button(self, button: QPushButton, colour: str) -> None:
-        """Apply swatch styling and text to a colour selector button."""
+        """Apply swatch styling and text to a colour selector button.
+
+        Args:
+            button (QPushButton):
+                The button to update.
+            colour (str):
+                Colour string (hex, named, or empty for auto).
+        """
         if not colour:
             button.setText("(auto)")
             button.setStyleSheet("")
@@ -748,12 +759,21 @@ class PlotTraceCommand(CommandPlugin):
         button.setText(hex_colour)
         button.setStyleSheet(f"QPushButton {{ background-color: {hex_colour}; }}")
 
-    def _choose_colour(self, current_colour: str, title: str) -> str:
-        """Open a colour picker and return the selected hex colour or current value."""
+    def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
+        """Open a colour picker and return the selected hex colour or current value.
+
+        Args:
+            current_colour (str):
+                The currently stored colour string; used as the initial picker colour.
+            title (str):
+                Title string for the colour dialog window.
+            parent (QWidget | None):
+                Parent widget for the dialog, ensuring correct modality.
+        """
         base_colour = QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
         selected = QColorDialog.getColor(
             base_colour,
-            None,
+            parent,
             title,
             QColorDialog.ColorDialogOption.DontUseNativeDialog,
         )
@@ -1025,9 +1045,18 @@ class PlotTraceCommand(CommandPlugin):
             self.title_expr = title_edit.text().strip()
 
         def _apply_colour() -> None:
-            self.colour = self._choose_colour(self.colour, "Select trace colour")
+            self.colour = self._choose_colour(self.colour, "Select trace colour", colour_button)
             self._update_colour_button(colour_button, self.colour)
 
+        def _reset_colour_to_auto(pos: Any) -> None:
+            menu = QMenu(colour_button)
+            action = menu.addAction("Auto (clear colour)")
+            if menu.exec(colour_button.mapToGlobal(pos)) == action:
+                self.colour = ""
+                self._update_colour_button(colour_button, self.colour)
+
+        colour_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        colour_button.customContextMenuRequested.connect(_reset_colour_to_auto)
         trace_combo.currentTextChanged.connect(_apply_trace)
         column_combo.currentTextChanged.connect(_apply_column)
         transpose_check.toggled.connect(lambda checked: setattr(self, "transpose", checked))

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QColorDialog,
@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -564,6 +565,9 @@ class PlotPointsCommand(CommandPlugin):
                     y_axis_entry.setEditText(entry_y_axis)
 
                 colour_button = QPushButton(series_container)
+                colour_button.setToolTip(
+                    "Click to choose a colour. Right-click to reset to automatic (no colour override)."
+                )
                 self._update_colour_button(colour_button, entry.get("colour", ""))
 
                 line_style_combo = QComboBox(series_container)
@@ -663,11 +667,21 @@ class PlotPointsCommand(CommandPlugin):
 
                 def _make_colour_handler(idx: int) -> Any:
                     def _apply_colour(_idx: int = idx) -> None:
+                        btn = column_widgets[_idx][3]
                         current = self.y_entries[_idx].get("colour", "")
-                        chosen = self._choose_colour(current, f"Select colour for series {_idx + 1}")
+                        chosen = self._choose_colour(current, f"Select colour for series {_idx + 1}", btn)
                         self.y_entries[_idx]["colour"] = chosen
-                        self._update_colour_button(column_widgets[_idx][3], chosen)
-                    return _apply_colour
+                        self._update_colour_button(btn, chosen)
+
+                    def _reset_colour(pos: Any, _idx: int = idx) -> None:
+                        btn = column_widgets[_idx][3]
+                        menu = QMenu(btn)
+                        action = menu.addAction("Auto (clear colour)")
+                        if menu.exec(btn.mapToGlobal(pos)) == action:
+                            self.y_entries[_idx]["colour"] = ""
+                            self._update_colour_button(btn, "")
+
+                    return _apply_colour, _reset_colour
 
                 def _make_line_style_handler(idx: int) -> Any:
                     def _apply_line_style(_i: int, _idx: int = idx) -> None:
@@ -698,7 +712,10 @@ class PlotPointsCommand(CommandPlugin):
                 value_combo.currentTextChanged.connect(_make_key_handler(i))
                 label_entry.lineEdit().editingFinished.connect(_make_label_handler(i))
                 y_axis_entry.currentTextChanged.connect(_make_y_axis_handler(i))
-                colour_button.clicked.connect(_make_colour_handler(i))
+                _colour_clicked, _colour_reset = _make_colour_handler(i)
+                colour_button.clicked.connect(_colour_clicked)
+                colour_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                colour_button.customContextMenuRequested.connect(_colour_reset)
                 line_style_combo.currentIndexChanged.connect(_make_line_style_handler(i))
                 point_style_combo.currentIndexChanged.connect(_make_point_style_handler(i))
                 line_width_spin.valueChanged.connect(_make_line_width_handler(i))
@@ -779,7 +796,14 @@ class PlotPointsCommand(CommandPlugin):
         self._ensure_configured_axes_exist()
 
     def _update_colour_button(self, button: QPushButton, colour: str) -> None:
-        """Apply swatch styling and text to a colour selector button."""
+        """Apply swatch styling and text to a colour selector button.
+
+        Args:
+            button (QPushButton):
+                The button to update.
+            colour (str):
+                Colour string (hex, named, or empty for auto).
+        """
         if not colour:
             button.setText("(auto)")
             button.setStyleSheet("")
@@ -792,12 +816,21 @@ class PlotPointsCommand(CommandPlugin):
         button.setText(hex_colour)
         button.setStyleSheet(f"QPushButton {{ background-color: {hex_colour}; }}")
 
-    def _choose_colour(self, current_colour: str, title: str) -> str:
-        """Open a colour picker and return the selected hex colour or current value."""
+    def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
+        """Open a colour picker and return the selected hex colour or current value.
+
+        Args:
+            current_colour (str):
+                The currently stored colour string; used as the initial picker colour.
+            title (str):
+                Title string for the colour dialog window.
+            parent (QWidget | None):
+                Parent widget for the dialog, ensuring correct modality.
+        """
         base_colour = QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
         selected = QColorDialog.getColor(
             base_colour,
-            None,
+            parent,
             title,
             QColorDialog.ColorDialogOption.DontUseNativeDialog,
         )
