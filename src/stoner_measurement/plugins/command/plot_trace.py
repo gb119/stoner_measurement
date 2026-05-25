@@ -726,10 +726,6 @@ class PlotTraceCommand(CommandPlugin):
             y_axis_combo,
             channel_items,
             colour_edit,
-            line_style_combo,
-            point_style_combo,
-            line_width_spin,
-            point_size_spin,
         )
         return widget
 
@@ -956,10 +952,6 @@ class PlotTraceCommand(CommandPlugin):
         y_axis_combo: QComboBox,
         channel_items: dict[str, str],
         colour_edit: QLineEdit,
-        line_style_combo: QComboBox,
-        point_style_combo: QComboBox,
-        line_width_spin: QDoubleSpinBox,
-        point_size_spin: QDoubleSpinBox,
     ) -> None:
         def _update_enabled(advanced: bool) -> None:
             trace_combo.setEnabled(not advanced)

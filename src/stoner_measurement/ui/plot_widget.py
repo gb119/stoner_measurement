@@ -7,6 +7,7 @@ independent x- and y-axes implemented via linked
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Sequence
 from itertools import cycle
@@ -30,6 +31,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 # Colour palette used when automatically assigning colours to new traces.
 _TRACE_COLOURS = [
@@ -823,10 +826,10 @@ class PlotWidget(QWidget):
         point_style = style.get("point_style") or None
         # Zero is treated as "use widget default" — only forward positive values.
         raw_width = style.get("line_width")
-        line_width = float(raw_width) if raw_width is not None and float(raw_width) > 0 else None
         raw_size = style.get("point_size")
-        point_size = float(raw_size) if raw_size is not None and float(raw_size) > 0 else None
         try:
+            line_width = float(raw_width) if raw_width is not None and float(raw_width) > 0 else None
+            point_size = float(raw_size) if raw_size is not None and float(raw_size) > 0 else None
             self.set_trace_style(
                 trace_name,
                 colour=colour,
@@ -835,8 +838,8 @@ class PlotWidget(QWidget):
                 line_width=line_width,
                 point_size=point_size,
             )
-        except ValueError:
-            pass
+        except (TypeError, ValueError) as exc:
+            logger.warning("set_trace_style_from_dict: invalid style value for %r: %s", trace_name, exc)
 
     def remove_trace(self, trace_name: str) -> None:
         """Remove a named trace and all its data.
