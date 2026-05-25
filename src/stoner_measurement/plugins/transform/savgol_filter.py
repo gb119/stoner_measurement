@@ -34,7 +34,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
     @property
     def name(self) -> str:
         """Return the plugin display name."""
-        return "Savitzky-Golay"
+        return "Savitzky–Golay"
 
     @property
     def required_inputs(self) -> list[str]:

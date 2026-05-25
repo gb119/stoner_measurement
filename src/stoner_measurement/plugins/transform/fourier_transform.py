@@ -240,11 +240,17 @@ def _resample_uniform(x_arr: np.ndarray, y_arr: np.ndarray) -> tuple[np.ndarray,
     x_uniform = np.linspace(x_min, x_max, n_points)
 
     if np.iscomplexobj(y_arr):
-        y_uniform = np.interp(x_uniform, x_arr, np.real(y_arr)) + 1j * np.interp(x_uniform, x_arr, np.imag(y_arr))
+        y_uniform = _interp_complex(x_uniform, x_arr, np.asarray(y_arr, dtype=complex))
     else:
         y_uniform = np.interp(x_uniform, x_arr, np.asarray(y_arr, dtype=float))
     return x_uniform, y_uniform
 
+
+
+
+def _interp_complex(x_uniform: np.ndarray, x_arr: np.ndarray, values: np.ndarray) -> np.ndarray:
+    """Interpolate complex-valued data by interpolating real and imaginary parts."""
+    return np.interp(x_uniform, x_arr, np.real(values)) + 1j * np.interp(x_uniform, x_arr, np.imag(values))
 
 def _mean_spacing(x_arr: np.ndarray) -> float:
     """Return mean positive spacing for a uniform-like x grid."""
