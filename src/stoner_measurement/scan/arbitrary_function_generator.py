@@ -188,7 +188,7 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
                 Exception instance raised by compile/evaluation logic.
         """
         logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
-        logger.exception("%s: %s", context, exc)
+        logger.exception(context)
         print(f"{context}: {exc}", file=sys.stderr)
 
     def generate(self) -> np.ndarray:

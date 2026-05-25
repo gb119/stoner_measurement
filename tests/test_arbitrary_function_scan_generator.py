@@ -65,6 +65,29 @@ class TestArbitraryFunctionScanGenerator:
         assert any("Error evaluating arbitrary scan function at ix=2" in r.getMessage() for r in records)
         assert "Error evaluating arbitrary scan function at ix=2" in captured.err
 
+    def test_compile_error_reporting(self, qapp, capsys):
+        code = "def scan(ix, omega)\n    return ix\n"
+        gen = ArbitraryFunctionScanGenerator(num_points=5, code=code)
+
+        records: list[logging.LogRecord] = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        handler = _Capture()
+        logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        logger.addHandler(handler)
+        try:
+            values = gen.generate()
+        finally:
+            logger.removeHandler(handler)
+
+        captured = capsys.readouterr()
+        assert np.isnan(values).all()
+        assert any("Failed to compile arbitrary scan function" in r.getMessage() for r in records)
+        assert "Failed to compile arbitrary scan function" in captured.err
+
     def test_scan_function_can_use_builtin_abs(self, qapp):
         code = "def scan(ix, omega):\n    return abs(ix - 5)\n"
         gen = ArbitraryFunctionScanGenerator(num_points=11, code=code)
