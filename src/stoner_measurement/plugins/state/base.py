@@ -19,7 +19,7 @@ both families:
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any
+from typing import Any, SupportsInt
 
 import pandas as pd
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -132,7 +132,8 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         return int(self.ix)
 
     @index.setter
-    def index(self, value: int) -> None:
+    def index(self, value: SupportsInt) -> None:
+        """Set the current zero-based iteration index from an int-coercible value."""
         self.ix = int(value)
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:

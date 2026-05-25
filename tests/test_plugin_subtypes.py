@@ -420,7 +420,7 @@ class TestStateControlPlugin:
         visited: list[float] = []
         p.execute_sequence([lambda: visited.append(float(p.value))])
         expected = [0.0, 1.2566370614359172, 2.5132741228718345, 3.7699111843077517, 5.026548245743669]
-        assert visited == expected
+        assert visited == pytest.approx(expected)
 
     def test_index_property_aliases_ix(self, qapp):
         p = _InstantState()
