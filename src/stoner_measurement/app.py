@@ -10,6 +10,7 @@ from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QStatusBar,
@@ -28,6 +29,11 @@ from stoner_measurement.ui.settings_dialog import (
     SettingsDialog,
     make_app_settings,
 )
+
+_STATUS_BACKGROUND_DEFAULT = "#6b7280"
+_STATUS_BACKGROUND_RUNNING = "#2e7d32"
+_STATUS_BACKGROUND_PAUSED = "#ef6c00"
+_STATUS_BACKGROUND_ERROR = "#c62828"
 
 
 class MeasurementApp(QMainWindow):
@@ -92,8 +98,8 @@ class MeasurementApp(QMainWindow):
         # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
-        self._status_bar.showMessage("Ready")
-        self._engine.status_changed.connect(self._status_bar.showMessage)
+        self._show_status_message("Ready")
+        self._engine.status_changed.connect(self._on_engine_status_changed)
 
         # Wire the console to the engine --------------------------------------
         console = self._main_window.script_tab.console
@@ -275,6 +281,29 @@ class MeasurementApp(QMainWindow):
         self._main_window.tabs.currentChanged.connect(self._on_tab_changed)
         # Initialise labels for the default (Measurement) tab -----------
         self._on_tab_changed(self._main_window.tabs.currentIndex())
+
+    def _show_status_message(self, message: str, background_colour: str = _STATUS_BACKGROUND_DEFAULT) -> None:
+        """Show a status-bar message and apply a coloured background to its text label."""
+        self._status_bar.showMessage(message)
+        status_label = self._status_bar.findChild(QLabel, "qt_statusbar_label")
+        if status_label is None:
+            return
+        status_label.setStyleSheet(
+            "QLabel#qt_statusbar_label { "
+            f"background-color: {background_colour}; "
+            "color: white; padding: 2px 6px; border-radius: 4px; }"
+        )
+
+    def _on_engine_status_changed(self, status: str) -> None:
+        """Update status text and colour in response to sequence-engine status changes."""
+        background_colour = _STATUS_BACKGROUND_DEFAULT
+        if status == "Running" or self._engine.is_running:
+            background_colour = _STATUS_BACKGROUND_RUNNING
+        if status == "Paused" or self._engine.is_paused:
+            background_colour = _STATUS_BACKGROUND_PAUSED
+        if status == "Error":
+            background_colour = _STATUS_BACKGROUND_ERROR
+        self._show_status_message(status, background_colour)
 
     def _build_file_actions(self, style: QStyle) -> None:
         """Create file-related QAction instances."""
@@ -833,7 +862,7 @@ class MeasurementApp(QMainWindow):
         pane.mark_clean()
         self._main_window.script_tab._update_tab_title(pane)  # noqa: SLF001
         self._update_window_title()
-        self._status_bar.showMessage(f"Saved {pane.path.name}")
+        self._show_status_message(f"Saved {pane.path.name}")
 
     def _on_run(self) -> None:
         """Dispatch the Run action to the appropriate handler for the active tab.
