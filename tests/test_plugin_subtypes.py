@@ -428,6 +428,8 @@ class TestStateControlPlugin:
         assert p.index == 3
         p.index = 9
         assert p.ix == 9
+        p.index = 3.7
+        assert p.ix == 3
 
     def test_ramp_to_out_of_range_emits_error(self, qapp):
         class _LimitedState(_InstantState):
