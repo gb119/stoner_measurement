@@ -179,7 +179,14 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         return scan if callable(scan) else None
 
     def _report_scan_exception(self, context: str, exc: Exception) -> None:
-        """Report scan-function execution failures to logs and stderr."""
+        """Report scan-function execution failures to logs and stderr.
+
+        Args:
+            context (str):
+                Human-readable context describing where evaluation failed.
+            exc (Exception):
+                Exception instance raised by compile/evaluation logic.
+        """
         logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
         logger.exception("%s: %s", context, exc)
         print(f"{context}: {exc}", file=sys.stderr)

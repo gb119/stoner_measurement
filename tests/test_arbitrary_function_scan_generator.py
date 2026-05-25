@@ -42,7 +42,7 @@ class TestArbitraryFunctionScanGenerator:
         assert np.isnan(values[2])
         assert np.isfinite(values[[0, 1, 3, 4]]).all()
 
-    def test_runtime_error_is_reported_to_logging_and_stderr(self, qapp, capsys):
+    def test_runtime_error_reporting(self, qapp, capsys):
         code = "def scan(ix, omega):\n    return 1 / (ix - 2)\n"
         gen = ArbitraryFunctionScanGenerator(num_points=5, code=code)
 
