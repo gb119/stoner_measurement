@@ -21,14 +21,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
+    QColorDialog,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
     QLabel,
-    QLineEdit,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -279,6 +281,7 @@ class PlotPointsCommand(CommandPlugin):
                 new_set_style = getattr(new_pw, "set_trace_style_from_dict", None)
                 if new_set_style is not None:
                     self.plot_trace_style.connect(new_set_style)
+                self._ensure_configured_axes_exist(new_pw)
 
     @property
     def name(self) -> str:
@@ -505,43 +508,53 @@ class PlotPointsCommand(CommandPlugin):
 
         series_container = QWidget()
         series_layout = QGridLayout(series_container)
-        series_layout.setColumnStretch(1, 1)
-
-        series_layout.addWidget(QLabel("<b>Value</b>"), 0, 0)
-        series_layout.addWidget(QLabel("<b>Label</b>"), 0, 1)
-        series_layout.addWidget(QLabel("<b>Y axis</b>"), 0, 2)
-        series_layout.addWidget(QLabel("<b>Colour</b>"), 0, 3)
-        series_layout.addWidget(QLabel("<b>Line</b>"), 0, 4)
-        series_layout.addWidget(QLabel("<b>Points</b>"), 0, 5)
-        series_layout.addWidget(QLabel("<b>Width</b>"), 0, 6)
-        series_layout.addWidget(QLabel("<b>Pt size</b>"), 0, 7)
+        series_layout.setColumnStretch(0, 0)
+        series_layout.setRowStretch(9, 1)
 
         scroll_area.setWidget(series_container)
         outer_layout.addRow(scroll_area)
 
-        _RowWidgets = tuple  # (combo, label_edit, y_axis, colour, line_style, point_style, width, size, btn)
-        row_widgets: list[_RowWidgets] = []
+        _ColumnWidgets = tuple  # (value, label, y_axis, colour, line, point, width, size, remove)
+        column_widgets: list[_ColumnWidgets] = []
 
-        def _rebuild_rows() -> None:
-            for widgets_row in row_widgets:
-                for w in widgets_row:
-                    w.setParent(None)
-            row_widgets.clear()
+        def _rebuild_columns() -> None:
+            while series_layout.count():
+                item = series_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.setParent(None)
+            column_widgets.clear()
 
-            def _build_one_row(entry: dict, i: int) -> tuple:
-                grid_row = i + 1
-                combo = QComboBox(series_container)
+            for row_index, title in enumerate(
+                ("Value", "Label", "Y axis", "Colour", "Line", "Points", "Width", "Pt size", "")
+            ):
+                title_label = QLabel(f"<b>{title}</b>", series_container)
+                series_layout.addWidget(title_label, row_index + 1, 0)
+            series_layout.addWidget(QLabel("<b>Option</b>", series_container), 0, 0)
+
+            def _build_one_column(entry: dict, i: int) -> tuple:
+                grid_column = i + 1
+
+                header = QLabel(f"<b>Series {i + 1}</b>", series_container)
+                series_layout.addWidget(header, 0, grid_column)
+
+                value_combo = QComboBox(series_container)
                 if value_keys:
-                    combo.addItems(value_keys)
+                    value_combo.addItems(value_keys)
                     key = entry.get("key", "")
                     if key in value_keys:
-                        combo.setCurrentText(key)
+                        value_combo.setCurrentText(key)
                     else:
-                        combo.setCurrentIndex(0)
+                        value_combo.setCurrentIndex(0)
                         entry["key"] = value_keys[0] if value_keys else ""
                 else:
-                    combo.addItem("(no values available)")
-                label_edit = QLineEdit(entry.get("label", ""), series_container)
+                    value_combo.addItem("(no values available)")
+
+                label_entry = QComboBox(series_container)
+                label_entry.setEditable(True)
+                label_entry.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+                label_entry.lineEdit().setText(entry.get("label", ""))
+
                 y_axis_entry = QComboBox(series_container)
                 y_axis_entry.setEditable(True)
                 y_axis_entry.addItems(y_axis_names)
@@ -551,10 +564,11 @@ class PlotPointsCommand(CommandPlugin):
                 else:
                     y_axis_entry.setEditText(entry_y_axis)
 
-                colour_edit = QLineEdit(entry.get("colour", ""), series_container)
-                colour_edit.setPlaceholderText("auto")
-                colour_edit.setFixedWidth(70)
-                colour_edit.setToolTip("Colour (e.g. \"red\" or \"#ff0000\"). Leave blank for auto.")
+                colour_button = QPushButton(series_container)
+                colour_button.setToolTip(
+                    "Click to choose a colour. Right-click to reset to automatic (no colour override)."
+                )
+                self._update_colour_button(colour_button, entry.get("colour", ""))
 
                 line_style_combo = QComboBox(series_container)
                 _line_options = ("",) + _LINE_STYLE_OPTIONS
@@ -588,26 +602,44 @@ class PlotPointsCommand(CommandPlugin):
                 point_size_spin.setFixedWidth(55)
                 point_size_spin.setValue(float(entry.get("point_size", 0.0)))
 
-                remove_btn = QPushButton("✕", series_container)
-                remove_btn.setFixedWidth(28)
-                series_layout.addWidget(combo, grid_row, 0)
-                series_layout.addWidget(label_edit, grid_row, 1)
-                series_layout.addWidget(y_axis_entry, grid_row, 2)
-                series_layout.addWidget(colour_edit, grid_row, 3)
-                series_layout.addWidget(line_style_combo, grid_row, 4)
-                series_layout.addWidget(point_style_combo, grid_row, 5)
-                series_layout.addWidget(line_width_spin, grid_row, 6)
-                series_layout.addWidget(point_size_spin, grid_row, 7)
-                series_layout.addWidget(remove_btn, grid_row, 8)
-                row_widgets.append(
-                    (combo, label_edit, y_axis_entry, colour_edit,
-                     line_style_combo, point_style_combo, line_width_spin, point_size_spin, remove_btn)
+                remove_btn = QPushButton("Remove", series_container)
+                series_layout.addWidget(value_combo, 1, grid_column)
+                series_layout.addWidget(label_entry, 2, grid_column)
+                series_layout.addWidget(y_axis_entry, 3, grid_column)
+                series_layout.addWidget(colour_button, 4, grid_column)
+                series_layout.addWidget(line_style_combo, 5, grid_column)
+                series_layout.addWidget(point_style_combo, 6, grid_column)
+                series_layout.addWidget(line_width_spin, 7, grid_column)
+                series_layout.addWidget(point_size_spin, 8, grid_column)
+                series_layout.addWidget(remove_btn, 9, grid_column)
+
+                column_widgets.append(
+                    (
+                        value_combo,
+                        label_entry,
+                        y_axis_entry,
+                        colour_button,
+                        line_style_combo,
+                        point_style_combo,
+                        line_width_spin,
+                        point_size_spin,
+                        remove_btn,
+                    )
                 )
+                return column_widgets[-1]
 
             for i, entry in enumerate(self.y_entries):
-                _build_one_row(entry, i)
-                (combo, label_edit, y_axis_entry, colour_edit,
-                 line_style_combo, point_style_combo, line_width_spin, point_size_spin, remove_btn) = row_widgets[i]
+                (
+                    value_combo,
+                    label_entry,
+                    y_axis_entry,
+                    colour_button,
+                    line_style_combo,
+                    point_style_combo,
+                    line_width_spin,
+                    point_size_spin,
+                    remove_btn,
+                ) = _build_one_column(entry, i)
 
                 def _make_key_handler(idx: int) -> Any:
                     def _apply_key(text: str, _idx: int = idx) -> None:
@@ -619,12 +651,13 @@ class PlotPointsCommand(CommandPlugin):
                                 self.y_entries[_idx].get("key", ""), ns
                             ):
                                 self.y_entries[_idx]["label"] = auto
-                                row_widgets[_idx][1].setText(auto)
+                                column_widgets[_idx][1].lineEdit().setText(auto)
                     return _apply_key
 
                 def _make_label_handler(idx: int) -> Any:
                     def _apply_label(_idx: int = idx) -> None:
-                        self.y_entries[_idx]["label"] = row_widgets[_idx][1].text().strip()
+                        line_edit = column_widgets[_idx][1].lineEdit()
+                        self.y_entries[_idx]["label"] = line_edit.text().strip() if line_edit else ""
                     return _apply_label
 
                 def _make_y_axis_handler(idx: int) -> Any:
@@ -634,17 +667,30 @@ class PlotPointsCommand(CommandPlugin):
 
                 def _make_colour_handler(idx: int) -> Any:
                     def _apply_colour(_idx: int = idx) -> None:
-                        self.y_entries[_idx]["colour"] = row_widgets[_idx][3].text().strip()
-                    return _apply_colour
+                        btn = column_widgets[_idx][3]
+                        current = self.y_entries[_idx].get("colour", "")
+                        chosen = self._choose_colour(current, f"Select colour for series {_idx + 1}", btn)
+                        self.y_entries[_idx]["colour"] = chosen
+                        self._update_colour_button(btn, chosen)
+
+                    def _reset_colour(pos: Any, _idx: int = idx) -> None:
+                        btn = column_widgets[_idx][3]
+                        menu = QMenu(btn)
+                        action = menu.addAction("Auto (clear colour)")
+                        if menu.exec(btn.mapToGlobal(pos)) == action:
+                            self.y_entries[_idx]["colour"] = ""
+                            self._update_colour_button(btn, "")
+
+                    return _apply_colour, _reset_colour
 
                 def _make_line_style_handler(idx: int) -> Any:
                     def _apply_line_style(_i: int, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["line_style"] = row_widgets[_idx][4].currentData() or ""
+                        self.y_entries[_idx]["line_style"] = column_widgets[_idx][4].currentData() or ""
                     return _apply_line_style
 
                 def _make_point_style_handler(idx: int) -> Any:
                     def _apply_point_style(_i: int, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["point_style"] = row_widgets[_idx][5].currentData() or ""
+                        self.y_entries[_idx]["point_style"] = column_widgets[_idx][5].currentData() or ""
                     return _apply_point_style
 
                 def _make_line_width_handler(idx: int) -> Any:
@@ -660,20 +706,23 @@ class PlotPointsCommand(CommandPlugin):
                 def _make_remove_handler(idx: int) -> Any:
                     def _remove(_idx: int = idx) -> None:
                         del self.y_entries[_idx]
-                        _rebuild_rows()
+                        _rebuild_columns()
                     return _remove
 
-                combo.currentTextChanged.connect(_make_key_handler(i))
-                label_edit.editingFinished.connect(_make_label_handler(i))
+                value_combo.currentTextChanged.connect(_make_key_handler(i))
+                label_entry.lineEdit().editingFinished.connect(_make_label_handler(i))
                 y_axis_entry.currentTextChanged.connect(_make_y_axis_handler(i))
-                colour_edit.editingFinished.connect(_make_colour_handler(i))
+                _colour_clicked, _colour_reset = _make_colour_handler(i)
+                colour_button.clicked.connect(_colour_clicked)
+                colour_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                colour_button.customContextMenuRequested.connect(_colour_reset)
                 line_style_combo.currentIndexChanged.connect(_make_line_style_handler(i))
                 point_style_combo.currentIndexChanged.connect(_make_point_style_handler(i))
                 line_width_spin.valueChanged.connect(_make_line_width_handler(i))
                 point_size_spin.valueChanged.connect(_make_point_size_handler(i))
                 remove_btn.clicked.connect(_make_remove_handler(i))
 
-        _rebuild_rows()
+        _rebuild_columns()
 
         add_btn = QPushButton("Add Y series", outer)
 
@@ -681,7 +730,7 @@ class PlotPointsCommand(CommandPlugin):
             default_key = value_keys[0] if value_keys else ""
             default_label = _default_label(default_key, ns) if default_key else ""
             self.y_entries.append({"key": default_key, "label": default_label, "y_axis": _DEFAULT_Y_AXIS})
-            _rebuild_rows()
+            _rebuild_columns()
 
         add_btn.clicked.connect(_add_series)
         outer_layout.addRow(add_btn)
@@ -744,6 +793,69 @@ class PlotPointsCommand(CommandPlugin):
                 if key in entry:
                     entry[key] = float(entry[key])
             self.y_entries.append(entry)
+        self._ensure_configured_axes_exist()
+
+    def _update_colour_button(self, button: QPushButton, colour: str) -> None:
+        """Apply swatch styling and text to a colour selector button.
+
+        Args:
+            button (QPushButton):
+                The button to update.
+            colour (str):
+                Colour string (hex, named, or empty for auto).
+        """
+        if not colour:
+            button.setText("(auto)")
+            button.setStyleSheet("")
+            return
+        if not QColor(colour).isValid():
+            button.setText(colour)
+            button.setStyleSheet("")
+            return
+        hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
+        button.setText(hex_colour)
+        button.setStyleSheet(f"QPushButton {{ background-color: {hex_colour}; }}")
+
+    def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
+        """Open a colour picker and return the selected hex colour or current value.
+
+        Args:
+            current_colour (str):
+                The currently stored colour string; used as the initial picker colour.
+            title (str):
+                Title string for the colour dialog window.
+            parent (QWidget | None):
+                Parent widget for the dialog, ensuring correct modality.
+        """
+        base_colour = QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
+        selected = QColorDialog.getColor(
+            base_colour,
+            parent,
+            title,
+            QColorDialog.ColorDialogOption.DontUseNativeDialog,
+        )
+        if not selected.isValid():
+            return current_colour
+        return selected.name(QColor.NameFormat.HexRgb)
+
+    def _ensure_configured_axes_exist(self, plot_widget: Any | None = None) -> None:
+        """Ensure configured x/y axes exist on the attached plot widget."""
+        pw = plot_widget
+        if pw is None and self.sequence_engine is not None:
+            pw = getattr(self.sequence_engine, "plot_widget", None)
+        if pw is None:
+            return
+
+        ensure_x = getattr(pw, "ensure_x_axis", None)
+        if callable(ensure_x):
+            x_axis = self.x_axis_name or _DEFAULT_X_AXIS
+            ensure_x(x_axis, x_axis)
+
+        ensure_y = getattr(pw, "ensure_y_axis", None)
+        if callable(ensure_y):
+            for entry in self.y_entries:
+                y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS) or _DEFAULT_Y_AXIS
+                ensure_y(y_axis, y_axis)
 
 
 def _entry_style_dict(entry: dict) -> dict:

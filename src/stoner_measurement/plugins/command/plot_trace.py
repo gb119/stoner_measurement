@@ -23,14 +23,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QLabel,
     QLineEdit,
+    QMenu,
+    QPushButton,
     QWidget,
 )
 
@@ -352,6 +356,7 @@ class PlotTraceCommand(CommandPlugin):
                 new_set_style = getattr(new_pw, "set_trace_style_from_dict", None)
                 if new_set_style is not None:
                     self.plot_trace_style.connect(new_set_style)
+                self._ensure_configured_axes_exist(new_pw)
 
     @property
     def name(self) -> str:
@@ -675,12 +680,7 @@ class PlotTraceCommand(CommandPlugin):
         )
         x_axis_combo = self._build_plot_axis_combo(widget, axes_pair[0], self.x_axis_name, "x_axis_name")
         y_axis_combo = self._build_plot_axis_combo(widget, axes_pair[1], self.y_axis_name, "y_axis_name")
-        colour_edit = QLineEdit(self.colour, widget)
-        colour_edit.setPlaceholderText("(auto)")
-        colour_edit.setToolTip(
-            "Colour for the trace.  Any pyqtgraph-accepted value such as "
-            "\"red\" or \"#0000ff\".  Leave blank to use the auto-assigned colour."
-        )
+        colour_button = self._build_colour_button(widget, self.colour)
         line_style_combo = self._build_options_combo(
             widget, ("",) + _LINE_STYLE_OPTIONS, self.line_style, "line_style"
         )
@@ -707,7 +707,7 @@ class PlotTraceCommand(CommandPlugin):
             )
         )
         layout.addRow(QLabel("<b>Format (optional):</b>", widget))
-        layout.addRow("Colour:", colour_edit)
+        layout.addRow("Colour:", colour_button)
         layout.addRow("Line style:", line_style_combo)
         layout.addRow("Point style:", point_style_combo)
         layout.addRow("Line width (0=default):", line_width_spin)
@@ -725,9 +725,61 @@ class PlotTraceCommand(CommandPlugin):
             x_axis_combo,
             y_axis_combo,
             channel_items,
-            colour_edit,
+            colour_button,
         )
         return widget
+
+    def _build_colour_button(self, widget: QWidget, colour: str) -> QPushButton:
+        """Build a colour selector button matching the plot panel behaviour."""
+        button = QPushButton(widget)
+        button.setToolTip(
+            "Click to choose a colour. Right-click to reset to automatic (no colour override)."
+        )
+        self._update_colour_button(button, colour)
+        return button
+
+    def _update_colour_button(self, button: QPushButton, colour: str) -> None:
+        """Apply swatch styling and text to a colour selector button.
+
+        Args:
+            button (QPushButton):
+                The button to update.
+            colour (str):
+                Colour string (hex, named, or empty for auto).
+        """
+        if not colour:
+            button.setText("(auto)")
+            button.setStyleSheet("")
+            return
+        if not QColor(colour).isValid():
+            button.setText(colour)
+            button.setStyleSheet("")
+            return
+        hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
+        button.setText(hex_colour)
+        button.setStyleSheet(f"QPushButton {{ background-color: {hex_colour}; }}")
+
+    def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
+        """Open a colour picker and return the selected hex colour or current value.
+
+        Args:
+            current_colour (str):
+                The currently stored colour string; used as the initial picker colour.
+            title (str):
+                Title string for the colour dialog window.
+            parent (QWidget | None):
+                Parent widget for the dialog, ensuring correct modality.
+        """
+        base_colour = QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
+        selected = QColorDialog.getColor(
+            base_colour,
+            parent,
+            title,
+            QColorDialog.ColorDialogOption.DontUseNativeDialog,
+        )
+        if not selected.isValid():
+            return current_colour
+        return selected.name(QColor.NameFormat.HexRgb)
 
     def _emit_trace_axis_labels(self, trace_data: Any, y_key: str | None = None) -> None:
         """Emit default axis labels resolved from trace metadata.
@@ -951,7 +1003,7 @@ class PlotTraceCommand(CommandPlugin):
         x_axis_combo: QComboBox,
         y_axis_combo: QComboBox,
         channel_items: dict[str, str],
-        colour_edit: QLineEdit,
+        colour_button: QPushButton,
     ) -> None:
         def _update_enabled(advanced: bool) -> None:
             trace_combo.setEnabled(not advanced)
@@ -993,8 +1045,18 @@ class PlotTraceCommand(CommandPlugin):
             self.title_expr = title_edit.text().strip()
 
         def _apply_colour() -> None:
-            self.colour = colour_edit.text().strip()
+            self.colour = self._choose_colour(self.colour, "Select trace colour")
+            self._update_colour_button(colour_button, self.colour)
 
+        def _reset_colour_to_auto(pos: Any) -> None:
+            menu = QMenu(colour_button)
+            action = menu.addAction("Auto (clear colour)")
+            if menu.exec(colour_button.mapToGlobal(pos)) == action:
+                self.colour = ""
+                self._update_colour_button(colour_button, self.colour)
+
+        colour_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        colour_button.customContextMenuRequested.connect(_reset_colour_to_auto)
         trace_combo.currentTextChanged.connect(_apply_trace)
         column_combo.currentTextChanged.connect(_apply_column)
         transpose_check.toggled.connect(lambda checked: setattr(self, "transpose", checked))
@@ -1004,7 +1066,7 @@ class PlotTraceCommand(CommandPlugin):
         title_edit.editingFinished.connect(_apply_title)
         x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
         y_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "y_axis_name", text))
-        colour_edit.editingFinished.connect(_apply_colour)
+        colour_button.clicked.connect(_apply_colour)
 
     # ------------------------------------------------------------------
     # Serialisation
@@ -1071,6 +1133,24 @@ class PlotTraceCommand(CommandPlugin):
         self.point_style = data.get("point_style", "")
         self.line_width = float(data.get("line_width", 0.0))
         self.point_size = float(data.get("point_size", 0.0))
+        self._ensure_configured_axes_exist()
+
+    def _ensure_configured_axes_exist(self, plot_widget: Any | None = None) -> None:
+        """Ensure configured x/y axes exist on the attached plot widget."""
+        pw = plot_widget
+        if pw is None and self.sequence_engine is not None:
+            pw = getattr(self.sequence_engine, "plot_widget", None)
+        if pw is None:
+            return
+
+        ensure_x = getattr(pw, "ensure_x_axis", None)
+        if callable(ensure_x):
+            x_axis = self.x_axis_name or _DEFAULT_X_AXIS
+            ensure_x(x_axis, x_axis)
+        ensure_y = getattr(pw, "ensure_y_axis", None)
+        if callable(ensure_y):
+            y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
+            ensure_y(y_axis, y_axis)
 
 
 # ---------------------------------------------------------------------------

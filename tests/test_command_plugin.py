@@ -1071,8 +1071,16 @@ class TestPlotTraceCommand:
 
         widget = PlotTraceCommand().config_widget()
         edits = widget.findChildren(QLineEdit)
-        # title_expr edit + colour edit + internal spinbox edits
+        # title_expr edit + internal spin box edits
         assert len(edits) >= 2
+
+    def test_config_widget_has_colour_button(self, qapp):
+        from PyQt6.QtWidgets import QPushButton
+
+        cmd = PlotTraceCommand()
+        widget = cmd.config_widget()
+        buttons = widget.findChildren(QPushButton)
+        assert any(btn.text() == "(auto)" for btn in buttons)
 
     def test_config_title_edit_updates_title_expr(self, qapp):
         from PyQt6.QtWidgets import QLineEdit
@@ -1448,6 +1456,22 @@ class TestPlotTraceCommand:
         assert "missing_y_axis" in pw.axis_names
         assert pw._trace_axes["test trace"] == ("missing_x_axis", "missing_y_axis")
 
+    def test_sequence_engine_attachment_creates_configured_axes(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+        cmd = PlotTraceCommand()
+        cmd.x_axis_name = "loaded_x"
+        cmd.y_axis_name = "loaded_y"
+
+        assert "loaded_x" not in pw.axis_names
+        assert "loaded_y" not in pw.axis_names
+        engine.add_plugin("plot_trace", cmd)
+
+        assert "loaded_x" in pw.axis_names
+        assert "loaded_y" in pw.axis_names
+
     def test_execute_simple_mode_uses_column_key(self, qapp, engine):
         """execute() uses column_key to select a specific DataFrame column."""
         import pandas as pd
@@ -1687,13 +1711,13 @@ class TestPlotTraceCommand:
 
     def test_execute_single_column_with_y_error_bars(self, qapp, engine):
         """execute() passes y-error bars from COLUMN_ROLE_E to plot_trace_with_errors."""
+        import pandas as pd
+
         from stoner_measurement.plugins.trace.base import (
             COLUMN_ROLE_E,
             COLUMN_ROLE_Y,
             TraceData,
         )
-
-        import pandas as pd
 
         df = pd.DataFrame(
             {"V": [1.0, 2.0], "e_V": [0.1, 0.2]},
@@ -1960,28 +1984,28 @@ class TestPlotTraceCommand:
 
         assert style_signals == []
 
-    def test_config_widget_has_colour_edit(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+    def test_config_widget_has_colour_button_with_initial_value(self, qapp):
+        from PyQt6.QtWidgets import QPushButton
 
         cmd = PlotTraceCommand()
         cmd.colour = "blue"
         widget = cmd.config_widget()
-        edits = widget.findChildren(QLineEdit)
-        colour_edit = next((e for e in edits if e.text() == "blue"), None)
-        assert colour_edit is not None
+        buttons = widget.findChildren(QPushButton)
+        colour_button = next((b for b in buttons if b.text() == "#0000ff"), None)
+        assert colour_button is not None
 
-    def test_config_colour_edit_updates_colour(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+    def test_config_colour_button_updates_colour(self, qapp, monkeypatch):
+        from PyQt6.QtWidgets import QPushButton
 
         cmd = PlotTraceCommand()
         cmd.colour = "blue"
+        monkeypatch.setattr(cmd, "_choose_colour", lambda current, title: "#008000")
         widget = cmd.config_widget()
-        edits = widget.findChildren(QLineEdit)
-        colour_edit = next((e for e in edits if e.text() == "blue"), None)
-        assert colour_edit is not None
-        colour_edit.setText("green")
-        colour_edit.editingFinished.emit()
-        assert cmd.colour == "green"
+        buttons = widget.findChildren(QPushButton)
+        colour_button = next((b for b in buttons if b.text() == "#0000ff"), None)
+        assert colour_button is not None
+        colour_button.click()
+        assert cmd.colour == "#008000"
 
     def test_plot_widget_set_trace_style_from_dict(self, qapp):
         from stoner_measurement.ui.plot_widget import PlotWidget
@@ -2718,6 +2742,23 @@ class TestPlotPointsCommand:
         combos = widget.findChildren(QComboBox)
         assert len(combos) >= 1
 
+    def test_config_widget_uses_transposed_y_series_layout(self, qapp, engine):
+        from PyQt6.QtWidgets import QLabel, QPushButton
+
+        cmd = PlotPointsCommand()
+        engine.add_plugin("plot_points", cmd)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        cmd.y_entries = [{"key": "p:y", "label": "My Y", "y_axis": "left"}]
+        widget = cmd.config_widget()
+        labels = [label.text() for label in widget.findChildren(QLabel)]
+        buttons = widget.findChildren(QPushButton)
+
+        assert {"<b>Option</b>", "<b>Value</b>", "<b>Label</b>", "<b>Y axis</b>", "<b>Colour</b>"}.issubset(
+            set(labels)
+        )
+        assert any(btn.text() == "Remove" for btn in buttons)
+        assert any(btn.text() == "(auto)" for btn in buttons)
+
     def test_execute_emits_plot_point_for_each_y_series(self, qapp, engine):
         cmd = PlotPointsCommand()
         engine.add_plugin("plot_points", cmd)
@@ -3004,6 +3045,22 @@ class TestPlotPointsCommand:
         cmd.execute()
         assert "brand_new_x_axis" in pw.axis_names
         assert pw._trace_axes["My Y"] == ("brand_new_x_axis", "left")
+
+    def test_sequence_engine_attachment_creates_configured_axes(self, qapp, engine):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        pw = PlotWidget()
+        engine.plot_widget = pw
+        cmd = PlotPointsCommand()
+        cmd.x_axis_name = "loaded_x"
+        cmd.y_entries = [{"key": "p:y", "label": "My Y", "y_axis": "loaded_y"}]
+
+        assert "loaded_x" not in pw.axis_names
+        assert "loaded_y" not in pw.axis_names
+        engine.add_plugin("plot_points", cmd)
+
+        assert "loaded_x" in pw.axis_names
+        assert "loaded_y" in pw.axis_names
 
     # ------------------------------------------------------------------
     # Format / style attribute tests for PlotPointsCommand
