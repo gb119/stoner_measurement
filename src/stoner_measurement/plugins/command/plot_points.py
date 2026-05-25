@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
     QLabel,
@@ -41,6 +42,11 @@ if TYPE_CHECKING:
 
 _DEFAULT_X_AXIS = "bottom"
 _DEFAULT_Y_AXIS = "left"
+
+#: Valid line-style names accepted by the plot widget.
+_LINE_STYLE_OPTIONS = ("solid", "dash", "dot", "dash-dot", "none")
+#: Valid point-style names accepted by the plot widget.
+_POINT_STYLE_OPTIONS = ("none", "circle", "square", "triangle", "diamond", "plus", "cross")
 
 
 def _safe_disconnect(signal: Any, slot: Any) -> None:
@@ -129,8 +135,11 @@ class PlotPointsCommand(CommandPlugin):
         y_entries (list[dict[str, str]]):
             Ordered list of y-series definitions.  Each entry is a dict with
             keys ``"key"`` (catalogue key), ``"label"`` (trace name shown
-            in the legend), and ``"y_axis"`` (y-axis name; defaults to
-            ``"left"`` when absent).
+            in the legend), ``"y_axis"`` (y-axis name; defaults to
+            ``"left"`` when absent), and optional format keys ``"colour"``,
+            ``"line_style"``, ``"point_style"``, ``"line_width"``, and
+            ``"point_size"``.  Empty string values and ``0.0`` numeric values
+            mean "use the plot panel default".
         x_axis_name (str):
             Name of the x-axis shared by all y series.  Defaults to
             ``"bottom"``.
@@ -138,6 +147,12 @@ class PlotPointsCommand(CommandPlugin):
             Emitted once per y series by :meth:`execute` as
             ``(label, x_value, y_value)``.  Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.append_point`
+            when the plugin is attached to an engine with a plot widget.
+        plot_trace_style (pyqtSignal[str, object]):
+            Emitted once per y series by :meth:`execute` as
+            ``(label, style_dict)`` when format overrides are configured for
+            that series.  Automatically connected to
+            :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_style_from_dict`
             when the plugin is attached to an engine with a plot widget.
 
     Keyword Parameters:
@@ -167,6 +182,8 @@ class PlotPointsCommand(CommandPlugin):
     plot_ensure_y_axis = pyqtSignal(str, str)
     #: Signal emitted by execute() to assign trace axes — (trace_name, x_axis, y_axis).
     plot_trace_axes = pyqtSignal(str, str, str)
+    #: Signal emitted by execute() to set trace style — (trace_name, style_dict).
+    plot_trace_style = pyqtSignal(str, object)
 
     def __init__(self, parent=None) -> None:
         """Initialise with default configuration."""
@@ -235,6 +252,9 @@ class PlotPointsCommand(CommandPlugin):
                 old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
                 if old_assign_axes is not None:
                     _safe_disconnect(self.plot_trace_axes, old_assign_axes)
+                old_set_style = getattr(old_pw, "set_trace_style_from_dict", None)
+                if old_set_style is not None:
+                    _safe_disconnect(self.plot_trace_style, old_set_style)
 
         self._sequence_engine_ref = engine
 
@@ -256,6 +276,9 @@ class PlotPointsCommand(CommandPlugin):
                 new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
                 if new_assign_axes is not None:
                     self.plot_trace_axes.connect(new_assign_axes)
+                new_set_style = getattr(new_pw, "set_trace_style_from_dict", None)
+                if new_set_style is not None:
+                    self.plot_trace_style.connect(new_set_style)
 
     @property
     def name(self) -> str:
@@ -378,6 +401,9 @@ class PlotPointsCommand(CommandPlugin):
             self.plot_point.emit(label, x_val, y_val)
             self.plot_trace_axes.emit(label, x_axis, y_axis)
             self._wait_for_plot_response_or_raise(label)
+            style = _entry_style_dict(entry)
+            if style:
+                self.plot_trace_style.emit(label, style)
             self.log.debug("PlotPoints: emitted point (%s, %g, %g)", label, x_val, y_val)
 
     # ------------------------------------------------------------------
@@ -484,18 +510,22 @@ class PlotPointsCommand(CommandPlugin):
         series_layout.addWidget(QLabel("<b>Value</b>"), 0, 0)
         series_layout.addWidget(QLabel("<b>Label</b>"), 0, 1)
         series_layout.addWidget(QLabel("<b>Y axis</b>"), 0, 2)
+        series_layout.addWidget(QLabel("<b>Colour</b>"), 0, 3)
+        series_layout.addWidget(QLabel("<b>Line</b>"), 0, 4)
+        series_layout.addWidget(QLabel("<b>Points</b>"), 0, 5)
+        series_layout.addWidget(QLabel("<b>Width</b>"), 0, 6)
+        series_layout.addWidget(QLabel("<b>Pt size</b>"), 0, 7)
 
         scroll_area.setWidget(series_container)
         outer_layout.addRow(scroll_area)
 
-        row_widgets: list[tuple[QComboBox, QLineEdit, QComboBox, QPushButton]] = []
+        _RowWidgets = tuple  # (combo, label_edit, y_axis, colour, line_style, point_style, width, size, btn)
+        row_widgets: list[_RowWidgets] = []
 
         def _rebuild_rows() -> None:
-            for _combo, _edit, _yax, _btn in row_widgets:
-                _combo.setParent(None)
-                _edit.setParent(None)
-                _yax.setParent(None)
-                _btn.setParent(None)
+            for widgets_row in row_widgets:
+                for w in widgets_row:
+                    w.setParent(None)
             row_widgets.clear()
 
             def _build_one_row(entry: dict, i: int) -> tuple:
@@ -520,17 +550,64 @@ class PlotPointsCommand(CommandPlugin):
                     y_axis_entry.setCurrentText(entry_y_axis)
                 else:
                     y_axis_entry.setEditText(entry_y_axis)
+
+                colour_edit = QLineEdit(entry.get("colour", ""), series_container)
+                colour_edit.setPlaceholderText("auto")
+                colour_edit.setFixedWidth(70)
+                colour_edit.setToolTip("Colour (e.g. \"red\" or \"#ff0000\"). Leave blank for auto.")
+
+                line_style_combo = QComboBox(series_container)
+                _line_options = ("",) + _LINE_STYLE_OPTIONS
+                for opt in _line_options:
+                    line_style_combo.addItem(opt if opt else "(default)", opt)
+                cur_line = entry.get("line_style", "")
+                _idx = _line_options.index(cur_line) if cur_line in _line_options else 0
+                line_style_combo.setCurrentIndex(_idx)
+
+                point_style_combo = QComboBox(series_container)
+                _point_options = ("",) + _POINT_STYLE_OPTIONS
+                for opt in _point_options:
+                    point_style_combo.addItem(opt if opt else "(default)", opt)
+                cur_point = entry.get("point_style", "")
+                _pidx = _point_options.index(cur_point) if cur_point in _point_options else 0
+                point_style_combo.setCurrentIndex(_pidx)
+
+                line_width_spin = QDoubleSpinBox(series_container)
+                line_width_spin.setRange(0.0, 100.0)
+                line_width_spin.setSingleStep(0.5)
+                line_width_spin.setDecimals(1)
+                line_width_spin.setSpecialValueText("def")
+                line_width_spin.setFixedWidth(55)
+                line_width_spin.setValue(float(entry.get("line_width", 0.0)))
+
+                point_size_spin = QDoubleSpinBox(series_container)
+                point_size_spin.setRange(0.0, 100.0)
+                point_size_spin.setSingleStep(1.0)
+                point_size_spin.setDecimals(1)
+                point_size_spin.setSpecialValueText("def")
+                point_size_spin.setFixedWidth(55)
+                point_size_spin.setValue(float(entry.get("point_size", 0.0)))
+
                 remove_btn = QPushButton("✕", series_container)
                 remove_btn.setFixedWidth(28)
                 series_layout.addWidget(combo, grid_row, 0)
                 series_layout.addWidget(label_edit, grid_row, 1)
                 series_layout.addWidget(y_axis_entry, grid_row, 2)
-                series_layout.addWidget(remove_btn, grid_row, 3)
-                row_widgets.append((combo, label_edit, y_axis_entry, remove_btn))
-                return combo, label_edit, y_axis_entry, remove_btn
+                series_layout.addWidget(colour_edit, grid_row, 3)
+                series_layout.addWidget(line_style_combo, grid_row, 4)
+                series_layout.addWidget(point_style_combo, grid_row, 5)
+                series_layout.addWidget(line_width_spin, grid_row, 6)
+                series_layout.addWidget(point_size_spin, grid_row, 7)
+                series_layout.addWidget(remove_btn, grid_row, 8)
+                row_widgets.append(
+                    (combo, label_edit, y_axis_entry, colour_edit,
+                     line_style_combo, point_style_combo, line_width_spin, point_size_spin, remove_btn)
+                )
 
             for i, entry in enumerate(self.y_entries):
-                combo, label_edit, y_axis_entry, remove_btn = _build_one_row(entry, i)
+                _build_one_row(entry, i)
+                (combo, label_edit, y_axis_entry, colour_edit,
+                 line_style_combo, point_style_combo, line_width_spin, point_size_spin, remove_btn) = row_widgets[i]
 
                 def _make_key_handler(idx: int) -> Any:
                     def _apply_key(text: str, _idx: int = idx) -> None:
@@ -555,6 +632,31 @@ class PlotPointsCommand(CommandPlugin):
                         self.y_entries[_idx]["y_axis"] = text.strip() or _DEFAULT_Y_AXIS
                     return _apply_y_axis
 
+                def _make_colour_handler(idx: int) -> Any:
+                    def _apply_colour(_idx: int = idx) -> None:
+                        self.y_entries[_idx]["colour"] = row_widgets[_idx][3].text().strip()
+                    return _apply_colour
+
+                def _make_line_style_handler(idx: int) -> Any:
+                    def _apply_line_style(_i: int, _idx: int = idx) -> None:
+                        self.y_entries[_idx]["line_style"] = row_widgets[_idx][4].currentData() or ""
+                    return _apply_line_style
+
+                def _make_point_style_handler(idx: int) -> Any:
+                    def _apply_point_style(_i: int, _idx: int = idx) -> None:
+                        self.y_entries[_idx]["point_style"] = row_widgets[_idx][5].currentData() or ""
+                    return _apply_point_style
+
+                def _make_line_width_handler(idx: int) -> Any:
+                    def _apply_line_width(val: float, _idx: int = idx) -> None:
+                        self.y_entries[_idx]["line_width"] = val
+                    return _apply_line_width
+
+                def _make_point_size_handler(idx: int) -> Any:
+                    def _apply_point_size(val: float, _idx: int = idx) -> None:
+                        self.y_entries[_idx]["point_size"] = val
+                    return _apply_point_size
+
                 def _make_remove_handler(idx: int) -> Any:
                     def _remove(_idx: int = idx) -> None:
                         del self.y_entries[_idx]
@@ -564,6 +666,11 @@ class PlotPointsCommand(CommandPlugin):
                 combo.currentTextChanged.connect(_make_key_handler(i))
                 label_edit.editingFinished.connect(_make_label_handler(i))
                 y_axis_entry.currentTextChanged.connect(_make_y_axis_handler(i))
+                colour_edit.editingFinished.connect(_make_colour_handler(i))
+                line_style_combo.currentIndexChanged.connect(_make_line_style_handler(i))
+                point_style_combo.currentIndexChanged.connect(_make_point_style_handler(i))
+                line_width_spin.valueChanged.connect(_make_line_width_handler(i))
+                point_size_spin.valueChanged.connect(_make_point_size_handler(i))
                 remove_btn.clicked.connect(_make_remove_handler(i))
 
         _rebuild_rows()
@@ -591,7 +698,9 @@ class PlotPointsCommand(CommandPlugin):
                 Base dict from
                 :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
                 extended with ``"x_key"``, ``"x_axis_name"``, and
-                ``"y_entries"`` (each entry includes a ``"y_axis"`` field).
+                ``"y_entries"`` (each entry includes ``"y_axis"`` and optional
+                format fields ``"colour"``, ``"line_style"``, ``"point_style"``,
+                ``"line_width"``, and ``"point_size"``).
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -630,7 +739,40 @@ class PlotPointsCommand(CommandPlugin):
             entry = dict(e)
             if "y_axis" not in entry:
                 entry["y_axis"] = legacy_y_axis
+            # Ensure format fields are typed correctly when loaded from JSON.
+            for key in ("line_width", "point_size"):
+                if key in entry:
+                    entry[key] = float(entry[key])
             self.y_entries.append(entry)
+
+
+def _entry_style_dict(entry: dict) -> dict:
+    """Build a style dict from a y-entry, omitting default/empty values.
+
+    Args:
+        entry (dict):
+            A y-series entry from :attr:`PlotPointsCommand.y_entries`.
+
+    Returns:
+        (dict):
+            Style dict suitable for
+            :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_style_from_dict`.
+            Empty when no format overrides are configured.
+    """
+    style: dict = {}
+    if entry.get("colour"):
+        style["colour"] = entry["colour"]
+    if entry.get("line_style"):
+        style["line_style"] = entry["line_style"]
+    if entry.get("point_style"):
+        style["point_style"] = entry["point_style"]
+    lw = float(entry.get("line_width", 0.0))
+    if lw > 0.0:
+        style["line_width"] = lw
+    ps = float(entry.get("point_size", 0.0))
+    if ps > 0.0:
+        style["point_size"] = ps
+    return style
 
 
 def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list[str]]:

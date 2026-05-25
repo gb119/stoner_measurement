@@ -27,6 +27,7 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QLabel,
     QLineEdit,
@@ -42,6 +43,11 @@ if TYPE_CHECKING:
 _DEFAULT_X_AXIS = "bottom"
 _DEFAULT_Y_AXIS = "left"
 _DEFAULT_COLUMN_OPTION = "(default)"
+
+#: Valid line-style names accepted by the plot widget.
+_LINE_STYLE_OPTIONS = ("solid", "dash", "dot", "dash-dot", "none")
+#: Valid point-style names accepted by the plot widget.
+_POINT_STYLE_OPTIONS = ("none", "circle", "square", "triangle", "diamond", "plus", "cross")
 
 
 def _format_axis_label(name: str, unit: str) -> str:
@@ -161,6 +167,30 @@ class PlotTraceCommand(CommandPlugin):
             when the configured axes are available. Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.assign_trace_axes`
             when attached to an engine with a plot widget.
+        colour (str):
+            Colour for the plotted trace, specified as any value accepted by
+            pyqtgraph (e.g. ``"red"``, ``"#0000ff"``).  An empty string
+            (the default) lets the plot panel choose a colour automatically.
+        line_style (str):
+            Line style for the plotted trace.  One of ``"solid"``,
+            ``"dash"``, ``"dot"``, ``"dash-dot"``, or ``"none"``.  An empty
+            string (the default) uses the plot panel default (``"solid"``).
+        point_style (str):
+            Marker symbol for data points.  One of ``"none"``, ``"circle"``,
+            ``"square"``, ``"triangle"``, ``"diamond"``, ``"plus"``, or
+            ``"cross"``.  An empty string (the default) uses the plot panel
+            default (``"none"``).
+        line_width (float):
+            Width of the plotted line in pixels.  A value of ``0.0`` (the
+            default) lets the plot panel use its own default width.
+        point_size (float):
+            Size of the plotted point markers in pixels.  A value of ``0.0``
+            (the default) lets the plot panel use its own default size.
+        plot_trace_style (pyqtSignal[str, object]):
+            Emitted by :meth:`execute` with ``(trace_name, style_dict)`` after
+            data is sent to the plot widget.  Automatically connected to
+            :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_style_from_dict`
+            when the plugin is attached to an engine with a plot widget.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -193,6 +223,8 @@ class PlotTraceCommand(CommandPlugin):
     plot_ensure_y_axis = pyqtSignal(str, str)
     #: Signal emitted by execute() — (trace_name, x_axis_name, y_axis_name).
     plot_trace_axes = pyqtSignal(str, str, str)
+    #: Signal emitted by execute() to set trace style — (trace_name, style_dict).
+    plot_trace_style = pyqtSignal(str, object)
 
     def __init__(self, parent=None) -> None:
         """Initialise with default configuration."""
@@ -209,6 +241,11 @@ class PlotTraceCommand(CommandPlugin):
         self.title_expr: str = "'plot'"
         self.x_axis_name: str = _DEFAULT_X_AXIS
         self.y_axis_name: str = _DEFAULT_Y_AXIS
+        self.colour: str = ""
+        self.line_style: str = ""
+        self.point_style: str = ""
+        self.line_width: float = 0.0
+        self.point_size: float = 0.0
 
     # ------------------------------------------------------------------
     # sequence_engine property — auto-wires plot signals to the plot widget
@@ -281,6 +318,9 @@ class PlotTraceCommand(CommandPlugin):
                 old_ensure_y_axis = getattr(old_pw, "ensure_y_axis", None)
                 if old_ensure_y_axis is not None:
                     _safe_disconnect(self.plot_ensure_y_axis, old_ensure_y_axis)
+                old_set_style = getattr(old_pw, "set_trace_style_from_dict", None)
+                if old_set_style is not None:
+                    _safe_disconnect(self.plot_trace_style, old_set_style)
 
         self._sequence_engine_ref = engine
 
@@ -309,6 +349,9 @@ class PlotTraceCommand(CommandPlugin):
                 new_ensure_y_axis = getattr(new_pw, "ensure_y_axis", None)
                 if new_ensure_y_axis is not None:
                     self.plot_ensure_y_axis.connect(new_ensure_y_axis)
+                new_set_style = getattr(new_pw, "set_trace_style_from_dict", None)
+                if new_set_style is not None:
+                    self.plot_trace_style.connect(new_set_style)
 
     @property
     def name(self) -> str:
@@ -406,6 +449,9 @@ class PlotTraceCommand(CommandPlugin):
             )
             self.plot_trace_axes.emit(title, x_axis, y_axis)
             self._wait_for_plot_response_or_raise(title)
+            style = self._build_style_dict()
+            if style:
+                self.plot_trace_style.emit(title, style)
             self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
             return
 
@@ -480,6 +526,32 @@ class PlotTraceCommand(CommandPlugin):
 
         self._emit_trace_axis_labels(trace_data, label_y_key)
 
+    def _build_style_dict(self) -> dict:
+        """Build a style dictionary from the current format attributes.
+
+        Only non-default values are included (empty strings and zero floats
+        are considered defaults and omitted), so that the plot widget retains
+        auto-assigned styles for un-configured fields.
+
+        Returns:
+            (dict):
+                A dict suitable for passing to
+                :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_style_from_dict`.
+                Empty when no format overrides are set.
+        """
+        style: dict = {}
+        if self.colour:
+            style["colour"] = self.colour
+        if self.line_style:
+            style["line_style"] = self.line_style
+        if self.point_style:
+            style["point_style"] = self.point_style
+        if self.line_width > 0.0:
+            style["line_width"] = self.line_width
+        if self.point_size > 0.0:
+            style["point_size"] = self.point_size
+        return style
+
     def _emit_single_trace(
         self,
         title: str,
@@ -521,6 +593,9 @@ class PlotTraceCommand(CommandPlugin):
         self.plot_trace_with_errors.emit(title, x_arr, y_arr, x_err, y_err)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
         self._wait_for_plot_response_or_raise(title)
+        style = self._build_style_dict()
+        if style:
+            self.plot_trace_style.emit(title, style)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_arr))
 
     # ------------------------------------------------------------------
@@ -600,6 +675,20 @@ class PlotTraceCommand(CommandPlugin):
         )
         x_axis_combo = self._build_plot_axis_combo(widget, axes_pair[0], self.x_axis_name, "x_axis_name")
         y_axis_combo = self._build_plot_axis_combo(widget, axes_pair[1], self.y_axis_name, "y_axis_name")
+        colour_edit = QLineEdit(self.colour, widget)
+        colour_edit.setPlaceholderText("(auto)")
+        colour_edit.setToolTip(
+            "Colour for the trace.  Any pyqtgraph-accepted value such as "
+            "\"red\" or \"#0000ff\".  Leave blank to use the auto-assigned colour."
+        )
+        line_style_combo = self._build_options_combo(
+            widget, ("",) + _LINE_STYLE_OPTIONS, self.line_style, "line_style"
+        )
+        point_style_combo = self._build_options_combo(
+            widget, ("",) + _POINT_STYLE_OPTIONS, self.point_style, "point_style"
+        )
+        line_width_spin = self._build_format_spinbox(widget, self.line_width, "line_width")
+        point_size_spin = self._build_format_spinbox(widget, self.point_size, "point_size")
 
         layout.addRow("Trace:", trace_combo)
         layout.addRow("Column:", column_combo)
@@ -617,6 +706,12 @@ class PlotTraceCommand(CommandPlugin):
                 widget,
             )
         )
+        layout.addRow(QLabel("<b>Format (optional):</b>", widget))
+        layout.addRow("Colour:", colour_edit)
+        layout.addRow("Line style:", line_style_combo)
+        layout.addRow("Point style:", point_style_combo)
+        layout.addRow("Line width (0=default):", line_width_spin)
+        layout.addRow("Point size (0=default):", point_size_spin)
         widget.setLayout(layout)
 
         self._wire_config_signals(
@@ -630,6 +725,7 @@ class PlotTraceCommand(CommandPlugin):
             x_axis_combo,
             y_axis_combo,
             channel_items,
+            colour_edit,
         )
         return widget
 
@@ -732,6 +828,82 @@ class PlotTraceCommand(CommandPlugin):
             pass
         return []
 
+    def _build_options_combo(
+        self,
+        widget: QWidget,
+        options: tuple,
+        current: str,
+        attr: str,
+    ) -> QComboBox:
+        """Build a combo box for a fixed set of string options.
+
+        The first option in *options* is used as the "default" sentinel
+        (displayed as blank when empty).  When the current value does not
+        appear in *options* the first item is selected.
+
+        Args:
+            widget (QWidget):
+                Parent widget for the combo box.
+            options (tuple):
+                Sequence of option strings.  The first entry may be ``""``
+                to represent the default / unset state.
+            current (str):
+                Currently stored value.
+            attr (str):
+                Attribute name on ``self`` to update when the selection changes.
+
+        Returns:
+            (QComboBox):
+                Populated combo box widget.
+        """
+        combo = QComboBox(widget)
+        display_options = [o if o else "(default)" for o in options]
+        combo.addItems(display_options)
+        if current in options:
+            idx = list(options).index(current)
+            combo.setCurrentIndex(idx)
+        else:
+            combo.setCurrentIndex(0)
+            setattr(self, attr, options[0])
+
+        def _on_changed(_i: int) -> None:
+            idx = combo.currentIndex()
+            setattr(self, attr, options[idx] if idx < len(options) else "")
+
+        combo.currentIndexChanged.connect(_on_changed)
+        return combo
+
+    def _build_format_spinbox(
+        self,
+        widget: QWidget,
+        current: float,
+        attr: str,
+    ) -> QDoubleSpinBox:
+        """Build a spinbox for a format float value (line width or point size).
+
+        A value of ``0.0`` means "use the plot panel default".
+
+        Args:
+            widget (QWidget):
+                Parent widget.
+            current (float):
+                Currently stored value.
+            attr (str):
+                Attribute name on ``self`` to update when the value changes.
+
+        Returns:
+            (QDoubleSpinBox):
+                Configured spinbox widget.
+        """
+        spinbox = QDoubleSpinBox(widget)
+        spinbox.setRange(0.0, 100.0)
+        spinbox.setSingleStep(0.5)
+        spinbox.setDecimals(1)
+        spinbox.setSpecialValueText("default")
+        spinbox.setValue(current)
+        spinbox.valueChanged.connect(lambda val: setattr(self, attr, val))
+        return spinbox
+
     def _build_channel_combo(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         widget: QWidget,
@@ -779,6 +951,7 @@ class PlotTraceCommand(CommandPlugin):
         x_axis_combo: QComboBox,
         y_axis_combo: QComboBox,
         channel_items: dict[str, str],
+        colour_edit: QLineEdit,
     ) -> None:
         def _update_enabled(advanced: bool) -> None:
             trace_combo.setEnabled(not advanced)
@@ -819,6 +992,9 @@ class PlotTraceCommand(CommandPlugin):
         def _apply_title() -> None:
             self.title_expr = title_edit.text().strip()
 
+        def _apply_colour() -> None:
+            self.colour = colour_edit.text().strip()
+
         trace_combo.currentTextChanged.connect(_apply_trace)
         column_combo.currentTextChanged.connect(_apply_column)
         transpose_check.toggled.connect(lambda checked: setattr(self, "transpose", checked))
@@ -828,6 +1004,7 @@ class PlotTraceCommand(CommandPlugin):
         title_edit.editingFinished.connect(_apply_title)
         x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
         y_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "y_axis_name", text))
+        colour_edit.editingFinished.connect(_apply_colour)
 
     # ------------------------------------------------------------------
     # Serialisation
@@ -840,7 +1017,9 @@ class PlotTraceCommand(CommandPlugin):
             (dict[str, Any]):
                 Base dict from :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
                 extended with ``"trace_key"``, ``"transpose"``, ``"advanced_mode"``,
-                ``"x_expr"``, ``"y_expr"``, and ``"title_expr"``.
+                ``"x_expr"``, ``"y_expr"``, ``"title_expr"``, and format fields
+                ``"colour"``, ``"line_style"``, ``"point_style"``,
+                ``"line_width"``, and ``"point_size"``.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -850,6 +1029,8 @@ class PlotTraceCommand(CommandPlugin):
             >>> d["type"]
             'command'
             >>> "trace_key" in d and "advanced_mode" in d
+            True
+            >>> "colour" in d and "line_style" in d
             True
         """
         d = super().to_json()
@@ -862,6 +1043,11 @@ class PlotTraceCommand(CommandPlugin):
         d["title_expr"] = self.title_expr
         d["x_axis_name"] = self.x_axis_name
         d["y_axis_name"] = self.y_axis_name
+        d["colour"] = self.colour
+        d["line_style"] = self.line_style
+        d["point_style"] = self.point_style
+        d["line_width"] = self.line_width
+        d["point_size"] = self.point_size
         return d
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -880,6 +1066,11 @@ class PlotTraceCommand(CommandPlugin):
         self.title_expr = data.get("title_expr", "'plot'")
         self.x_axis_name = data.get("x_axis_name", _DEFAULT_X_AXIS)
         self.y_axis_name = data.get("y_axis_name", _DEFAULT_Y_AXIS)
+        self.colour = data.get("colour", "")
+        self.line_style = data.get("line_style", "")
+        self.point_style = data.get("point_style", "")
+        self.line_width = float(data.get("line_width", 0.0))
+        self.point_size = float(data.get("point_size", 0.0))
 
 
 # ---------------------------------------------------------------------------
