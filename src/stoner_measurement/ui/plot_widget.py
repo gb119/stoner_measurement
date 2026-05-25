@@ -828,8 +828,10 @@ class PlotWidget(QWidget):
         raw_width = style.get("line_width")
         raw_size = style.get("point_size")
         try:
-            line_width = float(raw_width) if raw_width is not None and float(raw_width) > 0 else None
-            point_size = float(raw_size) if raw_size is not None and float(raw_size) > 0 else None
+            width_val = float(raw_width) if raw_width is not None else 0.0
+            line_width = width_val if width_val > 0 else None
+            size_val = float(raw_size) if raw_size is not None else 0.0
+            point_size = size_val if size_val > 0 else None
             self.set_trace_style(
                 trace_name,
                 colour=colour,
