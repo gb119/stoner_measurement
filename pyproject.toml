@@ -96,6 +96,7 @@ branch = true
 
 [tool.pylint.master]
 ignore = ["tests"]
+ignore-paths = ["^tests/"]
 
 [tool.coverage.report]
 show_missing = true
