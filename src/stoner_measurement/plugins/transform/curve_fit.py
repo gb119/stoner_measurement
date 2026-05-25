@@ -340,15 +340,18 @@ def _format_value_with_reference(value: Any, reference_value: Any, reference_unc
     scaled_value = value_float / scale
     scaled_uncertainty = reference_uncertainty_float / scale
 
+    if scaled_uncertainty <= 0.0 or not math.isfinite(scaled_uncertainty):
+        return ""
+
     rounded_uncertainty = float(f"{scaled_uncertainty:.1g}")
     if rounded_uncertainty <= 0.0 or not math.isfinite(rounded_uncertainty):
         return ""
 
     exponent = math.floor(math.log10(abs(scaled_uncertainty)))
-    decimals = -exponent
-    rounded_value = round(scaled_value, decimals)
-    if decimals > 0:
-        value_text = f"{rounded_value:.{decimals}f}"
+    decimal_places = -exponent
+    rounded_value = round(scaled_value, decimal_places)
+    if decimal_places > 0:
+        value_text = f"{rounded_value:.{decimal_places}f}"
     else:
         value_text = f"{rounded_value:.0f}"
 
