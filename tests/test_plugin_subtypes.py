@@ -426,6 +426,8 @@ class TestStateControlPlugin:
         p = _InstantState()
         p.ix = 3
         assert p.index == 3
+        p.ix = 4.9
+        assert p.index == 4
         p.index = 9
         assert p.ix == 9
         p.index = 3.7

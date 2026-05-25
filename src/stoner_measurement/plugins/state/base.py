@@ -419,6 +419,8 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> p = CounterPlugin()
             >>> vals = p.reported_values()
+            >>> list(vals.keys())
+            ['counter:Value', 'counter:Index']
             >>> vals['counter:Value']
             'counter.value'
             >>> vals['counter:Index']
