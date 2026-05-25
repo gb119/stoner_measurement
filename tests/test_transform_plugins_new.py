@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
@@ -14,9 +15,16 @@ from stoner_measurement.plugins.transform import (
 )
 
 
+@pytest.fixture
+def engine(qapp):
+    """Return a sequence engine that is always shut down after each test."""
+    eng = SequenceEngine()
+    yield eng
+    eng.shutdown()
+
+
 class TestWindowFilterPlugin:
-    def test_window_filter_advanced_mode_returns_filtered_trace(self, qapp):
-        engine = SequenceEngine()
+    def test_window_filter_advanced_mode_returns_filtered_trace(self, engine):
         plugin = WindowFilterPlugin()
         engine.add_plugin("window_filter", plugin)
 
@@ -40,10 +48,7 @@ class TestWindowFilterPlugin:
         np.testing.assert_allclose(td.x, x)
         np.testing.assert_allclose(td.y, expected)
 
-        engine.shutdown()
-
-    def test_window_filter_simple_mode_honours_selected_column(self, qapp):
-        engine = SequenceEngine()
+    def test_window_filter_simple_mode_honours_selected_column(self, engine):
         plugin = WindowFilterPlugin()
         engine.add_plugin("window_filter", plugin)
 
@@ -63,12 +68,9 @@ class TestWindowFilterPlugin:
         result = plugin.transform({})
         np.testing.assert_allclose(result["filtered"].y, np.arange(5, dtype=float))
 
-        engine.shutdown()
-
 
 class TestSavitzkyGolayPlugin:
-    def test_savgol_smoothing_keeps_quadratic_shape(self, qapp):
-        engine = SequenceEngine()
+    def test_savgol_smoothing_keeps_quadratic_shape(self, engine):
         plugin = SavitzkyGolayPlugin()
         engine.add_plugin("savgol_filter", plugin)
 
@@ -88,10 +90,7 @@ class TestSavitzkyGolayPlugin:
         td = result["savgol"]
         np.testing.assert_allclose(td.y, y, atol=1e-9)
 
-        engine.shutdown()
-
-    def test_savgol_first_derivative_of_quadratic(self, qapp):
-        engine = SequenceEngine()
+    def test_savgol_first_derivative_of_quadratic(self, engine):
         plugin = SavitzkyGolayPlugin()
         engine.add_plugin("savgol_filter", plugin)
 
@@ -111,12 +110,9 @@ class TestSavitzkyGolayPlugin:
         td = result["savgol"]
         np.testing.assert_allclose(td.y, 2.0 * x, atol=0.15)
 
-        engine.shutdown()
-
 
 class TestFourierTransformPlugin:
-    def test_forward_fft_resamples_non_uniform_data_and_shifts_frequency(self, qapp):
-        engine = SequenceEngine()
+    def test_forward_fft_resamples_non_uniform_data_and_shifts_frequency(self, engine):
         plugin = FourierTransformPlugin()
         engine.add_plugin("fourier_transform", plugin)
 
@@ -141,10 +137,7 @@ class TestFourierTransformPlugin:
         peak_frequency = abs(td.x[int(np.argmax(td.y))])
         assert abs(peak_frequency - frequency) < 1.0
 
-        engine.shutdown()
-
-    def test_inverse_fft_recovers_signal_shape(self, qapp):
-        engine = SequenceEngine()
+    def test_inverse_fft_recovers_signal_shape(self, engine):
         plugin = FourierTransformPlugin()
         engine.add_plugin("fourier_transform", plugin)
 
@@ -171,5 +164,3 @@ class TestFourierTransformPlugin:
         expected = signal / np.max(np.abs(signal))
         corr = np.corrcoef(reconstructed, expected)[0, 1]
         assert corr > 0.99
-
-        engine.shutdown()

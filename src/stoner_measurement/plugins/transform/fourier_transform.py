@@ -122,8 +122,8 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         else:
             delta_time = 1.0 / (len(x_uniform) * delta_frequency)
 
-        time_axis = (np.arange(len(signal), dtype=float) - len(signal) // 2) * delta_time
-        return time_axis, np.fft.fftshift(signal), _reciprocal_unit(self._x_unit())
+        time_axis = np.arange(len(signal), dtype=float) * delta_time
+        return time_axis, signal, _reciprocal_unit(self._x_unit())
 
     def _x_unit(self) -> str:
         """Return x-axis unit from selected trace context when available."""
