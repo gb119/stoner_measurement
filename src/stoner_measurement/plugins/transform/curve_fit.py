@@ -306,6 +306,60 @@ def _format_scalar_for_table(value: Any) -> str:
     return f"{value_float:.12g}"
 
 
+def _format_value_with_reference(value: Any, reference_value: Any, reference_uncertainty: Any) -> str:
+    """Format a scalar to match a fitted value's SI prefix and decimal precision.
+
+    Args:
+        value (Any):
+            Scalar to display.
+        reference_value (Any):
+            Fitted value used to choose the SI prefix.
+        reference_uncertainty (Any):
+            Fitted uncertainty used to choose decimal precision.
+
+    Returns:
+        (str):
+            Formatted scalar text with optional SI prefix, or an empty string
+            when any input is non-finite or otherwise invalid.
+    """
+    try:
+        value_float = float(value)
+        reference_value_float = float(reference_value)
+        reference_uncertainty_float = float(reference_uncertainty)
+    except (TypeError, ValueError):
+        return ""
+    if (
+        not math.isfinite(value_float)
+        or not math.isfinite(reference_value_float)
+        or not math.isfinite(reference_uncertainty_float)
+        or reference_uncertainty_float <= 0.0
+    ):
+        return ""
+
+    scale, si_prefix = _si_scale_and_prefix(reference_value_float)
+    scaled_value = value_float / scale
+    scaled_uncertainty = reference_uncertainty_float / scale
+
+    if scaled_uncertainty <= 0.0 or not math.isfinite(scaled_uncertainty):
+        return ""
+
+    rounded_uncertainty = float(f"{scaled_uncertainty:.1g}")
+    if rounded_uncertainty <= 0.0 or not math.isfinite(rounded_uncertainty):
+        return ""
+
+    exponent = math.floor(math.log10(abs(scaled_uncertainty)))
+    decimal_places = -exponent
+    rounded_value = round(scaled_value, decimal_places)
+    if decimal_places > 0:
+        value_text = f"{rounded_value:.{decimal_places}f}"
+    else:
+        value_text = f"{rounded_value:.0f}"
+
+    if si_prefix:
+        return f"{value_text} {si_prefix}"
+    return value_text
+
+
 class _ParamTableWidget(QWidget):
     """Table widget for configuring per-parameter bounds and initial values.
 
@@ -333,6 +387,8 @@ class _ParamTableWidget(QWidget):
         self._build_ui()
         self.param_settings: dict[str, dict[str, float | None]] = {}
         self._fitted_text_by_param: dict[str, str] = {}
+        self._fitted_value_by_param: dict[str, Any] = {}
+        self._fitted_uncertainty_by_param: dict[str, Any] = {}
         self._used_initial_text_by_param: dict[str, str] = {}
         self._parameter_names: list[str] = []
 
@@ -436,18 +492,27 @@ class _ParamTableWidget(QWidget):
         """
         fitted_text_by_param: dict[str, str] = {}
         for name in self._iter_parameter_names():
+            self._fitted_value_by_param[name] = results.get(name)
+            self._fitted_uncertainty_by_param[name] = results.get(f"{name}_err")
             fitted_text_by_param[name] = _format_value_with_uncertainty(
-                results.get(name),
-                results.get(f"{name}_err"),
+                self._fitted_value_by_param[name],
+                self._fitted_uncertainty_by_param[name],
             )
         self._fitted_text_by_param = fitted_text_by_param
         self._apply_fitted_values()
 
     def update_used_initial_values(self, values: dict[str, Any]) -> None:
         """Update the row showing the initial values currently used by the fit."""
-        self._used_initial_text_by_param = {
-            name: _format_scalar_for_table(values.get(name)) for name in self._iter_parameter_names()
-        }
+        formatted: dict[str, str] = {}
+        for name in self._iter_parameter_names():
+            value = values.get(name)
+            text = _format_value_with_reference(
+                value,
+                self._fitted_value_by_param.get(name),
+                self._fitted_uncertainty_by_param.get(name),
+            )
+            formatted[name] = text if text else _format_scalar_for_table(value)
+        self._used_initial_text_by_param = formatted
         self._set_row_label(_PARAM_TABLE_ROW_USED_INITIAL, "Initial used")
         self._apply_used_initial_values()
 
