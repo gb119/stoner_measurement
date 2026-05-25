@@ -244,6 +244,8 @@ def _resample_uniform(x_arr: np.ndarray, y_arr: np.ndarray) -> tuple[np.ndarray,
     else:
         y_uniform = np.interp(x_uniform, x_arr, np.asarray(y_arr, dtype=float))
     return x_uniform, y_uniform
+
+
 def _interp_complex(x_uniform: np.ndarray, x_arr: np.ndarray, values: np.ndarray) -> np.ndarray:
     """Interpolate complex-valued data by interpolating real and imaginary parts."""
     return np.interp(x_uniform, x_arr, np.real(values)) + 1j * np.interp(x_uniform, x_arr, np.imag(values))

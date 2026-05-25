@@ -136,7 +136,9 @@ class TestFourierTransformPlugin:
         assert abs(td.x[mid]) < 1e-9
         peak_frequency = abs(td.x[int(np.argmax(td.y))])
         assert abs(peak_frequency - frequency) < 1.0
-        np.testing.assert_allclose(td.df["y_magnitude"].to_numpy(dtype=float), np.abs(td.df["y_real"] + 1j * td.df["y_imag"]))
+        magnitude = td.df["y_magnitude"].to_numpy(dtype=float)
+        complex_from_parts = td.df["y_real"] + 1j * td.df["y_imag"]
+        np.testing.assert_allclose(magnitude, np.abs(complex_from_parts))
 
     def test_inverse_fft_recovers_signal_shape(self, engine):
         plugin = FourierTransformPlugin()

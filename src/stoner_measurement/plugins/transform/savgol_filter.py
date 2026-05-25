@@ -105,7 +105,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
             names.setdefault(output_col, names.get(y_col_name, y_col_name))
         else:
             base_name = names.get(y_col_name, y_col_name)
-            names.setdefault(output_col, f"d^{derivative_order}({base_name})/dx^{derivative_order}")
+            names.setdefault(output_col, f"d{derivative_order}_{base_name}_dx{derivative_order}")
 
         units = dict(source_units)
         units.setdefault("x", "")
