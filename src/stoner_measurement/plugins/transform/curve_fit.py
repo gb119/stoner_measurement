@@ -1211,15 +1211,10 @@ class CurveFitPlugin(TransformPlugin):
                 The compiled ``fit`` and optional ``p0`` callables.
         """
         ns: dict[str, Any] = {"__builtins__": __builtins__}
-        try:
-            import numpy as _np  # noqa: PLC0415
-
-            ns["np"] = _np
-            ns["numpy"] = _np
-            ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
-        except ImportError:
-            pass
-        exec(compile(self.fit_code, "<fit_code>", "exec"), ns)  # noqa: S102
+        ns["np"] = np
+        ns["numpy"] = np
+        ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
+        exec(compile(self.fit_code, "<fit_code>", "exec"), ns)  # noqa: S102  # pylint: disable=exec-used
         fit_func = ns.get("fit")
         p0_func = ns.get("p0")
         return fit_func, p0_func

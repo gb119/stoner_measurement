@@ -89,7 +89,7 @@ class KinesisMotorBase(MotorController):
             return
         close = getattr(self._motor, "close", None)
         if callable(close):
-            close()
+            close()  # pylint: disable=not-callable
         self._motor = None
 
     def identify(self) -> str:
@@ -253,5 +253,5 @@ class KinesisMotorBase(MotorController):
         for name in ("is_homed", "get_homed"):
             func = getattr(self._motor, name, None)
             if callable(func):
-                return bool(func())
+                return bool(func())  # pylint: disable=not-callable
         return None

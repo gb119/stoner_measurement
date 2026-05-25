@@ -170,6 +170,7 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             "numpy": np,
             "log": sequence_logger,
         }
+        # pylint: disable=exec-used
         exec(
             compile(self._code, "<scan_code>", "exec"), namespace
         )  # noqa: S102 – full builtins intentional; matches curve_fit plugin contract

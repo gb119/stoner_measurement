@@ -104,7 +104,8 @@ class TemperatureEngineState:
             ``False`` when in manual mode, or ``None`` if the instrument does
             not support querying the gas auto mode.
         loop_modes (dict[int, ControlMode]):
-            Mapping from control-loop number to its active :class:`~stoner_measurement.instruments.temperature_controller.ControlMode`.
+            Mapping from control-loop number to its active
+            :class:`~stoner_measurement.instruments.temperature_controller.ControlMode`.
         input_channels (dict[int, str]):
             Mapping from control-loop number to the identifier of the sensor
             channel currently assigned to that loop.
@@ -182,7 +183,8 @@ class StabilityConfig:
 class LoopSettings:
     """A snapshot of one PID control loop's configurable settings.
 
-    Used by the engine's :meth:`~stoner_measurement.temperature_control.engine.TemperatureControllerEngine.get_loop_settings`
+    Used by the engine's
+    :meth:`~stoner_measurement.temperature_control.engine.TemperatureControllerEngine.get_loop_settings`
     method to read all hardware-settable parameters for a single loop in one
     operation, and to populate the UI "Read" action.
 
@@ -210,7 +212,7 @@ class LoopSettings:
             Current manual heater output percentage (0–100 %), populated when
             :attr:`mode` is :attr:`~stoner_measurement.instruments.temperature_controller.ControlMode.OPEN_LOOP`
             and the driver supports
-            :meth:`~stoner_measurement.instruments.temperature_controller.TemperatureController.set_manual_heater_output`.
+            ``TemperatureController.set_manual_heater_output``.
             ``None`` in all other modes.
 
     Examples:

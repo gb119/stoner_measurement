@@ -234,12 +234,12 @@ class SIComboBox(QComboBox):
             # Use absolute tolerance (1e-30) to guard zero vs near-zero, and
             # relative tolerance (1e-9) for larger values.  The scale floor of
             # 1e-300 prevents division-by-zero in the relative comparison.
-            _ABS_TOL = 1e-30
-            _REL_TOL = 1e-9
-            _SCALE_FLOOR = 1e-300
+            abs_tol = 1e-30
+            rel_tol = 1e-9
+            scale_floor = 1e-300
             diff = abs(item_val - value)
-            scale = max(abs(item_val), abs(value), _SCALE_FLOOR)
-            if diff <= _ABS_TOL or diff / scale <= _REL_TOL:
+            scale = max(abs(item_val), abs(value), scale_floor)
+            if diff <= abs_tol or diff / scale <= rel_tol:
                 self.setCurrentIndex(i)
                 return
 

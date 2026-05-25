@@ -188,7 +188,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         from stoner_measurement.scan.ramp_generator import RampScanGenerator
         from stoner_measurement.scan.stepped_generator import SteppedScanGenerator
 
-        _REGISTRY: dict[str, type[BaseScanGenerator]] = {
+        registry: dict[str, type[BaseScanGenerator]] = {
             "ArbitraryFunctionScanGenerator": ArbitraryFunctionScanGenerator,
             "FunctionScanGenerator": FunctionScanGenerator,
             "ListScanGenerator": ListScanGenerator,
@@ -196,9 +196,9 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
             "SteppedScanGenerator": SteppedScanGenerator,
         }
         type_name = data.get("type", "")
-        gen_cls = _REGISTRY.get(type_name)
+        gen_cls = registry.get(type_name)
         if gen_cls is None:
-            raise ValueError(f"Unknown scan generator type: {type_name!r}. " f"Expected one of: {sorted(_REGISTRY)}")
+            raise ValueError(f"Unknown scan generator type: {type_name!r}. " f"Expected one of: {sorted(registry)}")
         return gen_cls._from_json_data(data, parent)  # noqa: SLF001
 
     @classmethod

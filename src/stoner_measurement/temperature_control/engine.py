@@ -1201,7 +1201,7 @@ def _compute_rate(history: deque[tuple[datetime, float]]) -> float:
         return 0.0
 
     # Convert to (seconds_offset, value) pairs relative to the first point.
-    t0, v0 = history[0]
+    t0, _v0 = history[0]
     xs = []
     ys = []
     for ts, val in history:

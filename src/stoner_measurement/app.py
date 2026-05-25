@@ -508,7 +508,7 @@ class MeasurementApp(QMainWindow):
             self._act_save_as.setStatusTip("Save the current measurement sequence to a new file")
             self._act_run.setStatusTip("Convert the measurement sequence to a script and execute it")
             self._act_generate.setStatusTip(
-                "Render the current sequence steps as Python code in the editor" " (without switching tabs)"
+                "Render the current sequence steps as Python code in the editor (without switching tabs)"
             )
             self._act_cut.setText("Cu&t Step")
             self._act_cut.setStatusTip("Cut the selected sequence step to the clipboard")

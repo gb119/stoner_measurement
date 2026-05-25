@@ -994,8 +994,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         finally:
             self._set_status(TraceStatus.DATA_AVAILABLE)
         self.data = {}
-        for ch in xs:
-            x_arr = np.array(xs[ch])
+        for ch, x_values in xs.items():
+            x_arr = np.array(x_values)
             y_arr = np.array(ys[ch])
             df = pd.DataFrame({"y": y_arr}, index=pd.Index(x_arr, name="x"))
             self.data[ch] = TraceData(

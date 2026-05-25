@@ -71,7 +71,7 @@ class GpibTransport(BaseTransport):
         try:
             import pyvisa as _pyvisa  # noqa: F401
         except ImportError as exc:
-            raise ImportError("pyvisa is required for GpibTransport. " "Install it with: pip install pyvisa") from exc
+            raise ImportError("pyvisa is required for GpibTransport. Install it with: pip install pyvisa") from exc
 
         super().__init__(timeout=timeout)
         self.address = address

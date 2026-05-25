@@ -597,7 +597,8 @@ class SourceMeter(BaseInstrument):
             ...     def output_enabled(self): return False
             ...     def enable_output(self, state): pass
             ...     def get_capabilities(self): return SourceMeterCapabilities()
-            >>> _SM(NullTransport(), ScpiProtocol()).configure_linear_sweep(0.0, 1.0, 11, delay=0.01)  # doctest: +ELLIPSIS
+            >>> sm = _SM(NullTransport(), ScpiProtocol())
+            >>> sm.configure_linear_sweep(0.0, 1.0, 11, delay=0.01)  # doctest: +ELLIPSIS
             Traceback (most recent call last):
             ...
             NotImplementedError: _SM does not support source sweep configuration. ...

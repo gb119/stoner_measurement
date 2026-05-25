@@ -314,7 +314,7 @@ class SRS830(LockInAmplifier):
             ValueError:
                 If *harmonic* is outside the permitted range.
         """
-        if not (1 <= harmonic <= self._MAX_HARMONIC):
+        if not 1 <= harmonic <= self._MAX_HARMONIC:
             raise ValueError(f"Harmonic must be an integer between 1 and {self._MAX_HARMONIC}.")
         self.write(f"HARM {harmonic}")
 
@@ -433,7 +433,7 @@ class SRS830(LockInAmplifier):
             ValueError:
                 If *value* is outside the permitted amplitude range.
         """
-        if not (self._OSCILLATOR_AMPLITUDE_MIN <= value <= self._OSCILLATOR_AMPLITUDE_MAX):
+        if not self._OSCILLATOR_AMPLITUDE_MIN <= value <= self._OSCILLATOR_AMPLITUDE_MAX:
             raise ValueError(
                 f"Oscillator amplitude must be between {self._OSCILLATOR_AMPLITUDE_MIN} V "
                 f"and {self._OSCILLATOR_AMPLITUDE_MAX} V."
@@ -486,7 +486,7 @@ class SRS830(LockInAmplifier):
             ValueError:
                 If *offset_pct* is outside the range −105 to +105.
         """
-        if not (-105.0 <= offset_pct <= 105.0):
+        if not -105.0 <= offset_pct <= 105.0:
             raise ValueError("Offset percentage must be between -105 and 105.")
         channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
         expand_encode = {LockInExpandFactor.X1: 0, LockInExpandFactor.X10: 1, LockInExpandFactor.X100: 2}

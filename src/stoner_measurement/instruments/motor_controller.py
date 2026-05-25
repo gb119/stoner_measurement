@@ -176,4 +176,3 @@ class MotorController(BaseInstrument):
                 return
             time.sleep(poll_period)
         raise TimeoutError("Timed out waiting for motor to reach target position.")
-

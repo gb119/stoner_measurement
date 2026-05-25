@@ -49,19 +49,23 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
 
     @property
     def start(self) -> float:
+        """Return the initial state value set before segment processing starts."""
         return self._start
 
     @start.setter
     def start(self, value: float) -> None:
+        """Set the initial state value set before segment processing starts."""
         self._start = float(value)
         self._invalidate()
 
     @property
     def segments(self) -> list[tuple[float, float, bool]]:
+        """Return a copy of configured ``(target, rate, measure)`` segments."""
         return list(self._segments)
 
     @segments.setter
     def segments(self, value: list[tuple[float, float, bool]]) -> None:
+        """Set configured ``(target, rate, measure)`` segments."""
         cleaned: list[tuple[float, float, bool]] = []
         for target, rate, measure in value:
             cleaned.append((float(target), float(rate), bool(measure)))
@@ -70,19 +74,23 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
 
     @property
     def poll_seconds(self) -> float:
+        """Return the polling interval between state checks in seconds."""
         return self._poll_seconds
 
     @poll_seconds.setter
     def poll_seconds(self, value: float) -> None:
+        """Set the polling interval between state checks in seconds."""
         self._poll_seconds = max(0.0, float(value))
         self._invalidate()
 
     @property
     def start_timeout_seconds(self) -> float:
+        """Return timeout used while waiting for the initial state to be reached."""
         return self._start_timeout_seconds
 
     @start_timeout_seconds.setter
     def start_timeout_seconds(self, value: float) -> None:
+        """Set timeout used while waiting for the initial state to be reached."""
         self._start_timeout_seconds = max(0.0, float(value))
         self._invalidate()
 
@@ -96,7 +104,10 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         plugin.set_state(float(self._start))
         start_wait_started = time.monotonic()
         while not plugin.is_at_target():
-            if self._start_timeout_seconds > 0.0 and (time.monotonic() - start_wait_started) > self._start_timeout_seconds:
+            if (
+                self._start_timeout_seconds > 0.0
+                and (time.monotonic() - start_wait_started) > self._start_timeout_seconds
+            ):
                 return
             if self._poll_seconds > 0.0:
                 time.sleep(self._poll_seconds)
