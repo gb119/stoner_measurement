@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QLabel
-
-from stoner_measurement.app import MeasurementApp
 from stoner_measurement.app import (
-    _STATUS_BACKGROUND_DEFAULT,
-    _STATUS_BACKGROUND_ERROR,
-    _STATUS_BACKGROUND_PAUSED,
-    _STATUS_BACKGROUND_RUNNING,
+    _STATUS_BACKGROUND_DEFAULT_COLOR,
+    _STATUS_BACKGROUND_ERROR_COLOR,
+    _STATUS_BACKGROUND_PAUSED_COLOR,
+    _STATUS_BACKGROUND_RUNNING_COLOR,
+    MeasurementApp,
 )
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
@@ -313,31 +311,29 @@ class TestMeasurementApp:
 
     def test_status_bar_defaults_to_grey_background(self, qapp):
         app = MeasurementApp()
-        label = app.statusBar().findChild(QLabel, "qt_statusbar_label")
-        assert label is not None
-        assert app.statusBar().currentMessage() == "Ready"
-        assert f"background-color: {_STATUS_BACKGROUND_DEFAULT};" in label.styleSheet()
-        app._engine.shutdown()
+        try:
+            assert app.statusBar().currentMessage() == "Ready"
+            assert f"background-color: {_STATUS_BACKGROUND_DEFAULT_COLOR};" in app.statusBar().styleSheet()
+        finally:
+            app._engine.shutdown()
 
     def test_sequence_status_changes_update_status_bar_background(self, qapp):
         app = MeasurementApp()
-        label = app.statusBar().findChild(QLabel, "qt_statusbar_label")
-        assert label is not None
-
-        expected = [
-            ("Running", _STATUS_BACKGROUND_RUNNING),
-            ("Paused", _STATUS_BACKGROUND_PAUSED),
-            ("Error", _STATUS_BACKGROUND_ERROR),
-            ("Idle", _STATUS_BACKGROUND_DEFAULT),
-            ("Stopped", _STATUS_BACKGROUND_DEFAULT),
-        ]
-        for status, colour in expected:
-            app._engine.status_changed.emit(status)
-            qapp.processEvents()
-            assert app.statusBar().currentMessage() == status
-            assert f"background-color: {colour};" in label.styleSheet()
-
-        app._engine.shutdown()
+        try:
+            expected = [
+                ("Running", _STATUS_BACKGROUND_RUNNING_COLOR),
+                ("Paused", _STATUS_BACKGROUND_PAUSED_COLOR),
+                ("Error", _STATUS_BACKGROUND_ERROR_COLOR),
+                ("Idle", _STATUS_BACKGROUND_DEFAULT_COLOR),
+                ("Stopped", _STATUS_BACKGROUND_DEFAULT_COLOR),
+            ]
+            for status, colour in expected:
+                app._engine.status_changed.emit(status)
+                qapp.processEvents()
+                assert app.statusBar().currentMessage() == status
+                assert f"background-color: {colour};" in app.statusBar().styleSheet()
+        finally:
+            app._engine.shutdown()
 
     def test_central_widget_has_tabs(self, qapp):
         app = MeasurementApp()

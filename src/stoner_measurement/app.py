@@ -10,7 +10,6 @@ from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
-    QLabel,
     QMainWindow,
     QMessageBox,
     QStatusBar,
@@ -20,7 +19,12 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.ui.icons import make_generate_icon, make_log_icon, make_magnet_icon, make_temperature_icon
+from stoner_measurement.ui.icons import (
+    make_generate_icon,
+    make_log_icon,
+    make_magnet_icon,
+    make_temperature_icon,
+)
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
 from stoner_measurement.ui.settings_dialog import (
@@ -30,10 +34,10 @@ from stoner_measurement.ui.settings_dialog import (
     make_app_settings,
 )
 
-_STATUS_BACKGROUND_DEFAULT = "#6b7280"
-_STATUS_BACKGROUND_RUNNING = "#2e7d32"
-_STATUS_BACKGROUND_PAUSED = "#ef6c00"
-_STATUS_BACKGROUND_ERROR = "#c62828"
+_STATUS_BACKGROUND_DEFAULT_COLOR = "#6b7280"
+_STATUS_BACKGROUND_RUNNING_COLOR = "#2e7d32"
+_STATUS_BACKGROUND_PAUSED_COLOR = "#ef6c00"
+_STATUS_BACKGROUND_ERROR_COLOR = "#c62828"
 
 
 class MeasurementApp(QMainWindow):
@@ -282,27 +286,40 @@ class MeasurementApp(QMainWindow):
         # Initialise labels for the default (Measurement) tab -----------
         self._on_tab_changed(self._main_window.tabs.currentIndex())
 
-    def _show_status_message(self, message: str, background_colour: str = _STATUS_BACKGROUND_DEFAULT) -> None:
-        """Show a status-bar message and apply a coloured background to its text label."""
+    def _show_status_message(
+        self,
+        message: str,
+        background_colour: str = _STATUS_BACKGROUND_DEFAULT_COLOR,
+    ) -> None:
+        """Show a status-bar message and apply a coloured background.
+
+        Args:
+            message (str):
+                Text to show in the status bar.
+            background_colour (str):
+                CSS colour value used for the status bar background.
+        """
         self._status_bar.showMessage(message)
-        status_label = self._status_bar.findChild(QLabel, "qt_statusbar_label")
-        if status_label is None:
-            return
-        status_label.setStyleSheet(
-            "QLabel#qt_statusbar_label { "
+        self._status_bar.setStyleSheet(
+            "QStatusBar { "
             f"background-color: {background_colour}; "
-            "color: white; padding: 2px 6px; border-radius: 4px; }"
+            "color: white; } "
+            "QStatusBar::item { border: none; }"
         )
 
     def _on_engine_status_changed(self, status: str) -> None:
-        """Update status text and colour in response to sequence-engine status changes."""
-        background_colour = _STATUS_BACKGROUND_DEFAULT
-        if status == "Running" or self._engine.is_running:
-            background_colour = _STATUS_BACKGROUND_RUNNING
-        if status == "Paused" or self._engine.is_paused:
-            background_colour = _STATUS_BACKGROUND_PAUSED
-        if status == "Error":
-            background_colour = _STATUS_BACKGROUND_ERROR
+        """Update status text and colour in response to sequence-engine status changes.
+
+        Args:
+            status (str):
+                Current sequence engine state string.
+        """
+        colour_by_status = {
+            "Running": _STATUS_BACKGROUND_RUNNING_COLOR,
+            "Paused": _STATUS_BACKGROUND_PAUSED_COLOR,
+            "Error": _STATUS_BACKGROUND_ERROR_COLOR,
+        }
+        background_colour = colour_by_status.get(status, _STATUS_BACKGROUND_DEFAULT_COLOR)
         self._show_status_message(status, background_colour)
 
     def _build_file_actions(self, style: QStyle) -> None:
