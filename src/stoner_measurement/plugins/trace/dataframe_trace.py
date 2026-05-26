@@ -169,11 +169,16 @@ class DataFrameTracePlugin(TransformPlugin):
             self.selected_columns = list(selected)
         return selected
 
-    def _resolve_selected_column_roles(self, selected_columns: list[str]) -> dict[str, str]:
+    def _resolve_selected_column_roles(
+        self,
+        selected_columns: list[str],
+        configured_roles: dict[str, str] | None = None,
+    ) -> dict[str, str]:
         """Return a validated role mapping for selected output columns."""
+        configured = self.selected_column_roles if configured_roles is None else configured_roles
         roles: dict[str, str] = {}
         for ix, column in enumerate(selected_columns):
-            configured_role = self.selected_column_roles.get(column, "")
+            configured_role = configured.get(column, "")
             default_role = COLUMN_ROLE_Y if ix == 0 else COLUMN_ROLE_Z
             if configured_role in _VALID_COLUMN_ROLES:
                 roles[column] = configured_role
@@ -279,9 +284,8 @@ class DataFrameTracePlugin(TransformPlugin):
                     role_combo.setCurrentIndex(combo_index)
 
                     def _apply_role(
-                        index: int, *, col_name: str = column_name, combo: QComboBox = role_combo
+                        _index: int, *, col_name: str = column_name, combo: QComboBox = role_combo
                     ) -> None:
-                        del index
                         selected_role = combo.currentData()
                         if isinstance(selected_role, str):
                             self.selected_column_roles[col_name] = selected_role
@@ -322,8 +326,7 @@ class DataFrameTracePlugin(TransformPlugin):
                 selected.append(col_name)
                 collected_roles[col_name] = role if isinstance(role, str) else COLUMN_ROLE_Z
             self.selected_columns = selected
-            self.selected_column_roles = collected_roles
-            self.selected_column_roles = self._resolve_selected_column_roles(selected)
+            self.selected_column_roles = self._resolve_selected_column_roles(selected, collected_roles)
             for row in range(columns_table.rowCount()):
                 name_item = columns_table.item(row, 1)
                 role_combo = columns_table.cellWidget(row, 2)
