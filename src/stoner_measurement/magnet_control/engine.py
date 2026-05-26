@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -97,6 +98,9 @@ class MagnetControllerEngine(QObject):
         self.publisher: MagnetPublisher = MagnetPublisher(self)
 
         self._driver = None  # MagnetController | None
+        self._connected_driver_name: str | None = None
+        self._connected_transport_name: str | None = None
+        self._connected_address: str | None = None
         self._status: MagnetEngineStatus = MagnetEngineStatus.DISCONNECTED
         self._stability_config: MagnetStabilityConfig = MagnetStabilityConfig()
 
@@ -113,6 +117,7 @@ class MagnetControllerEngine(QObject):
         self._target_current: float | None = None
         self._ramp_rate_field: float | None = None
         self._ramp_rate_current: float | None = None
+        self._latest_state: MagnetEngineState = MagnetEngineState(engine_status=self._status)
 
         self._timer = QTimer(self)
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
@@ -194,6 +199,7 @@ class MagnetControllerEngine(QObject):
             self._set_status(MagnetEngineStatus.DISCONNECTED)
             raise
         self._driver = driver
+        self._connected_driver_name = type(driver).__name__
         self._history.clear()
         self._at_target_since = None
         self._unstable_since = None
@@ -233,6 +239,9 @@ class MagnetControllerEngine(QObject):
         protocol = self._build_protocol(driver_name)
         driver = driver_cls(transport=transport, protocol=protocol)
         self.connect_instrument(driver)
+        self._connected_driver_name = driver_name
+        self._connected_transport_name = transport_name
+        self._connected_address = address
 
     def _resolve_driver_class(self, driver_name: str) -> type[MagnetController]:
         """Resolve a magnet-controller driver class by name.
@@ -348,12 +357,47 @@ class MagnetControllerEngine(QObject):
         if self._driver is not None:
             self._disconnect_driver(self._driver, log_context="on disconnect")
         self._driver = None
+        self._connected_driver_name = None
+        self._connected_transport_name = None
+        self._connected_address = None
         self._history.clear()
         self._at_target_since = None
         self._unstable_since = None
         self._stable = False
         self._set_status(MagnetEngineStatus.DISCONNECTED)
+        self._latest_state = MagnetEngineState(
+            target_field=self._target_field,
+            target_current=self._target_current,
+            ramp_rate_field=self._ramp_rate_field,
+            ramp_rate_current=self._ramp_rate_current,
+            engine_status=self._status,
+        )
         logger.info("MagnetControllerEngine: disconnected.")
+
+    @property
+    def connected_driver(self) -> MagnetController | None:
+        """Return the currently connected driver instance.
+
+        Returns:
+            (MagnetController | None):
+                Connected driver instance, or ``None`` when disconnected.
+        """
+        return self._driver
+
+    @property
+    def connected_driver_name(self) -> str | None:
+        """Return the connected driver name when known."""
+        return self._connected_driver_name
+
+    @property
+    def connected_transport_name(self) -> str | None:
+        """Return the active transport type when known."""
+        return self._connected_transport_name
+
+    @property
+    def connected_address(self) -> str | None:
+        """Return the active connection address when known."""
+        return self._connected_address
 
     def set_target_field(self, field: float) -> None:
         """Set the target magnetic field.
@@ -544,6 +588,7 @@ class MagnetControllerEngine(QObject):
             return None
 
         self._set_status(MagnetEngineStatus.POLLING)
+        self._latest_state = state
         self.publisher.reading_updated.emit(state.reading)
         self.publisher.state_updated.emit(state)
         return state
@@ -581,16 +626,7 @@ class MagnetControllerEngine(QObject):
             True
             >>> engine.shutdown()
         """
-        return MagnetEngineState(
-            reading=None,
-            target_field=self._target_field,
-            target_current=self._target_current,
-            ramp_rate_field=self._ramp_rate_field,
-            ramp_rate_current=self._ramp_rate_current,
-            magnet_constant=self._driver.magnet_constant if self._driver is not None else None,
-            at_target=self._stable,
-            engine_status=self._status,
-        )
+        return replace(self._latest_state, engine_status=self._status)
 
     @pyqtSlot()
     def shutdown(self) -> None:
@@ -613,7 +649,17 @@ class MagnetControllerEngine(QObject):
         if self._driver is not None:
             self._disconnect_driver(self._driver, log_context="on shutdown")
         self._driver = None
+        self._connected_driver_name = None
+        self._connected_transport_name = None
+        self._connected_address = None
         self._set_status(MagnetEngineStatus.STOPPED)
+        self._latest_state = MagnetEngineState(
+            target_field=self._target_field,
+            target_current=self._target_current,
+            ramp_rate_field=self._ramp_rate_field,
+            ramp_rate_current=self._ramp_rate_current,
+            engine_status=self._status,
+        )
         if MagnetControllerEngine._singleton is self:
             MagnetControllerEngine._singleton = None
         logger.info("MagnetControllerEngine: shut down.")
@@ -754,6 +800,7 @@ class MagnetControllerEngine(QObject):
         """
         if status != self._status:
             self._status = status
+            self._latest_state = replace(self._latest_state, engine_status=status)
             self.publisher.engine_status_changed.emit(status)
 
 

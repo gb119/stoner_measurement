@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -100,6 +101,9 @@ class TemperatureControllerEngine(QObject):
         self.publisher: TemperaturePublisher = TemperaturePublisher(self)
 
         self._driver = None  # TemperatureController | None
+        self._connected_driver_name: str | None = None
+        self._connected_transport_name: str | None = None
+        self._connected_address: str | None = None
         self._status: EngineStatus = EngineStatus.DISCONNECTED
         self._stability_config: StabilityConfig = StabilityConfig()
 
@@ -112,6 +116,7 @@ class TemperatureControllerEngine(QObject):
         self._unstable_since: dict[int, datetime | None] = {}
         # Current stable flags (persisted across polls for hysteresis).
         self._stable: dict[int, bool] = {}
+        self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
 
         self._timer = QTimer(self)
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
@@ -192,6 +197,7 @@ class TemperatureControllerEngine(QObject):
             self._set_status(EngineStatus.DISCONNECTED)
             raise
         self._driver = driver
+        self._connected_driver_name = type(driver).__name__
         self._history.clear()
         self._at_setpoint_since.clear()
         self._unstable_since.clear()
@@ -231,6 +237,9 @@ class TemperatureControllerEngine(QObject):
         protocol = self._build_protocol(driver_name)
         driver = driver_cls(transport=transport, protocol=protocol)
         self.connect_instrument(driver)
+        self._connected_driver_name = driver_name
+        self._connected_transport_name = transport_name
+        self._connected_address = address
 
     def _resolve_driver_class(self, driver_name: str) -> type[TemperatureController]:
         """Resolve a temperature-controller driver class by name.
@@ -350,11 +359,15 @@ class TemperatureControllerEngine(QObject):
         if self._driver is not None:
             self._disconnect_driver(self._driver, log_context="on disconnect")
         self._driver = None
+        self._connected_driver_name = None
+        self._connected_transport_name = None
+        self._connected_address = None
         self._history.clear()
         self._at_setpoint_since.clear()
         self._unstable_since.clear()
         self._stable.clear()
         self._set_status(EngineStatus.DISCONNECTED)
+        self._latest_state = TemperatureEngineState(engine_status=self._status)
         logger.info("TemperatureControllerEngine: disconnected.")
 
     @property
@@ -374,6 +387,21 @@ class TemperatureControllerEngine(QObject):
             >>> engine.shutdown()
         """
         return self._driver
+
+    @property
+    def connected_driver_name(self) -> str | None:
+        """Return the connected driver name when known."""
+        return self._connected_driver_name
+
+    @property
+    def connected_transport_name(self) -> str | None:
+        """Return the active transport type when known."""
+        return self._connected_transport_name
+
+    @property
+    def connected_address(self) -> str | None:
+        """Return the active connection address when known."""
+        return self._connected_address
 
     def set_setpoint(self, loop: int, value: float) -> None:
         """Set the temperature setpoint for *loop*.
@@ -915,6 +943,34 @@ class TemperatureControllerEngine(QObject):
         ms = max(100, ms)
         self._timer.setInterval(ms)
 
+    def read_controller_state(self) -> TemperatureEngineState | None:
+        """Read the current controller state immediately and publish it.
+
+        Returns:
+            (TemperatureEngineState | None):
+                Freshly read engine state, or ``None`` when no controller is
+                connected or the read fails.
+        """
+        if self._driver is None:
+            return None
+        try:
+            state = self._build_state()
+        except Exception:
+            logger.exception("TemperatureControllerEngine: read-state error")
+            self._set_status(EngineStatus.ERROR)
+            return None
+
+        self._set_status(EngineStatus.POLLING)
+        self._latest_state = state
+        for reading in state.readings.values():
+            self.publisher.channel_reading.emit(reading)
+        self.publisher.state_updated.emit(state)
+        return state
+
+    def get_engine_state(self) -> TemperatureEngineState:
+        """Return a snapshot of the current engine state without polling."""
+        return replace(self._latest_state, engine_status=self._status)
+
     @pyqtSlot()
     def shutdown(self) -> None:
         """Stop polling, release the driver, and mark the engine as stopped.
@@ -936,7 +992,11 @@ class TemperatureControllerEngine(QObject):
         if self._driver is not None:
             self._disconnect_driver(self._driver, log_context="on shutdown")
         self._driver = None
+        self._connected_driver_name = None
+        self._connected_transport_name = None
+        self._connected_address = None
         self._set_status(EngineStatus.STOPPED)
+        self._latest_state = TemperatureEngineState(engine_status=self._status)
         if TemperatureControllerEngine._singleton is self:
             TemperatureControllerEngine._singleton = None
         logger.info("TemperatureControllerEngine: shut down.")
@@ -965,20 +1025,7 @@ class TemperatureControllerEngine(QObject):
     @pyqtSlot()
     def _poll(self) -> None:
         """Query the instrument, compute derived quantities, and publish results."""
-        if self._driver is None:
-            return
-        try:
-            state = self._build_state()
-        except Exception:
-            logger.exception("TemperatureControllerEngine: poll error")
-            self._set_status(EngineStatus.ERROR)
-            return
-
-        self._set_status(EngineStatus.POLLING)
-
-        for reading in state.readings.values():
-            self.publisher.channel_reading.emit(reading)
-        self.publisher.state_updated.emit(state)
+        self.read_controller_state()
 
     def _build_state(self) -> TemperatureEngineState:
         """Query the driver and return a full :class:`TemperatureEngineState`.
@@ -1164,6 +1211,7 @@ class TemperatureControllerEngine(QObject):
         """
         if status != self._status:
             self._status = status
+            self._latest_state = replace(self._latest_state, engine_status=status)
             self.publisher.engine_status_changed.emit(status)
 
 
