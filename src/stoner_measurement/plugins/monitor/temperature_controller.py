@@ -357,16 +357,24 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 result[f"stable_{lp}"] = ""
         return result
 
-    def read(self) -> dict[str, float]:
+    def read(self, *, force_poll: bool = False) -> dict[str, float]:
         """Read the latest parameter snapshot from the engine.
 
-        Retrieves the engine's cached state without issuing additional hardware
-        queries.  Returns ``math.nan`` for any parameter that cannot be
-        obtained from the engine state.
+        By default retrieves the engine's cached state without issuing additional
+        hardware queries.  When *force_poll* is ``True`` the engine performs an
+        immediate hardware poll and the freshly read state is used, making the
+        call synchronous with the hardware.
+
+        Args:
+            force_poll (bool):
+                When ``True``, requests an immediate hardware poll from the
+                engine before returning values.  Defaults to ``False``.
 
         Returns:
             (dict[str, float]):
-                Mapping of parameter name to current value.
+                Mapping of parameter name to current value.  Returns
+                ``math.nan`` for any parameter that cannot be obtained from
+                the engine state.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -378,8 +386,15 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             >>> reading = m.read()
             >>> "setpoint_1" in reading
             True
+            >>> reading_forced = m.read(force_poll=True)
+            >>> "setpoint_1" in reading_forced
+            True
         """
-        state = self._current_state()
+        if force_poll:
+            polled = self._engine().read_controller_state()
+            state = polled if polled is not None else self._current_state()
+        else:
+            state = self._current_state()
         result: dict[str, float] = {}
         channels = self._active_channels()
         loops = self._active_loops()

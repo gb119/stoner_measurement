@@ -71,6 +71,7 @@ class _FakeEngine:
         self.connected_transport_name = None
         self.connected_address = None
         self.connect_calls: list[tuple[str, str, str]] = []
+        self.poll_calls: int = 0
         self._state: TemperatureEngineState = state or TemperatureEngineState(
             engine_status=EngineStatus.DISCONNECTED
         )
@@ -83,6 +84,10 @@ class _FakeEngine:
         self.connected_driver = SimpleNamespace()
 
     def get_engine_state(self) -> TemperatureEngineState:
+        return self._state
+
+    def read_controller_state(self) -> TemperatureEngineState:
+        self.poll_calls += 1
         return self._state
 
 
@@ -268,6 +273,50 @@ def test_read_caches_last_reading(monkeypatch, qapp):
 
     plugin.read()
     assert "setpoint_1" in plugin.last_reading
+
+
+def test_read_force_poll_triggers_engine_poll(monkeypatch, qapp):
+    state = _make_state(channels=["A"], loops=[1])
+    engine = _FakeEngine(state)
+    plugin = _make_plugin(engine, monkeypatch)
+    plugin.sensor_channels = ["A"]
+    plugin.control_loops = [1]
+
+    assert engine.poll_calls == 0
+    reading = plugin.read(force_poll=True)
+    assert engine.poll_calls == 1
+    assert reading["setpoint_1"] == pytest.approx(296.0)
+
+
+def test_read_no_force_poll_does_not_trigger_engine_poll(monkeypatch, qapp):
+    state = _make_state(channels=["A"], loops=[1])
+    engine = _FakeEngine(state)
+    plugin = _make_plugin(engine, monkeypatch)
+    plugin.sensor_channels = ["A"]
+    plugin.control_loops = [1]
+
+    plugin.read()
+    assert engine.poll_calls == 0
+
+
+def test_read_force_poll_falls_back_to_cached_state_when_poll_returns_none(monkeypatch, qapp):
+    state = _make_state(channels=["A"], loops=[1])
+    engine = _FakeEngine(state)
+
+    def _returning_none():
+        engine.poll_calls += 1
+        return None
+
+    engine.read_controller_state = _returning_none  # type: ignore[method-assign]
+
+    plugin = _make_plugin(engine, monkeypatch)
+    plugin.sensor_channels = ["A"]
+    plugin.control_loops = [1]
+
+    reading = plugin.read(force_poll=True)
+    assert engine.poll_calls == 1
+    # Falls back to cached state — values should still be present
+    assert reading["setpoint_1"] == pytest.approx(296.0)
 
 
 # ---------------------------------------------------------------------------
