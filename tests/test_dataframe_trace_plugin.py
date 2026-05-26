@@ -26,7 +26,7 @@ def _make_counter_with_data() -> CounterPlugin:
     return plugin
 
 
-def test_measure_builds_multicolumn_trace_from_state_dataframe(engine):
+def test_run_builds_multicolumn_trace_from_state_dataframe(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
     engine.add_plugin("counter", source)
@@ -48,7 +48,7 @@ def test_measure_builds_multicolumn_trace_from_state_dataframe(engine):
     assert td.column_roles["signal_b"] == COLUMN_ROLE_Z
 
 
-def test_measure_uses_selected_column_as_x_axis(engine):
+def test_run_uses_selected_column_as_x_axis(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
     engine.add_plugin("counter", source)
@@ -67,7 +67,7 @@ def test_measure_uses_selected_column_as_x_axis(engine):
     assert td.names["x"] == "value"
 
 
-def test_measure_deduplicates_selected_output_columns(engine):
+def test_run_deduplicates_selected_output_columns(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
     engine.add_plugin("counter", source)

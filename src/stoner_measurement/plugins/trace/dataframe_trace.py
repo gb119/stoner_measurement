@@ -250,7 +250,6 @@ class DataFrameTracePlugin(TransformPlugin):
         form.addRow("Source dataframe plugin:", source_combo)
         form.addRow("X source:", x_combo)
         form.addRow("Trace columns:", columns_list)
-        widget.setLayout(form)
         return widget
 
     def to_json(self) -> dict[str, Any]:
