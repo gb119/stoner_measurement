@@ -13,6 +13,12 @@ from stoner_measurement.magnet_control.types import (
     MagnetReading,
 )
 from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.state import (
+    _magnet_controller_plugin as magnet_module,
+)
+from stoner_measurement.plugins.state import (
+    _temperature_controller_plugin as temperature_module,
+)
 from stoner_measurement.plugins.state_scan import (
     MagnetControllerScanPlugin,
     TemperatureControllerScanPlugin,
@@ -156,8 +162,6 @@ class _FakeTemperatureEngine:
 
 
 def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
-    from stoner_measurement.plugins.state import _magnet_controller_plugin as magnet_module
-
     engine = _FakeMagnetEngine()
     monkeypatch.setattr(magnet_module, "InstrumentDriverManager", _manager_factory("FakeMagnet"))
     monkeypatch.setattr(
@@ -186,8 +190,6 @@ def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
 
 
 def test_magnet_controller_sweep_plugin_serialises(monkeypatch, qapp):
-    from stoner_measurement.plugins.state import _magnet_controller_plugin as magnet_module
-
     engine = _FakeMagnetEngine()
     monkeypatch.setattr(magnet_module, "InstrumentDriverManager", _manager_factory("FakeMagnet"))
     monkeypatch.setattr(
@@ -214,8 +216,6 @@ def test_magnet_controller_sweep_plugin_serialises(monkeypatch, qapp):
 
 
 def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monkeypatch, qapp):
-    from stoner_measurement.plugins.state import _temperature_controller_plugin as temperature_module
-
     engine = _FakeTemperatureEngine()
     monkeypatch.setattr(temperature_module, "InstrumentDriverManager", _manager_factory("FakeTemp"))
     monkeypatch.setattr(
@@ -246,8 +246,6 @@ def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monke
 
 
 def test_temperature_controller_sweep_plugin_round_trips(monkeypatch, qapp):
-    from stoner_measurement.plugins.state import _temperature_controller_plugin as temperature_module
-
     engine = _FakeTemperatureEngine()
     monkeypatch.setattr(temperature_module, "InstrumentDriverManager", _manager_factory("FakeTemp"))
     monkeypatch.setattr(
