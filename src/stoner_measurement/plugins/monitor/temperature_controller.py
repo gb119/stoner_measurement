@@ -365,7 +365,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         immediate hardware poll and the freshly read state is used, making the
         call synchronous with the hardware.
 
-        Args:
+        Keyword Parameters:
             force_poll (bool):
                 When ``True``, requests an immediate hardware poll from the
                 engine before returning values.  Defaults to ``False``.

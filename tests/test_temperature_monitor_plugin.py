@@ -87,6 +87,7 @@ class _FakeEngine:
         return self._state
 
     def read_controller_state(self) -> TemperatureEngineState:
+        """Simulate a controller state read and increment the poll counter."""
         self.poll_calls += 1
         return self._state
 
