@@ -542,11 +542,17 @@ class TestDataCatalogs:
     def test_values_catalog_empty_before_plugins(self, engine):
         assert engine.values_catalog == {}
 
+    def test_dataframes_catalog_empty_before_plugins(self, engine):
+        assert engine.dataframes_catalog == {}
+
     def test_namespace_has_traces_key(self, engine):
         assert "_traces" in engine.namespace
 
     def test_namespace_has_values_key(self, engine):
         assert "_values" in engine.namespace
+
+    def test_namespace_has_dataframes_key(self, engine):
+        assert "_dataframes" in engine.namespace
 
     def test_add_trace_plugin_populates_traces_catalog(self, engine):
         plugin = DummyPlugin()
@@ -592,6 +598,26 @@ class TestDataCatalogs:
         cat = engine.values_catalog
         assert len(cat) > 0
         assert any("counter" in k for k in cat)
+
+    def test_dataframes_catalog_populated_for_collecting_state_plugin(self, engine):
+        from stoner_measurement.plugins.state_scan import CounterPlugin
+
+        plugin = CounterPlugin()
+        plugin.collect_data = True
+        engine.update_step_plugin_catalog([plugin])
+        cat = engine.dataframes_catalog
+        assert plugin.instance_name in cat
+        assert cat[plugin.instance_name][:2] == ["value", "stage"]
+
+    def test_dataframes_catalog_honours_collect_outputs(self, engine):
+        from stoner_measurement.plugins.state_scan import CounterPlugin
+
+        plugin = CounterPlugin()
+        plugin.collect_data = True
+        plugin.collect_outputs = ["counter:count", "missing:value"]
+        engine.update_step_plugin_catalog([plugin])
+        cat = engine.dataframes_catalog
+        assert cat[plugin.instance_name] == ["value", "stage", "counter:count"]
 
     def test_values_catalog_includes_trace_statistics_when_enabled(self, engine):
         plugin = DummyPlugin()

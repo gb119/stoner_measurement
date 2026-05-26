@@ -776,7 +776,11 @@ class SaveCommand(CommandPlugin):
         engine = self.sequence_engine
         state_plugins: list[str] = []
         if engine is not None:
-            state_plugins.extend(engine._namespace["_dataframes"])
+            catalog = engine._namespace.get("_dataframes", {})
+            if isinstance(catalog, dict):
+                state_plugins.extend(str(name) for name in catalog)
+            elif isinstance(catalog, list):
+                state_plugins.extend(str(name) for name in catalog)
 
         if state_plugins:
             source_combo = QComboBox(data_widget)
