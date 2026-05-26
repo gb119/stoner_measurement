@@ -24,6 +24,22 @@ def engine(qapp):
     eng.shutdown()
 
 
+@pytest.mark.parametrize(
+    ("plugin_cls", "expected_titles"),
+    [
+        (WindowFilterPlugin, ["Data", "Window"]),
+        (SavitzkyGolayPlugin, ["Data", "Filter"]),
+        (FourierTransformPlugin, ["Data", "Transform"]),
+    ],
+)
+def test_transform_plugin_config_tabs_include_settings_tab(plugin_cls, expected_titles, qapp):
+    """Each transform plugin returns data and settings tabs without raising errors."""
+    plugin = plugin_cls()
+    tabs = plugin.config_tabs()
+    titles = [title for title, _ in tabs]
+    assert titles[: len(expected_titles)] == expected_titles
+
+
 class TestWindowFilterPlugin:
     def test_window_filter_advanced_mode_returns_filtered_trace(self, engine):
         plugin = WindowFilterPlugin()

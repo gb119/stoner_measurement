@@ -224,7 +224,7 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """Return plugin configuration tabs."""
 
         def _build_tabs() -> list[tuple[str, QWidget]]:
-            tabs = super().config_tabs(parent)
+            tabs = super(WindowFilterPlugin, self).config_tabs(parent)
             tabs.insert(1, ("Window", self._build_window_tab(parent)))
             return tabs
 

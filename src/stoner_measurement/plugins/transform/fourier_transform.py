@@ -191,7 +191,7 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """Return plugin configuration tabs."""
 
         def _build_tabs() -> list[tuple[str, QWidget]]:
-            tabs = super().config_tabs(parent)
+            tabs = super(FourierTransformPlugin, self).config_tabs(parent)
             tabs.insert(1, ("Transform", self._build_transform_tab(parent)))
             return tabs
 

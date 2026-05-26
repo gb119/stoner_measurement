@@ -198,7 +198,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """Return plugin configuration tabs."""
 
         def _build_tabs() -> list[tuple[str, QWidget]]:
-            tabs = super().config_tabs(parent)
+            tabs = super(SavitzkyGolayPlugin, self).config_tabs(parent)
             tabs.insert(1, ("Filter", self._build_filter_tab(parent)))
             return tabs
 
