@@ -919,7 +919,13 @@ class TemperatureControllerEngine(QObject):
         self._timer.setInterval(ms)
 
     def read_controller_state(self) -> TemperatureEngineState | None:
-        """Read the current controller state immediately and publish it."""
+        """Read the current controller state immediately and publish it.
+
+        Returns:
+            (TemperatureEngineState | None):
+                Freshly read engine state, or ``None`` when no controller is
+                connected or the read fails.
+        """
         if self._driver is None:
             return None
         try:

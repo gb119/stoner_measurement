@@ -366,7 +366,12 @@ class MagnetControllerEngine(QObject):
 
     @property
     def connected_driver(self) -> MagnetController | None:
-        """Return the currently connected driver instance."""
+        """Return the currently connected driver instance.
+
+        Returns:
+            (MagnetController | None):
+                Connected driver instance, or ``None`` when disconnected.
+        """
         return self._driver
 
     def set_target_field(self, field: float) -> None:

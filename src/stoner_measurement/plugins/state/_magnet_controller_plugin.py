@@ -29,6 +29,11 @@ _OUTPUT_OPTIONS = ("field", "current", "voltage")
 
 
 def _normalise_outputs(values: Iterable[str] | None) -> list[str] | None:
+    """Normalise selected output names.
+
+    Returns ``None`` when all supported outputs are selected so the plugin can
+    preserve the existing "all outputs" sentinel used by state plugins.
+    """
     if values is None:
         return None
     selected: list[str] = []
