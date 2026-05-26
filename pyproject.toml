@@ -78,6 +78,7 @@ wait = "stoner_measurement.plugins.command.wait:WaitCommand"
 status = "stoner_measurement.plugins.command.status:StatusCommand"
 alert = "stoner_measurement.plugins.command.alert:AlertCommand"
 details = "stoner_measurement.plugins.command.details:DetailsCommand"
+temperature_monitor = "stoner_measurement.plugins.monitor.temperature_controller:TemperatureMonitorPlugin"
 
 [tool.setuptools.packages.find]
 where = ["src"]
