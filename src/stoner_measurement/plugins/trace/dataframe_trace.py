@@ -174,10 +174,11 @@ class DataFrameTracePlugin(TransformPlugin):
         roles: dict[str, str] = {}
         for ix, column in enumerate(selected_columns):
             configured_role = self.selected_column_roles.get(column, "")
+            default_role = COLUMN_ROLE_Y if ix == 0 else COLUMN_ROLE_Z
             if configured_role in _VALID_COLUMN_ROLES:
                 roles[column] = configured_role
             else:
-                roles[column] = COLUMN_ROLE_Y if ix == 0 else COLUMN_ROLE_Z
+                roles[column] = default_role
         if selected_columns and all(role != COLUMN_ROLE_Y for role in roles.values()):
             roles[selected_columns[0]] = COLUMN_ROLE_Y
         self.selected_column_roles = dict(roles)
@@ -277,7 +278,10 @@ class DataFrameTracePlugin(TransformPlugin):
                         combo_index = role_combo.findData(COLUMN_ROLE_Z)
                     role_combo.setCurrentIndex(combo_index)
 
-                    def _apply_role(_: int, *, col_name: str = column_name, combo: QComboBox = role_combo) -> None:
+                    def _apply_role(
+                        index: int, *, col_name: str = column_name, combo: QComboBox = role_combo
+                    ) -> None:
+                        del index
                         selected_role = combo.currentData()
                         if isinstance(selected_role, str):
                             self.selected_column_roles[col_name] = selected_role
@@ -301,7 +305,7 @@ class DataFrameTracePlugin(TransformPlugin):
 
         def _apply_selected_columns() -> None:
             selected: list[str] = []
-            selected_roles: dict[str, str] = {}
+            collected_roles: dict[str, str] = {}
             for row in range(columns_table.rowCount()):
                 include_item = columns_table.item(row, 0)
                 name_item = columns_table.item(row, 1)
@@ -316,8 +320,9 @@ class DataFrameTracePlugin(TransformPlugin):
                 col_name = name_item.text()
                 role = role_combo.currentData()
                 selected.append(col_name)
-                selected_roles[col_name] = role if isinstance(role, str) else COLUMN_ROLE_Z
+                collected_roles[col_name] = role if isinstance(role, str) else COLUMN_ROLE_Z
             self.selected_columns = selected
+            self.selected_column_roles = collected_roles
             self.selected_column_roles = self._resolve_selected_column_roles(selected)
             for row in range(columns_table.rowCount()):
                 name_item = columns_table.item(row, 1)
