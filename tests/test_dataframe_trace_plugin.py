@@ -116,7 +116,11 @@ def test_config_tab_sanitises_stale_selected_columns(engine):
     assert lists, "Expected a QListWidget for column selection."
 
     assert trace.selected_columns == ["stage", "signal_a", "signal_b"]
-    selected_items = [lists[0].item(row).text() for row in range(lists[0].count()) if lists[0].item(row).isSelected()]
+    selected_items = [
+        lists[0].item(row).text()
+        for row in range(lists[0].count())
+        if lists[0].item(row).isSelected()
+    ]
     assert selected_items == ["stage", "signal_a", "signal_b"]
 
 
