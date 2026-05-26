@@ -30,27 +30,19 @@ jobs:
             libopengl0 \
             graphviz \
             graphviz-dev
-      - name: Set up micromamba
-        uses: mamba-org/setup-micromamba@v2
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          environment-name: docs
-          create-args: >-
-            python=3.12
+          python-version: "3.12"
 
       - name: Install documentation dependencies
         run: |
-          micromamba install -y -n docs -c conda-forge -c defaults sphinx sphinx-automodapi sphinx-copybutton graphviz
-          if micromamba install -y -n docs -c phygbu sphinx-better-theme; then
-            echo "sphinx-better-theme installed from phygbu conda channel"
-          else
-            echo "sphinx-better-theme not found on phygbu channel, falling back to pip"
-            micromamba run -n docs pip install sphinx-better-theme
-          fi
-          micromamba run -n docs pip install -e ".[docs]"
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[docs]" sphinx-copybutton graphviz
 
       - name: Build documentation
         run: |
-          micromamba run -n docs sphinx-build -b html docs docs/_build/html
+          python -m sphinx -b html docs docs/_build/html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
