@@ -24,6 +24,7 @@ from stoner_measurement.plugins.trace.base import (
     _ScanPage,
     _ScanTabContainer,
 )
+from stoner_measurement.plugins.trace.dataframe_trace import DataFrameTracePlugin
 from stoner_measurement.plugins.trace.dummy import DummyPlugin
 from stoner_measurement.plugins.trace.k6221_2182a import (
     ComplianceMode,
@@ -40,6 +41,7 @@ __all__ = [
     "COLUMN_ROLE_Z",
     "ComplianceMode",
     "ConnectionMode",
+    "DataFrameTracePlugin",
     "DummyPlugin",
     "Keithley6221_2182APlugin",
     "SourceRangeMode",
