@@ -30,22 +30,32 @@ jobs:
             libopengl0 \
             graphviz \
             graphviz-dev
-      - name: Set up Miniconda
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
         with:
-          auto-update-conda: true
-          python-version: "3.12"
-          channels: phygbu,conda-forge,defaults
-          channel-priority: flexible
+          environment-name: docs
+          create-args: >-
+            python=3.12
+            sphinx
+            sphinx-automodapi
+            sphinx-copybutton
+            graphviz
+            pip
+          init-shell: bash
+          condarc: |
+            channels:
+              - phygbu
+              - conda-forge
+              - defaults
+            channel_priority: flexible
 
       - name: Install documentation dependencies
         shell: bash -el {0}
         run: |
-          conda install -y sphinx sphinx-automodapi sphinx-copybutton graphviz
-          if conda install -y -c phygbu sphinx-better-theme; then
-            echo "sphinx-better-theme installed from phygbu conda channel"
+          if micromamba install -y sphinx-better-theme; then
+            echo "sphinx-better-theme installed from conda"
           else
-            echo "sphinx-better-theme not found on phygbu channel, falling back to pip"
+            echo "sphinx-better-theme not available from conda, falling back to pip"
             pip install sphinx-better-theme
           fi
           pip install -e ".[docs]"
