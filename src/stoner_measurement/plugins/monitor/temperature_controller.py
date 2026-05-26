@@ -536,7 +536,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         return math.nan if reading is None else float(reading.rate_of_change)
 
     def stable(self, loop: int) -> float:
-        """Return the stability flag for *loop* as ``1.0`` (stable) or ``0.0`` (unstable).
+        """Return the stability flag for *loop*.
 
         Args:
             loop (int):
@@ -544,7 +544,8 @@ class TemperatureMonitorPlugin(MonitorPlugin):
 
         Returns:
             (float):
-                ``1.0`` when stable, ``0.0`` otherwise.
+                ``1.0`` when stable, ``0.0`` when unstable, or ``math.nan``
+                when unavailable.
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -555,7 +556,8 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             True
         """
         state = self._current_state()
-        return 1.0 if state.stable.get(loop, False) else 0.0
+        stable_val = state.stable.get(loop)
+        return math.nan if stable_val is None else (1.0 if stable_val else 0.0)
 
     # ------------------------------------------------------------------
     # Sequence namespace integration
@@ -686,7 +688,9 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         if "sensor_channels" in data:
             raw = data["sensor_channels"]
             self.sensor_channels = (
-                _parse_channel_list(", ".join(str(value) for value in raw)) if isinstance(raw, list) else None
+                _parse_channel_list(", ".join(str(value) for value in raw if value is not None))
+                if isinstance(raw, list)
+                else None
             )
         if "report_setpoints" in data:
             self.report_setpoints = bool(data["report_setpoints"])

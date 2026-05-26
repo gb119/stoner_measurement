@@ -386,7 +386,7 @@ def test_stable_method(monkeypatch, qapp):
     plugin = _make_plugin(engine, monkeypatch)
     assert plugin.stable(1) == 0.0   # odd loop = not stable
     assert plugin.stable(2) == 1.0   # even loop = stable
-    assert plugin.stable(99) == 0.0  # unknown loop = not stable
+    assert math.isnan(plugin.stable(99))  # unknown loop = unavailable
 
 
 # ---------------------------------------------------------------------------
@@ -545,7 +545,7 @@ def test_json_restore_sensor_channels_stringifies_and_deduplicates(monkeypatch, 
     data["sensor_channels"] = [" A ", 2, "A", None, 2]
     restored = BasePlugin.from_json(data)
     assert isinstance(restored, TemperatureMonitorPlugin)
-    assert restored.sensor_channels == ["A", "2", "None"]
+    assert restored.sensor_channels == ["A", "2"]
 
 
 # ---------------------------------------------------------------------------
