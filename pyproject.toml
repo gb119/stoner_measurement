@@ -58,7 +58,11 @@ stoner-measurement = "stoner_measurement.main:main"
 
 [project.entry-points."stoner_measurement.plugins"]
 counter = "stoner_measurement.plugins.state_scan.counter:CounterPlugin"
+magnet_controller_scan = "stoner_measurement.plugins.state_scan.magnet_controller:MagnetControllerScanPlugin"
+temperature_controller_scan = "stoner_measurement.plugins.state_scan.temperature_controller:TemperatureControllerScanPlugin"
 sweep_time = "stoner_measurement.plugins.state_sweep.sweep_time:SweepTimePlugin"
+magnet_controller_sweep = "stoner_measurement.plugins.state_sweep.magnet_controller:MagnetControllerSweepPlugin"
+temperature_controller_sweep = "stoner_measurement.plugins.state_sweep.temperature_controller:TemperatureControllerSweepPlugin"
 curve_fit = "stoner_measurement.plugins.transform.curve_fit:CurveFitPlugin"
 fourier_transform = "stoner_measurement.plugins.transform.fourier_transform:FourierTransformPlugin"
 savgol_filter = "stoner_measurement.plugins.transform.savgol_filter:SavitzkyGolayPlugin"

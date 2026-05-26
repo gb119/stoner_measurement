@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -112,6 +113,7 @@ class TemperatureControllerEngine(QObject):
         self._unstable_since: dict[int, datetime | None] = {}
         # Current stable flags (persisted across polls for hysteresis).
         self._stable: dict[int, bool] = {}
+        self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
 
         self._timer = QTimer(self)
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
@@ -355,6 +357,7 @@ class TemperatureControllerEngine(QObject):
         self._unstable_since.clear()
         self._stable.clear()
         self._set_status(EngineStatus.DISCONNECTED)
+        self._latest_state = TemperatureEngineState(engine_status=self._status)
         logger.info("TemperatureControllerEngine: disconnected.")
 
     @property
@@ -915,6 +918,28 @@ class TemperatureControllerEngine(QObject):
         ms = max(100, ms)
         self._timer.setInterval(ms)
 
+    def read_controller_state(self) -> TemperatureEngineState | None:
+        """Read the current controller state immediately and publish it."""
+        if self._driver is None:
+            return None
+        try:
+            state = self._build_state()
+        except Exception:
+            logger.exception("TemperatureControllerEngine: read-state error")
+            self._set_status(EngineStatus.ERROR)
+            return None
+
+        self._set_status(EngineStatus.POLLING)
+        self._latest_state = state
+        for reading in state.readings.values():
+            self.publisher.channel_reading.emit(reading)
+        self.publisher.state_updated.emit(state)
+        return state
+
+    def get_engine_state(self) -> TemperatureEngineState:
+        """Return a snapshot of the current engine state without polling."""
+        return replace(self._latest_state, engine_status=self._status)
+
     @pyqtSlot()
     def shutdown(self) -> None:
         """Stop polling, release the driver, and mark the engine as stopped.
@@ -937,6 +962,7 @@ class TemperatureControllerEngine(QObject):
             self._disconnect_driver(self._driver, log_context="on shutdown")
         self._driver = None
         self._set_status(EngineStatus.STOPPED)
+        self._latest_state = TemperatureEngineState(engine_status=self._status)
         if TemperatureControllerEngine._singleton is self:
             TemperatureControllerEngine._singleton = None
         logger.info("TemperatureControllerEngine: shut down.")
@@ -965,20 +991,7 @@ class TemperatureControllerEngine(QObject):
     @pyqtSlot()
     def _poll(self) -> None:
         """Query the instrument, compute derived quantities, and publish results."""
-        if self._driver is None:
-            return
-        try:
-            state = self._build_state()
-        except Exception:
-            logger.exception("TemperatureControllerEngine: poll error")
-            self._set_status(EngineStatus.ERROR)
-            return
-
-        self._set_status(EngineStatus.POLLING)
-
-        for reading in state.readings.values():
-            self.publisher.channel_reading.emit(reading)
-        self.publisher.state_updated.emit(state)
+        self.read_controller_state()
 
     def _build_state(self) -> TemperatureEngineState:
         """Query the driver and return a full :class:`TemperatureEngineState`.
@@ -1164,6 +1177,7 @@ class TemperatureControllerEngine(QObject):
         """
         if status != self._status:
             self._status = status
+            self._latest_state = replace(self._latest_state, engine_status=status)
             self.publisher.engine_status_changed.emit(status)
 
 
