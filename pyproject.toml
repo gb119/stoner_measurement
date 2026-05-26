@@ -64,6 +64,7 @@ fourier_transform = "stoner_measurement.plugins.transform.fourier_transform:Four
 savgol_filter = "stoner_measurement.plugins.transform.savgol_filter:SavitzkyGolayPlugin"
 window_filter = "stoner_measurement.plugins.transform.window_filter:WindowFilterPlugin"
 dummy = "stoner_measurement.plugins.trace.dummy:DummyPlugin"
+dataframe_trace = "stoner_measurement.plugins.trace.dataframe_trace:DataFrameTracePlugin"
 k6221_dc_iv = "stoner_measurement.plugins.trace.k6221_2182a:Keithley6221_2182APlugin"
 plot_clear = "stoner_measurement.plugins.command.plot_clear:PlotClearCommand"
 plot_points = "stoner_measurement.plugins.command.plot_points:PlotPointsCommand"
