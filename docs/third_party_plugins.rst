@@ -64,6 +64,74 @@ The remainder of this page focuses on
 most common choice for new sequence-engine commands that do not require a
 dedicated hardware instrument.
 
+Writing a TransformPlugin
+-------------------------
+
+A :class:`~stoner_measurement.plugins.transform.TransformPlugin` should satisfy
+the following contract so it integrates correctly with sequence execution,
+catalogue reporting, serialisation, and configuration UI.
+
+Required properties and methods
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Implement these members on every transform plugin:
+
+* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`
+  (``str``): display name shown in the UI.
+* :attr:`~stoner_measurement.plugins.transform.TransformPlugin.required_inputs`
+  (``list[str]``): names that must be present in the dict passed to
+  :meth:`~stoner_measurement.plugins.transform.TransformPlugin.run`.
+* :attr:`~stoner_measurement.plugins.transform.TransformPlugin.output_names`
+  (``list[str]``): all output keys produced by
+  :meth:`~stoner_measurement.plugins.transform.TransformPlugin.transform`.
+* :meth:`~stoner_measurement.plugins.transform.TransformPlugin.transform`
+  (``dict[str, Any] -> dict[str, Any]``): pure computation that returns output
+  data without hardware lifecycle operations.
+
+Output-reporting contract
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Declare output roles so the sequence engine populates catalogues correctly:
+
+* Override
+  :attr:`~stoner_measurement.plugins.transform.TransformPlugin.output_trace_names`
+  for outputs that should appear in ``_traces``.
+* Override
+  :attr:`~stoner_measurement.plugins.transform.TransformPlugin.output_value_names`
+  for scalar outputs that should appear in ``_values``.
+* Ensure both are subsets of ``output_names`` and stable across runs.
+
+Configuration and persistence contract
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For plugins with configurable settings:
+
+* Override :meth:`~stoner_measurement.plugins.transform.TransformPlugin._build_data_tab`
+  to provide trace/value selection controls.
+* Override :meth:`~stoner_measurement.plugins.transform.TransformPlugin.config_tabs`
+  when multiple tabs are needed:
+
+  1. Start from ``super(<YourPluginClass>, self).config_tabs(parent)``.
+  2. Insert plugin-specific tabs before any optional *About* tab.
+  3. Return tabs via ``self._get_cached_config_tabs(...)`` so widget state is
+     preserved while selecting/deselecting steps.
+
+* Override :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
+  and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._restore_from_json`
+  for every user-editable attribute so saved sequences reload correctly.
+
+Runtime expectations
+~~~~~~~~~~~~~~~~~~~~
+
+Transform plugins are expected to:
+
+* Use :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
+  and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` when
+  reading upstream trace/value expressions.
+* Return deterministic output keys and data shapes for a given configuration.
+* Report recoverable problems through ``self.log`` and return an empty result
+  dict when no valid output can be produced.
+
 Writing a CommandPlugin
 ------------------------
 
