@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
 from typing import Any
 
 import numpy as np
@@ -20,15 +19,14 @@ from stoner_measurement.plugins.trace.base import (
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
     TraceData,
-    TracePlugin,
-    TraceStatus,
 )
+from stoner_measurement.plugins.transform.base import TransformPlugin
 
 _INDEX_X_SOURCE = "__index__"
 _DEFAULT_CHANNEL_NAME = "DataFrame"
 
 
-class DataFrameTracePlugin(TracePlugin):
+class DataFrameTracePlugin(TransformPlugin):
     """Build a trace from a selected state plugin's collected :class:`pandas.DataFrame`."""
 
     def __init__(self, parent=None) -> None:
@@ -37,7 +35,6 @@ class DataFrameTracePlugin(TracePlugin):
         self.source_plugin: str = ""
         self.x_source: str = _INDEX_X_SOURCE
         self.selected_columns: list[str] = []
-        self._x_label_cache: str = "Index"
 
     @property
     def name(self) -> str:
@@ -45,71 +42,73 @@ class DataFrameTracePlugin(TracePlugin):
         return "DataFrame Trace"
 
     @property
-    def channel_names(self) -> list[str]:
-        """Return the single output channel name."""
+    def required_inputs(self) -> list[str]:
+        """No direct runtime inputs are required."""
+        return []
+
+    @property
+    def output_names(self) -> list[str]:
+        """Return all plugin output names."""
         return [self._channel_name()]
 
     @property
-    def x_label(self) -> str:
-        """Return display label for the x axis."""
-        return self._x_label_cache
+    def output_trace_names(self) -> list[str]:
+        """Return the trace outputs produced by this plugin."""
+        return [self._channel_name()]
 
     @property
-    def y_label(self) -> str:
-        """Return display label for the primary y axis."""
-        return "Value"
+    def output_value_names(self) -> list[str]:
+        """This plugin does not report scalar outputs."""
+        return []
 
-    def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
-        """Yield x/y pairs from the first selected column for compatibility."""
-        del parameters
-        trace = self.measure({})[self._channel_name()]
-        y_columns = trace.get_columns_by_role(COLUMN_ROLE_Y)
-        if not y_columns:
-            return
-        first_y = y_columns[0]
-        x_arr = trace.x
-        y_arr = trace.df[first_y].to_numpy(dtype=float)
-        yield from zip(x_arr, y_arr)
-
-    def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
+    def transform(self, data: dict[str, Any]) -> dict[str, TraceData]:
         """Convert the selected source DataFrame into a multi-column trace."""
-        del parameters
-        self._set_status(TraceStatus.MEASURING)
-        try:
-            source_name, source_df = self._resolve_source_dataframe()
-            x_values, x_label = self._select_x_values(source_df)
-            selected_columns = self._select_output_columns(source_df)
+        del data
+        source_name, source_df = self._resolve_source_dataframe()
+        x_values, x_label = self._select_x_values(source_df)
+        selected_columns = self._select_output_columns(source_df)
 
-            trace_df = pd.DataFrame(index=pd.Index(np.asarray(x_values, dtype=float), name="x"))
-            column_roles: dict[str, str] = {}
-            names: dict[str, str] = {"x": x_label}
-            units: dict[str, str] = {"x": ""}
-            for ix, column in enumerate(selected_columns):
-                column_data = pd.to_numeric(source_df[column], errors="coerce").to_numpy(dtype=float)
-                trace_df[column] = column_data
-                column_roles[column] = COLUMN_ROLE_Y if ix == 0 else COLUMN_ROLE_Z
-                names[column] = column
-                units[column] = ""
+        trace_df = pd.DataFrame(index=pd.Index(np.asarray(x_values, dtype=float), name="x"))
+        column_roles: dict[str, str] = {}
+        names: dict[str, str] = {"x": x_label}
+        units: dict[str, str] = {"x": ""}
+        for ix, column in enumerate(selected_columns):
+            column_data = pd.to_numeric(source_df[column], errors="coerce").to_numpy(dtype=float)
+            trace_df[column] = column_data
+            column_roles[column] = COLUMN_ROLE_Y if ix == 0 else COLUMN_ROLE_Z
+            names[column] = column
+            units[column] = ""
 
-            channel_name = source_name or _DEFAULT_CHANNEL_NAME
-            self._x_label_cache = x_label
-            self.data = {
-                channel_name: TraceData(
-                    df=trace_df,
-                    column_roles=column_roles,
-                    names=names,
-                    units=units,
-                )
-            }
-            self._update_channel_statistics()
-            return self.data
-        finally:
-            self._set_status(TraceStatus.DATA_AVAILABLE)
+        channel_name = source_name or _DEFAULT_CHANNEL_NAME
+        return {
+            channel_name: TraceData(
+                df=trace_df,
+                column_roles=column_roles,
+                names=names,
+                units=units,
+            )
+        }
+
+    def _dataframe_catalog(self) -> dict[str, list[str]]:
+        """Return state-plugin dataframe metadata from the engine namespace."""
+        raw_catalog = self.engine_namespace.get("_dataframes", {})
+        if not isinstance(raw_catalog, dict):
+            return {}
+        catalog: dict[str, list[str]] = {}
+        for key, columns in raw_catalog.items():
+            if isinstance(columns, list):
+                catalog[str(key)] = [str(column) for column in columns]
+            else:
+                catalog[str(key)] = []
+        return catalog
 
     def _available_dataframes(self) -> list[str]:
         """Return available state-plugin instance names that expose DataFrames."""
-        values = self.engine_namespace.get("_dataframes", [])
-        return [str(value) for value in values]
+        return list(self._dataframe_catalog().keys())
+
+    def _catalog_columns_for_source(self, source_name: str) -> list[str]:
+        """Return expected dataframe columns for *source_name* from the engine catalog."""
+        return list(self._dataframe_catalog().get(source_name, []))
 
     def _resolve_source_dataframe(self) -> tuple[str, pd.DataFrame]:
         """Return the selected source plugin name and its collected DataFrame."""
@@ -158,9 +157,9 @@ class DataFrameTracePlugin(TracePlugin):
             self.selected_columns = list(selected)
         return selected
 
-    def _plugin_config_tabs(self) -> QWidget:
+    def _build_data_tab(self, parent: QWidget | None = None) -> QWidget:
         """Build source-dataframe and column-selection settings controls."""
-        widget = QWidget()
+        widget = QWidget(parent)
         form = QFormLayout(widget)
 
         source_combo = QComboBox(widget)
@@ -183,48 +182,41 @@ class DataFrameTracePlugin(TracePlugin):
                 source_combo.addItem("(no collected dataframes)")
             source_combo.blockSignals(False)
 
-        def _current_source_dataframe() -> pd.DataFrame | None:
-            source_name = self.source_plugin.strip()
-            source_obj = self.engine_namespace.get(source_name)
-            if source_obj is None:
-                return None
-            source_df = getattr(source_obj, "data", None)
-            if isinstance(source_df, pd.DataFrame):
-                return source_df
-            return None
-
         def _populate_x_and_columns() -> None:
-            source_df = _current_source_dataframe()
+            source_name = self.source_plugin.strip()
+            available_columns = self._catalog_columns_for_source(source_name)
+            source_obj = self.engine_namespace.get(source_name)
+            source_df = getattr(source_obj, "data", None)
+            if isinstance(source_df, pd.DataFrame) and not source_df.empty:
+                available_columns = [str(column) for column in source_df.columns]
 
             x_combo.blockSignals(True)
             x_combo.clear()
             x_combo.addItem("Index", _INDEX_X_SOURCE)
             columns_list.clear()
-            if source_df is not None and not source_df.empty:
-                for column in source_df.columns:
-                    column_name = str(column)
+            if available_columns:
+                for column_name in available_columns:
                     x_combo.addItem(column_name, column_name)
-                selected_x = self.x_source if self.x_source in source_df.columns else _INDEX_X_SOURCE
+                selected_x = self.x_source if self.x_source in available_columns else _INDEX_X_SOURCE
                 x_idx = x_combo.findData(selected_x)
                 if x_idx >= 0:
                     x_combo.setCurrentIndex(x_idx)
                     self.x_source = selected_x
-                available_columns = [
-                    str(column)
-                    for column in source_df.columns
-                    if self.x_source == _INDEX_X_SOURCE or str(column) != self.x_source
+                output_columns = [
+                    column
+                    for column in available_columns
+                    if self.x_source == _INDEX_X_SOURCE or column != self.x_source
                 ]
                 seen: set[str] = set()
                 selected_columns = []
                 for column in self.selected_columns:
-                    if column in available_columns and column not in seen:
+                    if column in output_columns and column not in seen:
                         selected_columns.append(column)
                         seen.add(column)
                 if not selected_columns:
-                    selected_columns = list(available_columns)
+                    selected_columns = list(output_columns)
                 self.selected_columns = selected_columns
-                for column in source_df.columns:
-                    column_name = str(column)
+                for column_name in output_columns:
                     if self.x_source != _INDEX_X_SOURCE and column_name == self.x_source:
                         continue
                     item = QListWidgetItem(column_name)

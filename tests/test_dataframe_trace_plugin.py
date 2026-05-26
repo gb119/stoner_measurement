@@ -26,7 +26,7 @@ def _make_counter_with_data() -> CounterPlugin:
     return plugin
 
 
-def test_measure_builds_multicolumn_trace_from_state_dataframe(engine):
+def test_run_builds_multicolumn_trace_from_state_dataframe(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
     engine.add_plugin("counter", source)
@@ -37,7 +37,7 @@ def test_measure_builds_multicolumn_trace_from_state_dataframe(engine):
     trace.x_source = "__index__"
     trace.selected_columns = ["signal_a", "signal_b"]
 
-    result = trace.measure({})
+    result = trace.run({})
 
     assert list(result.keys()) == [source.instance_name]
     td = result[source.instance_name]
@@ -48,7 +48,7 @@ def test_measure_builds_multicolumn_trace_from_state_dataframe(engine):
     assert td.column_roles["signal_b"] == COLUMN_ROLE_Z
 
 
-def test_measure_uses_selected_column_as_x_axis(engine):
+def test_run_uses_selected_column_as_x_axis(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
     engine.add_plugin("counter", source)
@@ -59,7 +59,7 @@ def test_measure_uses_selected_column_as_x_axis(engine):
     trace.x_source = "value"
     trace.selected_columns = ["signal_b"]
 
-    result = trace.measure({})
+    result = trace.run({})
     td = result[source.instance_name]
 
     np.testing.assert_allclose(td.x, np.array([0.0, 1.0, 2.0]))
@@ -67,7 +67,7 @@ def test_measure_uses_selected_column_as_x_axis(engine):
     assert td.names["x"] == "value"
 
 
-def test_measure_deduplicates_selected_output_columns(engine):
+def test_run_deduplicates_selected_output_columns(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
     engine.add_plugin("counter", source)
@@ -78,7 +78,7 @@ def test_measure_deduplicates_selected_output_columns(engine):
     trace.x_source = "__index__"
     trace.selected_columns = ["signal_a", "signal_a", "signal_b"]
 
-    result = trace.measure({})
+    result = trace.run({})
     td = result[source.instance_name]
 
     assert list(td.df.columns) == ["signal_a", "signal_b"]
@@ -86,7 +86,7 @@ def test_measure_deduplicates_selected_output_columns(engine):
     assert td.column_roles["signal_b"] == COLUMN_ROLE_Z
 
 
-def test_config_tab_lists_available_columns(engine):
+def test_data_tab_lists_available_columns_from_catalogue(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
     engine.add_plugin("counter", source)
@@ -94,13 +94,13 @@ def test_config_tab_lists_available_columns(engine):
     engine.update_step_plugin_catalog([source, trace])
     trace.source_plugin = source.instance_name
 
-    settings = trace._plugin_config_tabs()  # noqa: SLF001
+    settings = trace._build_data_tab()  # noqa: SLF001
     lists = settings.findChildren(QListWidget)
     assert lists, "Expected a QListWidget for column selection."
     assert lists[0].count() >= 2
 
 
-def test_config_tab_sanitises_stale_selected_columns(engine):
+def test_data_tab_sanitises_stale_selected_columns(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
     engine.add_plugin("counter", source)
@@ -111,7 +111,7 @@ def test_config_tab_sanitises_stale_selected_columns(engine):
     trace.x_source = "value"
     trace.selected_columns = ["missing_column"]
 
-    settings = trace._plugin_config_tabs()  # noqa: SLF001
+    settings = trace._build_data_tab()  # noqa: SLF001
     lists = settings.findChildren(QListWidget)
     assert lists, "Expected a QListWidget for column selection."
 
@@ -137,3 +137,10 @@ def test_json_round_trip_preserves_dataframe_selection():
     assert restored.source_plugin == "counter"
     assert restored.x_source == "value"
     assert restored.selected_columns == ["signal_a", "signal_b"]
+
+
+def test_is_transform_plugin_without_scan_tab():
+    trace = DataFrameTracePlugin()
+    tabs = trace.config_tabs()
+    assert tabs[0][0] == "Data"
+    assert all("Scan" not in title for title, _ in tabs)
