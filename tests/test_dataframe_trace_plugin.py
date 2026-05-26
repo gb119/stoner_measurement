@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtWidgets import QListWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QTableWidget
 
 from stoner_measurement.plugins.state_scan import CounterPlugin
 from stoner_measurement.plugins.trace import DataFrameTracePlugin
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, COLUMN_ROLE_Z
+from stoner_measurement.plugins.trace.base import (
+    COLUMN_ROLE_D,
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_Y,
+    COLUMN_ROLE_Z,
+)
 
 
 def _make_counter_with_data() -> CounterPlugin:
@@ -95,9 +101,9 @@ def test_data_tab_lists_available_columns_from_catalogue(engine):
     trace.source_plugin = source.instance_name
 
     settings = trace._build_data_tab()  # noqa: SLF001
-    lists = settings.findChildren(QListWidget)
-    assert lists, "Expected a QListWidget for column selection."
-    assert lists[0].count() >= 2
+    tables = settings.findChildren(QTableWidget)
+    assert tables, "Expected a QTableWidget for column selection."
+    assert tables[0].rowCount() >= 2
 
 
 def test_data_tab_sanitises_stale_selected_columns(engine):
@@ -112,16 +118,60 @@ def test_data_tab_sanitises_stale_selected_columns(engine):
     trace.selected_columns = ["missing_column"]
 
     settings = trace._build_data_tab()  # noqa: SLF001
-    lists = settings.findChildren(QListWidget)
-    assert lists, "Expected a QListWidget for column selection."
+    tables = settings.findChildren(QTableWidget)
+    assert tables, "Expected a QTableWidget for column selection."
 
     assert trace.selected_columns == ["stage", "signal_a", "signal_b"]
     selected_items = [
-        lists[0].item(row).text()
-        for row in range(lists[0].count())
-        if lists[0].item(row).isSelected()
+        tables[0].item(row, 1).text()
+        for row in range(tables[0].rowCount())
+        if tables[0].item(row, 0).checkState() == Qt.CheckState.Checked
     ]
     assert selected_items == ["stage", "signal_a", "signal_b"]
+
+
+def test_run_applies_configured_column_roles(engine):
+    source = _make_counter_with_data()
+    trace = DataFrameTracePlugin()
+    engine.add_plugin("counter", source)
+    engine.add_plugin("dataframe_trace", trace)
+    engine.update_step_plugin_catalog([source, trace])
+
+    trace.source_plugin = source.instance_name
+    trace.x_source = "__index__"
+    trace.selected_columns = ["signal_a", "signal_b"]
+    trace.selected_column_roles = {"signal_a": COLUMN_ROLE_E, "signal_b": COLUMN_ROLE_D}
+
+    result = trace.run({})
+    td = result[source.instance_name]
+
+    # At least one y-role must exist; first selected column is promoted to y.
+    assert td.column_roles["signal_a"] == COLUMN_ROLE_Y
+    assert td.column_roles["signal_b"] == COLUMN_ROLE_D
+
+
+def test_run_maps_error_roles_when_y_column_present(engine):
+    source = _make_counter_with_data()
+    trace = DataFrameTracePlugin()
+    engine.add_plugin("counter", source)
+    engine.add_plugin("dataframe_trace", trace)
+    engine.update_step_plugin_catalog([source, trace])
+
+    trace.source_plugin = source.instance_name
+    trace.x_source = "__index__"
+    trace.selected_columns = ["signal_a", "signal_b", "stage"]
+    trace.selected_column_roles = {
+        "signal_a": COLUMN_ROLE_Y,
+        "signal_b": COLUMN_ROLE_E,
+        "stage": COLUMN_ROLE_D,
+    }
+
+    result = trace.run({})
+    td = result[source.instance_name]
+
+    assert td.column_roles["signal_a"] == COLUMN_ROLE_Y
+    assert td.column_roles["signal_b"] == COLUMN_ROLE_E
+    assert td.column_roles["stage"] == COLUMN_ROLE_D
 
 
 def test_json_round_trip_preserves_dataframe_selection():
@@ -129,6 +179,7 @@ def test_json_round_trip_preserves_dataframe_selection():
     trace.source_plugin = "counter"
     trace.x_source = "value"
     trace.selected_columns = ["signal_a", "signal_b"]
+    trace.selected_column_roles = {"signal_a": COLUMN_ROLE_Y, "signal_b": COLUMN_ROLE_E}
 
     payload = trace.to_json()
     restored = DataFrameTracePlugin()
@@ -137,6 +188,7 @@ def test_json_round_trip_preserves_dataframe_selection():
     assert restored.source_plugin == "counter"
     assert restored.x_source == "value"
     assert restored.selected_columns == ["signal_a", "signal_b"]
+    assert restored.selected_column_roles == {"signal_a": COLUMN_ROLE_Y, "signal_b": COLUMN_ROLE_E}
 
 
 def test_is_transform_plugin_without_scan_tab():

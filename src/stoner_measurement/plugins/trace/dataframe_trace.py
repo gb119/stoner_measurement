@@ -6,16 +6,20 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFormLayout,
-    QListWidget,
-    QListWidgetItem,
+    QHeaderView,
+    QTableWidget,
+    QTableWidgetItem,
     QWidget,
 )
 
 from stoner_measurement.plugins.trace.base import (
+    COLUMN_ROLE_D,
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_F,
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
     TraceData,
@@ -24,6 +28,14 @@ from stoner_measurement.plugins.transform.base import TransformPlugin
 
 _INDEX_X_SOURCE = "__index__"
 _DEFAULT_CHANNEL_NAME = "DataFrame"
+_ROLE_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("Data (y)", COLUMN_ROLE_Y),
+    ("Y error (e)", COLUMN_ROLE_E),
+    ("X error (d)", COLUMN_ROLE_D),
+    ("Aux data (z)", COLUMN_ROLE_Z),
+    ("Aux error (f)", COLUMN_ROLE_F),
+)
+_VALID_COLUMN_ROLES = {role for _, role in _ROLE_OPTIONS}
 
 
 class DataFrameTracePlugin(TransformPlugin):
@@ -35,6 +47,7 @@ class DataFrameTracePlugin(TransformPlugin):
         self.source_plugin: str = ""
         self.x_source: str = _INDEX_X_SOURCE
         self.selected_columns: list[str] = []
+        self.selected_column_roles: dict[str, str] = {}
 
     @property
     def name(self) -> str:
@@ -69,13 +82,12 @@ class DataFrameTracePlugin(TransformPlugin):
         selected_columns = self._select_output_columns(source_df)
 
         trace_df = pd.DataFrame(index=pd.Index(np.asarray(x_values, dtype=float), name="x"))
-        column_roles: dict[str, str] = {}
+        column_roles = self._resolve_selected_column_roles(selected_columns)
         names: dict[str, str] = {"x": x_label}
         units: dict[str, str] = {"x": ""}
-        for ix, column in enumerate(selected_columns):
+        for column in selected_columns:
             column_data = pd.to_numeric(source_df[column], errors="coerce").to_numpy(dtype=float)
             trace_df[column] = column_data
-            column_roles[column] = COLUMN_ROLE_Y if ix == 0 else COLUMN_ROLE_Z
             names[column] = column
             units[column] = ""
 
@@ -157,6 +169,26 @@ class DataFrameTracePlugin(TransformPlugin):
             self.selected_columns = list(selected)
         return selected
 
+    def _resolve_selected_column_roles(
+        self,
+        selected_columns: list[str],
+        configured_roles: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Return a validated role mapping for selected output columns."""
+        configured = self.selected_column_roles if configured_roles is None else configured_roles
+        roles: dict[str, str] = {}
+        for ix, column in enumerate(selected_columns):
+            configured_role = configured.get(column, "")
+            default_role = COLUMN_ROLE_Y if ix == 0 else COLUMN_ROLE_Z
+            if configured_role in _VALID_COLUMN_ROLES:
+                roles[column] = configured_role
+            else:
+                roles[column] = default_role
+        if selected_columns and all(role != COLUMN_ROLE_Y for role in roles.values()):
+            roles[selected_columns[0]] = COLUMN_ROLE_Y
+        self.selected_column_roles = dict(roles)
+        return roles
+
     def _build_data_tab(self, parent: QWidget | None = None) -> QWidget:
         """Build source-dataframe and column-selection settings controls."""
         widget = QWidget(parent)
@@ -164,8 +196,13 @@ class DataFrameTracePlugin(TransformPlugin):
 
         source_combo = QComboBox(widget)
         x_combo = QComboBox(widget)
-        columns_list = QListWidget(widget)
-        columns_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        columns_table = QTableWidget(widget)
+        columns_table.setColumnCount(3)
+        columns_table.setHorizontalHeaderLabels(["Include", "Column", "Role"])
+        columns_table.verticalHeader().setVisible(False)
+        columns_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        columns_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        columns_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
 
         def _populate_source_combo() -> None:
             source_combo.blockSignals(True)
@@ -193,7 +230,8 @@ class DataFrameTracePlugin(TransformPlugin):
             x_combo.blockSignals(True)
             x_combo.clear()
             x_combo.addItem("Index", _INDEX_X_SOURCE)
-            columns_list.clear()
+            columns_table.blockSignals(True)
+            columns_table.setRowCount(0)
             if available_columns:
                 for column_name in available_columns:
                     x_combo.addItem(column_name, column_name)
@@ -216,12 +254,46 @@ class DataFrameTracePlugin(TransformPlugin):
                 if not selected_columns:
                     selected_columns = list(output_columns)
                 self.selected_columns = selected_columns
-                for column_name in output_columns:
-                    if self.x_source != _INDEX_X_SOURCE and column_name == self.x_source:
-                        continue
-                    item = QListWidgetItem(column_name)
-                    columns_list.addItem(item)
-                    item.setSelected(column_name in self.selected_columns)
+                selected_roles = self._resolve_selected_column_roles(self.selected_columns)
+                columns_table.setRowCount(len(output_columns))
+                for row, column_name in enumerate(output_columns):
+                    include_item = QTableWidgetItem()
+                    include_item.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled
+                        | Qt.ItemFlag.ItemIsUserCheckable
+                        | Qt.ItemFlag.ItemIsSelectable
+                    )
+                    include_item.setCheckState(
+                        Qt.CheckState.Checked
+                        if column_name in self.selected_columns
+                        else Qt.CheckState.Unchecked
+                    )
+                    columns_table.setItem(row, 0, include_item)
+
+                    name_item = QTableWidgetItem(column_name)
+                    name_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                    columns_table.setItem(row, 1, name_item)
+
+                    role_combo = QComboBox(columns_table)
+                    for role_label, role_value in _ROLE_OPTIONS:
+                        role_combo.addItem(role_label, role_value)
+                    role = selected_roles.get(column_name, COLUMN_ROLE_Z)
+                    combo_index = role_combo.findData(role)
+                    if combo_index < 0:
+                        combo_index = role_combo.findData(COLUMN_ROLE_Z)
+                    role_combo.setCurrentIndex(combo_index)
+
+                    def _apply_role(
+                        _index: int, *, col_name: str = column_name, combo: QComboBox = role_combo
+                    ) -> None:
+                        selected_role = combo.currentData()
+                        if isinstance(selected_role, str):
+                            self.selected_column_roles[col_name] = selected_role
+                        _apply_selected_columns()
+
+                    role_combo.currentIndexChanged.connect(_apply_role)
+                    columns_table.setCellWidget(row, 2, role_combo)
+            columns_table.blockSignals(False)
             x_combo.blockSignals(False)
 
         def _apply_source(text: str) -> None:
@@ -236,20 +308,50 @@ class DataFrameTracePlugin(TransformPlugin):
                 _populate_x_and_columns()
 
         def _apply_selected_columns() -> None:
-            self.selected_columns = [
-                columns_list.item(row).text() for row in range(columns_list.count()) if columns_list.item(row).isSelected()
-            ]
+            selected: list[str] = []
+            collected_roles: dict[str, str] = {}
+            for row in range(columns_table.rowCount()):
+                include_item = columns_table.item(row, 0)
+                name_item = columns_table.item(row, 1)
+                role_combo = columns_table.cellWidget(row, 2)
+                if (
+                    include_item is None
+                    or name_item is None
+                    or include_item.checkState() != Qt.CheckState.Checked
+                    or not isinstance(role_combo, QComboBox)
+                ):
+                    continue
+                col_name = name_item.text()
+                role = role_combo.currentData()
+                selected.append(col_name)
+                collected_roles[col_name] = role if isinstance(role, str) else COLUMN_ROLE_Z
+            self.selected_columns = selected
+            self.selected_column_roles = self._resolve_selected_column_roles(selected, collected_roles)
+            for row in range(columns_table.rowCount()):
+                name_item = columns_table.item(row, 1)
+                role_combo = columns_table.cellWidget(row, 2)
+                if name_item is None or not isinstance(role_combo, QComboBox):
+                    continue
+                col_name = name_item.text()
+                resolved_role = self.selected_column_roles.get(col_name)
+                if resolved_role is None:
+                    continue
+                combo_index = role_combo.findData(resolved_role)
+                if combo_index >= 0 and role_combo.currentIndex() != combo_index:
+                    role_combo.blockSignals(True)
+                    role_combo.setCurrentIndex(combo_index)
+                    role_combo.blockSignals(False)
 
         _populate_source_combo()
         _populate_x_and_columns()
 
         source_combo.currentTextChanged.connect(_apply_source)
         x_combo.currentIndexChanged.connect(_apply_x)
-        columns_list.itemSelectionChanged.connect(_apply_selected_columns)
+        columns_table.itemChanged.connect(_apply_selected_columns)
 
         form.addRow("Source dataframe plugin:", source_combo)
         form.addRow("X source:", x_combo)
-        form.addRow("Trace columns:", columns_list)
+        form.addRow("Trace columns:", columns_table)
         return widget
 
     def to_json(self) -> dict[str, Any]:
@@ -258,6 +360,7 @@ class DataFrameTracePlugin(TransformPlugin):
         data["source_plugin"] = self.source_plugin
         data["x_source"] = self.x_source
         data["selected_columns"] = list(self.selected_columns)
+        data["selected_column_roles"] = dict(self.selected_column_roles)
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -270,6 +373,15 @@ class DataFrameTracePlugin(TransformPlugin):
             self.selected_columns = [str(column) for column in raw_columns]
         else:
             self.selected_columns = []
+        raw_roles = data.get("selected_column_roles", {})
+        if isinstance(raw_roles, dict):
+            self.selected_column_roles = {
+                str(column): str(role)
+                for column, role in raw_roles.items()
+                if str(role) in _VALID_COLUMN_ROLES
+            }
+        else:
+            self.selected_column_roles = {}
 
     def _channel_name(self) -> str:
         """Return output channel name based on source selection."""
