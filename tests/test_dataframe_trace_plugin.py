@@ -67,6 +67,25 @@ def test_measure_uses_selected_column_as_x_axis(engine):
     assert td.names["x"] == "value"
 
 
+def test_measure_deduplicates_selected_output_columns(engine):
+    source = _make_counter_with_data()
+    trace = DataFrameTracePlugin()
+    engine.add_plugin("counter", source)
+    engine.add_plugin("dataframe_trace", trace)
+    engine.update_step_plugin_catalog([source, trace])
+
+    trace.source_plugin = source.instance_name
+    trace.x_source = "__index__"
+    trace.selected_columns = ["signal_a", "signal_a", "signal_b"]
+
+    result = trace.measure({})
+    td = result[source.instance_name]
+
+    assert list(td.df.columns) == ["signal_a", "signal_b"]
+    assert td.column_roles["signal_a"] == COLUMN_ROLE_Y
+    assert td.column_roles["signal_b"] == COLUMN_ROLE_Z
+
+
 def test_config_tab_lists_available_columns(engine):
     source = _make_counter_with_data()
     trace = DataFrameTracePlugin()
@@ -79,6 +98,26 @@ def test_config_tab_lists_available_columns(engine):
     lists = settings.findChildren(QListWidget)
     assert lists, "Expected a QListWidget for column selection."
     assert lists[0].count() >= 2
+
+
+def test_config_tab_sanitises_stale_selected_columns(engine):
+    source = _make_counter_with_data()
+    trace = DataFrameTracePlugin()
+    engine.add_plugin("counter", source)
+    engine.add_plugin("dataframe_trace", trace)
+    engine.update_step_plugin_catalog([source, trace])
+
+    trace.source_plugin = source.instance_name
+    trace.x_source = "value"
+    trace.selected_columns = ["missing_column"]
+
+    settings = trace._plugin_config_tabs()  # noqa: SLF001
+    lists = settings.findChildren(QListWidget)
+    assert lists, "Expected a QListWidget for column selection."
+
+    assert trace.selected_columns == ["stage", "signal_a", "signal_b"]
+    selected_items = [lists[0].item(row).text() for row in range(lists[0].count()) if lists[0].item(row).isSelected()]
+    assert selected_items == ["stage", "signal_a", "signal_b"]
 
 
 def test_json_round_trip_preserves_dataframe_selection():

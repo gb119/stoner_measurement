@@ -147,7 +147,12 @@ class DataFrameTracePlugin(TracePlugin):
         available = [str(column) for column in source_df.columns if str(column) not in excluded]
         if not available:
             raise ValueError("No output columns available after applying x-axis selection.")
-        selected = [column for column in self.selected_columns if column in available]
+        seen: set[str] = set()
+        selected = []
+        for column in self.selected_columns:
+            if column in available and column not in seen:
+                selected.append(column)
+                seen.add(column)
         if not selected:
             selected = available
             self.selected_columns = list(selected)
@@ -204,17 +209,27 @@ class DataFrameTracePlugin(TracePlugin):
                 if x_idx >= 0:
                     x_combo.setCurrentIndex(x_idx)
                     self.x_source = selected_x
+                available_columns = [
+                    str(column)
+                    for column in source_df.columns
+                    if self.x_source == _INDEX_X_SOURCE or str(column) != self.x_source
+                ]
+                seen: set[str] = set()
+                selected_columns = []
+                for column in self.selected_columns:
+                    if column in available_columns and column not in seen:
+                        selected_columns.append(column)
+                        seen.add(column)
+                if not selected_columns:
+                    selected_columns = list(available_columns)
+                self.selected_columns = selected_columns
                 for column in source_df.columns:
                     column_name = str(column)
                     if self.x_source != _INDEX_X_SOURCE and column_name == self.x_source:
                         continue
                     item = QListWidgetItem(column_name)
-                    item.setSelected(column_name in self.selected_columns)
                     columns_list.addItem(item)
-                if columns_list.count() > 0 and not self.selected_columns:
-                    for row in range(columns_list.count()):
-                        columns_list.item(row).setSelected(True)
-                    self.selected_columns = [columns_list.item(row).text() for row in range(columns_list.count())]
+                    item.setSelected(column_name in self.selected_columns)
             x_combo.blockSignals(False)
 
         def _apply_source(text: str) -> None:
