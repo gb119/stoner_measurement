@@ -626,7 +626,14 @@ class MagnetControllerEngine(QObject):
             True
             >>> engine.shutdown()
         """
-        return replace(self._latest_state, engine_status=self._status)
+        return replace(
+            self._latest_state,
+            target_field=self._target_field,
+            target_current=self._target_current,
+            ramp_rate_field=self._ramp_rate_field,
+            ramp_rate_current=self._ramp_rate_current,
+            engine_status=self._status,
+        )
 
     @pyqtSlot()
     def shutdown(self) -> None:
