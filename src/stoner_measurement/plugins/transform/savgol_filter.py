@@ -1,4 +1,4 @@
-"""SavitzkyGolayPlugin — Savitzky–Golay smoothing/derivative transform plugin."""
+"""SavitzkyGolayPlugin - Savitzky-Golay smoothing/derivative transform plugin."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
     """
 
     def __init__(self, parent=None) -> None:
-        """Initialise the Savitzky–Golay plugin with defaults."""
+        """Initialise the Savitzky-Golay plugin with defaults."""
         super().__init__(parent)
         self.trace_key: str = ""
         self.column_key: str = ""
@@ -95,7 +95,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         return []
 
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Return the selected trace with Savitzky–Golay-smoothed derivative data."""
+        """Return the selected trace with Savitzky-Golay-smoothed derivative data."""
         del data
         try:
             from scipy.signal import savgol_filter  # noqa: PLC0415
@@ -179,7 +179,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         return widget
 
     def _build_filter_tab(self, parent: QWidget | None = None) -> QWidget:
-        """Build the Savitzky–Golay filter configuration tab."""
+        """Build the Savitzky-Golay filter configuration tab."""
         widget = QWidget(parent)
         layout = QFormLayout(widget)
 
@@ -268,7 +268,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
 
 
 def _validated_odd_window_length(length: int, n_points: int) -> int:
-    """Return a valid odd window length for Savitzky–Golay filtering."""
+    """Return a valid odd window length for Savitzky-Golay filtering."""
     value = max(3, int(length))
     if value % 2 == 0:
         value += 1
