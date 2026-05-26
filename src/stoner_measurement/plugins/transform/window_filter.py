@@ -44,7 +44,49 @@ _WINDOW_NAMES = [
 
 
 class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
-    """Apply a configurable SciPy window via convolution to selected y-data."""
+    """Filter selected y data by convolving with a configurable SciPy window.
+
+    The plugin builds a window kernel from ``scipy.signal.windows.get_window``
+    and applies it to the selected y data using same-length convolution. It can
+    use plain trace selection or advanced expressions for x and y inputs.
+
+    Args:
+        parent (QObject | None):
+            Optional Qt parent object supplied by the plugin host.
+
+    Attributes:
+        trace_key (str):
+            Selected trace key used when advanced mode is disabled.
+        column_key (str):
+            Selected y-column key from the chosen trace.
+        advanced_mode (bool):
+            When ``True``, evaluate ``x_expr`` and ``y_expr`` instead of direct
+            trace/column selection.
+        x_expr (str):
+            Expression used to compute x data in advanced mode.
+        y_expr (str):
+            Expression used to compute y data in advanced mode.
+        window_name (str):
+            Name of the SciPy window function.
+        window_length (int):
+            Number of points in the generated window kernel.
+        window_parameters (str):
+            Optional Python literal text parsed as additional window
+            parameters (for example, shape parameters).
+        symmetric_window (bool):
+            When ``True``, create a symmetric window. When ``False``, create an
+            FFT-style periodic window.
+        normalise_kernel (bool):
+            When ``True``, divide the kernel by its sum to preserve DC level.
+
+    Notes:
+        Invalid kernel settings (for example, malformed parameters or
+        zero-sum normalisation) are logged and produce no transform output.
+
+    Examples:
+        Select a trace and y column, then choose a window type and length on
+        the Window tab to smooth noisy data while keeping the original x axis.
+    """
 
     def __init__(self, parent=None) -> None:
         """Initialise the window filter plugin with defaults."""

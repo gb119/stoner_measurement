@@ -16,7 +16,45 @@ _OUTPUT_TRACE_KEY = "savgol"
 
 
 class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
-    """Apply Savitzky–Golay filtering with selectable derivative output."""
+    """Apply Savitzky-Golay smoothing or derivatives to a selected trace column.
+
+    This transform plugin reads one x/y trace pair from either a selected trace
+    channel or advanced expressions, applies ``scipy.signal.savgol_filter``, and
+    outputs either the smoothed signal or one derivative order of the signal.
+
+    Args:
+        parent (QObject | None):
+            Optional Qt parent object supplied by the plugin host.
+
+    Attributes:
+        trace_key (str):
+            Selected trace key used when advanced mode is disabled.
+        column_key (str):
+            Selected y-column key from the chosen trace.
+        advanced_mode (bool):
+            When ``True``, evaluate ``x_expr`` and ``y_expr`` instead of direct
+            trace/column selection.
+        x_expr (str):
+            Expression used to compute x data in advanced mode.
+        y_expr (str):
+            Expression used to compute y data in advanced mode.
+        window_length (int):
+            Window size supplied to the Savitzky-Golay filter. The runtime path
+            coerces this to a valid odd length.
+        polyorder (int):
+            Polynomial order used for local fitting.
+        derivative_order (int):
+            Derivative order produced by the filter output.
+
+    Notes:
+        The plugin preserves source metadata where possible and derives output
+        units for derivative outputs as ``y_unit/x_unit^n``.
+
+    Examples:
+        Add the plugin to a sequence, choose a source trace and y column on the
+        Data tab, then choose filter settings on the Filter tab to generate a
+        smoothed or differentiated output trace.
+    """
 
     def __init__(self, parent=None) -> None:
         """Initialise the Savitzky–Golay plugin with defaults."""
@@ -34,7 +72,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
     @property
     def name(self) -> str:
         """Return the plugin display name."""
-        return "Savitzky–Golay"
+        return "Savitzky-Golay"
 
     @property
     def required_inputs(self) -> list[str]:

@@ -16,7 +16,44 @@ _OUTPUT_TRACE_KEY = "fft"
 
 
 class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
-    """Perform forward or inverse Fourier transforms on selected trace data."""
+    """Transform selected trace data between time and frequency domains.
+
+    This plugin resamples the selected x/y data onto a uniform grid and then
+    performs either a forward FFT or an inverse FFT. The output trace contains
+    magnitude, real, imaginary, and phase components for downstream analysis.
+
+    Args:
+        parent (QObject | None):
+            Optional Qt parent object supplied by the plugin host.
+
+    Attributes:
+        trace_key (str):
+            Selected trace key used when advanced mode is disabled.
+        column_key (str):
+            Selected y-column key from the chosen trace.
+        advanced_mode (bool):
+            When ``True``, evaluate ``x_expr`` and ``y_expr`` instead of direct
+            trace/column selection.
+        x_expr (str):
+            Expression used to compute x data in advanced mode.
+        y_expr (str):
+            Expression used to compute y data in advanced mode.
+        inverse (bool):
+            When ``False``, compute a forward Fourier transform. When ``True``,
+            treat the input as shifted frequency-domain data and compute an
+            inverse transform.
+
+    Notes:
+        Non-uniform input spacing is handled by interpolation to a uniform grid
+        before applying FFT routines. The output x-axis unit is converted to the
+        reciprocal of the input x unit where possible.
+
+    Examples:
+        Use the Transform tab to switch between forward and inverse modes after
+        selecting input data on the Data tab, then route the resulting
+        ``*_magnitude``, ``*_real``, ``*_imag``, and ``*_angle`` outputs to
+        plotting or further processing steps.
+    """
 
     def __init__(self, parent=None) -> None:
         """Initialise the Fourier transform plugin with defaults."""
