@@ -645,7 +645,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         if "control_loops" in data:
             raw = data["control_loops"]
             if isinstance(raw, list):
-                loops = [int(v) for v in raw if int(v) >= 1]
+                loops = [iv for v in raw if (iv := int(v)) >= 1]
                 self.control_loops = loops if loops else [1]
             else:
                 self.control_loops = [1]
