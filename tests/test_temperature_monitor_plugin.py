@@ -22,7 +22,6 @@ from stoner_measurement.temperature_control.types import (
     TemperatureEngineState,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -90,6 +89,14 @@ class _FakeEngine:
         """Simulate a controller state read and increment the poll counter."""
         self.poll_calls += 1
         return self._state
+
+
+class _FakeSequenceEngine:
+    def __init__(self) -> None:
+        self.rebuild_calls = 0
+
+    def _rebuild_data_catalogs(self) -> None:
+        self.rebuild_calls += 1
 
 
 def _make_plugin(engine: _FakeEngine, monkeypatch, driver_name: str = "FakeTemp") -> TemperatureMonitorPlugin:
@@ -263,6 +270,22 @@ def test_read_nan_when_loop_missing(monkeypatch, qapp):
     reading = plugin.read()
     assert math.isnan(reading["setpoint_9"])
     assert math.isnan(reading["heater_9"])
+    assert math.isnan(reading["stable_9"])
+
+
+def test_quantity_names_falls_back_to_driver_channels(monkeypatch, qapp):
+    state = _make_state(channels=[], loops=[1])
+    engine = _FakeEngine(state)
+    engine.connected_driver = SimpleNamespace(
+        get_capabilities=lambda: SimpleNamespace(input_channels=["A", "B"])
+    )
+    plugin = _make_plugin(engine, monkeypatch)
+    plugin.sensor_channels = None
+    plugin.control_loops = [1]
+
+    names = plugin.quantity_names
+    assert "temperature_A" in names
+    assert "temperature_B" in names
 
 
 def test_read_caches_last_reading(monkeypatch, qapp):
@@ -505,6 +528,26 @@ def test_json_round_trip_sensor_channels_none(monkeypatch, qapp):
     assert restored.sensor_channels is None
 
 
+def test_json_restore_ignores_invalid_control_loops(monkeypatch, qapp):
+    engine = _FakeEngine()
+    plugin = _make_plugin(engine, monkeypatch)
+    data = plugin.to_json()
+    data["control_loops"] = [2, "3", None, "x", -1, 2]
+    restored = BasePlugin.from_json(data)
+    assert isinstance(restored, TemperatureMonitorPlugin)
+    assert restored.control_loops == [2, 3]
+
+
+def test_json_restore_sensor_channels_stringifies_and_deduplicates(monkeypatch, qapp):
+    engine = _FakeEngine()
+    plugin = _make_plugin(engine, monkeypatch)
+    data = plugin.to_json()
+    data["sensor_channels"] = [" A ", 2, "A", None, 2]
+    restored = BasePlugin.from_json(data)
+    assert isinstance(restored, TemperatureMonitorPlugin)
+    assert restored.sensor_channels == ["A", "2", "None"]
+
+
 # ---------------------------------------------------------------------------
 # Config widget
 # ---------------------------------------------------------------------------
@@ -524,3 +567,22 @@ def test_config_tabs_has_general_tab(monkeypatch, qapp):
     tab_titles = [title for title, _ in tabs]
     assert "General" in tab_titles
     assert "Temperature Monitor" in tab_titles
+
+
+def test_widget_rebuilds_catalogs_on_output_settings_change(monkeypatch, qapp):
+    engine = _FakeEngine()
+    plugin = _make_plugin(engine, monkeypatch)
+    plugin.sequence_engine = _FakeSequenceEngine()
+    widget = plugin.config_widget()
+
+    widget._loops_edit.setText("1, 2")  # noqa: SLF001
+    widget._on_loops_changed()  # noqa: SLF001
+    widget._channels_edit.setText("A, B")  # noqa: SLF001
+    widget._on_channels_changed()  # noqa: SLF001
+    widget._on_setpoints_toggled(False)  # noqa: SLF001
+    widget._on_temperatures_toggled(False)  # noqa: SLF001
+    widget._on_heater_toggled(False)  # noqa: SLF001
+    widget._on_rate_toggled(False)  # noqa: SLF001
+    widget._on_stability_toggled(False)  # noqa: SLF001
+
+    assert plugin.sequence_engine.rebuild_calls == 7

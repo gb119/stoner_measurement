@@ -169,6 +169,10 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         """Return the singleton temperature controller engine."""
         return TemperatureControllerEngine.instance()
 
+    def _refresh_catalogs(self) -> None:
+        if self.sequence_engine is not None:
+            self.sequence_engine._rebuild_data_catalogs()  # noqa: SLF001
+
     def _ensure_connected(self) -> TemperatureControllerEngine:
         """Ensure the engine is connected to the configured driver.
 
@@ -252,7 +256,13 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         state = self._current_state()
         if state.readings:
             return sorted(state.readings)
-        return []
+        driver = self._engine().connected_driver
+        if driver is None:
+            return []
+        try:
+            return list(driver.get_capabilities().input_channels)
+        except Exception:
+            return []
 
     def _active_loops(self) -> list[int]:
         """Return the control loops to report.
@@ -419,8 +429,8 @@ class TemperatureMonitorPlugin(MonitorPlugin):
 
         if self.report_stability:
             for lp in loops:
-                stable_val = state.stable.get(lp, False)
-                result[f"stable_{lp}"] = 1.0 if stable_val else 0.0
+                stable_val = state.stable.get(lp)
+                result[f"stable_{lp}"] = math.nan if stable_val is None else (1.0 if stable_val else 0.0)
 
         self._last_reading = result
         return result
@@ -660,13 +670,24 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         if "control_loops" in data:
             raw = data["control_loops"]
             if isinstance(raw, list):
-                loops = [iv for v in raw if (iv := int(v)) >= 1]
+                loops: list[int] = []
+                seen: set[int] = set()
+                for value in raw:
+                    try:
+                        iv = int(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if iv >= 1 and iv not in seen:
+                        loops.append(iv)
+                        seen.add(iv)
                 self.control_loops = loops if loops else [1]
             else:
                 self.control_loops = [1]
         if "sensor_channels" in data:
             raw = data["sensor_channels"]
-            self.sensor_channels = _parse_channel_list(", ".join(raw)) if isinstance(raw, list) else None
+            self.sensor_channels = (
+                _parse_channel_list(", ".join(str(value) for value in raw)) if isinstance(raw, list) else None
+            )
         if "report_setpoints" in data:
             self.report_setpoints = bool(data["report_setpoints"])
         if "report_temperatures" in data:
@@ -804,22 +825,29 @@ class _TemperatureMonitorSettingsWidget(QWidget):
     def _on_loops_changed(self) -> None:
         text = self._loops_edit.text()
         self._plugin.control_loops = _parse_int_list(text, [1])
+        self._plugin._refresh_catalogs()
 
     def _on_channels_changed(self) -> None:
         text = self._channels_edit.text()
         self._plugin.sensor_channels = _parse_channel_list(text)
+        self._plugin._refresh_catalogs()
 
     def _on_setpoints_toggled(self, checked: bool) -> None:
         self._plugin.report_setpoints = checked
+        self._plugin._refresh_catalogs()
 
     def _on_temperatures_toggled(self, checked: bool) -> None:
         self._plugin.report_temperatures = checked
+        self._plugin._refresh_catalogs()
 
     def _on_heater_toggled(self, checked: bool) -> None:
         self._plugin.report_heater = checked
+        self._plugin._refresh_catalogs()
 
     def _on_rate_toggled(self, checked: bool) -> None:
         self._plugin.report_rate = checked
+        self._plugin._refresh_catalogs()
 
     def _on_stability_toggled(self, checked: bool) -> None:
         self._plugin.report_stability = checked
+        self._plugin._refresh_catalogs()
