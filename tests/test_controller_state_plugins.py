@@ -52,6 +52,9 @@ def _manager_factory(*names):
 class _FakeMagnetEngine:
     def __init__(self) -> None:
         self.connected_driver = None
+        self.connected_driver_name = None
+        self.connected_transport_name = None
+        self.connected_address = None
         self.connect_calls: list[tuple[str, str, str]] = []
         self.ramp_rate_calls: list[float] = []
         self.ramp_to_field_calls: list[float] = []
@@ -75,6 +78,9 @@ class _FakeMagnetEngine:
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
         self.connect_calls.append((driver_name, transport_name, address))
+        self.connected_driver_name = driver_name
+        self.connected_transport_name = transport_name
+        self.connected_address = address
         self.connected_driver = type(driver_name, (), {})()
 
     def read_controller_state(self):
@@ -114,6 +120,9 @@ class _FakeTemperatureDriver:
 class _FakeTemperatureEngine:
     def __init__(self) -> None:
         self.connected_driver = None
+        self.connected_driver_name = None
+        self.connected_transport_name = None
+        self.connected_address = None
         self.connect_calls: list[tuple[str, str, str]] = []
         self.ramp_calls: list[tuple[int, float, bool]] = []
         self.setpoint_calls: list[tuple[int, float]] = []
@@ -142,6 +151,9 @@ class _FakeTemperatureEngine:
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
         self.connect_calls.append((driver_name, transport_name, address))
+        self.connected_driver_name = driver_name
+        self.connected_transport_name = transport_name
+        self.connected_address = address
         self.connected_driver = self._driver
 
     def read_controller_state(self):
@@ -208,9 +220,9 @@ def test_magnet_controller_sweep_plugin_serialises(monkeypatch, qapp):
 
     assert engine.target_field_calls == [1.1]
     assert engine.ramp_to_target_calls == 1
-    assert engine.ramp_rate_calls[-1] == 0.5
+    assert engine.ramp_rate_calls[-1] == 30.0
     assert isinstance(restored, MagnetControllerSweepPlugin)
-    assert restored.ramp_rate == 0.5
+    assert restored.ramp_rate == 30.0
     assert restored.report_outputs is None
     assert restored.reported_values()["magnet_controller:Control Value"] == "magnet_controller.value"
 
@@ -272,3 +284,49 @@ def test_temperature_controller_sweep_plugin_round_trips(monkeypatch, qapp):
         "temperature_controller:Sensor A": "temperature_controller.sensor_value('A')",
         "temperature_controller:Sensor B": "temperature_controller.sensor_value('B')",
     }
+
+
+def test_magnet_controller_plugin_reconnects_when_transport_settings_change(monkeypatch, qapp):
+    engine = _FakeMagnetEngine()
+    monkeypatch.setattr(magnet_module, "InstrumentDriverManager", _manager_factory("FakeMagnet"))
+    monkeypatch.setattr(
+        magnet_module,
+        "MagnetControllerEngine",
+        type("FakeMagnetControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MagnetControllerScanPlugin()
+    plugin.transport_name = "Null (test)"
+    plugin.address = ""
+    plugin.connect()
+    plugin.transport_name = "Ethernet"
+    plugin.address = "localhost:7020"
+    plugin.connect()
+
+    assert engine.connect_calls == [
+        ("FakeMagnet", "Null (test)", ""),
+        ("FakeMagnet", "Ethernet", "localhost:7020"),
+    ]
+
+
+def test_temperature_controller_plugin_reconnects_when_transport_settings_change(monkeypatch, qapp):
+    engine = _FakeTemperatureEngine()
+    monkeypatch.setattr(temperature_module, "InstrumentDriverManager", _manager_factory("FakeTemp"))
+    monkeypatch.setattr(
+        temperature_module,
+        "TemperatureControllerEngine",
+        type("FakeTemperatureControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = TemperatureControllerScanPlugin()
+    plugin.transport_name = "Null (test)"
+    plugin.address = ""
+    plugin.connect()
+    plugin.transport_name = "GPIB"
+    plugin.address = "GPIB0::4::INSTR"
+    plugin.connect()
+
+    assert engine.connect_calls == [
+        ("FakeTemp", "Null (test)", ""),
+        ("FakeTemp", "GPIB", "GPIB0::4::INSTR"),
+    ]

@@ -73,10 +73,22 @@ class MagnetControllerPluginMixin:
         engine = self._engine()
         connected_driver = engine.connected_driver
         current_name = type(connected_driver).__name__ if connected_driver is not None else ""
-        if connected_driver is None or (self.driver_name and current_name != self.driver_name):
+        active_driver_name = getattr(engine, "connected_driver_name", current_name)
+        active_transport = getattr(engine, "connected_transport_name", None)
+        active_address = getattr(engine, "connected_address", None)
+        desired_driver_name = self.driver_name.strip()
+        desired_transport = self.transport_name.strip()
+        desired_address = self.address.strip()
+        needs_connect = (
+            connected_driver is None
+            or (desired_driver_name and active_driver_name != desired_driver_name)
+            or (active_transport is not None and active_transport != desired_transport)
+            or (active_address is not None and active_address != desired_address)
+        )
+        if needs_connect:
             if not self.driver_name:
                 raise RuntimeError("No magnet controller driver selected.")
-            engine.connect_driver(self.driver_name, self.transport_name, self.address)
+            engine.connect_driver(desired_driver_name, desired_transport, desired_address)
         return engine
 
     def _engine_state(self, *, refresh: bool = False) -> MagnetEngineState:
@@ -116,7 +128,7 @@ class MagnetControllerPluginMixin:
         engine.ramp_to_target()
 
     def set_rate(self, value: float) -> None:
-        self.ramp_rate = max(0.0, float(value))
+        self.ramp_rate = max(0.0, float(value)) * 60.0
         engine = self._engine()
         if engine.connected_driver is not None:
             engine.set_ramp_rate_field(self.ramp_rate)

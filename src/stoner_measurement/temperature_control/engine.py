@@ -101,6 +101,9 @@ class TemperatureControllerEngine(QObject):
         self.publisher: TemperaturePublisher = TemperaturePublisher(self)
 
         self._driver = None  # TemperatureController | None
+        self._connected_driver_name: str | None = None
+        self._connected_transport_name: str | None = None
+        self._connected_address: str | None = None
         self._status: EngineStatus = EngineStatus.DISCONNECTED
         self._stability_config: StabilityConfig = StabilityConfig()
 
@@ -194,6 +197,7 @@ class TemperatureControllerEngine(QObject):
             self._set_status(EngineStatus.DISCONNECTED)
             raise
         self._driver = driver
+        self._connected_driver_name = type(driver).__name__
         self._history.clear()
         self._at_setpoint_since.clear()
         self._unstable_since.clear()
@@ -233,6 +237,9 @@ class TemperatureControllerEngine(QObject):
         protocol = self._build_protocol(driver_name)
         driver = driver_cls(transport=transport, protocol=protocol)
         self.connect_instrument(driver)
+        self._connected_driver_name = driver_name
+        self._connected_transport_name = transport_name
+        self._connected_address = address
 
     def _resolve_driver_class(self, driver_name: str) -> type[TemperatureController]:
         """Resolve a temperature-controller driver class by name.
@@ -352,6 +359,9 @@ class TemperatureControllerEngine(QObject):
         if self._driver is not None:
             self._disconnect_driver(self._driver, log_context="on disconnect")
         self._driver = None
+        self._connected_driver_name = None
+        self._connected_transport_name = None
+        self._connected_address = None
         self._history.clear()
         self._at_setpoint_since.clear()
         self._unstable_since.clear()
@@ -377,6 +387,21 @@ class TemperatureControllerEngine(QObject):
             >>> engine.shutdown()
         """
         return self._driver
+
+    @property
+    def connected_driver_name(self) -> str | None:
+        """Return the connected driver name when known."""
+        return self._connected_driver_name
+
+    @property
+    def connected_transport_name(self) -> str | None:
+        """Return the active transport type when known."""
+        return self._connected_transport_name
+
+    @property
+    def connected_address(self) -> str | None:
+        """Return the active connection address when known."""
+        return self._connected_address
 
     def set_setpoint(self, loop: int, value: float) -> None:
         """Set the temperature setpoint for *loop*.
@@ -967,6 +992,9 @@ class TemperatureControllerEngine(QObject):
         if self._driver is not None:
             self._disconnect_driver(self._driver, log_context="on shutdown")
         self._driver = None
+        self._connected_driver_name = None
+        self._connected_transport_name = None
+        self._connected_address = None
         self._set_status(EngineStatus.STOPPED)
         self._latest_state = TemperatureEngineState(engine_status=self._status)
         if TemperatureControllerEngine._singleton is self:
