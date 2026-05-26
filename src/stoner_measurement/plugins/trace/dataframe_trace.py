@@ -185,11 +185,10 @@ class DataFrameTracePlugin(TransformPlugin):
         def _populate_x_and_columns() -> None:
             source_name = self.source_plugin.strip()
             available_columns = self._catalog_columns_for_source(source_name)
-            if not available_columns:
-                source_obj = self.engine_namespace.get(source_name)
-                source_df = getattr(source_obj, "data", None)
-                if isinstance(source_df, pd.DataFrame):
-                    available_columns = [str(column) for column in source_df.columns]
+            source_obj = self.engine_namespace.get(source_name)
+            source_df = getattr(source_obj, "data", None)
+            if isinstance(source_df, pd.DataFrame) and not source_df.empty:
+                available_columns = [str(column) for column in source_df.columns]
 
             x_combo.blockSignals(True)
             x_combo.clear()

@@ -614,10 +614,11 @@ class TestDataCatalogs:
 
         plugin = CounterPlugin()
         plugin.collect_data = True
-        plugin.collect_outputs = ["counter:count", "missing:value"]
+        expected_key = next(iter(plugin.reported_values().keys()))
+        plugin.collect_outputs = [expected_key, "missing:value"]
         engine.update_step_plugin_catalog([plugin])
         cat = engine.dataframes_catalog
-        assert cat[plugin.instance_name] == ["value", "stage", "counter:count"]
+        assert cat[plugin.instance_name] == ["value", "stage", expected_key]
 
     def test_values_catalog_includes_trace_statistics_when_enabled(self, engine):
         plugin = DummyPlugin()
