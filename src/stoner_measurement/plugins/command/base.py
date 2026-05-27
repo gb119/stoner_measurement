@@ -27,8 +27,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
-
-_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS = 0.25
+from stoner_measurement.core.sequence_engine import _DEFAULT_PLOT_READY_TIMEOUT_SECONDS
 
 
 class _SignalEmitter(Protocol):
