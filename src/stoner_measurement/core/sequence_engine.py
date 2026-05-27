@@ -619,6 +619,11 @@ class SequenceEngine(QObject):
         # sequence editor).  These are the sole source for the _traces/_values
         # catalogs; base plugins registered via add_plugin are not included.
         self._extra_catalog_plugins: list[BasePlugin] = []
+        # Plugins collected from the most recently generated sequence (set by
+        # generate_sequence_code).  These are the step plugins that were actually
+        # part of the last sequence build; disabled or uncatalogued plugins are
+        # excluded.
+        self._sequence_plugins: list[BasePlugin] = []
 
         # Reference to the main plot widget; set by the application after startup.
         # Used by PlotTraceCommand to deliver data directly without manual signal wiring.
@@ -1019,6 +1024,85 @@ class SequenceEngine(QObject):
             if id(plugin) not in seen:
                 result.append(plugin)
                 seen.add(id(plugin))
+        return result
+
+    def sequence_plugins(self) -> list[BasePlugin]:
+        """Return the plugin instances that are actually part of the current sequence.
+
+        Unlike :meth:`all_plugins`, which returns every plugin registered with
+        the engine (including step-catalog plugins that are not in the current
+        sequence), this method returns only:
+
+        * The **base plugins** registered via :meth:`add_plugin` (always present
+          in the measurement environment).
+        * The **step plugins** that were collected when
+          :meth:`generate_sequence_code` was last called — i.e. the enabled
+          plugins actually instantiated in the most recently built sequence.
+
+        For each plugin in the above sets, any plugins returned by
+        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.member_plugins`
+        are also included recursively.  This handles plugins that own other
+        plugin instances internally (e.g. a combined plugin wrapping a trace
+        plugin and a monitor plugin).
+
+        Each plugin instance appears at most once (identity-based
+        deduplication).
+
+        If :meth:`generate_sequence_code` has not yet been called (e.g. before
+        the first sequence run), only the base plugins are returned.
+
+        Returns:
+            (list[BasePlugin]):
+                Ordered list of plugin instances that are part of the current
+                sequence — base plugins first, then sequence step plugins, then
+                any recursively discovered member plugins.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.trace import DummyPlugin
+            >>> engine = SequenceEngine()
+            >>> base = DummyPlugin()
+            >>> step = DummyPlugin()
+            >>> other = DummyPlugin()
+            >>> engine.add_plugin("base", base)
+            >>> engine.update_step_plugin_catalog([step, other])
+            >>> # Before generate_sequence_code: only base plugins returned
+            >>> plugins = engine.sequence_plugins()
+            >>> base in plugins
+            True
+            >>> step in plugins
+            False
+            >>> # After generate_sequence_code with only 'step' in the tree:
+            >>> _ = engine.generate_sequence_code([step], {"step": step})
+            >>> plugins = engine.sequence_plugins()
+            >>> base in plugins
+            True
+            >>> step in plugins
+            True
+            >>> other in plugins
+            False
+            >>> engine.shutdown()
+        """
+
+        from stoner_measurement.plugins.base_plugin import BasePlugin  # noqa: PLC0415
+
+        def _expand(plugin: BasePlugin, result: list[BasePlugin], seen: set[int]) -> None:
+            if id(plugin) in seen:
+                return
+            result.append(plugin)
+            seen.add(id(plugin))
+            for child in plugin.member_plugins():
+                _expand(child, result, seen)
+
+        result: list[BasePlugin] = []
+        seen: set[int] = set()
+        for var_name in self._plugin_var_names.values():
+            plugin = self._namespace.get(var_name)
+            if isinstance(plugin, BasePlugin):
+                _expand(plugin, result, seen)
+        for plugin in self._sequence_plugins:
+            _expand(plugin, result, seen)
         return result
 
     @property
@@ -1442,6 +1526,7 @@ class SequenceEngine(QObject):
             return (code, {}) if return_line_map else code
 
         ordered_plugins = self._collect_plugins_from_steps(steps, plugins)
+        self._sequence_plugins = list(ordered_plugins)
 
         if not ordered_plugins:
             code = "\n".join(header) + "# No sequence steps defined yet.\n"

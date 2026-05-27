@@ -436,7 +436,7 @@ class SaveCommand(CommandPlugin):
             raise RuntimeError("SaveCommand must be attached to a SequenceEngine before execute()")
 
         metadata: list[str] = []
-        for plugin in engine.all_plugins():
+        for plugin in engine.sequence_plugins():
             state = plugin.to_json()
             prefix = str(state.get("instance_name", plugin.instance_name))
             metadata.extend(_flatten_to_metadata(state, prefix))

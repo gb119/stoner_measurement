@@ -294,12 +294,16 @@ class TestSaveCommand:
         assert "save.instance_name{str}='save'" in text
 
     def test_execute_tdi_step_plugin_state_flattened(self, qapp, engine, tmp_path):
-        """Step plugins registered via update_step_plugin_catalog appear in metadata."""
+        """Only step plugins that are part of the sequence appear in metadata."""
         from stoner_measurement.plugins.trace import DummyPlugin
 
-        step = DummyPlugin()
-        step.instance_name = "step_dummy"
-        engine.update_step_plugin_catalog([step])
+        in_sequence = DummyPlugin()
+        in_sequence.instance_name = "step_in_seq"
+        not_in_sequence = DummyPlugin()
+        not_in_sequence.instance_name = "step_not_in_seq"
+        engine.update_step_plugin_catalog([in_sequence, not_in_sequence])
+        # Build a sequence that includes only in_sequence
+        engine.generate_sequence_code([in_sequence], {"step_in_seq": in_sequence})
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
         out_file = tmp_path / "out.txt"
@@ -307,7 +311,9 @@ class TestSaveCommand:
         cmd.execute()
 
         text = out_file.read_text()
-        assert "step_dummy.instance_name" in text
+        # Only the plugin that was part of the sequence should appear in metadata.
+        assert "step_in_seq.instance_name" in text
+        assert "step_not_in_seq.instance_name" not in text
 
     def test_execute_tdi_values_in_metadata(self, qapp, engine, tmp_path):
         cmd = SaveCommand()

@@ -695,6 +695,66 @@ class TestDataCatalogs:
     def test_all_plugins_empty_when_no_plugins(self, engine):
         assert engine.all_plugins() == []
 
+    # ------------------------------------------------------------------
+    # sequence_plugins
+    # ------------------------------------------------------------------
+
+    def test_sequence_plugins_returns_base_plugins_always(self, engine):
+        """Base plugins added via add_plugin are always in sequence_plugins."""
+        base = DummyPlugin()
+        engine.add_plugin("base", base)
+        assert base in engine.sequence_plugins()
+
+    def test_sequence_plugins_excludes_step_plugins_before_sequence_code(self, engine):
+        """Step catalog plugins not yet in any sequence are excluded."""
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        assert step not in engine.sequence_plugins()
+
+    def test_sequence_plugins_includes_step_after_generate_sequence_code(self, engine):
+        """Step plugins appear after generate_sequence_code includes them."""
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        engine.generate_sequence_code([step], {"step": step})
+        assert step in engine.sequence_plugins()
+
+    def test_sequence_plugins_excludes_step_not_in_tree(self, engine):
+        """Step plugins not in the sequence tree are excluded even when catalogued."""
+        in_seq = DummyPlugin()
+        not_in_seq = DummyPlugin()
+        engine.update_step_plugin_catalog([in_seq, not_in_seq])
+        engine.generate_sequence_code([in_seq], {"in_seq": in_seq})
+        plugins = engine.sequence_plugins()
+        assert in_seq in plugins
+        assert not_in_seq not in plugins
+
+    def test_sequence_plugins_deduplicates(self, engine):
+        """A plugin that is both base and in-sequence appears only once."""
+        plugin = DummyPlugin()
+        engine.add_plugin("dual", plugin)
+        engine.update_step_plugin_catalog([plugin])
+        engine.generate_sequence_code([plugin], {"dual": plugin})
+        assert engine.sequence_plugins().count(plugin) == 1
+
+    def test_sequence_plugins_includes_member_plugins_recursively(self, engine):
+        """member_plugins() is called recursively to expand container plugins."""
+        from stoner_measurement.plugins.trace import DummyPlugin as _Dummy
+
+        inner = _Dummy()
+        inner.instance_name = "inner"
+
+        class _Container(_Dummy):
+            def member_plugins(self):
+                return [inner]
+
+        outer = _Container()
+        outer.instance_name = "outer"
+        engine.update_step_plugin_catalog([outer])
+        engine.generate_sequence_code([outer], {"outer": outer})
+        plugins = engine.sequence_plugins()
+        assert outer in plugins
+        assert inner in plugins
+
     def test_plot_widget_initially_none(self, engine):
         """plot_widget is None before being set by the application."""
         assert engine.plot_widget is None
