@@ -620,9 +620,9 @@ class SequenceEngine(QObject):
         # catalogs; base plugins registered via add_plugin are not included.
         self._extra_catalog_plugins: list[BasePlugin] = []
         # Plugins collected from the most recently generated sequence (set by
-        # generate_sequence_code).  These are the step plugins that were actually
-        # part of the last sequence build; disabled or uncatalogued plugins are
-        # excluded.
+        # generate_sequence_code; replaced on each call, not appended).  These are
+        # the step plugins that were actually part of the last sequence build;
+        # disabled or uncatalogued plugins are excluded.
         self._sequence_plugins: list[BasePlugin] = []
 
         # Reference to the main plot widget; set by the application after startup.

@@ -738,12 +738,10 @@ class TestDataCatalogs:
 
     def test_sequence_plugins_includes_member_plugins_recursively(self, engine):
         """member_plugins() is called recursively to expand container plugins."""
-        from stoner_measurement.plugins.trace import DummyPlugin as _Dummy
-
-        inner = _Dummy()
+        inner = DummyPlugin()
         inner.instance_name = "inner"
 
-        class _Container(_Dummy):
+        class _Container(DummyPlugin):
             def member_plugins(self):
                 return [inner]
 
