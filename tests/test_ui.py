@@ -1343,6 +1343,7 @@ class TestPlotWidget:
         assert "temp" not in widget.axis_names
         assert widget._trace_axes["sig"] == ("bottom", "left")
         assert "freq" in widget.axis_names
+        assert widget._axis_items["freq"].labelText == "Frequency (Hz)"
         assert widget._axis_log_scale["freq"] is True
 
     def test_add_y_axis(self, qapp):
