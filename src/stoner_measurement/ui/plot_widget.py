@@ -768,8 +768,8 @@ class PlotWidget(QWidget):
         if y_axis != "left":
             self._axis_items[y_axis].linkToView(view_box)
         view_box.setLogMode(
-            x=self._axis_log_scale.get(x_axis, False),
-            y=self._axis_log_scale.get(y_axis, False),
+            self._axis_log_scale.get(x_axis, False),
+            self._axis_log_scale.get(y_axis, False),
         )
         return view_box
 
@@ -1225,8 +1225,8 @@ class PlotWidget(QWidget):
         self._axis_log_scale[name] = bool(log_scale)
         for (x_axis, y_axis), view_box in self._pair_view_boxes.items():
             view_box.setLogMode(
-                x=self._axis_log_scale.get(x_axis, False),
-                y=self._axis_log_scale.get(y_axis, False),
+                self._axis_log_scale.get(x_axis, False),
+                self._axis_log_scale.get(y_axis, False),
             )
 
     def _update_grid_state(self) -> None:
