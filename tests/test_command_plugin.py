@@ -1177,7 +1177,7 @@ class TestPlotTraceCommand:
     def test_execute_advanced_mode_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
         import stoner_measurement.plugins.command.base as command_base
 
-        monkeypatch.setattr(command_base, "_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS", 0.01)
+        monkeypatch.setattr(command_base, "_DEFAULT_PLOT_READY_TIMEOUT_SECONDS", 0.01)
         engine.plot_widget = _NeverAckPlotWidget()
 
         cmd = PlotTraceCommand()
@@ -2882,7 +2882,7 @@ class TestPlotPointsCommand:
     def test_execute_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
         import stoner_measurement.plugins.command.base as command_base
 
-        monkeypatch.setattr(command_base, "_DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS", 0.01)
+        monkeypatch.setattr(command_base, "_DEFAULT_PLOT_READY_TIMEOUT_SECONDS", 0.01)
         engine.plot_widget = _NeverAckPlotWidget()
 
         cmd = PlotPointsCommand()
