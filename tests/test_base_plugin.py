@@ -285,6 +285,10 @@ class TestBasePluginDefaults:
         plugin = _MinimalPlugin()
         assert plugin.engine_namespace == {}
 
+    def test_member_plugins_returns_empty_list_by_default(self):
+        plugin = _MinimalPlugin()
+        assert plugin.member_plugins() == []
+
 
 class TestBasePluginEval:
     """Tests for BasePlugin.eval()."""

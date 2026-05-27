@@ -24,7 +24,7 @@ from typing import Any, SupportsInt
 import pandas as pd
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
+from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.plugins.sequence.base import SequencePlugin
 
 
@@ -407,6 +407,45 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 self.collect_outputs = [str(item) for item in raw]
             else:
                 self.collect_outputs = None
+
+    # ------------------------------------------------------------------
+    # Member plugins
+    # ------------------------------------------------------------------
+
+    def member_plugins(self) -> list[BasePlugin]:
+        """Return child :class:`~stoner_measurement.plugins.base_plugin.BasePlugin` instances from sub-steps.
+
+        Both :class:`~stoner_measurement.plugins.state_scan.base.StateScanPlugin`
+        and :class:`~stoner_measurement.plugins.state_sweep.base.StateSweepPlugin`
+        are sequence containers that may own nested child plugins as sub-steps.
+        This override exposes those child plugin instances so that
+        :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.sequence_plugins`
+        can discover them recursively.
+
+        Only the **direct** children stored in :attr:`sub_steps` are returned;
+        recursion into their own sub-steps is handled by the engine calling
+        :meth:`member_plugins` on each returned child in turn.
+
+        Returns:
+            (list[BasePlugin]):
+                Ordered list of directly owned child plugin instances.  Returns
+                an empty list when :attr:`sub_steps` is empty or contains only
+                string entry-point descriptors.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> from stoner_measurement.plugins.state_scan import CounterPlugin
+            >>> p = CounterPlugin()
+            >>> p.member_plugins()
+            []
+        """
+        result: list[BasePlugin] = []
+        for step in self.sub_steps:
+            plugin_or_name = step[0] if isinstance(step, tuple) else step
+            if isinstance(plugin_or_name, BasePlugin):
+                result.append(plugin_or_name)
+        return result
 
     # ------------------------------------------------------------------
     # Reported values

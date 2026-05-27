@@ -1204,3 +1204,33 @@ class BasePlugin(ABC):
             {}
         """
         return {}
+
+    def member_plugins(self) -> list[BasePlugin]:
+        """Return any :class:`BasePlugin` instances owned directly by this plugin.
+
+        This hook is used by
+        :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.sequence_plugins`
+        to discover plugins nested inside container plugins.  The engine calls
+        this method recursively so that deeply nested plugin hierarchies are
+        fully enumerated.
+
+        The default implementation returns an empty list.  Plugins that own
+        other plugin instances as attributes (e.g. a combined plugin that
+        wraps a :class:`~stoner_measurement.plugins.trace.TracePlugin` and a
+        :class:`~stoner_measurement.plugins.monitor.MonitorPlugin`) should
+        override this method to expose those instances.
+
+        Returns:
+            (list[BasePlugin]):
+                Ordered list of directly owned plugin instances.  Must not
+                include ``self``.
+
+        Examples:
+            >>> from stoner_measurement.plugins.base_plugin import BasePlugin
+            >>> class _Minimal(BasePlugin):
+            ...     @property
+            ...     def name(self): return "Minimal"
+            >>> _Minimal().member_plugins()
+            []
+        """
+        return []

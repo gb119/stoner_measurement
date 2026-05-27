@@ -311,6 +311,35 @@ class TestStateSweepPlugin:
         assert "state_reached" not in scan
         assert "state_error" not in scan
 
+    def test_member_plugins_empty_when_no_sub_steps(self, qapp):
+        plugin = _TestSweepPlugin()
+        assert plugin.member_plugins() == []
+
+    def test_member_plugins_returns_direct_plugin_instances(self, qapp):
+        parent = _TestSweepPlugin()
+        child = _TestSweepPlugin()
+        parent.sub_steps = [child]
+        assert parent.member_plugins() == [child]
+
+    def test_member_plugins_skips_string_descriptors(self, qapp):
+        plugin = _TestSweepPlugin()
+        plugin.sub_steps = ["some_entry_point"]
+        assert plugin.member_plugins() == []
+
+    def test_member_plugins_handles_tuple_descriptors(self, qapp):
+        parent = _TestSweepPlugin()
+        child = _TestSweepPlugin()
+        parent.sub_steps = [(child, [])]
+        assert parent.member_plugins() == [child]
+
+    def test_member_plugins_mixed_entries(self, qapp):
+        parent = _TestSweepPlugin()
+        child1 = _TestSweepPlugin()
+        child2 = _TestSweepPlugin()
+        parent.sub_steps = [child1, "string_descriptor", (child2, [])]
+        result = parent.member_plugins()
+        assert result == [child1, child2]
+
 
 class TestSweepGenerators:
     def test_base_from_json_dispatches_monitor_and_filter(self, qapp):
