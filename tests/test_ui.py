@@ -1316,6 +1316,18 @@ class TestPlotWidget:
         dialog.reject()
         assert dialog.result() == QDialog.DialogCode.Rejected
 
+    def test_axes_config_dialog_rejects_name_used_by_other_axis_kind(self, qapp):
+        dialog = AxesConfigDialog(
+            x_axes=[{"name": "bottom", "label": "Step", "log_scale": False, "grid": True, "removable": False}],
+            y_axes=[{"name": "left", "label": "Value", "log_scale": False, "grid": True, "removable": False}],
+        )
+        dialog._add_name_inputs["x"].setText("left")
+        dialog._add_label_inputs["x"].setText("Colliding Left")
+        dialog._add_axis_row_from_inputs("x")
+        changes = dialog.axis_changes()
+        assert "left" not in changes["visible_axes"]["x"]
+        dialog.reject()
+
     def test_open_axes_dialog_applies_additions_and_removals(self, qapp, monkeypatch):
         widget = PlotWidget()
         widget.add_y_axis("temp", "Temperature (K)")

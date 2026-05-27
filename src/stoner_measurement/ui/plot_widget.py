@@ -119,7 +119,7 @@ class _AxisDialogChanges(TypedDict):
 class AxesConfigDialog(QDialog):
     """Dialog for configuring x/y axes on the plot widget.
 
-    Args:
+    Keyword Parameters:
         x_axes (list[_AxisDialogEntry]):
             Existing x-axis configuration rows.
         y_axes (list[_AxisDialogEntry]):
@@ -213,11 +213,14 @@ class AxesConfigDialog(QDialog):
             names.add(item.text())
         return names
 
+    def _axis_names_in_tables(self) -> set[str]:
+        return self._axis_names_in_table("x") | self._axis_names_in_table("y")
+
     def _add_axis_row_from_inputs(self, axis_kind: Literal["x", "y"]) -> None:
         name_input = self._add_name_inputs[axis_kind]
         label_input = self._add_label_inputs[axis_kind]
         axis_name = name_input.text().strip()
-        if not axis_name or axis_name in self._axis_names_in_table(axis_kind):
+        if not axis_name or axis_name in self._axis_names_in_tables():
             return
         axis_label = label_input.text().strip() or axis_name
         self._add_axis_row(
