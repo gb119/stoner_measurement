@@ -718,6 +718,15 @@ class TestDataCatalogs:
         engine.generate_sequence_code([step], {"step": step})
         assert step in engine.sequence_plugins()
 
+    def test_sequence_plugins_clears_steps_when_generating_empty_sequence(self, engine):
+        """Generating an empty sequence clears any previously tracked step plugins."""
+        step = DummyPlugin()
+        engine.update_step_plugin_catalog([step])
+        engine.generate_sequence_code([step], {"step": step})
+        assert step in engine.sequence_plugins()
+        engine.generate_sequence_code([], {})
+        assert step not in engine.sequence_plugins()
+
     def test_sequence_plugins_excludes_step_not_in_tree(self, engine):
         """Step plugins not in the sequence tree are excluded even when catalogued."""
         in_seq = DummyPlugin()

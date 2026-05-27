@@ -1054,8 +1054,9 @@ class SequenceEngine(QObject):
         Returns:
             (list[BasePlugin]):
                 Ordered list of plugin instances that are part of the current
-                sequence — base plugins first, then sequence step plugins, then
-                any recursively discovered member plugins.
+                sequence, expanded depth-first from each base plugin and then
+                from each in-sequence step plugin (with member plugins appearing
+                immediately after their parent).
 
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
@@ -1521,6 +1522,7 @@ class SequenceEngine(QObject):
             "",
         ]
 
+        self._sequence_plugins = []
         if not steps:
             code = "\n".join(header) + "# No sequence steps defined yet.\n"
             return (code, {}) if return_line_map else code
