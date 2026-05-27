@@ -235,7 +235,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             TimeoutError:
                 If the plot request is not acknowledged before *timeout*.
         """
-        timeout_value = _DEFAULT_PLOT_RESPONSE_TIMEOUT_SECONDS if timeout is None else timeout
+        timeout_value = _DEFAULT_PLOT_READY_TIMEOUT_SECONDS if timeout is None else timeout
         if self._wait_for_plot_ready(timeout=timeout_value):
             return
         engine = self.sequence_engine
