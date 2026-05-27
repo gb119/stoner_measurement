@@ -15,19 +15,23 @@ from typing import Literal
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import QPoint, Qt, pyqtSlot
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
     QColorDialog,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDoubleSpinBox,
+    QFormLayout,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
+    QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -89,6 +93,188 @@ _COLOUR_COLUMN_WIDTH = 90
 _AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
+
+
+class AxesConfigDialog(QDialog):
+    """Dialog for configuring x/y axes on the plot widget."""
+
+    def __init__(
+        self,
+        *,
+        x_axes: list[dict[str, object]],
+        y_axes: list[dict[str, object]],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Configure Axes")
+        self.resize(760, 420)
+        self._removed_axes: dict[str, set[str]] = {"x": set(), "y": set()}
+        self._tables: dict[str, QTableWidget] = {}
+        self._add_name_inputs: dict[str, QLineEdit] = {}
+        self._add_label_inputs: dict[str, QLineEdit] = {}
+
+        root = QVBoxLayout(self)
+        tabs = QTabWidget(self)
+        tabs.addTab(self._build_axis_tab("x", x_axes), "X Axes")
+        tabs.addTab(self._build_axis_tab("y", y_axes), "Y Axes")
+        root.addWidget(tabs)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+    def _build_axis_tab(self, axis_kind: Literal["x", "y"], axes: list[dict[str, object]]) -> QWidget:
+        tab = QWidget(self)
+        layout = QVBoxLayout(tab)
+
+        table = QTableWidget(tab)
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(["Name", "Title", "Scale", "Grid", "Remove"])
+        table.verticalHeader().setVisible(False)
+        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(table)
+        self._tables[axis_kind] = table
+
+        add_layout = QFormLayout()
+        name_input = QLineEdit(tab)
+        label_input = QLineEdit(tab)
+        add_button = QPushButton("Add Axis", tab)
+        add_button.clicked.connect(lambda _checked=False, kind=axis_kind: self._add_axis_row_from_inputs(kind))
+        add_layout.addRow("Name", name_input)
+        add_layout.addRow("Title", label_input)
+        add_layout.addRow(add_button)
+        layout.addLayout(add_layout)
+        self._add_name_inputs[axis_kind] = name_input
+        self._add_label_inputs[axis_kind] = label_input
+
+        for axis in axes:
+            self._add_axis_row(
+                axis_kind=axis_kind,
+                axis_name=str(axis["name"]),
+                axis_label=str(axis["label"]),
+                log_scale=bool(axis["log_scale"]),
+                grid_enabled=bool(axis["grid"]),
+                removable=bool(axis["removable"]),
+            )
+        return tab
+
+    def _axis_names_in_table(self, axis_kind: Literal["x", "y"]) -> set[str]:
+        table = self._tables[axis_kind]
+        names: set[str] = set()
+        for row in range(table.rowCount()):
+            item = table.item(row, 0)
+            if item is None:
+                continue
+            names.add(item.text())
+        return names
+
+    def _add_axis_row_from_inputs(self, axis_kind: Literal["x", "y"]) -> None:
+        name_input = self._add_name_inputs[axis_kind]
+        label_input = self._add_label_inputs[axis_kind]
+        axis_name = name_input.text().strip()
+        if not axis_name or axis_name in self._axis_names_in_table(axis_kind):
+            return
+        axis_label = label_input.text().strip() or axis_name
+        self._add_axis_row(
+            axis_kind=axis_kind,
+            axis_name=axis_name,
+            axis_label=axis_label,
+            log_scale=False,
+            grid_enabled=False,
+            removable=True,
+        )
+        name_input.clear()
+        label_input.clear()
+
+    def _add_axis_row(
+        self,
+        *,
+        axis_kind: Literal["x", "y"],
+        axis_name: str,
+        axis_label: str,
+        log_scale: bool,
+        grid_enabled: bool,
+        removable: bool,
+    ) -> None:
+        table = self._tables[axis_kind]
+        row = table.rowCount()
+        table.insertRow(row)
+
+        name_item = QTableWidgetItem(axis_name)
+        name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        table.setItem(row, 0, name_item)
+
+        label_edit = QLineEdit(axis_label, table)
+        table.setCellWidget(row, 1, label_edit)
+
+        scale_combo = QComboBox(table)
+        scale_combo.addItems(["linear", "log"])
+        scale_combo.setCurrentText("log" if log_scale else "linear")
+        table.setCellWidget(row, 2, scale_combo)
+
+        grid_checkbox = QCheckBox(table)
+        grid_checkbox.setChecked(grid_enabled)
+        table.setCellWidget(row, 3, grid_checkbox)
+
+        remove_button = QPushButton("Remove", table)
+        remove_button.setEnabled(removable)
+        remove_button.clicked.connect(
+            lambda _checked=False, kind=axis_kind, row_index=row: self._mark_axis_removed(kind, row_index)
+        )
+        table.setCellWidget(row, 4, remove_button)
+
+    def _mark_axis_removed(self, axis_kind: Literal["x", "y"], row: int) -> None:
+        table = self._tables[axis_kind]
+        item = table.item(row, 0)
+        if item is None:
+            return
+        self._removed_axes[axis_kind].add(item.text())
+        table.setRowHidden(row, True)
+
+    def axis_changes(self) -> dict[str, object]:
+        """Return staged axis operations from the dialog."""
+        labels: dict[str, str] = {}
+        log_scale: dict[str, bool] = {}
+        grid: dict[str, bool] = {}
+        additions: dict[str, list[str]] = {"x": [], "y": []}
+        for axis_kind in ("x", "y"):
+            table = self._tables[axis_kind]
+            for row in range(table.rowCount()):
+                if table.isRowHidden(row):
+                    continue
+                item = table.item(row, 0)
+                if item is None:
+                    continue
+                axis_name = item.text()
+                label_widget = table.cellWidget(row, 1)
+                scale_widget = table.cellWidget(row, 2)
+                grid_widget = table.cellWidget(row, 3)
+                if isinstance(label_widget, QLineEdit):
+                    labels[axis_name] = label_widget.text().strip() or axis_name
+                if isinstance(scale_widget, QComboBox):
+                    log_scale[axis_name] = scale_widget.currentText() == "log"
+                if isinstance(grid_widget, QCheckBox):
+                    grid[axis_name] = grid_widget.isChecked()
+                if axis_name not in self._removed_axes[axis_kind]:
+                    additions[axis_kind].append(axis_name)
+        return {
+            "labels": labels,
+            "log_scale": log_scale,
+            "grid": grid,
+            "removed": {
+                "x": sorted(self._removed_axes["x"]),
+                "y": sorted(self._removed_axes["y"]),
+            },
+            "visible_axes": additions,
+        }
 
 
 class PlotWidget(QWidget):
@@ -153,24 +339,23 @@ class PlotWidget(QWidget):
         self._axis_items: dict[str, pg.AxisItem] = {}
         # Axis orientation registry: axis_name → "x" | "y".
         self._axis_orientations: dict[str, Literal["x", "y"]] = {}
+        self._axis_log_scale: dict[str, bool] = {}
+        self._axis_grid: dict[str, bool] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._setup_axis_controls(layout)
+        self._setup_axis_config_controls(layout)
         self._setup_trace_table(layout)
         self._setup_pg_widget(layout)
         self._refresh_trace_and_axis_controls()
         self.setLayout(layout)
 
-    def _setup_axis_controls(self, layout: QVBoxLayout) -> None:
-        """Build the +X Axis and +Y Axis buttons and add to layout."""
+    def _setup_axis_config_controls(self, layout: QVBoxLayout) -> None:
+        """Build axis configuration controls and add to layout."""
         controls = QHBoxLayout()
-        self._add_x_axis_button = QPushButton("+X Axis", self)
-        self._add_x_axis_button.clicked.connect(self._prompt_add_x_axis)
-        controls.addWidget(self._add_x_axis_button)
-        self._add_y_axis_button = QPushButton("+Y Axis", self)
-        self._add_y_axis_button.clicked.connect(self._prompt_add_y_axis)
-        controls.addWidget(self._add_y_axis_button)
+        self._configure_axes_button = QPushButton("Configure Axes…", self)
+        self._configure_axes_button.clicked.connect(self._open_axes_dialog)
+        controls.addWidget(self._configure_axes_button)
         controls.addStretch(1)
         layout.addLayout(controls)
 
@@ -199,11 +384,14 @@ class PlotWidget(QWidget):
         """Create the pyqtgraph PlotWidget, register default axes, and add to layout."""
         self._pg_widget = pg.PlotWidget()
         self._pg_widget.setObjectName("pgPlotWidget")
+        self._pg_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._pg_widget.customContextMenuRequested.connect(self._open_axes_dialog)
         self._pg_widget.setBackground("w")
         self._pg_widget.showGrid(x=True, y=True, alpha=0.3)
         self._pg_widget.setLabel("left", "Value")
         self._pg_widget.setLabel("bottom", "Step")
         plot_item: pg.PlotItem = self._pg_widget.getPlotItem()
+        plot_item.setMenuEnabled(False)
         self._plot_item = plot_item
         self._view_boxes["left"] = plot_item.vb
         self._view_boxes["bottom"] = plot_item.vb
@@ -212,6 +400,10 @@ class PlotWidget(QWidget):
         self._axis_items["bottom"] = plot_item.getAxis("bottom")
         self._axis_orientations["left"] = "y"
         self._axis_orientations["bottom"] = "x"
+        self._axis_log_scale["bottom"] = False
+        self._axis_log_scale["left"] = False
+        self._axis_grid["bottom"] = True
+        self._axis_grid["left"] = True
         self._plot_item.vb.sigResized.connect(self._sync_view_box_geometry)
         layout.addWidget(self._pg_widget)
 
@@ -442,23 +634,68 @@ class PlotWidget(QWidget):
             y_axis=axis_name if axis_kind == "y" else current_y,
         )
 
-    def _prompt_add_x_axis(self) -> None:
-        """Prompt for a new x-axis name/label and add it."""
-        name, ok = QInputDialog.getText(self, "Add X axis", "Axis name:")
-        if not ok or not name.strip():
-            return
-        clean_name = name.strip()
-        label, _ = QInputDialog.getText(self, "Add X axis", "Axis label:", text=clean_name)
-        self.add_x_axis(clean_name, label.strip() or clean_name, position="top")
+    def _axis_entries(self, axis_kind: Literal["x", "y"]) -> list[dict[str, object]]:
+        """Return axis metadata for the configuration dialog."""
+        names = self._x_axis_names() if axis_kind == "x" else self._y_axis_names()
+        entries: list[dict[str, object]] = []
+        for name in names:
+            axis = self._axis_items[name]
+            entries.append(
+                {
+                    "name": name,
+                    "label": axis.labelText or name,
+                    "log_scale": self._axis_log_scale.get(name, False),
+                    "grid": self._axis_grid.get(name, False),
+                    "removable": name not in {"bottom", "left"},
+                }
+            )
+        return entries
 
-    def _prompt_add_y_axis(self) -> None:
-        """Prompt for a new y-axis name/label and add it."""
-        name, ok = QInputDialog.getText(self, "Add Y axis", "Axis name:")
-        if not ok or not name.strip():
+    def _open_axes_dialog(self, _pos: QPoint | None = None) -> None:
+        """Open the axis configuration dialog and apply accepted changes."""
+        existing_x = set(self._x_axis_names())
+        existing_y = set(self._y_axis_names())
+        dialog = AxesConfigDialog(
+            x_axes=self._axis_entries("x"),
+            y_axes=self._axis_entries("y"),
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        clean_name = name.strip()
-        label, _ = QInputDialog.getText(self, "Add Y axis", "Axis label:", text=clean_name)
-        self.add_y_axis(clean_name, label.strip() or clean_name, side="right")
+        changes = dialog.axis_changes()
+        labels = changes["labels"]
+        log_scale = changes["log_scale"]
+        grid = changes["grid"]
+        removed_x = changes["removed"]["x"]
+        removed_y = changes["removed"]["y"]
+        visible_x = set(changes["visible_axes"]["x"])
+        visible_y = set(changes["visible_axes"]["y"])
+
+        for axis_name, axis_label in labels.items():
+            if axis_name in self._axis_items:
+                self.set_axis_label(axis_name, axis_label)
+        for axis_name, enabled in log_scale.items():
+            if axis_name in self._axis_items:
+                self.set_axis_log_scale(axis_name, enabled)
+        for axis_name, enabled in grid.items():
+            if axis_name in self._axis_items:
+                self.set_axis_grid(axis_name, enabled)
+        for axis_name in removed_x + removed_y:
+            if axis_name in self._axis_items:
+                self.remove_axis(axis_name)
+
+        new_x_axes = sorted(name for name in visible_x if name not in existing_x)
+        new_y_axes = sorted(name for name in visible_y if name not in existing_y)
+        for axis_name in new_x_axes:
+            axis_label = labels.get(axis_name, axis_name)
+            self.add_x_axis(axis_name, axis_label, position="top")
+            self.set_axis_log_scale(axis_name, log_scale.get(axis_name, False))
+            self.set_axis_grid(axis_name, grid.get(axis_name, False))
+        for axis_name in new_y_axes:
+            axis_label = labels.get(axis_name, axis_name)
+            self.add_y_axis(axis_name, axis_label, side="right")
+            self.set_axis_log_scale(axis_name, log_scale.get(axis_name, False))
+            self.set_axis_grid(axis_name, grid.get(axis_name, False))
 
     def _create_pair_view_box(self, x_axis: str, y_axis: str) -> pg.ViewBox:
         """Create a view box for the given axis pair."""
@@ -478,6 +715,10 @@ class PlotWidget(QWidget):
             self._axis_items[x_axis].linkToView(view_box)
         if y_axis != "left":
             self._axis_items[y_axis].linkToView(view_box)
+        view_box.setLogMode(
+            x=self._axis_log_scale.get(x_axis, False),
+            y=self._axis_log_scale.get(y_axis, False),
+        )
         return view_box
 
     def _get_or_create_trace(self, trace_name: str) -> pg.PlotDataItem:
@@ -586,10 +827,10 @@ class PlotWidget(QWidget):
     def set_trace_with_errors(
         self,
         trace_name: str,
-        x_data: "Sequence[float]",
-        y_data: "Sequence[float]",
-        x_err: "Sequence[float] | None",
-        y_err: "Sequence[float] | None",
+        x_data: Sequence[float],
+        y_data: Sequence[float],
+        x_err: Sequence[float] | None,
+        y_err: Sequence[float] | None,
     ) -> None:
         """Replace the complete data series for a named trace, including error bars.
 
@@ -703,9 +944,9 @@ class PlotWidget(QWidget):
             'Current (A)'
         """
         if x_label:
-            self._pg_widget.setLabel("bottom", x_label)
+            self.set_axis_label("bottom", x_label)
         if y_label:
-            self._pg_widget.setLabel("left", y_label)
+            self.set_axis_label("left", y_label)
 
     def set_trace_style(  # pylint: disable=too-many-arguments
         self,
@@ -897,6 +1138,69 @@ class PlotWidget(QWidget):
     # Public API — axis management
     # ------------------------------------------------------------------
 
+    def set_axis_label(self, name: str, label: str) -> None:
+        """Set the displayed title for an axis."""
+        if name not in self._axis_items:
+            raise KeyError(f"Unknown axis: {name!r}")
+        self._axis_items[name].setLabel(label)
+
+    def set_axis_log_scale(self, name: str, log_scale: bool) -> None:
+        """Set logarithmic scaling mode for an axis."""
+        if name not in self._axis_items:
+            raise KeyError(f"Unknown axis: {name!r}")
+        self._axis_log_scale[name] = bool(log_scale)
+        for (x_axis, y_axis), view_box in self._pair_view_boxes.items():
+            view_box.setLogMode(
+                x=self._axis_log_scale.get(x_axis, False),
+                y=self._axis_log_scale.get(y_axis, False),
+            )
+
+    def _update_grid_state(self) -> None:
+        """Apply aggregate grid visibility from per-axis flags."""
+        x_grid_enabled = any(self._axis_grid.get(axis_name, False) for axis_name in self._x_axis_names())
+        y_grid_enabled = any(self._axis_grid.get(axis_name, False) for axis_name in self._y_axis_names())
+        self._pg_widget.showGrid(x=x_grid_enabled, y=y_grid_enabled, alpha=0.3)
+
+    def set_axis_grid(self, name: str, enabled: bool) -> None:
+        """Set grid visibility preference for an axis."""
+        if name not in self._axis_items:
+            raise KeyError(f"Unknown axis: {name!r}")
+        self._axis_grid[name] = bool(enabled)
+        self._update_grid_state()
+
+    def remove_axis(self, name: str) -> None:
+        """Remove a non-default axis and reassign traces using it."""
+        if name not in self._axis_items:
+            raise KeyError(f"Unknown axis: {name!r}")
+        if name in {"bottom", "left"}:
+            raise ValueError(f"Cannot remove default axis: {name!r}")
+
+        orientation = self._axis_orientations[name]
+        default_axis = "bottom" if orientation == "x" else "left"
+        for trace_name, (x_axis, y_axis) in list(self._trace_axes.items()):
+            if orientation == "x" and x_axis == name:
+                self.assign_trace_axes(trace_name, x_axis=default_axis, y_axis=y_axis)
+            if orientation == "y" and y_axis == name:
+                self.assign_trace_axes(trace_name, x_axis=x_axis, y_axis=default_axis)
+
+        for key, view_box in list(self._pair_view_boxes.items()):
+            if key == ("bottom", "left"):
+                continue
+            if name not in key:
+                continue
+            self._plot_item.scene().removeItem(view_box)
+            self._pair_view_boxes.pop(key, None)
+
+        axis_item = self._axis_items.pop(name)
+        self._plot_item.layout.removeItem(axis_item)
+        axis_item.hide()
+        self._axis_orientations.pop(name, None)
+        self._view_boxes.pop(name, None)
+        self._axis_log_scale.pop(name, None)
+        self._axis_grid.pop(name, None)
+        self._update_grid_state()
+        self._refresh_trace_and_axis_controls()
+
     def add_y_axis(
         self,
         name: str,
@@ -934,7 +1238,11 @@ class PlotWidget(QWidget):
         self._plot_item.layout.addItem(axis, 2, 3 if side == "right" else 0)
         self._axis_items[name] = axis
         self._axis_orientations[name] = "y"
+        self._axis_log_scale[name] = False
+        self._axis_grid[name] = self._axis_grid.get("left", True)
         self._view_boxes[name] = self._create_pair_view_box("bottom", name)
+        self.set_axis_log_scale(name, self._axis_log_scale[name])
+        self._update_grid_state()
         self._refresh_trace_and_axis_controls()
 
     def ensure_y_axis(self, name: str, label: str = "") -> None:
@@ -1010,7 +1318,11 @@ class PlotWidget(QWidget):
         self._plot_item.layout.addItem(axis, 0 if position == "top" else 4, 1)
         self._axis_items[name] = axis
         self._axis_orientations[name] = "x"
+        self._axis_log_scale[name] = False
+        self._axis_grid[name] = self._axis_grid.get("bottom", True)
         self._view_boxes[name] = self._create_pair_view_box(name, "left")
+        self.set_axis_log_scale(name, self._axis_log_scale[name])
+        self._update_grid_state()
         self._refresh_trace_and_axis_controls()
 
     def ensure_x_axis(self, name: str, label: str = "") -> None:

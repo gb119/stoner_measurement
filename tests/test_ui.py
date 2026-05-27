@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QHeaderView, QLabel, QTreeWidgetItem
+from PyQt6.QtWidgets import QDialog, QHeaderView, QLabel, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
@@ -13,7 +13,12 @@ from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
 from stoner_measurement.ui.main_window import MainWindow
-from stoner_measurement.ui.plot_widget import _MAX_VISIBLE_TRACE_ROWS, _POINT_PICTOGRAMS, PlotWidget
+from stoner_measurement.ui.plot_widget import (
+    _MAX_VISIBLE_TRACE_ROWS,
+    _POINT_PICTOGRAMS,
+    AxesConfigDialog,
+    PlotWidget,
+)
 
 
 class _FakeStatePlugin(StateControlPlugin, metaclass=_ABCQObjectMeta):
@@ -1293,6 +1298,53 @@ class TestPlotWidget:
         assert "left" in widget.axis_names
         assert "bottom" in widget.axis_names
 
+    def test_configure_axes_button_present(self, qapp):
+        widget = PlotWidget()
+        assert widget._configure_axes_button.text() == "Configure Axes…"
+
+    def test_axes_config_dialog_creates_and_collects_changes(self, qapp):
+        dialog = AxesConfigDialog(
+            x_axes=[{"name": "bottom", "label": "Step", "log_scale": False, "grid": True, "removable": False}],
+            y_axes=[{"name": "left", "label": "Value", "log_scale": False, "grid": True, "removable": False}],
+        )
+        dialog._add_name_inputs["x"].setText("freq")
+        dialog._add_label_inputs["x"].setText("Frequency (Hz)")
+        dialog._add_axis_row_from_inputs("x")
+        changes = dialog.axis_changes()
+        assert "freq" in changes["visible_axes"]["x"]
+        assert changes["labels"]["freq"] == "Frequency (Hz)"
+        dialog.reject()
+        assert dialog.result() == QDialog.DialogCode.Rejected
+
+    def test_open_axes_dialog_applies_additions_and_removals(self, qapp, monkeypatch):
+        widget = PlotWidget()
+        widget.add_y_axis("temp", "Temperature (K)")
+        widget.append_point("sig", 0.0, 1.0)
+        widget.assign_trace_axes("sig", y_axis="temp")
+
+        class _FakeDialog:
+            def __init__(self, **_kwargs):
+                pass
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+            def axis_changes(self):
+                return {
+                    "labels": {"bottom": "Step", "left": "Value", "freq": "Frequency (Hz)"},
+                    "log_scale": {"bottom": False, "left": False, "freq": True},
+                    "grid": {"bottom": True, "left": True, "freq": False},
+                    "removed": {"x": [], "y": ["temp"]},
+                    "visible_axes": {"x": ["bottom", "freq"], "y": ["left"]},
+                }
+
+        monkeypatch.setattr("stoner_measurement.ui.plot_widget.AxesConfigDialog", _FakeDialog)
+        widget._open_axes_dialog()
+        assert "temp" not in widget.axis_names
+        assert widget._trace_axes["sig"] == ("bottom", "left")
+        assert "freq" in widget.axis_names
+        assert widget._axis_log_scale["freq"] is True
+
     def test_add_y_axis(self, qapp):
         widget = PlotWidget()
         widget.add_y_axis("temperature", "Temperature (K)", side="right")
@@ -1393,6 +1445,37 @@ class TestPlotWidget:
         initial = sorted(widget.axis_names)
         widget.ensure_x_axis("bottom")
         assert sorted(widget.axis_names) == initial
+
+    def test_set_axis_label_updates_axis_title(self, qapp):
+        widget = PlotWidget()
+        widget.add_y_axis("temp", "Temp")
+        widget.set_axis_label("temp", "Temperature (K)")
+        assert widget._axis_items["temp"].labelText == "Temperature (K)"
+
+    def test_set_axis_log_scale_updates_axis_state(self, qapp):
+        widget = PlotWidget()
+        widget.add_x_axis("freq", "Freq")
+        widget.set_axis_log_scale("freq", True)
+        assert widget._axis_log_scale["freq"] is True
+
+    def test_set_axis_grid_updates_axis_state(self, qapp):
+        widget = PlotWidget()
+        widget.set_axis_grid("bottom", False)
+        assert widget._axis_grid["bottom"] is False
+
+    def test_remove_axis_rejects_default_axis(self, qapp):
+        widget = PlotWidget()
+        with pytest.raises(ValueError, match="default axis"):
+            widget.remove_axis("left")
+
+    def test_remove_axis_reassigns_trace_to_default(self, qapp):
+        widget = PlotWidget()
+        widget.add_y_axis("temp", "Temperature (K)")
+        widget.append_point("sig", 0.0, 1.0)
+        widget.assign_trace_axes("sig", y_axis="temp")
+        widget.remove_axis("temp")
+        assert widget._trace_axes["sig"] == ("bottom", "left")
+        assert "temp" not in widget.axis_names
 
     def test_set_trace_style_updates_trace_style(self, qapp):
         widget = PlotWidget()
