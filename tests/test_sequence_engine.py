@@ -750,11 +750,11 @@ class TestDataCatalogs:
         inner = DummyPlugin()
         inner.instance_name = "inner"
 
-        class _Container(DummyPlugin):
+        class _ContainerPlugin(DummyPlugin):
             def member_plugins(self):
                 return [inner]
 
-        outer = _Container()
+        outer = _ContainerPlugin()
         outer.instance_name = "outer"
         engine.update_step_plugin_catalog([outer])
         engine.generate_sequence_code([outer], {"outer": outer})
