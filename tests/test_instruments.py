@@ -1335,7 +1335,7 @@ class TestKeithley6221:
             k.configure_trigger_link(output_line=3, input_line=3)
 
     def test_configure_trigger_link_no_conflict(self):
-        # cur_olin=3, cur_ilin=4, pmar disabled — no temporary moves needed.
+        # cur_olin=3, cur_ilin=4, pmar disabled -- no temporary moves needed.
         t = _null(responses=[b"3\n", b"4\n", b"0\n"])
         k = Keithley6221(transport=t)
         k.configure_trigger_link(output_line=1, input_line=2)
@@ -1349,8 +1349,8 @@ class TestKeithley6221:
         ]
 
     def test_configure_trigger_link_olin_blocks_input(self):
-        # cur_olin=2 (= desired input_line) → olin must be moved first.
-        # free_line(input=2, output=1, cur_ilin=4, pmar=0) → 3
+        # cur_olin=2 (= desired input_line) -> olin must be moved first.
+        # free_line(input=2, output=1, cur_ilin=4, pmar=0) -> 3
         t = _null(responses=[b"2\n", b"4\n", b"0\n"])
         k = Keithley6221(transport=t)
         k.configure_trigger_link(output_line=1, input_line=2)
@@ -1366,7 +1366,7 @@ class TestKeithley6221:
 
     def test_configure_trigger_link_pmar_blocks_input(self):
         # cur_olin=3, cur_ilin=4, pmar on line 2 (= desired input_line).
-        # free_line(input=2, output=1, cur_olin=3, cur_ilin=4) → 5
+        # free_line(input=2, output=1, cur_olin=3, cur_ilin=4) -> 5
         t = _null(responses=[b"3\n", b"4\n", b"1\n", b"2\n"])
         k = Keithley6221(transport=t)
         k.configure_trigger_link(output_line=1, input_line=2)
@@ -1383,7 +1383,7 @@ class TestKeithley6221:
 
     def test_configure_trigger_link_pmar_blocks_output(self):
         # cur_olin=3, cur_ilin=4, pmar on line 1 (= desired output_line).
-        # After setting ILIN=2: free_line(output=1, ilin=2, cur_olin=3) → 4
+        # After setting ILIN=2: free_line(output=1, ilin=2, cur_olin=3) -> 4
         t = _null(responses=[b"3\n", b"4\n", b"1\n", b"1\n"])
         k = Keithley6221(transport=t)
         k.configure_trigger_link(output_line=1, input_line=2)

@@ -258,7 +258,9 @@ class Keithley6221(CurrentSource):
             for line in range(1, 7):
                 if line not in exclude_set:
                     return line
-            raise RuntimeError("No free trigger-link line available.")  # pragma: no cover
+            raise RuntimeError(  # pragma: no cover
+                f"No free trigger-link line available (excluded: {sorted(exclude_set)})."
+            )
 
         # ---- Free the desired input line ------------------------------------
         # TRIG:ILIN <n> fails if <n> is already assigned to TRIG:OLIN or the
@@ -275,11 +277,10 @@ class Keithley6221(CurrentSource):
 
         # ---- Assign the input line ------------------------------------------
         self.write(f":TRIG:ILIN {input_line}")
-        cur_ilin = input_line  # noqa: F841 — kept to document state
 
         # ---- Free the desired output line -----------------------------------
         # TRIG:OLIN <n> fails if <n> is already assigned to TRIG:ILIN (now
-        # input_line — a user-error handled by the guard above) or the
+        # input_line -- a user-error handled by the guard above) or the
         # phase-marker output.
         if cur_pmar is not None and cur_pmar == output_line:
             temp = _free_line(output_line, input_line, cur_olin)
