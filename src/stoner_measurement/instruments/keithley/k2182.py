@@ -226,7 +226,7 @@ class Keithley2182A(Nanovoltmeter):
             state (bool):
                 ``True`` to enable, ``False`` to disable.
         """
-        self.write(f":SENS:VOLT:REL:STAT {1 if state else 0}")
+        self.write(f":SENS:VOLT:REF:STAT {1 if state else 0}")
 
     def get_trigger_source(self) -> NanovoltmeterTriggerSource:
         """Return the trigger source selection.

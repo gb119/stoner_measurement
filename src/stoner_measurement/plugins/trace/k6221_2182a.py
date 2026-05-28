@@ -253,7 +253,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self.scan_generator.units = "A"
 
         # Connection settings
-        self._6221_resource: str = "GPIB0::22::INSTR"
+        self._6221_resource: str = "GPIB0::13::INSTR"
         self._2182a_resource: str = "GPIB0::7::INSTR"
         self._connection_mode: ConnectionMode = ConnectionMode.VIA_6221_SERIAL
 
@@ -764,7 +764,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                     self._nvm_write("SENS:VOLT:DFIL:STAT 0")
 
                 self._nvm_write(f"SENS:VOLT:LPAS:STAT {1 if self._analog_filter else 0}")
-                self._nvm_write(f"SENS:VOLT:REL:STAT {1 if self._relative_enabled else 0}")
+                self._nvm_write(f"SNS:VOLT:REF:STAT {1 if self._relative_enabled else 0}")
                 self._nvm_write("TRAC:CLE")
                 self._nvm_write(f"TRAC:POIN {n}")
                 self._nvm_write("TRAC:FEED SENS")

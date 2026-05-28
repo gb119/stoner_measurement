@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import sleep
+
 from stoner_measurement.instruments.current_source import (
     CurrentSource,
     CurrentSourceCapabilities,
@@ -248,10 +250,7 @@ class Keithley6221(CurrentSource):
             # Read current state so we know what is already assigned.
             cur_olin = int(self.query(":TRIG:OLIN?").strip())
             cur_ilin = int(self.query(":TRIG:ILIN?").strip())
-            pmar_active = self.query(":SOUR:WAVE:PMAR:STAT?").strip() == "1"
-            cur_pmar: int | None = (
-                int(self.query(":SOUR:WAVE:PMAR:OLIN?").strip()) if pmar_active else None
-            )
+            cur_pmar = int(self.query(":SOUR:WAVE:PMAR:OLIN?").strip())
 
             def _free_line(*excluded: int) -> int:
                 """Return the lowest line in 1..6 not in *excluded*."""
@@ -272,7 +271,7 @@ class Keithley6221(CurrentSource):
                 )
                 self.write(f":TRIG:OLIN {temp}")
                 cur_olin = temp
-            if cur_pmar is not None and cur_pmar == input_line:
+            if cur_pmar == input_line:
                 temp = _free_line(input_line, output_line, cur_olin, cur_ilin)
                 self.write(f":SOUR:WAVE:PMAR:OLIN {temp}")
                 cur_pmar = temp
@@ -284,7 +283,7 @@ class Keithley6221(CurrentSource):
             # TRIG:OLIN <n> fails if <n> is already assigned to TRIG:ILIN (now
             # input_line -- a user-error handled by the guard above) or the
             # phase-marker output.
-            if cur_pmar is not None and cur_pmar == output_line:
+            if cur_pmar == output_line:
                 temp = _free_line(output_line, input_line, cur_olin)
                 self.write(f":SOUR:WAVE:PMAR:OLIN {temp}")
 
@@ -378,20 +377,30 @@ class Keithley6221(CurrentSource):
             RuntimeError:
                 If a line-terminated response is not received within
                 *max_chunks* chunks.
+                
+        Notes:
+            This will terminate after if recieves a blank chunk after it
+            recieves a non-blank chunk.
         """
         if max_chunks <= 0:
             raise ValueError("max_chunks must be positive.")
         self.send_serial_command(cmd, terminator=command_terminator)
+        sleep(0.1)
         parts: list[str] = []
         for _ in range(max_chunks):
-            chunk = self._read_serial_entry_chunk()
-            parts.append(chunk)
-            combined = "".join(parts)
-            if combined.endswith(response_terminator):
-                return combined.rstrip("\r\n")
-        raise RuntimeError(
-            "Timed out reading serial relay response: no line terminator (LF) received."
-        )
+            chunk = self._read_serial_entry_chunk().strip()
+            if chunk:
+                parts.append(chunk)
+            else:
+                sleep(0.05)
+            if parts and not chunk:
+                break
+        else:
+            raise RuntimeError(
+                "Timed out reading serial relay response: no line terminator (LF) received."
+            )
+        combined = "".join(parts)
+        return combined.rstrip("\r\n")
 
     def sweep_start(self) -> None:
         """Arm the configured sweep, making it ready for triggering."""
