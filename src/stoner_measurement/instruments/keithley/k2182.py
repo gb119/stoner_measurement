@@ -116,6 +116,12 @@ class Keithley2182A(Nanovoltmeter):
             raise ValueError("NPLC must be positive.")
         self.write(f":SENS:VOLT:NPLC {value}")
 
+    def set_digits(self, digits: int) -> None:
+        """Set display and data digits."""
+        if not 4 <= digits <= 7:
+            raise ValueError("digits must be in the range 4..7.")
+        self.write(f":DISP:DIGS {digits}")
+
     def get_measure_function(self) -> NanovoltmeterFunction:
         """Return the active measurement function.
 
@@ -177,6 +183,14 @@ class Keithley2182A(Nanovoltmeter):
             raise ValueError("Filter count must be positive.")
         self.write(f":SENS:VOLT:DFIL:COUN {count}")
 
+    def set_analog_filter_enabled(self, state: bool) -> None:
+        """Enable or disable the analogue low-pass filter."""
+        self.write(f":SENS:VOLT:LPAS:STAT {1 if state else 0}")
+
+    def set_relative_enabled(self, state: bool) -> None:
+        """Enable or disable relative (REL) mode."""
+        self.write(f":SENS:VOLT:REL:STAT {1 if state else 0}")
+
     def get_trigger_source(self) -> NanovoltmeterTriggerSource:
         """Return the trigger source selection.
 
@@ -230,6 +244,20 @@ class Keithley2182A(Nanovoltmeter):
     def clear_buffer(self) -> None:
         """Clear all readings from the instrument trace buffer."""
         self.write(":TRAC:CLE")
+
+    def set_buffer_size(self, size: int) -> None:
+        """Set the trace buffer point capacity."""
+        if size <= 0:
+            raise ValueError("size must be positive.")
+        self.write(f":TRAC:POIN {size}")
+
+    def set_buffer_feed_sense(self) -> None:
+        """Set trace buffer feed source to sensor readings."""
+        self.write(":TRAC:FEED SENS")
+
+    def set_buffer_feed_continuous_next(self) -> None:
+        """Set trace feed mode to keep accepting the next readings."""
+        self.write(":TRAC:FEED:CONT NEXT")
 
     def get_buffer_count(self) -> int:
         """Return the number of readings currently stored in the buffer.

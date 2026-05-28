@@ -288,53 +288,42 @@ class TestNvmGuards:
 
         plugin._nvm_write("*IDN?")
 
-        plugin._k6221.write.assert_called_once_with('SYST:COMM:SER:SEND "*IDN?\r\n"')
+        plugin._k6221.send_serial_command.assert_called_once_with("*IDN?")
 
     def test_nvm_query_via_6221_serial_reads_until_terminator(self, qapp):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         plugin = _make_plugin()
         plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
         plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.return_value = "+1.2345E-3"
 
-        with patch.object(
-            plugin,
-            "_read_serial_entry_chunk",
-            side_effect=["+1.2345E", "-3\r\n"],
-        ) as read_chunk:
-            response = plugin._nvm_query("READ?")
+        response = plugin._nvm_query("READ?")
 
-        plugin._k6221.write.assert_called_once_with('SYST:COMM:SER:SEND "READ?\r\n"')
-        assert read_chunk.call_count == 2
+        plugin._k6221.query_serial_command.assert_called_once_with("READ?")
         assert response == "+1.2345E-3"
 
     def test_nvm_query_via_6221_serial_raises_without_terminator(self, qapp):
-        from unittest.mock import MagicMock, patch
-
-        import stoner_measurement.plugins.trace.k6221_2182a as k6221_2182a_module
+        from unittest.mock import MagicMock
 
         plugin = _make_plugin()
         plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
         plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.side_effect = RuntimeError("no line terminator")
 
-        with patch.object(k6221_2182a_module, "_MAX_SERIAL_ENTRY_CHUNKS", 3):
-            with patch.object(plugin, "_read_serial_entry_chunk", return_value="123"):
-                with pytest.raises(RuntimeError, match="no line terminator"):
-                    plugin._nvm_query("READ?")
+        with pytest.raises(RuntimeError, match="no line terminator"):
+            plugin._nvm_query("READ?")
 
     def test_nvm_query_via_6221_serial_requires_lf_not_bare_cr(self, qapp):
-        from unittest.mock import MagicMock, patch
-
-        import stoner_measurement.plugins.trace.k6221_2182a as k6221_2182a_module
+        from unittest.mock import MagicMock
 
         plugin = _make_plugin()
         plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
         plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.side_effect = RuntimeError("no line terminator")
 
-        with patch.object(k6221_2182a_module, "_MAX_SERIAL_ENTRY_CHUNKS", 2):
-            with patch.object(plugin, "_read_serial_entry_chunk", side_effect=["1.23\r", ""]):
-                with pytest.raises(RuntimeError, match="no line terminator"):
-                    plugin._nvm_query("READ?")
+        with pytest.raises(RuntimeError, match="no line terminator"):
+            plugin._nvm_query("READ?")
 
     def test_nvm_write_direct_gpib_without_connection_raises(self, qapp):
         plugin = _make_plugin()

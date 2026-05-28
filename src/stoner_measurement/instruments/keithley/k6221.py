@@ -165,6 +165,83 @@ class Keithley6221(CurrentSource):
             batch = ",".join(f"{v:.6e}" for v in values[start:start + _LIST_BATCH_SIZE])
             self.write(f":SOUR:LIST:COMP:APP {batch}")
 
+    def set_sweep_range_mode(self, mode: str) -> None:
+        """Set sweep range mode to ``AUTO`` or ``BEST``."""
+        token = mode.strip().upper()
+        if token not in {"AUTO", "BEST"}:
+            raise ValueError("mode must be 'AUTO' or 'BEST'.")
+        self.write(f":SOUR:SWE:RANG {token}")
+
+    def set_fixed_range(self, value: float) -> None:
+        """Set a fixed source-current range in amps."""
+        if value <= 0.0:
+            raise ValueError("Fixed range must be positive.")
+        self.write(f":SOUR:CURR:RANG {value:.6e}")
+
+    def set_sweep_count(self, count: int) -> None:
+        """Set sweep repeat count."""
+        if count <= 0:
+            raise ValueError("Sweep count must be positive.")
+        self.write(f":SOUR:SWE:COUN {count}")
+
+    def configure_trigger_link(self, output_line: int, input_line: int) -> None:
+        """Configure trigger-link lines and set trigger direction to ``ACC``."""
+        if not 1 <= output_line <= 6:
+            raise ValueError("output_line must be in the range 1..6.")
+        if not 1 <= input_line <= 6:
+            raise ValueError("input_line must be in the range 1..6.")
+        self.write(f":TRIG:OLIN {output_line}")
+        self.write(f":TRIG:ILIN {input_line}")
+        self.write(":TRIG:DIR ACC")
+
+    @staticmethod
+    def _serial_send_payload(cmd: str, terminator: str) -> str:
+        """Return *cmd* with one terminator and escaped quotes."""
+        command = cmd.rstrip("\r\n")
+        payload = f"{command}{terminator}"
+        return payload.replace('"', '""')
+
+    def send_serial_command(self, cmd: str, *, terminator: str = "\r\n") -> None:
+        """Relay a command string to a serial instrument via ``SYST:COMM:SER:SEND``."""
+        payload = self._serial_send_payload(cmd, terminator)
+        self.write(f'SYST:COMM:SER:SEND "{payload}"')
+
+    def _read_serial_entry_chunk(self) -> str:
+        """Read one payload chunk from ``SYST:COMM:SER:ENT?``."""
+        protocol = self.protocol
+        terminator = getattr(protocol, "terminator", b"\n")
+        payload = protocol.format_query("SYST:COMM:SER:ENT?")
+        self.transport.write(payload)
+        self._log_comms_traffic("TX", payload)
+        raw = self.transport.read_until(terminator)
+        self._log_comms_traffic("RX", raw)
+        if raw.endswith(terminator):
+            raw = raw[: -len(terminator)]
+        return raw.decode("utf-8", errors="replace")
+
+    def query_serial_command(
+        self,
+        cmd: str,
+        *,
+        command_terminator: str = "\r\n",
+        response_terminator: str = "\n",
+        max_chunks: int = 64,
+    ) -> str:
+        """Relay a query via serial and return a line-terminated response."""
+        if max_chunks <= 0:
+            raise ValueError("max_chunks must be positive.")
+        self.send_serial_command(cmd, terminator=command_terminator)
+        parts: list[str] = []
+        for _ in range(max_chunks):
+            chunk = self._read_serial_entry_chunk()
+            parts.append(chunk)
+            combined = "".join(parts)
+            if combined.endswith(response_terminator):
+                return combined.rstrip("\r\n")
+        raise RuntimeError(
+            "Timed out reading serial relay response: no line terminator (LF) received."
+        )
+
     def sweep_start(self) -> None:
         """Arm the configured sweep, making it ready for triggering."""
         self.write(":SOUR:SWE:ARM")
