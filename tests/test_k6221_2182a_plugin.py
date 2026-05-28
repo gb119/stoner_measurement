@@ -343,7 +343,7 @@ class TestNvmGuards:
             plugin._check_nvm_status_via_6221_serial(command="configure()")
 
     def test_check_nvm_status_accepts_plus_prefixed_no_error(self, qapp):
-        """+0,"No error" (SCPI-conformant leading "+") is treated as no-error."""
+        """+0,"No error" (SCPI-conformant leading "+") is treated as no error."""
         from unittest.mock import MagicMock
 
         plugin = _make_plugin()

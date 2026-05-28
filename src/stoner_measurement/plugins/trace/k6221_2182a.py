@@ -77,7 +77,7 @@ _2182A_FIXED_RANGES: tuple[float, ...] = (0.01, 0.1, 1.0, 10.0, 100.0, 120.0)
 #: Supported NPLC settings for the 2182A.
 _2182A_NPLC_OPTIONS: tuple[float, ...] = (0.1, 1.0, 10.0)
 
-#: Supported display/data digits for the 2182A (number of digits integer, e.g. 4 → 4.5 digits).
+#: Supported display/data digits for the 2182A (number of digits integer, e.g. 4 → 4.5 digits, range 4–8).
 _2182A_DIGITS_OPTIONS: tuple[int, ...] = (4, 5, 6, 7, 8)
 
 #: Currents whose absolute value is below this threshold (in amps) are treated as

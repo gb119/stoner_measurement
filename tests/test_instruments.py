@@ -1345,7 +1345,7 @@ class TestKeithley6221:
         with pytest.raises(ValueError):
             k.query_serial_command("READ?", max_chunks=0)
 
-    def test_query_serial_command_bare_cr_not_accepted(self):
+    def test_query_serial_command_raises_on_bare_cr_without_lf(self):
         """A response ending in bare CR (no LF) does not satisfy the line terminator."""
         # The outer protocol terminator (b"\n") is present, but the inner payload
         # ends only in CR — combined.endswith("\n") will be False after stripping
