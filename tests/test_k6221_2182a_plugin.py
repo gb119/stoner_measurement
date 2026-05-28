@@ -164,7 +164,7 @@ class TestJsonRoundTrip:
         assert d["filter_count"] == 10
         assert d["analog_filter"] is False
         assert d["relative_enabled"] is False
-        assert d["digits"] == 6
+        assert d["digits"] == 8
         assert d["output_tlink"] == 1
         assert d["input_tlink"] == 2
 
@@ -461,7 +461,7 @@ class TestNewAttributes:
         assert _make_plugin()._relative_enabled is False
 
     def test_digits_default(self, qapp):
-        assert _make_plugin()._digits == 6
+        assert _make_plugin()._digits == 8
 
     def test_nplc_default(self, qapp):
         assert _make_plugin()._nplc == pytest.approx(1.0)

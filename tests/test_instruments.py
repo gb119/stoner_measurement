@@ -869,7 +869,7 @@ class TestKeithley2182A:
         k.set_buffer_feed_sense()
         k.set_buffer_feed_continuous_next()
         assert t.write_log == [
-            b":DISP:DIGS 6\n",
+            b":SENS:VOLT:DIG 6\n",
             b":SENS:VOLT:LPAS:STAT 1\n",
             b":SENS:VOLT:REL:STAT 0\n",
             b":TRAC:POIN 8\n",
@@ -878,6 +878,8 @@ class TestKeithley2182A:
         ]
         with pytest.raises(ValueError):
             k.set_digits(3)
+        with pytest.raises(ValueError):
+            k.set_digits(9)
         with pytest.raises(ValueError):
             k.set_buffer_size(0)
 

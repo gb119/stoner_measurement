@@ -75,7 +75,7 @@ _2182A_FIXED_RANGES: tuple[float, ...] = (0.01, 0.1, 1.0, 10.0, 100.0, 120.0)
 _2182A_NPLC_OPTIONS: tuple[float, ...] = (0.1, 1.0, 10.0)
 
 #: Supported display/data digits for the 2182A (number of digits integer, e.g. 4 → 4.5 digits).
-_2182A_DIGITS_OPTIONS: tuple[int, ...] = (4, 5, 6, 7)
+_2182A_DIGITS_OPTIONS: tuple[int, ...] = (4, 5, 6, 7, 8)
 
 #: Currents whose absolute value is below this threshold (in amps) are treated as
 #: zero when computing R(t) = V/I.  The value is intentionally much smaller than
@@ -212,7 +212,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         _relative_enabled (bool):
             Enable the 2182A relative (REL) subtraction mode.
         _digits (int):
-            Number of display and data digits for the 2182A (4–7).
+            Number of display and data digits for the 2182A (4–8).
         _output_tlink (int):
             Trigger-link line number (1–6) on which the 6221 outputs the
             "source ready" trigger pulse to the 2182A.
@@ -269,7 +269,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._filter_count: int = 10
         self._analog_filter: bool = False
         self._relative_enabled: bool = False
-        self._digits: int = 6
+        self._digits: int = 8
 
         # Trigger-link line assignments
         self._output_tlink: int = 1
@@ -706,7 +706,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 self._k2182a.set_trigger_source(NanovoltmeterTriggerSource.EXT)
                 self._k2182a.set_trigger_count(n)
             else:
-                self._nvm_write(f"DISP:DIGS {self._digits}")
+                self._nvm_write(f"SENS:VOLT:DIG {self._digits}")
                 self._nvm_write(f"SENS:VOLT:NPLC {self._nplc:.4f}")
                 if self._voltage_range > 0.0:
                     self._nvm_write("SENS:VOLT:RANG:AUTO 0")

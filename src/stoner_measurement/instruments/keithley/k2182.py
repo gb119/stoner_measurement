@@ -139,15 +139,15 @@ class Keithley2182A(Nanovoltmeter):
 
         Args:
             digits (int):
-                Number of digits to display/store (valid range: 4..7).
+                Number of digits to display/store (valid range: 4..8).
 
         Raises:
             ValueError:
-                If *digits* is outside ``4..7``.
+                If *digits* is outside ``4..8``.
         """
-        if not 4 <= digits <= 7:
-            raise ValueError("digits must be in the range 4..7.")
-        self.write(f":DISP:DIGS {digits}")
+        if not 4 <= digits <= 8:
+            raise ValueError("digits must be in the range 4..8.")
+        self.write(f":SENS:VOLT:DIG {digits}")
 
     def get_measure_function(self) -> NanovoltmeterFunction:
         """Return the active measurement function.
