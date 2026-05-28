@@ -41,6 +41,11 @@ class Keithley2182A(Nanovoltmeter):
         except ValueError as exc:
             raise ValueError(f"Malformed numeric response: {values!r}") from exc
 
+    @staticmethod
+    def parse_csv_floats(values: str) -> tuple[float, ...]:
+        """Parse a comma-separated numeric payload into a tuple of floats."""
+        return Keithley2182A._parse_csv_floats(values)
+
     def measure_voltage(self) -> float:
         """Trigger a voltage measurement and return the result in volts.
 

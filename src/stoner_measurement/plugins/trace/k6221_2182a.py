@@ -681,7 +681,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             time.sleep(0.2)
 
             if self._connection_mode is ConnectionMode.DIRECT_GPIB:
-                assert self._k2182a is not None
                 self._k2182a.set_digits(self._digits)
                 self._k2182a.set_nplc(self._nplc)
                 if self._voltage_range > 0.0:
@@ -822,7 +821,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 voltages = self._k2182a.read_buffer()
             else:
                 raw = self._nvm_query("TRAC:DATA?")
-                voltages = Keithley2182A._parse_csv_floats(raw)
+                voltages = Keithley2182A.parse_csv_floats(raw)
             if len(voltages) != n:
                 raise RuntimeError(
                     f"2182A returned {len(voltages)} readings but expected {n}. "
