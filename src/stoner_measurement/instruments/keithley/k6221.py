@@ -215,6 +215,17 @@ class Keithley6221(CurrentSource):
     def configure_trigger_link(self, output_line: int, input_line: int) -> None:
         """Configure trigger-link lines and trigger direction.
 
+        The 6221 raises a settings-conflict error if the requested line is
+        already allocated to one of the other two trigger-link purposes
+        (input line, output line, or waveform phase-marker output line).
+        This method avoids those conflicts by:
+
+        1. Reading the current output-line, input-line, and phase-marker
+           output-line assignments.
+        2. Moving any conflicting assignment to a temporary free line before
+           writing each of the two new assignments.
+        3. Writing the new output and input lines in a safe order.
+
         Args:
             output_line (int):
                 Trigger-link output line on the 6221 (valid range: 1..6).
@@ -223,15 +234,63 @@ class Keithley6221(CurrentSource):
 
         Raises:
             ValueError:
-                If either line number is outside ``1..6``.
+                If either line number is outside ``1..6`` or if
+                ``output_line == input_line``.
         """
         if not 1 <= output_line <= 6:
             raise ValueError("output_line must be in the range 1..6.")
         if not 1 <= input_line <= 6:
             raise ValueError("input_line must be in the range 1..6.")
-        self.write(f":TRIG:OLIN {output_line}")
-        self.write(f":TRIG:ILIN {input_line}")
-        self.write(":TRIG:DIR ACC")
+        if output_line == input_line:
+            raise ValueError("output_line and input_line must be different.")
+
+        with self._lock:
+            # Read current state so we know what is already assigned.
+            cur_olin = int(self.query(":TRIG:OLIN?").strip())
+            cur_ilin = int(self.query(":TRIG:ILIN?").strip())
+            pmar_active = self.query(":SOUR:WAVE:PMAR:STAT?").strip() == "1"
+            cur_pmar: int | None = (
+                int(self.query(":SOUR:WAVE:PMAR:OLIN?").strip()) if pmar_active else None
+            )
+
+            def _free_line(*excluded: int) -> int:
+                """Return the lowest line in 1..6 not in *excluded*."""
+                exclude_set = set(excluded)
+                for line in range(1, 7):
+                    if line not in exclude_set:
+                        return line
+                raise RuntimeError(  # pragma: no cover
+                    f"No free trigger-link line available (excluded: {sorted(exclude_set)})."
+                )
+
+            # ---- Free the desired input line --------------------------------
+            # TRIG:ILIN <n> fails if <n> is already assigned to TRIG:OLIN or the
+            # phase-marker output.  Move whichever conflicts to a neutral line.
+            if cur_olin == input_line:
+                temp = _free_line(
+                    input_line, output_line, cur_ilin, cur_pmar if cur_pmar is not None else 0
+                )
+                self.write(f":TRIG:OLIN {temp}")
+                cur_olin = temp
+            if cur_pmar is not None and cur_pmar == input_line:
+                temp = _free_line(input_line, output_line, cur_olin, cur_ilin)
+                self.write(f":SOUR:WAVE:PMAR:OLIN {temp}")
+                cur_pmar = temp
+
+            # ---- Assign the input line --------------------------------------
+            self.write(f":TRIG:ILIN {input_line}")
+
+            # ---- Free the desired output line -------------------------------
+            # TRIG:OLIN <n> fails if <n> is already assigned to TRIG:ILIN (now
+            # input_line -- a user-error handled by the guard above) or the
+            # phase-marker output.
+            if cur_pmar is not None and cur_pmar == output_line:
+                temp = _free_line(output_line, input_line, cur_olin)
+                self.write(f":SOUR:WAVE:PMAR:OLIN {temp}")
+
+            # ---- Assign the output line and fix trigger direction -----------
+            self.write(f":TRIG:OLIN {output_line}")
+            self.write(":TRIG:DIR ACC")
 
     @staticmethod
     def _serial_send_payload(cmd: str, terminator: str) -> str:

@@ -1307,20 +1307,16 @@ class TestKeithley6221:
                 PulsedSweepConfiguration(width=1e-3, off_time=0.0),
             )
 
-    def test_sweep_range_and_trigger_helpers(self):
+    def test_sweep_range_helpers(self):
         t = _null()
         k = Keithley6221(transport=t)
         k.set_sweep_range_mode("AUTO")
         k.set_fixed_range(1e-3)
         k.set_sweep_count(2)
-        k.configure_trigger_link(output_line=1, input_line=2)
         assert t.write_log == [
             b":SOUR:SWE:RANG AUTO\n",
             b":SOUR:CURR:RANG 1.000000e-03\n",
             b":SOUR:SWE:COUN 2\n",
-            b":TRIG:OLIN 1\n",
-            b":TRIG:ILIN 2\n",
-            b":TRIG:DIR ACC\n",
         ]
         with pytest.raises(ValueError):
             k.set_sweep_range_mode("INVALID")
@@ -1328,10 +1324,98 @@ class TestKeithley6221:
             k.set_fixed_range(0.0)
         with pytest.raises(ValueError):
             k.set_sweep_count(0)
-        with pytest.raises(ValueError):
+
+    def test_configure_trigger_link_validation(self):
+        k = Keithley6221(transport=_null())
+        with pytest.raises(ValueError, match="output_line"):
             k.configure_trigger_link(output_line=0, input_line=2)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="input_line"):
             k.configure_trigger_link(output_line=1, input_line=7)
+        with pytest.raises(ValueError, match="different"):
+            k.configure_trigger_link(output_line=3, input_line=3)
+
+    def test_configure_trigger_link_no_conflict(self):
+        # cur_olin=3, cur_ilin=4, pmar disabled -- no temporary moves needed.
+        t = _null(responses=[b"3\n", b"4\n", b"0\n"])
+        k = Keithley6221(transport=t)
+        k.configure_trigger_link(output_line=1, input_line=2)
+        assert t.write_log == [
+            b":TRIG:OLIN?\n",
+            b":TRIG:ILIN?\n",
+            b":SOUR:WAVE:PMAR:STAT?\n",
+            b":TRIG:ILIN 2\n",
+            b":TRIG:OLIN 1\n",
+            b":TRIG:DIR ACC\n",
+        ]
+
+    def test_configure_trigger_link_olin_blocks_input(self):
+        # cur_olin=2 (= desired input_line) -> olin must be moved first.
+        # free_line(input=2, output=1, cur_ilin=4, pmar=0) -> 3
+        t = _null(responses=[b"2\n", b"4\n", b"0\n"])
+        k = Keithley6221(transport=t)
+        k.configure_trigger_link(output_line=1, input_line=2)
+        assert t.write_log == [
+            b":TRIG:OLIN?\n",
+            b":TRIG:ILIN?\n",
+            b":SOUR:WAVE:PMAR:STAT?\n",
+            b":TRIG:OLIN 3\n",   # temporary move to free line 3
+            b":TRIG:ILIN 2\n",
+            b":TRIG:OLIN 1\n",
+            b":TRIG:DIR ACC\n",
+        ]
+
+    def test_configure_trigger_link_pmar_blocks_input(self):
+        # cur_olin=3, cur_ilin=4, pmar on line 2 (= desired input_line).
+        # free_line(input=2, output=1, cur_olin=3, cur_ilin=4) -> 5
+        t = _null(responses=[b"3\n", b"4\n", b"1\n", b"2\n"])
+        k = Keithley6221(transport=t)
+        k.configure_trigger_link(output_line=1, input_line=2)
+        assert t.write_log == [
+            b":TRIG:OLIN?\n",
+            b":TRIG:ILIN?\n",
+            b":SOUR:WAVE:PMAR:STAT?\n",
+            b":SOUR:WAVE:PMAR:OLIN?\n",
+            b":SOUR:WAVE:PMAR:OLIN 5\n",  # move pmar away from line 2
+            b":TRIG:ILIN 2\n",
+            b":TRIG:OLIN 1\n",
+            b":TRIG:DIR ACC\n",
+        ]
+
+    def test_configure_trigger_link_pmar_blocks_output(self):
+        # cur_olin=3, cur_ilin=4, pmar on line 1 (= desired output_line).
+        # After setting ILIN=2: free_line(output=1, ilin=2, cur_olin=3) -> 4
+        t = _null(responses=[b"3\n", b"4\n", b"1\n", b"1\n"])
+        k = Keithley6221(transport=t)
+        k.configure_trigger_link(output_line=1, input_line=2)
+        assert t.write_log == [
+            b":TRIG:OLIN?\n",
+            b":TRIG:ILIN?\n",
+            b":SOUR:WAVE:PMAR:STAT?\n",
+            b":SOUR:WAVE:PMAR:OLIN?\n",
+            b":TRIG:ILIN 2\n",
+            b":SOUR:WAVE:PMAR:OLIN 4\n",  # move pmar away from line 1
+            b":TRIG:OLIN 1\n",
+            b":TRIG:DIR ACC\n",
+        ]
+
+    def test_configure_trigger_link_both_conflicts(self):
+        # cur_olin=2 blocks input, pmar=1 blocks output.
+        # Step 1: free_line(input=2, output=1, cur_ilin=4, pmar=1) → 3 (temp olin)
+        # Step 3: free_line(output=1, ilin=2, cur_olin=3) → 4 (temp pmar)
+        t = _null(responses=[b"2\n", b"4\n", b"1\n", b"1\n"])
+        k = Keithley6221(transport=t)
+        k.configure_trigger_link(output_line=1, input_line=2)
+        assert t.write_log == [
+            b":TRIG:OLIN?\n",
+            b":TRIG:ILIN?\n",
+            b":SOUR:WAVE:PMAR:STAT?\n",
+            b":SOUR:WAVE:PMAR:OLIN?\n",
+            b":TRIG:OLIN 3\n",            # move olin away from line 2
+            b":TRIG:ILIN 2\n",
+            b":SOUR:WAVE:PMAR:OLIN 4\n",  # move pmar away from line 1
+            b":TRIG:OLIN 1\n",
+            b":TRIG:DIR ACC\n",
+        ]
 
     def test_serial_relay_helpers(self):
         t = _null(responses=[b"1.23\r\n\n"])
