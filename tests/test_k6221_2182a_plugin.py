@@ -164,7 +164,7 @@ class TestJsonRoundTrip:
         assert d["filter_count"] == 10
         assert d["analog_filter"] is False
         assert d["relative_enabled"] is False
-        assert d["digits"] == 6
+        assert d["digits"] == 8
         assert d["output_tlink"] == 1
         assert d["input_tlink"] == 2
 
@@ -279,7 +279,7 @@ class TestJsonRoundTrip:
 # ---------------------------------------------------------------------------
 
 class TestNvmGuards:
-    def test_nvm_write_via_6221_serial_appends_crlf(self, qapp):
+    def test_nvm_write_via_6221_serial_sends_command(self, qapp):
         from unittest.mock import MagicMock
 
         plugin = _make_plugin()
@@ -288,53 +288,96 @@ class TestNvmGuards:
 
         plugin._nvm_write("*IDN?")
 
-        plugin._k6221.write.assert_called_once_with('SYST:COMM:SER:SEND "*IDN?\r\n"')
+        plugin._k6221.send_serial_command.assert_called_once_with("*IDN?")
+        # Status check is no longer performed per-write; query_serial_command must
+        # not be called from _nvm_write itself.
+        plugin._k6221.query_serial_command.assert_not_called()
 
-    def test_nvm_query_via_6221_serial_reads_until_terminator(self, qapp):
-        from unittest.mock import MagicMock, patch
+    def test_check_nvm_status_clears_when_esb_not_set(self, qapp):
+        from unittest.mock import MagicMock
 
         plugin = _make_plugin()
         plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
         plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.return_value = "0"
 
-        with patch.object(
-            plugin,
-            "_read_serial_entry_chunk",
-            side_effect=["+1.2345E", "-3\r\n"],
-        ) as read_chunk:
-            response = plugin._nvm_query("READ?")
+        plugin._check_nvm_status_via_6221_serial(command="configure()")
 
-        plugin._k6221.write.assert_called_once_with('SYST:COMM:SER:SEND "READ?\r\n"')
-        assert read_chunk.call_count == 2
+        plugin._k6221.query_serial_command.assert_called_once_with("*STB?")
+
+    def test_check_nvm_status_queries_error_queue_when_esb_set(self, qapp):
+        from unittest.mock import MagicMock, call
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.side_effect = ["4", '0,"No error"']
+
+        plugin._check_nvm_status_via_6221_serial(command="configure()")
+
+        assert plugin._k6221.query_serial_command.call_args_list == [
+            call("*STB?"),
+            call("SYST:ERR?"),
+        ]
+
+    def test_check_nvm_status_raises_on_2182a_error(self, qapp):
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.side_effect = ["4", '-113,"Undefined header"']
+
+        with pytest.raises(RuntimeError, match="2182A reported error"):
+            plugin._check_nvm_status_via_6221_serial(command="configure()")
+
+    def test_check_nvm_status_raises_on_invalid_status_byte(self, qapp):
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.return_value = "not-a-byte"
+
+        with pytest.raises(RuntimeError, match="Invalid 2182A status-byte response"):
+            plugin._check_nvm_status_via_6221_serial(command="configure()")
+
+    def test_check_nvm_status_accepts_plus_prefixed_no_error(self, qapp):
+        """+0,"No error" (SCPI-conformant leading "+") is treated as no error."""
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+        # ESB set, but SYST:ERR? returns +0 with leading "+"
+        plugin._k6221.query_serial_command.side_effect = ["4", '+0,"No error"']
+
+        # Must not raise
+        plugin._check_nvm_status_via_6221_serial(command="configure()")
+
+    def test_nvm_query_via_6221_serial_reads_until_terminator(self, qapp):
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.return_value = "+1.2345E-3"
+
+        response = plugin._nvm_query("READ?")
+
+        plugin._k6221.query_serial_command.assert_called_once_with("READ?")
         assert response == "+1.2345E-3"
 
     def test_nvm_query_via_6221_serial_raises_without_terminator(self, qapp):
-        from unittest.mock import MagicMock, patch
-
-        import stoner_measurement.plugins.trace.k6221_2182a as k6221_2182a_module
+        from unittest.mock import MagicMock
 
         plugin = _make_plugin()
         plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
         plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.side_effect = RuntimeError("no line terminator")
 
-        with patch.object(k6221_2182a_module, "_MAX_SERIAL_ENTRY_CHUNKS", 3):
-            with patch.object(plugin, "_read_serial_entry_chunk", return_value="123"):
-                with pytest.raises(RuntimeError, match="no line terminator"):
-                    plugin._nvm_query("READ?")
-
-    def test_nvm_query_via_6221_serial_requires_lf_not_bare_cr(self, qapp):
-        from unittest.mock import MagicMock, patch
-
-        import stoner_measurement.plugins.trace.k6221_2182a as k6221_2182a_module
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-
-        with patch.object(k6221_2182a_module, "_MAX_SERIAL_ENTRY_CHUNKS", 2):
-            with patch.object(plugin, "_read_serial_entry_chunk", side_effect=["1.23\r", ""]):
-                with pytest.raises(RuntimeError, match="no line terminator"):
-                    plugin._nvm_query("READ?")
+        with pytest.raises(RuntimeError, match="no line terminator"):
+            plugin._nvm_query("READ?")
 
     def test_nvm_write_direct_gpib_without_connection_raises(self, qapp):
         plugin = _make_plugin()
@@ -399,7 +442,7 @@ class TestDisconnect:
         plugin.disconnect()
         assert plugin._k6221 is None
         assert plugin._k2182a is None
-        mock_6221.write.assert_called_with("OUTP:STAT 0")
+        mock_6221.enable_output.assert_called_once_with(False)
 
     def test_disconnect_clears_sweep_values(self, qapp):
         import numpy as np
@@ -472,7 +515,7 @@ class TestNewAttributes:
         assert _make_plugin()._relative_enabled is False
 
     def test_digits_default(self, qapp):
-        assert _make_plugin()._digits == 6
+        assert _make_plugin()._digits == 8
 
     def test_nplc_default(self, qapp):
         assert _make_plugin()._nplc == pytest.approx(1.0)

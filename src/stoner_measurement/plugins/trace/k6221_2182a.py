@@ -42,6 +42,7 @@ from PyQt6.QtWidgets import (
 
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
+from stoner_measurement.instruments.nanovoltmeter import NanovoltmeterTriggerSource
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.trace.base import (
     COLUMN_ROLE_Y,
@@ -62,6 +63,9 @@ _TIMEOUT_FACTOR: float = 5.0
 #: Minimum timeout in seconds regardless of sweep duration.
 _TIMEOUT_MIN: float = 10.0
 
+#: IEEE-488.2 Event Status Bit (ESB) mask in the status byte.
+_STATUS_BYTE_ESB_MASK: int = 0x04
+
 #: Available fixed current output ranges for the 6221 (amps).
 _6221_FIXED_RANGES: tuple[float, ...] = (
     1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1,
@@ -73,8 +77,8 @@ _2182A_FIXED_RANGES: tuple[float, ...] = (0.01, 0.1, 1.0, 10.0, 100.0, 120.0)
 #: Supported NPLC settings for the 2182A.
 _2182A_NPLC_OPTIONS: tuple[float, ...] = (0.1, 1.0, 10.0)
 
-#: Supported display/data digits for the 2182A (number of digits integer, e.g. 4 → 4.5 digits).
-_2182A_DIGITS_OPTIONS: tuple[int, ...] = (4, 5, 6, 7)
+#: Supported display/data digits for the 2182A (number of digits integer, e.g. 4 → 4.5 digits, range 4–8).
+_2182A_DIGITS_OPTIONS: tuple[int, ...] = (4, 5, 6, 7, 8)
 
 #: Currents whose absolute value is below this threshold (in amps) are treated as
 #: zero when computing R(t) = V/I.  The value is intentionally much smaller than
@@ -84,15 +88,6 @@ _ZERO_CURRENT_THRESHOLD: float = 1e-30
 
 #: Maximum compliance voltage supported by the 6221 (volts).
 _6221_MAX_COMPLIANCE_V: float = 105.0
-
-#: Terminator required by the 2182A when relaying commands via the 6221 serial port.
-_2182A_SERIAL_TERMINATOR: str = "\r\n"
-
-#: End-of-response terminator for 2182A serial relay responses.
-_2182A_RESPONSE_TERMINATOR: str = "\n"
-
-#: Maximum number of ``SYST:COMM:SER:ENT?`` chunks to read for one 2182A response.
-_MAX_SERIAL_ENTRY_CHUNKS: int = 64
 
 _CLEANUP_EXCEPTIONS: tuple[type[Exception], ...] = (
     OSError,
@@ -220,7 +215,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         _relative_enabled (bool):
             Enable the 2182A relative (REL) subtraction mode.
         _digits (int):
-            Number of display and data digits for the 2182A (4–7).
+            Number of display and data digits for the 2182A (4–8).
         _output_tlink (int):
             Trigger-link line number (1–6) on which the 6221 outputs the
             "source ready" trigger pulse to the 2182A.
@@ -277,7 +272,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._filter_count: int = 10
         self._analog_filter: bool = False
         self._relative_enabled: bool = False
-        self._digits: int = 6
+        self._digits: int = 8
 
         # Trigger-link line assignments
         self._output_tlink: int = 1
@@ -491,46 +486,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     # 2182A command routing helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _serial_send_payload(cmd: str) -> str:
-        """Return *cmd* with one 2182A serial terminator and escaped quotes.
-
-        Args:
-            cmd (str):
-                SCPI command to send to the 2182A.
-
-        Returns:
-            (str):
-                Command string with trailing CR/LF terminator and doubled
-                embedded quotes for safe inclusion in a SCPI quoted string.
-        """
-        command = cmd.rstrip("\r\n")
-        payload = f"{command}{_2182A_SERIAL_TERMINATOR}"
-        return payload.replace('"', '""')
-
-    def _read_serial_entry_chunk(self) -> str:
-        """Read one raw chunk from ``SYST:COMM:SER:ENT?`` without stripping CR/LF.
-
-        Returns:
-            (str):
-                One serial relay payload chunk returned by the 6221 for
-                ``SYST:COMM:SER:ENT?``, preserving any CR/LF from the 2182A
-                response while removing only the outer 6221 query terminator.
-        """
-        instrument = self._k6221
-        if instrument is None:
-            raise RuntimeError("Keithley 6221 is not connected.")
-        protocol = instrument.protocol
-        terminator = getattr(protocol, "terminator", b"\n")
-        payload = protocol.format_query("SYST:COMM:SER:ENT?")
-        instrument.transport.write(payload)
-        instrument._log_comms_traffic("TX", payload)
-        raw = instrument.transport.read_until(terminator)
-        instrument._log_comms_traffic("RX", raw)
-        if raw.endswith(terminator):
-            raw = raw[: -len(terminator)]
-        return raw.decode("utf-8", errors="replace")
-
     def _nvm_write(self, cmd: str) -> None:
         """Send *cmd* to the 2182A using the active connection mode.
 
@@ -539,8 +494,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 SCPI command to send to the 2182A.
         """
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
-            payload = self._serial_send_payload(cmd)
-            self._k6221.write(f'SYST:COMM:SER:SEND "{payload}"')
+            if self._k6221 is None:
+                raise RuntimeError("Keithley 6221 is not connected.")
+            self._k6221.send_serial_command(cmd)
         else:
             if self._k2182a is None:
                 raise RuntimeError(
@@ -548,6 +504,46 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                     "Call connect() before sending commands to the 2182A."
                 )
             self._k2182a.write(cmd)
+
+    def _check_nvm_status_via_6221_serial(self, *, command: str) -> None:
+        """Check the 2182A error queue once via the 6221 serial relay.
+
+        Polls the downstream 2182A status byte (``*STB?``) once after a block
+        of relayed commands.  If the 2182A event-status summary bit is set,
+        query ``SYST:ERR?`` and raise when the instrument reports an error.
+
+        This method is intended to be called once at the end of a
+        configuration or command block, not after every individual write, to
+        avoid multiplying GPIB transactions unnecessarily and to sidestep
+        timing issues that arise when a ``*STB?`` query follows a write whose
+        response has not yet cleared the serial relay buffer.
+
+        Args:
+            command (str):
+                Description of the operation block that was just performed
+                (used in the exception message).
+
+        Raises:
+            RuntimeError:
+                If the relayed ``*STB?`` response is malformed, or if the 2182A
+                reports a non-zero error queue entry.
+        """
+        status_text = self._nvm_query("*STB?")
+        try:
+            status_byte = int(float(status_text))
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Invalid 2182A status-byte response after {command!r}: {status_text!r}"
+            ) from exc
+        if not (status_byte & _STATUS_BYTE_ESB_MASK):
+            return
+        error_text = self._nvm_query("SYST:ERR?")
+        try:
+            error_code = int(error_text.split(",", 1)[0])
+        except ValueError:
+            error_code = -1
+        if error_code != 0:
+            raise RuntimeError(f"2182A reported error after {command!r}: {error_text}")
 
     def _nvm_query(self, cmd: str) -> str:
         """Send *cmd* to the 2182A and return its response.
@@ -563,23 +559,12 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         Raises:
             RuntimeError:
                 If DIRECT_GPIB mode is selected but no 2182A is connected, or
-                if the serial relay path does not yield a line-terminated
-                response (LF) within the configured chunk limit.
+                if the serial relay path does not yield a line-terminated response.
         """
         if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
-            payload = self._serial_send_payload(cmd)
-            self._k6221.write(f'SYST:COMM:SER:SEND "{payload}"')
-            parts: list[str] = []
-            for _ in range(_MAX_SERIAL_ENTRY_CHUNKS):
-                chunk = self._read_serial_entry_chunk()
-                parts.append(chunk)
-                combined = "".join(parts)
-                if combined.endswith(_2182A_RESPONSE_TERMINATOR):
-                    return combined.rstrip("\r\n")
-            raise RuntimeError(
-                "Timed out reading 2182A serial relay response: "
-                "no line terminator (LF) received."
-            )
+            if self._k6221 is None:
+                raise RuntimeError("Keithley 6221 is not connected.")
+            return self._k6221.query_serial_command(cmd)
         if self._k2182a is None:
             raise RuntimeError(
                 "DIRECT_GPIB mode selected but no 2182A connection is open. "
@@ -618,7 +603,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             transport_6221 = GpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
             transport_6221.open()
             self._k6221 = Keithley6221(transport_6221)
-            idn = self._k6221.query("*IDN?")
+            idn = self._k6221.identify()
             if "6221" not in idn:
                 raise RuntimeError(f"Unexpected instrument at {self._6221_resource!r}: {idn!r}")
 
@@ -626,7 +611,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 transport_2182a = GpibTransport.from_resource_string(self._2182a_resource, timeout=10.0)
                 transport_2182a.open()
                 self._k2182a = Keithley2182A(transport_2182a)
-                idn2 = self._k2182a.query("*IDN?")
+                idn2 = self._k2182a.identify()
                 if "2182" not in idn2:
                     raise RuntimeError(
                         f"Unexpected instrument at {self._2182a_resource!r}: {idn2!r}"
@@ -692,7 +677,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 raise ValueError("Scan generator produced no points.")
 
             # ---- 6221: reset and configure LIST sweep ----
-            self._k6221.write("*RST")
+            self._k6221.reset()
             time.sleep(0.1)
 
             # Build current list — the driver's configure_custom_sweep handles
@@ -718,50 +703,78 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # ---- 6221: output range ----
             if self._source_range_mode is SourceRangeMode.AUTO:
-                self._k6221.write("SOUR:SWE:RANG AUTO")
+                self._k6221.set_sweep_range_mode("AUTO")
             elif self._source_range_mode is SourceRangeMode.FIXED:
-                self._k6221.write(f"SOUR:CURR:RANG {self._source_range:.6e}")
+                self._k6221.set_fixed_range(self._source_range)
             else:
-                self._k6221.write("SOUR:SWE:RANG BEST")
-            self._k6221.write("SOUR:SWE:COUN 1")
+                self._k6221.set_sweep_range_mode("BEST")
+            self._k6221.set_sweep_count(1)
 
             # ---- 6221: trigger-link ----
             # Output a trigger pulse after each source step and settling delay.
-            self._k6221.write(f"TRIG:OLIN {self._output_tlink}")
-            # Accept a trigger on the input line to advance to the next point.
-            self._k6221.write(f"TRIG:ILIN {self._input_tlink}")
-            self._k6221.write("TRIG:DIR ACC")
+            self._k6221.configure_trigger_link(self._output_tlink, self._input_tlink)
 
             # ---- 2182A: reset and configure ----
-            self._nvm_write("*RST")
+            if self._connection_mode is ConnectionMode.DIRECT_GPIB:
+                if self._k2182a is None:
+                    raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+                self._k2182a.reset()
+            else:
+                self._nvm_write("*RST")
             time.sleep(0.2)
 
-            self._nvm_write(f"DISP:DIGS {self._digits}")
-            self._nvm_write(f"SENS:VOLT:NPLC {self._nplc:.4f}")
-            if self._voltage_range > 0.0:
-                self._nvm_write("SENS:VOLT:RANG:AUTO 0")
-                self._nvm_write(f"SENS:VOLT:RANG {self._voltage_range:.6e}")
+            if self._connection_mode is ConnectionMode.DIRECT_GPIB:
+                self._k2182a.set_digits(self._digits)
+                self._k2182a.set_nplc(self._nplc)
+                if self._voltage_range > 0.0:
+                    self._k2182a.set_autorange(False)
+                    self._k2182a.set_range(self._voltage_range)
+                else:
+                    self._k2182a.set_autorange(True)
+
+                self._k2182a.set_filter_enabled(self._filter_enabled)
+                if self._filter_enabled:
+                    self._k2182a.set_filter_count(self._filter_count)
+
+                self._k2182a.set_analog_filter_enabled(self._analog_filter)
+                self._k2182a.set_relative_enabled(self._relative_enabled)
+
+                # ---- 2182A: trace buffer ----
+                self._k2182a.clear_buffer()
+                self._k2182a.set_buffer_size(n)
+                self._k2182a.set_buffer_feed_sense()
+                self._k2182a.set_buffer_feed_continuous_next()
+
+                # ---- 2182A: trigger ----
+                self._k2182a.set_trigger_source(NanovoltmeterTriggerSource.EXT)
+                self._k2182a.set_trigger_count(n)
             else:
-                self._nvm_write("SENS:VOLT:RANG:AUTO 1")
+                self._nvm_write(f"SENS:VOLT:DIG {self._digits}")
+                self._nvm_write(f"SENS:VOLT:NPLC {self._nplc:.4f}")
+                if self._voltage_range > 0.0:
+                    self._nvm_write("SENS:VOLT:RANG:AUTO 0")
+                    self._nvm_write(f"SENS:VOLT:RANG {self._voltage_range:.6e}")
+                else:
+                    self._nvm_write("SENS:VOLT:RANG:AUTO 1")
 
-            if self._filter_enabled:
-                self._nvm_write("SENS:VOLT:DFIL:STAT 1")
-                self._nvm_write(f"SENS:VOLT:DFIL:COUN {self._filter_count}")
-            else:
-                self._nvm_write("SENS:VOLT:DFIL:STAT 0")
+                if self._filter_enabled:
+                    self._nvm_write("SENS:VOLT:DFIL:STAT 1")
+                    self._nvm_write(f"SENS:VOLT:DFIL:COUN {self._filter_count}")
+                else:
+                    self._nvm_write("SENS:VOLT:DFIL:STAT 0")
 
-            self._nvm_write(f"SENS:VOLT:LPAS:STAT {1 if self._analog_filter else 0}")
-            self._nvm_write(f"SENS:VOLT:REL:STAT {1 if self._relative_enabled else 0}")
-
-            # ---- 2182A: trace buffer ----
-            self._nvm_write("TRAC:CLE")
-            self._nvm_write(f"TRAC:POIN {n}")
-            self._nvm_write("TRAC:FEED SENS")
-            self._nvm_write("TRAC:FEED:CONT NEXT")
-
-            # ---- 2182A: trigger ----
-            self._nvm_write("TRIG:SOUR EXT")
-            self._nvm_write(f"TRIG:COUN {n}")
+                self._nvm_write(f"SENS:VOLT:LPAS:STAT {1 if self._analog_filter else 0}")
+                self._nvm_write(f"SENS:VOLT:REL:STAT {1 if self._relative_enabled else 0}")
+                self._nvm_write("TRAC:CLE")
+                self._nvm_write(f"TRAC:POIN {n}")
+                self._nvm_write("TRAC:FEED SENS")
+                self._nvm_write("TRAC:FEED:CONT NEXT")
+                self._nvm_write("TRIG:SOUR EXT")
+                self._nvm_write(f"TRIG:COUN {n}")
+                # Single status check after all configuration writes are complete.
+                # Calling this once per block (rather than after each write) avoids
+                # multiplying GPIB transactions and sidesteps *STB? timing hazards.
+                self._check_nvm_status_via_6221_serial(command="configure()")
 
         except Exception:
             self._set_status(TraceStatus.ERROR)
@@ -812,25 +825,35 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         try:
             # Arm 6221 sweep and initiate 2182A trigger system.
-            self._k6221.write("SOUR:SWE:ARM")
-            self._nvm_write("INIT")
+            self._k6221.sweep_start()
+            if self._connection_mode is ConnectionMode.DIRECT_GPIB:
+                if self._k2182a is None:
+                    raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+                self._k2182a.initiate()
+            else:
+                self._nvm_write("INIT")
 
             # Enable 6221 output — this starts the sweep.
-            self._k6221.write("OUTP:STAT 1")
+            self._k6221.enable_output(True)
 
             # Poll until buffer is full.
             deadline = time.monotonic() + timeout
             while True:
-                buf_count_str = self._nvm_query("TRAC:POIN:ACT?")
-                try:
-                    buf_count = int(float(buf_count_str))
-                except ValueError:
-                    buf_count = 0
+                if self._connection_mode is ConnectionMode.DIRECT_GPIB:
+                    if self._k2182a is None:
+                        raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+                    buf_count = self._k2182a.get_buffer_count()
+                else:
+                    buf_count_str = self._nvm_query("TRAC:POIN:ACT?")
+                    try:
+                        buf_count = int(float(buf_count_str))
+                    except ValueError:
+                        buf_count = 0
                 if buf_count >= n:
                     break
                 if time.monotonic() > deadline:
-                    self._k6221.write("SOUR:SWE:ABOR")
-                    self._k6221.write("OUTP:STAT 0")
+                    self._k6221.sweep_abort()
+                    self._k6221.enable_output(False)
                     raise RuntimeError(
                         f"Timeout waiting for 2182A buffer to fill: "
                         f"got {buf_count} of {n} readings after {timeout:.1f} s."
@@ -838,9 +861,14 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 time.sleep(_POLL_INTERVAL)
 
             # Disable output and read buffer.
-            self._k6221.write("OUTP:STAT 0")
-            raw = self._nvm_query("TRAC:DATA?")
-            voltages = self._parse_csv_floats(raw)
+            self._k6221.enable_output(False)
+            if self._connection_mode is ConnectionMode.DIRECT_GPIB:
+                if self._k2182a is None:
+                    raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+                voltages = self._k2182a.read_buffer()
+            else:
+                raw = self._nvm_query("TRAC:DATA?")
+                voltages = Keithley2182A.parse_csv_floats(raw)
             if len(voltages) != n:
                 raise RuntimeError(
                     f"2182A returned {len(voltages)} readings but expected {n}. "
@@ -849,8 +877,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         except Exception:
             # Attempt a clean abort on any failure.
             try:
-                self._k6221.write("SOUR:SWE:ABOR")
-                self._k6221.write("OUTP:STAT 0")
+                self._k6221.sweep_abort()
+                self._k6221.enable_output(False)
             except _CLEANUP_EXCEPTIONS:
                 pass
             raise
@@ -876,7 +904,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             if instr is not None:
                 try:
                     if instr is self._k6221:
-                        instr.write("OUTP:STAT 0")
+                        instr.enable_output(False)
                 except _CLEANUP_EXCEPTIONS:
                     pass
                 try:
@@ -1374,19 +1402,3 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             "(2182A &rarr; 6221) to match the physical wiring on the <b>Trigger link</b> "
             "panel.</p>"
         )
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _parse_csv_floats(values: str) -> tuple[float, ...]:
-        """Parse a comma-separated numeric payload into a tuple of floats."""
-        stripped = values.strip()
-        if not stripped:
-            return ()
-        tokens = [t.strip() for t in stripped.split(",")]
-        try:
-            return tuple(float(t) for t in tokens if t)
-        except ValueError as exc:
-            raise ValueError(f"Malformed numeric response from 2182A: {values!r}") from exc

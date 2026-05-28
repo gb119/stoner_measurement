@@ -165,6 +165,175 @@ class Keithley6221(CurrentSource):
             batch = ",".join(f"{v:.6e}" for v in values[start:start + _LIST_BATCH_SIZE])
             self.write(f":SOUR:LIST:COMP:APP {batch}")
 
+    def set_sweep_range_mode(self, mode: str) -> None:
+        """Set sweep range mode.
+
+        Args:
+            mode (str):
+                Sweep range mode token.  Supported values are ``"AUTO"``
+                and ``"BEST"`` (case-insensitive).
+
+        Raises:
+            ValueError:
+                If *mode* is not ``"AUTO"`` or ``"BEST"``.
+        """
+        token = mode.strip().upper()
+        if token not in {"AUTO", "BEST"}:
+            raise ValueError("mode must be 'AUTO' or 'BEST'.")
+        self.write(f":SOUR:SWE:RANG {token}")
+
+    def set_fixed_range(self, value: float) -> None:
+        """Set a fixed source-current range.
+
+        Args:
+            value (float):
+                Fixed current range in amps.
+
+        Raises:
+            ValueError:
+                If *value* is not positive.
+        """
+        if value <= 0.0:
+            raise ValueError("Fixed range must be positive.")
+        self.write(f":SOUR:CURR:RANG {value:.6e}")
+
+    def set_sweep_count(self, count: int) -> None:
+        """Set sweep repeat count.
+
+        Args:
+            count (int):
+                Number of sweep repetitions.
+
+        Raises:
+            ValueError:
+                If *count* is not positive.
+        """
+        if count <= 0:
+            raise ValueError("Sweep count must be positive.")
+        self.write(f":SOUR:SWE:COUN {count}")
+
+    def configure_trigger_link(self, output_line: int, input_line: int) -> None:
+        """Configure trigger-link lines and trigger direction.
+
+        Args:
+            output_line (int):
+                Trigger-link output line on the 6221 (valid range: 1..6).
+            input_line (int):
+                Trigger-link input line on the 6221 (valid range: 1..6).
+
+        Raises:
+            ValueError:
+                If either line number is outside ``1..6``.
+        """
+        if not 1 <= output_line <= 6:
+            raise ValueError("output_line must be in the range 1..6.")
+        if not 1 <= input_line <= 6:
+            raise ValueError("input_line must be in the range 1..6.")
+        self.write(f":TRIG:OLIN {output_line}")
+        self.write(f":TRIG:ILIN {input_line}")
+        self.write(":TRIG:DIR ACC")
+
+    @staticmethod
+    def _serial_send_payload(cmd: str, terminator: str) -> str:
+        """Return a relay-safe serial payload string.
+
+        Args:
+            cmd (str):
+                Command string to relay.
+            terminator (str):
+                Serial command terminator to append (for example ``"\\r\\n"``).
+
+        Returns:
+            (str):
+                Command with exactly one trailing *terminator* and doubled
+                double-quotes for safe insertion in a SCPI quoted string.
+        """
+        command = cmd.rstrip("\r\n")
+        payload = f"{command}{terminator}"
+        return payload.replace('"', '""')
+
+    def send_serial_command(self, cmd: str, *, terminator: str = "\r\n") -> None:
+        """Relay a serial command through the 6221.
+
+        Args:
+            cmd (str):
+                Command to send to the downstream serial instrument.
+
+        Keyword Parameters:
+            terminator (str):
+                Serial command terminator appended once to *cmd*.
+        """
+        payload = self._serial_send_payload(cmd, terminator)
+        self.write(f'SYST:COMM:SER:SEND "{payload}"')
+
+    def _read_serial_entry_chunk(self) -> str:
+        """Read one relay payload chunk from ``SYST:COMM:SER:ENT?``.
+
+        Returns:
+            (str):
+                Decoded chunk from the relay response.  The outer protocol
+                query terminator is removed; payload CR/LF from the downstream
+                instrument is preserved.
+        """
+        protocol = self.protocol
+        terminator = getattr(protocol, "terminator", b"\n")
+        payload = protocol.format_query("SYST:COMM:SER:ENT?")
+        self.transport.write(payload)
+        self._log_comms_traffic("TX", payload)
+        raw = self.transport.read_until(terminator)
+        self._log_comms_traffic("RX", raw)
+        if raw.endswith(terminator):
+            raw = raw[: -len(terminator)]
+        return raw.decode("utf-8", errors="replace")
+
+    def query_serial_command(
+        self,
+        cmd: str,
+        *,
+        command_terminator: str = "\r\n",
+        response_terminator: str = "\n",
+        max_chunks: int = 64,
+    ) -> str:
+        """Relay a serial query and return the line response.
+
+        Args:
+            cmd (str):
+                Query command to send to the downstream serial instrument.
+
+        Keyword Parameters:
+            command_terminator (str):
+                Terminator appended to *cmd* before relay transmission.
+            response_terminator (str):
+                Line terminator that marks completion of the response.
+            max_chunks (int):
+                Maximum number of relay chunks to read while waiting for the
+                terminator.
+
+        Returns:
+            (str):
+                Response string with trailing CR/LF stripped.
+
+        Raises:
+            ValueError:
+                If *max_chunks* is not positive.
+            RuntimeError:
+                If a line-terminated response is not received within
+                *max_chunks* chunks.
+        """
+        if max_chunks <= 0:
+            raise ValueError("max_chunks must be positive.")
+        self.send_serial_command(cmd, terminator=command_terminator)
+        parts: list[str] = []
+        for _ in range(max_chunks):
+            chunk = self._read_serial_entry_chunk()
+            parts.append(chunk)
+            combined = "".join(parts)
+            if combined.endswith(response_terminator):
+                return combined.rstrip("\r\n")
+        raise RuntimeError(
+            "Timed out reading serial relay response: no line terminator (LF) received."
+        )
+
     def sweep_start(self) -> None:
         """Arm the configured sweep, making it ready for triggering."""
         self.write(":SOUR:SWE:ARM")

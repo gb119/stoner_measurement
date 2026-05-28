@@ -859,6 +859,30 @@ class TestKeithley2182A:
         with pytest.raises(ValueError):
             k.read_buffer(0)
 
+    def test_extended_controls(self):
+        t = _null()
+        k = Keithley2182A(transport=t)
+        k.set_digits(6)
+        k.set_analog_filter_enabled(True)
+        k.set_relative_enabled(False)
+        k.set_buffer_size(8)
+        k.set_buffer_feed_sense()
+        k.set_buffer_feed_continuous_next()
+        assert t.write_log == [
+            b":SENS:VOLT:DIG 6\n",
+            b":SENS:VOLT:LPAS:STAT 1\n",
+            b":SENS:VOLT:REL:STAT 0\n",
+            b":TRAC:POIN 8\n",
+            b":TRAC:FEED SENS\n",
+            b":TRAC:FEED:CONT NEXT\n",
+        ]
+        with pytest.raises(ValueError):
+            k.set_digits(3)
+        with pytest.raises(ValueError):
+            k.set_digits(9)
+        with pytest.raises(ValueError):
+            k.set_buffer_size(0)
+
     def test_capabilities(self):
         caps = Keithley2182A(transport=_null()).get_capabilities()
         assert isinstance(caps, NanovoltmeterCapabilities)
@@ -1282,6 +1306,63 @@ class TestKeithley6221:
                 CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=(1e-3,)),
                 PulsedSweepConfiguration(width=1e-3, off_time=0.0),
             )
+
+    def test_sweep_range_and_trigger_helpers(self):
+        t = _null()
+        k = Keithley6221(transport=t)
+        k.set_sweep_range_mode("AUTO")
+        k.set_fixed_range(1e-3)
+        k.set_sweep_count(2)
+        k.configure_trigger_link(output_line=1, input_line=2)
+        assert t.write_log == [
+            b":SOUR:SWE:RANG AUTO\n",
+            b":SOUR:CURR:RANG 1.000000e-03\n",
+            b":SOUR:SWE:COUN 2\n",
+            b":TRIG:OLIN 1\n",
+            b":TRIG:ILIN 2\n",
+            b":TRIG:DIR ACC\n",
+        ]
+        with pytest.raises(ValueError):
+            k.set_sweep_range_mode("INVALID")
+        with pytest.raises(ValueError):
+            k.set_fixed_range(0.0)
+        with pytest.raises(ValueError):
+            k.set_sweep_count(0)
+        with pytest.raises(ValueError):
+            k.configure_trigger_link(output_line=0, input_line=2)
+        with pytest.raises(ValueError):
+            k.configure_trigger_link(output_line=1, input_line=7)
+
+    def test_serial_relay_helpers(self):
+        t = _null(responses=[b"1.23\r\n\n"])
+        k = Keithley6221(transport=t)
+        k.send_serial_command("*IDN?")
+        value = k.query_serial_command("READ?")
+        assert value == "1.23"
+        assert t.write_log[0].decode().startswith('SYST:COMM:SER:SEND "*IDN?\r\n"')
+        assert t.write_log[1].decode().startswith('SYST:COMM:SER:SEND "READ?\r\n"')
+        assert t.write_log[2].decode().strip() == "SYST:COMM:SER:ENT?"
+        with pytest.raises(ValueError):
+            k.query_serial_command("READ?", max_chunks=0)
+
+    def test_query_serial_command_raises_on_bare_cr_without_lf(self):
+        """A response ending in bare CR (no LF) does not satisfy the line terminator."""
+        # The outer protocol terminator (b"\n") is present, but the inner payload
+        # ends only in CR — combined.endswith("\n") will be False after stripping
+        # the outer LF, so RuntimeError is raised after max_chunks is exhausted.
+        t = _null(responses=[b"1.23\r\n"])
+        k = Keithley6221(transport=t)
+        with pytest.raises(RuntimeError, match="no line terminator"):
+            k.query_serial_command("READ?", max_chunks=1)
+
+    def test_query_serial_command_max_chunks_exhausted(self):
+        """RuntimeError is raised when no LF-terminated response arrives within max_chunks."""
+        # Each chunk carries partial data with only the outer protocol LF stripped;
+        # the combined payload never ends with the inner response_terminator "\n".
+        t = _null(responses=[b"part1\n", b"part2\n"])
+        k = Keithley6221(transport=t)
+        with pytest.raises(RuntimeError, match="no line terminator"):
+            k.query_serial_command("READ?", max_chunks=2)
 
     def test_convenience_configure_custom_sweep(self):
         """configure_custom_sweep delegates to configure_sweep with LIST spacing."""
