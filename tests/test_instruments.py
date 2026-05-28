@@ -1332,7 +1332,7 @@ class TestKeithley6221:
             k.configure_trigger_link(output_line=1, input_line=7)
 
     def test_serial_relay_helpers(self):
-        t = _null(responses=[b"1.23\r\n"])
+        t = _null(responses=[b"1.23\r\n\n"])
         k = Keithley6221(transport=t)
         k.send_serial_command("*IDN?")
         value = k.query_serial_command("READ?")
