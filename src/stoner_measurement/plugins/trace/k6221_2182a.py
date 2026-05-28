@@ -63,6 +63,9 @@ _TIMEOUT_FACTOR: float = 5.0
 #: Minimum timeout in seconds regardless of sweep duration.
 _TIMEOUT_MIN: float = 10.0
 
+#: IEEE-488.2 Event Status Bit (ESB) mask in the status byte.
+_STATUS_BYTE_ESB_MASK: int = 0x04
+
 #: Available fixed current output ranges for the 6221 (amps).
 _6221_FIXED_RANGES: tuple[float, ...] = (
     1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1,
@@ -494,6 +497,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             if self._k6221 is None:
                 raise RuntimeError("Keithley 6221 is not connected.")
             self._k6221.send_serial_command(cmd)
+            self._check_nvm_status_via_6221_serial(command=cmd)
         else:
             if self._k2182a is None:
                 raise RuntimeError(
@@ -501,6 +505,35 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                     "Call connect() before sending commands to the 2182A."
                 )
             self._k2182a.write(cmd)
+
+    def _check_nvm_status_via_6221_serial(self, *, command: str) -> None:
+        """Verify relayed command handling for 6221-serial 2182A access.
+
+        Checks the downstream 2182A status byte (``*STB?``) after a relayed
+        command. If the 2182A event-status summary bit is set, query
+        ``SYST:ERR?`` and raise when an instrument error is reported.
+
+        Args:
+            command (str):
+                Relayed 2182A command that was sent.
+
+        Raises:
+            RuntimeError:
+                If the relayed ``*STB?`` response is malformed, or if the 2182A
+                reports a non-zero error queue entry.
+        """
+        status_text = self._nvm_query("*STB?")
+        try:
+            status_byte = int(float(status_text))
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Invalid 2182A status-byte response after {command!r}: {status_text!r}"
+            ) from exc
+        if not (status_byte & _STATUS_BYTE_ESB_MASK):
+            return
+        error_text = self._nvm_query("SYST:ERR?")
+        if not error_text.lstrip().startswith("0"):
+            raise RuntimeError(f"2182A reported error after {command!r}: {error_text}")
 
     def _nvm_query(self, cmd: str) -> str:
         """Send *cmd* to the 2182A and return its response.

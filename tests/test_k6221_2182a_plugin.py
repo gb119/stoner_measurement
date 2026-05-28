@@ -285,10 +285,50 @@ class TestNvmGuards:
         plugin = _make_plugin()
         plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
         plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.return_value = "0"
 
         plugin._nvm_write("*IDN?")
 
         plugin._k6221.send_serial_command.assert_called_once_with("*IDN?")
+        plugin._k6221.query_serial_command.assert_called_once_with("*STB?")
+
+    def test_nvm_write_via_6221_serial_checks_error_queue_when_esb_set(self, qapp):
+        from unittest.mock import MagicMock, call
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.side_effect = ["4", '0,"No error"']
+
+        plugin._nvm_write(":SENS:VOLT:NPLC 1")
+
+        plugin._k6221.send_serial_command.assert_called_once_with(":SENS:VOLT:NPLC 1")
+        assert plugin._k6221.query_serial_command.call_args_list == [
+            call("*STB?"),
+            call("SYST:ERR?"),
+        ]
+
+    def test_nvm_write_via_6221_serial_raises_on_2182a_error(self, qapp):
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.side_effect = ["4", '-113,"Undefined header"']
+
+        with pytest.raises(RuntimeError, match="2182A reported error"):
+            plugin._nvm_write("BAD:CMD")
+
+    def test_nvm_write_via_6221_serial_raises_on_invalid_status_byte(self, qapp):
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+        plugin._k6221 = MagicMock()
+        plugin._k6221.query_serial_command.return_value = "not-a-byte"
+
+        with pytest.raises(RuntimeError, match="Invalid 2182A status-byte response"):
+            plugin._nvm_write("*RST")
 
     def test_nvm_query_via_6221_serial_reads_until_terminator(self, qapp):
         from unittest.mock import MagicMock
