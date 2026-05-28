@@ -43,7 +43,20 @@ class Keithley2182A(Nanovoltmeter):
 
     @staticmethod
     def parse_csv_floats(values: str) -> tuple[float, ...]:
-        """Parse a comma-separated numeric payload into a tuple of floats."""
+        """Parse a comma-separated numeric payload.
+
+        Args:
+            values (str):
+                Raw comma-separated numeric response string.
+
+        Returns:
+            (tuple[float, ...]):
+                Parsed floating-point values.
+
+        Raises:
+            ValueError:
+                If *values* contains malformed numeric tokens.
+        """
         return Keithley2182A._parse_csv_floats(values)
 
     def measure_voltage(self) -> float:
@@ -122,7 +135,16 @@ class Keithley2182A(Nanovoltmeter):
         self.write(f":SENS:VOLT:NPLC {value}")
 
     def set_digits(self, digits: int) -> None:
-        """Set display and data digits."""
+        """Set display and data digits.
+
+        Args:
+            digits (int):
+                Number of digits to display/store (valid range: 4..7).
+
+        Raises:
+            ValueError:
+                If *digits* is outside ``4..7``.
+        """
         if not 4 <= digits <= 7:
             raise ValueError("digits must be in the range 4..7.")
         self.write(f":DISP:DIGS {digits}")
@@ -189,11 +211,21 @@ class Keithley2182A(Nanovoltmeter):
         self.write(f":SENS:VOLT:DFIL:COUN {count}")
 
     def set_analog_filter_enabled(self, state: bool) -> None:
-        """Enable or disable the analogue low-pass filter."""
+        """Enable or disable the analogue low-pass filter.
+
+        Args:
+            state (bool):
+                ``True`` to enable, ``False`` to disable.
+        """
         self.write(f":SENS:VOLT:LPAS:STAT {1 if state else 0}")
 
     def set_relative_enabled(self, state: bool) -> None:
-        """Enable or disable relative (REL) mode."""
+        """Enable or disable relative (REL) mode.
+
+        Args:
+            state (bool):
+                ``True`` to enable, ``False`` to disable.
+        """
         self.write(f":SENS:VOLT:REL:STAT {1 if state else 0}")
 
     def get_trigger_source(self) -> NanovoltmeterTriggerSource:
@@ -251,17 +283,26 @@ class Keithley2182A(Nanovoltmeter):
         self.write(":TRAC:CLE")
 
     def set_buffer_size(self, size: int) -> None:
-        """Set the trace buffer point capacity."""
+        """Set the trace buffer point capacity.
+
+        Args:
+            size (int):
+                Number of points to allocate in the trace buffer.
+
+        Raises:
+            ValueError:
+                If *size* is not positive.
+        """
         if size <= 0:
             raise ValueError("size must be positive.")
         self.write(f":TRAC:POIN {size}")
 
     def set_buffer_feed_sense(self) -> None:
-        """Set trace buffer feed source to sensor readings."""
+        """Set trace feed source to measurement readings (``:TRAC:FEED SENS``)."""
         self.write(":TRAC:FEED SENS")
 
     def set_buffer_feed_continuous_next(self) -> None:
-        """Set trace feed mode to keep accepting the next readings."""
+        """Set feed mode to continuous-next (``:TRAC:FEED:CONT NEXT``)."""
         self.write(":TRAC:FEED:CONT NEXT")
 
     def get_buffer_count(self) -> int:
