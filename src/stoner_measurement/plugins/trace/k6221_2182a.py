@@ -497,7 +497,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             if self._k6221 is None:
                 raise RuntimeError("Keithley 6221 is not connected.")
             self._k6221.send_serial_command(cmd)
-            self._check_nvm_status_via_6221_serial(command=cmd)
         else:
             if self._k2182a is None:
                 raise RuntimeError(
@@ -507,15 +506,22 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             self._k2182a.write(cmd)
 
     def _check_nvm_status_via_6221_serial(self, *, command: str) -> None:
-        """Verify relayed command handling for 6221-serial 2182A access.
+        """Check the 2182A error queue once via the 6221 serial relay.
 
-        Checks the downstream 2182A status byte (``*STB?``) after a relayed
-        command. If the 2182A event-status summary bit is set, query
-        ``SYST:ERR?`` and raise when an instrument error is reported.
+        Polls the downstream 2182A status byte (``*STB?``) once after a block
+        of relayed commands.  If the 2182A event-status summary bit is set,
+        query ``SYST:ERR?`` and raise when the instrument reports an error.
+
+        This method is intended to be called once at the end of a
+        configuration or command block, not after every individual write, to
+        avoid multiplying GPIB transactions unnecessarily and to sidestep
+        timing issues that arise when a ``*STB?`` query follows a write whose
+        response has not yet cleared the serial relay buffer.
 
         Args:
             command (str):
-                Relayed 2182A command that was sent.
+                Description of the operation block that was just performed
+                (used in the exception message).
 
         Raises:
             RuntimeError:
@@ -532,7 +538,11 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         if not (status_byte & _STATUS_BYTE_ESB_MASK):
             return
         error_text = self._nvm_query("SYST:ERR?")
-        if not error_text.lstrip().startswith("0"):
+        try:
+            error_code = int(error_text.split(",", 1)[0])
+        except ValueError:
+            error_code = -1
+        if error_code != 0:
             raise RuntimeError(f"2182A reported error after {command!r}: {error_text}")
 
     def _nvm_query(self, cmd: str) -> str:
@@ -761,6 +771,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 self._nvm_write("TRAC:FEED:CONT NEXT")
                 self._nvm_write("TRIG:SOUR EXT")
                 self._nvm_write(f"TRIG:COUN {n}")
+                # Single status check after all configuration writes are complete.
+                # Calling this once per block (rather than after each write) avoids
+                # multiplying GPIB transactions and sidesteps *STB? timing hazards.
+                self._check_nvm_status_via_6221_serial(command="configure()")
 
         except Exception:
             self._set_status(TraceStatus.ERROR)

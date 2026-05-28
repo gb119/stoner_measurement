@@ -1345,6 +1345,25 @@ class TestKeithley6221:
         with pytest.raises(ValueError):
             k.query_serial_command("READ?", max_chunks=0)
 
+    def test_query_serial_command_bare_cr_not_accepted(self):
+        """A response ending in bare CR (no LF) does not satisfy the line terminator."""
+        # The outer protocol terminator (b"\n") is present, but the inner payload
+        # ends only in CR — combined.endswith("\n") will be False after stripping
+        # the outer LF, so RuntimeError is raised after max_chunks is exhausted.
+        t = _null(responses=[b"1.23\r\n"])
+        k = Keithley6221(transport=t)
+        with pytest.raises(RuntimeError, match="no line terminator"):
+            k.query_serial_command("READ?", max_chunks=1)
+
+    def test_query_serial_command_max_chunks_exhausted(self):
+        """RuntimeError is raised when no LF-terminated response arrives within max_chunks."""
+        # Each chunk carries partial data with only the outer protocol LF stripped;
+        # the combined payload never ends with the inner response_terminator "\n".
+        t = _null(responses=[b"part1\n", b"part2\n"])
+        k = Keithley6221(transport=t)
+        with pytest.raises(RuntimeError, match="no line terminator"):
+            k.query_serial_command("READ?", max_chunks=2)
+
     def test_convenience_configure_custom_sweep(self):
         """configure_custom_sweep delegates to configure_sweep with LIST spacing."""
         t = _null()
