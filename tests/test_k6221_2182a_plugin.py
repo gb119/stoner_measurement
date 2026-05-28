@@ -442,7 +442,7 @@ class TestDisconnect:
         plugin.disconnect()
         assert plugin._k6221 is None
         assert plugin._k2182a is None
-        mock_6221.write.assert_called_with("OUTP:STAT 0")
+        mock_6221.enable_output.assert_called_once_with(False)
 
     def test_disconnect_clears_sweep_values(self, qapp):
         import numpy as np

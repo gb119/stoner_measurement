@@ -13,7 +13,7 @@ filter_enabled: false
 filter_count: 10
 analog_filter: false
 relative_enabled: false
-digits: 6
+digits: 8
 output_tlink: 1
 input_tlink: 2
 scan_generator:
