@@ -17,6 +17,18 @@ In general favour the widgets defined in the ui.widgets package over stock qt
 ones. for quantities that have physical units, show the units in the widget and
 where numbers outside the range 0.1-1000, support SI prefixes too.
 
+## Hardware Interaction
+
+Where the code needs to interact with hardware (.e.g scientific instruments connected 
+via GPIB, Serial, USB, Ethernet etc), this should be done via Instrument drivers
+that live int he instruments sub-package. This package defines a class heirarchy
+that covers different instrument types (power supply, controllers, metars and so 
+forth) as well as sub-classes for specific instruments. All instrument specific commands
+should be generated from within the driver code and not place in partiocular
+sequence plugins or UI elements. This ensures that tracing down incorrectly formatted
+commands is much easier.
+
+
 ## Docstring Formatting
 
 All docstrings for python functions, classes, methods and modules should confirm
