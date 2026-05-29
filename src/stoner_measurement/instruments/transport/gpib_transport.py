@@ -489,16 +489,20 @@ class PassThroughGpibTransport(GpibTransport):
         If the resource is not open or Device Clear fails, the exception is
         ignored and logged at debug level.
         """
+        if self._resource is None:
+            return
+        import pyvisa
 
+        frame_limit = self._resolve_max_frame_size(None)
         try:
             self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*CLS\r"')
             self._resource.write_raw(b'SYST:COMM:SER:SEND "*CLS\r"')
             for _ in range(self._max_read_chunks):
-                chunk = self._read_serial_entry_chunk()
-                if not chunk:
+                self._resource.write_raw(b"SYST:COMM:SER:ENT?\n")
+                chunk = self._resource.read_raw(frame_limit)
+                if not chunk.strip():
                     break
-                else:
-                    sleep(_DEFAULT_K6221_SERIAL_POLL)
+                sleep(_DEFAULT_K6221_SERIAL_POLL)
             self._log_comms_traffic("IEEE", "Connection flushed.")
-        except pyvisa.VisaIOError as exc:
+        except pyvisa.errors.VisaIOError as exc:
             logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)
