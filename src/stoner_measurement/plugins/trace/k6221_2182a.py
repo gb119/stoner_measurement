@@ -43,7 +43,7 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.nanovoltmeter import NanovoltmeterTriggerSource
-from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
+from stoner_measurement.instruments.transport.gpib_transport import GpibTransport, PassThropughGpibTransport
 from stoner_measurement.plugins.trace.base import (
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
@@ -483,96 +483,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         return self.data
 
     # ------------------------------------------------------------------
-    # 2182A command routing helpers
-    # ------------------------------------------------------------------
-
-    def _nvm_write(self, cmd: str) -> None:
-        """Send *cmd* to the 2182A using the active connection mode.
-
-        Args:
-            cmd (str):
-                SCPI command to send to the 2182A.
-        """
-        if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
-            if self._k6221 is None:
-                raise RuntimeError("Keithley 6221 is not connected.")
-            self._k6221.send_serial_command(cmd)
-        else:
-            if self._k2182a is None:
-                raise RuntimeError(
-                    "DIRECT_GPIB mode selected but no 2182A connection is open. "
-                    "Call connect() before sending commands to the 2182A."
-                )
-            self._k2182a.write(cmd)
-
-    def _check_nvm_status_via_6221_serial(self, *, command: str) -> None:
-        """Check the 2182A error queue once via the 6221 serial relay.
-
-        Polls the downstream 2182A status byte (``*STB?``) once after a block
-        of relayed commands.  If the 2182A event-status summary bit is set,
-        query ``SYST:ERR?`` and raise when the instrument reports an error.
-
-        This method is intended to be called once at the end of a
-        configuration or command block, not after every individual write, to
-        avoid multiplying GPIB transactions unnecessarily and to sidestep
-        timing issues that arise when a ``*STB?`` query follows a write whose
-        response has not yet cleared the serial relay buffer.
-
-        Args:
-            command (str):
-                Description of the operation block that was just performed
-                (used in the exception message).
-
-        Raises:
-            RuntimeError:
-                If the relayed ``*STB?`` response is malformed, or if the 2182A
-                reports a non-zero error queue entry.
-        """
-        status_text = self._nvm_query("*STB?")
-        try:
-            status_byte = int(float(status_text))
-        except ValueError as exc:
-            raise RuntimeError(
-                f"Invalid 2182A status-byte response after {command!r}: {status_text!r}"
-            ) from exc
-        if not (status_byte & _STATUS_BYTE_ESB_MASK):
-            return
-        error_text = self._nvm_query("SYST:ERR?")
-        try:
-            error_code = int(error_text.split(",", 1)[0])
-        except ValueError:
-            error_code = -1
-        if error_code != 0:
-            raise RuntimeError(f"2182A reported error after {command!r}: {error_text}")
-
-    def _nvm_query(self, cmd: str) -> str:
-        """Send *cmd* to the 2182A and return its response.
-
-        Args:
-            cmd (str):
-                SCPI query command to send to the 2182A.
-
-        Returns:
-            (str):
-                Query response string without trailing CR/LF terminator.
-
-        Raises:
-            RuntimeError:
-                If DIRECT_GPIB mode is selected but no 2182A is connected, or
-                if the serial relay path does not yield a line-terminated response.
-        """
-        if self._connection_mode is ConnectionMode.VIA_6221_SERIAL:
-            if self._k6221 is None:
-                raise RuntimeError("Keithley 6221 is not connected.")
-            return self._k6221.query_serial_command(cmd)
-        if self._k2182a is None:
-            raise RuntimeError(
-                "DIRECT_GPIB mode selected but no 2182A connection is open. "
-                "Call connect() before querying the 2182A."
-            )
-        return self._k2182a.query(cmd).strip()
-
-    # ------------------------------------------------------------------
     # Lifecycle API
     # ------------------------------------------------------------------
 
@@ -609,13 +519,15 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             if self._connection_mode is ConnectionMode.DIRECT_GPIB:
                 transport_2182a = GpibTransport.from_resource_string(self._2182a_resource, timeout=10.0)
-                transport_2182a.open()
-                self._k2182a = Keithley2182A(transport_2182a)
-                idn2 = self._k2182a.identify()
-                if "2182" not in idn2:
-                    raise RuntimeError(
-                        f"Unexpected instrument at {self._2182a_resource!r}: {idn2!r}"
-                    )
+            else: # Via 6221
+                transport_2182a = PassThropughGpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
+            transport_2182a.open()
+            self._k2182a = Keithley2182A(transport_2182a)
+            idn2 = self._k2182a.identify()
+            if "2182" not in idn2:
+                raise RuntimeError(
+                    f"Unexpected instrument at {self._2182a_resource!r}: {idn2!r}"
+                )
         except Exception:
             # Clean up any partially-opened transports to avoid leaking VISA sessions.
             for transport in (transport_2182a, transport_6221):
@@ -715,66 +627,35 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             self._k6221.configure_trigger_link(self._output_tlink, self._input_tlink)
 
             # ---- 2182A: reset and configure ----
-            if self._connection_mode is ConnectionMode.DIRECT_GPIB:
-                if self._k2182a is None:
-                    raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-                self._k2182a.reset()
-            else:
-                self._nvm_write("*RST")
+            if self._k2182a is None:
+                raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+            self._k2182a.reset()
             time.sleep(0.2)
 
-            if self._connection_mode is ConnectionMode.DIRECT_GPIB:
-                self._k2182a.set_digits(self._digits)
-                self._k2182a.set_nplc(self._nplc)
-                if self._voltage_range > 0.0:
-                    self._k2182a.set_autorange(False)
-                    self._k2182a.set_range(self._voltage_range)
-                else:
-                    self._k2182a.set_autorange(True)
-
-                self._k2182a.set_filter_enabled(self._filter_enabled)
-                if self._filter_enabled:
-                    self._k2182a.set_filter_count(self._filter_count)
-
-                self._k2182a.set_analog_filter_enabled(self._analog_filter)
-                self._k2182a.set_relative_enabled(self._relative_enabled)
-
-                # ---- 2182A: trace buffer ----
-                self._k2182a.clear_buffer()
-                self._k2182a.set_buffer_size(n)
-                self._k2182a.set_buffer_feed_sense()
-                self._k2182a.set_buffer_feed_continuous_next()
-
-                # ---- 2182A: trigger ----
-                self._k2182a.set_trigger_source(NanovoltmeterTriggerSource.EXT)
-                self._k2182a.set_trigger_count(n)
+            self._k2182a.set_digits(self._digits)
+            self._k2182a.set_nplc(self._nplc)
+            if self._voltage_range > 0.0:
+                self._k2182a.set_autorange(False)
+                self._k2182a.set_range(self._voltage_range)
             else:
-                self._nvm_write(f"SENS:VOLT:DIG {self._digits}")
-                self._nvm_write(f"SENS:VOLT:NPLC {self._nplc:.4f}")
-                if self._voltage_range > 0.0:
-                    self._nvm_write("SENS:VOLT:RANG:AUTO 0")
-                    self._nvm_write(f"SENS:VOLT:RANG {self._voltage_range:.6e}")
-                else:
-                    self._nvm_write("SENS:VOLT:RANG:AUTO 1")
+                self._k2182a.set_autorange(True)
 
-                if self._filter_enabled:
-                    self._nvm_write("SENS:VOLT:DFIL:STAT 1")
-                    self._nvm_write(f"SENS:VOLT:DFIL:COUN {self._filter_count}")
-                else:
-                    self._nvm_write("SENS:VOLT:DFIL:STAT 0")
+            self._k2182a.set_filter_enabled(self._filter_enabled)
+            if self._filter_enabled:
+                self._k2182a.set_filter_count(self._filter_count)
 
-                self._nvm_write(f"SENS:VOLT:LPAS:STAT {1 if self._analog_filter else 0}")
-                self._nvm_write(f"SNS:VOLT:REF:STAT {1 if self._relative_enabled else 0}")
-                self._nvm_write("TRAC:CLE")
-                self._nvm_write(f"TRAC:POIN {n}")
-                self._nvm_write("TRAC:FEED SENS")
-                self._nvm_write("TRAC:FEED:CONT NEXT")
-                self._nvm_write("TRIG:SOUR EXT")
-                self._nvm_write(f"TRIG:COUN {n}")
-                # Single status check after all configuration writes are complete.
-                # Calling this once per block (rather than after each write) avoids
-                # multiplying GPIB transactions and sidesteps *STB? timing hazards.
-                self._check_nvm_status_via_6221_serial(command="configure()")
+            self._k2182a.set_analog_filter_enabled(self._analog_filter)
+            self._k2182a.set_relative_enabled(self._relative_enabled)
+
+            # ---- 2182A: trace buffer ----
+            self._k2182a.clear_buffer()
+            self._k2182a.set_buffer_size(n)
+            self._k2182a.set_buffer_feed_sense()
+            self._k2182a.set_buffer_feed_continuous_next()
+
+            # ---- 2182A: trigger ----
+            self._k2182a.set_trigger_source(NanovoltmeterTriggerSource.EXT)
+            self._k2182a.set_trigger_count(n)
 
         except Exception:
             self._set_status(TraceStatus.ERROR)
@@ -826,12 +707,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         try:
             # Arm 6221 sweep and initiate 2182A trigger system.
             self._k6221.sweep_start()
-            if self._connection_mode is ConnectionMode.DIRECT_GPIB:
-                if self._k2182a is None:
-                    raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-                self._k2182a.initiate()
-            else:
-                self._nvm_write("INIT")
+            if self._k2182a is None:
+                raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+            self._k2182a.initiate()
 
             # Enable 6221 output — this starts the sweep.
             self._k6221.enable_output(True)
@@ -839,16 +717,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # Poll until buffer is full.
             deadline = time.monotonic() + timeout
             while True:
-                if self._connection_mode is ConnectionMode.DIRECT_GPIB:
-                    if self._k2182a is None:
-                        raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-                    buf_count = self._k2182a.get_buffer_count()
-                else:
-                    buf_count_str = self._nvm_query("TRAC:POIN:ACT?")
-                    try:
-                        buf_count = int(float(buf_count_str))
-                    except ValueError:
-                        buf_count = 0
+                if self._k2182a is None:
+                    raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+                buf_count = self._k2182a.get_buffer_count()
                 if buf_count >= n:
                     break
                 if time.monotonic() > deadline:
@@ -862,13 +733,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # Disable output and read buffer.
             self._k6221.enable_output(False)
-            if self._connection_mode is ConnectionMode.DIRECT_GPIB:
-                if self._k2182a is None:
-                    raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-                voltages = self._k2182a.read_buffer()
-            else:
-                raw = self._nvm_query("TRAC:DATA?")
-                voltages = Keithley2182A.parse_csv_floats(raw)
+            if self._k2182a is None:
+                raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+            voltages = self._k2182a.read_buffer()
             if len(voltages) != n:
                 raise RuntimeError(
                     f"2182A returned {len(voltages)} readings but expected {n}. "

@@ -274,124 +274,6 @@ class TestJsonRoundTrip:
         assert any("future_mode_value" in record.message for record in caplog.records)
 
 
-# ---------------------------------------------------------------------------
-# _nvm_write / _nvm_query guards
-# ---------------------------------------------------------------------------
-
-class TestNvmGuards:
-    def test_nvm_write_via_6221_serial_sends_command(self, qapp):
-        from unittest.mock import MagicMock
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-
-        plugin._nvm_write("*IDN?")
-
-        plugin._k6221.send_serial_command.assert_called_once_with("*IDN?")
-        # Status check is no longer performed per-write; query_serial_command must
-        # not be called from _nvm_write itself.
-        plugin._k6221.query_serial_command.assert_not_called()
-
-    def test_check_nvm_status_clears_when_esb_not_set(self, qapp):
-        from unittest.mock import MagicMock
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-        plugin._k6221.query_serial_command.return_value = "0"
-
-        plugin._check_nvm_status_via_6221_serial(command="configure()")
-
-        plugin._k6221.query_serial_command.assert_called_once_with("*STB?")
-
-    def test_check_nvm_status_queries_error_queue_when_esb_set(self, qapp):
-        from unittest.mock import MagicMock, call
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-        plugin._k6221.query_serial_command.side_effect = ["4", '0,"No error"']
-
-        plugin._check_nvm_status_via_6221_serial(command="configure()")
-
-        assert plugin._k6221.query_serial_command.call_args_list == [
-            call("*STB?"),
-            call("SYST:ERR?"),
-        ]
-
-    def test_check_nvm_status_raises_on_2182a_error(self, qapp):
-        from unittest.mock import MagicMock
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-        plugin._k6221.query_serial_command.side_effect = ["4", '-113,"Undefined header"']
-
-        with pytest.raises(RuntimeError, match="2182A reported error"):
-            plugin._check_nvm_status_via_6221_serial(command="configure()")
-
-    def test_check_nvm_status_raises_on_invalid_status_byte(self, qapp):
-        from unittest.mock import MagicMock
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-        plugin._k6221.query_serial_command.return_value = "not-a-byte"
-
-        with pytest.raises(RuntimeError, match="Invalid 2182A status-byte response"):
-            plugin._check_nvm_status_via_6221_serial(command="configure()")
-
-    def test_check_nvm_status_accepts_plus_prefixed_no_error(self, qapp):
-        """+0,"No error" (SCPI-conformant leading "+") is treated as no error."""
-        from unittest.mock import MagicMock
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-        # ESB set, but SYST:ERR? returns +0 with leading "+"
-        plugin._k6221.query_serial_command.side_effect = ["4", '+0,"No error"']
-
-        # Must not raise
-        plugin._check_nvm_status_via_6221_serial(command="configure()")
-
-    def test_nvm_query_via_6221_serial_reads_until_terminator(self, qapp):
-        from unittest.mock import MagicMock
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-        plugin._k6221.query_serial_command.return_value = "+1.2345E-3"
-
-        response = plugin._nvm_query("READ?")
-
-        plugin._k6221.query_serial_command.assert_called_once_with("READ?")
-        assert response == "+1.2345E-3"
-
-    def test_nvm_query_via_6221_serial_raises_without_terminator(self, qapp):
-        from unittest.mock import MagicMock
-
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
-        plugin._k6221 = MagicMock()
-        plugin._k6221.query_serial_command.side_effect = RuntimeError("no line terminator")
-
-        with pytest.raises(RuntimeError, match="no line terminator"):
-            plugin._nvm_query("READ?")
-
-    def test_nvm_write_direct_gpib_without_connection_raises(self, qapp):
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.DIRECT_GPIB
-        # _k2182a is None — should raise RuntimeError, not AttributeError
-        with pytest.raises(RuntimeError, match="DIRECT_GPIB"):
-            plugin._nvm_write("*IDN?")
-
-    def test_nvm_query_direct_gpib_without_connection_raises(self, qapp):
-        plugin = _make_plugin()
-        plugin._connection_mode = ConnectionMode.DIRECT_GPIB
-        with pytest.raises(RuntimeError, match="DIRECT_GPIB"):
-            plugin._nvm_query("*IDN?")
-
 
 # ---------------------------------------------------------------------------
 # execute() guards
@@ -746,9 +628,7 @@ class TestComplianceBounds:
         plugin._sweep_values = np.array([1e-3, 2e-3])
 
         with patch.object(plugin._k6221, "configure_custom_sweep"), \
-             patch.object(plugin._k6221, "configure_list_compliance"), \
-             patch.object(plugin, "_nvm_write"), \
-             patch.object(plugin, "_nvm_query", return_value="1"):
+             patch.object(plugin._k6221, "configure_list_compliance"):
             # Should not raise
             try:
                 plugin.configure()
@@ -788,9 +668,7 @@ class TestComplianceBounds:
 
         # Should not raise ValueError; RuntimeError from missing setup is OK
         with patch.object(plugin._k6221, "configure_custom_sweep"), \
-             patch.object(plugin._k6221, "configure_list_compliance"), \
-             patch.object(plugin, "_nvm_write"), \
-             patch.object(plugin, "_nvm_query", return_value="1"):
+             patch.object(plugin._k6221, "configure_list_compliance"):
             try:
                 plugin.configure()
             except (RuntimeError, AttributeError):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+from time import sleep
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.transport.base import BaseTransport
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 #: ``"GPIB<board>::<address>::INSTR"``.
 _GPIB_RESOURCE_RE = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
 _DEFAULT_GPIB_READ_TERMINATOR = "\n"
+_DEFAULT_K6221_SERIAL_POLL = 0.05
 logger = logging.getLogger(__name__)
 
 
@@ -295,3 +297,172 @@ class GpibTransport(BaseTransport):
             self._resource.clear()
         except pyvisa.VisaIOError as exc:
             logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)
+
+
+class PassThropughGpibTransport(GpibTransport):
+    """Passthrough Keithley 6221 GPIB transport.
+
+    Subclasses a GPIBTransport so that commands are wrapped in the SYST:COMM:SER:[SEND|ENT?]
+    SCPI commands of a Keithley 6221 current source. This is primarily intentended for
+    communicating with an attached Keithley 2182A nanovoltmeter, but could in principle be used
+    for other instruments supports IEEE488.2 common comands.
+
+    Attributes:
+        address (int):
+            GPIB primary address of the instrument (0–30).
+        board (int):
+            GPIB board (interface) index.  Defaults to ``0``.
+        timeout (float):
+            Read timeout in seconds.  Defaults to ``2.0``.
+
+    Examples:
+        >>> from stoner_measurement.instruments.transport import GpibTransport
+        >>> t = GpibTransport(address=22)
+        >>> t.address
+        22
+        >>> t.board
+        0
+        >>> t.resource_string
+        'GPIB0::22::INSTR'
+    """
+
+    def __init__(self, address: int, board: int = 0, timeout: float = 2.0, max_read_chunks:int = 64) -> None:
+        """Initialise the GPIB transport.
+
+        Args:
+            address (int):
+                GPIB primary address (0–30) of the 6221.
+
+        Keyword Parameters:
+            board (int):
+                GPIB board index.  Defaults to ``0``.
+            timeout (float):
+                Read timeout in seconds.  Defaults to ``2.0``.
+
+        Raises:
+            ImportError:
+                If :mod:`pyvisa` is not installed.
+        """
+        try:
+            import pyvisa as _pyvisa  # noqa: F401
+        except ImportError as exc:
+            raise ImportError("pyvisa is required for GpibTransport. Install it with: pip install pyvisa") from exc
+
+        super().__init__(address=address, board=board,timeout=timeout)
+        self._max_read_chunks=max_read_chunks
+
+    @staticmethod
+    def _serial_send_payload(cmd: str, terminator: str = "\n") -> str:
+        """Return a relay-safe serial payload string.
+
+        Args:
+            cmd (str):
+                Command string to relay.
+            terminator (str):
+                Serial command terminator to append (for example ``"\\r\\n"``).
+
+        Returns:
+            (str):
+                Command with exactly one trailing *terminator* and doubled
+                double-quotes for safe insertion in a SCPI quoted string.
+        """
+        command = cmd.rstrip("\r\n")
+        payload = f"{command}{terminator}"
+        return payload.replace('"', '""')
+
+    def write(self, data: bytes) -> None:
+        """Write *data* to the 6221 wrapping the data in a SYST:COMM:SER:ESEND command.
+
+        Args:
+            data (bytes):
+                Raw bytes to transmit.  The bytes are decoded as ASCII before
+                being passed to PyVISA's ``write_raw``.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+        """
+        if self._resource is None:
+            raise ConnectionError("GPIB transport is not open.")
+        data = f'SYST:COMM:SER:SEND "{self._serial_send_payload(data)}"'
+        self._resource.write_raw(data)
+
+
+    def _read_serial_entry_chunk(self) -> str:
+        """Read one relay payload chunk from ``SYST:COMM:SER:ENT?``.
+
+        Returns:
+            (str):
+                Decoded chunk from the relay response.  The outer protocol
+                query terminator is removed; payload CR/LF from the downstream
+                instrument is preserved.
+        """
+        payload = "SYST:COMM:SER:ENT?"
+        self.transport.write(payload)
+        self._log_comms_traffic("TX", payload)
+        raw = super().read()
+        self._log_comms_traffic("RX", raw)
+        raw=raw.strip()
+        return raw.decode("utf-8", errors="replace")
+
+    def read(self, num_bytes: int | None = None) -> bytes:
+        """Read one response frame from the instrument via the 6221's SYST:COMM:SER:ENT?.
+
+        Args:
+            num_bytes (int | None):
+                Optional maximum number of bytes to read.  When ``None``,
+                the protocol-defined frame-size limit is used.
+
+        Returns:
+            (bytes):
+                Bytes received.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            TimeoutError:
+                If no data arrives within :attr:`timeout` seconds.
+        """
+        import pyvisa
+
+        if self._resource is None:
+            raise ConnectionError("GPIB transport is not open.")
+        frame_limit = self._resolve_max_frame_size(num_bytes)
+        try:
+            parts: list[str] = []
+            for _ in range(self._max_read_chunks):
+                chunk = self._read_serial_entry_chunk().strip()
+                if chunk:
+                    parts.append(chunk)
+                else:
+                    sleep(_DEFAULT_K6221_SERIAL_POLL)
+                if parts and not chunk:
+                    break
+            else:
+                raise RuntimeError(
+                    "Timed out reading serial relay response: no line terminator (LF) received."
+                )
+            combined = "".join(parts)
+            return combined.rstrip("\r\n")
+
+            return self._resource.read_raw(frame_limit)
+        except pyvisa.errors.VisaIOError as exc:
+            raise TimeoutError(f"Timeout reading from serial isntrument attahced to {self.address}: {exc}") from exc
+
+    def read_status_byte(self) -> int | None:
+        """Return the IEEE 488.2 status byte via a rapped *STB? query.
+
+        Because this is a serial over GPIB transport, this is not an out-of-band operation.
+
+        Returns:
+            (int | None):
+                The 8-bit status byte, or ``None`` if the transport is not
+                currently open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import GpibTransport
+            >>> t = GpibTransport(address=22)
+            >>> t.read_status_byte() is None  # not open
+            True
+        """
+        return int(self.query("*STB?"))

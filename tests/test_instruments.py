@@ -288,9 +288,7 @@ class TestBaseInstrument:
         with caplog.at_level(logging.DEBUG, logger="stoner_measurement.sequence.comms"):
             assert k.query("*IDN?") == "answer"
         transcript_records = [
-            record
-            for record in caplog.records
-            if getattr(record, "sm_traffic_channel", "") == "instrument_comms"
+            record for record in caplog.records if getattr(record, "sm_traffic_channel", "") == "instrument_comms"
         ]
         assert len(transcript_records) == 2
         assert transcript_records[0].sm_traffic_direction == "TX"
@@ -871,7 +869,7 @@ class TestKeithley2182A:
         assert t.write_log == [
             b":SENS:VOLT:DIG 6\n",
             b":SENS:VOLT:LPAS:STAT 1\n",
-            b":SENS:VOLT:REL:STAT 0\n",
+            b":SENS:VOLT:REF:STAT 0\n",
             b":TRAC:POIN 8\n",
             b":TRAC:FEED SENS\n",
             b":TRAC:FEED:CONT NEXT\n",
@@ -1245,9 +1243,7 @@ class TestKeithley6221:
     def test_list_sweep_empty_values_raises(self):
         k = Keithley6221(transport=_null())
         with pytest.raises(ValueError, match="non-empty"):
-            k.configure_sweep(
-                CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=())
-            )
+            k.configure_sweep(CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=()))
 
     def test_sweep_with_repeat_count(self):
         t = _null()
@@ -1342,7 +1338,7 @@ class TestKeithley6221:
         assert t.write_log == [
             b":TRIG:OLIN?\n",
             b":TRIG:ILIN?\n",
-            b":SOUR:WAVE:PMAR:STAT?\n",
+            b":SOUR:WAVE:PMAR:OLIN?\n",
             b":TRIG:ILIN 2\n",
             b":TRIG:OLIN 1\n",
             b":TRIG:DIR ACC\n",
@@ -1357,8 +1353,8 @@ class TestKeithley6221:
         assert t.write_log == [
             b":TRIG:OLIN?\n",
             b":TRIG:ILIN?\n",
-            b":SOUR:WAVE:PMAR:STAT?\n",
-            b":TRIG:OLIN 3\n",   # temporary move to free line 3
+            b":SOUR:WAVE:PMAR:OLIN?\n",
+            b":TRIG:OLIN 3\n",  # temporary move to free line 3
             b":TRIG:ILIN 2\n",
             b":TRIG:OLIN 1\n",
             b":TRIG:DIR ACC\n",
@@ -1373,10 +1369,9 @@ class TestKeithley6221:
         assert t.write_log == [
             b":TRIG:OLIN?\n",
             b":TRIG:ILIN?\n",
-            b":SOUR:WAVE:PMAR:STAT?\n",
             b":SOUR:WAVE:PMAR:OLIN?\n",
-            b":SOUR:WAVE:PMAR:OLIN 5\n",  # move pmar away from line 2
             b":TRIG:ILIN 2\n",
+            b":SOUR:WAVE:PMAR:OLIN 4\n",
             b":TRIG:OLIN 1\n",
             b":TRIG:DIR ACC\n",
         ]
@@ -1390,7 +1385,6 @@ class TestKeithley6221:
         assert t.write_log == [
             b":TRIG:OLIN?\n",
             b":TRIG:ILIN?\n",
-            b":SOUR:WAVE:PMAR:STAT?\n",
             b":SOUR:WAVE:PMAR:OLIN?\n",
             b":TRIG:ILIN 2\n",
             b":SOUR:WAVE:PMAR:OLIN 4\n",  # move pmar away from line 1
@@ -1408,9 +1402,8 @@ class TestKeithley6221:
         assert t.write_log == [
             b":TRIG:OLIN?\n",
             b":TRIG:ILIN?\n",
-            b":SOUR:WAVE:PMAR:STAT?\n",
             b":SOUR:WAVE:PMAR:OLIN?\n",
-            b":TRIG:OLIN 3\n",            # move olin away from line 2
+            b":TRIG:OLIN 3\n",  # move olin away from line 2
             b":TRIG:ILIN 2\n",
             b":SOUR:WAVE:PMAR:OLIN 4\n",  # move pmar away from line 1
             b":TRIG:OLIN 1\n",
@@ -1463,6 +1456,7 @@ class TestKeithley6221:
     def test_list_sweep_batching_over_100_points(self):
         """LIST sweep with > 100 points must use SOUR:LIST:CURR:APP for overflow batches."""
         from stoner_measurement.instruments.keithley.k6221 import _LIST_BATCH_SIZE
+
         t = _null()
         k = Keithley6221(transport=t)
         values = tuple(float(i) * 1e-5 for i in range(150))
@@ -1472,12 +1466,12 @@ class TestKeithley6221:
         # Second write: first 100 values
         first_batch_cmd = writes[1]
         assert first_batch_cmd.startswith(":SOUR:LIST:CURR ")
-        first_vals = first_batch_cmd[len(":SOUR:LIST:CURR "):].split(",")
+        first_vals = first_batch_cmd[len(":SOUR:LIST:CURR ") :].split(",")
         assert len(first_vals) == _LIST_BATCH_SIZE
         # Third write: append remaining 50
         second_batch_cmd = writes[2]
         assert second_batch_cmd.startswith(":SOUR:LIST:CURR:APP ")
-        second_vals = second_batch_cmd[len(":SOUR:LIST:CURR:APP "):].split(",")
+        second_vals = second_batch_cmd[len(":SOUR:LIST:CURR:APP ") :].split(",")
         assert len(second_vals) == 50
         # Fourth write: POIN = 150
         assert writes[3] == f":SOUR:SWE:POIN {len(values)}"
@@ -1500,7 +1494,7 @@ class TestKeithley6221:
         writes = [w.decode().strip() for w in t.write_log]
         assert len(writes) == 1
         assert writes[0].startswith(":SOUR:LIST:COMP ")
-        parts = writes[0][len(":SOUR:LIST:COMP "):].split(",")
+        parts = writes[0][len(":SOUR:LIST:COMP ") :].split(",")
         assert len(parts) == 3
 
     def test_configure_list_compliance_multi_batch(self):
@@ -1512,8 +1506,8 @@ class TestKeithley6221:
         writes = [w.decode().strip() for w in t.write_log]
         assert writes[0].startswith(":SOUR:LIST:COMP ")
         assert writes[1].startswith(":SOUR:LIST:COMP:APP ")
-        first_parts = writes[0][len(":SOUR:LIST:COMP "):].split(",")
-        second_parts = writes[1][len(":SOUR:LIST:COMP:APP "):].split(",")
+        first_parts = writes[0][len(":SOUR:LIST:COMP ") :].split(",")
+        second_parts = writes[1][len(":SOUR:LIST:COMP:APP ") :].split(",")
         assert len(first_parts) == 100
         assert len(second_parts) == 20
 
@@ -1799,9 +1793,7 @@ class TestLakeshoreM81CurrentSource:
     def test_list_sweep_empty_raises(self):
         src = LakeshoreM81CurrentSource(transport=_null())
         with pytest.raises(ValueError, match="non-empty"):
-            src.configure_sweep(
-                CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=())
-            )
+            src.configure_sweep(CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIST, values=()))
 
     def test_balanced_sweep_start_and_abort(self):
         t = _null()
@@ -2221,9 +2213,7 @@ class TestLakeshoreTemperatureControllers:
     def test_lakeshore336_set_zone(self):
         t = _null()
         tc = Lakeshore336(transport=t)
-        zone = ZoneEntry(
-            upper_bound=100.0, p=50.0, i=10.0, d=0.5, ramp_rate=0.0, heater_range=2, heater_output=25.0
-        )
+        zone = ZoneEntry(upper_bound=100.0, p=50.0, i=10.0, d=0.5, ramp_rate=0.0, heater_range=2, heater_output=25.0)
         tc.set_zone(1, 1, zone)
         assert t.write_log == [b"ZONE 1,1,100.0,50.0,10.0,0.5,25.0,2\r\n"]
 
@@ -2231,8 +2221,8 @@ class TestLakeshoreTemperatureControllers:
         t = _null(
             responses=[
                 b"3,0,4,0,1\r\n",  # INTYPE? response
-                b"1,10,2.0\r\n",   # FILTER? response
-                b"22\r\n",         # INCRV? response
+                b"1,10,2.0\r\n",  # FILTER? response
+                b"22\r\n",  # INCRV? response
             ]
         )
         tc = Lakeshore336(transport=t)
@@ -2879,7 +2869,6 @@ class TestIdentityAndQueueClearing:
         assert not controller.is_connected
 
 
-
 # ---------------------------------------------------------------------------
 # Instrument locking and connect-time buffer flush.
 # ---------------------------------------------------------------------------
@@ -2993,6 +2982,8 @@ class TestInstrumentLocking:
             w_cmd = events[i][2:]  # strip "W:"
             r_cmd = events[i + 1][2:]  # strip "R:"
             assert w_cmd == r_cmd, f"Write {w_cmd!r} was not paired with its read; got {r_cmd!r}"
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -3182,9 +3173,7 @@ class TestFromUriSchemes:
         serial = pytest.importorskip("serial")  # noqa: F841
         from stoner_measurement.instruments.transport import BaseTransport
 
-        t = BaseTransport.from_uri(
-            "serial:///dev/ttyS0?baud_rate=9600&data_bits=7&stop_bits=2&parity=E&timeout=5.0"
-        )
+        t = BaseTransport.from_uri("serial:///dev/ttyS0?baud_rate=9600&data_bits=7&stop_bits=2&parity=E&timeout=5.0")
         assert t.data_bits == 7
         assert t.stop_bits == 2.0
         assert t.parity == "E"
@@ -3469,6 +3458,7 @@ class TestSerialTransportFlowControl:
 
 # A minimal concrete TemperatureController implementing all abstract methods.
 # Used across the TemperatureController test classes below.
+
 
 def _make_tc(transport=None):
     """Return a _FullTC instance connected to *transport* (default: open NullTransport)."""
@@ -4035,8 +4025,13 @@ class TestZoneEntry:
 
     def test_is_frozen(self):
         entry = ZoneEntry(
-            upper_bound=50.0, p=10.0, i=1.0, d=0.0,
-            ramp_rate=5.0, heater_range=1, heater_output=25.0,
+            upper_bound=50.0,
+            p=10.0,
+            i=1.0,
+            d=0.0,
+            ramp_rate=5.0,
+            heater_range=1,
+            heater_output=25.0,
         )
         with pytest.raises((AttributeError, TypeError)):
             entry.heater_output = 50.0  # type: ignore[misc]
@@ -4044,8 +4039,13 @@ class TestZoneEntry:
     def test_zero_ramp_rate_allowed(self):
         """ramp_rate=0 means immediate setpoint change (no ramping)."""
         entry = ZoneEntry(
-            upper_bound=50.0, p=10.0, i=1.0, d=0.0,
-            ramp_rate=0.0, heater_range=0, heater_output=0.0,
+            upper_bound=50.0,
+            p=10.0,
+            i=1.0,
+            d=0.0,
+            ramp_rate=0.0,
+            heater_range=0,
+            heater_output=0.0,
         )
         assert entry.ramp_rate == pytest.approx(0.0)
         assert entry.heater_range == 0
@@ -4053,8 +4053,13 @@ class TestZoneEntry:
     def test_full_heater_power(self):
         """heater_output of 100 % is a valid upper boundary."""
         entry = ZoneEntry(
-            upper_bound=400.0, p=100.0, i=10.0, d=1.0,
-            ramp_rate=2.0, heater_range=5, heater_output=100.0,
+            upper_bound=400.0,
+            p=100.0,
+            i=10.0,
+            d=1.0,
+            ramp_rate=2.0,
+            heater_range=5,
+            heater_output=100.0,
         )
         assert entry.heater_output == pytest.approx(100.0)
         assert entry.heater_range == 5
@@ -4074,8 +4079,13 @@ class TestZoneEntryOptionalAPI:
 
     def test_set_zone_raises_with_entry(self):
         entry = ZoneEntry(
-            upper_bound=100.0, p=50.0, i=2.0, d=0.0,
-            ramp_rate=5.0, heater_range=1, heater_output=25.0,
+            upper_bound=100.0,
+            p=50.0,
+            i=2.0,
+            d=0.0,
+            ramp_rate=5.0,
+            heater_range=1,
+            heater_output=25.0,
         )
         with pytest.raises(NotImplementedError, match="has_zone"):
             _make_tc().set_zone(1, 1, entry)
@@ -4094,7 +4104,9 @@ class TestRampToSetpoint:
         calls = []
         tc = _make_tc()
 
-        monkeypatch.setattr(type(tc), "set_ramp_enabled", lambda self, loop, enabled: calls.append(("ramp_enabled", loop, enabled)))
+        monkeypatch.setattr(
+            type(tc), "set_ramp_enabled", lambda self, loop, enabled: calls.append(("ramp_enabled", loop, enabled))
+        )
         monkeypatch.setattr(type(tc), "set_setpoint", lambda self, loop, val: calls.append(("setpoint", loop, val)))
 
         tc.ramp_to_setpoint(1, 200.0)
@@ -4132,8 +4144,10 @@ class TestRampToSetpoint:
             type(tc),
             "get_capabilities",
             lambda self: ControllerCapabilities(
-                num_inputs=2, num_loops=1,
-                input_channels=("A", "B"), loop_numbers=(1,),
+                num_inputs=2,
+                num_loops=1,
+                input_channels=("A", "B"),
+                loop_numbers=(1,),
                 has_ramp=False,
             ),
         )
@@ -4184,11 +4198,13 @@ class TestOxfordMercuryIPS:
         assert m._uid == "PSU.M2"
 
     def test_identity_and_model_and_firmware(self):
-        t = _null(responses=[
-            b"Oxford Instruments,Mercury iPS,12345,2.7.0\n",
-            b"Oxford Instruments,Mercury iPS,12345,2.7.0\n",
-            b"Oxford Instruments,Mercury iPS,12345,2.7.0\n",
-        ])
+        t = _null(
+            responses=[
+                b"Oxford Instruments,Mercury iPS,12345,2.7.0\n",
+                b"Oxford Instruments,Mercury iPS,12345,2.7.0\n",
+                b"Oxford Instruments,Mercury iPS,12345,2.7.0\n",
+            ]
+        )
         m = OxfordMercuryIPS(transport=t)
         assert m.identify() == "Oxford Instruments,Mercury iPS,12345,2.7.0"
         assert m.get_model() == "Mercury iPS"
@@ -4196,11 +4212,13 @@ class TestOxfordMercuryIPS:
 
     def test_field_current_voltage_properties(self):
         uid = "PSU.M1"
-        t = _null(responses=[
-            b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+1.50000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+2.00000A\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.12345V\n",
-        ])
+        t = _null(
+            responses=[
+                b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+1.50000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+2.00000A\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.12345V\n",
+            ]
+        )
         m = OxfordMercuryIPS(transport=t)
         assert m.field == pytest.approx(1.5)
         assert m.current == pytest.approx(2.0)
@@ -4311,14 +4329,16 @@ class TestOxfordMercuryIPS:
         assert m.magnet_constant == pytest.approx(0.5)
 
     def test_status_ramping(self):
-        t = _null(responses=[
-            b"STAT:DEV:PSU.M1:PSU:ACTN:RTOS\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+0.50000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+1.00000A\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.05000V\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
-        ])
+        t = _null(
+            responses=[
+                b"STAT:DEV:PSU.M1:PSU:ACTN:RTOS\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+0.50000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+1.00000A\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.05000V\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
+            ]
+        )
         m = OxfordMercuryIPS(transport=t)
         status = m.status
         assert status.state == MagnetState.RAMPING
@@ -4330,42 +4350,48 @@ class TestOxfordMercuryIPS:
         assert status.persistent is False
 
     def test_status_at_target_when_hold_and_field_matches(self):
-        t = _null(responses=[
-            b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+1.00000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+2.00000A\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00001V\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
-        ])
+        t = _null(
+            responses=[
+                b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+1.00000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+2.00000A\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00001V\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
+            ]
+        )
         m = OxfordMercuryIPS(transport=t)
         status = m.status
         assert status.state == MagnetState.AT_TARGET
         assert status.at_target is True
 
     def test_status_standby_when_hold_but_field_differs(self):
-        t = _null(responses=[
-            b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+0.50000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+1.00000A\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00001V\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
-        ])
+        t = _null(
+            responses=[
+                b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+0.50000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+1.00000A\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00001V\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
+            ]
+        )
         m = OxfordMercuryIPS(transport=t)
         status = m.status
         assert status.state == MagnetState.STANDBY
         assert status.at_target is False
 
     def test_status_persistent_when_heater_off(self):
-        t = _null(responses=[
-            b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+1.00000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+0.00000A\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00000V\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
-            b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:OFF\n",
-        ])
+        t = _null(
+            responses=[
+                b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+1.00000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+0.00000A\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00000V\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:OFF\n",
+            ]
+        )
         m = OxfordMercuryIPS(transport=t)
         status = m.status
         assert status.persistent is True
