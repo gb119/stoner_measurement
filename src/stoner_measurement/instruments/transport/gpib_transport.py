@@ -65,6 +65,9 @@ class GpibTransport(BaseTransport):
                 GPIB board index.  Defaults to ``0``.
             timeout (float):
                 Read timeout in seconds.  Defaults to ``2.0``.
+            max_read_chunks (int):
+                Maximum number of ``SYST:COMM:SER:ENT?`` chunks to poll while
+                collecting one relayed response.
 
         Raises:
             ImportError:
@@ -401,7 +404,8 @@ class PassThroughGpibTransport(GpibTransport):
         payload = b"SYST:COMM:SER:ENT?\n"
         self._resource.write_raw(payload)
         raw = super().read()
-        raw = raw.rstrip(b"\n")
+        if raw.endswith(b"\n"):
+            raw = raw[:-1]
         return raw.decode("utf-8", errors="replace")
 
     def read(self, num_bytes: int | None = None) -> bytes:
@@ -448,7 +452,7 @@ class PassThroughGpibTransport(GpibTransport):
             raise TimeoutError(f"Timeout reading from serial instrument attached to {self.address}: {exc}") from exc
 
     def read_status_byte(self) -> int | None:
-        """Return the IEEE 488.2 status byte via a rapped *STB? query.
+        """Return the IEEE 488.2 status byte via a wrapped *STB? query.
 
         Because this is a serial over GPIB transport, this is not an out-of-band operation.
 
@@ -470,5 +474,5 @@ class PassThroughGpibTransport(GpibTransport):
         return int(response.decode("utf-8", errors="replace").strip())
 
 
-# Backwards-compatible alias for historic typo.
+# Backwards-compatible alias for historical typo.
 PassThropughGpibTransport = PassThroughGpibTransport
