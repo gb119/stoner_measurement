@@ -473,6 +473,3 @@ class PassThroughGpibTransport(GpibTransport):
         response = self.read()
         return int(response.decode("utf-8", errors="replace").strip())
 
-
-# Backwards-compatible alias for historical typo.
-PassThropughGpibTransport = PassThroughGpibTransport
