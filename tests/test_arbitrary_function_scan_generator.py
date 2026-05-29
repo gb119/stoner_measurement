@@ -214,3 +214,9 @@ class TestArbitraryFunctionScanWidget:
         d.pop("units", None)
         restored = ArbitraryFunctionScanGenerator._from_json_data(d)
         assert restored.units == ""
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

@@ -1170,3 +1170,9 @@ class TestCurveFitColumnKey:
         assert column_combo.findText("B") >= 0
         assert column_combo.findText("A") == -1
         engine.shutdown()
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

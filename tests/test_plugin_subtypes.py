@@ -1084,3 +1084,9 @@ class TestStateControlDataCollection:
         wait_idx = next(i for i, line in enumerate(lines) if "wait_for_plot_ready()" in line)
         ramp_idx = next(i for i, line in enumerate(lines) if ".ramp_to(float(" in line)
         assert wait_idx < ramp_idx
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

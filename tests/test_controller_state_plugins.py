@@ -330,3 +330,9 @@ def test_temperature_controller_plugin_reconnects_when_transport_settings_change
         ("FakeTemp", "Null (test)", ""),
         ("FakeTemp", "GPIB", "GPIB0::4::INSTR"),
     ]
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

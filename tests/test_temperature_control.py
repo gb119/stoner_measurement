@@ -897,3 +897,9 @@ class TestEngineCalibrationCurveNames:
         engine.connect_instrument(driver)
         assert engine.get_calibration_curve_names() == {7: "Cernox"}
         engine.shutdown()
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

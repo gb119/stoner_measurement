@@ -262,3 +262,9 @@ class TestThorlabsKDC101KPRMTE:
             driver.connect()
         assert wrong_motor.closed is True
         assert driver.is_connected is False
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

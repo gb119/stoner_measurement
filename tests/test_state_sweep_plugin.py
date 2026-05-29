@@ -437,3 +437,9 @@ class TestSweepGenerators:
         plugin.sweep_generator = gen
         plugin.sweep_timeout_factor = 3.0
         assert plugin.sweep_timeout == 6.0
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

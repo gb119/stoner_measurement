@@ -502,3 +502,9 @@ class TestMeasureReturnsTraceData:
         td = result["Dummy"]
         assert td.units.get("x") == "A"
         assert td.units.get("y") == "V"
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

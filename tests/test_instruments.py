@@ -3352,6 +3352,7 @@ class TestGpibProtocolTermination:
         assert resource.send_end is True
         transport.close()
 
+
     def test_asrl_unix_device(self):
         serial = pytest.importorskip("serial")  # noqa: F841
         from stoner_measurement.instruments.transport import BaseTransport, SerialTransport
@@ -4434,3 +4435,65 @@ class TestOxfordMercuryIPS:
             b"SET:DEV:PSU.M2:PSU:ACTN:HOLD\n",
             b"SET:DEV:PSU.M2:PSU:SIG:SWHT:ON\n",
         ]
+
+
+class TestPassThroughGpibTransport:
+    class _FakeResource:
+        def __init__(self, responses=None):
+            self._responses = list(responses or [])
+            self.write_log = []
+            self.timeout = None
+            self.read_termination = None
+            self.send_end = None
+
+        def write_raw(self, data):
+            self.write_log.append(data)
+
+        def read_raw(self, _num_bytes=4096):
+            if self._responses:
+                return self._responses.pop(0)
+            return b""
+
+        def read_stb(self):
+            return 0x00
+
+    def test_write_wraps_command_for_6221_serial_send(self):
+        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
+
+        transport = PassThroughGpibTransport(address=22)
+        resource = self._FakeResource()
+        transport._resource = resource
+
+        transport.write(b"*IDN?")
+
+        assert resource.write_log == [b'SYST:COMM:SER:SEND "*IDN?\r\n"']
+
+    def test_read_queries_ent_and_returns_payload_bytes(self):
+        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
+
+        transport = PassThroughGpibTransport(address=22)
+        resource = self._FakeResource(responses=[b"1.23\r\n\n"])
+        transport._resource = resource
+
+        value = transport.read()
+
+        assert value == b"1.23"
+        assert resource.write_log == [b"SYST:COMM:SER:ENT?\n"]
+
+    def test_read_status_byte_uses_wrapped_stb_query(self):
+        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
+
+        transport = PassThroughGpibTransport(address=22)
+        resource = self._FakeResource(responses=[b"4\n\n"])
+        transport._resource = resource
+
+        value = transport.read_status_byte()
+
+        assert value == 4
+        assert resource.write_log[0] == b'SYST:COMM:SER:SEND "*STB?\r\n"'
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

@@ -196,3 +196,9 @@ def test_is_transform_plugin_without_scan_tab():
     tabs = trace.config_tabs()
     assert tabs[0][0] == "Data"
     assert all("Scan" not in title for title, _ in tabs)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

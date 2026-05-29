@@ -145,3 +145,9 @@ class TestVisaResourceComboBox:
     def test_placeholder_text_set(self, qapp):
         w = VisaResourceComboBox(placeholder="test placeholder")
         assert w.combo.placeholderText() == "test placeholder"
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

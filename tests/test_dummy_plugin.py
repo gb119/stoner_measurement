@@ -435,3 +435,9 @@ class TestDummyPlugin:
         assert restored._critical_current == "0.5E-3"
         assert restored._normal_resistance == "5.0E-3"
         assert restored._noise_level == "1.0E-8"
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

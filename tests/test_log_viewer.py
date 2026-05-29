@@ -176,3 +176,9 @@ class TestLogViewerFileLogging:
 
         assert viewer._file_handler is None
         assert viewer._file_status.text() == "Not logging"
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

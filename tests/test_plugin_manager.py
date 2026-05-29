@@ -65,3 +65,9 @@ class TestPluginManager:
         assert "counter" in pm.plugins
         assert "sweep_time" in pm.plugins
         assert "save" in pm.plugins
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))
