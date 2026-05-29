@@ -39,6 +39,7 @@ napoleon_numpy_docstring = True
 automodapi_toctreedirnm = "_generated/automodapi"
 autodoc_mock_imports = [
     "PyQt6",
+    "pyvisa",
     "pyqtgraph",
 ]
 
