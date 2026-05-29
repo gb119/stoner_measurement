@@ -23,6 +23,15 @@ if TYPE_CHECKING:
 _COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
 
 
+def _coerce_to_bytes(data: str | bytes) -> bytes:
+    """Return *data* as bytes, encoding only string inputs."""
+    if isinstance(data, bytes):
+        return data
+    if isinstance(data, str):
+        return data.encode("ascii")
+    raise TypeError(f"Expected str or bytes, got {type(data).__name__}")
+
+
 class BaseInstrument(ABC):
     """Base class for all instrument drivers.
 
@@ -204,7 +213,7 @@ class BaseInstrument(ABC):
         """
         with self._lock:
             payload = self.protocol.format_command(command)
-            self.transport.write(payload)
+            self.transport.write(_coerce_to_bytes(payload))
             if self.auto_check_errors and not self.protocol.errors_in_response:
                 self.check_for_errors(command=command)
 
@@ -294,7 +303,7 @@ class BaseInstrument(ABC):
         """
         with self._lock:
             payload = self.protocol.format_query(command)
-            self.write(payload)
+            self.transport.write(_coerce_to_bytes(payload))
             response = self.read(command=command)
             if self.auto_check_errors:
                 if self.protocol.errors_in_response:
@@ -389,7 +398,7 @@ class BaseInstrument(ABC):
         if error_query is None:
             return ""
         payload = self.protocol.format_query(error_query)
-        self.transport.write(payload)
+        self.transport.write(_coerce_to_bytes(payload))
         raw = self.transport.read()
         return self.protocol.parse_response(raw, command=error_query)
 

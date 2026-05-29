@@ -284,6 +284,7 @@ class GpibTransport(BaseTransport):
             return None
         stb = int(self._resource.read_stb())
         self._log_comms_traffic("IEEE", stb)
+        return stb
 
     def flush(self) -> None:
         """Send IEEE 488.2 Device Clear to the instrument and reset the interface.
@@ -395,10 +396,12 @@ class PassThroughGpibTransport(GpibTransport):
         """
         if self._resource is None:
             raise ConnectionError("GPIB transport is not open.")
-        if isinstance(data,bytes):
-            data = data.decode("utf-8", errors="replace")
-        payload = f'SYST:COMM:SER:SEND "{self._serial_send_payload(data, terminator="\n")}"'
-        super().write(payload.encode("utf-8"))
+        if isinstance(data, str):
+            data = data.encode("ascii")
+        inner = data.rstrip(b"\r\n") + b"\r"
+        wrapped = b'SYST:COMM:SER:SEND "' + inner.replace(b'"', b'""') + b'"'
+        self._log_comms_traffic("TX", wrapped)
+        self._resource.write_raw(wrapped)
 
 
     def _read_serial_entry_chunk(self) -> str:
@@ -434,26 +437,17 @@ class PassThroughGpibTransport(GpibTransport):
             TimeoutError:
                 If no data arrives within :attr:`timeout` seconds.
         """
-        import pyvisa
-
         if self._resource is None:
             raise ConnectionError("GPIB transport is not open.")
+        import pyvisa
+
+        frame_limit = self._resolve_max_frame_size(num_bytes)
         try:
-            parts: list[str] = []
-            for _ in range(self._max_read_chunks):
-                chunk = self._read_serial_entry_chunk()
-                if chunk:
-                    parts.append(chunk)
-                elif parts:
-                    break
-                else:
-                    sleep(_DEFAULT_K6221_SERIAL_POLL)
-            else:
-                raise RuntimeError(
-                    "Timed out reading serial relay response: no line terminator (LF) received."
-                )
-            combined = "".join(parts)
-            return combined.rstrip("\r\n").encode("utf-8")
+            self._log_comms_traffic("TX", b"SYST:COMM:SER:ENT?\n")
+            self._resource.write_raw(b"SYST:COMM:SER:ENT?\n")
+            raw = self._resource.read_raw(frame_limit)
+            self._log_comms_traffic("RX", raw)
+            return raw.rstrip(b"\r\n")
         except pyvisa.errors.VisaIOError as exc:
             raise TimeoutError(f"Timeout reading from serial instrument attached to {self.address}: {exc}") from exc
 
@@ -475,9 +469,14 @@ class PassThroughGpibTransport(GpibTransport):
         """
         if self._resource is None:
             return None
-        self.write("*STB?")
-        response = self.read()
-        return int(response.decode("utf-8", errors="replace").strip())
+        frame_limit = self._resolve_max_frame_size(None)
+        self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*STB?\r"')
+        self._resource.write_raw(b'SYST:COMM:SER:SEND "*STB?\r"')
+        self._log_comms_traffic("TX", b"SYST:COMM:SER:ENT?\n")
+        self._resource.write_raw(b"SYST:COMM:SER:ENT?\n")
+        raw = self._resource.read_raw(frame_limit)
+        self._log_comms_traffic("RX", raw)
+        return int(raw.strip())
 
     def flush(self) -> None:
         """Send IEEE 488.2 Device Clear to the instrument and reset the interface.
@@ -490,16 +489,20 @@ class PassThroughGpibTransport(GpibTransport):
         If the resource is not open or Device Clear fails, the exception is
         ignored and logged at debug level.
         """
+        if self._resource is None:
+            return
+        import pyvisa
 
+        frame_limit = self._resolve_max_frame_size(None)
         try:
-            super().write('SYST:COMM:SER:SEND "*CLS\n"')
+            self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*CLS\r"')
+            self._resource.write_raw(b'SYST:COMM:SER:SEND "*CLS\r"')
             for _ in range(self._max_read_chunks):
-                chunk = self._read_serial_entry_chunk()
-                if not chunk:
+                self._resource.write_raw(b"SYST:COMM:SER:ENT?\n")
+                chunk = self._resource.read_raw(frame_limit)
+                if not chunk.strip():
                     break
-                else:
-                    sleep(_DEFAULT_K6221_SERIAL_POLL)
+                sleep(_DEFAULT_K6221_SERIAL_POLL)
             self._log_comms_traffic("IEEE", "Connection flushed.")
-        except pyvisa.VisaIOError as exc:
+        except pyvisa.errors.VisaIOError as exc:
             logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)
-

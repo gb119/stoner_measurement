@@ -383,8 +383,8 @@ class TestConnect:
         t2182 = MagicMock()
         k6221 = MagicMock()
         k2182 = MagicMock()
-        k6221.identify.return_value = "Keithley 6221"
-        k2182.identify.return_value = "Unexpected"
+        k6221.confirm_identity.return_value = "Keithley 6221"
+        k2182.confirm_identity.side_effect = RuntimeError("Unexpected instrument on 2182A connection")
 
         with patch(
             "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",

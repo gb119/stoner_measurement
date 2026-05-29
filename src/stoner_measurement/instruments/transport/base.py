@@ -532,6 +532,13 @@ class BaseTransport(ABC):
                     ).rstrip("\r\n").encode('unicode_escape').decode()
             case _:
                 raise TypeError(f"Bad type to log: {type(payload)}")
+        address = self.transport_address
+        address_prefix = f"[{address}] " if address else ""
         self._comms_logger.debug(
-            f"{direction} {self.transport_address} {decoded_payload}"
+            f"{address_prefix}{direction} {decoded_payload}",
+            extra={
+                "sm_traffic_channel": "instrument_comms",
+                "sm_traffic_direction": direction,
+                "sm_transport_address": address,
+            },
         )
