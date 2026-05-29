@@ -7,6 +7,7 @@ regardless of the underlying physical connection.
 
 from __future__ import annotations
 
+import logging
 import re
 import urllib.parse
 from abc import ABC, abstractmethod
@@ -18,6 +19,7 @@ from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE
 # (e.g. "ASRL/dev/ttyUSB0::INSTR"), so any non-colon characters are allowed
 # after the prefix rather than digits only.
 _VISA_RE = re.compile(r"^(GPIB|TCPIP|ASRL)[^:]*::", re.IGNORECASE)
+_COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
 
 
 class BaseTransport(ABC):
@@ -58,6 +60,9 @@ class BaseTransport(ABC):
         self._protocol: object | None = None
         self._max_frame_size: int = DEFAULT_MAX_FRAME_SIZE
         self._read_terminator: bytes | None = None
+        self._comms_logger = logging.getLogger(
+            f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}"
+        )
 
     @property
     def timeout(self) -> float:
@@ -495,3 +500,38 @@ class BaseTransport(ABC):
     def __exit__(self, *_: object) -> None:
         """Close the transport when leaving a ``with`` block."""
         self.close()
+
+    def _log_comms_traffic(self, direction: str, payload: bytes|str|int) -> None:
+        """Emit a transcript log entry for one instrument I/O event.
+
+        Args:
+            direction (str):
+                Traffic direction token: ``"TX"`` for transmitted bytes or
+                ``"RX"`` for received bytes.
+            payload (bytes):
+                Raw payload bytes sent to or received from the instrument.
+
+        Notes:
+            ``errors='backslashreplace'`` is used when decoding *payload* so
+            that instruments which send non-UTF-8 binary frames (e.g. raw
+            IEEE 488.2 binary block data) are still represented as printable
+            text in the log rather than causing a ``UnicodeDecodeError``.
+        """
+        if direction.upper() not in ["RX","TX","IEEE"]:
+            raise ValueError(f"Unreognised traffic direction {direction}")
+        direction=direction.upper()
+        match payload:
+            case str():
+                decoded_payload=payload.rstrip("\r\n").encode('unicode_escape').decode()
+            case int():
+                decoded_payload=f"{payload}".encode('unicode_escape').decode()
+            case bytes():
+                decoded_payload = payload.decode(
+                    "utf-8",
+                    errors="backslashreplace",
+                    ).rstrip("\r\n").encode('unicode_escape').decode()
+            case _:
+                raise TypeError(f"Bad type to log: {type(payload)}")
+        self._comms_logger.debug(
+            f"{direction} {self.transport_address} {decoded_payload}"
+        )

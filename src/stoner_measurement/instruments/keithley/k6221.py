@@ -41,6 +41,32 @@ class Keithley6221(CurrentSource):
             protocol=protocol if protocol is not None else ScpiProtocol(),
         )
 
+    def connect(self) -> None:
+        """Open the transport connection to the instrument.
+
+        After opening the transport, any data accumulated in the transport
+        buffer since the last session is discarded via
+        :meth:`~stoner_measurement.instruments.transport.base.BaseTransport.flush`
+        so that stale responses from previous commands cannot be misread as
+        replies to new queries.
+
+        Raises:
+            ConnectionError:
+                If the underlying transport cannot be opened.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.protocol import ScpiProtocol
+            >>> from stoner_measurement.instruments.base_instrument import BaseInstrument
+            >>> instr = BaseInstrument(NullTransport(), ScpiProtocol())
+            >>> instr.connect()
+            >>> instr.is_connected
+            True
+            >>> instr.disconnect()
+        """
+        super().connect()
+        self.write("*CLS")
+
     def get_source_level(self) -> float:
         """Return programmed source current in amps."""
         return float(self.query(":SOUR:CURR?"))
@@ -337,9 +363,7 @@ class Keithley6221(CurrentSource):
         terminator = getattr(protocol, "terminator", b"\n")
         payload = protocol.format_query("SYST:COMM:SER:ENT?")
         self.transport.write(payload)
-        self._log_comms_traffic("TX", payload)
         raw = self.transport.read_until(terminator)
-        self._log_comms_traffic("RX", raw)
         if raw.endswith(terminator):
             raw = raw[: -len(terminator)]
         return raw.decode("utf-8", errors="replace")

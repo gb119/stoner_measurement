@@ -26,6 +26,32 @@ class Keithley2182A(Nanovoltmeter):
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the Keithley 2182A driver, defaulting to :class:`ScpiProtocol`."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
+        
+    def connect(self) -> None:
+        """Open the transport connection to the instrument.
+
+        After opening the transport, any data accumulated in the transport
+        buffer since the last session is discarded via
+        :meth:`~stoner_measurement.instruments.transport.base.BaseTransport.flush`
+        so that stale responses from previous commands cannot be misread as
+        replies to new queries.
+
+        Raises:
+            ConnectionError:
+                If the underlying transport cannot be opened.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.protocol import ScpiProtocol
+            >>> from stoner_measurement.instruments.base_instrument import BaseInstrument
+            >>> instr = BaseInstrument(NullTransport(), ScpiProtocol())
+            >>> instr.connect()
+            >>> instr.is_connected
+            True
+            >>> instr.disconnect()
+        """
+        super().connect()
+        self.write("*CLS")
 
     @staticmethod
     def _parse_csv_floats(values: str) -> tuple[float, ...]:

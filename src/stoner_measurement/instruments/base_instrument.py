@@ -149,6 +149,7 @@ class BaseInstrument(ABC):
         """
         self.transport.open()
         self.transport.flush()
+        self._comms_logger.debug(f"Connected {self}")
 
     def disconnect(self) -> None:
         """Close the transport connection to the instrument.
@@ -164,6 +165,7 @@ class BaseInstrument(ABC):
             False
         """
         self.transport.close()
+        self._comms_logger.debug(f"Disconnected {self}")
 
     def write(self, command: str) -> None:
         """Send a command to the instrument without expecting a response.
@@ -203,7 +205,6 @@ class BaseInstrument(ABC):
         with self._lock:
             payload = self.protocol.format_command(command)
             self.transport.write(payload)
-            self._log_comms_traffic("TX", payload)
             if self.auto_check_errors and not self.protocol.errors_in_response:
                 self.check_for_errors(command=command)
 
@@ -243,7 +244,6 @@ class BaseInstrument(ABC):
             >>> instr.disconnect()
         """
         raw = self.transport.read()
-        self._log_comms_traffic("RX", raw)
         return self.protocol.parse_response(raw, command=command)
 
     def query(self, command: str) -> str:
@@ -294,8 +294,7 @@ class BaseInstrument(ABC):
         """
         with self._lock:
             payload = self.protocol.format_query(command)
-            self.transport.write(payload)
-            self._log_comms_traffic("TX", payload)
+            self.write(payload)
             response = self.read(command=command)
             if self.auto_check_errors:
                 if self.protocol.errors_in_response:
@@ -362,6 +361,7 @@ class BaseInstrument(ABC):
             # If the transport can provide an out-of-band status byte (e.g. GPIB
             # serial poll), check the ESB bit first to avoid an unnecessary query.
             stb = self.transport.read_status_byte()
+
             if stb is not None and not stb & _IEEE488_ESB_BIT:
                 return
 
@@ -390,9 +390,7 @@ class BaseInstrument(ABC):
             return ""
         payload = self.protocol.format_query(error_query)
         self.transport.write(payload)
-        self._log_comms_traffic("TX", payload)
         raw = self.transport.read()
-        self._log_comms_traffic("RX", raw)
         return self.protocol.parse_response(raw, command=error_query)
 
     def _clear_error_queue(self, *, max_entries: int = 16) -> None:
@@ -450,7 +448,7 @@ class BaseInstrument(ABC):
             raise InstrumentError(message)
         return identity
 
-    def _log_comms_traffic(self, direction: str, payload: bytes) -> None:
+    def _log_comms_traffic(self, direction: str, payload: bytes|str|int) -> None:
         """Emit a transcript log entry for one instrument I/O event.
 
         Args:
@@ -466,20 +464,7 @@ class BaseInstrument(ABC):
             IEEE 488.2 binary block data) are still represented as printable
             text in the log rather than causing a ``UnicodeDecodeError``.
         """
-        decoded_payload = payload.decode(
-            "utf-8",
-            errors="backslashreplace",
-        ).rstrip("\r\n")
-        self._comms_logger.debug(
-            "%s %s",
-            direction,
-            decoded_payload,
-            extra={
-                "sm_traffic_channel": "instrument_comms",
-                "sm_traffic_direction": direction,
-                "sm_transport_address": self.transport.transport_address,
-            },
-        )
+        self.transport._log_comms_traffic(direction, payload)
 
     def identify(self) -> str:
         """Return the instrument identification string (``*IDN?``).

@@ -141,6 +141,7 @@ class SerialTransport(BaseTransport):
                 timeout=self._timeout,
             )
             self._is_open = True
+            self._log_comms_traffic("IEEE", "Connection opened.")
         except serial.SerialException as exc:
             raise ConnectionError(f"Cannot open serial port {self.port!r}: {exc}") from exc
 
@@ -149,6 +150,8 @@ class SerialTransport(BaseTransport):
         if self._serial is not None and self._serial.is_open:
             self._serial.close()
         self._is_open = False
+        self._log_comms_traffic("IEEE", "Connection closed.")
+
 
     def write(self, data: bytes) -> None:
         """Send *data* over the serial port.
@@ -163,6 +166,7 @@ class SerialTransport(BaseTransport):
         """
         if self._serial is None or not self._serial.is_open:
             raise ConnectionError("Serial port is not open.")
+        self._log_comms_traffic("TX", data)
         self._serial.write(data)
 
     def read(self, num_bytes: int | None = None) -> bytes:
@@ -199,6 +203,7 @@ class SerialTransport(BaseTransport):
                 break
             buffer.extend(chunk)
             if terminator and buffer.endswith(terminator):
+                self._log_comms_traffic("RX", buffer)
                 return bytes(buffer)
 
         if not buffer:
@@ -241,6 +246,7 @@ class SerialTransport(BaseTransport):
         if self._serial is not None and self._serial.is_open:
             self._serial.reset_input_buffer()
             self._serial.reset_output_buffer()
+            self._log_comms_traffic("IEEE", "Connection flushed.")
 
     @property
     def transport_address(self) -> str:

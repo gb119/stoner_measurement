@@ -249,6 +249,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     def __init__(self, parent=None) -> None:
         """Initialise the plugin with default instrument and measurement settings."""
         super().__init__(parent)
+        self._log = logging.getLogger(__name__)
         self.scan_generator = FunctionScanGenerator(parent=self)
         self.scan_generator.units = "A"
 
@@ -283,6 +284,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._k2182a: Keithley2182A | None = None
         self._sweep_values: np.ndarray | None = None
         self._apply_initial_config()
+
 
     # ------------------------------------------------------------------
     # Plugin identity
@@ -510,26 +512,23 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         transport_6221: GpibTransport | None = None
         transport_2182a: GpibTransport | None = None
         try:
+            # connect to 6221
             transport_6221 = GpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
-            transport_6221.open()
             self._k6221 = Keithley6221(transport_6221)
-            idn = self._k6221.identify()
-            if "6221" not in idn:
-                raise RuntimeError(f"Unexpected instrument at {self._6221_resource!r}: {idn!r}")
-
+            self._k6221.connect()            
+            self._k6221.confirm_identity()
+            # Setup transport for 2182 as passthru or direct
             if self._connection_mode is ConnectionMode.DIRECT_GPIB:
                 transport_2182a = GpibTransport.from_resource_string(self._2182a_resource, timeout=10.0)
             else: # Via 6221
                 transport_2182a = PassThroughGpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
-            transport_2182a.open()
             self._k2182a = Keithley2182A(transport_2182a)
-            idn2 = self._k2182a.identify()
-            if "2182" not in idn2:
-                raise RuntimeError(
-                    f"Unexpected instrument at {self._2182a_resource!r}: {idn2!r}"
-                )
-        except Exception:
+            self._k2182a.connect()
+            self._k2182a.confirm_identity()
+
+        except Exception as err:
             # Clean up any partially-opened transports to avoid leaking VISA sessions.
+            self._log.debug(f"Connection error {err}")
             for transport in (transport_2182a, transport_6221):
                 if transport is not None:
                     try:
@@ -835,7 +834,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             data (dict[str, Any]):
                 Serialised plugin dict as produced by :meth:`to_json`.
         """
-        _log = logging.getLogger(__name__)
         super()._restore_from_json(data)
         self._6221_resource = data.get("resource_6221", self._6221_resource)
         self._2182a_resource = data.get("resource_2182a", self._2182a_resource)
@@ -843,7 +841,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         try:
             self._connection_mode = ConnectionMode(mode_str)
         except ValueError:
-            _log.warning(
+            self._log.warning(
                 "Unknown connection_mode value %r in saved config; "
                 "falling back to default (%s).",
                 mode_str,
@@ -853,7 +851,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         try:
             self._compliance_mode = ComplianceMode(comp_mode_str)
         except ValueError:
-            _log.warning(
+            self._log.warning(
                 "Unknown compliance_mode value %r in saved config; "
                 "falling back to default (%s).",
                 comp_mode_str,
@@ -868,7 +866,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         try:
             self._source_range_mode = SourceRangeMode(range_mode_str)
         except ValueError:
-            _log.warning(
+            self._log.warning(
                 "Unknown source_range_mode value %r in saved config; "
                 "falling back to default (%s).",
                 range_mode_str,
