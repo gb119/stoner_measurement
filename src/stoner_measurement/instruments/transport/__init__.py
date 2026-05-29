@@ -16,8 +16,8 @@ __all__ = [
     "BaseTransport",
     "EthernetTransport",
     "GpibTransport",
-    "PassThroughGpibTransport",
     "NullTransport",
+    "PassThroughGpibTransport",
     "SerialTransport",
     "UdpTransport",
 ]

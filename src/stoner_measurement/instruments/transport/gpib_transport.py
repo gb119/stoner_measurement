@@ -65,9 +65,6 @@ class GpibTransport(BaseTransport):
                 GPIB board index.  Defaults to ``0``.
             timeout (float):
                 Read timeout in seconds.  Defaults to ``2.0``.
-            max_read_chunks (int):
-                Maximum number of ``SYST:COMM:SER:ENT?`` chunks to poll while
-                collecting one relayed response.
 
         Raises:
             ImportError:
@@ -341,6 +338,9 @@ class PassThroughGpibTransport(GpibTransport):
                 GPIB board index.  Defaults to ``0``.
             timeout (float):
                 Read timeout in seconds.  Defaults to ``2.0``.
+            max_read_chunks (int):
+                Maximum number of ``SYST:COMM:SER:ENT?`` chunks to poll while
+                collecting one relayed response.
 
         Raises:
             ImportError:
@@ -472,4 +472,3 @@ class PassThroughGpibTransport(GpibTransport):
         self.write(b"*STB?")
         response = self.read()
         return int(response.decode("utf-8", errors="replace").strip())
-
