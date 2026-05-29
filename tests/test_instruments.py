@@ -4466,7 +4466,7 @@ class TestPassThroughGpibTransport:
 
         transport.write(b"*IDN?")
 
-        assert resource.write_log == [b'SYST:COMM:SER:SEND "*IDN?\r\n"']
+        assert resource.write_log == [b'SYST:COMM:SER:SEND "*IDN?\r"']
 
     def test_read_queries_ent_and_returns_payload_bytes(self):
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
@@ -4490,7 +4490,7 @@ class TestPassThroughGpibTransport:
         value = transport.read_status_byte()
 
         assert value == 4
-        assert resource.write_log[0] == b'SYST:COMM:SER:SEND "*STB?\r\n"'
+        assert resource.write_log[0] == b'SYST:COMM:SER:SEND "*STB?\r"'
 
 
 if __name__ == "__main__":

@@ -398,7 +398,7 @@ class PassThroughGpibTransport(GpibTransport):
             raise ConnectionError("GPIB transport is not open.")
         if isinstance(data, str):
             data = data.encode("ascii")
-        inner = data.rstrip(b"\r\n") + b"\r\n"
+        inner = data.rstrip(b"\r\n") + b"\r"
         wrapped = b'SYST:COMM:SER:SEND "' + inner.replace(b'"', b'""') + b'"'
         self._log_comms_traffic("TX", wrapped)
         self._resource.write_raw(wrapped)
@@ -470,8 +470,8 @@ class PassThroughGpibTransport(GpibTransport):
         if self._resource is None:
             return None
         frame_limit = self._resolve_max_frame_size(None)
-        self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*STB?\r\n"')
-        self._resource.write_raw(b'SYST:COMM:SER:SEND "*STB?\r\n"')
+        self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*STB?\r"')
+        self._resource.write_raw(b'SYST:COMM:SER:SEND "*STB?\r"')
         self._log_comms_traffic("TX", b"SYST:COMM:SER:ENT?\n")
         self._resource.write_raw(b"SYST:COMM:SER:ENT?\n")
         raw = self._resource.read_raw(frame_limit)
@@ -491,8 +491,8 @@ class PassThroughGpibTransport(GpibTransport):
         """
 
         try:
-            self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*CLS\r\n"')
-            self._resource.write_raw(b'SYST:COMM:SER:SEND "*CLS\r\n"')
+            self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*CLS\r"')
+            self._resource.write_raw(b'SYST:COMM:SER:SEND "*CLS\r"')
             for _ in range(self._max_read_chunks):
                 chunk = self._read_serial_entry_chunk()
                 if not chunk:
