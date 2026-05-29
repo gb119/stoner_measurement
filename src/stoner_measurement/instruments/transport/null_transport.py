@@ -79,6 +79,7 @@ class NullTransport(BaseTransport):
         """
         if not self._is_open:
             raise ConnectionError("NullTransport is not open.")
+        self._log_comms_traffic("TX", data)
         self.write_log.append(data)
 
     def read(self, num_bytes: int | None = None) -> bytes:
@@ -98,9 +99,9 @@ class NullTransport(BaseTransport):
         """
         if not self._is_open:
             raise ConnectionError("NullTransport is not open.")
-        if self._responses:
-            return self._responses.popleft()
-        return b""
+        result = self._responses.popleft() if self._responses else b""
+        self._log_comms_traffic("RX", result)
+        return result
 
     def read_until(self, terminator: bytes = b"\n") -> bytes:
         """Return the next pre-loaded response regardless of terminator.
