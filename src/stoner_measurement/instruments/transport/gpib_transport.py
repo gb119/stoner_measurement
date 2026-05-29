@@ -299,7 +299,7 @@ class GpibTransport(BaseTransport):
             logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)
 
 
-class PassThropughGpibTransport(GpibTransport):
+class PassThroughGpibTransport(GpibTransport):
     """Passthrough Keithley 6221 GPIB transport.
 
     Subclasses a GPIBTransport so that commands are wrapped in the SYST:COMM:SER:[SEND|ENT?]
@@ -326,7 +326,7 @@ class PassThropughGpibTransport(GpibTransport):
         'GPIB0::22::INSTR'
     """
 
-    def __init__(self, address: int, board: int = 0, timeout: float = 2.0, max_read_chunks:int = 64) -> None:
+    def __init__(self, address: int, board: int = 0, timeout: float = 2.0, max_read_chunks: int = 64) -> None:
         """Initialise the GPIB transport.
 
         Args:
@@ -348,8 +348,8 @@ class PassThropughGpibTransport(GpibTransport):
         except ImportError as exc:
             raise ImportError("pyvisa is required for GpibTransport. Install it with: pip install pyvisa") from exc
 
-        super().__init__(address=address, board=board,timeout=timeout)
-        self._max_read_chunks=max_read_chunks
+        super().__init__(address=address, board=board, timeout=timeout)
+        self._max_read_chunks = max_read_chunks
 
     @staticmethod
     def _serial_send_payload(cmd: str, terminator: str = "\n") -> str:
@@ -384,8 +384,9 @@ class PassThropughGpibTransport(GpibTransport):
         """
         if self._resource is None:
             raise ConnectionError("GPIB transport is not open.")
-        data = f'SYST:COMM:SER:SEND "{self._serial_send_payload(data)}"'
-        self._resource.write_raw(data)
+        command = data.decode("utf-8", errors="replace")
+        payload = f'SYST:COMM:SER:SEND "{self._serial_send_payload(command, terminator="\r\n")}"'
+        self._resource.write_raw(payload.encode("utf-8"))
 
 
     def _read_serial_entry_chunk(self) -> str:
@@ -397,12 +398,10 @@ class PassThropughGpibTransport(GpibTransport):
                 query terminator is removed; payload CR/LF from the downstream
                 instrument is preserved.
         """
-        payload = "SYST:COMM:SER:ENT?"
-        self.transport.write(payload)
-        self._log_comms_traffic("TX", payload)
+        payload = b"SYST:COMM:SER:ENT?\n"
+        self._resource.write_raw(payload)
         raw = super().read()
-        self._log_comms_traffic("RX", raw)
-        raw=raw.strip()
+        raw = raw.rstrip(b"\n")
         return raw.decode("utf-8", errors="replace")
 
     def read(self, num_bytes: int | None = None) -> bytes:
@@ -427,27 +426,26 @@ class PassThropughGpibTransport(GpibTransport):
 
         if self._resource is None:
             raise ConnectionError("GPIB transport is not open.")
-        frame_limit = self._resolve_max_frame_size(num_bytes)
         try:
             parts: list[str] = []
             for _ in range(self._max_read_chunks):
-                chunk = self._read_serial_entry_chunk().strip()
+                chunk = self._read_serial_entry_chunk()
                 if chunk:
                     parts.append(chunk)
+                    if chunk.endswith("\n"):
+                        break
+                elif parts:
+                    break
                 else:
                     sleep(_DEFAULT_K6221_SERIAL_POLL)
-                if parts and not chunk:
-                    break
             else:
                 raise RuntimeError(
                     "Timed out reading serial relay response: no line terminator (LF) received."
                 )
             combined = "".join(parts)
-            return combined.rstrip("\r\n")
-
-            return self._resource.read_raw(frame_limit)
+            return combined.rstrip("\r\n").encode("utf-8")
         except pyvisa.errors.VisaIOError as exc:
-            raise TimeoutError(f"Timeout reading from serial isntrument attahced to {self.address}: {exc}") from exc
+            raise TimeoutError(f"Timeout reading from serial instrument attached to {self.address}: {exc}") from exc
 
     def read_status_byte(self) -> int | None:
         """Return the IEEE 488.2 status byte via a rapped *STB? query.
@@ -465,4 +463,12 @@ class PassThropughGpibTransport(GpibTransport):
             >>> t.read_status_byte() is None  # not open
             True
         """
-        return int(self.query("*STB?"))
+        if self._resource is None:
+            return None
+        self.write(b"*STB?")
+        response = self.read()
+        return int(response.decode("utf-8", errors="replace").strip())
+
+
+# Backwards-compatible alias for historic typo.
+PassThropughGpibTransport = PassThroughGpibTransport

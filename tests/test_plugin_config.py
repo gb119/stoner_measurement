@@ -98,3 +98,9 @@ class TestPluginConfigIntegration:
 
         assert isinstance(restored, DummyPlugin)
         assert restored.to_json()["critical_current"] == "9.0"
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

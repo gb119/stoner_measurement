@@ -306,6 +306,110 @@ class TestConfigureGuards:
 
 
 # ---------------------------------------------------------------------------
+# connect() transport selection and cleanup
+# ---------------------------------------------------------------------------
+
+class TestConnect:
+    def test_connect_via_6221_uses_passthrough_transport(self, qapp):
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+
+        t6221 = MagicMock()
+        t2182 = MagicMock()
+        k6221 = MagicMock()
+        k2182 = MagicMock()
+        k6221.identify.return_value = "Keithley 6221"
+        k2182.identify.return_value = "Keithley 2182A"
+
+        with patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
+            return_value=t6221,
+        ) as gpib_from_resource, patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string",
+            return_value=t2182,
+        ) as passthrough_from_resource, patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
+            return_value=k6221,
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
+            return_value=k2182,
+        ):
+            plugin.connect()
+
+        gpib_from_resource.assert_called_once_with(plugin._6221_resource, timeout=10.0)
+        passthrough_from_resource.assert_called_once_with(plugin._6221_resource, timeout=10.0)
+        assert plugin.status is TraceStatus.IDLE
+
+    def test_connect_direct_gpib_uses_direct_2182_transport(self, qapp):
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.DIRECT_GPIB
+
+        t6221 = MagicMock()
+        t2182 = MagicMock()
+        k6221 = MagicMock()
+        k2182 = MagicMock()
+        k6221.identify.return_value = "Keithley 6221"
+        k2182.identify.return_value = "Keithley 2182A"
+
+        with patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
+            side_effect=[t6221, t2182],
+        ) as gpib_from_resource, patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string"
+        ) as passthrough_from_resource, patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
+            return_value=k6221,
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
+            return_value=k2182,
+        ):
+            plugin.connect()
+
+        assert gpib_from_resource.call_count == 2
+        passthrough_from_resource.assert_not_called()
+        assert plugin.status is TraceStatus.IDLE
+
+    def test_connect_closes_open_transports_when_2182_identify_fails(self, qapp):
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.VIA_6221_SERIAL
+
+        t6221 = MagicMock()
+        t2182 = MagicMock()
+        k6221 = MagicMock()
+        k2182 = MagicMock()
+        k6221.identify.return_value = "Keithley 6221"
+        k2182.identify.return_value = "Unexpected"
+
+        with patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
+            return_value=t6221,
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string",
+            return_value=t2182,
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
+            return_value=k6221,
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
+            return_value=k2182,
+        ):
+            with pytest.raises(RuntimeError, match="Unexpected instrument"):
+                plugin.connect()
+
+        t2182.close.assert_called_once()
+        t6221.close.assert_called_once()
+        assert plugin._k6221 is None
+        assert plugin._k2182a is None
+        assert plugin.status is TraceStatus.ERROR
+
+
+# ---------------------------------------------------------------------------
 # disconnect() behaviour
 # ---------------------------------------------------------------------------
 
@@ -674,3 +778,9 @@ class TestComplianceBounds:
             except (RuntimeError, AttributeError):
                 pass
             # ValueError would propagate through; reaching here means no bounds error
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

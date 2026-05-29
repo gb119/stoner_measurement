@@ -441,3 +441,9 @@ class TestGenerateInstantiationCode:
         plugin = _MinimalPlugin()
         lines = plugin.generate_instantiation_code()
         assert lines[-1] == ""
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

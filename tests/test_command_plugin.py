@@ -3207,3 +3207,9 @@ class TestPlotPointsCommand:
         # Should have spinboxes for line_width and point_size.
         spinboxes = widget.findChildren(QDoubleSpinBox)
         assert len(spinboxes) >= 2
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

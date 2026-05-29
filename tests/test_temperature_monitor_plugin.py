@@ -586,3 +586,9 @@ def test_widget_rebuilds_catalogs_on_output_settings_change(monkeypatch, qapp):
     widget._on_stability_toggled(False)  # noqa: SLF001
 
     assert plugin.sequence_engine.rebuild_calls == 7
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

@@ -853,3 +853,9 @@ class TestMagnetControlPanel:
         assert panel._max_current_spin.value() == pytest.approx(88.0)
         assert panel._max_field_spin.value() == pytest.approx(7.5)
         assert panel._max_ramp_spin.value() == pytest.approx(0.9)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

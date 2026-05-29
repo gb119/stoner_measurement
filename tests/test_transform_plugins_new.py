@@ -241,3 +241,9 @@ class TestFourierTransformPlugin:
         ws = plugin._create_data_source_widgets(widget, engine._namespace["_traces"])
 
         assert ws["y_combo"].currentText().endswith(" (y)")
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

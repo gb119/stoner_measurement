@@ -523,3 +523,9 @@ class TestSequenceEqualityRoundTrip:
         restored = sequence_from_json(json.loads(text))
 
         self._assert_step_equal(original[0], restored[0])
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

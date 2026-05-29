@@ -43,7 +43,7 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.nanovoltmeter import NanovoltmeterTriggerSource
-from stoner_measurement.instruments.transport.gpib_transport import GpibTransport, PassThropughGpibTransport
+from stoner_measurement.instruments.transport.gpib_transport import GpibTransport, PassThroughGpibTransport
 from stoner_measurement.plugins.trace.base import (
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
@@ -520,7 +520,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             if self._connection_mode is ConnectionMode.DIRECT_GPIB:
                 transport_2182a = GpibTransport.from_resource_string(self._2182a_resource, timeout=10.0)
             else: # Via 6221
-                transport_2182a = PassThropughGpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
+                transport_2182a = PassThroughGpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
             transport_2182a.open()
             self._k2182a = Keithley2182A(transport_2182a)
             idn2 = self._k2182a.identify()

@@ -897,3 +897,9 @@ def _wait_for_status(
         if any(s in target_statuses for s in received):
             return
         time.sleep(_POLL)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

@@ -172,3 +172,9 @@ class TestMixedItems:
         assert cb.itemText(3) == "100 nA"
         assert cb.itemText(6) == "100 µA"
         assert cb.itemText(9) == "100 mA"
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

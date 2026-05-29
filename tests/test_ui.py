@@ -1761,3 +1761,9 @@ class TestMainWindow:
         assert window.dock_panel is not None
         assert window.plot_widget is not None
         assert window.config_panel is not None
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

@@ -254,3 +254,9 @@ class TestLogViewerWindow:
         output_text = viewer._output.toPlainText()
         assert expected in output_text
         assert unexpected not in output_text
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))
