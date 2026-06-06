@@ -17,7 +17,6 @@ from stoner_measurement.plugins.trace import (
 )
 from stoner_measurement.scan import FunctionScanGenerator, ListScanGenerator, SteppedScanGenerator
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -296,8 +295,9 @@ class TestExecuteGuards:
 
 class TestExecute:
     def test_execute_waits_for_6221_operating_status_before_reading_buffer(self, qapp):
-        import numpy as np
         from unittest.mock import MagicMock, call, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._sweep_values = np.array([1e-3, 2e-3])
@@ -320,8 +320,9 @@ class TestExecute:
         assert sleep_mock.call_count >= 1
 
     def test_execute_retries_buffer_read_until_final_measurement_arrives(self, qapp):
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._sweep_values = np.array([1e-3, 2e-3])
@@ -475,8 +476,9 @@ class TestDisconnect:
         mock_6221.enable_output.assert_called_once_with(False)
 
     def test_disconnect_clears_sweep_values(self, qapp):
-        import numpy as np
         from unittest.mock import MagicMock
+
+        import numpy as np
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
         plugin._sweep_values = np.array([0.0, 1.0])
@@ -563,6 +565,7 @@ class TestMeasure:
     def test_measure_returns_iv_key(self, qapp):
         """measure() must return a dict with a single 'IV' key."""
         from unittest.mock import patch
+
         import numpy as np
 
         plugin = _make_plugin()
@@ -577,8 +580,9 @@ class TestMeasure:
 
     def test_measure_x_is_source_current(self, qapp):
         """The x-axis of the returned TraceData must be the source current."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -592,8 +596,9 @@ class TestMeasure:
 
     def test_measure_v_column_values(self, qapp):
         """Column 'V' must hold the measured voltages."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -607,8 +612,9 @@ class TestMeasure:
 
     def test_measure_r_column_values(self, qapp):
         """Column 'R' must hold V/I for each point."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
         import pytest
 
         plugin = _make_plugin()
@@ -625,8 +631,9 @@ class TestMeasure:
 
     def test_measure_p_column_values(self, qapp):
         """Column 'P' must hold I×V for each point."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
         import pytest
 
         plugin = _make_plugin()
@@ -644,8 +651,9 @@ class TestMeasure:
     def test_measure_zero_current_r_is_nan(self, qapp):
         """Column 'R' must be NaN when source current is zero."""
         import math
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -659,8 +667,10 @@ class TestMeasure:
 
     def test_measure_column_roles(self, qapp):
         """V must have COLUMN_ROLE_Y; R and P must have COLUMN_ROLE_Z."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
         from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, COLUMN_ROLE_Z
 
         plugin = _make_plugin()
@@ -678,8 +688,9 @@ class TestMeasure:
 
     def test_measure_units(self, qapp):
         """Returned TraceData must carry correct physical units."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -697,8 +708,9 @@ class TestMeasure:
 
     def test_measure_names(self, qapp):
         """Returned TraceData must carry correct axis names."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -714,8 +726,9 @@ class TestMeasure:
 
     def test_measure_status_is_data_available(self, qapp):
         """Status must be DATA_AVAILABLE after a successful measure()."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -729,8 +742,9 @@ class TestMeasure:
 
     def test_measure_stores_data_attr(self, qapp):
         """Result must also be stored as plugin.data."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -744,8 +758,9 @@ class TestMeasure:
 
     def test_measure_empty_sweep(self, qapp):
         """measure() must handle an empty sweep without raising."""
-        import numpy as np
         from unittest.mock import MagicMock, patch
+
+        import numpy as np
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -766,6 +781,7 @@ class TestComplianceBounds:
     def test_voltage_mode_does_not_raise_below_limit(self, qapp):
         """Fixed-voltage compliance at the limit must configure without error."""
         from unittest.mock import MagicMock, patch
+
         import numpy as np
 
         plugin = _make_plugin()
@@ -786,6 +802,7 @@ class TestComplianceBounds:
     def test_resistance_mode_raises_when_compliance_exceeds_limit(self, qapp):
         """Resistance-mode compliance exceeding 105 V must raise ValueError."""
         from unittest.mock import MagicMock, patch
+
         import numpy as np
 
         plugin = _make_plugin()
@@ -804,6 +821,7 @@ class TestComplianceBounds:
     def test_resistance_mode_ok_within_limit(self, qapp):
         """Resistance-mode compliance within 105 V must not raise."""
         from unittest.mock import MagicMock, patch
+
         import numpy as np
 
         plugin = _make_plugin()
