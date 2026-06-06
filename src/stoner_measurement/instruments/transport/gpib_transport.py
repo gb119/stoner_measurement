@@ -378,7 +378,7 @@ class PassThroughGpibTransport(GpibTransport):
         super().__init__(address=address, board=board, timeout=timeout)
         self._max_read_chunks = max_read_chunks
         self._last_cmd = 0
-        self.last_Stb=0
+        self.last_stb = 0
 
     @staticmethod
     def _serial_send_payload(cmd: str, terminator: str = "\n") -> str:

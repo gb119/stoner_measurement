@@ -592,16 +592,17 @@ class BaseTransport(ABC):
         direction=direction.upper()
         match payload:
             case str():
-                decoded_payload=payload.encode('unicode_escape').decode()
+                decoded_payload = payload
             case int():
-                decoded_payload=f"{payload}".encode('unicode_escape').decode()
+                decoded_payload = f"{payload}"
             case bytes():
                 decoded_payload = payload.decode(
                     "utf-8",
                     errors="backslashreplace",
-                    ).encode('unicode_escape').decode()
+                    )
             case _:
                 raise TypeError(f"Bad type to log: {type(payload)}")
+        decoded_payload = decoded_payload.rstrip("\r\n").encode("unicode_escape").decode()
         address = self.transport_address
         address_prefix = f"[{address}] " if address else ""
         self._comms_logger.debug(
