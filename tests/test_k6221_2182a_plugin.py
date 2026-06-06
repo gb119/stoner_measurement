@@ -294,6 +294,50 @@ class TestExecuteGuards:
             list(plugin.execute({}))
 
 
+class TestExecute:
+    def test_execute_waits_for_6221_operating_status_before_reading_buffer(self, qapp):
+        import numpy as np
+        from unittest.mock import MagicMock, call, patch
+
+        plugin = _make_plugin()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._k6221.get_operating_status.side_effect = [0x02, 0x02, 0x04]
+        plugin._k2182a.read_buffer.return_value = (0.1, 0.2)
+        plugin._k2182a.get_buffer_count.side_effect = AssertionError("execute() must not poll 2182A buffer count")
+
+        with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep") as sleep_mock:
+            points = list(plugin.execute({}))
+
+        assert points == [(1e-3, 0.1), (2e-3, 0.2)]
+        plugin._k6221.sweep_start.assert_called_once_with()
+        plugin._k2182a.initiate.assert_called_once_with()
+        assert plugin._k6221.enable_output.call_args_list[:2] == [call(True), call(False)]
+        plugin._k2182a.read_buffer.assert_called_once_with(count=2)
+        plugin._k2182a.clear_buffer.assert_called_once_with()
+        assert plugin._k6221.get_operating_status.call_count == 3
+        assert sleep_mock.call_count >= 1
+
+    def test_execute_retries_buffer_read_until_final_measurement_arrives(self, qapp):
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+
+        plugin = _make_plugin()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._k6221.get_operating_status.return_value = 0x04
+        plugin._k2182a.read_buffer.side_effect = [(0.1,), (0.1, 0.2)]
+
+        with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep"):
+            points = list(plugin.execute({}))
+
+        assert points == [(1e-3, 0.1), (2e-3, 0.2)]
+        assert plugin._k2182a.read_buffer.call_count == 2
+        plugin._k2182a.clear_buffer.assert_called_once_with()
+
+
 # ---------------------------------------------------------------------------
 # configure() guards
 # ---------------------------------------------------------------------------

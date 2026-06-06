@@ -1266,6 +1266,18 @@ class TestKeithley6221:
         k.sweep_abort()
         assert t.write_log == [b":SOUR:SWE:ARM\n", b":SOUR:SWE:ABOR\n"]
 
+    def test_get_operating_status(self):
+        t = _null([b"4\n"])
+        k = Keithley6221(transport=t)
+        assert k.get_operating_status() == 4
+        assert t.write_log == [b":STAT:OPER:COND?\n"]
+
+    def test_sweep_status_helpers(self):
+        t = _null([b"2\n", b"4\n"])
+        k = Keithley6221(transport=t)
+        assert k.sweep_is_running() is True
+        assert k.sweep_is_finished() is True
+
     def test_pulsed_list_sweep(self):
         t = _null()
         k = Keithley6221(transport=t)

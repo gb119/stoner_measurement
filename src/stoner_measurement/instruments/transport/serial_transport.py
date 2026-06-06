@@ -7,6 +7,7 @@ serial-port connection.  Pyserial is an optional run-time dependency; an
 
 from __future__ import annotations
 
+from time import sleep
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.transport.base import BaseTransport
@@ -153,7 +154,7 @@ class SerialTransport(BaseTransport):
         self._log_comms_traffic("IEEE", "Connection closed.")
 
 
-    def write(self, data: bytes) -> int:
+    def write(self, data: bytes, slow: int | None = None) -> int:
         """Send *data* over the serial port.
 
         Args:
@@ -168,6 +169,8 @@ class SerialTransport(BaseTransport):
             raise ConnectionError("Serial port is not open.")
         self._log_comms_traffic("TX", data)
         self._serial.write(data)
+        if slow is not None:
+            sleep(slow / 1000)
         return 0
 
     def read(self, num_bytes: int | None = None) -> bytes:
@@ -214,7 +217,9 @@ class SerialTransport(BaseTransport):
                 f"Incomplete response frame from {self.port!r}: "
                 f"terminator {terminator!r} not received within {frame_limit} bytes."
             )
-        return bytes(buffer)
+        data = bytes(buffer)
+        self._log_comms_traffic("RX", data)
+        return data
 
     def read_until(self, terminator: bytes = b"\n") -> bytes:
         """Read from the serial port until *terminator* is received.
@@ -240,6 +245,7 @@ class SerialTransport(BaseTransport):
         data = self._serial.read_until(terminator)
         if not data:
             raise TimeoutError(f"No data received from {self.port!r} within {self._timeout}s.")
+        self._log_comms_traffic("RX", data)
         return data
 
     def flush(self) -> None:
