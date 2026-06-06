@@ -66,7 +66,7 @@ class NullTransport(BaseTransport):
         """Mark the transport as closed."""
         self._is_open = False
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes, slow: int | None = None) -> int:
         """Record *data* in :attr:`write_log`.
 
         Args:
