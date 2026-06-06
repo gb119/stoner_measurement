@@ -94,6 +94,10 @@ class UdpTransport(BaseTransport):
             data (bytes):
                 Raw bytes to transmit.
 
+        Keyword Arguments:
+            slow (int | None):
+                Optional delay in milliseconds to wait after writing.
+
         Raises:
             ConnectionError:
                 If the socket is not open.

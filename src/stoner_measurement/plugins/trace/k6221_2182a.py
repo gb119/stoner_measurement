@@ -738,7 +738,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                     saw_sweep_running = True
                 if (
                     operating_status & _OPERATING_STATUS_SWEEP_FINISHED_MASK
-                    or (saw_sweep_running and not operating_status & _OPERATING_STATUS_SWEEP_RUNNING_MASK)
+                    or (
+                        saw_sweep_running
+                        and not (operating_status & _OPERATING_STATUS_SWEEP_RUNNING_MASK)
+                    )
                 ):
                     break
                 if time.monotonic() > deadline:
