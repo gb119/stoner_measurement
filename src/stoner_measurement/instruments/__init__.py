@@ -93,7 +93,11 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
 )
-from stoner_measurement.instruments.motor_controller import Motor, MotorController, MotorStatus
+from stoner_measurement.instruments.motor_controller import (
+    Motor,
+    MotorController,
+    MotorStatus,
+)
 from stoner_measurement.instruments.nanovoltmeter import (
     Nanovoltmeter,
     NanovoltmeterCapabilities,

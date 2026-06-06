@@ -1024,7 +1024,9 @@ class MeasurementApp(QMainWindow):
 
     def _on_stop_temp_engine(self) -> None:
         """Stop the temperature controller engine and disconnect the instrument."""
-        from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+        from stoner_measurement.temperature_control.engine import (
+            TemperatureControllerEngine,
+        )
 
         TemperatureControllerEngine.instance().shutdown()
 
@@ -1090,7 +1092,9 @@ class MeasurementApp(QMainWindow):
         settings = QSettings()
         settings.setValue("mainWindow/geometry", self.saveGeometry())
         self._engine.shutdown()
-        from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+        from stoner_measurement.temperature_control.engine import (
+            TemperatureControllerEngine,
+        )
 
         TemperatureControllerEngine.instance().shutdown()
         super().closeEvent(event)

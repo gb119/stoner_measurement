@@ -92,6 +92,7 @@ class EthernetTransport(BaseTransport):
         if self._socket is None:
             raise ConnectionError("Ethernet transport is not open.")
         self._socket.sendall(data)
+        return 0 # No particular error able to be returned.
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Receive one response frame from the instrument.

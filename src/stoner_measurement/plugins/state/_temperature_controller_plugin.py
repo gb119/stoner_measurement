@@ -6,7 +6,14 @@ import math
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
-from PyQt6.QtWidgets import QComboBox, QFormLayout, QLineEdit, QSpinBox, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFormLayout,
+    QLineEdit,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.temperature_controller import TemperatureController

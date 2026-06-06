@@ -18,7 +18,10 @@ References:
 from __future__ import annotations
 
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE, BaseProtocol
+from stoner_measurement.instruments.protocol.base import (
+    DEFAULT_MAX_FRAME_SIZE,
+    BaseProtocol,
+)
 
 #: Terminator appended to every outgoing Oxford message.
 OXFORD_TERMINATOR = b"\r"

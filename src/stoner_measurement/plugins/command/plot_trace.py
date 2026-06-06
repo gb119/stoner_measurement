@@ -39,7 +39,11 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.plugins.command.base import CommandPlugin
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_D, COLUMN_ROLE_E, COLUMN_ROLE_Y
+from stoner_measurement.plugins.trace.base import (
+    COLUMN_ROLE_D,
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_Y,
+)
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine

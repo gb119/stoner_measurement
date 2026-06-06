@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from stoner_measurement.plugins.state._magnet_controller_plugin import MagnetControllerPluginMixin
+from stoner_measurement.plugins.state._magnet_controller_plugin import (
+    MagnetControllerPluginMixin,
+)
 from stoner_measurement.plugins.state_sweep.base import StateSweepPlugin
 
 

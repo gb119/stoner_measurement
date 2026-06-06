@@ -210,7 +210,9 @@ class KinesisMotorBase(MotorController):
     def _build_motor(self) -> Any:
         factory = self._motor_factory
         if factory is None:
-            from pylablib.devices import Thorlabs  # pylint: disable=import-outside-toplevel
+            from pylablib.devices import (
+                Thorlabs,  # pylint: disable=import-outside-toplevel
+            )
 
             factory = Thorlabs.KinesisMotor
         return factory(self._serial_number)
@@ -240,7 +242,9 @@ class KinesisMotorBase(MotorController):
         device is not listed or pylablib is unavailable.
         """
         try:
-            from pylablib.devices import Thorlabs  # pylint: disable=import-outside-toplevel
+            from pylablib.devices import (
+                Thorlabs,  # pylint: disable=import-outside-toplevel
+            )
 
             devices = dict(Thorlabs.list_kinesis_devices())
             return devices.get(self._serial_number)

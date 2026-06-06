@@ -8,7 +8,9 @@ Exports :class:`StateScanPlugin` under the legacy name
 :class:`StateControlPlugin`, and :class:`CounterPlugin`.
 """
 
-from stoner_measurement.plugins.state_scan.base import StateScanPlugin as StateControlPlugin
+from stoner_measurement.plugins.state_scan.base import (
+    StateScanPlugin as StateControlPlugin,
+)
 from stoner_measurement.plugins.state_scan.counter import CounterPlugin
 
 __all__ = [

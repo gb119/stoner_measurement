@@ -156,8 +156,9 @@ class BaseInstrument(ABC):
             True
             >>> instr.disconnect()
         """
-        self.transport.open()
-        self.transport.flush()
+        with self._lock:
+            self.transport.open()
+            self.transport.flush()
         self._comms_logger.debug(f"Connected {self}")
 
     def disconnect(self) -> None:
@@ -176,7 +177,7 @@ class BaseInstrument(ABC):
         self.transport.close()
         self._comms_logger.debug(f"Disconnected {self}")
 
-    def write(self, command: str) -> None:
+    def write(self, command: str, slow:int|None = None) -> None:
         """Send a command to the instrument without expecting a response.
 
         The command is formatted by :attr:`protocol` before being passed to
@@ -191,6 +192,11 @@ class BaseInstrument(ABC):
         Args:
             command (str):
                 Command string in the instrument's command language.
+
+        Keyword Arguments:
+            slow (int|none, None):
+                Whether to except the response to be slow and thus to pause for
+                *slow* milliseconds.
 
         Raises:
             ConnectionError:
@@ -213,9 +219,18 @@ class BaseInstrument(ABC):
         """
         with self._lock:
             payload = self.protocol.format_command(command)
-            self.transport.write(_coerce_to_bytes(payload))
-            if self.auto_check_errors and not self.protocol.errors_in_response:
-                self.check_for_errors(command=command)
+            try:
+                self.transport.write(_coerce_to_bytes(payload),slow=slow)
+                if self.auto_check_errors and not self.protocol.errors_in_response:
+                    self.check_for_errors(command=command)
+            except InstrumentError:
+                self._comms_logger.error(
+                    "Instrument reported error during query %r: %s",
+                    command,
+                    "",
+                )
+                raise
+
 
     def read(self, *, command: str | None = None) -> str:
         """Read a response from the instrument.
@@ -255,7 +270,7 @@ class BaseInstrument(ABC):
         raw = self.transport.read()
         return self.protocol.parse_response(raw, command=command)
 
-    def query(self, command: str) -> str:
+    def query(self, command: str, slow: int|None = None) -> str:
         """Send a query and return the instrument's response.
 
         Combines :meth:`write` and :meth:`read` into a single call.
@@ -276,6 +291,11 @@ class BaseInstrument(ABC):
         Args:
             command (str):
                 Query string in the instrument's command language.
+
+        Keyword Arguments:
+            slow (int|none, None):
+                Whether to except the response to be slow and thus to pause for
+                *slow* milliseconds.
 
         Returns:
             (str):
@@ -303,21 +323,30 @@ class BaseInstrument(ABC):
         """
         with self._lock:
             payload = self.protocol.format_query(command)
-            self.transport.write(_coerce_to_bytes(payload))
-            response = self.read(command=command)
-            if self.auto_check_errors:
-                if self.protocol.errors_in_response:
-                    try:
-                        self.protocol.check_error(response, command=command)
-                    except InstrumentError:
-                        self._comms_logger.error(
-                            "Instrument reported error during query %r: %s",
-                            command,
-                            response,
-                        )
-                        raise
-                else:
-                    self.check_for_errors(command=command)
+            try:
+                raw = self.transport.query(_coerce_to_bytes(payload), slow=slow)
+                response = self.protocol.parse_response(raw, command=command)
+                if self.auto_check_errors:
+                    if self.protocol.errors_in_response:
+                        try:
+                            self.protocol.check_error(response, command=command)
+                        except InstrumentError:
+                            self._comms_logger.error(
+                                "Instrument reported error during query %r: %s",
+                                command,
+                                response,
+                            )
+                            raise
+                    else:
+                        self.check_for_errors(command=command)
+            except InstrumentError as err:
+                self._comms_logger.error(
+                    "Instrument reported error during query %r: %s",
+                    command,
+                    err.message,
+                )
+                raise
+
             return response
 
     def check_for_errors(self, *, command: str | None = None) -> None:

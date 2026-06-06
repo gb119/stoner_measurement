@@ -14,7 +14,15 @@ import importlib.resources.abc
 import math
 
 from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPixmap, QPolygonF
+from PyQt6.QtGui import (
+    QColor,
+    QIcon,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPixmap,
+    QPolygonF,
+)
 
 
 def _load_resource_icon(resource_path: str) -> QIcon | None:

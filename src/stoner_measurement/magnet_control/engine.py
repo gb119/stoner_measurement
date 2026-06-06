@@ -21,7 +21,10 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSlot
 
-from stoner_measurement.instruments.addressing import parse_ethernet_address, parse_serial_address
+from stoner_measurement.instruments.addressing import (
+    parse_ethernet_address,
+    parse_serial_address,
+)
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
 from stoner_measurement.instruments.transport import (
@@ -39,7 +42,10 @@ from stoner_measurement.magnet_control.types import (
 )
 
 if TYPE_CHECKING:
-    from stoner_measurement.instruments.magnet_controller import MagnetController, MagnetLimits
+    from stoner_measurement.instruments.magnet_controller import (
+        MagnetController,
+        MagnetLimits,
+    )
     from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.transport.base import BaseTransport
 

@@ -153,7 +153,7 @@ class SerialTransport(BaseTransport):
         self._log_comms_traffic("IEEE", "Connection closed.")
 
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes) -> int:
         """Send *data* over the serial port.
 
         Args:
@@ -168,6 +168,7 @@ class SerialTransport(BaseTransport):
             raise ConnectionError("Serial port is not open.")
         self._log_comms_traffic("TX", data)
         self._serial.write(data)
+        return 0
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Read one response frame from the serial port.

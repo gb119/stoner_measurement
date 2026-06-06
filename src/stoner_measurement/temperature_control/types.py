@@ -13,7 +13,10 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from stoner_measurement.instruments.temperature_controller import ControlMode, SensorStatus
+    from stoner_measurement.instruments.temperature_controller import (
+        ControlMode,
+        SensorStatus,
+    )
 
 
 class EngineStatus(Enum):

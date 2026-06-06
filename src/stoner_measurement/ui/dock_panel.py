@@ -19,7 +19,14 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QMimeData, QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QKeySequence
+from PyQt6.QtGui import (
+    QBrush,
+    QDragEnterEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QKeyEvent,
+    QKeySequence,
+)
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QLabel,

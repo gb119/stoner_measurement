@@ -42,7 +42,10 @@ def _get_data_root() -> Path:
         (Path):
             The path to use as the root when listing project subdirectories.
     """
-    from stoner_measurement.ui.settings_dialog import KEY_DEFAULT_DATA_DIR, make_app_settings
+    from stoner_measurement.ui.settings_dialog import (
+        KEY_DEFAULT_DATA_DIR,
+        make_app_settings,
+    )
 
     settings = make_app_settings()
     data_dir = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)

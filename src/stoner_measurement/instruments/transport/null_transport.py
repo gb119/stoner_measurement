@@ -81,6 +81,7 @@ class NullTransport(BaseTransport):
             raise ConnectionError("NullTransport is not open.")
         self._log_comms_traffic("TX", data)
         self.write_log.append(data)
+        return 0
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Return the next pre-loaded response, or ``b""`` when exhausted.

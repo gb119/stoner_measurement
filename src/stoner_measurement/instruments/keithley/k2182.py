@@ -11,6 +11,9 @@ from stoner_measurement.instruments.nanovoltmeter import (
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.transport.base import BaseTransport
+from stoner_measurement.instruments.transport.gpib_transport import (
+    PassThroughGpibTransport,
+)
 
 
 class Keithley2182A(Nanovoltmeter):
@@ -22,6 +25,8 @@ class Keithley2182A(Nanovoltmeter):
         protocol (BaseProtocol):
             Protocol instance (defaults to :class:`ScpiProtocol`).
     """
+    
+    _MODEL="MODEL 2182A"
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the Keithley 2182A driver, defaulting to :class:`ScpiProtocol`."""
@@ -51,7 +56,32 @@ class Keithley2182A(Nanovoltmeter):
             >>> instr.disconnect()
         """
         super().connect()
+        if isinstance(self.transport, PassThroughGpibTransport):
+            self.transport.write("*CLS",host=True) # Clear error nuffer on 6221
         self.write("*CLS")
+
+    def reset(self) -> None:
+        """Send the standard IEEE 488.2 reset command (``*RST``).
+
+        Instruments that do not support ``*RST`` should override this method.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.protocol import ScpiProtocol
+            >>> from stoner_measurement.instruments.base_instrument import BaseInstrument
+            >>> t = NullTransport()
+            >>> instr = BaseInstrument(t, ScpiProtocol())
+            >>> instr.connect()
+            >>> instr.reset()
+            >>> t.write_log
+            [b'*RST\\n']
+            >>> instr.disconnect()
+        """
+        self.write("*RST",slow=2000)
 
     @staticmethod
     def _parse_csv_floats(values: str) -> tuple[float, ...]:
@@ -330,15 +360,6 @@ class Keithley2182A(Nanovoltmeter):
     def set_buffer_feed_continuous_next(self) -> None:
         """Set feed mode to continuous-next (``:TRAC:FEED:CONT NEXT``)."""
         self.write(":TRAC:FEED:CONT NEXT")
-
-    def get_buffer_count(self) -> int:
-        """Return the number of readings currently stored in the buffer.
-
-        Returns:
-            (int):
-                Number of readings in the trace buffer.
-        """
-        return int(float(self.query(":TRAC:POIN:ACT?")))
 
     def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
         """Read values from the instrument trace buffer.

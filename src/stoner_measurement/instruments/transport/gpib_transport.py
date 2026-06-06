@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import logging
 import re
-from time import sleep
+from time import perf_counter, sleep
 from typing import TYPE_CHECKING
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.transport.base import BaseTransport
 
 if TYPE_CHECKING:
@@ -22,7 +23,8 @@ if TYPE_CHECKING:
 #: Regular expression that parses a GPIB VISA resource string of the form
 #: ``"GPIB<board>::<address>::INSTR"``.
 _GPIB_RESOURCE_RE = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
-_DEFAULT_GPIB_READ_TERMINATOR = "\n"
+_DEFAULT_GPIB_READ_TERMINATOR = None
+_DEFAULT_GPIB_WRITE_TERMINATOR = "\n"
 _DEFAULT_K6221_SERIAL_POLL = 0.05
 logger = logging.getLogger(__name__)
 
@@ -175,13 +177,18 @@ class GpibTransport(BaseTransport):
         self._log_comms_traffic("IEEE", "Connection closed.")
 
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes, slow:int|None = None) -> None:
         """Write *data* to the GPIB instrument.
 
         Args:
             data (bytes):
                 Raw bytes to transmit.  The bytes are decoded as ASCII before
                 being passed to PyVISA's ``write_raw``.
+
+        Keyword Arguments:
+            slow (int|none, None):
+                Whether to except the response to be slow and thus to pause for
+                *slow* milliseconds.
 
         Raises:
             ConnectionError:
@@ -191,14 +198,20 @@ class GpibTransport(BaseTransport):
             raise ConnectionError("GPIB transport is not open.")
         self._log_comms_traffic("TX", data)
         self._resource.write_raw(data)
+        if slow is not None:
+            sleep(slow/1000)
+        rc = self._resource.read_stb()
+        if rc&4:
+            raise InstrumentError(f"Bad return status byte from {data.decode()}: STB={rc}")
+        return rc
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Read one response frame from the GPIB instrument.
 
-        Args:
-            num_bytes (int | None):
-                Optional maximum number of bytes to read.  When ``None``,
-                the protocol-defined frame-size limit is used.
+        Keyword Arguments:
+            num_bytes (int | None, None):
+                Optional maximum frame size for this call.  When ``None``,
+                the transport uses the protocol-defined frame-size limit.
 
         Returns:
             (bytes):
@@ -216,7 +229,9 @@ class GpibTransport(BaseTransport):
             raise ConnectionError("GPIB transport is not open.")
         frame_limit = self._resolve_max_frame_size(num_bytes)
         try:
-            response = self._resource.read_raw(frame_limit)
+            response=b""
+            while self.read_status_byte() & 16: # Loop until we don;'t have a message available.
+                response += self._resource.read_raw(frame_limit)
             self._log_comms_traffic("RX", response)
             return response
         except pyvisa.errors.VisaIOError as exc:
@@ -252,14 +267,14 @@ class GpibTransport(BaseTransport):
             protocol (object):
                 Protocol instance supplied by the owning instrument.
         """
-        terminator = getattr(protocol, "terminator", _DEFAULT_GPIB_READ_TERMINATOR)
+        terminator = getattr(protocol, "gpib_terminator", getattr(protocol, "terminator", _DEFAULT_GPIB_READ_TERMINATOR))
         if isinstance(terminator, bytes):
-            read_termination = terminator.decode("latin-1")
+            self._read_termination = terminator.decode("latin-1")
         else:
-            read_termination = str(terminator)
-        self._read_termination = read_termination
+            self._read_termination = str(terminator)
         if self._resource is not None:
             self._resource.read_termination = self._read_termination
+        logger.info(f"Termination sort for {self._resource} {self._read_termination=} {terminator=}")
 
     def read_status_byte(self) -> int | None:
         """Return the IEEE 488.2 status byte via a GPIB serial poll.
@@ -282,8 +297,8 @@ class GpibTransport(BaseTransport):
         """
         if self._resource is None:
             return None
-        stb = int(self._resource.read_stb())
-        self._log_comms_traffic("IEEE", stb)
+        stb = self._resource.read_stb()
+        self._log_comms_traffic("IEEE", f"{stb=}")
         return stb
 
     def flush(self) -> None:
@@ -362,6 +377,8 @@ class PassThroughGpibTransport(GpibTransport):
 
         super().__init__(address=address, board=board, timeout=timeout)
         self._max_read_chunks = max_read_chunks
+        self._last_cmd = 0
+        self.last_Stb=0
 
     @staticmethod
     def _serial_send_payload(cmd: str, terminator: str = "\n") -> str:
@@ -382,13 +399,18 @@ class PassThroughGpibTransport(GpibTransport):
         payload = f"{command}{terminator}"
         return payload.replace('"', '""')
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes, slow:int|None = None, host=False) -> None:
         """Write *data* to the 6221 wrapping the data in a SYST:COMM:SER:ESEND command.
 
         Args:
             data (bytes):
                 Raw bytes to transmit.  The bytes are decoded as ASCII before
                 being passed to PyVISA's ``write_raw``.
+
+        Keyword Arguments:
+            slow (int|none, None):
+                Whether to except the response to be slow and thus to pause for
+                *slow* milliseconds.
 
         Raises:
             ConnectionError:
@@ -398,34 +420,130 @@ class PassThroughGpibTransport(GpibTransport):
             raise ConnectionError("GPIB transport is not open.")
         if isinstance(data, str):
             data = data.encode("ascii")
-        inner = data.rstrip(b"\r\n") + b"\r"
-        wrapped = b'SYST:COMM:SER:SEND "' + inner.replace(b'"', b'""') + b'"'
+        inner = data.rstrip(b"\r\n")
+        if host:
+            return super().write(data,slow=slow)
+        if slow is None:
+            wrapped = b'SYST:COMM:SER:SEND "' + inner.replace(b'"', b'""') + b';*STB?";ENT?'
+        else:
+            wrapped = b'SYST:COMM:SER:SEND "' + inner.replace(b'"', b'""')+b'"'
+        if perf_counter()-self._last_cmd < _DEFAULT_K6221_SERIAL_POLL*10000:
+            sleep(_DEFAULT_K6221_SERIAL_POLL)
         self._log_comms_traffic("TX", wrapped)
         self._resource.write_raw(wrapped)
+        self._last_cmd=perf_counter()
+        if slow is not None:
+            sleep(slow/1000)
+            wrapped = b'SYST:COMM:SER:SEND "*STB?";ENT?'
+            self._log_comms_traffic("TX", wrapped)
+            self._resource.write_raw(wrapped)            
+        self.last_stb,response=self._read_serial_entry_chunk()
+        self._log_comms_traffic("RX", response)
+        self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
+        if self.last_stb&4:
+            raise InstrumentError(f"Bad return status byte from {data.decode()}: STB={self.last_stb}")
+        return self.last_stb
+            
+        
+    def query(self,data: bytes, num_bytes: int | None = None, slow:bool = False) -> bytes:
+        """Perform a write and then read operation in series.
 
+        Args:
+            data (bytes):
+                Raw bytes to transmit.
 
-    def _read_serial_entry_chunk(self) -> str:
-        """Read one relay payload chunk from ``SYST:COMM:SER:ENT?``.
+        Keyword Arguments:
+            num_bytes (int | None, None):
+                Optional maximum frame size for this call.  When ``None``,
+                the transport uses the protocol-defined frame-size limit.
+            slow (int|none, None):
+                Whether to except the response to be slow and thus to pause for
+                *slow* milliseconds.
 
         Returns:
-            (str):
-                Decoded chunk from the relay response.  The outer protocol
-                query terminator is removed; payload CR/LF from the downstream
-                instrument is preserved.
+            (bytes):
+                The bytes received from the instrument.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            TimeoutError:
+                If no data is received within :attr:`timeout` seconds.
+            OSError:
+                If a low-level I/O error occurs.
         """
-        super().write("SYST:COMM:SER:ENT?\n")
-        raw = super().read()
-        if isinstance(raw,bytes):
-            raw=raw.decode("utf-8", errors="replace").strip()
-        return raw
+        if self._resource is None:
+            raise ConnectionError("GPIB transport is not open.")
+        if isinstance(data, str):
+            data = data.encode("ascii")
+        inner = data.rstrip(b"\r\n")
+        if slow is  None:
+            wrapped = b'SYST:COMM:SER:SEND "' + inner.replace(b'"', b'""') + b';*STB?";ENT?'
+        else:
+            wrapped = b'SYST:COMM:SER:SEND "' + inner.replace(b'"', b'""')+b'"'
+        if perf_counter()-self._last_cmd < _DEFAULT_K6221_SERIAL_POLL*10000:
+            sleep(_DEFAULT_K6221_SERIAL_POLL)
+        self._log_comms_traffic("TX", wrapped)
+        self._resource.write_raw(wrapped)
+        self._last_cmd=perf_counter()
+        if slow is not None:
+            sleep(slow/1000)
+            wrapped = b'SYST:COMM:SER:SEND "*STB?";ENT?'
+            self._log_comms_traffic("TX", wrapped)
+            self._resource.write_raw(wrapped)                    
+        self.last_stb,response=self._read_serial_entry_chunk()
+        self._log_comms_traffic("RX", response)
+        self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
+        if self.last_stb&4:
+            raise InstrumentError(f"Bad return status byte from {data.decode()}: STB={self.last_stb}")
+        return response
+                 
+    def _read_serial_entry_chunk(self, num_bytes: int | None = None) -> str:
+        """Read a response from 2182A via 6221.
+        
+        If the response is blank (i.e. just newline) then reissue the ``SYST:COMM:SER:ENT?`` and try again. Repeat
+        this for 64 times, pausing briefly in between. If we still have a blank response, try sending a ``*STB?`` to
+        get an error code.
+
+        Returns:
+            (tuple[int,bytes]):
+                We expect every response to contain a status bytes and a string message (which may be blank).
+
+        Raises:
+            ``InstrumentError`` if we can't get a response from the instrument.'                
+        """
+        command=b"SYST:COMM:SER:ENT?"
+        for ix in range(1,65):
+            raw = self._resource.read_raw()
+            if raw.strip():
+                parts=raw.split(b";")
+                try:
+                    rc=int(parts[-1])
+                except ValueError:
+                    raise InstrumentError(f"Response {raw} did not contain a status byte!")
+                if len(parts)>1:
+                    response=b";".join(parts[:-1])
+                else:
+                    response =b""
+                return rc,response
+            if ix<64:
+                sleep(_DEFAULT_K6221_SERIAL_POLL)
+                self._resource.write_raw(command)
+        self._resource.write_raw(b'SYST:COMM:SER:SEND "*STB?";ENT?')
+        raw = self._resource.read_raw().strip()
+        try:
+            rc=int(raw)
+        except ValueError:
+            raise InstrumentError(f"Response {raw} did not contain a status byte!")
+        return rc,""
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Read one response frame from the instrument via the 6221's SYST:COMM:SER:ENT?.
 
-        Args:
-            num_bytes (int | None):
-                Optional maximum number of bytes to read.  When ``None``,
-                the protocol-defined frame-size limit is used.
+        Keyword Arguments:
+            num_bytes (int | None, None):
+                Optional maximum frame size for this call.  When ``None``,
+                the transport uses the protocol-defined frame-size limit.
 
         Returns:
             (bytes):
@@ -439,17 +557,17 @@ class PassThroughGpibTransport(GpibTransport):
         """
         if self._resource is None:
             raise ConnectionError("GPIB transport is not open.")
-        import pyvisa
+        wrapped = b'SYST:COMM:SER:SEND "*STB?";ENT?'
+        self._log_comms_traffic("TX", wrapped)
+        self._resource.write_raw(wrapped)                    
+        self.last_stb,response=self._read_serial_entry_chunk()
+        self._log_comms_traffic("RX", response)
+        self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
+        if self.last_stb&4:
+            raise InstrumentError(f"Bad return status byte during read: STB={self.last_stb}")
+        return response
 
-        frame_limit = self._resolve_max_frame_size(num_bytes)
-        try:
-            self._log_comms_traffic("TX", b"SYST:COMM:SER:ENT?\n")
-            self._resource.write_raw(b"SYST:COMM:SER:ENT?\n")
-            raw = self._resource.read_raw(frame_limit)
-            self._log_comms_traffic("RX", raw)
-            return raw.rstrip(b"\r\n")
-        except pyvisa.errors.VisaIOError as exc:
-            raise TimeoutError(f"Timeout reading from serial instrument attached to {self.address}: {exc}") from exc
+
 
     def read_status_byte(self) -> int | None:
         """Return the IEEE 488.2 status byte via a wrapped *STB? query.
@@ -469,14 +587,7 @@ class PassThroughGpibTransport(GpibTransport):
         """
         if self._resource is None:
             return None
-        frame_limit = self._resolve_max_frame_size(None)
-        self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*STB?\r"')
-        self._resource.write_raw(b'SYST:COMM:SER:SEND "*STB?\r"')
-        self._log_comms_traffic("TX", b"SYST:COMM:SER:ENT?\n")
-        self._resource.write_raw(b"SYST:COMM:SER:ENT?\n")
-        raw = self._resource.read_raw(frame_limit)
-        self._log_comms_traffic("RX", raw)
-        return int(raw.strip())
+        return self.last_stb
 
     def flush(self) -> None:
         """Send IEEE 488.2 Device Clear to the instrument and reset the interface.
@@ -492,17 +603,7 @@ class PassThroughGpibTransport(GpibTransport):
         if self._resource is None:
             return
         import pyvisa
-
-        frame_limit = self._resolve_max_frame_size(None)
         try:
-            self._log_comms_traffic("TX", b'SYST:COMM:SER:SEND "*CLS\r"')
-            self._resource.write_raw(b'SYST:COMM:SER:SEND "*CLS\r"')
-            for _ in range(self._max_read_chunks):
-                self._resource.write_raw(b"SYST:COMM:SER:ENT?\n")
-                chunk = self._resource.read_raw(frame_limit)
-                if not chunk.strip():
-                    break
-                sleep(_DEFAULT_K6221_SERIAL_POLL)
-            self._log_comms_traffic("IEEE", "Connection flushed.")
+            self.write("*CLS")
         except pyvisa.errors.VisaIOError as exc:
             logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)

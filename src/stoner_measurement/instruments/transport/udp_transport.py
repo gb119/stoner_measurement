@@ -102,6 +102,7 @@ class UdpTransport(BaseTransport):
         if self._socket is None:
             raise ConnectionError("UDP transport is not open.")
         self._socket.send(data)
+        return 0
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Receive up to *num_bytes* from the instrument.

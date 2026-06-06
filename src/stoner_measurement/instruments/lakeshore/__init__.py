@@ -1,6 +1,8 @@
 """Lakeshore instrument drivers."""
 
-from stoner_measurement.instruments.lakeshore.current_sources import LakeshoreM81CurrentSource
+from stoner_measurement.instruments.lakeshore.current_sources import (
+    LakeshoreM81CurrentSource,
+)
 from stoner_measurement.instruments.lakeshore.lia import LakeshoreM81LockIn
 from stoner_measurement.instruments.lakeshore.ls625 import Lakeshore625
 from stoner_measurement.instruments.lakeshore.temperature_controllers import (

@@ -40,7 +40,11 @@ from PyQt6.QtWidgets import (
 )
 
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_E, COLUMN_ROLE_Y, TraceData
+from stoner_measurement.plugins.trace.base import (
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_Y,
+    TraceData,
+)
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.ui.editor_widget import EditorWidget
 

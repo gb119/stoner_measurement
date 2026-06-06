@@ -5,7 +5,9 @@ Exports :class:`MonitorPlugin` (abstract base) from
 """
 
 from stoner_measurement.plugins.monitor.base import MonitorPlugin
-from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
+from stoner_measurement.plugins.monitor.temperature_controller import (
+    TemperatureMonitorPlugin,
+)
 
 __all__ = [
     "MonitorPlugin",

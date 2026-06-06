@@ -29,6 +29,8 @@ class Keithley6221(CurrentSource):
     Built-in staircase sweeps (linear, logarithmic, custom list) and pulsed
     sweeps are also supported.
     """
+    
+    _MODEL="MODEL 6221"
 
     def __init__(
         self,
@@ -66,6 +68,30 @@ class Keithley6221(CurrentSource):
         """
         super().connect()
         self.write("*CLS")
+
+    def reset(self) -> None:
+        """Send the standard IEEE 488.2 reset command (``*RST``).
+
+        Instruments that do not support ``*RST`` should override this method.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.protocol import ScpiProtocol
+            >>> from stoner_measurement.instruments.base_instrument import BaseInstrument
+            >>> t = NullTransport()
+            >>> instr = BaseInstrument(t, ScpiProtocol())
+            >>> instr.connect()
+            >>> instr.reset()
+            >>> t.write_log
+            [b'*RST\\n']
+            >>> instr.disconnect()
+        """
+        self.write("*RST",slow=2000)
+
 
     def get_source_level(self) -> float:
         """Return programmed source current in amps."""
@@ -164,6 +190,7 @@ class Keithley6221(CurrentSource):
         self.write(f":SOUR:DEL {config.delay}")
         if config.count != 1:
             self.write(f":SOUR:SWE:COUN {config.count}")
+        sleep(0.5)
 
     def configure_list_compliance(self, values: list[float]) -> None:
         """Configure per-point compliance voltages for a LIST sweep.
@@ -192,6 +219,7 @@ class Keithley6221(CurrentSource):
         for start in range(_LIST_BATCH_SIZE, n, _LIST_BATCH_SIZE):
             batch = ",".join(f"{v:.6e}" for v in values[start:start + _LIST_BATCH_SIZE])
             self.write(f":SOUR:LIST:COMP:APP {batch}")
+        sleep(0.5)
 
     def set_sweep_range_mode(self, mode: str) -> None:
         """Set sweep range mode.

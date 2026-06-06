@@ -11,7 +11,9 @@ import logging
 import re
 import urllib.parse
 from abc import ABC, abstractmethod
+from enum import Enum
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE
 
 # Matches the start of a VISA resource string and captures the prefix for
@@ -21,6 +23,24 @@ from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE
 _VISA_RE = re.compile(r"^(GPIB|TCPIP|ASRL)[^:]*::", re.IGNORECASE)
 _COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
 
+
+class CommsMode(str, Enum):
+    """Enum class representing possible transport comms logging modes."""
+    
+    RX = "RX"
+    TX = "TX"
+    IEEE = "IEEE"
+
+    @classmethod
+    def valid(cls, value):
+        """Check if a string is a valid mode."""
+        return value in {m.value for m in cls}
+    
+    @classmethod
+    def invalid(cls, value):
+        """Inverse of CommsMode.valid()."""
+        return not cls.valid(value)
+    
 
 class BaseTransport(ABC):
     """Abstract base for all instrument transport layers.
@@ -124,18 +144,28 @@ class BaseTransport(ABC):
         """Close the physical connection to the instrument."""
 
     @abstractmethod
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes, slow: int|None = None) -> int:
         """Send *data* to the instrument.
 
         Args:
             data (bytes):
                 Raw bytes to transmit.
+                
+        Keyword Arguments:
+            slow (int|none, None):
+                Whether to except the response to be slow and thus to pause for
+                *slow* milliseconds.
+                
+        Returns:
+            A status byte where available
 
         Raises:
             ConnectionError:
                 If the transport is not open.
             OSError:
                 If a low-level I/O error occurs.
+            InstrumentError:
+                If the write method can detect an error immeditately
         """
 
     @abstractmethod
@@ -157,6 +187,36 @@ class BaseTransport(ABC):
             TimeoutError:
                 If no data is received within :attr:`timeout` seconds.
         """
+
+    def query(self,data: bytes, num_bytes: int | None = None, slow: bool = False) -> bytes:
+        """Perform a write and then read operation in series.
+
+        Args:
+            data (bytes):
+                Raw bytes to transmit.
+                
+        Keyword Arguments;
+            num_bytes (int | None):
+                Optional maximum frame size for this call.  When ``None``,
+                the transport uses the protocol-defined frame-size limit.
+            slow (int|None, None):
+                Whether to expect the write to result in a slow query and thus
+                to pause for *slow* milliseconds afterwards.
+
+        Returns:
+            (bytes):
+                The bytes received from the instrument.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+            TimeoutError:
+                If no data is received within :attr:`timeout` seconds.
+            OSError:
+                If a low-level I/O error occurs.
+        """
+        self.write(data, slow=slow)
+        return self.read(num_bytes)
 
     def read_until(self, terminator: bytes = b"\n") -> bytes:
         """Read bytes from the instrument until *terminator* is encountered.
@@ -373,7 +433,9 @@ class BaseTransport(ABC):
         cls, parsed: urllib.parse.ParseResult, query: dict, timeout: float, uri: str
     ) -> BaseTransport:
         """Build a :class:`SerialTransport` from URI components."""
-        from stoner_measurement.instruments.transport.serial_transport import SerialTransport
+        from stoner_measurement.instruments.transport.serial_transport import (
+            SerialTransport,
+        )
 
         def _qp(name: str, default: str | None = None) -> str | None:
             values = query.get(name)
@@ -417,7 +479,9 @@ class BaseTransport(ABC):
             return EthernetTransport(host=host, port=port_num, timeout=timeout)
 
         if scheme == "udp":
-            from stoner_measurement.instruments.transport.udp_transport import UdpTransport
+            from stoner_measurement.instruments.transport.udp_transport import (
+                UdpTransport,
+            )
 
             host = parsed.hostname
             port_num = parsed.port
@@ -426,7 +490,9 @@ class BaseTransport(ABC):
             return UdpTransport(host=host, port=port_num, timeout=timeout)
 
         if scheme == "gpib":
-            from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
+            from stoner_measurement.instruments.transport.gpib_transport import (
+                GpibTransport,
+            )
 
             if parsed.port is not None:
                 board = int(parsed.hostname or 0)
@@ -451,7 +517,9 @@ class BaseTransport(ABC):
         prefix_upper = parts[0].upper()
 
         if prefix_upper.startswith("GPIB"):
-            from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
+            from stoner_measurement.instruments.transport.gpib_transport import (
+                GpibTransport,
+            )
 
             board_str = parts[0][4:]
             board = int(board_str) if board_str else 0
@@ -472,7 +540,9 @@ class BaseTransport(ABC):
             return EthernetTransport(host=host, port=port)
 
         if prefix_upper.startswith("ASRL"):
-            from stoner_measurement.instruments.transport.serial_transport import SerialTransport
+            from stoner_measurement.instruments.transport.serial_transport import (
+                SerialTransport,
+            )
 
             port = parts[0][4:]
             if not port:
@@ -517,19 +587,19 @@ class BaseTransport(ABC):
             IEEE 488.2 binary block data) are still represented as printable
             text in the log rather than causing a ``UnicodeDecodeError``.
         """
-        if direction.upper() not in ["RX","TX","IEEE"]:
+        if CommsMode.invalid(direction.upper()):
             raise ValueError(f"Unreognised traffic direction {direction}")
         direction=direction.upper()
         match payload:
             case str():
-                decoded_payload=payload.rstrip("\r\n").encode('unicode_escape').decode()
+                decoded_payload=payload.encode('unicode_escape').decode()
             case int():
                 decoded_payload=f"{payload}".encode('unicode_escape').decode()
             case bytes():
                 decoded_payload = payload.decode(
                     "utf-8",
                     errors="backslashreplace",
-                    ).rstrip("\r\n").encode('unicode_escape').decode()
+                    ).encode('unicode_escape').decode()
             case _:
                 raise TypeError(f"Bad type to log: {type(payload)}")
         address = self.transport_address

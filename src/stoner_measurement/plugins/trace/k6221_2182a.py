@@ -43,7 +43,10 @@ from PyQt6.QtWidgets import (
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.nanovoltmeter import NanovoltmeterTriggerSource
-from stoner_measurement.instruments.transport.gpib_transport import GpibTransport, PassThroughGpibTransport
+from stoner_measurement.instruments.transport.gpib_transport import (
+    GpibTransport,
+    PassThroughGpibTransport,
+)
 from stoner_measurement.plugins.trace.base import (
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
@@ -51,8 +54,17 @@ from stoner_measurement.plugins.trace.base import (
     TracePlugin,
     TraceStatus,
 )
-from stoner_measurement.scan import FunctionScanGenerator, ListScanGenerator, SteppedScanGenerator
-from stoner_measurement.ui.widgets import FILTER_GPIB, SIComboBox, SISpinBox, VisaResourceComboBox
+from stoner_measurement.scan import (
+    FunctionScanGenerator,
+    ListScanGenerator,
+    SteppedScanGenerator,
+)
+from stoner_measurement.ui.widgets import (
+    FILTER_GPIB,
+    SIComboBox,
+    SISpinBox,
+    VisaResourceComboBox,
+)
 
 #: Poll interval in seconds when waiting for the 2182A buffer to fill.
 _POLL_INTERVAL: float = 0.25

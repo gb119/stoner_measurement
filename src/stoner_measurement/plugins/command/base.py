@@ -26,8 +26,8 @@ from typing import Protocol
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
-from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.core.sequence_engine import _DEFAULT_PLOT_READY_TIMEOUT_SECONDS
+from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 
 
 class _SignalEmitter(Protocol):

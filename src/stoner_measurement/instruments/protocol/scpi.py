@@ -15,7 +15,10 @@ from __future__ import annotations
 import re
 
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE, BaseProtocol
+from stoner_measurement.instruments.protocol.base import (
+    DEFAULT_MAX_FRAME_SIZE,
+    BaseProtocol,
+)
 
 #: Terminator appended to every outgoing SCPI message.
 SCPI_TERMINATOR = b"\n"
@@ -70,6 +73,8 @@ class ScpiProtocol(BaseProtocol):
                 Defaults to ``DEFAULT_MAX_FRAME_SIZE`` (``4096``).
         """
         self.terminator = terminator
+        self.gpib_terminator = None
+
         self._max_frame_size = max_frame_size
 
     @property
