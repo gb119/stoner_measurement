@@ -106,6 +106,7 @@ class UdpTransport(BaseTransport):
         """
         if self._socket is None:
             raise ConnectionError("UDP transport is not open.")
+        self._log_comms_traffic("TX", data)
         self._socket.send(data)
         if slow is not None:
             sleep(slow / 1000)

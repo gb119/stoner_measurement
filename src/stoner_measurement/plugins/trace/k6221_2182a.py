@@ -680,8 +680,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         """Arm the sweep, collect the complete trace, and yield (I, V) pairs.
 
         Arms the 6221 sweep, initiates the 2182A trigger system, and enables
-        the 6221 output to start the sweep.  Polls the 2182A buffer until all
-        *n* readings have been stored, then reads the buffer and yields the
+        the 6221 output to start the sweep. Polls the 6221 operating-status
+        register until the sweep completes, then reads the 2182A buffer
+        (retrying until all *n* readings are available) and yields the
         ``(source_current, voltage)`` pair for each scan point in order.
 
         Args:
