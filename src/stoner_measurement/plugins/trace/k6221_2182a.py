@@ -781,7 +781,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     def _post_sweep_delay(self) -> float:
         """Return a conservative delay for the final 2182A reading to complete."""
         line_period = 1.0 / 50.0
-        filter_multiplier = self._filter_count if self._filter_enabled else 1
+        filter_multiplier = self._filter_count + 1 if self._filter_enabled else 1
         analog_multiplier = 2 if self._analog_filter else 1
         measurement_time = self._nplc * line_period * filter_multiplier * analog_multiplier
         return max(_POST_SWEEP_DELAY_MIN, measurement_time + self._source_delay + _POLL_INTERVAL)

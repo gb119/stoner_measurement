@@ -305,7 +305,6 @@ class TestExecute:
         plugin._k2182a = MagicMock()
         plugin._k6221.get_operating_status.side_effect = [0x02, 0x02, 0x04]
         plugin._k2182a.read_buffer.return_value = (0.1, 0.2)
-        plugin._k2182a.get_buffer_count.side_effect = AssertionError("execute() must not poll 2182A buffer count")
 
         with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep") as sleep_mock:
             points = list(plugin.execute({}))
@@ -317,7 +316,8 @@ class TestExecute:
         plugin._k2182a.read_buffer.assert_called_once_with(count=2)
         plugin._k2182a.clear_buffer.assert_called_once_with()
         assert plugin._k6221.get_operating_status.call_count == 3
-        assert sleep_mock.call_count >= 1
+        plugin._k2182a.get_buffer_count.assert_not_called()
+        sleep_mock.assert_has_calls([call(0.25), call(plugin._post_sweep_delay())])
 
     def test_execute_retries_buffer_read_until_final_measurement_arrives(self, qapp):
         from unittest.mock import MagicMock, patch
