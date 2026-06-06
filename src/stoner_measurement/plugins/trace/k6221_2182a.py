@@ -74,9 +74,12 @@ _TIMEOUT_FACTOR: float = 5.0
 
 #: Minimum timeout in seconds regardless of sweep duration.
 _TIMEOUT_MIN: float = 10.0
+_POST_SWEEP_DELAY_MIN: float = 0.25
 
 #: IEEE-488.2 Event Status Bit (ESB) mask in the status byte.
 _STATUS_BYTE_ESB_MASK: int = 0x04
+_OPERATING_STATUS_SWEEP_RUNNING_MASK: int = 0x02
+_OPERATING_STATUS_SWEEP_FINISHED_MASK: int = 0x04
 
 #: Available fixed current output ranges for the 6221 (amps).
 _6221_FIXED_RANGES: tuple[float, ...] = (
@@ -677,8 +680,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         """Arm the sweep, collect the complete trace, and yield (I, V) pairs.
 
         Arms the 6221 sweep, initiates the 2182A trigger system, and enables
-        the 6221 output to start the sweep.  Polls the 2182A buffer until all
-        *n* readings have been stored, then reads the buffer and yields the
+        the 6221 output to start the sweep. Polls the 6221 operating-status
+        register until the sweep completes, then reads the 2182A buffer
+        (retrying until all *n* readings are available) and yields the
         ``(source_current, voltage)`` pair for each scan point in order.
 
         Args:
@@ -714,6 +718,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         line_period = 1.0 / 50.0
         point_time = self._nplc * line_period + self._source_delay
         timeout = max(_TIMEOUT_MIN, n * point_time * _TIMEOUT_FACTOR)
+        post_sweep_delay = self._post_sweep_delay()
 
         try:
             # Arm 6221 sweep and initiate 2182A trigger system.
@@ -725,33 +730,47 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # Enable 6221 output — this starts the sweep.
             self._k6221.enable_output(True)
 
-            # Poll until buffer is full.
+            # Poll the 6221 operating-status register until the sweep completes.
             deadline = time.monotonic() + timeout
+            saw_sweep_running = False
             while True:
-                if self._k2182a is None:
-                    raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-                buf_count = self._k2182a.get_buffer_count()
-                if buf_count >= n:
+                operating_status = self._k6221.get_operating_status()
+                if operating_status & _OPERATING_STATUS_SWEEP_RUNNING_MASK:
+                    saw_sweep_running = True
+                if (
+                    operating_status & _OPERATING_STATUS_SWEEP_FINISHED_MASK
+                    or (
+                        saw_sweep_running
+                        and not (operating_status & _OPERATING_STATUS_SWEEP_RUNNING_MASK)
+                    )
+                ):
                     break
                 if time.monotonic() > deadline:
                     self._k6221.sweep_abort()
                     self._k6221.enable_output(False)
                     raise RuntimeError(
-                        f"Timeout waiting for 2182A buffer to fill: "
-                        f"got {buf_count} of {n} readings after {timeout:.1f} s."
+                        f"Timeout waiting for 6221 sweep completion after {timeout:.1f} s "
+                        f"(operating status {operating_status:#x})."
                     )
                 time.sleep(_POLL_INTERVAL)
 
-            # Disable output and read buffer.
+            # Allow the 2182A to finish the final measurement and commit it to memory.
+            time.sleep(post_sweep_delay)
             self._k6221.enable_output(False)
             if self._k2182a is None:
                 raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-            voltages = self._k2182a.read_buffer()
-            if len(voltages) != n:
-                raise RuntimeError(
-                    f"2182A returned {len(voltages)} readings but expected {n}. "
-                    "The trace buffer may be incomplete."
-                )
+            read_deadline = time.monotonic() + max(_TIMEOUT_MIN / 2.0, post_sweep_delay * 4.0)
+            while True:
+                voltages = self._k2182a.read_buffer(count=n)
+                if len(voltages) == n:
+                    break
+                if time.monotonic() > read_deadline:
+                    raise RuntimeError(
+                        f"2182A returned {len(voltages)} readings but expected {n} "
+                        f"after waiting {post_sweep_delay:.2f} s beyond sweep completion."
+                    )
+                time.sleep(_POLL_INTERVAL)
+            self._k2182a.clear_buffer()
         except Exception:
             # Attempt a clean abort on any failure.
             try:
@@ -762,6 +781,14 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             raise
 
         yield from zip(self._sweep_values, voltages)
+
+    def _post_sweep_delay(self) -> float:
+        """Return a conservative delay for the final 2182A reading to complete."""
+        line_period = 1.0 / 50.0
+        filter_multiplier = self._filter_count + 1 if self._filter_enabled else 1
+        analog_multiplier = 2 if self._analog_filter else 1
+        measurement_time = self._nplc * line_period * filter_multiplier * analog_multiplier
+        return max(_POST_SWEEP_DELAY_MIN, measurement_time + self._source_delay + _POLL_INTERVAL)
 
     def disconnect(self) -> None:
         """Disable the 6221 output and close all instrument connections.

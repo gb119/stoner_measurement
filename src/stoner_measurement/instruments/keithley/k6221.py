@@ -19,6 +19,8 @@ from stoner_measurement.instruments.transport.base import BaseTransport
 #: Maximum number of values the 6221 accepts in a single :SOUR:LIST:CURR or
 #: :SOUR:LIST:COMP command. Longer lists are split and appended in batches.
 _LIST_BATCH_SIZE: int = 100
+_OPERATING_STATUS_SWEEP_RUNNING = 0x02
+_OPERATING_STATUS_SWEEP_FINISHED = 0x04
 
 
 class Keithley6221(CurrentSource):
@@ -461,6 +463,18 @@ class Keithley6221(CurrentSource):
     def sweep_abort(self) -> None:
         """Abort a running or armed sweep."""
         self.write(":SOUR:SWE:ABOR")
+
+    def get_operating_status(self) -> int:
+        """Return the current operating-status condition register."""
+        return int(float(self.query(":STAT:OPER:COND?")))
+
+    def sweep_is_running(self) -> bool:
+        """Return ``True`` while the instrument reports an active sweep."""
+        return bool(self.get_operating_status() & _OPERATING_STATUS_SWEEP_RUNNING)
+
+    def sweep_is_finished(self) -> bool:
+        """Return ``True`` when the operating-status register reports sweep completion."""
+        return bool(self.get_operating_status() & _OPERATING_STATUS_SWEEP_FINISHED)
 
     def configure_pulsed_sweep(
         self,

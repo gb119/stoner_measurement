@@ -14,6 +14,7 @@ address-bearing :func:`socket.sendto` / :func:`socket.recvfrom` variants.
 from __future__ import annotations
 
 import socket
+from time import sleep
 
 from stoner_measurement.instruments.transport.base import BaseTransport
 
@@ -86,12 +87,16 @@ class UdpTransport(BaseTransport):
             self._socket = None
         self._is_open = False
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes, slow: int | None = None) -> int:
         """Send *data* to the instrument as a single UDP datagram.
 
         Args:
             data (bytes):
                 Raw bytes to transmit.
+
+        Keyword Arguments:
+            slow (int | None):
+                Optional delay in milliseconds to wait after writing.
 
         Raises:
             ConnectionError:
@@ -101,7 +106,10 @@ class UdpTransport(BaseTransport):
         """
         if self._socket is None:
             raise ConnectionError("UDP transport is not open.")
+        self._log_comms_traffic("TX", data)
         self._socket.send(data)
+        if slow is not None:
+            sleep(slow / 1000)
         return 0
 
     def read(self, num_bytes: int | None = None) -> bytes:

@@ -338,6 +338,10 @@ class Keithley2182A(Nanovoltmeter):
         """Clear all readings from the instrument trace buffer."""
         self.write(":TRAC:CLE")
 
+    def get_buffer_count(self) -> int:
+        """Return the number of readings currently stored in the trace buffer."""
+        return int(float(self.query(":TRAC:POIN?")))
+
     def set_buffer_size(self, size: int) -> None:
         """Set the trace buffer point capacity.
 

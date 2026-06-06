@@ -1266,6 +1266,18 @@ class TestKeithley6221:
         k.sweep_abort()
         assert t.write_log == [b":SOUR:SWE:ARM\n", b":SOUR:SWE:ABOR\n"]
 
+    def test_get_operating_status(self):
+        t = _null([b"4\n"])
+        k = Keithley6221(transport=t)
+        assert k.get_operating_status() == 4
+        assert t.write_log == [b":STAT:OPER:COND?\n"]
+
+    def test_sweep_status_helpers(self):
+        t = _null([b"2\n", b"4\n"])
+        k = Keithley6221(transport=t)
+        assert k.sweep_is_running() is True
+        assert k.sweep_is_finished() is True
+
     def test_pulsed_list_sweep(self):
         t = _null()
         k = Keithley6221(transport=t)
@@ -4461,36 +4473,39 @@ class TestPassThroughGpibTransport:
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
 
         transport = PassThroughGpibTransport(address=22)
-        resource = self._FakeResource()
+        resource = self._FakeResource(responses=[b"0"])
         transport._resource = resource
 
         transport.write(b"*IDN?")
 
-        assert resource.write_log == [b'SYST:COMM:SER:SEND "*IDN?\r"']
+        assert resource.write_log == [b'SYST:COMM:SER:SEND "*IDN?;*STB?";ENT?']
+        assert transport.last_stb == 0
 
     def test_read_queries_ent_and_returns_payload_bytes(self):
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
 
         transport = PassThroughGpibTransport(address=22)
-        resource = self._FakeResource(responses=[b"1.23\r\n\n"])
+        resource = self._FakeResource(responses=[b"1.23\r\n\n;0"])
         transport._resource = resource
 
         value = transport.read()
 
-        assert value == b"1.23"
-        assert resource.write_log == [b"SYST:COMM:SER:ENT?\n"]
+        assert value == b"1.23\r\n\n"
+        assert resource.write_log == [b'SYST:COMM:SER:SEND "*STB?";ENT?']
+        assert transport.last_stb == 0
 
-    def test_read_status_byte_uses_wrapped_stb_query(self):
+    def test_read_status_byte_returns_cached_last_stb(self):
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
 
         transport = PassThroughGpibTransport(address=22)
-        resource = self._FakeResource(responses=[b"4\n\n"])
+        resource = self._FakeResource()
         transport._resource = resource
+        transport.last_stb = 4
 
         value = transport.read_status_byte()
 
         assert value == 4
-        assert resource.write_log[0] == b'SYST:COMM:SER:SEND "*STB?\r"'
+        assert resource.write_log == []
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ are required; only the standard-library :mod:`socket` module is used.
 from __future__ import annotations
 
 import socket
+from time import sleep
 
 from stoner_measurement.instruments.transport.base import BaseTransport
 
@@ -63,6 +64,7 @@ class EthernetTransport(BaseTransport):
             self._socket = socket.create_connection((self.host, self.port), timeout=self._timeout)
             self._socket.settimeout(self._timeout)
             self._is_open = True
+            self._log_comms_traffic("IEEE", "Connection opened.")
         except OSError as exc:
             raise ConnectionError(f"Cannot connect to {self.host}:{self.port}: {exc}") from exc
 
@@ -77,13 +79,18 @@ class EthernetTransport(BaseTransport):
             self._socket = None
         self._pending_read_data = b""
         self._is_open = False
+        self._log_comms_traffic("IEEE", "Connection closed.")
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes, slow: int | None = None) -> int:
         """Send *data* to the instrument.
 
         Args:
             data (bytes):
                 Raw bytes to transmit.
+
+        Keyword Arguments:
+            slow (int | None):
+                Optional delay in milliseconds to wait after writing.
 
         Raises:
             ConnectionError:
@@ -91,8 +98,11 @@ class EthernetTransport(BaseTransport):
         """
         if self._socket is None:
             raise ConnectionError("Ethernet transport is not open.")
+        self._log_comms_traffic("TX", data)
         self._socket.sendall(data)
-        return 0 # No particular error able to be returned.
+        if slow is not None:
+            sleep(slow / 1000)
+        return 0
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Receive one response frame from the instrument.
@@ -126,10 +136,14 @@ class EthernetTransport(BaseTransport):
                 if marker != -1:
                     end = marker + len(terminator)
                     self._pending_read_data = bytes(buffer[end:])
-                    return bytes(buffer[:end])
+                    data = bytes(buffer[:end])
+                    self._log_comms_traffic("RX", data)
+                    return data
             elif len(buffer) >= frame_limit:
                 self._pending_read_data = bytes(buffer[frame_limit:])
-                return bytes(buffer[:frame_limit])
+                data = bytes(buffer[:frame_limit])
+                self._log_comms_traffic("RX", data)
+                return data
 
         try:
             while len(buffer) < frame_limit:
@@ -142,7 +156,9 @@ class EthernetTransport(BaseTransport):
                     if marker != -1:
                         end = marker + len(terminator)
                         self._pending_read_data = bytes(buffer[end:])
-                        return bytes(buffer[:end])
+                        data = bytes(buffer[:end])
+                        self._log_comms_traffic("RX", data)
+                        return data
         except TimeoutError as exc:
             raise TimeoutError(f"No data received from {self.host}:{self.port} within {self._timeout}s.") from exc
         if not buffer:
@@ -152,7 +168,9 @@ class EthernetTransport(BaseTransport):
                 f"Incomplete response frame from {self.host}:{self.port}: "
                 f"terminator {terminator!r} not received within {frame_limit} bytes."
             )
-        return bytes(buffer)
+        data = bytes(buffer)
+        self._log_comms_traffic("RX", data)
+        return data
 
     def flush(self) -> None:
         """Drain any unread data from the socket receive buffer.
@@ -173,6 +191,7 @@ class EthernetTransport(BaseTransport):
             pass
         finally:
             self._socket.settimeout(self._timeout)
+        self._log_comms_traffic("IEEE", "Connection flushed.")
 
     @property
     def transport_address(self) -> str:
