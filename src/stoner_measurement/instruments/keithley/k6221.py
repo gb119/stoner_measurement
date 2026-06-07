@@ -31,7 +31,7 @@ class Keithley6221(CurrentSource):
     Built-in staircase sweeps (linear, logarithmic, custom list) and pulsed
     sweeps are also supported.
     """
-    
+
     _MODEL="MODEL 6221"
 
     def __init__(
@@ -431,7 +431,7 @@ class Keithley6221(CurrentSource):
             RuntimeError:
                 If a line-terminated response is not received within
                 *max_chunks* chunks.
-                
+
         Notes:
             This will terminate after if recieves a blank chunk after it
             recieves a non-blank chunk.
@@ -459,10 +459,12 @@ class Keithley6221(CurrentSource):
     def sweep_start(self) -> None:
         """Arm the configured sweep, making it ready for triggering."""
         self.write(":SOUR:SWE:ARM")
+        self.write(":INIT:IMM")
 
     def sweep_abort(self) -> None:
         """Abort a running or armed sweep."""
         self.write(":SOUR:SWE:ABOR")
+        self.write(":ABOR")
 
     def get_operating_status(self) -> int:
         """Return the current operating-status condition register."""

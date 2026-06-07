@@ -530,7 +530,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # connect to 6221
             transport_6221 = GpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
             self._k6221 = Keithley6221(transport_6221)
-            self._k6221.connect()            
+            self._k6221.connect()
             self._k6221.confirm_identity()
             # Setup transport for 2182 as passthru or direct
             if self._connection_mode is ConnectionMode.DIRECT_GPIB:
@@ -604,7 +604,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # ---- 6221: reset and configure LIST sweep ----
             self._k6221.reset()
-            time.sleep(0.1)
 
             # Build current list — the driver's configure_custom_sweep handles
             # batching into 100-point chunks automatically.
@@ -722,13 +721,13 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         try:
             # Arm 6221 sweep and initiate 2182A trigger system.
-            self._k6221.sweep_start()
             if self._k2182a is None:
                 raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-            self._k2182a.initiate()
-
             # Enable 6221 output — this starts the sweep.
             self._k6221.enable_output(True)
+            self._k2182a.initiate()
+            self._k6221.sweep_start()
+
 
             # Poll the 6221 operating-status register until the sweep completes.
             deadline = time.monotonic() + timeout
@@ -747,6 +746,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                     break
                 if time.monotonic() > deadline:
                     self._k6221.sweep_abort()
+                    self._k2182a.abort()
                     self._k6221.enable_output(False)
                     raise RuntimeError(
                         f"Timeout waiting for 6221 sweep completion after {timeout:.1f} s "
@@ -775,6 +775,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # Attempt a clean abort on any failure.
             try:
                 self._k6221.sweep_abort()
+                self._k2182a.abort()
                 self._k6221.enable_output(False)
             except _CLEANUP_EXCEPTIONS:
                 pass
