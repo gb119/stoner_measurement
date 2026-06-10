@@ -386,7 +386,7 @@ class Keithley2182A(Nanovoltmeter):
             return self._parse_csv_floats(payload)
         if count <= 0:
             raise ValueError("count must be a positive integer.")
-        payload = self.query(f":TRAC:DATA? 1,{count}")
+        payload = self.query(":TRAC:DATA?")
         return self._parse_csv_floats(payload)
 
     def get_capabilities(self) -> NanovoltmeterCapabilities:

@@ -83,7 +83,16 @@ _OPERATING_STATUS_SWEEP_FINISHED_MASK: int = 0x04
 
 #: Available fixed current output ranges for the 6221 (amps).
 _6221_FIXED_RANGES: tuple[float, ...] = (
-    1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1,
+    1e-10,
+    1e-9,
+    1e-8,
+    1e-7,
+    1e-6,
+    1e-5,
+    1e-4,
+    1e-3,
+    1e-2,
+    1e-1,
 )
 
 #: Available fixed voltage measurement ranges for the 2182A (volts).
@@ -109,6 +118,8 @@ _CLEANUP_EXCEPTIONS: tuple[type[Exception], ...] = (
     RuntimeError,
     pyvisa.Error,
 )
+
+_LINE_PERIOD = 0.02
 
 
 class ConnectionMode(enum.Enum):
@@ -299,7 +310,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._k2182a: Keithley2182A | None = None
         self._sweep_values: np.ndarray | None = None
         self._apply_initial_config()
-
 
     # ------------------------------------------------------------------
     # Plugin identity
@@ -493,9 +503,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             "R": "Ω",
             "P": "W",
         }
-        self.data = {
-            "IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)
-        }
+        self.data = {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
         self._update_channel_statistics()
         return self.data
 
@@ -535,7 +543,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # Setup transport for 2182 as passthru or direct
             if self._connection_mode is ConnectionMode.DIRECT_GPIB:
                 transport_2182a = GpibTransport.from_resource_string(self._2182a_resource, timeout=10.0)
-            else: # Via 6221
+            else:  # Via 6221
                 transport_2182a = PassThroughGpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
             self._k2182a = Keithley2182A(transport_2182a)
             self._k2182a.connect()
@@ -637,13 +645,15 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # ---- 6221: trigger-link ----
             # Output a trigger pulse after each source step and settling delay.
-            self._k6221.configure_trigger_link(self._output_tlink, self._input_tlink)
+            self._k6221.configure_arm()
+            self._k6221.configure_trigger(
+                source="TLIN", direction="SOUR", tlink_in=self._input_tlink, tlink_out=self._output_tlink, output="DEL"
+            )
 
             # ---- 2182A: reset and configure ----
             if self._k2182a is None:
                 raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
             self._k2182a.reset()
-            time.sleep(0.2)
 
             self._k2182a.set_digits(self._digits)
             self._k2182a.set_nplc(self._nplc)
@@ -714,8 +724,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         # Estimate a generous timeout: n points × (NPLC/50 + source_delay) × safety factor.
         # Assumes 50 Hz mains frequency; the timeout is conservative enough to also
         # cover 60 Hz installations without adjustment.
-        line_period = 1.0 / 50.0
-        point_time = self._nplc * line_period + self._source_delay
+        point_time = self._nplc * _LINE_PERIOD + self._source_delay
         timeout = max(_TIMEOUT_MIN, n * point_time * _TIMEOUT_FACTOR)
         post_sweep_delay = self._post_sweep_delay()
 
@@ -724,24 +733,21 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             if self._k2182a is None:
                 raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
             # Enable 6221 output — this starts the sweep.
-            self._k6221.enable_output(True)
             self._k2182a.initiate()
+            self._k6221.sweep_abort()
             self._k6221.sweep_start()
-
 
             # Poll the 6221 operating-status register until the sweep completes.
             deadline = time.monotonic() + timeout
             saw_sweep_running = False
+            # Wait for a 2182A conversion time before we try check to see if we're sweeping.
+            time.sleep(post_sweep_delay)
             while True:
                 operating_status = self._k6221.get_operating_status()
                 if operating_status & _OPERATING_STATUS_SWEEP_RUNNING_MASK:
                     saw_sweep_running = True
-                if (
-                    operating_status & _OPERATING_STATUS_SWEEP_FINISHED_MASK
-                    or (
-                        saw_sweep_running
-                        and not (operating_status & _OPERATING_STATUS_SWEEP_RUNNING_MASK)
-                    )
+                if operating_status & _OPERATING_STATUS_SWEEP_FINISHED_MASK or (
+                    saw_sweep_running and not (operating_status & _OPERATING_STATUS_SWEEP_RUNNING_MASK)
                 ):
                     break
                 if time.monotonic() > deadline:
@@ -785,10 +791,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
     def _post_sweep_delay(self) -> float:
         """Return a conservative delay for the final 2182A reading to complete."""
-        line_period = 1.0 / 50.0
+        _LINE_PERIOD = 1.0 / 50.0
         filter_multiplier = self._filter_count + 1 if self._filter_enabled else 1
         analog_multiplier = 2 if self._analog_filter else 1
-        measurement_time = self._nplc * line_period * filter_multiplier * analog_multiplier
+        measurement_time = self._nplc * _LINE_PERIOD * filter_multiplier * analog_multiplier
         return max(_POST_SWEEP_DELAY_MIN, measurement_time + self._source_delay + _POLL_INTERVAL)
 
     def disconnect(self) -> None:
@@ -882,8 +888,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             self._connection_mode = ConnectionMode(mode_str)
         except ValueError:
             self._log.warning(
-                "Unknown connection_mode value %r in saved config; "
-                "falling back to default (%s).",
+                "Unknown connection_mode value %r in saved config; " "falling back to default (%s).",
                 mode_str,
                 self._connection_mode.value,
             )
@@ -892,23 +897,19 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             self._compliance_mode = ComplianceMode(comp_mode_str)
         except ValueError:
             self._log.warning(
-                "Unknown compliance_mode value %r in saved config; "
-                "falling back to default (%s).",
+                "Unknown compliance_mode value %r in saved config; " "falling back to default (%s).",
                 comp_mode_str,
                 self._compliance_mode.value,
             )
         self._compliance = float(data.get("compliance", self._compliance))
-        self._compliance_resistance = float(
-            data.get("compliance_resistance", self._compliance_resistance)
-        )
+        self._compliance_resistance = float(data.get("compliance_resistance", self._compliance_resistance))
         self._source_delay = float(data.get("source_delay", self._source_delay))
         range_mode_str = data.get("source_range_mode", self._source_range_mode.value)
         try:
             self._source_range_mode = SourceRangeMode(range_mode_str)
         except ValueError:
             self._log.warning(
-                "Unknown source_range_mode value %r in saved config; "
-                "falling back to default (%s).",
+                "Unknown source_range_mode value %r in saved config; " "falling back to default (%s).",
                 range_mode_str,
                 self._source_range_mode.value,
             )
@@ -1025,9 +1026,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         comp_mode_combo = QComboBox()
         comp_mode_combo.addItem("Fixed voltage", ComplianceMode.VOLTAGE)
         comp_mode_combo.addItem("Resistance (V = |I|×R)", ComplianceMode.RESISTANCE)
-        comp_mode_combo.setCurrentIndex(
-            0 if self._compliance_mode is ComplianceMode.VOLTAGE else 1
-        )
+        comp_mode_combo.setCurrentIndex(0 if self._compliance_mode is ComplianceMode.VOLTAGE else 1)
         comp_mode_combo.setToolTip(
             "Voltage: a fixed compliance voltage is applied to every sweep point.\n"
             "Resistance: per-point compliance is |current| × compliance resistance."
@@ -1043,9 +1042,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         compliance_r_sb = SISpinBox(suffix="Ω", value=self._compliance_resistance)
         compliance_r_sb.setMinimum(0.1)
         compliance_r_sb.setMaximum(1e9)
-        compliance_r_sb.setToolTip(
-            "Compliance resistance in ohms.  Per-point compliance voltage = |I| × R."
-        )
+        compliance_r_sb.setToolTip("Compliance resistance in ohms.  Per-point compliance voltage = |I| × R.")
         compliance_r_sb.setVisible(self._compliance_mode is ComplianceMode.RESISTANCE)
         compliance_r_label.setVisible(self._compliance_mode is ComplianceMode.RESISTANCE)
 
@@ -1069,9 +1066,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         src_range_combo.addItem("Best (auto, set once)", (SourceRangeMode.BEST, 0.0))
         src_range_combo.addItem("Auto (per-point)", (SourceRangeMode.AUTO, 0.0))
         for rng in _6221_FIXED_RANGES:
-            src_range_combo.addItem(
-                SIComboBox.format_si(rng, "A"), (SourceRangeMode.FIXED, rng)
-            )
+            src_range_combo.addItem(SIComboBox.format_si(rng, "A"), (SourceRangeMode.FIXED, rng))
         # Set the current selection: use math.isclose so that JSON round-trips
         # and minor floating-point differences don't prevent the correct item
         # from being re-selected.  _ZERO_CURRENT_THRESHOLD is reserved for
@@ -1138,10 +1133,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 _nplc_idx = _i
                 break
         nplc_combo.setCurrentIndex(_nplc_idx)
-        nplc_combo.setToolTip(
-            "Integration time in power-line cycles.\n"
-            "The 2182A supports 0.1, 1.0, and 10.0 PLC."
-        )
+        nplc_combo.setToolTip("Integration time in power-line cycles.\n" "The 2182A supports 0.1, 1.0, and 10.0 PLC.")
 
         # -- voltage range combo: uses SIComboBox so labels are auto-formatted --
         vrange_combo = SIComboBox(unit="V")
@@ -1173,9 +1165,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         filter_count_sb.setMaximum(100)
         filter_count_sb.setValue(self._filter_count)
         filter_count_sb.setEnabled(self._filter_enabled)
-        filter_count_sb.setToolTip(
-            "Number of readings averaged per sample when the digital filter is enabled."
-        )
+        filter_count_sb.setToolTip("Number of readings averaged per sample when the digital filter is enabled.")
 
         # -- analogue filter and relative mode --
         analog_filter_chk = QCheckBox()
@@ -1236,8 +1226,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         out_line_sb.setMaximum(6)
         out_line_sb.setValue(self._output_tlink)
         out_line_sb.setToolTip(
-            "Trigger-link line on which the 6221 outputs the 'source ready' "
-            "pulse to start a 2182A measurement."
+            "Trigger-link line on which the 6221 outputs the 'source ready' " "pulse to start a 2182A measurement."
         )
 
         in_line_sb = QSpinBox()

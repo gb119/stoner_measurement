@@ -44,7 +44,7 @@ class CurrentSweepSpacing(Enum):
     LIST = "LIST"
 
 
-@dataclass(frozen=True)
+@dataclass
 class CurrentSweepConfiguration:
     """Configuration for a current-source sweep.
 
@@ -76,7 +76,7 @@ class CurrentSweepConfiguration:
     points: int = 0
     spacing: CurrentSweepSpacing = CurrentSweepSpacing.LIN
     values: tuple[float, ...] | None = None
-    delay: float = 0.0
+    delay: float|tuple[float, ...] = 0.0
     count: int = 1
 
 

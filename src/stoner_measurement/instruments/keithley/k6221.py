@@ -32,7 +32,7 @@ class Keithley6221(CurrentSource):
     sweeps are also supported.
     """
 
-    _MODEL="MODEL 6221"
+    _MODEL = "MODEL 6221"
 
     def __init__(
         self,
@@ -69,6 +69,7 @@ class Keithley6221(CurrentSource):
             >>> instr.disconnect()
         """
         super().connect()
+        self.sweep_abort()
         self.write("*CLS")
 
     def reset(self) -> None:
@@ -92,8 +93,7 @@ class Keithley6221(CurrentSource):
             [b'*RST\\n']
             >>> instr.disconnect()
         """
-        self.write("*RST",slow=2000)
-
+        self.write("*RST", slow=2000)
 
     def get_source_level(self) -> float:
         """Return programmed source current in amps."""
@@ -178,18 +178,31 @@ class Keithley6221(CurrentSource):
             if not config.values:
                 raise ValueError("LIST sweep requires non-empty values.")
             values = list(config.values)
+            if isinstance(config.delay,float):
+                config.delay=[config.delay for _ in values]
             n = len(values)
             first_batch = ",".join(str(v) for v in values[:_LIST_BATCH_SIZE])
             self.write(f":SOUR:LIST:CURR {first_batch}")
             for start in range(_LIST_BATCH_SIZE, n, _LIST_BATCH_SIZE):
-                batch = ",".join(str(v) for v in values[start:start + _LIST_BATCH_SIZE])
+                batch = ",".join(str(v) for v in values[start : start + _LIST_BATCH_SIZE])
                 self.write(f":SOUR:LIST:CURR:APP {batch}")
             self.write(f":SOUR:SWE:POIN {n}")
         else:
             self.write(f":SOUR:SWE:STAR {config.start}")
             self.write(f":SOUR:SWE:STOP {config.stop}")
             self.write(f":SOUR:SWE:POIN {config.points}")
-        self.write(f":SOUR:DEL {config.delay}")
+        if isinstance(config.delay, float):
+            self.write(f":SOUR:DEL {config.delay}")
+        else:
+            delay=list(config.delay)
+            n = len(delay)
+            first_batch = ",".join(str(v) for v in delay[:_LIST_BATCH_SIZE])
+            self.write(f":SOUR:LIST:DEL {first_batch}")
+            for start in range(_LIST_BATCH_SIZE, n, _LIST_BATCH_SIZE):
+                batch = ",".join(str(v) for v in delay[start : start + _LIST_BATCH_SIZE])
+                self.write(f":SOUR:LIST:DEL:APP {batch}")
+
+            
         if config.count != 1:
             self.write(f":SOUR:SWE:COUN {config.count}")
         sleep(0.5)
@@ -219,7 +232,7 @@ class Keithley6221(CurrentSource):
         first_batch = ",".join(f"{v:.6e}" for v in values[:_LIST_BATCH_SIZE])
         self.write(f":SOUR:LIST:COMP {first_batch}")
         for start in range(_LIST_BATCH_SIZE, n, _LIST_BATCH_SIZE):
-            batch = ",".join(f"{v:.6e}" for v in values[start:start + _LIST_BATCH_SIZE])
+            batch = ",".join(f"{v:.6e}" for v in values[start : start + _LIST_BATCH_SIZE])
             self.write(f":SOUR:LIST:COMP:APP {batch}")
         sleep(0.5)
 
@@ -269,6 +282,90 @@ class Keithley6221(CurrentSource):
         if count <= 0:
             raise ValueError("Sweep count must be positive.")
         self.write(f":SOUR:SWE:COUN {count}")
+
+    def configure_arm(
+        self,
+        source: str = "IMM",
+        bypass: bool = False,
+        time: float = 0,
+        direction: str = "ACC",
+        tlink_in: int | None = None,
+        tlink_out: int | None = None,
+        output: str = "None",
+    ):
+        """Configure the 6221 arm layer.
+
+        Keyword Arguments:
+            source (str, "IMM"):
+                The ARM layer input sources, IMM, TIM, BUS, TLIN, NST, PST, MAN
+            bypass (bool, False):
+                Whetgher to bypass the ARM system altogether.
+            time (float, 0):
+                Timer to use when ARM source is TIM
+            direction (str, "ACC"):
+                Even when not bypassing, it is possible to skip the first ARM source event by setting this to "SOUR"
+            tlink_in, tlink_out (int|None, None):
+                Triggerlink lines to use when the source is "TLIN"
+            output (str, "NONE"):
+                Whether to indicate a transition to ("TENT") or from ("TEX") the trigger layer, or not al at all ("NONE").
+        """
+        if bypass:
+            self.write(":ARM:SIGN")
+            return
+        self.write(f":ARM:DIR {direction}")
+        match source.upper():
+            case "IMM" | "BUS" | "NST" | "PST" | "MAN":
+                self.write(f":ARM:SOUR {source.upper()}")
+            case "TIM":
+                self.write(":ARM:SOUR TIM")
+                self.write(f":ARM:TIM {time:.2f}")
+            case "TLIN":
+                self.write(":ARM:SOUR TLIN")
+                if tlink_in:
+                    self.write(f":ARM:ILIN {tlink_in}")
+                if tlink_out:
+                    self.write(f":ARM:OLIN {tlink_out}")
+            case _:
+                raise ValueError(f"Unrecognised ARM mode {source}")
+        self.write(f":ARM:OUTP {output}")
+
+    def configure_trigger(
+        self,
+        source: str = "IMM",
+        bypass: bool = False,
+        direction: str = "ACC",
+        tlink_in: int | None = None,
+        tlink_out: int | None = None,
+        output: str = "None",
+    ):
+        """Configure the trigger layer.
+
+        Keyword Arguments:
+            source (str, "IMM"):
+                The Trigger layer input sources, IMM, TLIN
+            bypass (bool, False):
+                Whetgher to bypass the Trigger system altogether.
+            direction (str, "ACC"):
+                Even when not bypassing, it is possible to skip the first Trigger source event by setting this to "SOUR"
+            tlink_in, tlink_out (int|None, None):
+                Triggerlink lines to use when the source is "TLIN"
+            output (str, "NONE"):
+                When the output trigger is sent - after source ("SOUR"), after delay ("DEL"), or not ("NONE")
+        """
+        if bypass:
+            self.write(":TRIG:SIGN")
+            return
+        self.write(f":TRIG:DIR {direction}")
+        match source.upper():
+            case "IMM":
+                self.write(f":TRIG:SOUR {source.upper()}")
+            case "TLIN":
+                self.write(":TRIG:SOUR TLIN")
+            case _:
+                raise ValueError(f"Unrecognised TRIG mode {source}")
+        self.write(f":TRIG:OUTP {output}")
+        if source == "TLIN" or output != "NONE":
+            self.configure_trigger_link(tlink_out, tlink_in)
 
     def configure_trigger_link(self, output_line: int, input_line: int) -> None:
         """Configure trigger-link lines and trigger direction.
@@ -322,9 +419,7 @@ class Keithley6221(CurrentSource):
             # TRIG:ILIN <n> fails if <n> is already assigned to TRIG:OLIN or the
             # phase-marker output.  Move whichever conflicts to a neutral line.
             if cur_olin == input_line:
-                temp = _free_line(
-                    input_line, output_line, cur_ilin, cur_pmar if cur_pmar is not None else 0
-                )
+                temp = _free_line(input_line, output_line, cur_ilin, cur_pmar if cur_pmar is not None else 0)
                 self.write(f":TRIG:OLIN {temp}")
                 cur_olin = temp
             if cur_pmar == input_line:
@@ -345,7 +440,6 @@ class Keithley6221(CurrentSource):
 
             # ---- Assign the output line and fix trigger direction -----------
             self.write(f":TRIG:OLIN {output_line}")
-            self.write(":TRIG:DIR ACC")
 
     @staticmethod
     def _serial_send_payload(cmd: str, terminator: str) -> str:
@@ -450,14 +544,13 @@ class Keithley6221(CurrentSource):
             if parts and not chunk:
                 break
         else:
-            raise RuntimeError(
-                "Timed out reading serial relay response: no line terminator (LF) received."
-            )
+            raise RuntimeError("Timed out reading serial relay response: no line terminator (LF) received.")
         combined = "".join(parts)
         return combined.rstrip("\r\n")
 
     def sweep_start(self) -> None:
         """Arm the configured sweep, making it ready for triggering."""
+        self.enable_output(True)
         self.write(":SOUR:SWE:ARM")
         self.write(":INIT:IMM")
 
@@ -468,7 +561,7 @@ class Keithley6221(CurrentSource):
 
     def get_operating_status(self) -> int:
         """Return the current operating-status condition register."""
-        return int(float(self.query(":STAT:OPER:COND?")))
+        return int(float(self.query(":STAT:OPER:EVEN?")))
 
     def sweep_is_running(self) -> bool:
         """Return ``True`` while the instrument reports an active sweep."""
