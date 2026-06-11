@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 from stoner_measurement.instruments.errors import InstrumentError
+from stoner_measurement.instruments.lock_registry import canonical_resource_key
 from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE
 
 # Matches the start of a VISA resource string and captures the prefix for
@@ -129,6 +130,17 @@ class BaseTransport(ABC):
             ''
         """
         return ""
+
+    @property
+    def lock_key(self) -> str | None:
+        """Canonical key used to coordinate transport-level access locks.
+
+        Returns:
+            (str | None):
+                Canonicalised key derived from :attr:`transport_address`, or
+                ``None`` when no stable resource identity is available.
+        """
+        return canonical_resource_key(self.transport_address)
 
     @abstractmethod
     def open(self) -> None:
