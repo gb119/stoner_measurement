@@ -10,11 +10,11 @@ instrument by holding references to a :class:`BaseTransport` and a
 from __future__ import annotations
 
 import logging
-import threading
 from abc import ABC
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.errors import InstrumentError
+from stoner_measurement.instruments.lock_registry import get_instrument_lock
 
 if TYPE_CHECKING:
     from stoner_measurement.instruments.protocol.base import BaseProtocol
@@ -113,7 +113,7 @@ class BaseInstrument(ABC):
         self._comms_logger = logging.getLogger(
             f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}"
         )
-        self._lock = threading.RLock()
+        self._lock = get_instrument_lock(self.transport.lock_key)
 
     @property
     def is_connected(self) -> bool:
