@@ -2914,6 +2914,14 @@ class TestInstrumentLocking:
 
         assert first._lock is second._lock
 
+    def test_canonical_resource_key_normalises_case_and_whitespace(self):
+        """canonical_resource_key strips and case-normalises addresses."""
+        from stoner_measurement.instruments.lock_registry import canonical_resource_key
+
+        assert canonical_resource_key(" gpib0::22::instr ") == "gpib0::22::instr"
+        assert canonical_resource_key("  ") is None
+        assert canonical_resource_key(None) is None
+
     def test_different_resource_keys_get_different_locks(self):
         """Two instruments with different keyed transports do not share a lock."""
 
