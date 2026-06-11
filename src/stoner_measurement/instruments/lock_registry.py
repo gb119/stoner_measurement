@@ -43,7 +43,7 @@ def get_instrument_lock(resource_key: str | None) -> threading.RLock:
 
     Args:
         resource_key (str | None):
-            Canonical resource identifier.
+            Raw or canonical resource identifier.
 
     Returns:
         (threading.RLock):
