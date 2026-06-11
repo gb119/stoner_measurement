@@ -58,11 +58,12 @@ def get_instrument_lock(resource_key: str | None) -> threading.RLock:
         >>> get_instrument_lock(None) is get_instrument_lock(None)
         False
     """
-    if resource_key is None:
+    canonical_key = canonical_resource_key(resource_key)
+    if canonical_key is None:
         return threading.RLock()
     with _LOCK_REGISTRY_MUTEX:
-        lock = _LOCK_REGISTRY.get(resource_key)
+        lock = _LOCK_REGISTRY.get(canonical_key)
         if lock is None:
             lock = threading.RLock()
-            _LOCK_REGISTRY[resource_key] = lock
+            _LOCK_REGISTRY[canonical_key] = lock
     return lock

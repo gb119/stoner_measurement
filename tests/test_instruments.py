@@ -2945,6 +2945,7 @@ class TestInstrumentLocking:
 
     def test_gpib_and_passthrough_transports_share_lock_key(self):
         """6221 host and passthrough transports share one lock key/lock."""
+        pytest.importorskip("pyvisa")
         host_transport = GpibTransport(address=22)
         relay_transport = PassThroughGpibTransport(address=22)
 
