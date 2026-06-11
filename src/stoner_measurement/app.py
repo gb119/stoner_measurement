@@ -430,6 +430,7 @@ class MeasurementApp(QMainWindow):
         self._act_view_editor.triggered.connect(lambda: self._main_window.tabs.setCurrentIndex(1))
 
         self._act_show_log = QAction(make_log_icon(), "Show &Log", self)
+        self._act_show_log.setShortcut(QKeySequence("Ctrl+L"))
         self._act_show_log.setStatusTip("Open the log viewer window")
         self._act_show_log.triggered.connect(self._on_show_log)
 
