@@ -23,6 +23,12 @@ def canonical_resource_key(raw_key: str | None) -> str | None:
     Returns:
         (str | None):
             Canonicalised key, or ``None`` when *raw_key* is blank.
+
+    Examples:
+        >>> canonical_resource_key(" GPIB0::22::INSTR ")
+        'gpib0::22::instr'
+        >>> canonical_resource_key("   ")
+        >>> canonical_resource_key(None)
     """
     if raw_key is None:
         return None
@@ -43,6 +49,14 @@ def get_instrument_lock(resource_key: str | None) -> threading.RLock:
         (threading.RLock):
             Shared lock when *resource_key* is non-empty, otherwise a new
             per-instance lock.
+
+    Examples:
+        >>> first = get_instrument_lock("gpib0::22::instr")
+        >>> second = get_instrument_lock("gpib0::22::instr")
+        >>> first is second
+        True
+        >>> get_instrument_lock(None) is get_instrument_lock(None)
+        False
     """
     if resource_key is None:
         return threading.RLock()

@@ -61,6 +61,7 @@ from stoner_measurement.instruments.lakeshore import (
     LakeshoreM81CurrentSource,
     LakeshoreM81LockIn,
 )
+from stoner_measurement.instruments.lock_registry import canonical_resource_key
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInAmplifier,
     LockInAmplifierCapabilities,
@@ -117,6 +118,10 @@ from stoner_measurement.instruments.temperature_controller import (
     ZoneEntry,
 )
 from stoner_measurement.instruments.transport import NullTransport
+from stoner_measurement.instruments.transport.gpib_transport import (
+    GpibTransport,
+    PassThroughGpibTransport,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -2890,6 +2895,17 @@ class TestIdentityAndQueueClearing:
 class TestInstrumentLocking:
     """Tests for the RLock serialization of write/query/check_for_errors."""
 
+    class _KeyedTransport(NullTransport):
+        """Test helper transport exposing a configurable transport address."""
+
+        def __init__(self, address: str):
+            super().__init__()
+            self._address = address
+
+        @property
+        def transport_address(self) -> str:
+            return self._address
+
     def test_instrument_has_rlock(self):
         """BaseInstrument carries an RLock accessible as _lock."""
         import threading
@@ -2899,43 +2915,24 @@ class TestInstrumentLocking:
 
     def test_same_resource_key_shares_lock_object(self):
         """Two instruments with the same keyed transport share one lock."""
-
-        class _KeyedTransport(NullTransport):
-            def __init__(self, address: str):
-                super().__init__()
-                self._address = address
-
-            @property
-            def transport_address(self) -> str:
-                return self._address
-
-        first = BaseInstrument(_KeyedTransport(" gpib0::22::instr "), ScpiProtocol())
-        second = BaseInstrument(_KeyedTransport("GPIB0::22::INSTR"), ScpiProtocol())
+        first = BaseInstrument(self._KeyedTransport(" gpib0::22::instr "), ScpiProtocol())
+        second = BaseInstrument(self._KeyedTransport("GPIB0::22::INSTR"), ScpiProtocol())
 
         assert first._lock is second._lock
 
     def test_canonical_resource_key_normalises_case_and_whitespace(self):
         """canonical_resource_key strips and case-normalises addresses."""
-        from stoner_measurement.instruments.lock_registry import canonical_resource_key
 
         assert canonical_resource_key(" gpib0::22::instr ") == "gpib0::22::instr"
         assert canonical_resource_key("  ") is None
+        assert canonical_resource_key("\t\r\n") is None
+        assert canonical_resource_key("\nGpIb0::22::InStR\t") == "gpib0::22::instr"
         assert canonical_resource_key(None) is None
 
     def test_different_resource_keys_get_different_locks(self):
         """Two instruments with different keyed transports do not share a lock."""
-
-        class _KeyedTransport(NullTransport):
-            def __init__(self, address: str):
-                super().__init__()
-                self._address = address
-
-            @property
-            def transport_address(self) -> str:
-                return self._address
-
-        first = BaseInstrument(_KeyedTransport("GPIB0::22::INSTR"), ScpiProtocol())
-        second = BaseInstrument(_KeyedTransport("GPIB0::23::INSTR"), ScpiProtocol())
+        first = BaseInstrument(self._KeyedTransport("GPIB0::22::INSTR"), ScpiProtocol())
+        second = BaseInstrument(self._KeyedTransport("GPIB0::23::INSTR"), ScpiProtocol())
 
         assert first._lock is not second._lock
 
@@ -2948,11 +2945,6 @@ class TestInstrumentLocking:
 
     def test_gpib_and_passthrough_transports_share_lock_key(self):
         """6221 host and passthrough transports share one lock key/lock."""
-        from stoner_measurement.instruments.transport.gpib_transport import (
-            GpibTransport,
-            PassThroughGpibTransport,
-        )
-
         host_transport = GpibTransport(address=22)
         relay_transport = PassThroughGpibTransport(address=22)
 
