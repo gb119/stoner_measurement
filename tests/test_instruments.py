@@ -2897,6 +2897,64 @@ class TestInstrumentLocking:
         instr = BaseInstrument(NullTransport(), ScpiProtocol())
         assert isinstance(instr._lock, type(threading.RLock()))
 
+    def test_same_resource_key_shares_lock_object(self):
+        """Two instruments with the same keyed transport share one lock."""
+
+        class _KeyedTransport(NullTransport):
+            def __init__(self, address: str):
+                super().__init__()
+                self._address = address
+
+            @property
+            def transport_address(self) -> str:
+                return self._address
+
+        first = BaseInstrument(_KeyedTransport(" gpib0::22::instr "), ScpiProtocol())
+        second = BaseInstrument(_KeyedTransport("GPIB0::22::INSTR"), ScpiProtocol())
+
+        assert first._lock is second._lock
+
+    def test_different_resource_keys_get_different_locks(self):
+        """Two instruments with different keyed transports do not share a lock."""
+
+        class _KeyedTransport(NullTransport):
+            def __init__(self, address: str):
+                super().__init__()
+                self._address = address
+
+            @property
+            def transport_address(self) -> str:
+                return self._address
+
+        first = BaseInstrument(_KeyedTransport("GPIB0::22::INSTR"), ScpiProtocol())
+        second = BaseInstrument(_KeyedTransport("GPIB0::23::INSTR"), ScpiProtocol())
+
+        assert first._lock is not second._lock
+
+    def test_unkeyed_transports_keep_per_instance_lock(self):
+        """Empty/unkeyed transport addresses use per-instance locks."""
+        first = BaseInstrument(NullTransport(), ScpiProtocol())
+        second = BaseInstrument(NullTransport(), ScpiProtocol())
+
+        assert first._lock is not second._lock
+
+    def test_gpib_and_passthrough_transports_share_lock_key(self):
+        """6221 host and passthrough transports share one lock key/lock."""
+        from stoner_measurement.instruments.transport.gpib_transport import (
+            GpibTransport,
+            PassThroughGpibTransport,
+        )
+
+        host_transport = GpibTransport(address=22)
+        relay_transport = PassThroughGpibTransport(address=22)
+
+        assert host_transport.lock_key == relay_transport.lock_key
+
+        host_instr = BaseInstrument(host_transport, ScpiProtocol())
+        relay_instr = BaseInstrument(relay_transport, ScpiProtocol())
+
+        assert host_instr._lock is relay_instr._lock
+
     def test_connect_flushes_transport(self):
         """connect() calls transport.flush() after opening the transport."""
 
