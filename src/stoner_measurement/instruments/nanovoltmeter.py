@@ -269,6 +269,42 @@ class Nanovoltmeter(BaseInstrument):
             "Check get_capabilities().has_filter before calling this method."
         )
 
+    def set_digits(self, digits: int) -> None:
+        """Set display/data resolution digits.
+
+        Raises:
+            NotImplementedError:
+                If digit-resolution control is not supported by the instrument.
+        """
+        _ = digits
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support digit-resolution configuration."
+        )
+
+    def set_analog_filter_enabled(self, state: bool) -> None:
+        """Enable or disable analogue low-pass filtering.
+
+        Raises:
+            NotImplementedError:
+                If analogue filtering is not supported by the instrument.
+        """
+        _ = state
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support analogue filter configuration."
+        )
+
+    def set_relative_enabled(self, state: bool) -> None:
+        """Enable or disable relative (REL) mode.
+
+        Raises:
+            NotImplementedError:
+                If relative mode is not supported by the instrument.
+        """
+        _ = state
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support relative-mode configuration."
+        )
+
     def get_trigger_source(self) -> NanovoltmeterTriggerSource:
         """Return the trigger source selection.
 
@@ -387,4 +423,38 @@ class Nanovoltmeter(BaseInstrument):
         raise NotImplementedError(
             f"{type(self).__name__} does not support reading buffer operations. "
             "Check get_capabilities().has_buffer before calling this method."
+        )
+
+    def set_buffer_size(self, size: int) -> None:
+        """Set reading-buffer capacity.
+
+        Raises:
+            NotImplementedError:
+                If buffer sizing is not supported by the instrument.
+        """
+        _ = size
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support buffer-size configuration."
+        )
+
+    def set_buffer_feed_sense(self) -> None:
+        """Set buffer feed source to measurement readings.
+
+        Raises:
+            NotImplementedError:
+                If configurable buffer feed source is not supported.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support buffer feed-source configuration."
+        )
+
+    def set_buffer_feed_continuous_next(self) -> None:
+        """Set buffer feed mode to continuous-next.
+
+        Raises:
+            NotImplementedError:
+                If configurable buffer feed mode is not supported.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support buffer feed-mode configuration."
         )

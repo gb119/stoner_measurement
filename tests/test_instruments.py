@@ -1237,7 +1237,7 @@ class TestKeithley6221:
             b":SOUR:SWE:SPAC LIST\n",
             b":SOUR:LIST:CURR 0.001,0.002,0.003\n",
             b":SOUR:SWE:POIN 3\n",
-            b":SOUR:DEL 0.0\n",
+            b":SOUR:LIST:DEL 0.0,0.0,0.0\n",
         ]
 
     def test_list_sweep_empty_values_raises(self):
@@ -1264,13 +1264,19 @@ class TestKeithley6221:
         k = Keithley6221(transport=t)
         k.sweep_start()
         k.sweep_abort()
-        assert t.write_log == [b":SOUR:SWE:ARM\n", b":SOUR:SWE:ABOR\n"]
+        assert t.write_log == [
+            b":OUTP:STAT 1\n",
+            b":SOUR:SWE:ARM\n",
+            b":INIT:IMM\n",
+            b":SOUR:SWE:ABOR\n",
+            b":ABOR\n",
+        ]
 
     def test_get_operating_status(self):
         t = _null([b"4\n"])
         k = Keithley6221(transport=t)
         assert k.get_operating_status() == 4
-        assert t.write_log == [b":STAT:OPER:COND?\n"]
+        assert t.write_log == [b":STAT:OPER:EVEN?\n"]
 
     def test_sweep_status_helpers(self):
         t = _null([b"2\n", b"4\n"])
@@ -1292,7 +1298,7 @@ class TestKeithley6221:
             b":SOUR:SWE:SPAC LIST\n",
             b":SOUR:LIST:CURR 0.001,0.002,0.003\n",
             b":SOUR:SWE:POIN 3\n",
-            b":SOUR:DEL 0.0\n",
+            b":SOUR:LIST:DEL 0.0,0.0,0.0\n",
             b":SOUR:PULS:STAT 1\n",
             b":SOUR:PULS:WIDT 0.001\n",
             b":SOUR:PULS:DEL 0.005\n",
@@ -1353,7 +1359,6 @@ class TestKeithley6221:
             b":SOUR:WAVE:PMAR:OLIN?\n",
             b":TRIG:ILIN 2\n",
             b":TRIG:OLIN 1\n",
-            b":TRIG:DIR ACC\n",
         ]
 
     def test_configure_trigger_link_olin_blocks_input(self):
@@ -1369,7 +1374,6 @@ class TestKeithley6221:
             b":TRIG:OLIN 3\n",  # temporary move to free line 3
             b":TRIG:ILIN 2\n",
             b":TRIG:OLIN 1\n",
-            b":TRIG:DIR ACC\n",
         ]
 
     def test_configure_trigger_link_pmar_blocks_input(self):
@@ -1385,7 +1389,6 @@ class TestKeithley6221:
             b":TRIG:ILIN 2\n",
             b":SOUR:WAVE:PMAR:OLIN 4\n",
             b":TRIG:OLIN 1\n",
-            b":TRIG:DIR ACC\n",
         ]
 
     def test_configure_trigger_link_pmar_blocks_output(self):
@@ -1401,7 +1404,6 @@ class TestKeithley6221:
             b":TRIG:ILIN 2\n",
             b":SOUR:WAVE:PMAR:OLIN 4\n",  # move pmar away from line 1
             b":TRIG:OLIN 1\n",
-            b":TRIG:DIR ACC\n",
         ]
 
     def test_configure_trigger_link_both_conflicts(self):
@@ -1419,7 +1421,6 @@ class TestKeithley6221:
             b":TRIG:ILIN 2\n",
             b":SOUR:WAVE:PMAR:OLIN 4\n",  # move pmar away from line 1
             b":TRIG:OLIN 1\n",
-            b":TRIG:DIR ACC\n",
         ]
 
     def test_serial_relay_helpers(self):
@@ -1462,7 +1463,7 @@ class TestKeithley6221:
             b":SOUR:SWE:SPAC LIST\n",
             b":SOUR:LIST:CURR 0.001,0.002,0.003\n",
             b":SOUR:SWE:POIN 3\n",
-            b":SOUR:DEL 0.01\n",
+            b":SOUR:LIST:DEL 0.01,0.01,0.01\n",
         ]
 
     def test_list_sweep_batching_over_100_points(self):

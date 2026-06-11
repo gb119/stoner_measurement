@@ -469,3 +469,115 @@ class CurrentSource(BaseInstrument):
             f"{type(self).__name__} does not support pulsed sweeps. "
             "Check get_capabilities().has_pulsed_sweep before calling this method."
         )
+
+    def configure_list_compliance(self, values: list[float]) -> None:
+        """Configure per-point compliance values for list sweeps.
+
+        Raises:
+            NotImplementedError:
+                If per-point compliance lists are not supported by the driver.
+        """
+        _ = values
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support per-point compliance lists."
+        )
+
+    def set_sweep_range_mode(self, mode: str) -> None:
+        """Set current-range behaviour during sweeps.
+
+        Raises:
+            NotImplementedError:
+                If sweep range mode is not supported by the driver.
+        """
+        _ = mode
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support sweep range mode selection."
+        )
+
+    def set_fixed_range(self, value: float) -> None:
+        """Set a fixed current range for source output.
+
+        Raises:
+            NotImplementedError:
+                If fixed source range configuration is not supported by the driver.
+        """
+        _ = value
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support fixed source range configuration."
+        )
+
+    def set_sweep_count(self, count: int) -> None:
+        """Set sweep repeat count.
+
+        Raises:
+            NotImplementedError:
+                If sweep repeat count is not supported by the driver.
+        """
+        _ = count
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support explicit sweep repeat counts."
+        )
+
+    def configure_arm(
+        self,
+        source: str = "IMM",
+        bypass: bool = False,
+        time: float = 0,
+        direction: str = "ACC",
+        tlink_in: int | None = None,
+        tlink_out: int | None = None,
+        output: str = "None",
+    ) -> None:
+        """Configure the instrument arm layer.
+
+        Raises:
+            NotImplementedError:
+                If arming configuration is not supported by the driver.
+        """
+        _ = (source, bypass, time, direction, tlink_in, tlink_out, output)
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support arm-layer configuration."
+        )
+
+    def configure_trigger(
+        self,
+        source: str = "IMM",
+        bypass: bool = False,
+        direction: str = "ACC",
+        tlink_in: int | None = None,
+        tlink_out: int | None = None,
+        output: str = "None",
+    ) -> None:
+        """Configure the instrument trigger layer.
+
+        Raises:
+            NotImplementedError:
+                If trigger-layer configuration is not supported by the driver.
+        """
+        _ = (source, bypass, direction, tlink_in, tlink_out, output)
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support trigger-layer configuration."
+        )
+
+    def configure_trigger_link(self, output_line: int, input_line: int) -> None:
+        """Configure hardware trigger-link line routing.
+
+        Raises:
+            NotImplementedError:
+                If trigger-link routing is not supported by the driver.
+        """
+        _ = (output_line, input_line)
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support trigger-link routing configuration."
+        )
+
+    def get_operating_status(self) -> int:
+        """Read an instrument operating-status register value.
+
+        Raises:
+            NotImplementedError:
+                If operating-status queries are not supported by the driver.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support operating-status queries."
+        )

@@ -40,9 +40,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.instruments.current_source import CurrentSource
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
-from stoner_measurement.instruments.nanovoltmeter import NanovoltmeterTriggerSource
+from stoner_measurement.instruments.nanovoltmeter import (
+    Nanovoltmeter,
+    NanovoltmeterTriggerSource,
+)
 from stoner_measurement.instruments.transport.gpib_transport import (
     GpibTransport,
     PassThroughGpibTransport,
@@ -306,8 +310,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._input_tlink: int = 2
 
         # Runtime state — populated in connect()
-        self._k6221: Keithley6221 | None = None
-        self._k2182a: Keithley2182A | None = None
+        self._k6221: CurrentSource | None = None
+        self._k2182a: Nanovoltmeter | None = None
         self._sweep_values: np.ndarray | None = None
         self._apply_initial_config()
 

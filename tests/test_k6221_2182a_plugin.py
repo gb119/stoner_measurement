@@ -312,12 +312,17 @@ class TestExecute:
         assert points == [(1e-3, 0.1), (2e-3, 0.2)]
         plugin._k6221.sweep_start.assert_called_once_with()
         plugin._k2182a.initiate.assert_called_once_with()
-        assert plugin._k6221.enable_output.call_args_list[:2] == [call(True), call(False)]
+        assert plugin._k6221.enable_output.call_args_list[:1] == [call(False)]
         plugin._k2182a.read_buffer.assert_called_once_with(count=2)
         plugin._k2182a.clear_buffer.assert_called_once_with()
         assert plugin._k6221.get_operating_status.call_count == 3
         plugin._k2182a.get_buffer_count.assert_not_called()
-        sleep_mock.assert_has_calls([call(0.25), call(plugin._post_sweep_delay())])
+        assert sleep_mock.call_args_list == [
+            call(plugin._post_sweep_delay()),
+            call(0.25),
+            call(0.25),
+            call(plugin._post_sweep_delay()),
+        ]
 
     def test_execute_retries_buffer_read_until_final_measurement_arrives(self, qapp):
         from unittest.mock import MagicMock, patch
