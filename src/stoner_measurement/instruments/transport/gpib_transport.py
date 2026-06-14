@@ -322,6 +322,18 @@ class GpibTransport(BaseTransport):
         except pyvisa.VisaIOError as exc:
             logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)
 
+    def send_group_execute_trigger(self) -> None:
+        """Send an IEEE-488 GET (Group Execute Trigger) for this instrument."""
+        if self._resource is None:
+            raise ConnectionError("GPIB transport is not open.")
+        import pyvisa
+
+        try:
+            self._resource.assert_trigger()
+            self._log_comms_traffic("IEEE", "GET asserted.")
+        except pyvisa.VisaIOError as exc:
+            raise ConnectionError(f"Cannot assert GET on {self.resource_string!r}: {exc}") from exc
+
 
 class PassThroughGpibTransport(GpibTransport):
     """Passthrough Keithley 6221 GPIB transport.

@@ -69,6 +69,29 @@ class LockInOutputChannel(Enum):
     R = "R"
 
 
+class LockInOutput(Enum):
+    """Measured output component selection for lock-in readback."""
+
+    X = "X"
+    Y = "Y"
+    R = "R"
+    THETA = "THETA"
+
+    @property
+    def unit(self) -> str:
+        """Return the physical unit for this output component."""
+        return "°" if self is LockInOutput.THETA else "V"
+
+    def offset_channel(self) -> LockInOutputChannel | None:
+        """Return the corresponding offset channel, when supported."""
+        mapping = {
+            LockInOutput.X: LockInOutputChannel.X,
+            LockInOutput.Y: LockInOutputChannel.Y,
+            LockInOutput.R: LockInOutputChannel.R,
+        }
+        return mapping.get(self)
+
+
 class LockInExpandFactor(Enum):
     """Expand factor for output offset operations."""
 

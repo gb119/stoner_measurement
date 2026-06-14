@@ -32,6 +32,12 @@ from stoner_measurement.plugins.trace.k6221_2182a import (
     Keithley6221_2182APlugin,
     SourceRangeMode,
 )
+from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
+    Keithley6221_MultiSR830Plugin,
+    LockInOutput,
+    ResistanceCurrentMode,
+    WaveformScanMode,
+)
 
 __all__ = [
     "COLUMN_ROLE_D",
@@ -44,10 +50,14 @@ __all__ = [
     "DataFrameTracePlugin",
     "DummyPlugin",
     "Keithley6221_2182APlugin",
+    "Keithley6221_MultiSR830Plugin",
+    "LockInOutput",
     "SourceRangeMode",
+    "ResistanceCurrentMode",
     "TraceData",
     "TracePlugin",
     "TraceStatus",
+    "WaveformScanMode",
     "_ScanPage",
     "_ScanTabContainer",
 ]

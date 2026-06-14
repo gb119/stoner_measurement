@@ -10,6 +10,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInInputShielding,
     LockInInputSource,
     LockInLineFilter,
+    LockInOutput,
     LockInOutputChannel,
     LockInReferenceSource,
     LockInReserveMode,
@@ -108,6 +109,21 @@ class SRS830(LockInAmplifier):
         """Initialise the SR830 driver, defaulting to :class:`ScpiProtocol`."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
 
+    @classmethod
+    def supported_time_constants(cls) -> tuple[float, ...]:
+        """Return the supported SR830 time-constant values in seconds."""
+        return cls._TIME_CONSTANTS
+
+    @classmethod
+    def supported_sensitivities(cls) -> tuple[float, ...]:
+        """Return the supported SR830 sensitivity values in volts."""
+        return cls._SENSITIVITIES
+
+    @classmethod
+    def supported_filter_slopes(cls) -> tuple[int, ...]:
+        """Return the supported SR830 filter slopes in dB/octave."""
+        return cls._FILTER_SLOPES
+
     @staticmethod
     def _parse_csv_pair(values: str) -> tuple[float, float]:
         """Parse a comma-separated two-value numeric response."""
@@ -119,6 +135,18 @@ class SRS830(LockInAmplifier):
             return float(tokens[0]), float(tokens[1])
         except ValueError as exc:
             raise ValueError(f"Malformed dual-output response: {values!r}") from exc
+
+    @staticmethod
+    def _parse_csv_values(values: str, expected: int) -> tuple[float, ...]:
+        """Parse a comma-separated fixed-size numeric response."""
+        stripped = values.strip()
+        tokens = [token.strip() for token in stripped.split(",")]
+        if len(tokens) != expected or "" in tokens:
+            raise ValueError(f"Malformed {expected}-value response: {values!r}")
+        try:
+            return tuple(float(token) for token in tokens)
+        except ValueError as exc:
+            raise ValueError(f"Malformed {expected}-value response: {values!r}") from exc
 
     @staticmethod
     def _decode_indexed_value(index: int, values: tuple[float, ...], *, name: str) -> float:
@@ -181,6 +209,36 @@ class SRS830(LockInAmplifier):
                 ``(r, theta)`` where ``r`` is in volts and ``theta`` is in degrees.
         """
         return self._parse_csv_pair(self.query("SNAP?3,4"))
+
+    def measure_outputs(self, outputs: tuple[LockInOutput, ...]) -> dict[LockInOutput, float]:
+        """Measure one or more outputs and return a keyed mapping.
+
+        Args:
+            outputs (tuple[LockInOutput, ...]):
+                Ordered output selection to return. Duplicate entries are
+                ignored while preserving first-occurrence order.
+
+        Returns:
+            (dict[LockInOutput, float]):
+                Mapping from each requested output to its measured value.
+        """
+        requested = tuple(dict.fromkeys(outputs))
+        if not requested:
+            raise ValueError("At least one output must be requested.")
+        channel_map = {
+            LockInOutput.X: 1,
+            LockInOutput.Y: 2,
+            LockInOutput.R: 3,
+            LockInOutput.THETA: 4,
+        }
+        unsupported = [o for o in requested if o not in channel_map]
+        if unsupported:
+            raise ValueError(
+                f"Unsupported output(s): {unsupported!r}. Must be one of {list(channel_map)!r}."
+            )
+        channel_codes = ",".join(str(channel_map[output]) for output in requested)
+        values = self._parse_csv_values(self.query(f"SNAP?{channel_codes}"), expected=len(requested))
+        return {output: float(value) for output, value in zip(requested, values, strict=True)}
 
     def get_sensitivity(self) -> float:
         """Return the active input sensitivity scale in volts.

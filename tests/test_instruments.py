@@ -70,6 +70,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInInputShielding,
     LockInInputSource,
     LockInLineFilter,
+    LockInOutput,
     LockInOutputChannel,
     LockInReferenceSource,
     LockInReserveMode,
@@ -918,6 +919,15 @@ class TestSRS830:
         assert k.measure_xy() == pytest.approx((1.0, -2.0))
         assert k.measure_rt() == pytest.approx((3.0, 45.0))
 
+    def test_multi_output_measurement(self):
+        t = _null(responses=[b"1.0,3.0,45.0\n"])
+        k = SRS830(transport=t)
+        values = k.measure_outputs((LockInOutput.X, LockInOutput.R, LockInOutput.THETA))
+        assert values[LockInOutput.X] == pytest.approx(1.0)
+        assert values[LockInOutput.R] == pytest.approx(3.0)
+        assert values[LockInOutput.THETA] == pytest.approx(45.0)
+        assert t.write_log == [b"SNAP?1,3,4\n"]
+
     def test_getters(self):
         t = _null(responses=[b"8\n", b"10\n", b"1\n", b"137.0\n", b"-12.5\n", b"3\n", b"2\n", b"1\n", b"2\n"])
         k = SRS830(transport=t)
@@ -1176,26 +1186,42 @@ class TestKeithley6221:
         assert t.write_log == [b":OUTP:STAT?\n", b":OUTP:STAT 0\n"]
 
     def test_waveform_frequency_and_offset(self):
-        t = _null(responses=[b"SIN\n", b"13.7\n", b"1.0E-4\n"])
+        t = _null(responses=[b"SIN\n", b"2.5E-3\n", b"13.7\n", b"1.0E-4\n", b"1\n", b"4\n"])
         k = Keithley6221(transport=t)
         assert k.get_waveform() is CurrentWaveform.SINE
+        assert k.get_waveform_amplitude() == pytest.approx(2.5e-3)
         assert k.get_frequency() == pytest.approx(13.7)
         assert k.get_offset_current() == pytest.approx(1.0e-4)
+        assert k.phase_marker_enabled() is True
+        assert k.get_phase_marker_output_line() == 4
         k.set_waveform(CurrentWaveform.DC)
+        k.set_waveform_amplitude(2e-3)
         k.set_frequency(17.0)
         k.set_offset_current(-2.0e-4)
+        k.enable_phase_marker(False)
+        k.set_phase_marker_output_line(3)
         assert t.write_log == [
             b":SOUR:WAVE:FUNC?\n",
+            b":SOUR:WAVE:AMPL?\n",
             b":SOUR:WAVE:FREQ?\n",
             b":SOUR:WAVE:OFFS?\n",
+            b":SOUR:WAVE:PMAR:STAT?\n",
+            b":SOUR:WAVE:PMAR:OLIN?\n",
             b":SOUR:WAVE:FUNC DC\n",
+            b":SOUR:WAVE:AMPL 0.002\n",
             b":SOUR:WAVE:FREQ 17.0\n",
             b":SOUR:WAVE:OFFS -0.0002\n",
+            b":SOUR:WAVE:PMAR:STAT 0\n",
+            b":SOUR:WAVE:PMAR:OLIN 3\n",
         ]
 
     def test_set_frequency_validation(self):
         with pytest.raises(ValueError, match="positive"):
             Keithley6221(transport=_null()).set_frequency(0.0)
+        with pytest.raises(ValueError, match="non-negative"):
+            Keithley6221(transport=_null()).set_waveform_amplitude(-1.0)
+        with pytest.raises(ValueError, match="range 1..6"):
+            Keithley6221(transport=_null()).set_phase_marker_output_line(0)
 
     def test_get_capabilities(self):
         caps = Keithley6221(transport=_null()).get_capabilities()
@@ -3366,6 +3392,7 @@ class TestGpibProtocolTermination:
                 self.timeout = None
                 self.read_termination = None
                 self.send_end = None
+                self.trigger_count = 0
 
             def close(self):
                 pass
@@ -3378,6 +3405,9 @@ class TestGpibProtocolTermination:
 
             def read_raw(self, _num_bytes=4096):
                 return b""
+
+            def assert_trigger(self):
+                self.trigger_count += 1
 
         class _FakeResourceManager:
             def __init__(self, resource):
@@ -3422,6 +3452,21 @@ class TestGpibProtocolTermination:
         transport.set_protocol(OxfordProtocol())
         assert resource.read_termination == "\r"
         assert resource.send_end is True
+        transport.close()
+
+    def test_gpib_send_group_execute_trigger(self, monkeypatch):
+        pytest.importorskip("pyvisa")
+        import pyvisa
+
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        resource, rm_factory = self._make_fake_gpib_resource_manager()
+        monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
+
+        transport = GpibTransport(address=22)
+        transport.open()
+        transport.send_group_execute_trigger()
+        assert resource.trigger_count == 1
         transport.close()
 
 
