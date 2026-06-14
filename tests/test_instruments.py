@@ -70,6 +70,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInInputShielding,
     LockInInputSource,
     LockInLineFilter,
+    LockInOutput,
     LockInOutputChannel,
     LockInReferenceSource,
     LockInReserveMode,
@@ -917,6 +918,14 @@ class TestSRS830:
         k = SRS830(transport=t)
         assert k.measure_xy() == pytest.approx((1.0, -2.0))
         assert k.measure_rt() == pytest.approx((3.0, 45.0))
+
+    def test_multi_output_measurement(self):
+        t = _null(responses=[b"1.0,-2.0,3.0,45.0\n"])
+        k = SRS830(transport=t)
+        values = k.measure_outputs((LockInOutput.X, LockInOutput.R, LockInOutput.THETA))
+        assert values[LockInOutput.X] == pytest.approx(1.0)
+        assert values[LockInOutput.R] == pytest.approx(3.0)
+        assert values[LockInOutput.THETA] == pytest.approx(45.0)
 
     def test_getters(self):
         t = _null(responses=[b"8\n", b"10\n", b"1\n", b"137.0\n", b"-12.5\n", b"3\n", b"2\n", b"1\n", b"2\n"])
@@ -3382,6 +3391,7 @@ class TestGpibProtocolTermination:
                 self.timeout = None
                 self.read_termination = None
                 self.send_end = None
+                self.trigger_count = 0
 
             def close(self):
                 pass
@@ -3394,6 +3404,9 @@ class TestGpibProtocolTermination:
 
             def read_raw(self, _num_bytes=4096):
                 return b""
+
+            def assert_trigger(self):
+                self.trigger_count += 1
 
         class _FakeResourceManager:
             def __init__(self, resource):
@@ -3438,6 +3451,21 @@ class TestGpibProtocolTermination:
         transport.set_protocol(OxfordProtocol())
         assert resource.read_termination == "\r"
         assert resource.send_end is True
+        transport.close()
+
+    def test_gpib_send_group_execute_trigger(self, monkeypatch):
+        pytest.importorskip("pyvisa")
+        import pyvisa
+
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        resource, rm_factory = self._make_fake_gpib_resource_manager()
+        monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
+
+        transport = GpibTransport(address=22)
+        transport.open()
+        transport.send_group_execute_trigger()
+        assert resource.trigger_count == 1
         transport.close()
 
 

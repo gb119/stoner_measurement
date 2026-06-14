@@ -98,7 +98,7 @@ class LockInEntry:
     offset_pct: float = 0.0
     expand: LockInExpandFactor = LockInExpandFactor.X1
     reserve_mode: LockInReserveMode = LockInReserveMode.NORMAL
-    output: LockInOutput = LockInOutput.X
+    outputs: tuple[LockInOutput, ...] = (LockInOutput.X,)
 
     def to_json(self) -> dict[str, Any]:
         """Return a JSON-friendly representation of this entry."""
@@ -109,7 +109,7 @@ class LockInEntry:
             "offset_pct": self.offset_pct,
             "expand": int(self.expand.value),
             "reserve_mode": self.reserve_mode.value,
-            "output": self.output.value,
+            "outputs": [output.value for output in self.outputs],
         }
 
 
@@ -118,6 +118,7 @@ class ChannelSpec:
     """Static description of one output channel emitted by the plugin."""
 
     lockin_index: int
+    output: LockInOutput
     name: str
     unit: str
     derived_resistance: bool = False
@@ -127,7 +128,7 @@ class ChannelSpec:
 class LockInReading:
     """One SR830 reading plus the value used for auto-sensitivity decisions."""
 
-    output_value: float
+    output_values: dict[LockInOutput, float]
     ratio_signal: float
 
 
@@ -208,7 +209,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         """Return the default dependent-axis unit."""
         if not self._lockin_entries:
             return "V"
-        return self._lockin_entries[0].output.unit
+        return self._lockin_entries[0].outputs[0].unit
 
     @property
     def channel_names(self) -> list[str]:
@@ -333,9 +334,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 lockin.set_input_coupling(self._input_coupling)
                 lockin.set_sensitivity(entry.sensitivity)
                 lockin.set_reserve_mode(entry.reserve_mode)
-                offset_channel = entry.output.offset_channel()
-                if offset_channel is not None:
-                    lockin.set_output_offset(offset_channel, entry.offset_pct, entry.expand)
+                for output in entry.outputs:
+                    offset_channel = output.offset_channel()
+                    if offset_channel is not None:
+                        lockin.set_output_offset(offset_channel, entry.offset_pct, entry.expand)
         except Exception:
             self._set_status(TraceStatus.ERROR)
             raise
@@ -544,7 +546,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         lockins_table = QTableWidget(lockins_group)
         lockins_table.setColumnCount(7)
         lockins_table.setHorizontalHeaderLabels(
-            ["Label", "Resource", "Output", "Sensitivity", "Offset (%)", "Expand", "Reserve"]
+            ["Label", "Resource", "Outputs", "Sensitivity", "Offset (%)", "Expand", "Reserve"]
         )
         lockins_table.verticalHeader().setVisible(False)
         for column in range(7):
@@ -573,10 +575,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 )
                 lockins_table.setCellWidget(row, 1, resource_widget)
 
-                output_combo = QComboBox()
-                for output in LockInOutput:
-                    output_combo.addItem(output.value, output)
-                output_combo.setCurrentIndex(output_combo.findData(entry.output))
+                outputs_edit = QLineEdit(", ".join(output.value for output in entry.outputs))
 
                 sensitivity_combo = SIComboBox(unit="V")
                 for value in _SR830_SENSITIVITIES:
@@ -599,22 +598,25 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 reserve_combo.addItem("Low noise", LockInReserveMode.LOW_NOISE)
                 reserve_combo.setCurrentIndex(reserve_combo.findData(entry.reserve_mode))
 
-                def _sync_output(
-                    index: int,
+                def _sync_outputs(
+                    text: str,
                     *,
                     idx=row,
-                    combo=output_combo,
+                    output_widget=outputs_edit,
                     offset_widget=offset_local,
                     expand_widget=expand_combo,
                 ) -> None:
-                    output = combo.itemData(index)
-                    if isinstance(output, LockInOutput):
-                        self._lockin_entries[idx].output = output
-                        supports_offset = output.offset_channel() is not None
-                        offset_widget.setEnabled(supports_offset)
-                        expand_widget.setEnabled(supports_offset)
+                    try:
+                        outputs = self._parse_outputs(text)
+                    except ValueError:
+                        output_widget.setText(", ".join(output.value for output in self._lockin_entries[idx].outputs))
+                        outputs = self._lockin_entries[idx].outputs
+                    self._lockin_entries[idx].outputs = outputs
+                    supports_offset = any(output.offset_channel() is not None for output in outputs)
+                    offset_widget.setEnabled(supports_offset)
+                    expand_widget.setEnabled(supports_offset)
 
-                output_combo.currentIndexChanged.connect(_sync_output)
+                outputs_edit.editingFinished.connect(lambda *, edit=outputs_edit: _sync_outputs(edit.text()))
                 sensitivity_combo.valueChanged.connect(
                     lambda value, *, idx=row: setattr(self._lockin_entries[idx], "sensitivity", float(value))
                 )
@@ -632,12 +634,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     )
                 )
 
-                lockins_table.setCellWidget(row, 2, output_combo)
+                lockins_table.setCellWidget(row, 2, outputs_edit)
                 lockins_table.setCellWidget(row, 3, sensitivity_combo)
                 lockins_table.setCellWidget(row, 4, offset_local)
                 lockins_table.setCellWidget(row, 5, expand_combo)
                 lockins_table.setCellWidget(row, 6, reserve_combo)
-                _sync_output(output_combo.currentIndex(), idx=row)
+                _sync_outputs(outputs_edit.text(), idx=row)
 
             lockins_table.blockSignals(False)
 
@@ -690,16 +692,20 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         specs: list[ChannelSpec] = []
         for index, entry in enumerate(self._lockin_entries):
             base_name = entry.label.strip() or f"LIA {index + 1}"
-            specs.append(ChannelSpec(lockin_index=index, name=base_name, unit=entry.output.unit))
-            if self._resistance_enabled and entry.output is not LockInOutput.THETA:
-                specs.append(
-                    ChannelSpec(
-                        lockin_index=index,
-                        name=f"{base_name} resistance",
-                        unit="Ω",
-                        derived_resistance=True,
+            append_suffix = len(entry.outputs) > 1
+            for output in entry.outputs:
+                output_name = f"{base_name} {output.value}" if append_suffix else base_name
+                specs.append(ChannelSpec(lockin_index=index, output=output, name=output_name, unit=output.unit))
+                if self._resistance_enabled and output is not LockInOutput.THETA:
+                    specs.append(
+                        ChannelSpec(
+                            lockin_index=index,
+                            output=output,
+                            name=f"{output_name} resistance",
+                            unit="Ω",
+                            derived_resistance=True,
+                        )
                     )
-                )
         return specs
 
     def _validate_configuration(self) -> None:
@@ -737,6 +743,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 raise ValueError(f"Lock-in {label!r} must have a non-empty resource string.")
             if entry.sensitivity not in _SR830_SENSITIVITIES:
                 raise ValueError(f"Lock-in {label!r} sensitivity must be one of {_SR830_SENSITIVITIES!r}.")
+            if not 1 <= len(entry.outputs) <= 4:
+                raise ValueError(f"Lock-in {label!r} must define between 1 and 4 outputs.")
+            if len(set(entry.outputs)) != len(entry.outputs):
+                raise ValueError(f"Lock-in {label!r} outputs must be unique.")
             labels.append(label)
             resources.append(resource)
 
@@ -781,10 +791,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 for spec in specs:
                     entry = self._lockin_entries[spec.lockin_index]
                     reading = readings[entry.resource]
+                    output_value = reading.output_values[spec.output]
                     if spec.derived_resistance:
-                        value = self._convert_to_resistance(reading.output_value, current_amplitude)
+                        value = self._convert_to_resistance(output_value, current_amplitude)
                     else:
-                        value = reading.output_value
+                        value = output_value
                     channel_values[spec.name].append(float(value))
         finally:
             self._k6221.enable_output(False)
@@ -816,18 +827,19 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._last_read_at[entry.resource] = timestamp
 
     def _read_lockins(self) -> dict[str, LockInReading]:
+        self._trigger_gpib_lockins()
         readings: dict[str, LockInReading] = {}
         for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
-            if entry.output in {LockInOutput.X, LockInOutput.Y}:
-                x_value, y_value = lockin.measure_xy()
-                output_value = x_value if entry.output is LockInOutput.X else y_value
-                ratio_signal = abs(output_value)
-            else:
-                r_value, theta_value = lockin.measure_rt()
-                output_value = r_value if entry.output is LockInOutput.R else theta_value
-                ratio_signal = abs(r_value)
-            readings[entry.resource] = LockInReading(float(output_value), float(ratio_signal))
+            output_values = lockin.measure_outputs(entry.outputs)
+            ratio_signal = abs(output_values[LockInOutput.R])
+            readings[entry.resource] = LockInReading(output_values, float(ratio_signal))
         return readings
+
+    def _trigger_gpib_lockins(self) -> None:
+        for lockin in self._lockins:
+            transport = lockin.transport
+            if isinstance(transport, GpibTransport):
+                transport.send_group_execute_trigger()
 
     def _apply_auto_sensitivity(self, readings: dict[str, LockInReading]) -> None:
         if not self._auto_sensitivity_enabled:
@@ -889,8 +901,44 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 LockInReserveMode.NORMAL,
                 "reserve_mode",
             ),
-            output=self._parse_enum(LockInOutput, data.get("output", LockInOutput.X.value), LockInOutput.X, "output"),
+            outputs=self._restore_lockin_outputs(data),
         )
+
+    def _restore_lockin_outputs(self, data: dict[str, Any]) -> tuple[LockInOutput, ...]:
+        values = data.get("outputs", data.get("output", [LockInOutput.X.value]))
+        try:
+            return self._parse_outputs(values)
+        except ValueError:
+            self._log.warning("Unknown output selection %r in saved config; falling back to %s.", values, LockInOutput.X)
+            return (LockInOutput.X,)
+
+    @staticmethod
+    def _parse_outputs(value: Any) -> tuple[LockInOutput, ...]:
+        if isinstance(value, str):
+            tokens = [token.strip() for token in value.replace(";", ",").split(",") if token.strip()]
+        elif isinstance(value, list):
+            tokens = [token for token in value if str(token).strip()]
+        elif isinstance(value, tuple):
+            tokens = [token for token in value if str(token).strip()]
+        else:
+            raise ValueError(f"Unsupported output selection format: {type(value).__name__}")
+        if not tokens:
+            raise ValueError("At least one output must be selected.")
+        parsed: list[LockInOutput] = []
+        for token in tokens:
+            if isinstance(token, LockInOutput):
+                parsed.append(token)
+                continue
+            key = str(token).strip().upper()
+            if key == "T":
+                key = "THETA"
+            parsed.append(LockInOutput(key))
+        if len(parsed) > 4:
+            raise ValueError("At most four outputs can be selected.")
+        deduped = tuple(dict.fromkeys(parsed))
+        if not deduped:
+            raise ValueError("At least one output must be selected.")
+        return deduped
 
     def _parse_enum(self, enum_type, value: Any, default: Any, field_name: str):
         try:

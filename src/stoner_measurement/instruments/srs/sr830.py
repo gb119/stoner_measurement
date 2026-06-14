@@ -10,6 +10,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInInputShielding,
     LockInInputSource,
     LockInLineFilter,
+    LockInOutput,
     LockInOutputChannel,
     LockInReferenceSource,
     LockInReserveMode,
@@ -136,6 +137,18 @@ class SRS830(LockInAmplifier):
             raise ValueError(f"Malformed dual-output response: {values!r}") from exc
 
     @staticmethod
+    def _parse_csv_values(values: str, expected: int) -> tuple[float, ...]:
+        """Parse a comma-separated fixed-size numeric response."""
+        stripped = values.strip()
+        tokens = [token.strip() for token in stripped.split(",")]
+        if len(tokens) != expected or "" in tokens:
+            raise ValueError(f"Malformed {expected}-value response: {values!r}")
+        try:
+            return tuple(float(token) for token in tokens)
+        except ValueError as exc:
+            raise ValueError(f"Malformed {expected}-value response: {values!r}") from exc
+
+    @staticmethod
     def _decode_indexed_value(index: int, values: tuple[float, ...], *, name: str) -> float:
         """Decode a returned numeric code into a value from a lookup table."""
         if index < 0 or index >= len(values):
@@ -196,6 +209,26 @@ class SRS830(LockInAmplifier):
                 ``(r, theta)`` where ``r`` is in volts and ``theta`` is in degrees.
         """
         return self._parse_csv_pair(self.query("SNAP?3,4"))
+
+    def measure_outputs(self, outputs: tuple[LockInOutput, ...]) -> dict[LockInOutput, float]:
+        """Measure one or more outputs and return a keyed mapping.
+
+        Args:
+            outputs (tuple[LockInOutput, ...]):
+                Ordered output selection to return.
+
+        Returns:
+            (dict[LockInOutput, float]):
+                Mapping from each requested output to its measured value.
+        """
+        x_value, y_value, r_value, theta_value = self._parse_csv_values(self.query("SNAP?1,2,3,4"), expected=4)
+        values = {
+            LockInOutput.X: x_value,
+            LockInOutput.Y: y_value,
+            LockInOutput.R: r_value,
+            LockInOutput.THETA: theta_value,
+        }
+        return {output: float(values[output]) for output in outputs}
 
     def get_sensitivity(self) -> float:
         """Return the active input sensitivity scale in volts.

@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from PyQt6.QtWidgets import QGroupBox, QTableWidget, QWidget
 
+from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
     Keithley6221_MultiSR830Plugin,
@@ -54,8 +55,8 @@ class TestJsonRoundTrip:
         plugin._resistance_enabled = True
         plugin._resistance_mode = ResistanceCurrentMode.RMS
         plugin._lockin_entries = [
-            LockInEntry(label="X1", resource="GPIB0::8::INSTR", output=LockInOutput.X),
-            LockInEntry(label="T2", resource="GPIB0::9::INSTR", output=LockInOutput.THETA),
+            LockInEntry(label="X1", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,)),
+            LockInEntry(label="T2", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)),
         ]
 
         restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
@@ -66,7 +67,21 @@ class TestJsonRoundTrip:
         assert restored._auto_sensitivity_enabled is True
         assert restored._resistance_mode is ResistanceCurrentMode.RMS
         assert [entry.label for entry in restored._lockin_entries] == ["X1", "T2"]
-        assert [entry.output for entry in restored._lockin_entries] == [LockInOutput.X, LockInOutput.THETA]
+        assert [entry.outputs for entry in restored._lockin_entries] == [
+            (LockInOutput.X,),
+            (LockInOutput.THETA,),
+        ]
+
+    def test_restore_legacy_single_output_field(self, qapp):
+        restored = BasePlugin.from_json(
+            {
+                "__plugin_type__": "trace",
+                "name": "k6221_multi_sr830",
+                "lockins": [{"label": "LIA 1", "resource": "GPIB0::8::INSTR", "output": "R"}],
+            }
+        )
+        assert isinstance(restored, Keithley6221_MultiSR830Plugin)
+        assert restored._lockin_entries[0].outputs == (LockInOutput.R,)
 
 
 class TestUi:
@@ -95,8 +110,8 @@ class TestConfiguration:
         plugin._time_constant = 3.0
         plugin._filter_slope = 18
         plugin._lockin_entries = [
-            LockInEntry(label="A", resource="GPIB0::8::INSTR", output=LockInOutput.X),
-            LockInEntry(label="B", resource="GPIB0::9::INSTR", output=LockInOutput.THETA),
+            LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,)),
+            LockInEntry(label="B", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)),
         ]
         plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1, 0.2]))
         plugin._k6221 = MagicMock()
@@ -130,9 +145,14 @@ class TestRateLimitAndAutoSensitivity:
         plugin._sweep_values = np.array([1.0])
         plugin._k6221 = MagicMock()
         lockin = MagicMock()
-        lockin.measure_xy.return_value = (0.1, 0.2)
+        lockin.measure_outputs.return_value = {
+            LockInOutput.X: 0.1,
+            LockInOutput.Y: 0.2,
+            LockInOutput.R: 0.3,
+            LockInOutput.THETA: 45.0,
+        }
         plugin._lockins = [lockin]
-        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR", output=LockInOutput.X)]
+        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))]
         plugin._time_constant = 2.0
         plugin._read_rate_multiple = 2.0
         plugin._last_read_at = {"GPIB0::8::INSTR": 9.0}
@@ -153,13 +173,17 @@ class TestRateLimitAndAutoSensitivity:
         plugin._lockin_entries = [entry]
         lockin = MagicMock()
         plugin._lockins = [lockin]
-        plugin._apply_auto_sensitivity({entry.resource: LockInReading(output_value=5e-5, ratio_signal=5e-5)})
+        plugin._apply_auto_sensitivity(
+            {entry.resource: LockInReading(output_values={LockInOutput.R: 5e-5}, ratio_signal=5e-5)}
+        )
         assert entry.sensitivity == pytest.approx(5e-4)
         lockin.set_sensitivity.assert_called_once_with(5e-4)
 
         lockin.reset_mock()
         entry.sensitivity = 1e-3
-        plugin._apply_auto_sensitivity({entry.resource: LockInReading(output_value=0.95e-3, ratio_signal=0.95e-3)})
+        plugin._apply_auto_sensitivity(
+            {entry.resource: LockInReading(output_values={LockInOutput.R: 0.95e-3}, ratio_signal=0.95e-3)}
+        )
         assert entry.sensitivity == pytest.approx(2e-3)
         lockin.set_sensitivity.assert_called_once_with(2e-3)
 
@@ -173,8 +197,8 @@ class TestRateLimitAndAutoSensitivity:
 
         plugin._apply_auto_sensitivity(
             {
-                low_entry.resource: LockInReading(output_value=1e-12, ratio_signal=1e-12),
-                high_entry.resource: LockInReading(output_value=2.0, ratio_signal=2.0),
+                low_entry.resource: LockInReading(output_values={LockInOutput.R: 1e-12}, ratio_signal=1e-12),
+                high_entry.resource: LockInReading(output_values={LockInOutput.R: 2.0}, ratio_signal=2.0),
             }
         )
 
@@ -187,8 +211,8 @@ class TestChannelsAndResistance:
         plugin = _make_plugin()
         plugin._resistance_enabled = True
         plugin._lockin_entries = [
-            LockInEntry(label="X label", resource="GPIB0::8::INSTR", output=LockInOutput.X),
-            LockInEntry(label="Theta label", resource="GPIB0::9::INSTR", output=LockInOutput.THETA),
+            LockInEntry(label="X label", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,)),
+            LockInEntry(label="Theta label", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)),
         ]
 
         assert plugin.channel_names == ["X label", "X label resistance", "Theta label"]
@@ -196,7 +220,7 @@ class TestChannelsAndResistance:
     def test_measure_returns_multi_channel_data_with_units(self, qapp):
         plugin = _make_plugin()
         plugin._resistance_enabled = True
-        plugin._lockin_entries = [LockInEntry(label="X label", resource="GPIB0::8::INSTR", output=LockInOutput.X)]
+        plugin._lockin_entries = [LockInEntry(label="X label", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))]
         specs = plugin._channel_specs()
 
         with patch.object(
@@ -226,3 +250,43 @@ class TestChannelsAndResistance:
 
         plugin._resistance_mode = ResistanceCurrentMode.PEAK_TO_PEAK
         assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(1.0)
+
+    def test_multi_output_channel_labelling(self, qapp):
+        plugin = _make_plugin()
+        plugin._resistance_enabled = True
+        plugin._lockin_entries = [
+            LockInEntry(
+                label="LIA",
+                resource="GPIB0::8::INSTR",
+                outputs=(LockInOutput.X, LockInOutput.R, LockInOutput.THETA),
+            )
+        ]
+        assert plugin.channel_names == [
+            "LIA X",
+            "LIA X resistance",
+            "LIA R",
+            "LIA R resistance",
+            "LIA THETA",
+        ]
+
+
+class TestGpibTrigger:
+    def test_read_lockins_asserts_get_for_gpib_transports(self, qapp):
+        pytest.importorskip("pyvisa")
+        plugin = _make_plugin()
+        transport = GpibTransport(address=8)
+        transport.send_group_execute_trigger = MagicMock()
+        lockin = MagicMock()
+        lockin.transport = transport
+        lockin.measure_outputs.return_value = {
+            LockInOutput.X: 1.0,
+            LockInOutput.Y: 2.0,
+            LockInOutput.R: 3.0,
+            LockInOutput.THETA: 4.0,
+        }
+        plugin._lockins = [lockin]
+        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))]
+        readings = plugin._read_lockins()
+
+        transport.send_group_execute_trigger.assert_called_once_with()
+        assert readings["GPIB0::8::INSTR"].output_values[LockInOutput.X] == pytest.approx(1.0)
