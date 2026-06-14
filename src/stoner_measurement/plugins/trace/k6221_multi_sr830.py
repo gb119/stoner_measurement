@@ -851,7 +851,14 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         add_button.clicked.connect(_add_lockin)
         remove_button.clicked.connect(_remove_selected_lockin)
-        auto_offset_button.clicked.connect(self.auto_offset)
+
+        def _safe_auto_offset() -> None:
+            try:
+                self.auto_offset()
+            except RuntimeError as exc:
+                self._log.warning("Auto-offset not available: %s", exc)
+
+        auto_offset_button.clicked.connect(_safe_auto_offset)
         _refresh_lockin_table()
 
         buttons_layout = QHBoxLayout()

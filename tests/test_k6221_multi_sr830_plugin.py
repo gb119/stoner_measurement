@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from PyQt6.QtWidgets import QCheckBox, QTabWidget, QTableWidget, QWidget
 
+from stoner_measurement.instruments.lockin_amplifier import LockInLineFilter
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
@@ -92,7 +93,7 @@ class TestJsonRoundTrip:
 
     def test_round_trip_preserves_new_fields(self, qapp):
         plugin = _make_plugin()
-        plugin._line_filter_value = "LINE"
+        plugin._line_filter = LockInLineFilter.LINE
         plugin._offset_enabled = True
         plugin._source_range_mode = "FIXED"
         plugin._lockin_entries = [
@@ -110,6 +111,7 @@ class TestJsonRoundTrip:
         restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
         assert isinstance(restored, Keithley6221_MultiSR830Plugin)
         assert restored._offset_enabled is True
+        assert restored._line_filter is LockInLineFilter.LINE
         assert restored._source_range_mode == "FIXED"
         entry = restored._lockin_entries[0]
         assert entry.harmonic == 3
