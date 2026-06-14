@@ -231,6 +231,11 @@ class SRS830(LockInAmplifier):
             LockInOutput.R: 3,
             LockInOutput.THETA: 4,
         }
+        unsupported = [o for o in requested if o not in channel_map]
+        if unsupported:
+            raise ValueError(
+                f"Unsupported output(s): {unsupported!r}. Must be one of {list(channel_map)!r}."
+            )
         channel_codes = ",".join(str(channel_map[output]) for output in requested)
         values = self._parse_csv_values(self.query(f"SNAP?{channel_codes}"), expected=len(requested))
         return {output: float(value) for output, value in zip(requested, values, strict=True)}

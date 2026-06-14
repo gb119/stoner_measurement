@@ -267,9 +267,42 @@ class TestChannelsAndResistance:
         ]
 
 
+class TestParseOutputs:
+    def test_t_alias_for_theta(self):
+        result = Keithley6221_MultiSR830Plugin._parse_outputs("T")
+        assert result == (LockInOutput.THETA,)
+
+    def test_lowercase_tokens(self):
+        result = Keithley6221_MultiSR830Plugin._parse_outputs("x, y, r, theta")
+        assert result == (LockInOutput.X, LockInOutput.Y, LockInOutput.R, LockInOutput.THETA)
+
+    def test_whitespace_handling(self):
+        result = Keithley6221_MultiSR830Plugin._parse_outputs("  X ,  T  ")
+        assert result == (LockInOutput.X, LockInOutput.THETA)
+
+    def test_mixed_alias_and_canonical(self):
+        result = Keithley6221_MultiSR830Plugin._parse_outputs("X, T, R")
+        assert result == (LockInOutput.X, LockInOutput.THETA, LockInOutput.R)
+
+    def test_deduplication(self):
+        result = Keithley6221_MultiSR830Plugin._parse_outputs("X, x, X")
+        assert result == (LockInOutput.X,)
+
+    def test_enum_passthrough(self):
+        result = Keithley6221_MultiSR830Plugin._parse_outputs((LockInOutput.R, LockInOutput.THETA))
+        assert result == (LockInOutput.R, LockInOutput.THETA)
+
+    def test_invalid_token_raises(self):
+        with pytest.raises(ValueError):
+            Keithley6221_MultiSR830Plugin._parse_outputs("INVALID")
+
+    def test_empty_raises(self):
+        with pytest.raises(ValueError, match="At least one output"):
+            Keithley6221_MultiSR830Plugin._parse_outputs("")
+
+
 class TestGpibTrigger:
     def test_read_lockins_asserts_get_for_gpib_transports(self, qapp):
-        pytest.importorskip("pyvisa")
         plugin = _make_plugin()
         transport = GpibTransport(address=8)
         transport.send_group_execute_trigger = MagicMock()
