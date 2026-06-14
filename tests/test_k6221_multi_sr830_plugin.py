@@ -286,4 +286,5 @@ class TestGpibTrigger:
         readings = plugin._read_lockins()
 
         transport.send_group_execute_trigger.assert_called_once_with()
+        lockin.measure_outputs.assert_called_once_with((LockInOutput.X, LockInOutput.R))
         assert readings["GPIB0::8::INSTR"].output_values[LockInOutput.X] == pytest.approx(1.0)

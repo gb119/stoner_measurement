@@ -807,8 +807,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._trigger_gpib_lockins()
         readings: dict[str, LockInReading] = {}
         for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
-            output_values = lockin.measure_outputs(entry.outputs)
-            ratio_signal = abs(output_values[LockInOutput.R])
+            requested_outputs = entry.outputs
+            if LockInOutput.R not in requested_outputs:
+                requested_outputs = (*requested_outputs, LockInOutput.R)
+            measured_values = lockin.measure_outputs(requested_outputs)
+            output_values = {output: float(measured_values[output]) for output in entry.outputs}
+            ratio_signal = abs(float(measured_values[LockInOutput.R]))
             readings[entry.resource] = LockInReading(output_values, float(ratio_signal))
         return readings
 

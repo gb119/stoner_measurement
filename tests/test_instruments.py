@@ -920,12 +920,13 @@ class TestSRS830:
         assert k.measure_rt() == pytest.approx((3.0, 45.0))
 
     def test_multi_output_measurement(self):
-        t = _null(responses=[b"1.0,-2.0,3.0,45.0\n"])
+        t = _null(responses=[b"1.0,3.0,45.0\n"])
         k = SRS830(transport=t)
         values = k.measure_outputs((LockInOutput.X, LockInOutput.R, LockInOutput.THETA))
         assert values[LockInOutput.X] == pytest.approx(1.0)
         assert values[LockInOutput.R] == pytest.approx(3.0)
         assert values[LockInOutput.THETA] == pytest.approx(45.0)
+        assert t.write_log == [b"SNAP?1,3,4\n"]
 
     def test_getters(self):
         t = _null(responses=[b"8\n", b"10\n", b"1\n", b"137.0\n", b"-12.5\n", b"3\n", b"2\n", b"1\n", b"2\n"])

@@ -221,14 +221,18 @@ class SRS830(LockInAmplifier):
             (dict[LockInOutput, float]):
                 Mapping from each requested output to its measured value.
         """
-        x_value, y_value, r_value, theta_value = self._parse_csv_values(self.query("SNAP?1,2,3,4"), expected=4)
-        values = {
-            LockInOutput.X: x_value,
-            LockInOutput.Y: y_value,
-            LockInOutput.R: r_value,
-            LockInOutput.THETA: theta_value,
+        requested = tuple(dict.fromkeys(outputs))
+        if not requested:
+            raise ValueError("At least one output must be requested.")
+        channel_map = {
+            LockInOutput.X: 1,
+            LockInOutput.Y: 2,
+            LockInOutput.R: 3,
+            LockInOutput.THETA: 4,
         }
-        return {output: float(values[output]) for output in outputs}
+        channel_codes = ",".join(str(channel_map[output]) for output in requested)
+        values = self._parse_csv_values(self.query(f"SNAP?{channel_codes}"), expected=len(requested))
+        return {output: float(value) for output, value in zip(requested, values, strict=True)}
 
     def get_sensitivity(self) -> float:
         """Return the active input sensitivity scale in volts.
