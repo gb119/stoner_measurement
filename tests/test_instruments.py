@@ -1176,26 +1176,42 @@ class TestKeithley6221:
         assert t.write_log == [b":OUTP:STAT?\n", b":OUTP:STAT 0\n"]
 
     def test_waveform_frequency_and_offset(self):
-        t = _null(responses=[b"SIN\n", b"13.7\n", b"1.0E-4\n"])
+        t = _null(responses=[b"SIN\n", b"2.5E-3\n", b"13.7\n", b"1.0E-4\n", b"1\n", b"4\n"])
         k = Keithley6221(transport=t)
         assert k.get_waveform() is CurrentWaveform.SINE
+        assert k.get_waveform_amplitude() == pytest.approx(2.5e-3)
         assert k.get_frequency() == pytest.approx(13.7)
         assert k.get_offset_current() == pytest.approx(1.0e-4)
+        assert k.phase_marker_enabled() is True
+        assert k.get_phase_marker_output_line() == 4
         k.set_waveform(CurrentWaveform.DC)
+        k.set_waveform_amplitude(2e-3)
         k.set_frequency(17.0)
         k.set_offset_current(-2.0e-4)
+        k.enable_phase_marker(False)
+        k.set_phase_marker_output_line(3)
         assert t.write_log == [
             b":SOUR:WAVE:FUNC?\n",
+            b":SOUR:WAVE:AMPL?\n",
             b":SOUR:WAVE:FREQ?\n",
             b":SOUR:WAVE:OFFS?\n",
+            b":SOUR:WAVE:PMAR:STAT?\n",
+            b":SOUR:WAVE:PMAR:OLIN?\n",
             b":SOUR:WAVE:FUNC DC\n",
+            b":SOUR:WAVE:AMPL 0.002\n",
             b":SOUR:WAVE:FREQ 17.0\n",
             b":SOUR:WAVE:OFFS -0.0002\n",
+            b":SOUR:WAVE:PMAR:STAT 0\n",
+            b":SOUR:WAVE:PMAR:OLIN 3\n",
         ]
 
     def test_set_frequency_validation(self):
         with pytest.raises(ValueError, match="positive"):
             Keithley6221(transport=_null()).set_frequency(0.0)
+        with pytest.raises(ValueError, match="non-negative"):
+            Keithley6221(transport=_null()).set_waveform_amplitude(-1.0)
+        with pytest.raises(ValueError, match="range 1..6"):
+            Keithley6221(transport=_null()).set_phase_marker_output_line(0)
 
     def test_get_capabilities(self):
         caps = Keithley6221(transport=_null()).get_capabilities()

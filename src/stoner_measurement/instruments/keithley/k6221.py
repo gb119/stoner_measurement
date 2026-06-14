@@ -135,6 +135,16 @@ class Keithley6221(CurrentSource):
         """Return AC waveform frequency in Hz."""
         return float(self.query(":SOUR:WAVE:FREQ?"))
 
+    def get_waveform_amplitude(self) -> float:
+        """Return AC waveform amplitude in amps."""
+        return float(self.query(":SOUR:WAVE:AMPL?"))
+
+    def set_waveform_amplitude(self, value: float) -> None:
+        """Set AC waveform amplitude in amps."""
+        if value < 0.0:
+            raise ValueError("Waveform amplitude must be non-negative.")
+        self.write(f":SOUR:WAVE:AMPL {value}")
+
     def set_frequency(self, value: float) -> None:
         """Set AC waveform frequency in Hz."""
         if value <= 0.0:
@@ -148,6 +158,28 @@ class Keithley6221(CurrentSource):
     def set_offset_current(self, value: float) -> None:
         """Set AC waveform DC offset current in amps."""
         self.write(f":SOUR:WAVE:OFFS {value}")
+
+    def phase_marker_enabled(self) -> bool:
+        """Return ``True`` if the waveform phase marker is enabled."""
+        return self.query(":SOUR:WAVE:PMAR:STAT?").strip() == "1"
+
+    def enable_phase_marker(self, state: bool) -> None:
+        """Enable or disable the waveform phase-marker output."""
+        self.write(f":SOUR:WAVE:PMAR:STAT {1 if state else 0}")
+
+    def get_phase_marker_output_line(self) -> int:
+        """Return the configured phase-marker trigger-link output line."""
+        return int(float(self.query(":SOUR:WAVE:PMAR:OLIN?").strip()))
+
+    def validate_phase_marker_output_line(self, output_line: int) -> None:
+        """Validate a requested phase-marker output line number."""
+        if not 1 <= output_line <= 6:
+            raise ValueError("output_line must be in the range 1..6.")
+
+    def set_phase_marker_output_line(self, output_line: int) -> None:
+        """Set the phase-marker trigger-link output line."""
+        self.validate_phase_marker_output_line(output_line)
+        self.write(f":SOUR:WAVE:PMAR:OLIN {output_line}")
 
     def configure_sweep(self, config: CurrentSweepConfiguration) -> None:
         """Configure a built-in current sweep.
