@@ -173,14 +173,17 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     @property
     def name(self) -> str:
+        """Return the unique plugin identifier."""
         return "k6221_multi_sr830"
 
     @property
     def trace_title(self) -> str:
+        """Return the human-readable trace title."""
         return "6221 + multi-SR830"
 
     @property
     def x_label(self) -> str:
+        """Return the label for the scanned 6221 sine parameter."""
         labels = {
             WaveformScanMode.AMPLITUDE: "Current amplitude",
             WaveformScanMode.OFFSET: "Current offset",
@@ -190,29 +193,35 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     @property
     def x_units(self) -> str:
+        """Return the unit for the scanned 6221 sine parameter."""
         return "Hz" if self._scan_mode is WaveformScanMode.FREQUENCY else "A"
 
     @property
     def y_label(self) -> str:
+        """Return the default dependent-axis label."""
         if not self._lockin_entries:
             return "Signal"
         return self._lockin_entries[0].label.strip() or "Signal"
 
     @property
     def y_units(self) -> str:
+        """Return the default dependent-axis unit."""
         if not self._lockin_entries:
             return "V"
         return self._lockin_entries[0].output.unit
 
     @property
     def channel_names(self) -> list[str]:
+        """Return the ordered list of emitted lock-in channel names."""
         return [spec.name for spec in self._channel_specs()]
 
     def set_scan_generator_class(self, cls) -> None:
+        """Replace the scan generator class and update the displayed units."""
         super().set_scan_generator_class(cls)
         self._apply_scan_units()
 
     def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
+        """Acquire the configured scan and return one trace per labelled channel."""
         self._set_status(TraceStatus.MEASURING)
         try:
             x_values, channel_values, specs = self._acquire_trace(parameters)
@@ -235,6 +244,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return data
 
     def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
+        """Acquire the scan and yield ``(x, y)`` pairs for the first channel."""
         x_values, channel_values, specs = self._acquire_trace(parameters)
         if not specs:
             return
@@ -243,12 +253,14 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             yield float(x_value), float(y_value)
 
     def execute_multichannel(self, parameters: dict[str, Any]) -> Generator[tuple[str, float, float]]:
+        """Acquire the scan and yield ``(channel, x, y)`` tuples for every channel."""
         x_values, channel_values, specs = self._acquire_trace(parameters)
         for spec in specs:
             for x_value, y_value in zip(x_values, channel_values[spec.name], strict=True):
                 yield spec.name, float(x_value), float(y_value)
 
     def connect(self) -> None:
+        """Open the 6221 and all configured SR830 connections."""
         self._validate_configuration()
         self._set_status(TraceStatus.CONNECTING)
         transports: list[GpibTransport] = []
@@ -292,6 +304,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._set_status(TraceStatus.IDLE)
 
     def configure(self) -> None:
+        """Apply the stored 6221 and SR830 settings to the connected hardware."""
         if self._k6221 is None or not self._lockins:
             raise RuntimeError("Not connected — call connect() before configure().")
 
@@ -329,6 +342,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._set_status(TraceStatus.IDLE)
 
     def disconnect(self) -> None:
+        """Disable the 6221 output and close all active instrument sessions."""
         self._set_status(TraceStatus.DISCONNECTING)
         if self._k6221 is not None:
             try:
@@ -351,6 +365,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._set_status(TraceStatus.IDLE)
 
     def to_json(self) -> dict[str, Any]:
+        """Serialise the plugin configuration to a JSON-compatible dictionary."""
         data = super().to_json()
         data.update(
             {
