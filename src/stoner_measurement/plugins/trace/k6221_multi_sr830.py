@@ -44,6 +44,9 @@ from stoner_measurement.ui.widgets import FILTER_GPIB, SIComboBox, SISpinBox, Vi
 
 _CLEANUP_EXCEPTIONS: tuple[type[Exception], ...] = (OSError, RuntimeError, pyvisa.Error)
 _ZERO_CURRENT_THRESHOLD: float = 1e-30
+_SR830_TIME_CONSTANTS: tuple[float, ...] = SRS830.supported_time_constants()
+_SR830_SENSITIVITIES: tuple[float, ...] = SRS830.supported_sensitivities()
+_SR830_FILTER_SLOPES: tuple[int, ...] = SRS830.supported_filter_slopes()
 
 
 class WaveformScanMode(enum.Enum):
@@ -306,7 +309,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._k6221.set_waveform_amplitude(self._waveform_amplitude)
             self._k6221.set_offset_current(self._waveform_offset)
             self._k6221.set_frequency(self._waveform_frequency)
-            self._k6221.validate_phase_marker_output_line(self._phase_marker_tlink)
             self._k6221.set_phase_marker_output_line(self._phase_marker_tlink)
             self._k6221.enable_phase_marker(True)
 
@@ -471,13 +473,13 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         common_form = QFormLayout(common_group)
 
         time_constant_combo = SIComboBox(unit="s")
-        for value in SRS830._TIME_CONSTANTS:
+        for value in _SR830_TIME_CONSTANTS:
             time_constant_combo.addValueItem(value)
         time_constant_combo.setFloatValue(self._time_constant)
         time_constant_combo.valueChanged.connect(lambda value: setattr(self, "_time_constant", float(value)))
 
         slope_combo = QComboBox()
-        for slope in SRS830._FILTER_SLOPES:
+        for slope in _SR830_FILTER_SLOPES:
             slope_combo.addItem(f"{slope} dB/oct", slope)
         slope_combo.setCurrentIndex(slope_combo.findData(self._filter_slope))
         slope_combo.currentIndexChanged.connect(
@@ -562,7 +564,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 output_combo.setCurrentIndex(output_combo.findData(entry.output))
 
                 sensitivity_combo = SIComboBox(unit="V")
-                for value in SRS830._SENSITIVITIES:
+                for value in _SR830_SENSITIVITIES:
                     sensitivity_combo.addValueItem(value)
                 sensitivity_combo.setFloatValue(entry.sensitivity)
 
@@ -704,10 +706,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             raise ValueError("Auto-sensitivity high threshold must lie between 0 and 1.")
         if self._auto_sensitivity_low >= self._auto_sensitivity_high:
             raise ValueError("Auto-sensitivity low threshold must be lower than the high threshold.")
-        if self._filter_slope not in SRS830._FILTER_SLOPES:
-            raise ValueError(f"Filter slope must be one of {SRS830._FILTER_SLOPES!r}.")
-        if self._time_constant not in SRS830._TIME_CONSTANTS:
-            raise ValueError(f"Time constant must be one of {SRS830._TIME_CONSTANTS!r}.")
+        if self._filter_slope not in _SR830_FILTER_SLOPES:
+            raise ValueError(f"Filter slope must be one of {_SR830_FILTER_SLOPES!r}.")
+        if self._time_constant not in _SR830_TIME_CONSTANTS:
+            raise ValueError(f"Time constant must be one of {_SR830_TIME_CONSTANTS!r}.")
 
         labels: list[str] = []
         resources: list[str] = []
@@ -718,8 +720,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 raise ValueError(f"Lock-in {index} must have a non-empty label.")
             if not resource:
                 raise ValueError(f"Lock-in {label!r} must have a non-empty resource string.")
-            if entry.sensitivity not in SRS830._SENSITIVITIES:
-                raise ValueError(f"Lock-in {label!r} sensitivity must be one of {SRS830._SENSITIVITIES!r}.")
+            if entry.sensitivity not in _SR830_SENSITIVITIES:
+                raise ValueError(f"Lock-in {label!r} sensitivity must be one of {_SR830_SENSITIVITIES!r}.")
             labels.append(label)
             resources.append(resource)
 
@@ -815,7 +817,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _apply_auto_sensitivity(self, readings: dict[str, LockInReading]) -> None:
         if not self._auto_sensitivity_enabled:
             return
-        sensitivities = SRS830._SENSITIVITIES
+        sensitivities = _SR830_SENSITIVITIES
         for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
             reading = readings[entry.resource]
             if entry.sensitivity <= 0.0:
@@ -846,7 +848,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             current = amplitude / math.sqrt(2.0)
         elif self._resistance_mode is ResistanceCurrentMode.PEAK_TO_PEAK:
             current = amplitude * 2.0
-        if current <= _ZERO_CURRENT_THRESHOLD:
+        if abs(current) <= _ZERO_CURRENT_THRESHOLD:
             return float("nan")
         return signal / current
 

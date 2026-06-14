@@ -108,6 +108,21 @@ class SRS830(LockInAmplifier):
         """Initialise the SR830 driver, defaulting to :class:`ScpiProtocol`."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
 
+    @classmethod
+    def supported_time_constants(cls) -> tuple[float, ...]:
+        """Return the supported SR830 time-constant values in seconds."""
+        return cls._TIME_CONSTANTS
+
+    @classmethod
+    def supported_sensitivities(cls) -> tuple[float, ...]:
+        """Return the supported SR830 sensitivity values in volts."""
+        return cls._SENSITIVITIES
+
+    @classmethod
+    def supported_filter_slopes(cls) -> tuple[int, ...]:
+        """Return the supported SR830 filter slopes in dB/octave."""
+        return cls._FILTER_SLOPES
+
     @staticmethod
     def _parse_csv_pair(values: str) -> tuple[float, float]:
         """Parse a comma-separated two-value numeric response."""
