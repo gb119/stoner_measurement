@@ -215,7 +215,8 @@ class SRS830(LockInAmplifier):
 
         Args:
             outputs (tuple[LockInOutput, ...]):
-                Ordered output selection to return.
+                Ordered output selection to return. Duplicate entries are
+                ignored while preserving first-occurrence order.
 
         Returns:
             (dict[LockInOutput, float]):

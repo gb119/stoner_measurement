@@ -895,6 +895,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     @staticmethod
     def _parse_outputs(value: Any) -> tuple[LockInOutput, ...]:
+        """Parse lock-in output selections from text or serialised data.
+
+        Notes:
+            The shorthand token ``"T"`` is accepted as an alias for
+            ``"THETA"`` in text input fields.
+        """
         if isinstance(value, str):
             tokens = [token.strip() for token in value.replace(";", ",").split(",") if token.strip()]
         elif isinstance(value, list):
