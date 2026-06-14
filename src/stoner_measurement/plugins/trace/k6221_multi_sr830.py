@@ -32,7 +32,7 @@ from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInExpandFactor,
     LockInInputCoupling,
-    LockInOutputChannel,
+    LockInOutput,
     LockInReferenceSource,
     LockInReserveMode,
 )
@@ -55,29 +55,6 @@ class WaveformScanMode(enum.Enum):
     AMPLITUDE = "amplitude"
     OFFSET = "offset"
     FREQUENCY = "frequency"
-
-
-class LockInOutput(enum.Enum):
-    """SR830 output component exposed by one lock-in channel."""
-
-    X = "X"
-    Y = "Y"
-    R = "R"
-    THETA = "THETA"
-
-    @property
-    def unit(self) -> str:
-        """Return the physical unit of the selected output."""
-        return "°" if self is LockInOutput.THETA else "V"
-
-    def offset_channel(self) -> LockInOutputChannel | None:
-        """Return the output-offset channel, if this output supports one."""
-        mapping = {
-            LockInOutput.X: LockInOutputChannel.X,
-            LockInOutput.Y: LockInOutputChannel.Y,
-            LockInOutput.R: LockInOutputChannel.R,
-        }
-        return mapping.get(self)
 
 
 class ResistanceCurrentMode(enum.Enum):

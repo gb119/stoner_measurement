@@ -73,13 +73,10 @@ class TestJsonRoundTrip:
         ]
 
     def test_restore_legacy_single_output_field(self, qapp):
-        restored = BasePlugin.from_json(
-            {
-                "__plugin_type__": "trace",
-                "name": "k6221_multi_sr830",
-                "lockins": [{"label": "LIA 1", "resource": "GPIB0::8::INSTR", "output": "R"}],
-            }
-        )
+        plugin = _make_plugin()
+        payload = plugin.to_json()
+        payload["lockins"] = [{"label": "LIA 1", "resource": "GPIB0::8::INSTR", "output": "R"}]
+        restored = BasePlugin.from_json(payload)
         assert isinstance(restored, Keithley6221_MultiSR830Plugin)
         assert restored._lockin_entries[0].outputs == (LockInOutput.R,)
 
