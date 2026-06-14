@@ -171,14 +171,14 @@ class Keithley6221(CurrentSource):
         """Return the configured phase-marker trigger-link output line."""
         return int(float(self.query(":SOUR:WAVE:PMAR:OLIN?").strip()))
 
-    def validate_phase_marker_output_line(self, output_line: int) -> None:
+    def _validate_phase_marker_output_line(self, output_line: int) -> None:
         """Validate a requested phase-marker output line number."""
         if not 1 <= output_line <= 6:
             raise ValueError("output_line must be in the range 1..6.")
 
     def set_phase_marker_output_line(self, output_line: int) -> None:
         """Set the phase-marker trigger-link output line."""
-        self.validate_phase_marker_output_line(output_line)
+        self._validate_phase_marker_output_line(output_line)
         self.write(f":SOUR:WAVE:PMAR:OLIN {output_line}")
 
     def configure_sweep(self, config: CurrentSweepConfiguration) -> None:

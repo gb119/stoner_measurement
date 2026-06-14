@@ -843,11 +843,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return abs(self._waveform_amplitude)
 
     def _convert_to_resistance(self, signal: float, amplitude: float) -> float:
-        current = amplitude
         if self._resistance_mode is ResistanceCurrentMode.RMS:
             current = amplitude / math.sqrt(2.0)
         elif self._resistance_mode is ResistanceCurrentMode.PEAK_TO_PEAK:
             current = amplitude * 2.0
+        else:
+            current = amplitude
         if abs(current) <= _ZERO_CURRENT_THRESHOLD:
             return float("nan")
         return signal / current
