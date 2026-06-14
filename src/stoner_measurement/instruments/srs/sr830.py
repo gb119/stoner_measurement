@@ -124,6 +124,21 @@ class SRS830(LockInAmplifier):
         """Return the supported SR830 filter slopes in dB/octave."""
         return cls._FILTER_SLOPES
 
+    @classmethod
+    def max_harmonic(cls) -> int:
+        """Return the maximum supported detection harmonic.
+
+        Returns:
+            (int):
+                Maximum harmonic number (19999 for the SR830).
+
+        Examples:
+            >>> from stoner_measurement.instruments.srs.sr830 import SRS830
+            >>> SRS830.max_harmonic()
+            19999
+        """
+        return cls._MAX_HARMONIC
+
     @staticmethod
     def _parse_csv_pair(values: str) -> tuple[float, float]:
         """Parse a comma-separated two-value numeric response."""
@@ -468,6 +483,27 @@ class SRS830(LockInAmplifier):
     def auto_reserve(self) -> None:
         """Execute the SR830 auto-reserve routine."""
         self.write("ARSV")
+
+    def auto_offset_channel(self, channel: LockInOutputChannel) -> None:
+        """Execute the SR830 auto-offset routine for a specified output channel.
+
+        Sets the offset for *channel* such that the current output reads zero.
+        The resulting offset percentage can be retrieved with
+        :meth:`get_output_offset`.
+
+        Args:
+            channel (LockInOutputChannel):
+                Output channel to auto-offset (X, Y, or R).
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> from stoner_measurement.instruments.srs.sr830 import SRS830
+            >>> from stoner_measurement.instruments.lockin_amplifier import LockInOutputChannel
+            >>> lia = SRS830(NullTransport())
+            >>> lia.auto_offset_channel(LockInOutputChannel.X)
+        """
+        channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
+        self.write(f"AOFF {channel_codes[channel]}")
 
     def get_oscillator_amplitude(self) -> float:
         """Return the internal oscillator sine output amplitude in volts.
