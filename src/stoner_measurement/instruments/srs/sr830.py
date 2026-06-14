@@ -495,6 +495,10 @@ class SRS830(LockInAmplifier):
             channel (LockInOutputChannel):
                 Output channel to auto-offset (X, Y, or R).
 
+        Raises:
+            ValueError:
+                If *channel* is not one of X, Y, or R (THETA does not support auto-offset).
+
         Examples:
             >>> from stoner_measurement.instruments.transport import NullTransport
             >>> from stoner_measurement.instruments.srs.sr830 import SRS830
@@ -503,6 +507,8 @@ class SRS830(LockInAmplifier):
             >>> lia.auto_offset_channel(LockInOutputChannel.X)
         """
         channel_codes = {LockInOutputChannel.X: 1, LockInOutputChannel.Y: 2, LockInOutputChannel.R: 3}
+        if channel not in channel_codes:
+            raise ValueError(f"Auto-offset is only supported for X, Y, and R channels; got {channel!r}.")
         self.write(f"AOFF {channel_codes[channel]}")
 
     def get_oscillator_amplitude(self) -> float:
