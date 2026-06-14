@@ -7,7 +7,7 @@ import logging
 import math
 import time
 from collections.abc import Generator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -22,7 +22,9 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QTableWidget,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -32,6 +34,7 @@ from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInExpandFactor,
     LockInInputCoupling,
+    LockInLineFilter,
     LockInOutput,
     LockInReferenceSource,
     LockInReserveMode,
@@ -47,6 +50,35 @@ _ZERO_CURRENT_THRESHOLD: float = 1e-30
 _SR830_TIME_CONSTANTS: tuple[float, ...] = SRS830.supported_time_constants()
 _SR830_SENSITIVITIES: tuple[float, ...] = SRS830.supported_sensitivities()
 _SR830_FILTER_SLOPES: tuple[int, ...] = SRS830.supported_filter_slopes()
+_SR830_MAX_HARMONIC: int = SRS830.max_harmonic()
+
+# Row indices for the transposed lock-in configuration table.
+_ROW_LABEL = 0
+_ROW_RESOURCE = 1
+_ROW_OUTPUTS = 2
+_ROW_SENSITIVITY = 3
+_ROW_AUTO_SENSITIVITY = 4
+_ROW_HARMONIC = 5
+_ROW_PHASE = 6
+_ROW_AUTO_PHASE = 7
+_ROW_OFFSET_PCT = 8
+_ROW_EXPAND = 9
+_ROW_RESERVE = 10
+_LOCKIN_TABLE_ROWS = 11
+
+_LOCKIN_ROW_LABELS: list[str] = [
+    "Label",
+    "Resource",
+    "Outputs",
+    "Sensitivity",
+    "Auto-sensitivity",
+    "Harmonic",
+    "Phase (\u00b0)",
+    "Auto-phase",
+    "Offset (%)",
+    "Expand",
+    "Reserve",
+]
 
 
 class WaveformScanMode(enum.Enum):
@@ -67,7 +99,37 @@ class ResistanceCurrentMode(enum.Enum):
 
 @dataclass
 class LockInEntry:
-    """Configuration for one SR830 instance."""
+    """Configuration for one SR830 instance.
+
+    Attributes:
+        label (str):
+            Human-readable name used to identify this lock-in's channels.
+        resource (str):
+            VISA resource string for the SR830 instrument.
+        sensitivity (float):
+            Initial input sensitivity in volts.
+        offset_pct (float):
+            Output offset as a percentage of full scale (−105 to +105).
+        expand (LockInExpandFactor):
+            Output expand factor.
+        reserve_mode (LockInReserveMode):
+            Dynamic reserve operating mode.
+        outputs (tuple[LockInOutput, ...]):
+            Ordered selection of outputs to record (1–4 unique values).
+        harmonic (int):
+            Detection harmonic (1 to :data:`_SR830_MAX_HARMONIC`).
+        phase (float):
+            Reference phase offset in degrees.
+        auto_phase (bool):
+            When ``True``, run auto-phase after settling during configure.
+        auto_sensitivity (bool):
+            When ``True``, this lock-in participates in dynamic auto-sensitivity
+            during measurement (subject to the plugin-level master enable).
+        auto_offsets (dict[str, float]):
+            Per-channel offset percentages populated by :meth:`~Keithley6221_MultiSR830Plugin.auto_offset`.
+            Keys are :class:`~stoner_measurement.instruments.lockin_amplifier.LockInOutputChannel`
+            value strings (``"X"``, ``"Y"``, ``"R"``).
+    """
 
     label: str = "LIA 1"
     resource: str = "GPIB0::8::INSTR"
@@ -76,6 +138,11 @@ class LockInEntry:
     expand: LockInExpandFactor = LockInExpandFactor.X1
     reserve_mode: LockInReserveMode = LockInReserveMode.NORMAL
     outputs: tuple[LockInOutput, ...] = (LockInOutput.X,)
+    harmonic: int = 1
+    phase: float = 0.0
+    auto_phase: bool = False
+    auto_sensitivity: bool = True
+    auto_offsets: dict[str, float] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
         """Return a JSON-friendly representation of this entry."""
@@ -87,6 +154,11 @@ class LockInEntry:
             "expand": int(self.expand.value),
             "reserve_mode": self.reserve_mode.value,
             "outputs": [output.value for output in self.outputs],
+            "harmonic": self.harmonic,
+            "phase": self.phase,
+            "auto_phase": self.auto_phase,
+            "auto_sensitivity": self.auto_sensitivity,
+            "auto_offsets": dict(self.auto_offsets),
         }
 
 
@@ -112,29 +184,32 @@ class LockInReading:
 class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-name
     """Trace plugin for one 6221 source and multiple SR830 lock-ins."""
 
-    _scan_generator_class = FunctionScanGenerator
+    _scan_generator_class = ListScanGenerator
     _scan_generator_classes = [FunctionScanGenerator, SteppedScanGenerator, ListScanGenerator]
 
     def __init__(self, parent=None) -> None:
         """Initialise default connection, source, and lock-in settings."""
         super().__init__(parent)
         self._log = logging.getLogger(__name__)
-        self.scan_generator = FunctionScanGenerator(parent=self)
+        self.scan_generator = ListScanGenerator(parent=self)
 
         self._6221_resource: str = "GPIB0::13::INSTR"
-        self._scan_mode: WaveformScanMode = WaveformScanMode.AMPLITUDE
+        self._scan_mode: WaveformScanMode = WaveformScanMode.OFFSET
         self._waveform_amplitude: float = 1e-3
         self._waveform_offset: float = 0.0
-        self._waveform_frequency: float = 17.0
-        self._phase_marker_tlink: int = 3
+        self._waveform_frequency: float = 367.0
+        self._phase_marker_tlink: int = 4
 
         self._time_constant: float = 0.3
         self._filter_slope: int = 12
         self._input_coupling: LockInInputCoupling = LockInInputCoupling.AC
+        self._line_filter: LockInLineFilter = LockInLineFilter.NONE
         self._read_rate_multiple: float = 3.0
         self._auto_sensitivity_enabled: bool = False
         self._auto_sensitivity_low: float = 0.1
         self._auto_sensitivity_high: float = 0.9
+        self._offset_enabled: bool = False
+        self._source_range_mode: str = "BEST"
 
         self._resistance_enabled: bool = False
         self._resistance_mode: ResistanceCurrentMode = ResistanceCurrentMode.PEAK
@@ -146,6 +221,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._sweep_values: np.ndarray | None = None
         self._last_read_at: dict[str, float] = {}
 
+        self._report_channel_statistics = True
         self._apply_scan_units()
         self._apply_initial_config()
 
@@ -302,6 +378,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._k6221.set_frequency(self._waveform_frequency)
             self._k6221.set_phase_marker_output_line(self._phase_marker_tlink)
             self._k6221.enable_phase_marker(True)
+            self._apply_source_range()
 
             for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
                 lockin.reset()
@@ -309,16 +386,52 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 lockin.set_time_constant(self._time_constant)
                 lockin.set_filter_slope(self._filter_slope)
                 lockin.set_input_coupling(self._input_coupling)
+                lockin.set_line_filter(self._line_filter)
+                lockin.set_harmonic(entry.harmonic)
+                lockin.set_reference_phase(entry.phase)
                 lockin.set_sensitivity(entry.sensitivity)
                 lockin.set_reserve_mode(entry.reserve_mode)
                 for output in entry.outputs:
                     offset_channel = output.offset_channel()
                     if offset_channel is not None:
                         lockin.set_output_offset(offset_channel, entry.offset_pct, entry.expand)
+
+            self._run_auto_phase()
         except Exception:
             self._set_status(TraceStatus.ERROR)
             raise
         self._set_status(TraceStatus.IDLE)
+
+    def auto_offset(self) -> None:
+        """Enable the 6221, settle, and run auto-offset on all configured lock-in output channels.
+
+        For each lock-in and each output that supports an offset channel (X, Y, R), this
+        method sends the SR830 ``AOFF`` command and reads back the resulting offset
+        percentage, storing it in :attr:`LockInEntry.auto_offsets`.  The stored offsets
+        are applied as additive corrections to subsequent measurements when
+        :attr:`_offset_enabled` is ``True``.
+
+        Raises:
+            RuntimeError:
+                If the instruments are not connected.
+        """
+        if self._k6221 is None or not self._lockins:
+            raise RuntimeError("Not connected — call connect() and configure() before auto_offset().")
+        self._k6221.enable_output(True)
+        try:
+            wait_time = self._time_constant * self._read_rate_multiple
+            if wait_time > 0.0:
+                time.sleep(wait_time)
+            for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
+                entry.auto_offsets.clear()
+                for output in entry.outputs:
+                    channel = output.offset_channel()
+                    if channel is not None:
+                        lockin.auto_offset_channel(channel)
+                        offset_pct, _expand = lockin.get_output_offset(channel)
+                        entry.auto_offsets[channel.value] = float(offset_pct)
+        finally:
+            self._k6221.enable_output(False)
 
     def disconnect(self) -> None:
         """Disable the 6221 output and close all active instrument sessions."""
@@ -357,10 +470,13 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 "time_constant": self._time_constant,
                 "filter_slope": self._filter_slope,
                 "input_coupling": self._input_coupling.value,
+                "line_filter": self._line_filter.value,
                 "read_rate_multiple": self._read_rate_multiple,
                 "auto_sensitivity_enabled": self._auto_sensitivity_enabled,
                 "auto_sensitivity_low": self._auto_sensitivity_low,
                 "auto_sensitivity_high": self._auto_sensitivity_high,
+                "offset_enabled": self._offset_enabled,
+                "source_range_mode": self._source_range_mode,
                 "resistance_enabled": self._resistance_enabled,
                 "resistance_mode": self._resistance_mode.value,
                 "lockins": [entry.to_json() for entry in self._lockin_entries],
@@ -389,10 +505,18 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._input_coupling,
             "input_coupling",
         )
+        self._line_filter = self._parse_enum(
+            LockInLineFilter,
+            data.get("line_filter", self._line_filter.value),
+            self._line_filter,
+            "line_filter",
+        )
         self._read_rate_multiple = float(data.get("read_rate_multiple", self._read_rate_multiple))
         self._auto_sensitivity_enabled = bool(data.get("auto_sensitivity_enabled", self._auto_sensitivity_enabled))
         self._auto_sensitivity_low = float(data.get("auto_sensitivity_low", self._auto_sensitivity_low))
         self._auto_sensitivity_high = float(data.get("auto_sensitivity_high", self._auto_sensitivity_high))
+        self._offset_enabled = bool(data.get("offset_enabled", self._offset_enabled))
+        self._source_range_mode = str(data.get("source_range_mode", self._source_range_mode))
         self._resistance_enabled = bool(data.get("resistance_enabled", self._resistance_enabled))
         self._resistance_mode = self._parse_enum(
             ResistanceCurrentMode,
@@ -403,13 +527,23 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         restored_entries = data.get("lockins", [])
         if isinstance(restored_entries, list) and restored_entries:
-            self._lockin_entries = [self._restore_lockin_entry(entry, index) for index, entry in enumerate(restored_entries)]
+            self._lockin_entries = [
+                self._restore_lockin_entry(entry, index) for index, entry in enumerate(restored_entries)
+            ]
         self._apply_scan_units()
 
     def _plugin_config_tabs(self) -> QWidget:
         root = QWidget()
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(4, 4, 4, 4)
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        tab_widget = QTabWidget()
+
+        # ---- Tab 1: Source & Common ----
+        source_common_page = QWidget()
+        sc_layout = QVBoxLayout(source_common_page)
+        sc_layout.setContentsMargins(4, 4, 4, 4)
 
         source_group = QGroupBox("Connection + source")
         source_form = QFormLayout(source_group)
@@ -447,6 +581,15 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lambda index: setattr(self, "_phase_marker_tlink", int(phase_combo.itemData(index)))
         )
 
+        range_combo = QComboBox()
+        range_combo.addItem("Auto", "AUTO")
+        range_combo.addItem("Best fixed", "BEST")
+        range_combo.addItem("Fixed (calculated)", "FIXED")
+        range_combo.setCurrentIndex(range_combo.findData(self._source_range_mode))
+        range_combo.currentIndexChanged.connect(
+            lambda index: setattr(self, "_source_range_mode", range_combo.itemData(index))
+        )
+
         def _on_scan_mode_changed(index: int) -> None:
             mode = scan_mode_combo.itemData(index)
             if isinstance(mode, WaveformScanMode):
@@ -461,7 +604,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         source_form.addRow("Sine offset:", offset_sb)
         source_form.addRow("Sine frequency:", frequency_sb)
         source_form.addRow("Phase-marker line:", phase_combo)
-        layout.addWidget(source_group)
+        source_form.addRow("Source range:", range_combo)
+        sc_layout.addWidget(source_group)
 
         common_group = QGroupBox("Common lock-in")
         common_form = QFormLayout(common_group)
@@ -488,6 +632,16 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lambda index: setattr(self, "_input_coupling", coupling_combo.itemData(index))
         )
 
+        line_filter_combo = QComboBox()
+        line_filter_combo.addItem("None", LockInLineFilter.NONE)
+        line_filter_combo.addItem("Line", LockInLineFilter.LINE)
+        line_filter_combo.addItem("2\u00d7 line", LockInLineFilter.LINE_2X)
+        line_filter_combo.addItem("Line + 2\u00d7 line", LockInLineFilter.BOTH)
+        line_filter_combo.setCurrentIndex(line_filter_combo.findData(self._line_filter))
+        line_filter_combo.currentIndexChanged.connect(
+            lambda index: setattr(self, "_line_filter", line_filter_combo.itemData(index))
+        )
+
         read_multiple_sb = SISpinBox(value=self._read_rate_multiple)
         read_multiple_sb.setMinimum(0.0)
         read_multiple_sb.setMaximum(1000.0)
@@ -512,136 +666,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         common_form.addRow("Time constant:", time_constant_combo)
         common_form.addRow("Filter slope:", slope_combo)
         common_form.addRow("Coupling:", coupling_combo)
+        common_form.addRow("Line filter:", line_filter_combo)
         common_form.addRow("Read cooldown multiple:", read_multiple_sb)
         common_form.addRow(auto_enabled)
         common_form.addRow("Auto-sensitivity low ratio:", auto_low_sb)
         common_form.addRow("Auto-sensitivity high ratio:", auto_high_sb)
-        layout.addWidget(common_group)
-
-        lockins_group = QGroupBox("Lock-ins")
-        lockins_layout = QVBoxLayout(lockins_group)
-        lockins_table = QTableWidget(lockins_group)
-        lockins_table.setColumnCount(7)
-        lockins_table.setHorizontalHeaderLabels(
-            ["Label", "Resource", "Outputs", "Sensitivity", "Offset (%)", "Expand", "Reserve"]
-        )
-        lockins_table.verticalHeader().setVisible(False)
-        for column in range(7):
-            mode = QHeaderView.ResizeMode.ResizeToContents if column != 1 else QHeaderView.ResizeMode.Stretch
-            lockins_table.horizontalHeader().setSectionResizeMode(column, mode)
-
-        buttons_layout = QHBoxLayout()
-        add_button = QPushButton("Add lock-in")
-        remove_button = QPushButton("Remove selected")
-        buttons_layout.addWidget(add_button)
-        buttons_layout.addWidget(remove_button)
-        buttons_layout.addStretch(1)
-
-        def _refresh_lockin_table() -> None:
-            lockins_table.blockSignals(True)
-            lockins_table.setRowCount(len(self._lockin_entries))
-            for row, entry in enumerate(self._lockin_entries):
-                label_edit = QLineEdit(entry.label)
-                label_edit.textChanged.connect(lambda text, *, idx=row: setattr(self._lockin_entries[idx], "label", text))
-                lockins_table.setCellWidget(row, 0, label_edit)
-
-                resource_widget = VisaResourceComboBox(resource_filter=FILTER_GPIB)
-                resource_widget.setCurrentText(entry.resource)
-                resource_widget.currentTextChanged.connect(
-                    lambda text, *, idx=row: setattr(self._lockin_entries[idx], "resource", text.strip())
-                )
-                lockins_table.setCellWidget(row, 1, resource_widget)
-
-                outputs_edit = QLineEdit(", ".join(output.value for output in entry.outputs))
-
-                sensitivity_combo = SIComboBox(unit="V")
-                for value in _SR830_SENSITIVITIES:
-                    sensitivity_combo.addValueItem(value)
-                sensitivity_combo.setFloatValue(entry.sensitivity)
-
-                offset_local = SISpinBox(suffix="%", value=entry.offset_pct)
-                offset_local.setMinimum(-105.0)
-                offset_local.setMaximum(105.0)
-
-                expand_combo = QComboBox()
-                expand_combo.addItem("×1", LockInExpandFactor.X1)
-                expand_combo.addItem("×10", LockInExpandFactor.X10)
-                expand_combo.addItem("×100", LockInExpandFactor.X100)
-                expand_combo.setCurrentIndex(expand_combo.findData(entry.expand))
-
-                reserve_combo = QComboBox()
-                reserve_combo.addItem("High reserve", LockInReserveMode.HIGH_RESERVE)
-                reserve_combo.addItem("Normal", LockInReserveMode.NORMAL)
-                reserve_combo.addItem("Low noise", LockInReserveMode.LOW_NOISE)
-                reserve_combo.setCurrentIndex(reserve_combo.findData(entry.reserve_mode))
-
-                def _sync_outputs(
-                    text: str,
-                    *,
-                    idx=row,
-                    output_widget=outputs_edit,
-                    offset_widget=offset_local,
-                    expand_widget=expand_combo,
-                ) -> None:
-                    try:
-                        outputs = self._parse_outputs(text)
-                    except ValueError:
-                        output_widget.setText(", ".join(output.value for output in self._lockin_entries[idx].outputs))
-                        outputs = self._lockin_entries[idx].outputs
-                    self._lockin_entries[idx].outputs = outputs
-                    supports_offset = any(output.offset_channel() is not None for output in outputs)
-                    offset_widget.setEnabled(supports_offset)
-                    expand_widget.setEnabled(supports_offset)
-
-                outputs_edit.editingFinished.connect(lambda *, edit=outputs_edit: _sync_outputs(edit.text()))
-                sensitivity_combo.valueChanged.connect(
-                    lambda value, *, idx=row: setattr(self._lockin_entries[idx], "sensitivity", float(value))
-                )
-                offset_local.sigValueChanged.connect(
-                    lambda value, *, idx=row: setattr(self._lockin_entries[idx], "offset_pct", float(value))
-                )
-                expand_combo.currentIndexChanged.connect(
-                    lambda index, *, idx=row, combo=expand_combo: setattr(
-                        self._lockin_entries[idx], "expand", combo.itemData(index)
-                    )
-                )
-                reserve_combo.currentIndexChanged.connect(
-                    lambda index, *, idx=row, combo=reserve_combo: setattr(
-                        self._lockin_entries[idx], "reserve_mode", combo.itemData(index)
-                    )
-                )
-
-                lockins_table.setCellWidget(row, 2, outputs_edit)
-                lockins_table.setCellWidget(row, 3, sensitivity_combo)
-                lockins_table.setCellWidget(row, 4, offset_local)
-                lockins_table.setCellWidget(row, 5, expand_combo)
-                lockins_table.setCellWidget(row, 6, reserve_combo)
-                _sync_outputs(outputs_edit.text(), idx=row)
-
-            lockins_table.blockSignals(False)
-
-        def _next_lockin_label() -> str:
-            return f"LIA {len(self._lockin_entries) + 1}"
-
-        def _add_lockin() -> None:
-            self._lockin_entries.append(LockInEntry(label=_next_lockin_label(), resource="GPIB0::9::INSTR"))
-            _refresh_lockin_table()
-
-        def _remove_selected_lockin() -> None:
-            selected = sorted({index.row() for index in lockins_table.selectedIndexes()}, reverse=True)
-            if not selected or len(self._lockin_entries) == 1:
-                return
-            for row in selected:
-                self._lockin_entries.pop(row)
-            _refresh_lockin_table()
-
-        add_button.clicked.connect(_add_lockin)
-        remove_button.clicked.connect(_remove_selected_lockin)
-        _refresh_lockin_table()
-
-        lockins_layout.addWidget(lockins_table)
-        lockins_layout.addLayout(buttons_layout)
-        layout.addWidget(lockins_group)
+        sc_layout.addWidget(common_group)
 
         derived_group = QGroupBox("Resistance conversion")
         derived_form = QFormLayout(derived_group)
@@ -661,8 +691,191 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         derived_form.addRow(resistance_enabled)
         derived_form.addRow("Current interpretation:", resistance_mode_combo)
-        layout.addWidget(derived_group)
-        layout.addStretch(1)
+        sc_layout.addWidget(derived_group)
+        sc_layout.addStretch(1)
+
+        # ---- Tab 2: Lock-ins ----
+        lockins_page = QWidget()
+        lockins_layout = QVBoxLayout(lockins_page)
+        lockins_layout.setContentsMargins(4, 4, 4, 4)
+
+        lockins_table = QTableWidget()
+        lockins_table.setRowCount(_LOCKIN_TABLE_ROWS)
+        lockins_table.setVerticalHeaderLabels(_LOCKIN_ROW_LABELS)
+        lockins_table.horizontalHeader().setVisible(False)
+        lockins_table.verticalHeader().setDefaultSectionSize(28)
+        lockins_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectColumns)
+
+        add_button = QPushButton("Add lock-in")
+        remove_button = QPushButton("Remove selected")
+        auto_offset_button = QPushButton("Run auto-offset")
+        offset_enabled_check = QCheckBox("Offset compensation enabled")
+        offset_enabled_check.setChecked(self._offset_enabled)
+        offset_enabled_check.toggled.connect(lambda checked: setattr(self, "_offset_enabled", bool(checked)))
+
+        def _refresh_lockin_table() -> None:
+            lockins_table.blockSignals(True)
+            n_cols = len(self._lockin_entries)
+            lockins_table.setColumnCount(n_cols)
+            for col in range(n_cols):
+                lockins_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+
+            for col, entry in enumerate(self._lockin_entries):
+                label_edit = QLineEdit(entry.label)
+                label_edit.textChanged.connect(
+                    lambda text, *, idx=col: setattr(self._lockin_entries[idx], "label", text)
+                )
+                lockins_table.setCellWidget(_ROW_LABEL, col, label_edit)
+
+                resource_widget = VisaResourceComboBox(resource_filter=FILTER_GPIB)
+                resource_widget.setCurrentText(entry.resource)
+                resource_widget.currentTextChanged.connect(
+                    lambda text, *, idx=col: setattr(self._lockin_entries[idx], "resource", text.strip())
+                )
+                lockins_table.setCellWidget(_ROW_RESOURCE, col, resource_widget)
+
+                outputs_edit = QLineEdit(", ".join(output.value for output in entry.outputs))
+
+                sensitivity_combo = SIComboBox(unit="V")
+                for value in _SR830_SENSITIVITIES:
+                    sensitivity_combo.addValueItem(value)
+                sensitivity_combo.setFloatValue(entry.sensitivity)
+                sensitivity_combo.valueChanged.connect(
+                    lambda value, *, idx=col: setattr(self._lockin_entries[idx], "sensitivity", float(value))
+                )
+                lockins_table.setCellWidget(_ROW_SENSITIVITY, col, sensitivity_combo)
+
+                auto_sens_check = QCheckBox()
+                auto_sens_check.setChecked(entry.auto_sensitivity)
+                auto_sens_check.toggled.connect(
+                    lambda checked, *, idx=col: setattr(self._lockin_entries[idx], "auto_sensitivity", bool(checked))
+                )
+                lockins_table.setCellWidget(_ROW_AUTO_SENSITIVITY, col, auto_sens_check)
+
+                harmonic_spin = QSpinBox()
+                harmonic_spin.setMinimum(1)
+                harmonic_spin.setMaximum(_SR830_MAX_HARMONIC)
+                harmonic_spin.setValue(entry.harmonic)
+                harmonic_spin.valueChanged.connect(
+                    lambda value, *, idx=col: setattr(self._lockin_entries[idx], "harmonic", int(value))
+                )
+                lockins_table.setCellWidget(_ROW_HARMONIC, col, harmonic_spin)
+
+                phase_spin = SISpinBox(suffix="\u00b0", value=entry.phase)
+                phase_spin.setMinimum(-360.0)
+                phase_spin.setMaximum(360.0)
+                phase_spin.sigValueChanged.connect(
+                    lambda value, *, idx=col: setattr(self._lockin_entries[idx], "phase", float(value))
+                )
+                lockins_table.setCellWidget(_ROW_PHASE, col, phase_spin)
+
+                auto_phase_check = QCheckBox()
+                auto_phase_check.setChecked(entry.auto_phase)
+                auto_phase_check.toggled.connect(
+                    lambda checked, *, idx=col: setattr(self._lockin_entries[idx], "auto_phase", bool(checked))
+                )
+                lockins_table.setCellWidget(_ROW_AUTO_PHASE, col, auto_phase_check)
+
+                offset_local = SISpinBox(suffix="%", value=entry.offset_pct)
+                offset_local.setMinimum(-105.0)
+                offset_local.setMaximum(105.0)
+
+                expand_combo = QComboBox()
+                expand_combo.addItem("\u00d71", LockInExpandFactor.X1)
+                expand_combo.addItem("\u00d710", LockInExpandFactor.X10)
+                expand_combo.addItem("\u00d7100", LockInExpandFactor.X100)
+                expand_combo.setCurrentIndex(expand_combo.findData(entry.expand))
+
+                reserve_combo = QComboBox()
+                reserve_combo.addItem("High reserve", LockInReserveMode.HIGH_RESERVE)
+                reserve_combo.addItem("Normal", LockInReserveMode.NORMAL)
+                reserve_combo.addItem("Low noise", LockInReserveMode.LOW_NOISE)
+                reserve_combo.setCurrentIndex(reserve_combo.findData(entry.reserve_mode))
+
+                def _sync_outputs(
+                    text: str,
+                    *,
+                    idx=col,
+                    output_widget=outputs_edit,
+                    offset_widget=offset_local,
+                    expand_widget=expand_combo,
+                ) -> None:
+                    try:
+                        outputs = self._parse_outputs(text)
+                    except ValueError:
+                        output_widget.setText(", ".join(output.value for output in self._lockin_entries[idx].outputs))
+                        outputs = self._lockin_entries[idx].outputs
+                    self._lockin_entries[idx].outputs = outputs
+                    supports_offset = any(output.offset_channel() is not None for output in outputs)
+                    offset_widget.setEnabled(supports_offset)
+                    expand_widget.setEnabled(supports_offset)
+
+                outputs_edit.editingFinished.connect(lambda *, edit=outputs_edit: _sync_outputs(edit.text()))
+                offset_local.sigValueChanged.connect(
+                    lambda value, *, idx=col: setattr(self._lockin_entries[idx], "offset_pct", float(value))
+                )
+                expand_combo.currentIndexChanged.connect(
+                    lambda index, *, idx=col, combo=expand_combo: setattr(
+                        self._lockin_entries[idx], "expand", combo.itemData(index)
+                    )
+                )
+                reserve_combo.currentIndexChanged.connect(
+                    lambda index, *, idx=col, combo=reserve_combo: setattr(
+                        self._lockin_entries[idx], "reserve_mode", combo.itemData(index)
+                    )
+                )
+
+                lockins_table.setCellWidget(_ROW_OUTPUTS, col, outputs_edit)
+                lockins_table.setCellWidget(_ROW_OFFSET_PCT, col, offset_local)
+                lockins_table.setCellWidget(_ROW_EXPAND, col, expand_combo)
+                lockins_table.setCellWidget(_ROW_RESERVE, col, reserve_combo)
+                _sync_outputs(outputs_edit.text(), idx=col)
+
+            remove_button.setEnabled(len(self._lockin_entries) > 1)
+            lockins_table.blockSignals(False)
+
+        def _next_lockin_label() -> str:
+            return f"LIA {len(self._lockin_entries) + 1}"
+
+        def _add_lockin() -> None:
+            self._lockin_entries.append(LockInEntry(label=_next_lockin_label(), resource="GPIB0::9::INSTR"))
+            _refresh_lockin_table()
+
+        def _remove_selected_lockin() -> None:
+            selected = sorted({index.column() for index in lockins_table.selectedIndexes()}, reverse=True)
+            if not selected or len(self._lockin_entries) == 1:
+                return
+            for col in selected:
+                self._lockin_entries.pop(col)
+            _refresh_lockin_table()
+
+        add_button.clicked.connect(_add_lockin)
+        remove_button.clicked.connect(_remove_selected_lockin)
+
+        def _safe_auto_offset() -> None:
+            """Invoke auto_offset(), logging any RuntimeError rather than propagating it."""
+            try:
+                self.auto_offset()
+            except RuntimeError as exc:
+                self._log.warning("Auto-offset not available: %s", exc)
+
+        auto_offset_button.clicked.connect(_safe_auto_offset)
+        _refresh_lockin_table()
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addWidget(add_button)
+        buttons_layout.addWidget(remove_button)
+        buttons_layout.addWidget(auto_offset_button)
+        buttons_layout.addStretch(1)
+
+        lockins_layout.addWidget(lockins_table)
+        lockins_layout.addLayout(buttons_layout)
+        lockins_layout.addWidget(offset_enabled_check)
+
+        tab_widget.addTab(source_common_page, "Source && Common")
+        tab_widget.addTab(lockins_page, "Lock-ins")
+
+        root_layout.addWidget(tab_widget)
         return root
 
     def _channel_specs(self) -> list[ChannelSpec]:
@@ -679,7 +892,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                             lockin_index=index,
                             output=output,
                             name=f"{output_name} resistance",
-                            unit="Ω",
+                            unit="\u03a9",
                             derived_resistance=True,
                         )
                     )
@@ -708,6 +921,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             raise ValueError(f"Filter slope must be one of {_SR830_FILTER_SLOPES!r}.")
         if self._time_constant not in _SR830_TIME_CONSTANTS:
             raise ValueError(f"Time constant must be one of {_SR830_TIME_CONSTANTS!r}.")
+        if self._source_range_mode not in {"AUTO", "BEST", "FIXED"}:
+            raise ValueError("Source range mode must be one of 'AUTO', 'BEST', or 'FIXED'.")
 
         labels: list[str] = []
         resources: list[str] = []
@@ -724,6 +939,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 raise ValueError(f"Lock-in {label!r} must define between 1 and 4 outputs.")
             if len(set(entry.outputs)) != len(entry.outputs):
                 raise ValueError(f"Lock-in {label!r} outputs must be unique.")
+            if not 1 <= entry.harmonic <= _SR830_MAX_HARMONIC:
+                raise ValueError(f"Lock-in {label!r} harmonic must be between 1 and {_SR830_MAX_HARMONIC}.")
             labels.append(label)
             resources.append(resource)
 
@@ -740,6 +957,52 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     def _apply_scan_units(self) -> None:
         self.scan_generator.units = self.x_units
+
+    def _apply_source_range(self) -> None:
+        """Apply the configured source-current range to the 6221."""
+        if self._k6221 is None:
+            raise RuntimeError("Not connected.")
+        if self._source_range_mode == "FIXED":
+            max_current = self._calculate_max_current()
+            if max_current > 0.0:
+                self._k6221.set_fixed_range(max_current)
+        elif self._source_range_mode == "AUTO":
+            self._k6221.set_sweep_range_mode("AUTO")
+        else:
+            self._k6221.set_sweep_range_mode("BEST")
+
+    def _calculate_max_current(self) -> float:
+        """Calculate the maximum absolute peak current for the current scan configuration.
+
+        Returns:
+            (float):
+                Maximum instantaneous output current magnitude in amps.
+        """
+        sweep = self._sweep_values
+        if self._scan_mode is WaveformScanMode.AMPLITUDE:
+            max_amp = float(np.max(np.abs(sweep))) if sweep is not None and sweep.size > 0 else abs(self._waveform_amplitude)
+            return max_amp + abs(self._waveform_offset)
+        if self._scan_mode is WaveformScanMode.OFFSET:
+            max_off = float(np.max(np.abs(sweep))) if sweep is not None and sweep.size > 0 else abs(self._waveform_offset)
+            return abs(self._waveform_amplitude) + max_off
+        return abs(self._waveform_amplitude) + abs(self._waveform_offset)
+
+    def _run_auto_phase(self) -> None:
+        """Enable the 6221 output, settle, and run auto-phase for entries that request it."""
+        if not any(entry.auto_phase for entry in self._lockin_entries):
+            return
+        if self._k6221 is None:
+            raise RuntimeError("Not connected.")
+        self._k6221.enable_output(True)
+        try:
+            wait_time = self._time_constant * self._read_rate_multiple
+            if wait_time > 0.0:
+                time.sleep(wait_time)
+            for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
+                if entry.auto_phase:
+                    lockin.auto_phase()
+        finally:
+            self._k6221.enable_output(False)
 
     def _acquire_trace(
         self,
@@ -763,17 +1026,19 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 readings = self._read_lockins()
                 timestamp = time.monotonic()
                 self._record_read_timestamp(timestamp)
-                self._apply_auto_sensitivity(readings)
                 current_amplitude = self._current_amplitude_for_point(float(scan_value))
                 for spec in specs:
                     entry = self._lockin_entries[spec.lockin_index]
                     reading = readings[entry.resource]
                     output_value = reading.output_values[spec.output]
+                    if self._offset_enabled:
+                        output_value = self._apply_offset_correction(entry, spec.output, output_value)
                     if spec.derived_resistance:
                         value = self._convert_to_resistance(output_value, current_amplitude)
                     else:
                         value = output_value
                     channel_values[spec.name].append(float(value))
+                self._apply_auto_sensitivity(readings)
         finally:
             self._k6221.enable_output(False)
 
@@ -827,6 +1092,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             return
         sensitivities = _SR830_SENSITIVITIES
         for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
+            if not entry.auto_sensitivity:
+                continue
             reading = readings[entry.resource]
             if entry.sensitivity <= 0.0:
                 continue
@@ -844,6 +1111,34 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 new_sensitivity = sensitivities[new_index]
                 lockin.set_sensitivity(new_sensitivity)
                 entry.sensitivity = new_sensitivity
+
+    def _apply_offset_correction(self, entry: LockInEntry, output: LockInOutput, value: float) -> float:
+        """Return the true signal value by reversing the SR830 output offset.
+
+        When the SR830 has an offset applied, the SNAP output equals
+        ``(true_signal - offset_voltage)``.  This method adds back the offset
+        voltage to recover the true signal.
+
+        Args:
+            entry (LockInEntry):
+                Lock-in entry containing offset information.
+            output (LockInOutput):
+                The output component being corrected.
+            value (float):
+                Measured (offset-subtracted) value from the SR830.
+
+        Returns:
+            (float):
+                Offset-corrected true signal value.
+        """
+        channel = output.offset_channel()
+        if channel is None:
+            return value
+        if channel.value in entry.auto_offsets:
+            offset_pct = entry.auto_offsets[channel.value]
+        else:
+            offset_pct = entry.offset_pct
+        return value + (offset_pct / 100.0) * entry.sensitivity
 
     def _current_amplitude_for_point(self, scan_value: float) -> float:
         if self._scan_mode is WaveformScanMode.AMPLITUDE:
@@ -865,6 +1160,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         default_label = f"LIA {index + 1}"
         if not isinstance(data, dict):
             return LockInEntry(label=default_label)
+        auto_offsets_raw = data.get("auto_offsets", {})
+        auto_offsets: dict[str, float] = (
+            {str(k): float(v) for k, v in auto_offsets_raw.items()} if isinstance(auto_offsets_raw, dict) else {}
+        )
         return LockInEntry(
             label=str(data.get("label", default_label)),
             resource=str(data.get("resource", "GPIB0::8::INSTR")),
@@ -883,6 +1182,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 "reserve_mode",
             ),
             outputs=self._restore_lockin_outputs(data),
+            harmonic=int(data.get("harmonic", 1)),
+            phase=float(data.get("phase", 0.0)),
+            auto_phase=bool(data.get("auto_phase", False)),
+            auto_sensitivity=bool(data.get("auto_sensitivity", True)),
+            auto_offsets=auto_offsets,
         )
 
     def _restore_lockin_outputs(self, data: dict[str, Any]) -> tuple[LockInOutput, ...]:
