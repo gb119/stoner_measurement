@@ -853,6 +853,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         remove_button.clicked.connect(_remove_selected_lockin)
 
         def _safe_auto_offset() -> None:
+            """Invoke auto_offset(), logging any RuntimeError rather than propagating it."""
             try:
                 self.auto_offset()
             except RuntimeError as exc:
