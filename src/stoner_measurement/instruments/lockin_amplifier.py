@@ -19,6 +19,14 @@ class LockInReferenceSource(Enum):
 
     INTERNAL = "INTERNAL"
     EXTERNAL = "EXTERNAL"
+    
+    
+class LockinRefenceEdge(Enum):
+    """Referene edge for the external reference source."""
+    
+    RISING  = "RISING"
+    FALLING = "FALLING"
+    ZERO = "ZERO"
 
 
 class LockInInputCoupling(Enum):
@@ -218,7 +226,7 @@ class LockInAmplifier(BaseInstrument):
         """
 
     @abstractmethod
-    def get_reference_source(self) -> LockInReferenceSource:
+    def get_reference_source(self) -> tuple[LockInReferenceSource,LockinRefenceEdge]:
         """Return the active reference source.
 
         Returns:
@@ -227,7 +235,7 @@ class LockInAmplifier(BaseInstrument):
         """
 
     @abstractmethod
-    def set_reference_source(self, source: LockInReferenceSource) -> None:
+    def set_reference_source(self, source: LockInReferenceSource, edge: LockinRefenceEdge = LockinRefenceEdge.FALLING) -> None:
         """Set the active reference source.
 
         Args:

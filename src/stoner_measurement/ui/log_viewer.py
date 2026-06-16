@@ -34,11 +34,11 @@ from PyQt6.QtWidgets import (
 
 #: Colour map from logging level to display colour.
 _LEVEL_COLOURS: dict[int, QColor] = {
-    logging.DEBUG: QColor("#808080"),
-    logging.INFO: QColor("#000000"),
-    logging.WARNING: QColor("#c07000"),
-    logging.ERROR: QColor("#cc0000"),
-    logging.CRITICAL: QColor("#880000"),
+    logging.DEBUG: QColor("purple"),
+    logging.INFO: QColor("navy"),
+    logging.WARNING: QColor("maroon"),
+    logging.ERROR: QColor("red"),
+    logging.CRITICAL: QColor("darkred"),
 }
 
 _TRAFFIC_FILTER_LABELS: dict[str, str] = {

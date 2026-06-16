@@ -37,6 +37,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInLineFilter,
     LockInOutput,
     LockInReferenceSource,
+    LockinRefenceEdge,
     LockInReserveMode,
 )
 from stoner_measurement.instruments.srs.sr830 import SRS830
@@ -320,7 +321,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         transports: list[GpibTransport] = []
         self._lockins = []
         try:
-            transport_6221 = GpibTransport.from_resource_string(self._6221_resource, timeout=10.0)
+            transport_6221 = GpibTransport.from_resource_string(self._6221_resource, timeout=10.0, poll_time=0.05)
             transports.append(transport_6221)
             self._k6221 = Keithley6221(transport_6221)
             self._k6221.connect()
@@ -389,6 +390,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 lockin.set_line_filter(self._line_filter)
                 lockin.set_harmonic(entry.harmonic)
                 lockin.set_reference_phase(entry.phase)
+                lockin.set_reference_source(LockInReferenceSource.EXTERNAL,LockinRefenceEdge.FALLING)
                 lockin.set_sensitivity(entry.sensitivity)
                 lockin.set_reserve_mode(entry.reserve_mode)
                 for output in entry.outputs:
@@ -400,6 +402,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         except Exception:
             self._set_status(TraceStatus.ERROR)
             raise
+
+        timestamp = time.monotonic()
+        self._record_read_timestamp(timestamp)
         self._set_status(TraceStatus.IDLE)
 
     def auto_offset(self) -> None:

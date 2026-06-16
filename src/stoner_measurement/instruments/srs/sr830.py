@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import sleep
+
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInAmplifier,
     LockInAmplifierCapabilities,
@@ -13,6 +15,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInOutput,
     LockInOutputChannel,
     LockInReferenceSource,
+    LockinRefenceEdge,
     LockInReserveMode,
 )
 from stoner_measurement.instruments.protocol.base import BaseProtocol
@@ -108,6 +111,8 @@ class SRS830(LockInAmplifier):
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the SR830 driver, defaulting to :class:`ScpiProtocol`."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
+        self._time_constant :int|None = None
+
 
     @classmethod
     def supported_time_constants(cls) -> tuple[float, ...]:
@@ -301,9 +306,10 @@ class SRS830(LockInAmplifier):
             ValueError:
                 If *value* is not a valid time-constant entry.
         """
+        self._time_constant = value
         self.write(f"OFLT {self._encode_indexed_value(value, self._TIME_CONSTANTS, name='Time constant')}")
 
-    def get_reference_source(self) -> LockInReferenceSource:
+    def get_reference_source(self) -> tuple[LockInReferenceSource,LockinRefenceEdge]:
         """Return the active reference source.
 
         Returns:
@@ -311,11 +317,23 @@ class SRS830(LockInAmplifier):
                 :attr:`~LockInReferenceSource.INTERNAL` or
                 :attr:`~LockInReferenceSource.EXTERNAL`.
         """
-        return LockInReferenceSource.EXTERNAL if not self._decode_bool_token(
+        source = LockInReferenceSource.EXTERNAL if not self._decode_bool_token(
             self.query("FMOD?")
         ) else LockInReferenceSource.INTERNAL
+        edge = int(self.query("RSLP?"))
+        match edge:
+            case 0:
+                edge=LockinRefenceEdge.ZERO
+            case 1:
+                edge=LockinRefenceEdge.RISING
+            case 2:
+                edge=LockinRefenceEdge.FALLING
+            case _:
+                raise ValueError(f"Could not map reference edge {edge}")
+        return (source,edge)
+        
 
-    def set_reference_source(self, source: LockInReferenceSource) -> None:
+    def set_reference_source(self, source: LockInReferenceSource, edge:LockinRefenceEdge = LockinRefenceEdge.FALLING) -> None:
         """Set the reference source.
 
         Args:
@@ -323,6 +341,8 @@ class SRS830(LockInAmplifier):
                 Reference source to select.
         """
         self.write(f"FMOD {1 if source is LockInReferenceSource.INTERNAL else 0}")
+        mapping={LockinRefenceEdge.ZERO:0,LockinRefenceEdge.RISING:1,LockinRefenceEdge.FALLING:2}
+        self.write(f"RSLP {mapping.get(edge,2)}")
 
     def get_reference_frequency(self) -> float:
         """Return the reference frequency in hertz.
@@ -475,14 +495,17 @@ class SRS830(LockInAmplifier):
     def auto_gain(self) -> None:
         """Execute the SR830 auto-gain routine."""
         self.write("AGAN")
+        self.wait_for_ifc()
 
     def auto_phase(self) -> None:
         """Execute the SR830 auto-phase routine."""
         self.write("APHS")
+        self.wait_for_ifc()
 
     def auto_reserve(self) -> None:
         """Execute the SR830 auto-reserve routine."""
         self.write("ARSV")
+        self.wait_for_ifc()
 
     def auto_offset_channel(self, channel: LockInOutputChannel) -> None:
         """Execute the SR830 auto-offset routine for a specified output channel.
@@ -510,6 +533,7 @@ class SRS830(LockInAmplifier):
         if channel not in channel_codes:
             raise ValueError(f"Auto-offset is only supported for X, Y, and R channels; got {channel!r}.")
         self.write(f"AOFF {channel_codes[channel]}")
+        self.wait_for_ifc()
 
     def get_oscillator_amplitude(self) -> float:
         """Return the internal oscillator sine output amplitude in volts.
@@ -733,3 +757,14 @@ class SRS830(LockInAmplifier):
             has_sync_filter=True,
             max_harmonic=self._MAX_HARMONIC,
         )
+
+    def wait_for_ifc(self)->None:
+        """Wait for the IFC line to be asserted.
+        
+        Waits for the IFC line to be set indicating the current command is none.
+        Use the time constant if set or the poll time to limit how often to poll
+        the status bytes.
+        """
+        wait=3 * (self._time_constant or self.poll_time)
+        while not self.read_status_byte() & 2:
+            sleep(wait)

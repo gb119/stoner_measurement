@@ -348,6 +348,37 @@ class BaseInstrument(ABC):
                 raise
 
             return response
+        
+    def read_status_byte(self) -> int | None:
+        """Return the instrument status byte via an out-of-band mechanism.
+
+        Some transports (notably GPIB) can perform a *serial poll* to read
+        the IEEE 488.2 status byte (STB) without sending a command, allowing
+        the caller to check whether an error condition exists before issuing
+        an expensive error-queue query.
+
+        The default implementation returns ``None``, indicating that no
+        out-of-band mechanism is available.  Subclasses that support
+        hardware-level status polling (e.g. :class:`GpibTransport`) should
+        override this method.
+
+        If :meth:`read_status_byte` returns ``None``,
+        :meth:`~stoner_measurement.instruments.base_instrument.BaseInstrument.check_for_errors`
+        will fall back to issuing the protocol's
+        :attr:`~stoner_measurement.instruments.protocol.base.BaseProtocol.error_query`
+        command directly.
+
+        Returns:
+            (int | None):
+                The 8-bit status byte, or ``None`` if not supported.
+
+        Examples:
+            >>> from stoner_measurement.instruments.transport import NullTransport
+            >>> NullTransport().read_status_byte() is None
+            True
+        """
+        return self.transport.read_status_byte()
+
 
     def check_for_errors(self, *, command: str | None = None) -> None:
         """Poll the instrument for errors and raise if one is found.
