@@ -72,6 +72,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInLineFilter,
     LockInOutput,
     LockInOutputChannel,
+    LockinRefenceEdge,
     LockInReferenceSource,
     LockInReserveMode,
 )
@@ -929,11 +930,13 @@ class TestSRS830:
         assert t.write_log == [b"SNAP?1,3,4\n"]
 
     def test_getters(self):
-        t = _null(responses=[b"8\n", b"10\n", b"1\n", b"137.0\n", b"-12.5\n", b"3\n", b"2\n", b"1\n", b"2\n"])
+        t = _null(
+            responses=[b"8\n", b"10\n", b"1\n", b"2\n", b"137.0\n", b"-12.5\n", b"3\n", b"2\n", b"1\n", b"2\n"]
+        )
         k = SRS830(transport=t)
         assert k.get_sensitivity() == pytest.approx(1e-6)
         assert k.get_time_constant() == pytest.approx(1.0)
-        assert k.get_reference_source() is LockInReferenceSource.INTERNAL
+        assert k.get_reference_source() == (LockInReferenceSource.INTERNAL, LockinRefenceEdge.FALLING)
         assert k.get_reference_frequency() == pytest.approx(137.0)
         assert k.get_reference_phase() == pytest.approx(-12.5)
         assert k.get_harmonic() == 3
@@ -953,13 +956,16 @@ class TestSRS830:
         k.set_filter_slope(12)
         k.set_input_coupling(LockInInputCoupling.AC)
         k.set_reserve_mode(LockInReserveMode.NORMAL)
-        k.auto_gain()
-        k.auto_phase()
-        k.auto_reserve()
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(k, "wait_for_ifc", lambda: None)
+            k.auto_gain()
+            k.auto_phase()
+            k.auto_reserve()
         assert t.write_log == [
             b"SENS 8\n",
             b"OFLT 10\n",
             b"FMOD 0\n",
+            b"RSLP 2\n",
             b"FREQ 17.0\n",
             b"PHAS 33.5\n",
             b"HARM 2\n",
@@ -1300,14 +1306,13 @@ class TestKeithley6221:
             b":SOUR:SWE:ARM\n",
             b":INIT:IMM\n",
             b":SOUR:SWE:ABOR\n",
-            b":ABOR\n",
         ]
 
     def test_get_operating_status(self):
         t = _null([b"4\n"])
         k = Keithley6221(transport=t)
         assert k.get_operating_status() == 4
-        assert t.write_log == [b":STAT:OPER:EVEN?\n"]
+        assert t.write_log == [b":STAT:OPER:COND?\n"]
 
     def test_sweep_status_helpers(self):
         t = _null([b"2\n", b"4\n"])
