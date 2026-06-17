@@ -126,9 +126,16 @@ class TestConsoleWidget:
         assert legacy_console._input.text() == "cmd2"
 
     def test_execute_command_runs_code(self, qapp):
+        import time
+
         console = ConsoleWidget()
         console.execute_command("2 + 2")
-        qapp.processEvents()
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+            if "4" in self._text(console):
+                break
+            time.sleep(0.01)
         assert "2 + 2" in self._text(console)
         assert "4" in self._text(console)
 
@@ -142,11 +149,17 @@ class TestConsoleWidget:
 
     def test_execute_command_print_output_shown_without_engine(self, qapp):
         """print() in the REPL without an engine should appear in the output area."""
+        import time
+
         console = ConsoleWidget()
         console.execute_command("print('hello stdout')")
-        qapp.processEvents()
-        text = self._text(console)
-        assert "hello stdout" in text
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+            if "hello stdout" in self._text(console):
+                break
+            time.sleep(0.01)
+        assert "hello stdout" in self._text(console)
 
     def test_write_output_no_extra_blank_lines(self, qapp):
         """write_output should not add a spurious newline after each chunk."""

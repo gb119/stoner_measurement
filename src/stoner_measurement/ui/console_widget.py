@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html as _html_lib
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -273,9 +274,6 @@ class _IPythonConsoleWidget(QWidget):
         layout.addWidget(self._console)
         self.setLayout(layout)
 
-        # Compatibility for existing code/tests that inspect this attribute.
-        self._output = self._console._control
-
     @pyqtSlot(str)
     def write(self, text: str) -> None:
         """Append *text* with a timestamp prefix.
@@ -312,7 +310,7 @@ class _IPythonConsoleWidget(QWidget):
 
     def clear(self) -> None:
         """Clear the console output."""
-        self._console.clear(keep_input=True)
+        self._console.clear()
 
     def connect_engine(self, engine: SequenceEngine) -> None:
         """Connect this console to a sequence engine.
@@ -357,18 +355,14 @@ class _IPythonConsoleWidget(QWidget):
             color (QColor | None):
                 Optional text colour.
         """
-        control = self._console._control
-        cursor = control.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        current_format = cursor.charFormat()
         if color is not None:
-            fmt = QTextCharFormat(current_format)
-            fmt.setForeground(color)
-            cursor.setCharFormat(fmt)
-        cursor.insertText(text)
-        cursor.setCharFormat(current_format)
-        control.setTextCursor(cursor)
-        control.ensureCursorVisible()
+            escaped = _html_lib.escape(text).replace("\n", "<br/>")
+            self._console._append_html(
+                f'<span style="color: {color.name()}">{escaped}</span>',
+                before_prompt=False,
+            )
+        else:
+            self._console._append_plain_text(text, before_prompt=False)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Stop in-process kernel channels when this widget closes."""
@@ -377,7 +371,7 @@ class _IPythonConsoleWidget(QWidget):
 
     def get_output_text(self) -> str:
         """Return the full visible output text."""
-        return self._output.toPlainText()
+        return self._console._control.toPlainText()
 
     def _shutdown_kernel(self) -> None:
         """Stop kernel channels safely once."""
