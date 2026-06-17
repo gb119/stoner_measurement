@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from io import StringIO
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
@@ -33,7 +33,19 @@ except ImportError:
 
 
 class _LegacyConsoleWidget(QWidget):
-    """Read-only output area combined with a command-input line."""
+    """Read-only output area combined with a command-input line.
+
+    This is the original console implementation and is used as a fallback when
+    QtConsole/IPython dependencies are unavailable.
+
+    Args:
+        parent (QWidget | None):
+            Optional parent widget.
+
+    Attributes:
+        MAX_HISTORY (int):
+            Maximum number of commands retained in history.
+    """
 
     MAX_HISTORY: int = 100
 
@@ -100,6 +112,20 @@ class _LegacyConsoleWidget(QWidget):
         self._engine = engine
         engine.output.connect(self.write_output)
         engine.error_output.connect(self.write_error)
+
+    def execute_command(self, command: str) -> None:
+        """Execute *command* using the legacy input/eval pipeline.
+
+        Args:
+            command (str):
+                Python command or expression to execute.
+        """
+        self._input.setText(command)
+        self._submit()
+
+    def get_output_text(self) -> str:
+        """Return the full visible output text."""
+        return self._output.toPlainText()
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         """Forward Up/Down arrow keys to navigate command history."""
@@ -203,11 +229,30 @@ class _LegacyConsoleWidget(QWidget):
 
 
 class _IPythonConsoleWidget(QWidget):
-    """Interactive QtConsole widget running an in-process IPython kernel."""
+    """Interactive QtConsole widget running an in-process IPython kernel.
+
+    Args:
+        parent (QWidget | None):
+            Optional parent widget.
+
+    Attributes:
+        _engine (SequenceEngine | None):
+            Connected sequence engine, if any.
+        _kernel_manager (QtInProcessKernelManager):
+            In-process kernel manager hosting the IPython kernel.
+        _kernel_client:
+            Client connected to the in-process kernel channels.
+        _kernel_active (bool):
+            Tracks whether kernel channels are still active.
+        _console (RichJupyterWidget):
+            Embedded QtConsole widget.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._engine: SequenceEngine | None = None
+        assert QtInProcessKernelManager is not None
+        assert RichJupyterWidget is not None
 
         self._kernel_manager = QtInProcessKernelManager()
         self._kernel_manager.start_kernel(show_banner=False)
@@ -233,19 +278,34 @@ class _IPythonConsoleWidget(QWidget):
 
     @pyqtSlot(str)
     def write(self, text: str) -> None:
-        """Append *text* with a timestamp prefix."""
+        """Append *text* with a timestamp prefix.
+
+        Args:
+            text (str):
+                Message to append.
+        """
         timestamp = datetime.now().strftime("%H:%M:%S")
         self._append_message(f"[{timestamp}] {text}\n")
 
     @pyqtSlot(str)
     def write_error(self, text: str) -> None:
-        """Append *text* as a timestamped red error message."""
+        """Append *text* as a timestamped red error message.
+
+        Args:
+            text (str):
+                Error text to append.
+        """
         timestamp = datetime.now().strftime("%H:%M:%S")
         self._append_message(f"[{timestamp}] ERROR: {text}\n", color=QColor("#cc0000"))
 
     @pyqtSlot(str)
     def write_output(self, text: str) -> None:
-        """Append raw *text* exactly as provided."""
+        """Append raw *text* exactly as provided.
+
+        Args:
+            text (str):
+                Raw output text chunk.
+        """
         if not text:
             return
         self._append_message(text)
@@ -255,7 +315,12 @@ class _IPythonConsoleWidget(QWidget):
         self._console.clear(keep_input=True)
 
     def connect_engine(self, engine: SequenceEngine) -> None:
-        """Connect this console to a sequence engine."""
+        """Connect this console to a sequence engine.
+
+        Args:
+            engine (SequenceEngine):
+                Sequence engine whose output signals should be displayed.
+        """
         if self._engine is not None:
             try:
                 self._engine.output.disconnect(self.write_output)
@@ -272,14 +337,26 @@ class _IPythonConsoleWidget(QWidget):
         self._kernel_manager.kernel.shell.push({"engine": engine})
 
     def execute_command(self, command: str) -> None:
-        """Execute *command* in the embedded IPython kernel."""
+        """Execute *command* in the embedded IPython kernel.
+
+        Args:
+            command (str):
+                Python command or expression to execute.
+        """
         stripped = command.strip()
         if not stripped:
             return
         self._console.execute(stripped, hidden=False, interactive=False)
 
     def _append_message(self, text: str, color: QColor | None = None) -> None:
-        """Append *text* at the end of the QtConsole document."""
+        """Append *text* at the end of the QtConsole document.
+
+        Args:
+            text (str):
+                Text to append.
+            color (QColor | None):
+                Optional text colour.
+        """
         control = self._console._control
         cursor = control.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
@@ -297,6 +374,10 @@ class _IPythonConsoleWidget(QWidget):
         """Stop in-process kernel channels when this widget closes."""
         self._shutdown_kernel()
         super().closeEvent(event)
+
+    def get_output_text(self) -> str:
+        """Return the full visible output text."""
+        return self._output.toPlainText()
 
     def _shutdown_kernel(self) -> None:
         """Stop kernel channels safely once."""
@@ -317,7 +398,20 @@ class _IPythonConsoleWidget(QWidget):
 
 
 class ConsoleWidget(QWidget):
-    """Interactive console with IPython QtConsole and legacy fallback."""
+    """Interactive console with IPython QtConsole and legacy fallback.
+
+    This façade selects the QtConsole-backed implementation when available,
+    otherwise it falls back to the original split input/output widget while
+    preserving the existing public API.
+
+    Args:
+        parent (QWidget | None):
+            Optional parent widget.
+
+    Attributes:
+        using_ipython_console (bool):
+            ``True`` when the QtConsole-backed implementation is active.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -333,23 +427,34 @@ class ConsoleWidget(QWidget):
         layout.addWidget(self._impl)
         self.setLayout(layout)
 
-        # Compatibility shims for existing direct test access.
-        self._output: Any = getattr(self._impl, "_output", None)
-        self._input: Any = getattr(self._impl, "_input", None)
-
     @pyqtSlot(str)
     def write(self, text: str) -> None:
-        """Append *text* to the console."""
+        """Append *text* to the console.
+
+        Args:
+            text (str):
+                Message to append.
+        """
         self._impl.write(text)  # type: ignore[attr-defined]
 
     @pyqtSlot(str)
     def write_error(self, text: str) -> None:
-        """Append *text* as an error message."""
+        """Append *text* as an error message.
+
+        Args:
+            text (str):
+                Error message to append.
+        """
         self._impl.write_error(text)  # type: ignore[attr-defined]
 
     @pyqtSlot(str)
     def write_output(self, text: str) -> None:
-        """Append raw output text."""
+        """Append raw output text.
+
+        Args:
+            text (str):
+                Raw output text chunk.
+        """
         self._impl.write_output(text)  # type: ignore[attr-defined]
 
     def clear(self) -> None:
@@ -357,17 +462,23 @@ class ConsoleWidget(QWidget):
         self._impl.clear()  # type: ignore[attr-defined]
 
     def connect_engine(self, engine: SequenceEngine) -> None:
-        """Connect this console to a sequence engine."""
+        """Connect this console to a sequence engine.
+
+        Args:
+            engine (SequenceEngine):
+                Engine to connect for asynchronous output forwarding.
+        """
         self._impl.connect_engine(engine)  # type: ignore[attr-defined]
 
     def execute_command(self, command: str) -> None:
-        """Execute *command* in whichever backend is active."""
-        if hasattr(self._impl, "execute_command"):
-            self._impl.execute_command(command)  # type: ignore[attr-defined]
-            return
-        self._input.setText(command)
-        self._impl._submit()  # type: ignore[attr-defined]
+        """Execute *command* in whichever backend is active.
 
-    def __getattr__(self, name: str) -> Any:
-        """Delegate unknown attributes to the active implementation widget."""
-        return getattr(self._impl, name)
+        Args:
+            command (str):
+                Python command or expression to execute.
+        """
+        self._impl.execute_command(command)  # type: ignore[attr-defined]
+
+    def get_output_text(self) -> str:
+        """Return the full visible output text from the active backend."""
+        return self._impl.get_output_text()  # type: ignore[attr-defined]

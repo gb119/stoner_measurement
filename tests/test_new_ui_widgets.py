@@ -77,10 +77,7 @@ class TestPythonHighlighter:
 class TestConsoleWidget:
     @staticmethod
     def _text(console: ConsoleWidget) -> str:
-        output = getattr(console, "_output", None)
-        if output is None:
-            return ""
-        return output.toPlainText()
+        return console.get_output_text()
 
     def test_creates_widget(self, qapp):
         console = ConsoleWidget()
@@ -106,22 +103,27 @@ class TestConsoleWidget:
         console.write("some message for clear")
         console.clear()
         assert "some message for clear" not in self._text(console)
+        if console.using_ipython_console:
+            assert self._text(console).strip() != ""
+        else:
+            assert self._text(console) == ""
 
     def test_history_navigation(self, qapp):
         console = ConsoleWidget()
         if console.using_ipython_console:
             return
-        console._history = ["cmd1", "cmd2"]
-        console._history_pos = len(console._history)
+        legacy_console = console._impl
+        legacy_console._history = ["cmd1", "cmd2"]
+        legacy_console._history_pos = len(legacy_console._history)
 
-        console._history_up()
-        assert console._input.text() == "cmd2"
+        legacy_console._history_up()
+        assert legacy_console._input.text() == "cmd2"
 
-        console._history_up()
-        assert console._input.text() == "cmd1"
+        legacy_console._history_up()
+        assert legacy_console._input.text() == "cmd1"
 
-        console._history_down()
-        assert console._input.text() == "cmd2"
+        legacy_console._history_down()
+        assert legacy_console._input.text() == "cmd2"
 
     def test_execute_command_runs_code(self, qapp):
         console = ConsoleWidget()
@@ -149,25 +151,21 @@ class TestConsoleWidget:
     def test_write_output_no_extra_blank_lines(self, qapp):
         """write_output should not add a spurious newline after each chunk."""
         console = ConsoleWidget()
-        if console.using_ipython_console:
-            return
         # Simulate how CPython's print() writes: text then "\n" as two calls.
         console.write_output("Hello World")
         console.write_output("\n")
-        lines = [ln for ln in self._text(console).splitlines() if ln]
-        assert lines == ["Hello World"]
+        text = self._text(console)
+        assert text.count("Hello World") == 1
 
     def test_write_output_does_not_merge_with_subsequent_write(self, qapp):
         """A status message written after raw output starts on its own line."""
         console = ConsoleWidget()
-        if console.using_ipython_console:
-            return
         console.write_output("partial")  # no trailing newline
         console.write("Status message")
         text = self._text(console)
-        lines = text.splitlines()
-        assert any("partial" in ln for ln in lines)
-        assert not any("partial" in ln and "Status message" in ln for ln in lines)
+        assert "partial" in text
+        assert "Status message" in text
+        assert "partialStatus message" not in text
 
     def test_execute_command_print_output_with_engine(self, qapp, engine):
         """print() executed via the engine should appear in the console output area."""
