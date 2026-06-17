@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from time import sleep
 
 from stoner_measurement.instruments.current_source import (
@@ -22,6 +23,16 @@ _LIST_BATCH_SIZE: int = 100
 _OPERATING_STATUS_SWEEP_RUNNING = 0x02
 _OPERATING_STATUS_SWEEP_FINISHED = 0x04
 
+
+class _K6221_STATE(Enum):
+    """Represent the current state of the Keithley 6221 to determine next actions."""
+    
+    IDLE="IDLE"
+    SWEEPING="SWEEPING"
+    SOURCE="SOURCE"
+    WAVE="WAVE"
+    ARMED="ARMED"
+    ARMING="ARMING"    
 
 class Keithley6221(CurrentSource):
     """Driver for the Keithley 6221 precision AC/DC current source.
@@ -69,8 +80,17 @@ class Keithley6221(CurrentSource):
             >>> instr.disconnect()
         """
         super().connect()
-        self.sweep_abort()
-        self.write("*CLS")
+        state=self.state()
+        match state:
+            case _K6221_STATE.SWEEPING:
+                self.sweep_abort()
+            case  _K6221_STATE.SOURCE|_K6221_STATE.ARMED|_K6221_STATE.ARMING:
+                self.write(":ABOR")
+            case  _K6221_STATE.WAVE:
+                self.wave_abort()
+            case _:
+                pass
+        self.clear()
 
     def reset(self) -> None:
         """Send the standard IEEE 488.2 reset command (``*RST``).
@@ -94,6 +114,20 @@ class Keithley6221(CurrentSource):
             >>> instr.disconnect()
         """
         self.write("*RST", slow=2000)
+        
+    def state(self)->_K6221_STATE:
+        """Determine the state of the 6221 through status queries."""
+        self.clear()
+        stb=self.read_status_byte()
+        outp=self.output_enabled()
+        oper=self.get_operating_status()
+        if not outp:
+            return _K6221_STATE.IDLE
+        if not oper & 120:
+            return _K6221_STATE.SOURCE
+        for bit,state in [(8,_K6221_STATE.SWEEPING),(16,_K6221_STATE.WAVE),(32,_K6221_STATE.ARMED),(63,_K6221_STATE.ARMING)]:
+            if oper & bit:
+                return state
 
     def get_source_level(self) -> float:
         """Return programmed source current in amps."""
@@ -589,11 +623,10 @@ class Keithley6221(CurrentSource):
     def sweep_abort(self) -> None:
         """Abort a running or armed sweep."""
         self.write(":SOUR:SWE:ABOR")
-        self.write(":ABOR")
 
     def get_operating_status(self) -> int:
         """Return the current operating-status condition register."""
-        return int(float(self.query(":STAT:OPER:EVEN?")))
+        return int(float(self.query(":STAT:OPER:COND?")))
 
     def sweep_is_running(self) -> bool:
         """Return ``True`` while the instrument reports an active sweep."""
@@ -645,3 +678,13 @@ class Keithley6221(CurrentSource):
             has_pulsed_sweep=True,
             channel_count=1,
         )
+    
+    def wave_abort(self)->None:
+        """Abort a runnign waveform."""
+        self.write("SOUR:WAVE:ABOR")
+        
+    def wave_start(self)->None:
+        """Arm the wave outpit."""
+        self.write("SOUR:WAVE:ARM")
+        self.write("SOUR:WAVE:INIT")
+        

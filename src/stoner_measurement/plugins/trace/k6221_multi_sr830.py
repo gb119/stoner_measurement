@@ -380,6 +380,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._k6221.set_phase_marker_output_line(self._phase_marker_tlink)
             self._k6221.enable_phase_marker(True)
             self._apply_source_range()
+            self._k6221.wave_start()
 
             for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
                 lockin.reset()
