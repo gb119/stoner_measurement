@@ -9,7 +9,11 @@ import numpy as np
 import pytest
 from PyQt6.QtWidgets import QCheckBox, QTabWidget, QTableWidget, QWidget
 
-from stoner_measurement.instruments.lockin_amplifier import LockInLineFilter
+from stoner_measurement.instruments.lockin_amplifier import (
+    LockInLineFilter,
+    LockinRefenceEdge,
+    LockInReferenceSource,
+)
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
@@ -194,8 +198,14 @@ class TestConfiguration:
         plugin._k6221.set_frequency.assert_called_once_with(73.0)
         plugin._k6221.set_phase_marker_output_line.assert_called_once_with(4)
         plugin._k6221.enable_phase_marker.assert_called_once_with(True)
+        plugin._k6221.wave_start.assert_called_once_with()
         for lockin in plugin._lockins:
-            lockin.set_reference_source.assert_called_once()
+            lockin.set_reference_source.assert_has_calls(
+                [
+                    call(LockInReferenceSource.EXTERNAL),
+                    call(LockInReferenceSource.EXTERNAL, LockinRefenceEdge.FALLING),
+                ]
+            )
             lockin.set_time_constant.assert_called_once_with(3.0)
             lockin.set_filter_slope.assert_called_once_with(18)
             lockin.set_harmonic.assert_called_once_with(1)
