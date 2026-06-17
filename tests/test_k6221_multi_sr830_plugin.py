@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QCheckBox, QTabWidget, QTableWidget, QWidget
+from PyQt6.QtWidgets import QCheckBox, QTableWidget, QTabWidget, QWidget
 
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInLineFilter,
@@ -304,7 +304,6 @@ class TestAutoOffset:
 
 class TestOffsetCorrection:
     def test_offset_correction_adds_back_offset_voltage(self, qapp):
-        from stoner_measurement.instruments.lockin_amplifier import LockInOutputChannel
         plugin = _make_plugin()
         entry = LockInEntry(
             label="A", resource="GPIB0::8::INSTR",

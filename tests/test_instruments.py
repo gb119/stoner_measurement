@@ -956,9 +956,11 @@ class TestSRS830:
         k.set_filter_slope(12)
         k.set_input_coupling(LockInInputCoupling.AC)
         k.set_reserve_mode(LockInReserveMode.NORMAL)
-        k.auto_gain()
-        k.auto_phase()
-        k.auto_reserve()
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(k, "wait_for_ifc", lambda: None)
+            k.auto_gain()
+            k.auto_phase()
+            k.auto_reserve()
         assert t.write_log == [
             b"SENS 8\n",
             b"OFLT 10\n",
