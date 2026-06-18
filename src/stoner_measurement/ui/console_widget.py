@@ -283,7 +283,7 @@ class _IPythonConsoleWidget(QWidget):
                 Message to append.
         """
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self._append_message(f"[{timestamp}] {text}\n")
+        self._append_stdout_stream(f"[{timestamp}] {text}\n")
 
     @pyqtSlot(str)
     def write_error(self, text: str) -> None:
@@ -294,7 +294,7 @@ class _IPythonConsoleWidget(QWidget):
                 Error text to append.
         """
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self._append_message(f"[{timestamp}] ERROR: {text}\n", color=QColor("#cc0000"))
+        self._append_stderr_stream(f"[{timestamp}] ERROR: {text}\n")
 
     @pyqtSlot(str)
     def write_output(self, text: str) -> None:
@@ -306,7 +306,7 @@ class _IPythonConsoleWidget(QWidget):
         """
         if not text:
             return
-        self._append_message(text)
+        self._append_stdout_stream(text)
 
     def clear(self) -> None:
         """Clear the console output."""
@@ -354,23 +354,27 @@ class _IPythonConsoleWidget(QWidget):
             return
         self._console.execute(stripped, hidden=False, interactive=False)
 
-    def _append_message(self, text: str, color: QColor | None = None) -> None:
-        """Append *text* at the end of the QtConsole document.
+    def _append_stdout_stream(self, text: str) -> None:
+        """Append *text* to the console output stream.
 
         Args:
             text (str):
                 Text to append.
-            color (QColor | None):
-                Optional text colour.
         """
-        if color is not None:
-            escaped = _html_lib.escape(text).replace("\n", "<br/>")
-            self._console._append_html(
-                f'<span style="color: {color.name()}">{escaped}</span>',
-                before_prompt=False,
-            )
-        else:
-            self._console._append_plain_text(text, before_prompt=False)
+        self._console.append_stream(text)
+
+    def _append_stderr_stream(self, text: str) -> None:
+        """Append *text* as a red stderr stream entry before the prompt.
+
+        Args:
+            text (str):
+                Error text to append.
+        """
+        escaped = _html_lib.escape(text).replace("\n", "<br/>")
+        self._console._append_html(
+            f'<span style="color: #cc0000">{escaped}</span>',
+            before_prompt=True,
+        )
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Stop in-process kernel channels when this widget closes."""
