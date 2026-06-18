@@ -201,6 +201,46 @@ class TestConsoleWidget:
         text = self._text(console)
         assert "engine output" in text
 
+    def test_ipython_write_output_uses_output_stream(self, qapp, monkeypatch):
+        """QtConsole backend should route write_output() through append_stream()."""
+        console = ConsoleWidget()
+        if not console.using_ipython_console:
+            return
+
+        stream_chunks: list[str] = []
+        ipy_console = console._impl._console
+        original_append_stream = ipy_console.append_stream
+
+        def _capture_append_stream(text: str) -> None:
+            stream_chunks.append(text)
+            original_append_stream(text)
+
+        monkeypatch.setattr(ipy_console, "append_stream", _capture_append_stream)
+
+        console.write_output("stream chunk")
+        assert stream_chunks == ["stream chunk"]
+
+    def test_ipython_write_error_uses_before_prompt_html(self, qapp, monkeypatch):
+        """QtConsole backend should write errors before the active input prompt."""
+        console = ConsoleWidget()
+        if not console.using_ipython_console:
+            return
+
+        html_calls: list[tuple[str, bool]] = []
+        ipy_console = console._impl._console
+        original_append_html = ipy_console._append_html
+
+        def _capture_append_html(html: str, before_prompt: bool = False) -> None:
+            html_calls.append((html, before_prompt))
+            original_append_html(html, before_prompt=before_prompt)
+
+        monkeypatch.setattr(ipy_console, "_append_html", _capture_append_html)
+
+        console.write_error("stderr chunk")
+        assert html_calls
+        assert any("stderr chunk" in html for html, _ in html_calls)
+        assert all(before_prompt for _, before_prompt in html_calls)
+
     def test_ipython_console_exposes_engine_namespace_in_kernel(self, qapp, engine):
         """QtConsole should expose script-created names via the shared kernel namespace."""
         import time
