@@ -201,8 +201,8 @@ class TestConsoleWidget:
         text = self._text(console)
         assert "engine output" in text
 
-    def test_ipython_console_syncs_engine_namespace_after_script(self, qapp, engine):
-        """QtConsole should expose script-created names after script completion."""
+    def test_ipython_console_exposes_engine_namespace_in_kernel(self, qapp, engine):
+        """QtConsole should expose script-created names via the shared kernel namespace."""
         import time
 
         console = ConsoleWidget()
@@ -218,7 +218,6 @@ class TestConsoleWidget:
             if not engine.is_running:
                 break
             time.sleep(0.01)
-        time.sleep(0.05)
         qapp.processEvents()
 
         console.execute_command("script_visible_value")

@@ -315,6 +315,12 @@ class _IPythonConsoleWidget(QWidget):
     def connect_engine(self, engine: SequenceEngine) -> None:
         """Connect this console to a sequence engine.
 
+        The engine adopts the in-process IPython kernel's namespace as its
+        live execution namespace.  Any variable created or mutated by a script
+        — regardless of whether the script completes successfully, raises an
+        exception, or is stopped — is therefore immediately visible in the
+        QtConsole without a separate synchronisation step.
+
         Args:
             engine (SequenceEngine):
                 Sequence engine whose output signals should be displayed.
@@ -328,17 +334,13 @@ class _IPythonConsoleWidget(QWidget):
                 self._engine.error_output.disconnect(self.write_error)
             except TypeError:
                 pass
-            try:
-                self._engine.script_finished.disconnect(self._sync_engine_namespace)
-            except TypeError:
-                pass
 
         self._engine = engine
         engine.output.connect(self.write_output)
         engine.error_output.connect(self.write_error)
-        engine.script_finished.connect(self._sync_engine_namespace)
-        self._kernel_manager.kernel.shell.push({"engine": engine})
-        self._sync_engine_namespace()
+        kernel_ns = self._kernel_manager.kernel.shell.user_ns
+        kernel_ns["engine"] = engine
+        engine.adopt_namespace(kernel_ns)
 
     def execute_command(self, command: str) -> None:
         """Execute *command* in the embedded IPython kernel.
@@ -388,18 +390,6 @@ class _IPythonConsoleWidget(QWidget):
             self._kernel_client.stop_channels()
         finally:
             self._kernel_manager.shutdown_kernel()
-
-    def _sync_engine_namespace(self) -> None:
-        """Push a snapshot of the connected engine namespace into the IPython shell."""
-        engine = self._engine
-        # Avoid syncing while a script is executing to prevent racing against
-        # in-flight namespace mutations on the engine worker thread.
-        if engine is None or engine.is_running:
-            return
-        namespace = engine.namespace
-        namespace.pop("__builtins__", None)
-        namespace["engine"] = engine
-        self._kernel_manager.kernel.shell.push(namespace)
 
     def __del__(self) -> None:
         """Ensure in-process kernel channels are stopped on garbage collection."""

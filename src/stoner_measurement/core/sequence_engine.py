@@ -225,6 +225,15 @@ class _EngineThread(QThread):
         self._running_script = False
         self._completed: int = 0  # incremented after each command or script finishes
 
+    def replace_namespace(self, ns: dict) -> None:
+        """Replace the execution namespace with *ns*.
+
+        The caller is responsible for ensuring that *ns* is pre-populated with
+        any names that the engine requires (builtins, numpy helpers, plugins).
+        This must only be called while the engine is not running a script.
+        """
+        self._namespace = ns
+
     # ------------------------------------------------------------------
     # Queue submission
     # ------------------------------------------------------------------
@@ -1223,6 +1232,50 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         return dict(self._namespace)
+
+    def adopt_namespace(self, ns: dict) -> None:
+        """Merge the current interpreter namespace into *ns* and use *ns* as the live namespace.
+
+        The engine's existing namespace contents (numpy helpers, plugins,
+        catalogues, and any previously script-defined names) are merged into
+        *ns* so that all of them remain accessible.  Python interpreter
+        internals (``__builtins__``, ``__name__``, ``__doc__``, etc.) already
+        present in *ns* are preserved so that *ns* retains the identity of its
+        original environment.
+
+        After this call the engine and its worker thread execute scripts and
+        commands directly against *ns*, so any variable created or mutated
+        during execution — regardless of whether the script completes
+        successfully, raises an exception, or is stopped — is immediately
+        visible through *ns* without a separate synchronisation step.
+
+        This is intended for use when the console widget shares an in-process
+        IPython kernel with the engine.  Passing ``kernel.shell.user_ns`` makes
+        the kernel's namespace the single live dictionary for both the engine
+        and the IPython REPL, eliminating the need for post-execution syncing.
+
+        Args:
+            ns (dict):
+                External namespace dict to adopt.  Typically
+                ``kernel_manager.kernel.shell.user_ns`` from an in-process
+                IPython kernel.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> engine = SequenceEngine()
+            >>> shared = {}
+            >>> engine.adopt_namespace(shared)
+            >>> "np" in shared
+            True
+            >>> engine.shutdown()
+        """
+        preserved_keys = {"__builtins__", "__name__", "__doc__", "__package__", "__spec__", "__loader__"}
+        for key, value in self._namespace.items():
+            if key not in preserved_keys:
+                ns[key] = value
+        self._namespace = ns
+        self._thread.replace_namespace(ns)
 
     # ------------------------------------------------------------------
     # Execution
