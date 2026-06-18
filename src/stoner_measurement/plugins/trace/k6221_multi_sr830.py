@@ -33,6 +33,7 @@ from stoner_measurement.instruments.current_source import CurrentWaveform
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInExpandFactor,
+    LockInInputSource,
     LockInInputCoupling,
     LockInLineFilter,
     LockInOutput,
@@ -387,6 +388,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 lockin.set_reference_source(LockInReferenceSource.EXTERNAL)
                 lockin.set_time_constant(self._time_constant)
                 lockin.set_filter_slope(self._filter_slope)
+                lockin.set_input_source(LockInInputSource.A_MINUS_B)
                 lockin.set_input_coupling(self._input_coupling)
                 lockin.set_line_filter(self._line_filter)
                 lockin.set_harmonic(entry.harmonic)
@@ -993,7 +995,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             return abs(self._waveform_amplitude) + max_off
         return abs(self._waveform_amplitude) + abs(self._waveform_offset)
 
-    def _run_auto_phase(self) -> None:
+    def _run_auto_phase(self, output_off:bool = False) -> None:
         """Enable the 6221 output, settle, and run auto-phase for entries that request it."""
         if not any(entry.auto_phase for entry in self._lockin_entries):
             return
@@ -1008,7 +1010,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 if entry.auto_phase:
                     lockin.auto_phase()
         finally:
-            self._k6221.enable_output(False)
+            if output_off:
+                self._k6221.enable_output(False)
 
     def _acquire_trace(
         self,
@@ -1045,8 +1048,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                         value = output_value
                     channel_values[spec.name].append(float(value))
                 self._apply_auto_sensitivity(readings)
-        finally:
+        except:
             self._k6221.enable_output(False)
+            raise
 
         return x_values, channel_values, specs
 
