@@ -427,7 +427,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._k6221.wave_start()
 
             with ThreadPoolExecutor(max_workers=max(1, len(self._lockins))) as executor:
-                list(executor.map(self._configure_one_lockin, self._lockin_entries, self._lockins))
+                futures = [
+                    executor.submit(self._configure_one_lockin, entry, lockin)
+                    for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
+                ]
+                for future in futures:
+                    future.result()
 
             self._run_auto_phase()
         except Exception:
