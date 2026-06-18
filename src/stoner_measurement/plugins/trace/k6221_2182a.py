@@ -1109,9 +1109,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             if mode is SourceRangeMode.FIXED:
                 self._source_range = val
 
-        compliance_sb.sigValueChanged.connect(_on_compliance_changed)
-        compliance_r_sb.sigValueChanged.connect(_on_compliance_r_changed)
-        delay_sb.sigValueChanged.connect(_on_delay_changed)
+        compliance_sb.valueChanged.connect(_on_compliance_changed)
+        compliance_r_sb.valueChanged.connect(_on_compliance_r_changed)
+        delay_sb.valueChanged.connect(_on_delay_changed)
         src_range_combo.currentIndexChanged.connect(_on_src_range_changed)
 
         src_form.addRow("Compliance mode:", comp_mode_combo)

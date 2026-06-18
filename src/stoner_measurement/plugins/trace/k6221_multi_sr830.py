@@ -569,17 +569,17 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         amplitude_sb = SISpinBox(suffix="A", siPrefix=True, value=self._waveform_amplitude)
         amplitude_sb.setMinimum(0.0)
         amplitude_sb.setMaximum(1.0)
-        amplitude_sb.sigValueChanged.connect(lambda value: setattr(self, "_waveform_amplitude", float(value)))
+        amplitude_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_amplitude", float(value)))
 
         offset_sb = SISpinBox(suffix="A", siPrefix=True, value=self._waveform_offset)
         offset_sb.setMinimum(-1.0)
         offset_sb.setMaximum(1.0)
-        offset_sb.sigValueChanged.connect(lambda value: setattr(self, "_waveform_offset", float(value)))
+        offset_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_offset", float(value)))
 
         frequency_sb = SISpinBox(suffix="Hz", siPrefix=True, value=self._waveform_frequency)
         frequency_sb.setMinimum(1e-3)
         frequency_sb.setMaximum(1e6)
-        frequency_sb.sigValueChanged.connect(lambda value: setattr(self, "_waveform_frequency", float(value)))
+        frequency_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_frequency", float(value)))
 
         phase_combo = QComboBox()
         for line in range(1, 7):
@@ -653,7 +653,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         read_multiple_sb = SISpinBox(value=self._read_rate_multiple)
         read_multiple_sb.setMinimum(0.0)
         read_multiple_sb.setMaximum(1000.0)
-        read_multiple_sb.sigValueChanged.connect(lambda value: setattr(self, "_read_rate_multiple", float(value)))
+        read_multiple_sb.valueChanged.connect(lambda value: setattr(self, "_read_rate_multiple", float(value)))
 
         auto_enabled = QCheckBox("Enable auto-sensitivity")
         auto_enabled.setChecked(self._auto_sensitivity_enabled)
@@ -663,13 +663,13 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         auto_low_sb.setMinimum(0.0)
         auto_low_sb.setMaximum(1.0)
         auto_low_sb.setSingleStep(0.05)
-        auto_low_sb.sigValueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_low", float(value)))
+        auto_low_sb.valueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_low", float(value)))
 
         auto_high_sb = SISpinBox(value=self._auto_sensitivity_high)
         auto_high_sb.setMinimum(0.0)
         auto_high_sb.setMaximum(1.0)
         auto_high_sb.setSingleStep(0.05)
-        auto_high_sb.sigValueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_high", float(value)))
+        auto_high_sb.valueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_high", float(value)))
 
         common_form.addRow("Time constant:", time_constant_combo)
         common_form.addRow("Filter slope:", slope_combo)
@@ -772,7 +772,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 phase_spin = SISpinBox(suffix="\u00b0", value=entry.phase)
                 phase_spin.setMinimum(-360.0)
                 phase_spin.setMaximum(360.0)
-                phase_spin.sigValueChanged.connect(
+                phase_spin.valueChanged.connect(
                     lambda value, *, idx=col: setattr(self._lockin_entries[idx], "phase", float(value))
                 )
                 lockins_table.setCellWidget(_ROW_PHASE, col, phase_spin)
@@ -819,7 +819,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     expand_widget.setEnabled(supports_offset)
 
                 outputs_edit.editingFinished.connect(lambda *, edit=outputs_edit: _sync_outputs(edit.text()))
-                offset_local.sigValueChanged.connect(
+                offset_local.valueChanged.connect(
                     lambda value, *, idx=col: setattr(self._lockin_entries[idx], "offset_pct", float(value))
                 )
                 expand_combo.currentIndexChanged.connect(
