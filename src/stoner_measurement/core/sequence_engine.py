@@ -78,6 +78,10 @@ _SM_MARKER_FIND_RE = re.compile(r"#\s*__SM_(\d+)__")
 _DEFAULT_PLOT_READY_TIMEOUT_SECONDS = 5.0
 _DEFAULT_PLOT_READY_POLL_SECONDS = 0.01
 
+#: Python interpreter internals that are always present in a namespace dict and
+#: should not be overwritten when merging one namespace into another.
+_INTERPRETER_INTERNALS = frozenset({"__builtins__", "__name__", "__doc__", "__package__", "__spec__", "__loader__"})
+
 
 class _QtLogHandler(logging.Handler, QObject):
     """A :class:`logging.Handler` that forwards log records via a Qt signal.
@@ -1260,6 +1264,13 @@ class SequenceEngine(QObject):
                 ``kernel_manager.kernel.shell.user_ns`` from an in-process
                 IPython kernel.
 
+        Raises:
+            TypeError:
+                If *ns* is not a :class:`dict`.
+            RuntimeError:
+                If a script is currently running.  Callers must ensure the
+                engine is idle before adopting a new namespace.
+
         Examples:
             >>> from PyQt6.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
@@ -1270,7 +1281,11 @@ class SequenceEngine(QObject):
             True
             >>> engine.shutdown()
         """
-        preserved_keys = {"__builtins__", "__name__", "__doc__", "__package__", "__spec__", "__loader__"}
+        if not isinstance(ns, dict):
+            raise TypeError(f"ns must be a dict, got {type(ns).__name__!r}")
+        if self.is_running:
+            raise RuntimeError("Cannot adopt a new namespace while a script is running")
+        preserved_keys = _INTERPRETER_INTERNALS
         for key, value in self._namespace.items():
             if key not in preserved_keys:
                 ns[key] = value
