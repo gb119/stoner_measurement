@@ -328,11 +328,17 @@ class _IPythonConsoleWidget(QWidget):
                 self._engine.error_output.disconnect(self.write_error)
             except TypeError:
                 pass
+            try:
+                self._engine.script_finished.disconnect(self._sync_engine_namespace)
+            except TypeError:
+                pass
 
         self._engine = engine
         engine.output.connect(self.write_output)
         engine.error_output.connect(self.write_error)
+        engine.script_finished.connect(self._sync_engine_namespace)
         self._kernel_manager.kernel.shell.push({"engine": engine})
+        self._sync_engine_namespace()
 
     def execute_command(self, command: str) -> None:
         """Execute *command* in the embedded IPython kernel.
@@ -382,6 +388,16 @@ class _IPythonConsoleWidget(QWidget):
             self._kernel_client.stop_channels()
         finally:
             self._kernel_manager.shutdown_kernel()
+
+    def _sync_engine_namespace(self) -> None:
+        """Push a snapshot of the connected engine namespace into the IPython shell."""
+        engine = self._engine
+        if engine is None or engine.is_running:
+            return
+        namespace = engine.namespace
+        namespace.pop("__builtins__", None)
+        namespace["engine"] = engine
+        self._kernel_manager.kernel.shell.push(namespace)
 
     def __del__(self) -> None:
         """Ensure in-process kernel channels are stopped on garbage collection."""

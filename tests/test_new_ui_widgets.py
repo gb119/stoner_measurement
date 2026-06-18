@@ -201,6 +201,36 @@ class TestConsoleWidget:
         text = self._text(console)
         assert "engine output" in text
 
+    def test_ipython_console_syncs_engine_namespace_after_script(self, qapp, engine):
+        """QtConsole should expose script-created names after script completion."""
+        import time
+
+        console = ConsoleWidget()
+        if not console.using_ipython_console:
+            return
+
+        console.connect_engine(engine)
+        engine.run_script("script_visible_value = 12345", customised=True)
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+            if not engine.is_running:
+                break
+            time.sleep(0.01)
+        time.sleep(0.05)
+        qapp.processEvents()
+
+        console.execute_command("script_visible_value")
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+            if "12345" in self._text(console):
+                break
+            time.sleep(0.01)
+
+        assert "12345" in self._text(console)
+
     def test_falls_back_to_legacy_if_qtconsole_unavailable(self, qapp, monkeypatch):
         import stoner_measurement.ui.console_widget as console_widget_module
 
