@@ -392,6 +392,8 @@ class _IPythonConsoleWidget(QWidget):
     def _sync_engine_namespace(self) -> None:
         """Push a snapshot of the connected engine namespace into the IPython shell."""
         engine = self._engine
+        # Avoid syncing while a script is executing to prevent racing against
+        # in-flight namespace mutations on the engine worker thread.
         if engine is None or engine.is_running:
             return
         namespace = engine.namespace
