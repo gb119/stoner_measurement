@@ -1211,8 +1211,13 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         sensitivities = _SR830_SENSITIVITIES
         with ThreadPoolExecutor(max_workers=max(1, len(self._lockins))) as executor:
             futures = [
-                executor.submit(self._apply_auto_sensitivity_one_lockin, entry, lockin, readings[entry.resource],
-                                sensitivities)
+                executor.submit(
+                    self._apply_auto_sensitivity_one_lockin,
+                    entry,
+                    lockin,
+                    readings[entry.resource],
+                    sensitivities,
+                )
                 for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
             ]
             for future in futures:
