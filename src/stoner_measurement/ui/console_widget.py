@@ -315,6 +315,12 @@ class _IPythonConsoleWidget(QWidget):
     def connect_engine(self, engine: SequenceEngine) -> None:
         """Connect this console to a sequence engine.
 
+        The engine adopts the in-process IPython kernel's namespace as its
+        live execution namespace.  Any variable created or mutated by a script
+        — regardless of whether the script completes successfully, raises an
+        exception, or is stopped — is therefore immediately visible in the
+        QtConsole without a separate synchronisation step.
+
         Args:
             engine (SequenceEngine):
                 Sequence engine whose output signals should be displayed.
@@ -332,7 +338,9 @@ class _IPythonConsoleWidget(QWidget):
         self._engine = engine
         engine.output.connect(self.write_output)
         engine.error_output.connect(self.write_error)
-        self._kernel_manager.kernel.shell.push({"engine": engine})
+        kernel_ns = self._kernel_manager.kernel.shell.user_ns
+        kernel_ns["engine"] = engine
+        engine.adopt_namespace(kernel_ns)
 
     def execute_command(self, command: str) -> None:
         """Execute *command* in the embedded IPython kernel.

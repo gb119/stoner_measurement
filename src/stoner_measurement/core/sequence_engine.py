@@ -78,6 +78,10 @@ _SM_MARKER_FIND_RE = re.compile(r"#\s*__SM_(\d+)__")
 _DEFAULT_PLOT_READY_TIMEOUT_SECONDS = 5.0
 _DEFAULT_PLOT_READY_POLL_SECONDS = 0.01
 
+#: Python interpreter internals that are always present in a namespace dict and
+#: should not be overwritten when merging one namespace into another.
+_INTERPRETER_INTERNALS = frozenset({"__builtins__", "__name__", "__doc__", "__package__", "__spec__", "__loader__"})
+
 
 class _QtLogHandler(logging.Handler, QObject):
     """A :class:`logging.Handler` that forwards log records via a Qt signal.
@@ -224,6 +228,17 @@ class _EngineThread(QThread):
         self._pause_event.set()  # starts un-paused (event set = running)
         self._running_script = False
         self._completed: int = 0  # incremented after each command or script finishes
+
+    def replace_namespace(self, ns: dict) -> None:
+        """Replace the execution namespace with *ns*.
+
+        The caller is responsible for ensuring that *ns* is pre-populated with
+        any names that the engine requires (builtins, numpy helpers, plugins)
+        and that no script is currently running.  The public
+        :meth:`SequenceEngine.adopt_namespace` method enforces these
+        preconditions; call that instead of this method directly.
+        """
+        self._namespace = ns
 
     # ------------------------------------------------------------------
     # Queue submission
@@ -1223,6 +1238,60 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         return dict(self._namespace)
+
+    def adopt_namespace(self, ns: dict) -> None:
+        """Merge the current interpreter namespace into *ns* and use *ns* as the live namespace.
+
+        The engine's existing namespace contents (numpy helpers, plugins,
+        catalogues, and any previously script-defined names) are merged into
+        *ns* so that all of them remain accessible.  Python interpreter
+        internals (``__builtins__``, ``__name__``, ``__doc__``, etc.) already
+        present in *ns* are preserved so that *ns* retains the identity of its
+        original environment.
+
+        After this call the engine and its worker thread execute scripts and
+        commands directly against *ns*, so any variable created or mutated
+        during execution — regardless of whether the script completes
+        successfully, raises an exception, or is stopped — is immediately
+        visible through *ns* without a separate synchronisation step.
+
+        This is intended for use when the console widget shares an in-process
+        IPython kernel with the engine.  Passing ``kernel.shell.user_ns`` makes
+        the kernel's namespace the single live dictionary for both the engine
+        and the IPython REPL, eliminating the need for post-execution syncing.
+
+        Args:
+            ns (dict):
+                External namespace dict to adopt.  Typically
+                ``kernel_manager.kernel.shell.user_ns`` from an in-process
+                IPython kernel.
+
+        Raises:
+            TypeError:
+                If *ns* is not a :class:`dict`.
+            RuntimeError:
+                If a script is currently running.  Callers must ensure the
+                engine is idle before adopting a new namespace.
+
+        Examples:
+            >>> from PyQt6.QtWidgets import QApplication
+            >>> _ = QApplication.instance() or QApplication([])
+            >>> engine = SequenceEngine()
+            >>> shared = {}
+            >>> engine.adopt_namespace(shared)
+            >>> "np" in shared
+            True
+            >>> engine.shutdown()
+        """
+        if not isinstance(ns, dict):
+            raise TypeError(f"ns must be a dict, got {type(ns).__name__!r}")
+        if self.is_running:
+            raise RuntimeError("Cannot adopt a new namespace while a script is running")
+        for key, value in self._namespace.items():
+            if key not in _INTERPRETER_INTERNALS:
+                ns[key] = value
+        self._namespace = ns
+        self._thread.replace_namespace(ns)
 
     # ------------------------------------------------------------------
     # Execution
