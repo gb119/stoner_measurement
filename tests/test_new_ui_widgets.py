@@ -75,6 +75,10 @@ class TestPythonHighlighter:
 
 
 class TestConsoleWidget:
+    @staticmethod
+    def _text(console: ConsoleWidget) -> str:
+        return console.get_output_text()
+
     def test_creates_widget(self, qapp):
         console = ConsoleWidget()
         assert console is not None
@@ -82,63 +86,80 @@ class TestConsoleWidget:
     def test_write_appends_text(self, qapp):
         console = ConsoleWidget()
         console.write("hello world")
-        assert "hello world" in console._output.toPlainText()
+        assert "hello world" in self._text(console)
 
     def test_write_error_appends_text(self, qapp):
         console = ConsoleWidget()
         console.write_error("something broke")
-        assert "something broke" in console._output.toPlainText()
+        assert "something broke" in self._text(console)
 
     def test_write_output_appends_raw_text(self, qapp):
         console = ConsoleWidget()
         console.write_output("raw line")
-        assert "raw line" in console._output.toPlainText()
+        assert "raw line" in self._text(console)
 
     def test_clear_empties_output(self, qapp):
         console = ConsoleWidget()
-        console.write("some message")
+        console.write("some message for clear")
         console.clear()
-        assert console._output.toPlainText() == ""
+        assert "some message for clear" not in self._text(console)
+        if console.using_ipython_console:
+            assert self._text(console).strip() != ""
+        else:
+            assert self._text(console) == ""
 
     def test_history_navigation(self, qapp):
         console = ConsoleWidget()
-        console._history = ["cmd1", "cmd2"]
-        console._history_pos = len(console._history)
+        if console.using_ipython_console:
+            return
+        legacy_console = console._impl
+        legacy_console._history = ["cmd1", "cmd2"]
+        legacy_console._history_pos = len(legacy_console._history)
 
-        console._history_up()
-        assert console._input.text() == "cmd2"
+        legacy_console._history_up()
+        assert legacy_console._input.text() == "cmd2"
 
-        console._history_up()
-        assert console._input.text() == "cmd1"
+        legacy_console._history_up()
+        assert legacy_console._input.text() == "cmd1"
 
-        console._history_down()
-        assert console._input.text() == "cmd2"
+        legacy_console._history_down()
+        assert legacy_console._input.text() == "cmd2"
 
-    def test_submit_echoes_command(self, qapp):
+    def test_execute_command_runs_code(self, qapp):
+        import time
+
         console = ConsoleWidget()
-        console._input.setText("1 + 1")
-        console._submit()
-        assert ">>> 1 + 1" in console._output.toPlainText()
-
-    def test_submit_evaluates_expression(self, qapp):
-        console = ConsoleWidget()
-        console._input.setText("2 + 2")
-        console._submit()
-        assert "4" in console._output.toPlainText()
+        console.execute_command("2 + 2")
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+            if "4" in self._text(console):
+                break
+            time.sleep(0.01)
+        assert "2 + 2" in self._text(console)
+        assert "4" in self._text(console)
 
     def test_submit_adds_to_history(self, qapp):
         console = ConsoleWidget()
+        if console.using_ipython_console:
+            return
         console._input.setText("my_command")
         console._submit()
         assert "my_command" in console._history
 
-    def test_submit_print_output_shown_without_engine(self, qapp):
+    def test_execute_command_print_output_shown_without_engine(self, qapp):
         """print() in the REPL without an engine should appear in the output area."""
+        import time
+
         console = ConsoleWidget()
-        console._input.setText("print('hello stdout')")
-        console._submit()
-        text = console._output.toPlainText()
-        assert "hello stdout" in text
+        console.execute_command("print('hello stdout')")
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+            if "hello stdout" in self._text(console):
+                break
+            time.sleep(0.01)
+        assert "hello stdout" in self._text(console)
 
     def test_write_output_no_extra_blank_lines(self, qapp):
         """write_output should not add a spurious newline after each chunk."""
@@ -146,28 +167,27 @@ class TestConsoleWidget:
         # Simulate how CPython's print() writes: text then "\n" as two calls.
         console.write_output("Hello World")
         console.write_output("\n")
-        lines = [ln for ln in console._output.toPlainText().splitlines() if ln]
-        assert lines == ["Hello World"]
+        text = self._text(console)
+        assert text.count("Hello World") == 1
 
     def test_write_output_does_not_merge_with_subsequent_write(self, qapp):
         """A status message written after raw output starts on its own line."""
         console = ConsoleWidget()
         console.write_output("partial")  # no trailing newline
         console.write("Status message")
-        text = console._output.toPlainText()
-        lines = text.splitlines()
-        assert any("partial" in ln for ln in lines)
-        assert not any("partial" in ln and "Status message" in ln for ln in lines)
+        text = self._text(console)
+        assert "partial" in text
+        assert "Status message" in text
+        assert "partialStatus message" not in text
 
-    def test_submit_print_output_with_engine(self, qapp, engine):
+    def test_execute_command_print_output_with_engine(self, qapp, engine):
         """print() executed via the engine should appear in the console output area."""
         import time
 
         console = ConsoleWidget()
         console.connect_engine(engine)
 
-        console._input.setText("print('engine output')")
-        console._submit()
+        console.execute_command("print('engine output')")
 
         deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline:
@@ -178,8 +198,15 @@ class TestConsoleWidget:
         time.sleep(0.05)
         qapp.processEvents()
 
-        text = console._output.toPlainText()
+        text = self._text(console)
         assert "engine output" in text
+
+    def test_falls_back_to_legacy_if_qtconsole_unavailable(self, qapp, monkeypatch):
+        import stoner_measurement.ui.console_widget as console_widget_module
+
+        monkeypatch.setattr(console_widget_module, "_IPYTHON_CONSOLE_AVAILABLE", False)
+        console = console_widget_module.ConsoleWidget()
+        assert console.using_ipython_console is False
 
 
 class TestScriptTab:

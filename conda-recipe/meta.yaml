@@ -21,16 +21,29 @@ requirements:
   run:
     - python >=3.13
     - asteval >=1.0
+    - click>=8.3.3
     - platformdirs >=4.9
+    - ipykernel >=6.0
+    - jupyter_client >=8.0
     - pyyaml >=6.0
     - pandas >=2.0
     - pyqt >=6.7
     - pyqtgraph >=0.13
     - numpy >=2.0
+    -  qtconsole >=5.5
+    - scipy >=1.17.1
+    - pylablib>=1.4
+    - pyserial>=3.5
+    - pyvisa>=1.13
+    - ruff>=0.8
+    - black>=26.3.1
   run_constrained:
     - pylablib >=1.4
     - pyserial >=3.5
     - pyvisa >=1.13
+
+
+
 
 test:
   imports:

@@ -17,11 +17,14 @@ dependencies:
   - setuptools>=61
   # Runtime dependencies
   - asteval>=1.0
+  - ipykernel>=6.0
+  - jupyter_client>=8.0
   - platformdirs>=4.9
   - pyyaml>=6.0
   - pandas>=2.0
   - pyqt>=6.7
   - pyqtgraph>=0.13
+  - qtconsole>=5.5
   - numpy>=2.0
   - click>=8.3.3
   - pytokens>=0.4.1
