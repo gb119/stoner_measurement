@@ -233,8 +233,10 @@ class _EngineThread(QThread):
         """Replace the execution namespace with *ns*.
 
         The caller is responsible for ensuring that *ns* is pre-populated with
-        any names that the engine requires (builtins, numpy helpers, plugins).
-        This must only be called while the engine is not running a script.
+        any names that the engine requires (builtins, numpy helpers, plugins)
+        and that no script is currently running.  The public
+        :meth:`SequenceEngine.adopt_namespace` method enforces these
+        preconditions; call that instead of this method directly.
         """
         self._namespace = ns
 
@@ -1285,9 +1287,8 @@ class SequenceEngine(QObject):
             raise TypeError(f"ns must be a dict, got {type(ns).__name__!r}")
         if self.is_running:
             raise RuntimeError("Cannot adopt a new namespace while a script is running")
-        preserved_keys = _INTERPRETER_INTERNALS
         for key, value in self._namespace.items():
-            if key not in preserved_keys:
+            if key not in _INTERPRETER_INTERNALS:
                 ns[key] = value
         self._namespace = ns
         self._thread.replace_namespace(ns)
