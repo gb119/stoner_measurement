@@ -7,6 +7,7 @@ import logging
 import math
 import time
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -328,17 +329,21 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._k6221.connect()
             self._k6221.confirm_identity()
 
-            for entry in self._lockin_entries:
-                transport = GpibTransport.from_resource_string(entry.resource, timeout=10.0)
-                transports.append(transport)
-                lockin = SRS830(transport)
-                lockin.connect()
-                identity = lockin.identify()
-                if "SR830" not in identity.upper():
-                    raise RuntimeError(
-                        f"Unexpected SR830 identity {identity!r} for resource {entry.resource!r}."
-                    )
-                self._lockins.append(lockin)
+            with ThreadPoolExecutor(max_workers=max(1, len(self._lockin_entries))) as executor:
+                futures = [
+                    executor.submit(self._connect_one_lockin, entry) for entry in self._lockin_entries
+                ]
+                first_error: Exception | None = None
+                for future in futures:
+                    try:
+                        transport, lockin = future.result()
+                        transports.append(transport)
+                        self._lockins.append(lockin)
+                    except Exception as exc:  # noqa: BLE001
+                        if first_error is None:
+                            first_error = exc
+            if first_error is not None:
+                raise first_error
         except Exception:
             for instrument in [*self._lockins, self._k6221]:
                 if instrument is not None:
@@ -358,6 +363,44 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         self._last_read_at = {}
         self._set_status(TraceStatus.IDLE)
+
+    def _connect_one_lockin(self, entry: LockInEntry) -> tuple[GpibTransport, SRS830]:
+        """Create, connect, and identity-verify one SR830.
+
+        If any step fails the transport is closed before propagating the
+        exception, preventing transport resource leaks in the calling
+        parallel connection loop.
+
+        Args:
+            entry (LockInEntry):
+                Lock-in configuration entry providing the VISA resource string.
+
+        Returns:
+            (GpibTransport):
+                Opened transport bound to the SR830.
+            (SRS830):
+                Connected and verified SR830 instrument driver.
+
+        Raises:
+            RuntimeError:
+                If the instrument identity does not contain ``"SR830"``.
+        """
+        transport = GpibTransport.from_resource_string(entry.resource, timeout=10.0)
+        try:
+            lockin = SRS830(transport)
+            lockin.connect()
+            identity = lockin.identify()
+            if "SR830" not in identity.upper():
+                raise RuntimeError(
+                    f"Unexpected SR830 identity {identity!r} for resource {entry.resource!r}."
+                )
+        except Exception:
+            try:
+                transport.close()
+            except _CLEANUP_EXCEPTIONS:
+                pass
+            raise
+        return transport, lockin
 
     def configure(self) -> None:
         """Apply the stored 6221 and SR830 settings to the connected hardware."""
@@ -383,23 +426,13 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._apply_source_range()
             self._k6221.wave_start()
 
-            for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
-                lockin.reset()
-                lockin.set_reference_source(LockInReferenceSource.EXTERNAL)
-                lockin.set_time_constant(self._time_constant)
-                lockin.set_filter_slope(self._filter_slope)
-                lockin.set_input_source(LockInInputSource.A_MINUS_B)
-                lockin.set_input_coupling(self._input_coupling)
-                lockin.set_line_filter(self._line_filter)
-                lockin.set_harmonic(entry.harmonic)
-                lockin.set_reference_phase(entry.phase)
-                lockin.set_reference_source(LockInReferenceSource.EXTERNAL,LockinRefenceEdge.FALLING)
-                lockin.set_sensitivity(entry.sensitivity)
-                lockin.set_reserve_mode(entry.reserve_mode)
-                for output in entry.outputs:
-                    offset_channel = output.offset_channel()
-                    if offset_channel is not None:
-                        lockin.set_output_offset(offset_channel, entry.offset_pct, entry.expand)
+            with ThreadPoolExecutor(max_workers=max(1, len(self._lockins))) as executor:
+                futures = [
+                    executor.submit(self._configure_one_lockin, entry, lockin)
+                    for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
+                ]
+                for future in futures:
+                    future.result()
 
             self._run_auto_phase()
         except Exception:
@@ -409,6 +442,32 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         timestamp = time.monotonic()
         self._record_read_timestamp(timestamp)
         self._set_status(TraceStatus.IDLE)
+
+    def _configure_one_lockin(self, entry: LockInEntry, lockin: SRS830) -> None:
+        """Apply common and per-entry settings to one SR830.
+
+        Args:
+            entry (LockInEntry):
+                Per-lockin configuration (harmonic, phase, sensitivity, etc.).
+            lockin (SRS830):
+                SR830 instrument driver to configure.
+        """
+        lockin.reset()
+        lockin.set_reference_source(LockInReferenceSource.EXTERNAL)
+        lockin.set_time_constant(self._time_constant)
+        lockin.set_filter_slope(self._filter_slope)
+        lockin.set_input_source(LockInInputSource.A_MINUS_B)
+        lockin.set_input_coupling(self._input_coupling)
+        lockin.set_line_filter(self._line_filter)
+        lockin.set_harmonic(entry.harmonic)
+        lockin.set_reference_phase(entry.phase)
+        lockin.set_reference_source(LockInReferenceSource.EXTERNAL, LockinRefenceEdge.FALLING)
+        lockin.set_sensitivity(entry.sensitivity)
+        lockin.set_reserve_mode(entry.reserve_mode)
+        for output in entry.outputs:
+            offset_channel = output.offset_channel()
+            if offset_channel is not None:
+                lockin.set_output_offset(offset_channel, entry.offset_pct, entry.expand)
 
     def auto_offset(self) -> None:
         """Enable the 6221, settle, and run auto-offset on all configured lock-in output channels.
@@ -430,16 +489,37 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             wait_time = self._time_constant * self._read_rate_multiple
             if wait_time > 0.0:
                 time.sleep(wait_time)
-            for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
-                entry.auto_offsets.clear()
-                for output in entry.outputs:
-                    channel = output.offset_channel()
-                    if channel is not None:
-                        lockin.auto_offset_channel(channel)
-                        offset_pct, _expand = lockin.get_output_offset(channel)
-                        entry.auto_offsets[channel.value] = float(offset_pct)
+            with ThreadPoolExecutor(max_workers=max(1, len(self._lockins))) as executor:
+                futures = [
+                    executor.submit(self._auto_offset_one_lockin, entry, lockin)
+                    for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
+                ]
+                for future in futures:
+                    future.result()
         finally:
             self._k6221.enable_output(False)
+
+    def _auto_offset_one_lockin(self, entry: LockInEntry, lockin: SRS830) -> None:
+        """Run auto-offset on all offsettable outputs of one lock-in entry.
+
+        For each output in *entry* that supports an offset channel (X, Y, R),
+        sends ``AOFF`` and reads back the resulting offset percentage into
+        :attr:`LockInEntry.auto_offsets`.
+
+        Args:
+            entry (LockInEntry):
+                Lock-in configuration entry whose :attr:`~LockInEntry.auto_offsets`
+                dict is updated in place.
+            lockin (SRS830):
+                SR830 instrument driver to send the auto-offset command to.
+        """
+        entry.auto_offsets.clear()
+        for output in entry.outputs:
+            channel = output.offset_channel()
+            if channel is not None:
+                lockin.auto_offset_channel(channel)
+                offset_pct, _expand = lockin.get_output_offset(channel)
+                entry.auto_offsets[channel.value] = float(offset_pct)
 
     def disconnect(self) -> None:
         """Disable the 6221 output and close all active instrument sessions."""
@@ -1006,9 +1086,15 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             wait_time = self._time_constant * self._read_rate_multiple
             if wait_time > 0.0:
                 time.sleep(wait_time)
-            for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
-                if entry.auto_phase:
-                    lockin.auto_phase()
+            phase_lockins = [
+                lockin
+                for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
+                if entry.auto_phase
+            ]
+            with ThreadPoolExecutor(max_workers=max(1, len(phase_lockins))) as executor:
+                futures = [executor.submit(lockin.auto_phase) for lockin in phase_lockins]
+                for future in futures:
+                    future.result()
         finally:
             if output_off:
                 self._k6221.enable_output(False)
@@ -1080,16 +1166,38 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     def _read_lockins(self) -> dict[str, LockInReading]:
         self._trigger_gpib_lockins()
-        readings: dict[str, LockInReading] = {}
-        for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
-            requested_outputs = entry.outputs
-            if LockInOutput.R not in requested_outputs:
-                requested_outputs = (*requested_outputs, LockInOutput.R)
-            measured_values = lockin.measure_outputs(requested_outputs)
-            output_values = {output: float(measured_values[output]) for output in entry.outputs}
-            ratio_signal = abs(float(measured_values[LockInOutput.R]))
-            readings[entry.resource] = LockInReading(output_values, float(ratio_signal))
-        return readings
+        with ThreadPoolExecutor(max_workers=max(1, len(self._lockins))) as executor:
+            futures = [
+                executor.submit(self._read_one_lockin, entry, lockin)
+                for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
+            ]
+            results = [future.result() for future in futures]
+        return dict(results)
+
+    def _read_one_lockin(self, entry: LockInEntry, lockin: SRS830) -> tuple[str, LockInReading]:
+        """Read outputs from one SR830 and return ``(resource, reading)``.
+
+        Args:
+            entry (LockInEntry):
+                Lock-in configuration entry specifying the requested outputs.
+            lockin (SRS830):
+                SR830 instrument driver to read from.
+
+        Returns:
+            (str):
+                VISA resource string identifying this lock-in (used as the
+                key in the readings dict returned by :meth:`_read_lockins`).
+            (LockInReading):
+                Measured output values and the R-channel signal used for
+                auto-sensitivity decisions.
+        """
+        requested_outputs = entry.outputs
+        if LockInOutput.R not in requested_outputs:
+            requested_outputs = (*requested_outputs, LockInOutput.R)
+        measured_values = lockin.measure_outputs(requested_outputs)
+        output_values = {output: float(measured_values[output]) for output in entry.outputs}
+        ratio_signal = abs(float(measured_values[LockInOutput.R]))
+        return entry.resource, LockInReading(output_values, float(ratio_signal))
 
     def _trigger_gpib_lockins(self) -> None:
         for lockin in self._lockins:
@@ -1101,26 +1209,60 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         if not self._auto_sensitivity_enabled:
             return
         sensitivities = _SR830_SENSITIVITIES
-        for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
-            if not entry.auto_sensitivity:
-                continue
-            reading = readings[entry.resource]
-            if entry.sensitivity <= 0.0:
-                continue
-            ratio = abs(reading.ratio_signal) / entry.sensitivity
-            try:
-                index = sensitivities.index(entry.sensitivity)
-            except ValueError:
-                continue
-            new_index = index
-            if ratio < self._auto_sensitivity_low and index > 0:
-                new_index = index - 1
-            elif ratio > self._auto_sensitivity_high and index < len(sensitivities) - 1:
-                new_index = index + 1
-            if new_index != index:
-                new_sensitivity = sensitivities[new_index]
-                lockin.set_sensitivity(new_sensitivity)
-                entry.sensitivity = new_sensitivity
+        with ThreadPoolExecutor(max_workers=max(1, len(self._lockins))) as executor:
+            futures = [
+                executor.submit(
+                    self._apply_auto_sensitivity_one_lockin,
+                    entry,
+                    lockin,
+                    readings[entry.resource],
+                    sensitivities,
+                )
+                for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
+            ]
+            for future in futures:
+                future.result()
+
+    def _apply_auto_sensitivity_one_lockin(
+        self,
+        entry: LockInEntry,
+        lockin: SRS830,
+        reading: LockInReading,
+        sensitivities: tuple[float, ...],
+    ) -> None:
+        """Adjust the sensitivity of one lock-in if the signal ratio is out of range.
+
+        Args:
+            entry (LockInEntry):
+                Lock-in configuration entry whose :attr:`~LockInEntry.sensitivity`
+                is updated in place when a range change is made.
+            lockin (SRS830):
+                SR830 instrument driver to apply the new sensitivity to.
+            reading (LockInReading):
+                Most recent reading for this lock-in, used to compute the
+                signal-to-full-scale ratio.
+            sensitivities (tuple[float, ...]):
+                Ordered sequence of all valid SR830 sensitivity values, used to
+                step up or down from the current setting.
+        """
+        if not entry.auto_sensitivity:
+            return
+        if entry.sensitivity <= 0.0:
+            return
+        ratio = abs(reading.ratio_signal) / entry.sensitivity
+        try:
+            index = sensitivities.index(entry.sensitivity)
+        except ValueError:
+            return
+        new_index = index
+        if ratio < self._auto_sensitivity_low and index > 0:
+            new_index = index - 1
+        elif ratio > self._auto_sensitivity_high and index < len(sensitivities) - 1:
+            new_index = index + 1
+        if new_index != index:
+            new_sensitivity = sensitivities[new_index]
+            lockin.set_sensitivity(new_sensitivity)
+            entry.sensitivity = new_sensitivity
 
     def _apply_offset_correction(self, entry: LockInEntry, output: LockInOutput, value: float) -> float:
         """Return the true signal value by reversing the SR830 output offset.

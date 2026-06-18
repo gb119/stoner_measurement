@@ -20,6 +20,7 @@ from stoner_measurement.plugins.trace import (
     Keithley6221_MultiSR830Plugin,
     LockInOutput,
     ResistanceCurrentMode,
+    TraceStatus,
     WaveformScanMode,
 )
 from stoner_measurement.plugins.trace.k6221_multi_sr830 import LockInEntry, LockInReading
@@ -579,3 +580,65 @@ class TestValidation:
         plugin._lockins = [MagicMock()]
         with pytest.raises(ValueError, match="range mode"):
             plugin.configure()
+
+
+class TestConnect:
+    def test_sr830_identity_mismatch_closes_transports_and_resets_state(self, qapp):
+        """Verify connect() cleans up and resets state when an SR830 returns a wrong identity."""
+        plugin = _make_plugin()
+        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR")]
+
+        mock_transport_6221 = MagicMock()
+        mock_transport_sr830 = MagicMock()
+        mock_k6221 = MagicMock()
+        mock_sr830 = MagicMock()
+        mock_sr830.identify.return_value = "SR860"  # does not contain "SR830"
+
+        with patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
+            side_effect=[mock_transport_6221, mock_transport_sr830],
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.Keithley6221",
+            return_value=mock_k6221,
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
+            return_value=mock_sr830,
+        ):
+            with pytest.raises(RuntimeError, match="Unexpected SR830 identity"):
+                plugin.connect()
+
+        mock_transport_sr830.close.assert_called()
+        mock_transport_6221.close.assert_called()
+        assert plugin._k6221 is None
+        assert plugin._lockins == []
+        assert plugin.status is TraceStatus.ERROR
+
+    def test_sr830_connect_exception_closes_transports_and_resets_state(self, qapp):
+        """Verify connect() cleans up and resets state when an SR830 raises during connection."""
+        plugin = _make_plugin()
+        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR")]
+
+        mock_transport_6221 = MagicMock()
+        mock_transport_sr830 = MagicMock()
+        mock_k6221 = MagicMock()
+        mock_sr830 = MagicMock()
+        mock_sr830.connect.side_effect = OSError("Instrument not responding")
+
+        with patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
+            side_effect=[mock_transport_6221, mock_transport_sr830],
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.Keithley6221",
+            return_value=mock_k6221,
+        ), patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
+            return_value=mock_sr830,
+        ):
+            with pytest.raises(OSError, match="Instrument not responding"):
+                plugin.connect()
+
+        mock_transport_sr830.close.assert_called()
+        mock_transport_6221.close.assert_called()
+        assert plugin._k6221 is None
+        assert plugin._lockins == []
+        assert plugin.status is TraceStatus.ERROR
