@@ -53,7 +53,7 @@ from io import TextIOBase
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from qtpy.QtCore import QObject, QThread, pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -101,7 +101,7 @@ class _QtLogHandler(logging.Handler, QObject):
             Minimum log level to handle.  Defaults to ``logging.DEBUG``.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> handler = _QtLogHandler()
         >>> handler.level == logging.DEBUG
@@ -605,7 +605,7 @@ class SequenceEngine(QObject):
             Optional Qt parent.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> engine = SequenceEngine()
         >>> engine.is_running
@@ -670,7 +670,7 @@ class SequenceEngine(QObject):
                 The plot widget, or ``None`` if not yet set.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> engine.plot_widget is None
@@ -798,7 +798,7 @@ class SequenceEngine(QObject):
                 Plugin instance to expose in the namespace.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
@@ -831,7 +831,7 @@ class SequenceEngine(QObject):
                 Entry-point name passed to :meth:`add_plugin`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
@@ -870,7 +870,7 @@ class SequenceEngine(QObject):
                 in the namespace.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
@@ -977,7 +977,7 @@ class SequenceEngine(QObject):
                 safe to pass.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
@@ -1011,7 +1011,7 @@ class SequenceEngine(QObject):
                 instances — base plugins first, then step plugins.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
@@ -1074,7 +1074,7 @@ class SequenceEngine(QObject):
                 in-sequence step plugin is expanded the same way.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
@@ -1140,7 +1140,7 @@ class SequenceEngine(QObject):
                 Snapshot copy of the traces catalog.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
@@ -1173,7 +1173,7 @@ class SequenceEngine(QObject):
                 Snapshot copy of the values catalog.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_control import StateControlPlugin
             >>> from stoner_measurement.plugins.state_control import CounterPlugin
@@ -1230,7 +1230,7 @@ class SequenceEngine(QObject):
                 A shallow copy of the interpreter globals.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> isinstance(engine.namespace, dict)
@@ -1274,7 +1274,7 @@ class SequenceEngine(QObject):
                 engine is idle before adopting a new namespace.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> shared = {}
@@ -1328,7 +1328,7 @@ class SequenceEngine(QObject):
                 Only consulted when *customised* is ``False``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> engine.run_script("x = 1 + 1")
@@ -1347,7 +1347,7 @@ class SequenceEngine(QObject):
                 Python expression or statement.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> engine.execute_command("1 + 1")
@@ -1365,7 +1365,7 @@ class SequenceEngine(QObject):
         Has no effect if no script is currently running.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> engine.pause()  # no-op when idle
@@ -1377,7 +1377,7 @@ class SequenceEngine(QObject):
         """Resume a paused script.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> engine.resume()  # no-op when not paused
@@ -1392,7 +1392,7 @@ class SequenceEngine(QObject):
         ``sys.settrace``).  Has no effect if no script is running.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> engine.stop()  # no-op when idle
@@ -1409,7 +1409,7 @@ class SequenceEngine(QObject):
         terminated.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> engine.shutdown()
@@ -1445,7 +1445,7 @@ class SequenceEngine(QObject):
                 The handler attached to the ``stoner_measurement`` root logger.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = SequenceEngine()
             >>> engine.log_handler is not None
@@ -1561,7 +1561,7 @@ class SequenceEngine(QObject):
                 ``(code, line_map)`` pair when *return_line_map* is ``True``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()

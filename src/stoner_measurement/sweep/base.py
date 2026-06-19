@@ -6,8 +6,8 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QWidget
+from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtWidgets import QWidget
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.state_sweep.base import StateSweepPlugin
@@ -82,7 +82,7 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
                 the duration cannot be determined.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.sweep import MonitorAndFilterSweepGenerator
             >>> import math

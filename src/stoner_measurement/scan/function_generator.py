@@ -12,9 +12,9 @@ import enum
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6 import QtGui
-from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import (
+from qtpy import QtGui
+from qtpy.QtCore import QObject
+from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -89,7 +89,7 @@ class FunctionScanGenerator(BaseScanGenerator):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> import numpy as np
         >>> gen = FunctionScanGenerator(num_points=10)
@@ -214,7 +214,7 @@ class FunctionScanGenerator(BaseScanGenerator):
                 A 1-D array of *num_points* float values.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> import numpy as np
             >>> gen = FunctionScanGenerator(num_points=4, amplitude=1.0, offset=0.0, phase=0.0)
@@ -256,7 +256,7 @@ class FunctionScanGenerator(BaseScanGenerator):
                 ``True``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = FunctionScanGenerator(num_points=5)
             >>> gen.measure_flags().tolist()
@@ -276,7 +276,7 @@ class FunctionScanGenerator(BaseScanGenerator):
                 A :class:`FunctionScanWidget` bound to this generator.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = FunctionScanGenerator()
             >>> widget = gen.config_widget()
@@ -295,7 +295,7 @@ class FunctionScanGenerator(BaseScanGenerator):
                 ``"num_points"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = FunctionScanGenerator(amplitude=2.0, num_points=50)
             >>> d = gen.to_json()
@@ -335,7 +335,7 @@ class FunctionScanGenerator(BaseScanGenerator):
                 A fully configured instance.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = FunctionScanGenerator(amplitude=3.0, offset=1.0, num_points=20)
             >>> restored = FunctionScanGenerator._from_json_data(gen.to_json())
@@ -380,7 +380,7 @@ class FunctionScanWidget(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> gen = FunctionScanGenerator(num_points=50)
         >>> widget = FunctionScanWidget(generator=gen)
@@ -554,7 +554,7 @@ class FunctionScanWidget(QWidget):
                 The generator instance being configured.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = FunctionScanGenerator()
             >>> widget = FunctionScanWidget(generator=gen)

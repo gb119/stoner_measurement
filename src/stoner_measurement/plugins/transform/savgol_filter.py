@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget
+from qtpy.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget
 
 from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform._trace_selection import (

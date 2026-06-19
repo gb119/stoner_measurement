@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QMessageBox, QWidget
+from qtpy.QtCore import Qt, pyqtSignal
+from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QMessageBox, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 
@@ -51,7 +51,7 @@ class AlertCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command.alert import AlertCommand
         >>> cmd = AlertCommand()
@@ -86,7 +86,7 @@ class AlertCommand(CommandPlugin):
                 ``"Alert"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
             >>> AlertCommand().name
@@ -126,7 +126,7 @@ class AlertCommand(CommandPlugin):
                 ``message`` is not provided.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
             >>> cmd = AlertCommand()
@@ -145,7 +145,7 @@ class AlertCommand(CommandPlugin):
                 the configured :attr:`message_expr` setting.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
             >>> cmd = AlertCommand()
@@ -169,10 +169,10 @@ class AlertCommand(CommandPlugin):
                 The settings widget for the *Settings* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(AlertCommand().config_widget(), QWidget)
             True
         """
@@ -211,7 +211,7 @@ class AlertCommand(CommandPlugin):
                 extended with ``"message_expr"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
             >>> d = AlertCommand().to_json()

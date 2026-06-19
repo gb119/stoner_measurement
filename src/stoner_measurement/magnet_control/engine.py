@@ -19,7 +19,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSlot
+from qtpy.QtCore import QObject, QTimer, pyqtSlot
 
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
@@ -76,7 +76,7 @@ class MagnetControllerEngine(QObject):
             The pub/sub bus; connect to its signals to receive live data.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.magnet_control.engine import MagnetControllerEngine
         >>> engine = MagnetControllerEngine.instance()
@@ -142,7 +142,7 @@ class MagnetControllerEngine(QObject):
                 The singleton engine instance.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.magnet_control.engine import MagnetControllerEngine
             >>> e1 = MagnetControllerEngine.instance()
@@ -234,7 +234,7 @@ class MagnetControllerEngine(QObject):
                 Any exception raised while resolving or connecting the driver.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = MagnetControllerEngine()
             >>> engine.connect_driver("OxfordIPS120", "Null", "")  # doctest: +SKIP
@@ -623,7 +623,7 @@ class MagnetControllerEngine(QObject):
                 ``None`` when no instrument is connected.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.magnet_control.engine import MagnetControllerEngine
             >>> engine = MagnetControllerEngine.instance()
@@ -650,7 +650,7 @@ class MagnetControllerEngine(QObject):
         fresh instance if called again.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.magnet_control.engine import MagnetControllerEngine
             >>> e = MagnetControllerEngine()
@@ -825,7 +825,7 @@ class MagnetControllerEngine(QObject):
 def _qapp():
     """Return the running QApplication instance, or None."""
     try:
-        from PyQt6.QtWidgets import QApplication
+        from qtpy.QtWidgets import QApplication
 
         return QApplication.instance()
     except (ImportError, RuntimeError):

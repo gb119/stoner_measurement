@@ -11,8 +11,8 @@ from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QWidget
+from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtWidgets import QWidget
 
 if TYPE_CHECKING:
     pass
@@ -68,7 +68,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.scan.ramp_generator import RampScanGenerator
         >>> gen = RampScanGenerator()
@@ -135,7 +135,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
                 current state.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.scan.stepped_generator import SteppedScanGenerator
             >>> gen = SteppedScanGenerator(start=1.0, stages=[(2.0, 0.5, True)])
@@ -170,7 +170,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
                 If ``data["type"]`` does not match any registered generator class.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.scan.stepped_generator import SteppedScanGenerator
             >>> gen = SteppedScanGenerator(start=0.5, stages=[(1.0, 0.25, True)])
@@ -245,7 +245,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
                 A 1-D boolean array of the same length as :meth:`generate`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.scan.function_generator import FunctionScanGenerator
             >>> gen = FunctionScanGenerator(num_points=5)
@@ -282,7 +282,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
                 A 1-D array of generated values.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> import numpy as np
             >>> from stoner_measurement.scan.function_generator import FunctionScanGenerator
@@ -308,7 +308,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
                 A 1-D boolean array of per-point measure flags.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.scan.function_generator import FunctionScanGenerator
             >>> gen = FunctionScanGenerator(num_points=3)
@@ -358,7 +358,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         the first value in the sequence.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.scan.function_generator import FunctionScanGenerator
             >>> gen = FunctionScanGenerator(num_points=5)
@@ -379,7 +379,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
                 The number of values produced by this generator.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.scan.function_generator import FunctionScanGenerator
             >>> gen = FunctionScanGenerator(num_points=10)

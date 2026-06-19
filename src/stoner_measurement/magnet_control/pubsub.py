@@ -8,7 +8,7 @@ and any number of subscribers (UI panels, sequence plugins, monitors).
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject, pyqtSignal
 
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
@@ -40,7 +40,7 @@ class MagnetPublisher(QObject):
             changes.  Carries the new status value.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.magnet_control.pubsub import MagnetPublisher
         >>> pub = MagnetPublisher()

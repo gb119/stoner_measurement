@@ -29,7 +29,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyvisa
-from PyQt6.QtWidgets import (
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -258,7 +258,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> plugin = Keithley6221_2182APlugin()
         >>> plugin.name
@@ -328,7 +328,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 ``"k6221_dc_iv"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().name
             'k6221_dc_iv'
@@ -344,7 +344,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 ``"6221/2182A I-V"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().trace_title
             '6221/2182A I-V'
@@ -360,7 +360,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 ``"I"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().x_label
             'I'
@@ -376,7 +376,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 ``"V"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().y_label
             'V'
@@ -392,7 +392,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 ``"A"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().x_units
             'A'
@@ -408,7 +408,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 ``"V"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().y_units
             'V'
@@ -424,7 +424,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 ``["IV"]``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> Keithley6221_2182APlugin().channel_names
             ['IV']
@@ -459,7 +459,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 respective role constants.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = Keithley6221_2182APlugin()
             >>> # plugin.connect(); plugin.configure()
@@ -530,7 +530,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 If the 6221 identity string does not contain ``"6221"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = Keithley6221_2182APlugin()
             >>> # plugin.connect()  # requires real hardware
@@ -599,7 +599,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 If the scan generator produces no points.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = Keithley6221_2182APlugin()
             >>> # plugin.connect(); plugin.configure()  # requires real hardware
@@ -713,7 +713,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 does not complete within the timeout.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = Keithley6221_2182APlugin()
             >>> # plugin.connect(); plugin.configure()
@@ -808,7 +808,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         connections, even if a previous operation failed.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = Keithley6221_2182APlugin()
             >>> plugin.disconnect()
@@ -847,7 +847,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 JSON-serialisable configuration dictionary.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = Keithley6221_2182APlugin()
             >>> d = plugin.to_json()
@@ -954,9 +954,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 Configured settings widget for the *Settings* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(Keithley6221_2182APlugin()._plugin_config_tabs(), QWidget)
             True
         """
@@ -1266,7 +1266,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 HTML-formatted description string.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = Keithley6221_2182APlugin()
             >>> "<h3>" in plugin._about_html()

@@ -179,7 +179,7 @@ class TopLevelSequence(SequencePlugin):
             Always ``"Sequence"``.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.sequence import TopLevelSequence
         >>> seq = TopLevelSequence()

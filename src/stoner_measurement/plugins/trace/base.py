@@ -34,8 +34,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -699,7 +699,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.trace import DummyPlugin
         >>> plugin = DummyPlugin()
@@ -764,7 +764,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 The scan generator class to instantiate.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> from stoner_measurement.scan import FunctionScanGenerator
@@ -810,7 +810,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 plus ``"scan_generator"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -855,7 +855,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 The current :class:`TraceStatus` value.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -893,7 +893,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 with :attr:`TraceStatus.ERROR`) on failure.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -914,7 +914,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         appropriate commands to the instrument.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -950,7 +950,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 same dict is stored as :attr:`data`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> from stoner_measurement.scan import SteppedScanGenerator
@@ -1017,7 +1017,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         connections.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -1040,7 +1040,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 ``len(self.channel_names)``; always at least 1.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> DummyPlugin().num_traces
@@ -1064,7 +1064,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Trace title string.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> DummyPlugin().trace_title
@@ -1084,7 +1084,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Unit string; empty string if dimensionless.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> DummyPlugin().x_units
@@ -1104,7 +1104,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Unit string; empty string if dimensionless.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> DummyPlugin().y_units
@@ -1125,7 +1125,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 The currently active scan generator instance.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> from stoner_measurement.scan import SteppedScanGenerator
@@ -1166,7 +1166,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 first.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -1215,7 +1215,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 The settings widget, or ``None`` for a blank tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -1245,7 +1245,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 ``(x, y)`` data point pairs.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> from stoner_measurement.scan import SteppedScanGenerator
@@ -1272,7 +1272,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Ordered list of channel name strings.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> DummyPlugin().channel_names
@@ -1316,7 +1316,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 ``(channel_name, x, y)`` triples.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> from stoner_measurement.scan import SteppedScanGenerator
@@ -1356,7 +1356,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 result to the plugin's :attr:`data` attribute.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -1388,7 +1388,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 channel in :attr:`channel_names`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()

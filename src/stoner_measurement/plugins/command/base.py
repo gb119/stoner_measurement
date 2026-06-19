@@ -23,8 +23,8 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Protocol
 
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
+from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.core.sequence_engine import _DEFAULT_PLOT_READY_TIMEOUT_SECONDS
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
@@ -65,7 +65,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command import CommandPlugin
         >>> class _Noop(CommandPlugin):
@@ -98,7 +98,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Always ``"command"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import CommandPlugin
             >>> class _Noop(CommandPlugin):
@@ -121,7 +121,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 for this plugin when generating sequence code.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import CommandPlugin
             >>> class _Noop(CommandPlugin):
@@ -153,7 +153,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 and is reported as a script error attributed to this plugin.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import CommandPlugin
             >>> class _Log(CommandPlugin):
@@ -174,7 +174,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         during a sequence step.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import CommandPlugin
             >>> class _Noop(CommandPlugin):
@@ -271,7 +271,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 optionally an *About* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import CommandPlugin
             >>> class _Noop(CommandPlugin):
@@ -330,7 +330,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 A single ``()`` call line followed by a blank line.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import CommandPlugin
             >>> class _Noop(CommandPlugin):
@@ -355,7 +355,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Always an empty dict.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import CommandPlugin
             >>> class _Noop(CommandPlugin):
@@ -375,7 +375,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Always an empty dict.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import CommandPlugin
             >>> class _Noop(CommandPlugin):

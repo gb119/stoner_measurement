@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QSettings, Qt, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QCloseEvent, QColor, QFont, QTextCharFormat, QTextCursor
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QSettings, Qt, pyqtSignal, pyqtSlot
+from qtpy.QtGui import QCloseEvent, QColor, QFont, QTextCharFormat, QTextCursor
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -279,7 +279,7 @@ class LogViewerWindow(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> app = QApplication.instance() or QApplication([])
         >>> viewer = LogViewerWindow()
         >>> viewer.windowTitle()
@@ -376,7 +376,7 @@ class LogViewerWindow(QWidget):
         """Show the window and bring it to the front.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> viewer = LogViewerWindow()
             >>> viewer.show_and_raise()
@@ -392,7 +392,7 @@ class LogViewerWindow(QWidget):
         """Clear all log messages from the display.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> viewer = LogViewerWindow()
             >>> import logging
@@ -417,7 +417,7 @@ class LogViewerWindow(QWidget):
                 The log record to display.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> viewer = LogViewerWindow()
             >>> import logging

@@ -5,8 +5,8 @@ from __future__ import annotations
 import keyword
 import re
 
-from PyQt6.QtCore import QRect, QSize, Qt
-from PyQt6.QtGui import (
+from qtpy.QtCore import QRect, QSize, Qt
+from qtpy.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
@@ -15,7 +15,7 @@ from PyQt6.QtGui import (
     QTextCharFormat,
     QTextDocument,
 )
-from PyQt6.QtWidgets import QPlainTextEdit, QWidget
+from qtpy.QtWidgets import QPlainTextEdit, QWidget
 
 _SYNTAX_MARKER_MIN_SIZE = 6
 _SYNTAX_MARKER_MAX_SIZE = 10
@@ -37,7 +37,7 @@ class PythonHighlighter(QSyntaxHighlighter):
             The document to attach the highlighter to.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication, QPlainTextEdit
+        >>> from qtpy.QtWidgets import QApplication, QPlainTextEdit
         >>> app = QApplication.instance() or QApplication([])
         >>> editor = QPlainTextEdit()
         >>> highlighter = PythonHighlighter(editor.document())
@@ -239,7 +239,7 @@ class EditorWidget(QPlainTextEdit):
         highlighter (PythonHighlighter): The attached syntax highlighter instance.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> app = QApplication.instance() or QApplication([])
         >>> editor = EditorWidget()
         >>> editor.set_text("print('hello')")
@@ -368,7 +368,7 @@ class EditorWidget(QPlainTextEdit):
 
     def _highlight_current_line(self) -> None:
         """Highlight the line that contains the text cursor."""
-        from PyQt6.QtWidgets import QTextEdit
+        from qtpy.QtWidgets import QTextEdit
 
         extra: list[QTextEdit.ExtraSelection] = []
         if not self.isReadOnly():
@@ -444,7 +444,7 @@ class EditorWidget(QPlainTextEdit):
                 The current editor text.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> editor = EditorWidget()
             >>> editor.set_text("x = 1")
@@ -461,7 +461,7 @@ class EditorWidget(QPlainTextEdit):
                 New content for the editor.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> editor = EditorWidget()
             >>> editor.set_text("y = 2")

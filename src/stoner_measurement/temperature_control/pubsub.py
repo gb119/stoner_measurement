@@ -8,7 +8,7 @@ and any number of subscribers (UI panels, sequence plugins, monitors).
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject, pyqtSignal
 
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
@@ -39,7 +39,7 @@ class TemperaturePublisher(QObject):
             changes.  Carries the new :class:`~stoner_measurement.temperature_control.types.EngineStatus` value.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.temperature_control.pubsub import TemperaturePublisher
         >>> pub = TemperaturePublisher()

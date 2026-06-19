@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from traceback import format_exc
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSlot
+from qtpy.QtCore import QObject, QTimer, pyqtSlot
 
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
@@ -77,7 +77,7 @@ class TemperatureControllerEngine(QObject):
             The pub/sub bus; connect to its signals to receive live data.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
         >>> engine = TemperatureControllerEngine.instance()
@@ -139,7 +139,7 @@ class TemperatureControllerEngine(QObject):
                 The singleton engine instance.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> e1 = TemperatureControllerEngine.instance()
@@ -231,7 +231,7 @@ class TemperatureControllerEngine(QObject):
                 Any exception raised while resolving or connecting the driver.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = TemperatureControllerEngine()
             >>> engine.connect_driver("Lakeshore335", "Null", "")  # doctest: +SKIP
@@ -384,7 +384,7 @@ class TemperatureControllerEngine(QObject):
                 Connected driver instance, or ``None`` when disconnected.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> engine = TemperatureControllerEngine()
             >>> engine.connected_driver is None
@@ -508,7 +508,7 @@ class TemperatureControllerEngine(QObject):
                 unavailable.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> engine = TemperatureControllerEngine.instance()
@@ -668,7 +668,7 @@ class TemperatureControllerEngine(QObject):
                 Desired heater output as a percentage (0–100 %).
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> engine = TemperatureControllerEngine.instance()
@@ -702,7 +702,7 @@ class TemperatureControllerEngine(QObject):
                 ``None`` if disconnected.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> engine = TemperatureControllerEngine.instance()
@@ -743,7 +743,7 @@ class TemperatureControllerEngine(QObject):
                 written as zone 1, index 1 as zone 2, etc.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> engine = TemperatureControllerEngine.instance()
@@ -774,7 +774,7 @@ class TemperatureControllerEngine(QObject):
                 disconnected or if the driver raised an error.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> engine = TemperatureControllerEngine.instance()
@@ -804,7 +804,7 @@ class TemperatureControllerEngine(QObject):
                 current hardware state.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> from stoner_measurement.instruments.temperature_controller import InputChannelSettings
@@ -985,7 +985,7 @@ class TemperatureControllerEngine(QObject):
         fresh instance if called again.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> e = TemperatureControllerEngine()
@@ -1228,7 +1228,7 @@ class TemperatureControllerEngine(QObject):
 def _qapp():
     """Return the running QApplication instance, or None."""
     try:
-        from PyQt6.QtWidgets import QApplication
+        from qtpy.QtWidgets import QApplication
 
         return QApplication.instance()
     except (ImportError, RuntimeError):

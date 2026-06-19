@@ -18,7 +18,7 @@ import re
 from typing import Any
 
 import numpy as np
-from PyQt6.QtWidgets import (
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -208,7 +208,7 @@ class SaveCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command import SaveCommand
         >>> cmd = SaveCommand()
@@ -242,7 +242,7 @@ class SaveCommand(CommandPlugin):
                 ``"Save"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import SaveCommand
             >>> SaveCommand().name
@@ -335,7 +335,7 @@ class SaveCommand(CommandPlugin):
                 If the file cannot be written (e.g. due to permissions).
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> import tempfile, os
             >>> from stoner_measurement.plugins.command import SaveCommand
@@ -578,7 +578,7 @@ class SaveCommand(CommandPlugin):
                 If both *trace* and *data* are supplied.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import SaveCommand
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -621,14 +621,14 @@ class SaveCommand(CommandPlugin):
                 The settings widget for the *Settings* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import SaveCommand
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(SaveCommand().config_widget(), QWidget)
             True
         """
-        from PyQt6.QtWidgets import QStackedWidget
+        from qtpy.QtWidgets import QStackedWidget
 
         widget = QWidget(parent)
         outer_layout = QVBoxLayout(widget)
@@ -823,7 +823,7 @@ class SaveCommand(CommandPlugin):
                 ``"no_overwrite"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command import SaveCommand
             >>> d = SaveCommand().to_json()

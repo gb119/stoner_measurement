@@ -19,7 +19,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtWidgets import (
+from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QLineEdit,
@@ -109,7 +109,7 @@ class DetailsCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command.details import DetailsCommand
         >>> cmd = DetailsCommand()
@@ -138,7 +138,7 @@ class DetailsCommand(CommandPlugin):
                 ``"Details"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.details import DetailsCommand
             >>> DetailsCommand().name
@@ -157,7 +157,7 @@ class DetailsCommand(CommandPlugin):
         sequence execution.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.details import DetailsCommand
             >>> cmd = DetailsCommand()
@@ -194,7 +194,7 @@ class DetailsCommand(CommandPlugin):
                 Four assignment lines plus a trailing blank line.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.details import DetailsCommand
             >>> cmd = DetailsCommand()
@@ -262,7 +262,7 @@ class DetailsCommand(CommandPlugin):
                 The settings widget for the *Settings* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.details import DetailsCommand
             >>> isinstance(DetailsCommand().config_widget(), QWidget)
@@ -335,7 +335,7 @@ class DetailsCommand(CommandPlugin):
                 ``"notes"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.details import DetailsCommand
             >>> d = DetailsCommand().to_json()

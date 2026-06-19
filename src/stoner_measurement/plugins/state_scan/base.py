@@ -17,8 +17,8 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -327,7 +327,7 @@ class StateScanPlugin(StatePlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.state_scan import StateScanPlugin
         >>> class _DummyState(StateScanPlugin):
@@ -393,7 +393,7 @@ class StateScanPlugin(StatePlugin):
                 JSON-serialisable dictionary with all plugin keys.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> plugin = CounterPlugin()
@@ -440,7 +440,7 @@ class StateScanPlugin(StatePlugin):
                 The scan generator class to instantiate.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> plugin = CounterPlugin()
@@ -473,7 +473,7 @@ class StateScanPlugin(StatePlugin):
                 List of ``(tab_title, widget)`` pairs.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> plugin = CounterPlugin()
@@ -510,7 +510,7 @@ class StateScanPlugin(StatePlugin):
                 The settings widget, or ``None`` for a blank tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> CounterPlugin()._plugin_config_tabs() is None
@@ -530,7 +530,7 @@ class StateScanPlugin(StatePlugin):
                 Ordered list of zero-argument callables.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import StateScanPlugin
             >>> class _S(StateScanPlugin):
@@ -624,7 +624,7 @@ class StateScanPlugin(StatePlugin):
                 default ``0.5``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import StateScanPlugin
             >>> class _InstantState(StateScanPlugin):
@@ -684,7 +684,7 @@ class StateScanPlugin(StatePlugin):
                 Lines implementing the scan loop with nested sub-step bodies.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import StateScanPlugin
             >>> class _S(StateScanPlugin):

@@ -8,8 +8,8 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -299,7 +299,7 @@ class StateSweepPlugin(StatePlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.state_sweep import SweepTimePlugin
         >>> p = SweepTimePlugin()
@@ -351,7 +351,7 @@ class StateSweepPlugin(StatePlugin):
                 Timeout in seconds, or ``inf`` if not calculable.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.sweep import MultiSegmentRampSweepGenerator
             >>> from stoner_measurement.plugins.state_sweep import SweepTimePlugin
@@ -380,7 +380,7 @@ class StateSweepPlugin(StatePlugin):
                 JSON-serialisable dictionary with all plugin keys.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_sweep import SweepTimePlugin
             >>> d = SweepTimePlugin().to_json()
@@ -608,7 +608,7 @@ class StateSweepPlugin(StatePlugin):
                 Lines implementing the sweep loop with nested sub-step bodies.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_sweep import SweepTimePlugin
             >>> p = SweepTimePlugin()

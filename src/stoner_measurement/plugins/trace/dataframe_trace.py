@@ -6,8 +6,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QHeaderView,

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import QSettings
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QSettings
+from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -42,7 +42,7 @@ def make_app_settings() -> QSettings:
             The application-settings object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> s = make_app_settings()
         >>> isinstance(s, QSettings)
@@ -75,7 +75,7 @@ class SettingsDialog(QDialog):
             Optional parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> dlg = SettingsDialog()
         >>> dlg.windowTitle()

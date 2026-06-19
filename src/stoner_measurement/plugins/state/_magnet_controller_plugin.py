@@ -6,7 +6,7 @@ import math
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
-from PyQt6.QtWidgets import (
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,

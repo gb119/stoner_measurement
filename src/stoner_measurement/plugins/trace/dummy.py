@@ -11,7 +11,7 @@ from collections.abc import Generator
 from typing import Any
 
 import numpy as np
-from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
+from qtpy.QtWidgets import QFormLayout, QLineEdit, QWidget
 from scipy.constants import Boltzmann as kb
 
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
@@ -69,7 +69,7 @@ class DummyPlugin(TracePlugin):
                 ``"RSJ I-V"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> DummyPlugin().trace_title
             'RSJ I-V'
@@ -85,7 +85,7 @@ class DummyPlugin(TracePlugin):
                 ``"A"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> DummyPlugin().x_units
             'A'
@@ -101,7 +101,7 @@ class DummyPlugin(TracePlugin):
                 ``"V"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> DummyPlugin().y_units
             'V'
@@ -117,7 +117,7 @@ class DummyPlugin(TracePlugin):
                 ``"I"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> DummyPlugin().x_label
             'I'
@@ -133,7 +133,7 @@ class DummyPlugin(TracePlugin):
                 ``"V"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> DummyPlugin().y_label
             'V'
@@ -146,7 +146,7 @@ class DummyPlugin(TracePlugin):
         No real hardware is required; this simply marks the plugin as ready.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = DummyPlugin()
             >>> plugin.connect()
@@ -222,7 +222,7 @@ class DummyPlugin(TracePlugin):
                 ``(I, V)`` data point pairs.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.scan import SteppedScanGenerator
             >>> plugin = DummyPlugin()
@@ -280,7 +280,7 @@ class DummyPlugin(TracePlugin):
                 ``"noise_level"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = DummyPlugin()
             >>> d = plugin.to_json()
@@ -329,9 +329,9 @@ class DummyPlugin(TracePlugin):
                 Configured settings widget for the *Settings* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(DummyPlugin()._plugin_config_tabs(), QWidget)
             True
         """
@@ -387,7 +387,7 @@ class DummyPlugin(TracePlugin):
                 HTML-formatted description string.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = DummyPlugin()
             >>> "<h3>" in plugin._about_html()

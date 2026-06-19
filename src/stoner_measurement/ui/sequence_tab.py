@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QSplitter, QWidget
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QSplitter, QWidget
 
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget
@@ -28,7 +28,7 @@ class SequenceTab(QWidget):
         console (ConsoleWidget): The interactive console / output area.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> app = QApplication.instance() or QApplication([])
         >>> tab = SequenceTab()
         >>> tab.text
@@ -48,7 +48,7 @@ class SequenceTab(QWidget):
         self._splitter.addWidget(self.editor)
         self._splitter.addWidget(self.console)
 
-        from PyQt6.QtWidgets import QVBoxLayout
+        from qtpy.QtWidgets import QVBoxLayout
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -72,7 +72,7 @@ class SequenceTab(QWidget):
                 The editor's plain text.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> tab = SequenceTab()
             >>> tab.text
@@ -88,7 +88,7 @@ class SequenceTab(QWidget):
                 New content for the editor.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> tab = SequenceTab()
             >>> tab.set_text("x = 42")

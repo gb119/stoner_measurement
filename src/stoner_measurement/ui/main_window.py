@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QSplitter, QTabWidget, QWidget
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QHBoxLayout, QSplitter, QTabWidget, QWidget
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.ui.config_panel import ConfigPanel

@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
+from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 
@@ -40,7 +40,7 @@ class WaitCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command.wait import WaitCommand
         >>> cmd = WaitCommand()
@@ -66,7 +66,7 @@ class WaitCommand(CommandPlugin):
                 ``"Wait"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.wait import WaitCommand
             >>> WaitCommand().name
@@ -92,7 +92,7 @@ class WaitCommand(CommandPlugin):
                 and ``delay`` is not provided.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.wait import WaitCommand
             >>> cmd = WaitCommand()
@@ -115,7 +115,7 @@ class WaitCommand(CommandPlugin):
                 the configured :attr:`delay_expr` setting.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.wait import WaitCommand
             >>> cmd = WaitCommand()
@@ -143,10 +143,10 @@ class WaitCommand(CommandPlugin):
                 The settings widget for the *Settings* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.wait import WaitCommand
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(WaitCommand().config_widget(), QWidget)
             True
         """
@@ -185,7 +185,7 @@ class WaitCommand(CommandPlugin):
                 extended with ``"delay_expr"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.wait import WaitCommand
             >>> d = WaitCommand().to_json()

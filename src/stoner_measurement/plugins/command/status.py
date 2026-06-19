@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
+from qtpy.QtCore import pyqtSignal
+from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 
@@ -68,7 +68,7 @@ class StatusCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command.status import StatusCommand
         >>> cmd = StatusCommand()
@@ -108,7 +108,7 @@ class StatusCommand(CommandPlugin):
                 The owning engine, or ``None`` if not attached.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.status import StatusCommand
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -151,7 +151,7 @@ class StatusCommand(CommandPlugin):
                 ``"Status"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.status import StatusCommand
             >>> StatusCommand().name
@@ -177,7 +177,7 @@ class StatusCommand(CommandPlugin):
                 ``status`` is not provided.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.status import StatusCommand
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -204,7 +204,7 @@ class StatusCommand(CommandPlugin):
                 the configured :attr:`status_expr` setting.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.status import StatusCommand
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -236,10 +236,10 @@ class StatusCommand(CommandPlugin):
                 The settings widget for the *Settings* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.status import StatusCommand
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(StatusCommand().config_widget(), QWidget)
             True
         """
@@ -278,7 +278,7 @@ class StatusCommand(CommandPlugin):
                 extended with ``"status_expr"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.status import StatusCommand
             >>> d = StatusCommand().to_json()

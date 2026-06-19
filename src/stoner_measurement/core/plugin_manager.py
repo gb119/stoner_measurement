@@ -11,7 +11,7 @@ import importlib.metadata
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject, pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -117,7 +117,7 @@ class PluginManager(QObject):
                 plugins whose :attr:`plugin_type` equals *plugin_type*.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin

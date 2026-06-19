@@ -25,9 +25,9 @@ import logging
 from datetime import UTC, datetime
 
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Qt, pyqtSlot
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -128,7 +128,7 @@ def _line_edit(placeholder: str = "") -> QWidget:
         (QWidget):
             A configured line-edit widget.
     """
-    from PyQt6.QtWidgets import QLineEdit
+    from qtpy.QtWidgets import QLineEdit
 
     w = QLineEdit()
     w.setPlaceholderText(placeholder)
@@ -150,7 +150,7 @@ class MagnetControlPanel(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.ui.magnet_panel import MagnetControlPanel
         >>> panel = MagnetControlPanel()
@@ -191,7 +191,7 @@ class MagnetControlPanel(QWidget):
         """Show the panel and bring it to the front.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.magnet_panel import MagnetControlPanel
             >>> panel = MagnetControlPanel()

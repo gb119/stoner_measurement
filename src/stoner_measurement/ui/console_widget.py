@@ -8,9 +8,9 @@ from datetime import datetime
 from io import StringIO
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Qt, pyqtSlot
+from qtpy.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
+from qtpy.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
     QPlainTextEdit,

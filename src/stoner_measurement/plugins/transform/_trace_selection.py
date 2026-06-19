@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from PyQt6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLabel, QWidget
+from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLabel, QWidget
 
 from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y
 

@@ -15,8 +15,8 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any
 
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QWidget
+from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 
@@ -50,7 +50,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.transform import TransformPlugin
         >>> class _Scale(TransformPlugin):
@@ -133,7 +133,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 :attr:`output_names`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):
@@ -165,7 +165,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Output names that are scalar values.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):
@@ -201,7 +201,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 keys listed in :attr:`output_names`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _Negate(TransformPlugin):
@@ -240,7 +240,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 from *data*.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):
@@ -280,7 +280,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 If any key in :attr:`required_inputs` is absent from *data*.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _Double(TransformPlugin):
@@ -312,7 +312,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 for transform plugins when generating sequence code.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):
@@ -349,7 +349,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Lines calling ``run({})`` on the plugin instance.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):
@@ -387,7 +387,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 each name in :attr:`output_trace_names`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):
@@ -425,7 +425,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 each name in :attr:`output_value_names`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):
@@ -474,7 +474,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Widget containing data-selection controls.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):
@@ -516,7 +516,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 combined *Data* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.transform import TransformPlugin
             >>> class _T(TransformPlugin):

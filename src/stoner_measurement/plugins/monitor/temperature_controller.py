@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from PyQt6.QtWidgets import (
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -111,7 +111,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             When ``True``, stability flags (0.0 / 1.0) are included in every reading.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
         >>> m = TemperatureMonitorPlugin()
@@ -218,7 +218,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         """Ensure the engine is connected and start the polling timer.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -295,7 +295,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Parameter identifiers.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -336,7 +336,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Unit strings for each parameter.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -387,7 +387,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 the engine state.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -451,7 +451,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Setpoint in Kelvin, or ``math.nan`` when unavailable.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -475,7 +475,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Temperature in Kelvin, or ``math.nan`` when unavailable.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -499,7 +499,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Heater output percentage, or ``math.nan`` when unavailable.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -523,7 +523,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Rate of change in K/min, or ``math.nan`` when unavailable.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -548,7 +548,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 when unavailable.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -576,7 +576,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Mapping of ``"{instance_name}:{label}"`` to Python expression.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -628,7 +628,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Serialised configuration.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()
@@ -719,7 +719,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Configuration widget with all plugin settings.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
             >>> m = TemperatureMonitorPlugin()

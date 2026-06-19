@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QLabel, QTabWidget, QVBoxLayout, QWidget
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QApplication, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from stoner_measurement.core.plugin_manager import PluginManager
 
@@ -45,7 +45,7 @@ class ConfigPanel(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.core.plugin_manager import PluginManager
         >>> pm = PluginManager()
@@ -109,7 +109,7 @@ class ConfigPanel(QWidget):
                 clear the panel.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin
@@ -142,7 +142,7 @@ class ConfigPanel(QWidget):
         single informational tab so the panel does not appear completely empty.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> pm = PluginManager()
@@ -175,7 +175,7 @@ class ConfigPanel(QWidget):
         before the action proceeds.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> pm = PluginManager()

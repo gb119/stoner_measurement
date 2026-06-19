@@ -18,8 +18,8 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QMimeData, QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import (
+from qtpy.QtCore import QMimeData, QPoint, Qt, pyqtSignal
+from qtpy.QtGui import (
     QBrush,
     QDragEnterEvent,
     QDragMoveEvent,
@@ -27,7 +27,7 @@ from PyQt6.QtGui import (
     QKeyEvent,
     QKeySequence,
 )
-from PyQt6.QtWidgets import (
+from qtpy.QtWidgets import (
     QAbstractItemView,
     QLabel,
     QLineEdit,
@@ -209,7 +209,7 @@ class _PluginTreeWidget(QTreeWidget):
                 otherwise.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin
@@ -961,7 +961,7 @@ class DockPanel(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.core.plugin_manager import PluginManager
         >>> pm = PluginManager()
@@ -1385,7 +1385,7 @@ class DockPanel(QWidget):
                 A name that does not clash with any step currently in the tree.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin
@@ -1436,7 +1436,7 @@ class DockPanel(QWidget):
                 Ordered sequence of step descriptors.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> pm = PluginManager()
@@ -1475,7 +1475,7 @@ class DockPanel(QWidget):
                 :attr:`sequence_steps`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin
@@ -1568,7 +1568,7 @@ class DockPanel(QWidget):
                 The widget to display in the monitoring section.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication, QLabel
+            >>> from qtpy.QtWidgets import QApplication, QLabel
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> pm = PluginManager()
@@ -1594,7 +1594,7 @@ class DockPanel(QWidget):
                 Unique identifier for the owning plugin.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication, QLabel
+            >>> from qtpy.QtWidgets import QApplication, QLabel
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> pm = PluginManager()
@@ -1757,7 +1757,7 @@ class DockPanel(QWidget):
                 was selected.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin
@@ -1808,7 +1808,7 @@ class DockPanel(QWidget):
                 selected.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin
@@ -1842,7 +1842,7 @@ class DockPanel(QWidget):
                 clipboard is empty.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin
@@ -1997,7 +1997,7 @@ class DockPanel(QWidget):
                 The action label to display in the context menu or Edit menu.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> pm = PluginManager()
@@ -2024,7 +2024,7 @@ class DockPanel(QWidget):
         updated immediately to reflect the new state.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin

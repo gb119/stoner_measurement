@@ -8,9 +8,9 @@ from pathlib import Path
 
 import platformdirs
 import yaml
-from PyQt6.QtCore import QSettings, QSize, Qt
-from PyQt6.QtGui import QAction, QIcon, QKeySequence
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QSettings, QSize, Qt
+from qtpy.QtGui import QAction, QIcon, QKeySequence
+from qtpy.QtWidgets import (
     QApplication,
     QFileDialog,
     QMainWindow,

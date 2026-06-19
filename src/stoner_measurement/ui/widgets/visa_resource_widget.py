@@ -11,8 +11,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from enum import Enum, IntEnum
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import pyqtSignal
+from qtpy.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QPushButton,
@@ -221,7 +221,7 @@ class VisaResourceComboBox(QWidget):
             Emitted when the *Refresh* button is clicked.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
         >>> w = VisaResourceComboBox()
@@ -265,7 +265,7 @@ class VisaResourceComboBox(QWidget):
                 Returns an empty string when nothing has been entered.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox(extra_resources=["GPIB0::2::INSTR"])
@@ -292,7 +292,7 @@ class VisaResourceComboBox(QWidget):
                 The raw current text of the internal combo box.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox(extra_resources=["GPIB0::2::INSTR"])
@@ -310,7 +310,7 @@ class VisaResourceComboBox(QWidget):
                 VISA resource string to select.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox()
@@ -341,7 +341,7 @@ class VisaResourceComboBox(QWidget):
                 current edit text.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox()
@@ -365,7 +365,7 @@ class VisaResourceComboBox(QWidget):
                 The new connection status.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import (
             ...     VisaResourceComboBox, VisaResourceStatus,
@@ -413,7 +413,7 @@ class VisaResourceComboBox(QWidget):
         :attr:`refresh_requested` after the list has been rebuilt.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox()

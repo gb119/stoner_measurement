@@ -13,8 +13,8 @@ import importlib.resources
 import importlib.resources.abc
 import math
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import (
+from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtGui import (
     QColor,
     QIcon,
     QImage,

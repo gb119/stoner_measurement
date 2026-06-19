@@ -8,8 +8,8 @@ with SI engineering prefixes using :func:`pyqtgraph.functions.siFormat`.
 from __future__ import annotations
 
 import pyqtgraph as pg
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QComboBox
+from qtpy.QtCore import pyqtSignal
+from qtpy.QtWidgets import QComboBox
 
 __all__ = ["SIComboBox"]
 
@@ -54,7 +54,7 @@ class SIComboBox(QComboBox):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> cb = SIComboBox(unit="V")
         >>> cb.addSpecialItem("Auto", 0.0)
@@ -138,7 +138,7 @@ class SIComboBox(QComboBox):
                 :attr:`unit`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> cb = SIComboBox(unit="A")
             >>> cb.addValueItem(1e-3)
@@ -161,7 +161,7 @@ class SIComboBox(QComboBox):
                 Float value stored as item data.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> cb = SIComboBox(unit="V")
             >>> cb.addSpecialItem("Auto", 0.0)
@@ -191,7 +191,7 @@ class SIComboBox(QComboBox):
                 data).
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> cb = SIComboBox(unit="V")
             >>> cb.addValueItem(1.0)
@@ -216,7 +216,7 @@ class SIComboBox(QComboBox):
                 :meth:`addValueItem` or :meth:`addSpecialItem`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> cb = SIComboBox(unit="V")
             >>> cb.addSpecialItem("Auto", 0.0)

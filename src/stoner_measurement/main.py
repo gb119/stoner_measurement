@@ -2,7 +2,7 @@
 
 import sys
 
-from PyQt6.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication
 
 from stoner_measurement.app import MeasurementApp
 from stoner_measurement.ui.icons import make_app_icon
