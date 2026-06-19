@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from qtpy.QtCore import QSettings, Qt, pyqtSignal, pyqtSlot
+from qtpy.QtCore import QSettings, Qt
+from stoner_measurement.qt_compat import pyqtSignal, pyqtSlot
 from qtpy.QtGui import QCloseEvent, QColor, QFont, QTextCharFormat, QTextCursor
 from qtpy.QtWidgets import (
     QCheckBox,

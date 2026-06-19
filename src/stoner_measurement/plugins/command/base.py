@@ -23,7 +23,8 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Protocol
 
-from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.core.sequence_engine import _DEFAULT_PLOT_READY_TIMEOUT_SECONDS

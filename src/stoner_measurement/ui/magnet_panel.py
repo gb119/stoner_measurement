@@ -25,7 +25,8 @@ import logging
 from datetime import UTC, datetime
 
 import pyqtgraph as pg
-from qtpy.QtCore import Qt, pyqtSlot
+from qtpy.QtCore import Qt
+from stoner_measurement.qt_compat import pyqtSlot
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QComboBox,

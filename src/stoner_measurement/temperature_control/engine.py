@@ -20,7 +20,8 @@ from datetime import UTC, datetime
 from traceback import format_exc
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QObject, QTimer, pyqtSlot
+from qtpy.QtCore import QObject, QTimer
+from stoner_measurement.qt_compat import pyqtSlot
 
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,

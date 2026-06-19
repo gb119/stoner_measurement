@@ -15,7 +15,8 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any
 
-from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta

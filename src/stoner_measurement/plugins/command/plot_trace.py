@@ -23,7 +23,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from qtpy.QtCore import Qt, pyqtSignal
+from qtpy.QtCore import Qt
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,

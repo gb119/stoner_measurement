@@ -7,7 +7,8 @@ dragging the slider or by typing a precise percentage.
 
 from __future__ import annotations
 
-from qtpy.QtCore import Qt, pyqtSignal
+from qtpy.QtCore import Qt
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,

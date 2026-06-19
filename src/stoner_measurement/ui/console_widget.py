@@ -8,7 +8,8 @@ from datetime import datetime
 from io import StringIO
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt, pyqtSlot
+from qtpy.QtCore import Qt
+from stoner_measurement.qt_compat import pyqtSlot
 from qtpy.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from qtpy.QtWidgets import (
     QHBoxLayout,

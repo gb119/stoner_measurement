@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-from qtpy.QtCore import Qt, QTimer, pyqtSignal
+from qtpy.QtCore import Qt, QTimer
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,

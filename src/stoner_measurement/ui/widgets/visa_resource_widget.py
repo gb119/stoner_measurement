@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from enum import Enum, IntEnum
 
-from qtpy.QtCore import pyqtSignal
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QComboBox,
     QHBoxLayout,

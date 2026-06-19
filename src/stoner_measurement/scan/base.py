@@ -11,7 +11,8 @@ from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QWidget
 
 if TYPE_CHECKING:

@@ -8,7 +8,8 @@ and any number of subscribers (UI panels, sequence plugins, monitors).
 
 from __future__ import annotations
 
-from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject
+from stoner_measurement.qt_compat import pyqtSignal
 
 from stoner_measurement.temperature_control.types import (
     EngineStatus,

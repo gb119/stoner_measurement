@@ -34,7 +34,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import pandas as pd
-from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,

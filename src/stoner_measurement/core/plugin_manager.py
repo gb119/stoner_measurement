@@ -11,7 +11,8 @@ import importlib.metadata
 import logging
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject
+from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin

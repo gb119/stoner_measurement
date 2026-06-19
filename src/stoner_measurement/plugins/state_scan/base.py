@@ -17,7 +17,8 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,

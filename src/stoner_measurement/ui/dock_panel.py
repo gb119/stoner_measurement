@@ -18,7 +18,8 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QMimeData, QPoint, Qt, pyqtSignal
+from qtpy.QtCore import QMimeData, QPoint, Qt
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtGui import (
     QBrush,
     QDragEnterEvent,

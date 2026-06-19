@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qtpy.QtCore import Qt, pyqtSignal
+from qtpy.QtCore import Qt
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
 
 from stoner_measurement.ui.console_widget import ConsoleWidget

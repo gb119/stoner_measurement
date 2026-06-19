@@ -53,7 +53,8 @@ from io import TextIOBase
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
-from qtpy.QtCore import QObject, QThread, pyqtSignal
+from qtpy.QtCore import QObject, QThread
+from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin

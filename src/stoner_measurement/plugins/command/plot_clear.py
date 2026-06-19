@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from qtpy.QtCore import pyqtSignal
+from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QLabel, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin

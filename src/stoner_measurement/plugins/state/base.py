@@ -22,7 +22,8 @@ from abc import abstractmethod
 from typing import Any, SupportsInt
 
 import pandas as pd
-from qtpy.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject
+from stoner_measurement.qt_compat import pyqtSignal
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.plugins.sequence.base import SequencePlugin

@@ -15,7 +15,8 @@ from typing import Literal, TypedDict
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QPoint, Qt, pyqtSlot
+from qtpy.QtCore import QPoint, Qt
+from stoner_measurement.qt_compat import pyqtSlot
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,

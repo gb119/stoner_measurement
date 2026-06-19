@@ -11,7 +11,8 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable
 
-from qtpy.QtCore import QObject, QTimer, pyqtSignal
+from qtpy.QtCore import QObject, QTimer
+from stoner_measurement.qt_compat import pyqtSignal
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 
