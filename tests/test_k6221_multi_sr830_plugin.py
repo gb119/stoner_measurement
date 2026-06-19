@@ -10,6 +10,8 @@ import pytest
 from PyQt6.QtWidgets import QCheckBox, QTableWidget, QTabWidget, QWidget
 
 from stoner_measurement.instruments.lockin_amplifier import (
+    LockInInputShielding,
+    LockInInputSource,
     LockInLineFilter,
     LockinRefenceEdge,
     LockInReferenceSource,
@@ -77,9 +79,14 @@ class TestJsonRoundTrip:
         plugin._auto_sensitivity_low = 0.2
         plugin._auto_sensitivity_high = 0.8
         plugin._resistance_enabled = True
-        plugin._resistance_mode = ResistanceCurrentMode.RMS
         plugin._lockin_entries = [
-            LockInEntry(label="X1", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,)),
+            LockInEntry(
+                label="X1",
+                resource="GPIB0::8::INSTR",
+                outputs=(LockInOutput.X,),
+                input_source=LockInInputSource.A,
+                input_shielding=LockInInputShielding.GROUND,
+            ),
             LockInEntry(label="T2", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)),
         ]
 
@@ -89,12 +96,15 @@ class TestJsonRoundTrip:
         assert restored._phase_marker_tlink == 5
         assert restored._time_constant == pytest.approx(3.0)
         assert restored._auto_sensitivity_enabled is True
-        assert restored._resistance_mode is ResistanceCurrentMode.RMS
         assert [entry.label for entry in restored._lockin_entries] == ["X1", "T2"]
         assert [entry.outputs for entry in restored._lockin_entries] == [
             (LockInOutput.X,),
             (LockInOutput.THETA,),
         ]
+        assert restored._lockin_entries[0].input_source is LockInInputSource.A
+        assert restored._lockin_entries[0].input_shielding is LockInInputShielding.GROUND
+        assert restored._lockin_entries[1].input_source is LockInInputSource.A_MINUS_B
+        assert restored._lockin_entries[1].input_shielding is LockInInputShielding.FLOAT
 
     def test_round_trip_preserves_new_fields(self, qapp):
         plugin = _make_plugin()
@@ -133,6 +143,43 @@ class TestJsonRoundTrip:
         assert isinstance(restored, Keithley6221_MultiSR830Plugin)
         assert restored._lockin_entries[0].outputs == (LockInOutput.R,)
 
+    def test_restore_legacy_resistance_mode_is_ignored(self, qapp):
+        """Saved configs that include resistance_mode should load without error."""
+        plugin = _make_plugin()
+        payload = plugin.to_json()
+        payload["resistance_mode"] = "peak"  # legacy field
+        restored = BasePlugin.from_json(payload)
+        assert isinstance(restored, Keithley6221_MultiSR830Plugin)
+
+    def test_round_trip_preserves_input_source_and_shielding(self, qapp):
+        plugin = _make_plugin()
+        plugin._lockin_entries = [
+            LockInEntry(
+                label="LIA 1",
+                resource="GPIB0::8::INSTR",
+                input_source=LockInInputSource.I_1MOHM,
+                input_shielding=LockInInputShielding.GROUND,
+            )
+        ]
+        restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
+        assert isinstance(restored, Keithley6221_MultiSR830Plugin)
+        entry = restored._lockin_entries[0]
+        assert entry.input_source is LockInInputSource.I_1MOHM
+        assert entry.input_shielding is LockInInputShielding.GROUND
+
+    def test_restore_missing_input_fields_uses_defaults(self, qapp):
+        """Older configs without input_source / input_shielding load with defaults."""
+        plugin = _make_plugin()
+        payload = plugin.to_json()
+        lockin_payload = payload["lockins"][0]
+        lockin_payload.pop("input_source", None)
+        lockin_payload.pop("input_shielding", None)
+        restored = BasePlugin.from_json(payload)
+        assert isinstance(restored, Keithley6221_MultiSR830Plugin)
+        entry = restored._lockin_entries[0]
+        assert entry.input_source is LockInInputSource.A_MINUS_B
+        assert entry.input_shielding is LockInInputShielding.FLOAT
+
 
 class TestUi:
     def test_settings_widget(self, qapp):
@@ -155,11 +202,11 @@ class TestUi:
         assert "Common" in inner_tab.tabText(0)
         assert "Lock-in" in inner_tab.tabText(1)
 
-        # Transposed table: rows = settings (11), cols = lock-ins (1 by default)
+        # Transposed table: rows = settings (16), cols = lock-ins (1 by default)
         tables = settings_widget.findChildren(QTableWidget)
         assert tables
         table = tables[0]
-        assert table.rowCount() == 11
+        assert table.rowCount() == 16
         assert table.columnCount() == 1
 
         # Remove button disabled when only one lock-in
@@ -184,7 +231,13 @@ class TestConfiguration:
         plugin._time_constant = 3.0
         plugin._filter_slope = 18
         plugin._lockin_entries = [
-            LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,)),
+            LockInEntry(
+                label="A",
+                resource="GPIB0::8::INSTR",
+                outputs=(LockInOutput.X,),
+                input_source=LockInInputSource.A,
+                input_shielding=LockInInputShielding.GROUND,
+            ),
             LockInEntry(label="B", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)),
         ]
         plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1, 0.2]))
@@ -211,6 +264,12 @@ class TestConfiguration:
             lockin.set_filter_slope.assert_called_once_with(18)
             lockin.set_harmonic.assert_called_once_with(1)
             lockin.set_reference_phase.assert_called_once_with(0.0)
+        # Entry A has explicit input_source / input_shielding.
+        plugin._lockins[0].set_input_source.assert_called_once_with(LockInInputSource.A)
+        plugin._lockins[0].set_input_shielding.assert_called_once_with(LockInInputShielding.GROUND)
+        # Entry B uses defaults.
+        plugin._lockins[1].set_input_source.assert_called_once_with(LockInInputSource.A_MINUS_B)
+        plugin._lockins[1].set_input_shielding.assert_called_once_with(LockInInputShielding.FLOAT)
         plugin._lockins[0].set_output_offset.assert_called_once()
         plugin._lockins[1].set_output_offset.assert_not_called()
 
@@ -480,13 +539,9 @@ class TestChannelsAndResistance:
 
     def test_resistance_conversion_modes(self, qapp):
         plugin = _make_plugin()
-        assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(2.0)
-
-        plugin._resistance_mode = ResistanceCurrentMode.RMS
-        assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(2.0 * np.sqrt(2.0))
-
-        plugin._resistance_mode = ResistanceCurrentMode.PEAK_TO_PEAK
-        assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(1.0)
+        # The 6221 amplitude is the peak current; the SR830 reports RMS voltage.
+        # Resistance is always computed as V_rms / I_rms = V_rms / (I_peak / sqrt(2)).
+        assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(1.0 / (0.5 / np.sqrt(2.0)))
 
     def test_multi_output_channel_labelling(self, qapp):
         plugin = _make_plugin()
