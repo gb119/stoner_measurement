@@ -17,6 +17,7 @@ import logging
 from collections import deque
 from dataclasses import replace
 from datetime import UTC, datetime
+from traceback import format_exc
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSlot
@@ -195,9 +196,10 @@ class TemperatureControllerEngine(QObject):
                 driver.connect()
             else:
                 driver.confirm_identity()
-        except Exception:
+        except Exception as exc:
             self._driver = None
             self._set_status(EngineStatus.DISCONNECTED)
+            logger.error(f"Exception {exc}\n{format_exc()}")
             raise
         self._driver = driver
         self._connected_driver_name = type(driver).__name__

@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from typing import ClassVar
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
 from stoner_measurement.instruments.temperature_controller import (
@@ -49,6 +50,7 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the Lakeshore temperature controller driver."""
+        transport._use_mav=False
         super().__init__(
             transport=transport,
             protocol=protocol if protocol is not None else LakeshoreProtocol(),

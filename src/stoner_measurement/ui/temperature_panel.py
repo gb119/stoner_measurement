@@ -1888,8 +1888,8 @@ class _LoopControlGroup(QGroupBox):
         heater_output: float,
         mode,
         *,
-        _heater_range: int | None = None,
-        _input_channel: str | None = None,
+        heater_range: int | None = None,
+        input_channel: str | None = None,
     ) -> None:
         """Refresh live-readback labels from the engine polling state.
 

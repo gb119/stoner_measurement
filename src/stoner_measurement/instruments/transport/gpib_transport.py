@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from time import perf_counter, sleep
+from traceback import format_exc
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.errors import InstrumentError
@@ -240,13 +241,19 @@ class GpibTransport(BaseTransport):
             response = b""
             while self._use_mav and not self.read_status_byte() & 16:  # Loop until we see MAV bytes.
                 sleep(self._poll_time)
-            while self._use_mav and self.read_status_byte() & 16:  # Loop until we don;'t have a message available.
-                response += self._resource.read_raw(frame_limit)
-                sleep(self._poll_time)
+            while (self._use_mav and self.read_status_byte() & 16) or not response:  # Loop until we don;'t have a message available.
+                frame = self._resource.read_raw(frame_limit)
+                response+=frame
+                if self._use_mav:
+                    sleep(self._poll_time)
             self._log_comms_traffic("RX", response)
             return response
         except pyvisa.errors.VisaIOError as exc:
+            logger.error(f"Timeout reading from GPIB address {self.address}: {exc}")
             raise TimeoutError(f"Timeout reading from GPIB address {self.address}: {exc}") from exc
+        except Exception as exc:
+            logger.error("Exception in GPIB read {exc}\n{format_exc()}")
+            raise InstrumentError("Hit an error in read") from exc
 
     @property
     def transport_address(self) -> str:
