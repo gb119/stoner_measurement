@@ -212,7 +212,7 @@ class TestFourierTransformPlugin:
         engine.add_plugin("fourier_transform", plugin)
 
         x = np.linspace(0.0, 1.0, 32)
-        y = np.exp(1j * 2.0 * np.pi * x)
+        y = np.exp(1j * 2.0 * np.pi * x).real
         trace = TraceData(
             df=pd.DataFrame({"spec": y}, index=pd.Index(x, name="x")),
             column_roles={"spec": COLUMN_ROLE_Y},

@@ -27,7 +27,8 @@ requirements:
     - jupyter_client >=8.0
     - pyyaml >=6.0
     - pandas >=2.0
-    - pyqt >=6.7
+    - pyqt >=5.15
+    - qtpy >=2.4
     - pyqtgraph >=0.13
     - numpy >=2.0
     -  qtconsole >=5.5
@@ -65,9 +66,10 @@ about:
   home: https://github.com/gb119/stoner_measurement
   license: MIT
   license_file: LICENSE
-  summary: A Python/PyQt6 application for running scientific measurements
+  summary: A Python/Qt (PyQt5/PyQt6 via qtpy) application for running scientific measurements
   description: |
-    A Python/PyQt6 application for running scientific measurements.
+    A Python/Qt application for running scientific measurements,
+    supporting PyQt5 or PyQt6 via qtpy.
     Features a three-panel main window (instrument dock, PyQtGraph plot,
     tabbed configuration), a plugin system, and a background sequence runner.
   doc_url: https://github.com/gb119/stoner_measurement

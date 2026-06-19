@@ -3047,7 +3047,7 @@ class TestInstrumentLocking:
         events_lock = threading.Lock()
 
         class _LoggingTransport(NullTransport):
-            def write(self, data: bytes) -> None:
+            def write(self, data: bytes, slow: int|None = None) -> None:
                 super().write(data)
                 with events_lock:
                     events.append(f"W:{data.strip().decode()}")

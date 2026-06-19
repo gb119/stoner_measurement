@@ -27,7 +27,7 @@ _COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
 
 class CommsMode(str, Enum):
     """Enum class representing possible transport comms logging modes."""
-    
+
     RX = "RX"
     TX = "TX"
     IEEE = "IEEE"
@@ -36,12 +36,12 @@ class CommsMode(str, Enum):
     def valid(cls, value):
         """Check if a string is a valid mode."""
         return value in {m.value for m in cls}
-    
+
     @classmethod
     def invalid(cls, value):
         """Inverse of CommsMode.valid()."""
         return not cls.valid(value)
-    
+
 
 class BaseTransport(ABC):
     """Abstract base for all instrument transport layers.
@@ -162,12 +162,12 @@ class BaseTransport(ABC):
         Args:
             data (bytes):
                 Raw bytes to transmit.
-                
+
         Keyword Arguments:
             slow (int|none, None):
                 Whether to except the response to be slow and thus to pause for
                 *slow* milliseconds.
-                
+
         Returns:
             A status byte where available
 
@@ -206,7 +206,7 @@ class BaseTransport(ABC):
         Args:
             data (bytes):
                 Raw bytes to transmit.
-                
+
         Keyword Arguments;
             num_bytes (int | None):
                 Optional maximum frame size for this call.  When ``None``,
