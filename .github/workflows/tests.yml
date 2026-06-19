@@ -16,7 +16,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        qt-backend: [pyqt5, pyqt6]
+        include:
+          - qt-backend: pyqt5
+            environment-file: environment-pyqt5.yml
+          - qt-backend: pyqt6
+            environment-file: environment-pyqt6.yml
 
     steps:
       - name: Checkout repository
@@ -47,14 +51,15 @@ jobs:
         uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
-          python-version: "3.12"
+          activate-environment: stoner_measurement
+          environment-file: ${{ matrix.environment-file }}
           channels: phygbu,conda-forge,defaults
           channel-priority: flexible
 
-      - name: Install package and test dependencies
+      - name: Install package
         shell: bash -el {0}
         run: |
-          pip install -e ".[dev,instruments,${{ matrix.qt-backend }}]"
+          pip install -e . --no-deps
 
       - name: Run tests
         shell: bash -el {0}
