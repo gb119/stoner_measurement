@@ -1,0 +1,245 @@
+{
+  "version": "0.1.0",
+  "steps": [
+    {
+      "plugin": {
+        "type": "command",
+        "class": "stoner_measurement.plugins.command.details:DetailsCommand",
+        "instance_name": "details",
+        "user": "Gavin",
+        "sample": "Testing",
+        "project": "Testing",
+        "notes": ""
+      }
+    },
+    {
+      "plugin": {
+        "type": "command",
+        "class": "stoner_measurement.plugins.command.plot_clear:PlotClearCommand",
+        "instance_name": "plot_clear"
+      }
+    },
+    {
+      "plugin": {
+        "type": "state_scan",
+        "class": "stoner_measurement.plugins.state_scan.counter:CounterPlugin",
+        "instance_name": "counter",
+        "collect_data": true,
+        "clear_on_start": true,
+        "collect_filter": "counter.meas_flag",
+        "clear_filter": "True",
+        "collect_outputs": null,
+        "scan_generator": {
+          "type": "FunctionScanGenerator",
+          "waveform": "Triangle",
+          "amplitude": 2.5,
+          "offset": 0.0,
+          "phase": 0.0,
+          "exponent": 1.0,
+          "periods": 1.0,
+          "num_points": 202,
+          "units": ""
+        }
+      },
+      "sub_steps": [
+        {
+          "plugin": {
+            "type": "trace",
+            "class": "stoner_measurement.plugins.trace.dummy:DummyPlugin",
+            "instance_name": "iv",
+            "scan_generator": {
+              "type": "FunctionScanGenerator",
+              "waveform": "Triangle",
+              "amplitude": 0.0025,
+              "offset": 0.0,
+              "phase": 0.0,
+              "exponent": 2.0,
+              "periods": 1.0,
+              "num_points": 501,
+              "units": ""
+            },
+            "report_channel_statistics": false,
+            "critical_current": "np.abs(np.sinc(counter.value))*1E-3",
+            "normal_resistance": "1E-3",
+            "noise_level": "5E-8",
+            "rounding_level": "2.2"
+          }
+        },
+        {
+          "plugin": {
+            "type": "transform",
+            "class": "stoner_measurement.plugins.transform.window_filter:WindowFilterPlugin",
+            "instance_name": "filter",
+            "trace_key": "iv:Dummy",
+            "column_key": "",
+            "advanced_mode": false,
+            "x_expr": "iv.data['Dummy'].x",
+            "y_expr": "iv.data['Dummy'].y",
+            "window_name": "blackman",
+            "window_length": 17,
+            "window_parameters": "",
+            "symmetric_window": true,
+            "normalise_kernel": true
+          }
+        },
+        {
+          "plugin": {
+            "type": "transform",
+            "class": "stoner_measurement.plugins.transform.curve_fit:CurveFitPlugin",
+            "instance_name": "curve_fit",
+            "trace_key": "filter:filtered",
+            "column_key": "",
+            "advanced_mode": false,
+            "x_expr": "iv.data['Dummy'].x",
+            "y_expr": "iv.data['Dummy'].x",
+            "y_error_expr": "",
+            "fit_code": "def fit(I,Ic,Rn):\n    \"\"\"\"Fit RSJ model to the data.\"\"\"\n    RSJ=Rn*np.sign(I)*np.sqrt(np.abs(I**2-Ic**2))\n    return np.where(np.abs(I)<Ic,0.0,RSJ)\n    \ndef p0(I,V):\n    \"\"\"\"Estimate Ic and Rn based on I,V data.\n    \n    Rn is given by the average V/I for V>V_max/2\n    Ic is given by the span of I values where V<V_max/20.\n    \"\"\"\n    II=np.where(np.isclose(I,0),1E-9,I)\n    Rn=((V/II)[np.abs(V)>V.max()/2]).mean()\n    Ic=I[np.abs(V)<V.max()/20]\n    Ic=(Ic.max()-Ic.min())/2\n    return Ic,Rn",
+            "param_names": [
+              "Ic",
+              "Rn"
+            ],
+            "param_settings": {
+              "Ic": {
+                "min": null,
+                "initial": null,
+                "max": null
+              },
+              "Rn": {
+                "min": null,
+                "initial": null,
+                "max": null
+              }
+            },
+            "show_initial_trace": true,
+            "show_best_fit_trace": true
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_raw",
+            "trace_key": "iv:Dummy",
+            "column_key": "",
+            "transpose": true,
+            "advanced_mode": false,
+            "x_expr": "iv.data['Dummy'].x",
+            "y_expr": "iv.data['Dummy'].x",
+            "title_expr": "'plot'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+            "colour": "",
+            "line_style": "",
+            "point_style": "",
+            "line_width": 0.0,
+            "point_size": 0.0
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_filtered",
+            "trace_key": "filter:filtered",
+            "column_key": "",
+            "transpose": true,
+            "advanced_mode": false,
+            "x_expr": "iv.data['Dummy'].x",
+            "y_expr": "iv.data['Dummy'].x",
+            "title_expr": "'plot'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+            "colour": "",
+            "line_style": "",
+            "point_style": "",
+            "line_width": 0.0,
+            "point_size": 0.0
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_initial",
+            "trace_key": "curve_fit:initial_fit",
+            "column_key": "",
+            "transpose": true,
+            "advanced_mode": false,
+            "x_expr": "iv.data['Dummy'].x",
+            "y_expr": "iv.data['Dummy'].x",
+            "title_expr": "'plot'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+            "colour": "",
+            "line_style": "",
+            "point_style": "",
+            "line_width": 0.0,
+            "point_size": 0.0
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_fit",
+            "trace_key": "curve_fit:best_fit",
+            "column_key": "",
+            "transpose": true,
+            "advanced_mode": false,
+            "x_expr": "iv.data['Dummy'].x",
+            "y_expr": "iv.data['Dummy'].x",
+            "title_expr": "'plot'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+            "colour": "",
+            "line_style": "",
+            "point_style": "",
+            "line_width": 0.0,
+            "point_size": 0.0
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_points:PlotPointsCommand",
+            "instance_name": "plot_points",
+            "x_key": "counter:Value",
+            "x_axis_name": "top",
+            "y_entries": [
+              {
+                "key": "curve_fit:Rn",
+                "label": "Rn",
+                "y_axis": "Right",
+                "line_style": "none",
+                "point_style": "plus",
+                "point_size": 7.0,
+                "colour": "#ff0000"
+              },
+              {
+                "key": "curve_fit:Ic",
+                "label": "Ic",
+                "y_axis": "Right",
+                "colour": "#00007f",
+                "line_style": "none",
+                "point_style": "circle",
+                "point_size": 7.0
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "plugin": {
+        "type": "command",
+        "class": "stoner_measurement.plugins.command.save:SaveCommand",
+        "instance_name": "save",
+        "path_expr": "'TDI_Format_2.txt'",
+        "save_mode": "data",
+        "trace_selection": {},
+        "data_source": "counter",
+        "no_overwrite": true
+      }
+    }
+  ]
+}
