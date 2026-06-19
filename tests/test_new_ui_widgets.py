@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from stoner_measurement.app import (
     _STATUS_BACKGROUND_DEFAULT_COLOR,
     _STATUS_BACKGROUND_ERROR_COLOR,
@@ -530,6 +532,72 @@ class TestMeasurementApp:
         )
 
         app._engine.shutdown()
+
+    def test_load_toolbar_configuration_from_user_file(self, qapp, monkeypatch, tmp_path):
+        import shutil
+
+        app = MeasurementApp()
+        try:
+            cfg_root = tmp_path
+            shutil.copyfile(Path("tests/data/toolbar.yaml"), cfg_root / "toolbar.yaml")
+
+            monkeypatch.setattr(
+                "stoner_measurement.app.platformdirs.user_config_dir",
+                lambda _appname: str(cfg_root),
+            )
+
+            config = app._load_toolbar_configuration()
+            assert "buttons" in config
+            assert any(btn.get("name") == "Test Button" for btn in config["buttons"])
+        finally:
+            app._engine.shutdown()
+
+    def test_add_configured_toolbar_buttons(self, qapp, monkeypatch, tmp_path):
+        import shutil
+
+        cfg_root = tmp_path
+        (cfg_root / "resources").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(Path("tests/data/toolbar.yaml"), cfg_root / "toolbar.yaml")
+        shutil.copyfile(
+            Path("tests/data/test-sequence.png"),
+            cfg_root / "resources" / "test-sequence.png",
+        )
+
+        monkeypatch.setattr(
+            "stoner_measurement.app.platformdirs.user_config_dir",
+            lambda _appname: str(cfg_root),
+        )
+
+        app = MeasurementApp()
+        try:
+            actions = [a for a in app._toolbar.actions() if a.text() == "Test Button"]
+            assert len(actions) == 1
+            assert actions[0].toolTip() == "Test button and sequence."
+        finally:
+            app._engine.shutdown()
+
+    def test_load_predefined_sequence_clears_current_path(self, qapp, monkeypatch, tmp_path):
+        import shutil
+
+        cfg_root = tmp_path
+        (cfg_root / "sequences").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(Path("tests/data/test-sequence.json"), cfg_root / "sequences" / "test-sequence.json")
+
+        monkeypatch.setattr(
+            "stoner_measurement.app.platformdirs.user_config_dir",
+            lambda _appname: str(cfg_root),
+        )
+
+        app = MeasurementApp()
+        try:
+            app._current_measurement_path = Path("dummy.json")
+            app._load_predefined_sequence("test-sequence.json")
+
+            assert app._current_measurement_path is None
+            assert app.windowTitle() == "Stoner Measurement"
+            assert len(app._main_window.dock_panel.sequence_steps) > 0
+        finally:
+            app._engine.shutdown()
 
     def test_on_plugin_selected_for_config_syncs_and_shows(self, qapp):
         """_on_plugin_selected_for_config shows plugin config with traces populated."""

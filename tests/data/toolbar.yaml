@@ -1,0 +1,54 @@
+# Example toolbar configuration for predefined measurement sequences.
+#
+# Copy this file to:
+#
+#   <user-config-dir>/toolbar.yaml
+#
+# where <user-config-dir> is typically:
+#
+#   Windows: %APPDATA%/stoner_measurement
+#   Linux:   ~/.config/stoner_measurement
+#
+# A user toolbar.yaml completely overrides the bundled toolbar.yaml.
+#
+# Buttons are added to the main toolbar after the built-in actions.
+#
+# Available keys:
+#
+#   name      - Text shown on the toolbar button.
+#   image     - PNG icon filename.
+#   sequence  - JSON sequence filename.
+#   tooltip   - Optional tooltip/status-bar text.
+#
+# Special entries:
+#
+#   separator: true
+#
+# inserts a toolbar separator.
+#
+# Icon lookup order:
+#
+#   1. <user-config-dir>/resources/<image>
+#   2. bundled stoner_measurement.conf/resources/<image>
+#
+# Sequence lookup order:
+#
+#   1. <user-config-dir>/sequences/<sequence>
+#   2. bundled stoner_measurement.conf/sequences/<sequence>
+
+buttons:
+  - separator: true
+  - name: "Test Button"
+    image: "test-sequence.png"
+    sequence: "test-sequence.json"
+    tooltip: "Test button and sequence."
+  # Example button definition:
+  #
+  # - name: "Example Measurement"
+  #   image: "example.png"
+  #   sequence: "example_sequence.json"
+  #   tooltip: "Load the example measurement sequence"
+
+  # Example separator:
+  #
+  # - separator: true

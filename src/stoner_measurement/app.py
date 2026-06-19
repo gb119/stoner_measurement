@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import importlib.resources
 from pathlib import Path
 
+import platformdirs
+import yaml
 from PyQt6.QtCore import QSettings, QSize, Qt
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -537,6 +540,91 @@ class MeasurementApp(QMainWindow):
         toolbar.addAction(self._act_show_log)
         toolbar.addAction(self._act_show_temp_panel)
         toolbar.addAction(self._act_show_magnet_panel)
+        self._toolbar = toolbar
+        self._add_configured_toolbar_buttons()
+
+    def _toolbar_config_path(self) -> Path:
+        return Path(platformdirs.user_config_dir("stoner_measurement")) / "toolbar.yaml"
+
+    def _load_toolbar_configuration(self) -> dict:
+        user_cfg = self._toolbar_config_path()
+        if user_cfg.exists():
+            try:
+                return yaml.safe_load(user_cfg.read_text(encoding="utf-8")) or {}
+            except Exception:
+                return {}
+        try:
+            resource = importlib.resources.files("stoner_measurement.conf").joinpath("toolbar.yaml")
+            return yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
+        except Exception:
+            return {}
+
+    def _find_toolbar_icon(self, name: str) -> QIcon:
+        user_icon = Path(platformdirs.user_config_dir("stoner_measurement")) / "resources" / name
+        if user_icon.exists():
+            return QIcon(str(user_icon))
+        try:
+            resource = importlib.resources.files("stoner_measurement.conf").joinpath("resources").joinpath(name)
+            with importlib.resources.as_file(resource) as path:
+                return QIcon(str(path))
+        except Exception:
+            return QIcon()
+
+    def _find_predefined_sequence(self, name: str) -> Path | None:
+        user_seq = Path(platformdirs.user_config_dir("stoner_measurement")) / "sequences" / name
+        if user_seq.exists():
+            return user_seq
+        try:
+            resource = importlib.resources.files("stoner_measurement.conf").joinpath("sequences").joinpath(name)
+            with importlib.resources.as_file(resource) as path:
+                if path.exists():
+                    return path
+        except Exception:
+            pass
+        return None
+
+    def _add_configured_toolbar_buttons(self) -> None:
+        config = self._load_toolbar_configuration()
+        buttons = config.get("buttons", [])
+        if not buttons:
+            return
+        self._toolbar.addSeparator()
+        for button in buttons:
+            if button.get("separator"):
+                self._toolbar.addSeparator()
+                continue
+            sequence = button.get("sequence")
+            if not sequence:
+                continue
+            action = QAction(button.get("name", Path(sequence).stem), self)
+            image = button.get("image")
+            if image:
+                action.setIcon(self._find_toolbar_icon(image))
+            if button.get("tooltip"):
+                action.setToolTip(button["tooltip"])
+                action.setStatusTip(button["tooltip"])
+            action.triggered.connect(
+                lambda checked=False, seq=sequence: self._load_predefined_sequence(seq)
+            )
+            self._toolbar.addAction(action)
+
+    def _load_predefined_sequence(self, sequence_name: str) -> None:
+        from stoner_measurement.core.serializer import sequence_from_json
+
+        path = self._find_predefined_sequence(sequence_name)
+        if path is None:
+            QMessageBox.warning(self, "Load Sequence", f"Could not locate predefined sequence '{sequence_name}'.")
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            steps = sequence_from_json(data)
+        except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError) as exc:
+            QMessageBox.critical(self, "Load Sequence", f"Could not load sequence:\n{exc}")
+            return
+        self._main_window.dock_panel.load_sequence(steps)
+        self._current_measurement_path = None
+        self._update_window_title()
+        self._engine._rebuild_data_catalogs()
 
     # ------------------------------------------------------------------
     # Tab-change handler — keeps action labels/tips in sync

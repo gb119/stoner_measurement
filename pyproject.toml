@@ -94,6 +94,7 @@ temperature_monitor = "stoner_measurement.plugins.monitor.temperature_controller
 where = ["src"]
 
 [tool.setuptools.package-data]
+"stoner_measurement.conf" = ["*.yaml", "resources/*.png", "sequences/*.json"]
 "stoner_measurement.conf.plugins" = ["*.yaml"]
 "stoner_measurement.ui" = ["*.png", "resources/*.png"]
 
