@@ -56,6 +56,9 @@ _SR830_SENSITIVITIES: tuple[float, ...] = SRS830.supported_sensitivities()
 _SR830_FILTER_SLOPES: tuple[int, ...] = SRS830.supported_filter_slopes()
 _SR830_MAX_HARMONIC: int = SRS830.max_harmonic()
 
+# Minimum pixel width for each column in the lock-in configuration table.
+_LOCKIN_TABLE_MIN_COLUMN_WIDTH: int = 180
+
 # Row indices for the transposed lock-in configuration table.
 _ROW_LABEL = 0
 _ROW_RESOURCE = 1
@@ -802,7 +805,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         lockins_table.setRowCount(_LOCKIN_TABLE_ROWS)
         lockins_table.setVerticalHeaderLabels(_LOCKIN_ROW_LABELS)
         lockins_table.horizontalHeader().setVisible(False)
-        lockins_table.horizontalHeader().setMinimumSectionSize(180)
+        lockins_table.horizontalHeader().setMinimumSectionSize(_LOCKIN_TABLE_MIN_COLUMN_WIDTH)
         lockins_table.verticalHeader().setDefaultSectionSize(28)
         lockins_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectColumns)
 
@@ -930,16 +933,16 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     expand_w=expand_combo,
                 ) -> None:
                     outputs = tuple(
-                        o
-                        for o, _row in _OUTPUT_ROWS
-                        if checks[o].isChecked()
+                        output
+                        for output, _row in _OUTPUT_ROWS
+                        if checks[output].isChecked()
                     )
                     if not outputs:
                         # Ensure at least one output is always selected.
                         outputs = (LockInOutput.X,)
                         checks[LockInOutput.X].setChecked(True)
                     self._lockin_entries[idx].outputs = outputs
-                    supports_offset = any(o.offset_channel() is not None for o in outputs)
+                    supports_offset = any(output.offset_channel() is not None for output in outputs)
                     offset_w.setEnabled(supports_offset)
                     expand_w.setEnabled(supports_offset)
 

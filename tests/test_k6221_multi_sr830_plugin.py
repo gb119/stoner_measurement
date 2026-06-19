@@ -541,7 +541,7 @@ class TestChannelsAndResistance:
         plugin = _make_plugin()
         # The 6221 amplitude is the peak current; the SR830 reports RMS voltage.
         # Resistance is always computed as V_rms / I_rms = V_rms / (I_peak / sqrt(2)).
-        assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(1.0 / (0.5 / np.sqrt(2.0)))
+        assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(np.sqrt(2.0) / 0.5)
 
     def test_multi_output_channel_labelling(self, qapp):
         plugin = _make_plugin()
