@@ -109,7 +109,7 @@ class TestDummyPlugin:
         ]
 
     def test_config_tabs_widgets_are_qwidgets(self, qapp, qtbot):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         plugin = DummyPlugin()
         for _title, widget in _register_tab_widgets(qtbot, plugin.config_tabs()):
@@ -140,7 +140,7 @@ class TestDummyPlugin:
         assert "Type" not in tabs[0][0]
 
     def test_scan_tab_widget_is_qwidget(self, qapp, qtbot):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         plugin = DummyPlugin()
         tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
@@ -158,7 +158,7 @@ class TestDummyPlugin:
         assert "<h3>" in html
 
     def test_plugin_config_tabs_returns_widget(self, qapp, qtbot):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         plugin = DummyPlugin()
         widget = plugin._plugin_config_tabs()

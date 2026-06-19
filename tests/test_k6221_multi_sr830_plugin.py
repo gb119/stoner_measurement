@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QCheckBox, QTableWidget, QTabWidget, QWidget
+from qtpy.QtWidgets import QCheckBox, QTableWidget, QTabWidget, QWidget
 
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInLineFilter,
@@ -137,7 +137,7 @@ class TestJsonRoundTrip:
 class TestUi:
     def test_settings_widget(self, qapp):
         """Single test for all UI checks (avoids pyqtgraph segfault on multiple widget creation cycles)."""
-        from PyQt6.QtWidgets import QPushButton
+        from qtpy.QtWidgets import QPushButton
 
         plugin = _make_plugin()
         tabs = plugin.config_tabs()

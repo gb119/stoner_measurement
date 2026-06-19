@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QTableWidget
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QTableWidget
 
 from stoner_measurement.plugins.state_scan import CounterPlugin
 from stoner_measurement.plugins.trace import DataFrameTracePlugin

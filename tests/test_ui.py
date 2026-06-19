@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QDialog, QHeaderView, QLabel, QTreeWidgetItem
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import QDialog, QHeaderView, QLabel, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
@@ -315,7 +315,7 @@ class TestDockPanel:
         tabs = steps[0].config_tabs()
         # Command plugins now have a single combined tab.
         combined_widget = tabs[0][1]
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
         name_edit = combined_widget.findChild(QLineEdit)
         assert name_edit is not None
 
@@ -603,7 +603,7 @@ class TestDockPanel:
 
     def test_plugin_list_is_plugin_tree_widget(self, plugin_manager):
         """DockPanel._plugin_list is a _PluginTreeWidget (drag-enabled)."""
-        from PyQt6.QtWidgets import QAbstractItemView
+        from qtpy.QtWidgets import QAbstractItemView
 
         from stoner_measurement.ui.dock_panel import _PluginTreeWidget
 
@@ -631,7 +631,7 @@ class TestDockPanel:
 
     def test_category_nodes_not_draggable(self, plugin_manager):
         """Category header nodes do not carry a drag-enabled flag."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         panel = DockPanel(plugin_manager=plugin_manager)
         category = panel._plugin_list.topLevelItem(0)
@@ -702,8 +702,8 @@ class TestDockPanel:
 
     def test_external_drop_appends_to_empty_tree(self, plugin_manager):
         """Dropping a plugin onto an empty tree adds a top-level step via the factory."""
-        from PyQt6.QtCore import QMimeData, QPointF, Qt
-        from PyQt6.QtGui import QDropEvent
+        from qtpy.QtCore import QMimeData, QPointF, Qt
+        from qtpy.QtGui import QDropEvent
 
         from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
 
@@ -731,8 +731,8 @@ class TestDockPanel:
 
     def test_external_drop_ignored_when_no_factory(self, plugin_manager):
         """_handle_external_plugin_drop ignores the event when no factory is set."""
-        from PyQt6.QtCore import QMimeData, QPointF, Qt
-        from PyQt6.QtGui import QDropEvent
+        from qtpy.QtCore import QMimeData, QPointF, Qt
+        from qtpy.QtGui import QDropEvent
 
         from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
 
@@ -755,8 +755,8 @@ class TestDockPanel:
 
     def test_external_drop_ignored_for_unknown_ep_name(self, plugin_manager):
         """_handle_external_plugin_drop ignores the event for an unknown ep name."""
-        from PyQt6.QtCore import QMimeData, QPointF, Qt
-        from PyQt6.QtGui import QDropEvent
+        from qtpy.QtCore import QMimeData, QPointF, Qt
+        from qtpy.QtGui import QDropEvent
 
         from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
 
@@ -778,8 +778,8 @@ class TestDockPanel:
 
     def test_external_drop_plugin_kept_alive(self, plugin_manager):
         """Plugins added via external drop are held in _step_plugins (not GC'd)."""
-        from PyQt6.QtCore import QMimeData, QPointF, Qt
-        from PyQt6.QtGui import QDropEvent
+        from qtpy.QtCore import QMimeData, QPointF, Qt
+        from qtpy.QtGui import QDropEvent
 
         from stoner_measurement.ui.dock_panel import _PLUGIN_EP_MIME_TYPE
 
@@ -834,8 +834,8 @@ class TestDockPanel:
                 Keyboard modifiers to apply.  Defaults to
                 :attr:`Qt.KeyboardModifier.ControlModifier`.
         """
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtGui import QKeyEvent
+        from qtpy.QtCore import Qt
+        from qtpy.QtGui import QKeyEvent
 
         if modifiers is None:
             modifiers = Qt.KeyboardModifier.ControlModifier
@@ -844,7 +844,7 @@ class TestDockPanel:
 
     def test_ctrl_up_moves_step_up(self, qapp):
         """Ctrl+Up moves the selected step up one position."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -862,7 +862,7 @@ class TestDockPanel:
 
     def test_ctrl_up_noop_at_top(self, qapp):
         """Ctrl+Up does nothing when the selected step is already at the top."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -877,7 +877,7 @@ class TestDockPanel:
 
     def test_ctrl_down_moves_step_down(self, qapp):
         """Ctrl+Down moves the selected step down one position."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -893,7 +893,7 @@ class TestDockPanel:
 
     def test_ctrl_down_noop_at_bottom(self, qapp):
         """Ctrl+Down does nothing when the selected step is already at the bottom."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -908,7 +908,7 @@ class TestDockPanel:
 
     def test_ctrl_shift_up_moves_to_start(self, qapp):
         """Ctrl+Shift+Up moves the selected step to the start of the sequence."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -927,7 +927,7 @@ class TestDockPanel:
 
     def test_ctrl_shift_down_moves_to_end(self, qapp):
         """Ctrl+Shift+Down moves the selected step to the end of the sequence."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -946,7 +946,7 @@ class TestDockPanel:
 
     def test_ctrl_right_moves_into_sequence_above(self, qapp):
         """Ctrl+Right moves selected step into the sub-sequence of the SequencePlugin above."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("state_scan", _FakeStatePlugin())
@@ -972,7 +972,7 @@ class TestDockPanel:
 
     def test_ctrl_right_noop_if_above_is_not_sequence(self, qapp):
         """Ctrl+Right does nothing when the item above is not a SequencePlugin."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -988,7 +988,7 @@ class TestDockPanel:
 
     def test_ctrl_right_noop_at_top(self, qapp):
         """Ctrl+Right does nothing when the selected step is the topmost item."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("state_scan", _FakeStatePlugin())
@@ -1005,7 +1005,7 @@ class TestDockPanel:
 
     def test_ctrl_left_promotes_step_out_of_subsequence(self, qapp):
         """Ctrl+Left moves selected step from a sub-sequence to the parent, after the container."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("state_scan", _FakeStatePlugin())
@@ -1036,7 +1036,7 @@ class TestDockPanel:
 
     def test_ctrl_left_noop_at_top_level(self, qapp):
         """Ctrl+Left does nothing when the selected step is already at the top level."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -1051,7 +1051,7 @@ class TestDockPanel:
 
     def test_ctrl_up_moves_multiple_steps_together(self, qapp):
         """Ctrl+Up moves a contiguous group of selected steps up as a unit."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -1069,7 +1069,7 @@ class TestDockPanel:
 
     def test_ctrl_down_moves_multiple_steps_together(self, qapp):
         """Ctrl+Down moves a contiguous group of selected steps down as a unit."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -1087,7 +1087,7 @@ class TestDockPanel:
 
     def test_ctrl_shift_up_multiple_steps(self, qapp):
         """Ctrl+Shift+Up moves a group of selected steps to the start preserving order."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -1107,7 +1107,7 @@ class TestDockPanel:
 
     def test_ctrl_shift_down_multiple_steps(self, qapp):
         """Ctrl+Shift+Down moves a group of selected steps to the end preserving order."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
@@ -1127,7 +1127,7 @@ class TestDockPanel:
 
     def test_ctrl_right_multiple_steps_into_sequence(self, qapp):
         """Ctrl+Right moves multiple selected steps into the SequencePlugin above."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("state_scan", _FakeStatePlugin())
@@ -1153,7 +1153,7 @@ class TestDockPanel:
 
     def test_ctrl_left_multiple_steps_out_of_sequence(self, qapp):
         """Ctrl+Left promotes multiple sub-steps to the parent level after the container."""
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         pm = PluginManager()
         pm.register("state_scan", _FakeStatePlugin())
@@ -1187,8 +1187,8 @@ class TestDockPanel:
 
     def test_non_ctrl_key_not_intercepted(self, qapp):
         """Non-Ctrl key presses are forwarded to the base class (not intercepted)."""
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtGui import QKeyEvent
+        from qtpy.QtCore import Qt
+        from qtpy.QtGui import QKeyEvent
 
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())

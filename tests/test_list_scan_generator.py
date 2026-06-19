@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QWidget
+from qtpy.QtWidgets import QWidget
 
 from stoner_measurement.scan import BaseScanGenerator, ListScanGenerator, ListScanWidget
 

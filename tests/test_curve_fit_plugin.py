@@ -597,7 +597,7 @@ class TestCurveFitConfigTabs:
         assert "General" not in tab_titles
 
     def test_data_tab_contains_instance_name_editor(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         p = CurveFitPlugin()
         tabs = p.config_tabs()
@@ -624,7 +624,7 @@ class TestCurveFitConfigTabs:
         assert tabs[2][0] == "Parameters"
 
     def test_data_tab_is_qwidget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         p = CurveFitPlugin()
         tabs = p.config_tabs()
@@ -641,7 +641,7 @@ class TestCurveFitConfigTabs:
         assert len(editors) == 1
 
     def test_fit_function_tab_shows_runtime_namespace_hint(self, qapp):
-        from PyQt6.QtWidgets import QLabel
+        from qtpy.QtWidgets import QLabel
 
         p = CurveFitPlugin()
         tabs = p.config_tabs()
@@ -664,7 +664,7 @@ class TestCurveFitConfigTabs:
         assert editor.syntax_error_message == ""
 
     def test_parameters_tab_is_qwidget_with_param_table(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         p = CurveFitPlugin()
         tabs = p.config_tabs()
@@ -966,7 +966,7 @@ class TestCurveFitOptionalTraces:
         assert restored.show_best_fit_trace is True
 
     def test_parameters_tab_has_trace_checkboxes(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox
+        from qtpy.QtWidgets import QCheckBox
 
         p = CurveFitPlugin()
         tabs = p.config_tabs()
@@ -1117,7 +1117,7 @@ class TestCurveFitColumnKey:
 
     def test_data_tab_has_column_combo(self, qapp):
         """_build_data_tab returns a widget with a Column combo box."""
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         engine, plugin = self._make_engine_with_multicolumn_trace()
         tabs = plugin.config_tabs()
@@ -1136,7 +1136,7 @@ class TestCurveFitColumnKey:
 
     def test_data_tab_column_combo_repopulates_on_trace_change(self, qapp):
         import pandas as pd
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
         from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData

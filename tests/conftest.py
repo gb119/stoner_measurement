@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QSettings, Qt
+from qtpy.QtCore import QSettings, Qt
 
 from stoner_measurement.ui.log_viewer import LogSourcesWidget, LogViewerWindow
 
