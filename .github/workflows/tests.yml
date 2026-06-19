@@ -122,8 +122,12 @@ jobs:
           path: coverage.xml
 
       - name: Upload coverage to Codacy
-        if: github.event_name != 'pull_request' && secrets.CODACY_PROJECT_TOKEN != ''
+        if: github.event_name != 'pull_request'
         env:
           CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
         run: |
-          bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r coverage.xml
+          if [ -n "$CODACY_PROJECT_TOKEN" ]; then
+            bash <(curl -Ls https://coverage.codacy.com/get.sh) report -r coverage.xml
+          else
+            echo "CODACY_PROJECT_TOKEN not set - skipping upload"
+          fi
