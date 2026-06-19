@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from PyQt6.QtWidgets import QWidget
+from qtpy.QtWidgets import QWidget
 
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData

@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyvisa
-from PyQt6.QtWidgets import (
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,

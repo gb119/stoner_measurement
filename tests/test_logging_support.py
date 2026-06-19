@@ -170,7 +170,7 @@ class TestLogViewerWindow:
         viewer.hide()
 
     def test_stays_on_top_hint(self, qapp):
-        from PyQt6.QtCore import Qt
+        from qtpy.QtCore import Qt
 
         from stoner_measurement.ui.log_viewer import LogViewerWindow
         viewer = LogViewerWindow()

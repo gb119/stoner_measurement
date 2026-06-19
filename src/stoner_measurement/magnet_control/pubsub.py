@@ -1,6 +1,6 @@
 """Publisher/subscriber bus for the magnet controller engine.
 
-Provides :class:`MagnetPublisher`, a :class:`~PyQt6.QtCore.QObject`
+Provides :class:`MagnetPublisher`, a :class:`QObject`
 subclass whose Qt signals serve as the pub/sub channels between the
 :class:`~stoner_measurement.magnet_control.engine.MagnetControllerEngine`
 and any number of subscribers (UI panels, sequence plugins, monitors).
@@ -8,7 +8,7 @@ and any number of subscribers (UI panels, sequence plugins, monitors).
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject, Signal as pyqtSignal
 
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
@@ -40,7 +40,7 @@ class MagnetPublisher(QObject):
             changes.  Carries the new status value.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.magnet_control.pubsub import MagnetPublisher
         >>> pub = MagnetPublisher()

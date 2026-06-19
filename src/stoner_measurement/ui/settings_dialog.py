@@ -1,7 +1,7 @@
 """Settings dialogue for the Stoner Measurement application.
 
 Provides :class:`SettingsDialog` for editing persistent application preferences,
-and :func:`make_app_settings` for obtaining the shared :class:`~PyQt6.QtCore.QSettings`
+and :func:`make_app_settings` for obtaining the shared :class:`QSettings`
 instance backed by an INI file.
 """
 
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import QSettings
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QSettings
+from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -29,7 +29,7 @@ KEY_DEFAULT_SEQUENCE_TEMPLATE = "app/default_sequence_template"
 
 
 def make_app_settings() -> QSettings:
-    """Return a :class:`~PyQt6.QtCore.QSettings` instance backed by an INI file.
+    """Return a :class:`QSettings` instance backed by an INI file.
 
     The file is placed in the platform-appropriate user-configuration directory:
 
@@ -42,7 +42,7 @@ def make_app_settings() -> QSettings:
             The application-settings object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> s = make_app_settings()
         >>> isinstance(s, QSettings)
@@ -75,7 +75,7 @@ class SettingsDialog(QDialog):
             Optional parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> dlg = SettingsDialog()
         >>> dlg.windowTitle()

@@ -1,6 +1,6 @@
 """Standard reusable widgets for stoner_measurement UIs.
 
-Collects custom :mod:`PyQt6` compound widgets that are shared across
+Collects custom Qt compound widgets that are shared across
 multiple measurement panels and dialogs.
 """
 

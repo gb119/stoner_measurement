@@ -40,8 +40,8 @@ class TestEditorWidget:
         assert editor.line_number_area_width() > 0
 
     def test_tab_inserts_spaces(self, qapp):
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtGui import QKeyEvent
+        from qtpy.QtCore import Qt
+        from qtpy.QtGui import QKeyEvent
 
         editor = EditorWidget()
         event = QKeyEvent(
@@ -394,7 +394,7 @@ class TestMeasurementApp:
         app._engine.shutdown()
 
     def test_has_toolbar(self, qapp):
-        from PyQt6.QtWidgets import QToolBar
+        from qtpy.QtWidgets import QToolBar
         app = MeasurementApp()
         toolbars = app.findChildren(QToolBar)
         assert len(toolbars) >= 1
@@ -434,7 +434,7 @@ class TestMeasurementApp:
 
     def test_central_widget_has_tabs(self, qapp):
         app = MeasurementApp()
-        from PyQt6.QtWidgets import QTabWidget
+        from qtpy.QtWidgets import QTabWidget
         tabs = app._main_window.tabs
         assert isinstance(tabs, QTabWidget)
         assert tabs.count() == 2

@@ -7,8 +7,8 @@ dragging the slider or by typing a precise percentage.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Qt, Signal as pyqtSignal
+from qtpy.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QSlider,

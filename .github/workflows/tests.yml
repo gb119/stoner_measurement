@@ -13,6 +13,20 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        qt-binding:
+          - name: PyQt6
+            extra: pyqt6
+            qt_api: pyqt6
+            qt_lib: PyQt6
+          - name: PyQt5
+            extra: pyqt5
+            qt_api: pyqt5
+            qt_lib: PyQt5
+
+    name: Tests (${{ matrix.qt-binding.name }})
 
     steps:
       - name: Checkout repository
@@ -50,16 +64,22 @@ jobs:
       - name: Install package and test dependencies
         shell: bash -el {0}
         run: |
-          pip install -e ".[dev,instruments]"
+          pip install -e ".[dev,instruments,${{ matrix.qt-binding.extra }}]"
 
       - name: Run tests
         shell: bash -el {0}
         env:
+          QT_API: ${{ matrix.qt-binding.qt_api }}
+          PYQTGRAPH_QT_LIB: ${{ matrix.qt-binding.qt_lib }}
           QT_QPA_PLATFORM: xcb
           QT_OPENGL: software
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
-          python -c "from PyQt6.QtCore import QLibraryInfo; print('Qt plugins:', QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))"
+          python -c "
+          from qtpy.QtCore import QLibraryInfo
+          print('Qt binding:', '${{ matrix.qt-binding.name }}')
+          print('Qt plugins:', QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))
+          "
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             pytest --cov --cov-report=xml --cov-report=term-missing
 
@@ -67,5 +87,5 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: coverage-report
+          name: coverage-report-${{ matrix.qt-binding.qt_api }}
           path: coverage.xml

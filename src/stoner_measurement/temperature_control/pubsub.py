@@ -1,6 +1,6 @@
 """Publisher/subscriber bus for the temperature controller engine.
 
-Provides :class:`TemperaturePublisher`, a :class:`~PyQt6.QtCore.QObject`
+Provides :class:`TemperaturePublisher`, a :class:`QObject`
 subclass whose Qt signals serve as the pub/sub channels between the
 :class:`~stoner_measurement.temperature_control.engine.TemperatureControllerEngine`
 and any number of subscribers (UI panels, sequence plugins, monitors).
@@ -8,7 +8,7 @@ and any number of subscribers (UI panels, sequence plugins, monitors).
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject, Signal as pyqtSignal
 
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
@@ -39,7 +39,7 @@ class TemperaturePublisher(QObject):
             changes.  Carries the new :class:`~stoner_measurement.temperature_control.types.EngineStatus` value.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.temperature_control.pubsub import TemperaturePublisher
         >>> pub = TemperaturePublisher()

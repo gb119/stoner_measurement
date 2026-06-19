@@ -212,7 +212,7 @@ class TestDocstringToHtml:
 class TestBasePluginDefaults:
     def test_config_widget_returns_label(self, qapp):
         plugin = _MinimalPlugin()
-        from PyQt6.QtWidgets import QLabel
+        from qtpy.QtWidgets import QLabel
         widget = plugin.config_widget()
         assert isinstance(widget, QLabel)
         assert "Minimal" in widget.text()
@@ -224,7 +224,7 @@ class TestBasePluginDefaults:
         assert len(tabs) == 2
         title, widget = tabs[0]
         assert title == "Minimal"
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
         assert isinstance(widget, QWidget)
 
     def test_config_tabs_title_matches_name(self, qapp):
@@ -272,7 +272,7 @@ class TestBasePluginDefaults:
         assert plugin.monitor_widget() is None
 
     def test_monitor_widget_accepts_parent(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
         plugin = _MinimalPlugin()
         parent = QWidget()
         assert plugin.monitor_widget(parent=parent) is None

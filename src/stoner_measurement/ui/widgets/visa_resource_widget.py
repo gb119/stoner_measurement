@@ -1,7 +1,7 @@
 """VISA resource selection widget.
 
 Provides :class:`VisaResourceComboBox`, a compound widget that combines a
-:class:`~PyQt6.QtWidgets.QComboBox` pre-populated with available VISA
+:class:`QComboBox` pre-populated with available VISA
 resources with a *Refresh* button.  The combo box background changes to
 reflect the connection status of the associated instrument.
 """
@@ -11,8 +11,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from enum import Enum, IntEnum
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Signal as pyqtSignal
+from qtpy.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QPushButton,
@@ -171,7 +171,7 @@ def list_visa_resources(
 class VisaResourceComboBox(QWidget):
     """A combo box pre-populated with VISA resource strings plus a *Refresh* button.
 
-    The :class:`~PyQt6.QtWidgets.QComboBox` is editable so users can also
+    The :class:`QComboBox` is editable so users can also
     type a resource string that does not appear in the enumerated list.
 
     The widget emits :attr:`resource_changed` whenever the selected or typed
@@ -212,7 +212,7 @@ class VisaResourceComboBox(QWidget):
             Emitted when the currently selected resource string changes.
         currentTextChanged (pyqtSignal[str]):
             Emitted whenever the selected or typed resource string changes,
-            mirroring the standard :class:`~PyQt6.QtWidgets.QComboBox` signal
+            mirroring the standard :class:`QComboBox` signal
             name so that this widget can be used as a drop-in replacement
             wherever code connects to ``currentTextChanged``.  This is a
             separate signal from :attr:`resource_changed`; both are forwarded
@@ -221,7 +221,7 @@ class VisaResourceComboBox(QWidget):
             Emitted when the *Refresh* button is clicked.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
         >>> w = VisaResourceComboBox()
@@ -265,7 +265,7 @@ class VisaResourceComboBox(QWidget):
                 Returns an empty string when nothing has been entered.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox(extra_resources=["GPIB0::2::INSTR"])
@@ -278,21 +278,21 @@ class VisaResourceComboBox(QWidget):
     def currentText(self) -> str:
         """Return the currently selected or entered VISA resource string.
 
-        Mirrors the :meth:`~PyQt6.QtWidgets.QComboBox.currentText` interface
+        Mirrors the :meth:`QComboBox.currentText` interface
         so that this widget can be used as a drop-in replacement for a plain
-        :class:`~PyQt6.QtWidgets.QComboBox`.
+        :class:`QComboBox`.
 
         Notes:
             Unlike :meth:`current_resource`, this method returns the raw combo
             text without stripping surrounding whitespace, in order to exactly
-            match the behaviour of :meth:`~PyQt6.QtWidgets.QComboBox.currentText`.
+            match the behaviour of :meth:`QComboBox.currentText`.
 
         Returns:
             (str):
                 The raw current text of the internal combo box.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox(extra_resources=["GPIB0::2::INSTR"])
@@ -310,7 +310,7 @@ class VisaResourceComboBox(QWidget):
                 VISA resource string to select.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox()
@@ -327,12 +327,12 @@ class VisaResourceComboBox(QWidget):
     def setCurrentText(self, text: str) -> None:
         """Select the given resource string, adding it if absent.
 
-        Provides compatibility with the :meth:`~PyQt6.QtWidgets.QComboBox.setCurrentText`
-        interface so that code written against a plain :class:`~PyQt6.QtWidgets.QComboBox`
+        Provides compatibility with the :meth:`QComboBox.setCurrentText`
+        interface so that code written against a plain :class:`QComboBox`
         works unchanged with this widget.
 
         When *text* is empty, the edit field is cleared to match the behaviour
-        of :meth:`~PyQt6.QtWidgets.QComboBox.setCurrentText` on an editable
+        of :meth:`QComboBox.setCurrentText` on an editable
         combo box.
 
         Args:
@@ -341,7 +341,7 @@ class VisaResourceComboBox(QWidget):
                 current edit text.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox()
@@ -365,7 +365,7 @@ class VisaResourceComboBox(QWidget):
                 The new connection status.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import (
             ...     VisaResourceComboBox, VisaResourceStatus,
@@ -394,7 +394,7 @@ class VisaResourceComboBox(QWidget):
 
     @property
     def combo(self) -> QComboBox:
-        """The underlying :class:`~PyQt6.QtWidgets.QComboBox`.
+        """The underlying :class:`QComboBox`.
 
         Provides direct access for advanced customisation such as adjusting
         the minimum width or installing item delegates.
@@ -413,7 +413,7 @@ class VisaResourceComboBox(QWidget):
         :attr:`refresh_requested` after the list has been rebuilt.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceComboBox
             >>> w = VisaResourceComboBox()

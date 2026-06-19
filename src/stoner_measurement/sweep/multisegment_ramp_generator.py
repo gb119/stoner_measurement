@@ -7,8 +7,8 @@ from collections.abc import Iterator
 from typing import Any
 
 import pyqtgraph as pg
-from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QObject
+from qtpy.QtWidgets import (
     QCheckBox,
     QFormLayout,
     QHBoxLayout,
@@ -149,7 +149,7 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
                 Total estimated sweep time in seconds.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.sweep import MultiSegmentRampSweepGenerator
             >>> gen = MultiSegmentRampSweepGenerator(start=0.0, segments=[(2.0, 1.0, True), (0.0, 0.5, False)])

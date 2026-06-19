@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Qt, QTimer, Signal as pyqtSignal
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -728,7 +728,7 @@ class CurveFitPlugin(TransformPlugin):
                 ``"Curve Fit"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> CurveFitPlugin().name
             'Curve Fit'
@@ -747,7 +747,7 @@ class CurveFitPlugin(TransformPlugin):
                 Always an empty list.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> CurveFitPlugin().required_inputs
             []
@@ -770,7 +770,7 @@ class CurveFitPlugin(TransformPlugin):
                 by any enabled trace output names.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> p = CurveFitPlugin()
             >>> p.param_names = ["a", "b"]
@@ -804,7 +804,7 @@ class CurveFitPlugin(TransformPlugin):
                 or both, or an empty list if neither is enabled.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> p = CurveFitPlugin()
             >>> p.output_trace_names
@@ -835,7 +835,7 @@ class CurveFitPlugin(TransformPlugin):
                 Alternating ``"{param}"`` and ``"{param}_err"`` names.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> p = CurveFitPlugin()
             >>> p.param_names = ["a", "b"]
@@ -877,7 +877,7 @@ class CurveFitPlugin(TransformPlugin):
                 ``"{name}_err"`` → 1-sigma uncertainty.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
             >>> import numpy as np
@@ -1463,7 +1463,7 @@ class CurveFitPlugin(TransformPlugin):
                 List of ``(tab_title, widget)`` pairs.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> p = CurveFitPlugin()
             >>> tabs = p.config_tabs()
@@ -1863,7 +1863,7 @@ class CurveFitPlugin(TransformPlugin):
                 and ``"show_best_fit_trace"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> p = CurveFitPlugin()
             >>> d = p.to_json()
@@ -1937,7 +1937,7 @@ def _set_combo_to_expr(
             ``True`` if a match was found and the combo was updated.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication, QComboBox
+        >>> from qtpy.QtWidgets import QApplication, QComboBox
         >>> _ = QApplication.instance() or QApplication([])
         >>> combo = QComboBox()
         >>> combo.addItems(["a", "b"])

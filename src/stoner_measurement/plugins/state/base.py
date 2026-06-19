@@ -22,7 +22,7 @@ from abc import abstractmethod
 from typing import Any, SupportsInt
 
 import pandas as pd
-from PyQt6.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject, Signal as pyqtSignal
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.plugins.sequence.base import SequencePlugin
@@ -83,7 +83,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.state_scan import StateScanPlugin
         >>> class _S(StateScanPlugin):
@@ -200,7 +200,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 ``(min_value, max_value)`` in the units of :attr:`units`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> CounterPlugin().limits
@@ -241,7 +241,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 been collected or the data has been cleared.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> p = CounterPlugin()
@@ -262,7 +262,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         the data is always cleared unconditionally.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> import pandas as pd
@@ -297,7 +297,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 entries.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -362,7 +362,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 JSON-serialisable dict with the shared data-collection keys.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> d = CounterPlugin().to_json()
@@ -433,7 +433,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 string entry-point descriptors.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> p = CounterPlugin()
@@ -464,7 +464,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 ``"{instance_name}:Index"`` mappings.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> p = CounterPlugin()

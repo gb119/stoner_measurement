@@ -1,6 +1,6 @@
 """SI-aware combo-box widget.
 
-Provides :class:`SIComboBox`, a :class:`~PyQt6.QtWidgets.QComboBox` subclass
+Provides :class:`SIComboBox`, a :class:`QComboBox` subclass
 whose items store float values and whose labels are automatically formatted
 with SI engineering prefixes using :func:`pyqtgraph.functions.siFormat`.
 """
@@ -8,14 +8,14 @@ with SI engineering prefixes using :func:`pyqtgraph.functions.siFormat`.
 from __future__ import annotations
 
 import pyqtgraph as pg
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QComboBox
+from qtpy.QtCore import Signal as pyqtSignal
+from qtpy.QtWidgets import QComboBox
 
 __all__ = ["SIComboBox"]
 
 
 class SIComboBox(QComboBox):
-    """A :class:`~PyQt6.QtWidgets.QComboBox` that displays float values with SI prefixes.
+    """A :class:`QComboBox` that displays float values with SI prefixes.
 
     Items can be added in two ways:
 
@@ -24,11 +24,11 @@ class SIComboBox(QComboBox):
     * :meth:`addSpecialItem` — stores an arbitrary float with a custom label,
       for entries such as ``"Auto"`` or ``"Best (auto, set once)"``.
 
-    The standard :meth:`~PyQt6.QtWidgets.QComboBox.addItem` / ``addItems``
+    The standard :meth:`QComboBox.addItem` / ``addItems``
     methods still work and can be used to add items whose ``itemData`` is
     *not* a plain float (useful when the combo doubles as a mode selector that
     carries additional metadata).  In that case use the inherited
-    :meth:`~PyQt6.QtWidgets.QComboBox.currentData` to retrieve the stored
+    :meth:`QComboBox.currentData` to retrieve the stored
     object, and avoid calling :meth:`currentFloatValue` or
     :meth:`setFloatValue`.
 
@@ -54,7 +54,7 @@ class SIComboBox(QComboBox):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> cb = SIComboBox(unit="V")
         >>> cb.addSpecialItem("Auto", 0.0)
@@ -138,7 +138,7 @@ class SIComboBox(QComboBox):
                 :attr:`unit`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> cb = SIComboBox(unit="A")
             >>> cb.addValueItem(1e-3)
@@ -161,7 +161,7 @@ class SIComboBox(QComboBox):
                 Float value stored as item data.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> cb = SIComboBox(unit="V")
             >>> cb.addSpecialItem("Auto", 0.0)
@@ -187,11 +187,11 @@ class SIComboBox(QComboBox):
             TypeError:
                 If the current item's data is not a ``float`` or cannot be
                 cast to one (e.g. when the item was added via plain
-                :meth:`~PyQt6.QtWidgets.QComboBox.addItem` with non-numeric
+                :meth:`QComboBox.addItem` with non-numeric
                 data).
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> cb = SIComboBox(unit="V")
             >>> cb.addValueItem(1.0)
@@ -216,7 +216,7 @@ class SIComboBox(QComboBox):
                 :meth:`addValueItem` or :meth:`addSpecialItem`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> cb = SIComboBox(unit="V")
             >>> cb.addSpecialItem("Auto", 0.0)

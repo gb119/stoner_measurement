@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator
 
-from PyQt6.QtWidgets import QWidget
+from qtpy.QtWidgets import QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.state_sweep import StateSweepPlugin, SweepTimePlugin
@@ -131,7 +131,7 @@ class TestStateSweepPlugin:
         assert plugin.data.empty
 
     def test_sweep_config_has_output_catalogue_checkboxes(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox, QScrollArea
+        from qtpy.QtWidgets import QCheckBox, QScrollArea
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
         from stoner_measurement.plugins.state_control import CounterPlugin

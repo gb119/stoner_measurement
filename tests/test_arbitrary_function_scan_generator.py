@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from PyQt6.QtWidgets import QLabel, QWidget
+from qtpy.QtWidgets import QLabel, QWidget
 
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.scan import (

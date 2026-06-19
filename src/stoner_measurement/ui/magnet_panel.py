@@ -1,11 +1,11 @@
 """Non-blocking magnet controller panel window.
 
-Provides :class:`MagnetControlPanel`, a non-modal :class:`~PyQt6.QtWidgets.QWidget`
+Provides :class:`MagnetControlPanel`, a non-modal :class:`QWidget`
 window that lets the user configure and monitor a magnet controller through
 the :class:`~stoner_measurement.magnet_control.engine.MagnetControllerEngine`
 singleton.
 
-The panel has three sections arranged in a :class:`~PyQt6.QtWidgets.QTabWidget`:
+The panel has three sections arranged in a :class:`QTabWidget`:
 
 * **Connection** — driver type, transport type, address, Connect/Disconnect.
 * **Configuration** — target field/current, ramp rates, persistent switch heater,
@@ -25,9 +25,9 @@ import logging
 from datetime import UTC, datetime
 
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Qt, Slot as pyqtSlot
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -118,7 +118,7 @@ def _colour_dot(colour: str, size: int = 12) -> str:
 
 
 def _line_edit(placeholder: str = "") -> QWidget:
-    """Return a :class:`~PyQt6.QtWidgets.QLineEdit` with placeholder text.
+    """Return a :class:`QLineEdit` with placeholder text.
 
     Args:
         placeholder (str):
@@ -128,7 +128,7 @@ def _line_edit(placeholder: str = "") -> QWidget:
         (QWidget):
             A configured line-edit widget.
     """
-    from PyQt6.QtWidgets import QLineEdit
+    from qtpy.QtWidgets import QLineEdit
 
     w = QLineEdit()
     w.setPlaceholderText(placeholder)
@@ -150,7 +150,7 @@ class MagnetControlPanel(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.ui.magnet_panel import MagnetControlPanel
         >>> panel = MagnetControlPanel()
@@ -191,7 +191,7 @@ class MagnetControlPanel(QWidget):
         """Show the panel and bring it to the front.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.magnet_panel import MagnetControlPanel
             >>> panel = MagnetControlPanel()

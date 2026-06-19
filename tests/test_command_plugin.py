@@ -133,7 +133,7 @@ class TestCommandPlugin:
         assert restored.plugin_type == "command"
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         assert isinstance(_Noop().config_widget(), QWidget)
 
@@ -198,12 +198,12 @@ class TestSaveCommand:
         assert restored.path_expr == "'run/output.txt'"
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         assert isinstance(SaveCommand().config_widget(), QWidget)
 
     def test_config_widget_updates_path_expr(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         cmd = SaveCommand()
         widget = cmd.config_widget()
@@ -640,7 +640,7 @@ class TestSaveCommand:
     # ------------------------------------------------------------------
 
     def test_config_widget_has_no_overwrite_checkbox(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox
+        from qtpy.QtWidgets import QCheckBox
 
         cmd = SaveCommand()
         widget = cmd.config_widget()
@@ -648,7 +648,7 @@ class TestSaveCommand:
         assert len(checkboxes) >= 1
 
     def test_config_widget_has_mode_combobox(self, qapp):
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         cmd = SaveCommand()
         widget = cmd.config_widget()
@@ -657,7 +657,7 @@ class TestSaveCommand:
         assert len(combos) >= 1
 
     def test_config_widget_has_browse_button(self, qapp):
-        from PyQt6.QtWidgets import QPushButton
+        from qtpy.QtWidgets import QPushButton
 
         cmd = SaveCommand()
         widget = cmd.config_widget()
@@ -666,7 +666,7 @@ class TestSaveCommand:
 
     def test_apply_path_wraps_unquoted_string(self, qapp):
         """Typing a plain path without quotes should auto-add single quotes."""
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         cmd = SaveCommand()
         widget = cmd.config_widget()
@@ -678,7 +678,7 @@ class TestSaveCommand:
 
     def test_apply_path_leaves_quoted_string_unchanged(self, qapp):
         """Text already starting with a quote should not be double-quoted."""
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         cmd = SaveCommand()
         widget = cmd.config_widget()
@@ -689,7 +689,7 @@ class TestSaveCommand:
 
     def test_apply_path_leaves_fstring_unchanged(self, qapp):
         """An f-string expression should not be modified."""
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         cmd = SaveCommand()
         widget = cmd.config_widget()
@@ -1035,19 +1035,19 @@ class TestPlotTraceCommand:
         assert restored.y_axis_name == "temp"
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         assert isinstance(PlotTraceCommand().config_widget(), QWidget)
 
     def test_config_widget_has_trace_combo(self, qapp):
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         widget = PlotTraceCommand().config_widget()
         combos = widget.findChildren(QComboBox)
         assert len(combos) >= 1
 
     def test_config_widget_has_advanced_checkbox(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox
+        from qtpy.QtWidgets import QCheckBox
     
         widget = PlotTraceCommand().config_widget()
         checkboxes = widget.findChildren(QCheckBox)
@@ -1055,7 +1055,7 @@ class TestPlotTraceCommand:
     
     
     def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox
+        from qtpy.QtWidgets import QCheckBox
     
         cmd = PlotTraceCommand()
         cmd.advanced_mode = False
@@ -1073,7 +1073,7 @@ class TestPlotTraceCommand:
         assert cmd.advanced_mode is False
 
     def test_config_widget_has_title_lineedit(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         widget = PlotTraceCommand().config_widget()
         edits = widget.findChildren(QLineEdit)
@@ -1081,7 +1081,7 @@ class TestPlotTraceCommand:
         assert len(edits) >= 2
 
     def test_config_widget_has_colour_button(self, qapp):
-        from PyQt6.QtWidgets import QPushButton
+        from qtpy.QtWidgets import QPushButton
 
         cmd = PlotTraceCommand()
         widget = cmd.config_widget()
@@ -1089,7 +1089,7 @@ class TestPlotTraceCommand:
         assert any(btn.text() == "(auto)" for btn in buttons)
 
     def test_config_title_edit_updates_title_expr(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         cmd = PlotTraceCommand()
         cmd.title_expr = "'original'"
@@ -1613,7 +1613,7 @@ class TestPlotTraceCommand:
         column combo.  In practice there are more (x/y data and x/y axis), but
         we only assert the minimum here to keep the test robust.
         """
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
@@ -1623,7 +1623,7 @@ class TestPlotTraceCommand:
 
     def test_config_widget_column_combo_repopulates_on_trace_change(self, qapp, engine):
         import pandas as pd
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
 
@@ -1991,7 +1991,7 @@ class TestPlotTraceCommand:
         assert style_signals == []
 
     def test_config_widget_has_colour_button_with_initial_value(self, qapp):
-        from PyQt6.QtWidgets import QPushButton
+        from qtpy.QtWidgets import QPushButton
 
         cmd = PlotTraceCommand()
         cmd.colour = "blue"
@@ -2001,7 +2001,7 @@ class TestPlotTraceCommand:
         assert colour_button is not None
 
     def test_config_colour_button_updates_colour(self, qapp, monkeypatch):
-        from PyQt6.QtWidgets import QPushButton
+        from qtpy.QtWidgets import QPushButton
 
         cmd = PlotTraceCommand()
         cmd.colour = "blue"
@@ -2086,19 +2086,19 @@ class TestWaitCommand:
         assert restored.delay_expr == "2.5"
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         assert isinstance(WaitCommand().config_widget(), QWidget)
 
     def test_config_widget_has_lineedit(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         widget = WaitCommand().config_widget()
         edits = widget.findChildren(QLineEdit)
         assert len(edits) >= 1
 
     def test_config_widget_updates_delay_expr(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         cmd = WaitCommand()
         widget = cmd.config_widget()
@@ -2187,19 +2187,19 @@ class TestStatusCommand:
         assert restored.status_expr == "'Done'"
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         assert isinstance(StatusCommand().config_widget(), QWidget)
 
     def test_config_widget_has_lineedit(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         widget = StatusCommand().config_widget()
         edits = widget.findChildren(QLineEdit)
         assert len(edits) >= 1
 
     def test_config_widget_updates_status_expr(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         cmd = StatusCommand()
         widget = cmd.config_widget()
@@ -2304,19 +2304,19 @@ class TestAlertCommand:
         assert restored.message_expr == "'Step complete'"
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         assert isinstance(AlertCommand().config_widget(), QWidget)
 
     def test_config_widget_has_lineedit(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         widget = AlertCommand().config_widget()
         edits = widget.findChildren(QLineEdit)
         assert len(edits) >= 1
 
     def test_config_widget_updates_message_expr(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         cmd = AlertCommand()
         widget = cmd.config_widget()
@@ -2482,14 +2482,14 @@ class TestDetailsCommand:
         assert restored.notes == "notes text"
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         from stoner_measurement.plugins.command.details import DetailsCommand
 
         assert isinstance(DetailsCommand().config_widget(), QWidget)
 
     def test_config_widget_user_field(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         from stoner_measurement.plugins.command.details import DetailsCommand
 
@@ -2500,7 +2500,7 @@ class TestDetailsCommand:
         assert any(le.text() == "Alice" for le in line_edits)
 
     def test_config_widget_updates_user(self, qapp):
-        from PyQt6.QtWidgets import QLineEdit
+        from qtpy.QtWidgets import QLineEdit
 
         from stoner_measurement.plugins.command.details import DetailsCommand
 
@@ -2513,7 +2513,7 @@ class TestDetailsCommand:
         assert cmd.user == "Bob"
 
     def test_config_widget_project_combobox(self, qapp):
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         from stoner_measurement.plugins.command.details import DetailsCommand
 
@@ -2523,7 +2523,7 @@ class TestDetailsCommand:
 
     def test_config_widget_project_populated_from_settings(self, qapp, tmp_path):
         """Project combo box should list top-level subdirs of the settings data directory."""
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         from stoner_measurement.plugins.command.details import DetailsCommand
         from stoner_measurement.ui.settings_dialog import KEY_DEFAULT_DATA_DIR, make_app_settings
@@ -2552,7 +2552,7 @@ class TestDetailsCommand:
             settings.sync()
 
     def test_config_widget_notes_updates(self, qapp):
-        from PyQt6.QtWidgets import QPlainTextEdit
+        from qtpy.QtWidgets import QPlainTextEdit
 
         from stoner_measurement.plugins.command.details import DetailsCommand
 
@@ -2597,7 +2597,7 @@ class TestPlotClearCommand:
         assert PlotClearCommand().has_lifecycle is False
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         assert isinstance(PlotClearCommand().config_widget(), QWidget)
 
@@ -2734,12 +2734,12 @@ class TestPlotPointsCommand:
         assert restored.y_entries[0]["y_axis"] == "temp"
 
     def test_config_widget_returns_widget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         assert isinstance(PlotPointsCommand().config_widget(), QWidget)
 
     def test_config_widget_has_x_combo(self, qapp, engine):
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         cmd = PlotPointsCommand()
         engine.add_plugin("plot_points", cmd)
@@ -2749,7 +2749,7 @@ class TestPlotPointsCommand:
         assert len(combos) >= 1
 
     def test_config_widget_uses_transposed_y_series_layout(self, qapp, engine):
-        from PyQt6.QtWidgets import QLabel, QPushButton
+        from qtpy.QtWidgets import QLabel, QPushButton
 
         cmd = PlotPointsCommand()
         engine.add_plugin("plot_points", cmd)
@@ -3197,7 +3197,7 @@ class TestPlotPointsCommand:
         assert pw._trace_style.get("Styled", {}).get("line") == "dot"
 
     def test_config_widget_has_format_columns(self, qapp, engine):
-        from PyQt6.QtWidgets import QDoubleSpinBox
+        from qtpy.QtWidgets import QDoubleSpinBox
 
         cmd = PlotPointsCommand()
         engine.add_plugin("plot_points", cmd)

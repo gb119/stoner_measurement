@@ -141,7 +141,7 @@ class TestTracePlugin:
         assert [(x, y) for _, x, y in pts] == [(0.0, 0.0), (1.0, 1.0), (2.0, 4.0)]
 
     def test_config_widget_default(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
         p = _SimpleTrace()
         w = p.config_widget()
         assert isinstance(w, QWidget)
@@ -168,7 +168,7 @@ class TestTracePlugin:
 
     def test_scan_page_contains_generator_type_selector(self, qapp):
         """Generator type selector is embedded in the Scan page (not a separate tab)."""
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
         p = _SimpleTrace()
         tabs = p.config_tabs()
         scan_page = tabs[0][1]
@@ -177,7 +177,7 @@ class TestTracePlugin:
         assert len(combos) >= 1
 
     def test_config_tabs_scan_widget_is_qwidget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
         p = _SimpleTrace()
         tabs = p.config_tabs()
         assert isinstance(tabs[0][1], QWidget)
@@ -207,7 +207,7 @@ class TestTracePlugin:
         assert len(received) == 1
 
     def test_scan_tab_container_refreshes_on_change(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
 
         from stoner_measurement.plugins.trace import _ScanTabContainer
         from stoner_measurement.scan import SteppedScanGenerator
@@ -995,7 +995,7 @@ class TestStateControlDataCollection:
         assert restored.collect_outputs == ["counter:Value"]
 
     def test_scan_config_has_output_catalogue_checkboxes(self, qapp):
-        from PyQt6.QtWidgets import QCheckBox, QScrollArea
+        from qtpy.QtWidgets import QCheckBox, QScrollArea
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
         from stoner_measurement.plugins.state_control import CounterPlugin

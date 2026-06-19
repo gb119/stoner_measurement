@@ -497,7 +497,7 @@ class TestDisconnect:
 
 class TestConfigTabsWidget:
     def test_settings_widget_is_qwidget(self, qapp):
-        from PyQt6.QtWidgets import QWidget
+        from qtpy.QtWidgets import QWidget
         plugin = _make_plugin()
         widget = plugin._plugin_config_tabs()
         assert isinstance(widget, QWidget)
@@ -520,7 +520,7 @@ class TestConfigTabsWidget:
         assert "<h3>" in html
 
     def test_settings_widget_contains_group_boxes(self, qapp):
-        from PyQt6.QtWidgets import QGroupBox
+        from qtpy.QtWidgets import QGroupBox
         plugin = _make_plugin()
         widget = plugin._plugin_config_tabs()
         groups = widget.findChildren(QGroupBox)

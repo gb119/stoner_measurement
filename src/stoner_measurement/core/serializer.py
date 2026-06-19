@@ -52,7 +52,7 @@ def sequence_to_json(steps: list[_SequenceStep]) -> dict[str, Any]:
             with :func:`json.dumps`.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.trace import DummyPlugin
         >>> plugin = DummyPlugin()
@@ -107,7 +107,7 @@ def sequence_from_json(data: dict[str, Any]) -> list[_SequenceStep]:
             If a plugin class specified in ``"class"`` cannot be imported.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.trace import DummyPlugin
         >>> plugin = DummyPlugin()

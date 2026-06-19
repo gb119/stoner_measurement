@@ -167,7 +167,7 @@ class TopLevelSequence(SequencePlugin):
 
     Unlike :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`,
     this class is *pure Python* — it does not inherit from
-    :class:`~PyQt6.QtCore.QObject` and therefore has no Qt signals or event-loop
+    :class:`QObject` and therefore has no Qt signals or event-loop
     dependencies.
 
     The engine namespace is shared automatically because the
@@ -179,7 +179,7 @@ class TopLevelSequence(SequencePlugin):
             Always ``"Sequence"``.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.sequence import TopLevelSequence
         >>> seq = TopLevelSequence()

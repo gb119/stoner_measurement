@@ -23,9 +23,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Qt, Signal as pyqtSignal
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import (
     QCheckBox,
     QColorDialog,
     QComboBox,
@@ -205,7 +205,7 @@ class PlotTraceCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
         >>> cmd = PlotTraceCommand()
@@ -275,7 +275,7 @@ class PlotTraceCommand(CommandPlugin):
                 The owning engine, or ``None`` if not attached.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -371,7 +371,7 @@ class PlotTraceCommand(CommandPlugin):
                 ``"Plot Trace"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
             >>> PlotTraceCommand().name
@@ -415,7 +415,7 @@ class PlotTraceCommand(CommandPlugin):
                 before the response timeout expires.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -644,10 +644,10 @@ class PlotTraceCommand(CommandPlugin):
                 The settings widget for the *PlotTrace* configuration tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(PlotTraceCommand().config_widget(), QWidget)
             True
         """
@@ -1088,7 +1088,7 @@ class PlotTraceCommand(CommandPlugin):
                 ``"line_width"``, and ``"point_size"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
             >>> d = PlotTraceCommand().to_json()

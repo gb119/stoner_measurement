@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QLabel, QWidget
+from qtpy.QtCore import Signal as pyqtSignal
+from qtpy.QtWidgets import QLabel, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 
@@ -58,7 +58,7 @@ class PlotClearCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
         >>> cmd = PlotClearCommand()
@@ -96,7 +96,7 @@ class PlotClearCommand(CommandPlugin):
                 The owning engine, or ``None`` if not attached.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -140,7 +140,7 @@ class PlotClearCommand(CommandPlugin):
                 ``"Plot Clear"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
             >>> PlotClearCommand().name
@@ -160,7 +160,7 @@ class PlotClearCommand(CommandPlugin):
                 If the plugin is not attached to a sequence engine.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -196,10 +196,10 @@ class PlotClearCommand(CommandPlugin):
                 The settings widget for the *PlotClear* configuration tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(PlotClearCommand().config_widget(), QWidget)
             True
         """

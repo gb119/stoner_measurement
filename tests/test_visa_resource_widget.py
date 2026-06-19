@@ -51,7 +51,7 @@ class TestVisaResourceComboBox:
         assert w.status is VisaResourceStatus.DISCONNECTED
 
     def test_combo_property_returns_qcombobox(self, qapp):
-        from PyQt6.QtWidgets import QComboBox
+        from qtpy.QtWidgets import QComboBox
 
         w = VisaResourceComboBox()
         assert isinstance(w.combo, QComboBox)
@@ -132,7 +132,7 @@ class TestVisaResourceComboBox:
         assert FILTER_GPIB == frozenset({VisaInterfaceType.GPIB})
 
     def test_widget_has_refresh_button(self, qapp):
-        from PyQt6.QtWidgets import QPushButton
+        from qtpy.QtWidgets import QPushButton
 
         w = VisaResourceComboBox()
         buttons = w.findChildren(QPushButton)

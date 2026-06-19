@@ -7,8 +7,8 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
-from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QObject
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,

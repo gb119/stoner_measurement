@@ -3,7 +3,7 @@
 Monitor plugins poll hardware at regular intervals and record auxiliary
 experimental quantities such as temperature, ambient pressure, elapsed time,
 or lock-in phase.  They run independently from trace acquisition and are
-managed by an internal :class:`~PyQt6.QtCore.QTimer`.
+managed by an internal :class:`QTimer`.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from qtpy.QtCore import QObject, QTimer, Signal as pyqtSignal
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 
@@ -29,7 +29,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     * **Synchronous read** — :meth:`read` returns the latest reading as a
       ``{quantity: value}`` dict.
     * **Autonomous polling** — :meth:`start_monitoring` starts an internal
-      :class:`~PyQt6.QtCore.QTimer`; :meth:`stop_monitoring` stops it.
+      :class:`QTimer`; :meth:`stop_monitoring` stops it.
     * **Reading cache** — :attr:`last_reading` returns the most recent
       successful :meth:`read` result without re-querying the hardware.
 
@@ -49,7 +49,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.monitor import MonitorPlugin
         >>> class _DummyMonitor(MonitorPlugin):
@@ -130,7 +130,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 exceptions appropriately.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor import MonitorPlugin
             >>> class _ConstMonitor(MonitorPlugin):
@@ -171,7 +171,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 ``None``, :attr:`monitor_interval` is used.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor import MonitorPlugin
             >>> class _TM(MonitorPlugin):
@@ -195,7 +195,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """Stop the internal polling timer.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor import MonitorPlugin
             >>> class _TM(MonitorPlugin):
@@ -226,7 +226,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Copy of the most recently cached reading.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor import MonitorPlugin
             >>> class _TM(MonitorPlugin):
@@ -277,7 +277,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Lines calling ``read()`` and printing the reading dict.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor import MonitorPlugin
             >>> class _M(MonitorPlugin):
@@ -315,7 +315,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 name in :attr:`quantity_names`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.monitor import MonitorPlugin
             >>> class _M(MonitorPlugin):

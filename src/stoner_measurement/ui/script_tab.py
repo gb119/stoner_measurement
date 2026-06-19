@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
+from qtpy.QtCore import Qt, Signal as pyqtSignal
+from qtpy.QtWidgets import QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
 
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget
@@ -189,7 +189,7 @@ class ScriptTab(QWidget):
         console (ConsoleWidget): The shared interactive console / output area.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> app = QApplication.instance() or QApplication([])
         >>> tab = ScriptTab()
         >>> tab.text
@@ -240,7 +240,7 @@ class ScriptTab(QWidget):
                 The newly created pane.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> tab = ScriptTab()
             >>> initial_count = tab._script_tabs.count()
@@ -282,7 +282,7 @@ class ScriptTab(QWidget):
                 The newly created pane.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> tab = ScriptTab()
             >>> pane = tab.add_tab("x = 1", customised=True)
@@ -307,7 +307,7 @@ class ScriptTab(QWidget):
                 The active pane, or ``None`` when no tabs exist.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> tab = ScriptTab()
             >>> tab.current_pane() is not None
@@ -329,7 +329,7 @@ class ScriptTab(QWidget):
                 The active pane's editor widget.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> tab = ScriptTab()
             >>> from stoner_measurement.ui.editor_widget import EditorWidget
@@ -351,7 +351,7 @@ class ScriptTab(QWidget):
                 The active pane's plain text.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> tab = ScriptTab()
             >>> tab.text
@@ -368,7 +368,7 @@ class ScriptTab(QWidget):
                 New content for the editor.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> app = QApplication.instance() or QApplication([])
             >>> tab = ScriptTab()
             >>> tab.set_text("x = 42")

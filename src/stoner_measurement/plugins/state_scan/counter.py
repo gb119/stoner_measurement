@@ -30,7 +30,7 @@ class CounterPlugin(StateScanPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> plugin = CounterPlugin()
         >>> plugin.name
@@ -92,7 +92,7 @@ class CounterPlugin(StateScanPlugin):
                 New counter value.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = CounterPlugin()
             >>> plugin.set_state(7.0)
@@ -110,7 +110,7 @@ class CounterPlugin(StateScanPlugin):
                 ``0.0`` before any call to :meth:`set_state`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = CounterPlugin()
             >>> plugin.get_state()
@@ -126,7 +126,7 @@ class CounterPlugin(StateScanPlugin):
                 Always ``True``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> plugin = CounterPlugin()
             >>> plugin.is_at_target()

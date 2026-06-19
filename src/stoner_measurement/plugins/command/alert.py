@@ -2,7 +2,7 @@
 
 :class:`AlertCommand` is a concrete :class:`CommandPlugin` that evaluates a
 Python expression to obtain a message string and then displays a modal
-:class:`~PyQt6.QtWidgets.QMessageBox` with an *OK* button in the main thread,
+:class:`QMessageBox` with an *OK* button in the main thread,
 blocking sequence execution until the user dismisses it.
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QMessageBox, QWidget
+from qtpy.QtCore import Qt, Signal as pyqtSignal
+from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QMessageBox, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 
@@ -28,7 +28,7 @@ class AlertCommand(CommandPlugin):
 
     At runtime :meth:`execute` emits the :attr:`show_alert` signal with the
     resolved message string.  The signal is connected with
-    :attr:`~PyQt6.QtCore.Qt.ConnectionType.BlockingQueuedConnection` so that
+    :attr:`Qt.ConnectionType.BlockingQueuedConnection` so that
     the sequence thread blocks until the user clicks *OK*.
 
     The :meth:`execute` and :meth:`__call__` methods accept an optional
@@ -42,7 +42,7 @@ class AlertCommand(CommandPlugin):
         show_alert (pyqtSignal[str]):
             Emitted by :meth:`execute` with the resolved message string.
             Connected with
-            :attr:`~PyQt6.QtCore.Qt.ConnectionType.BlockingQueuedConnection`
+            :attr:`Qt.ConnectionType.BlockingQueuedConnection`
             to :meth:`_display_alert` so that the sequence thread waits for
             the user to dismiss the dialog.
 
@@ -51,7 +51,7 @@ class AlertCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command.alert import AlertCommand
         >>> cmd = AlertCommand()
@@ -86,7 +86,7 @@ class AlertCommand(CommandPlugin):
                 ``"Alert"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
             >>> AlertCommand().name
@@ -98,7 +98,7 @@ class AlertCommand(CommandPlugin):
         """Display a modal information dialog with *message*.
 
         This slot runs in the main thread (due to the
-        :attr:`~PyQt6.QtCore.Qt.ConnectionType.BlockingQueuedConnection` used
+        :attr:`Qt.ConnectionType.BlockingQueuedConnection` used
         when connecting :attr:`show_alert`).
 
         Args:
@@ -112,7 +112,7 @@ class AlertCommand(CommandPlugin):
 
         Emits :attr:`show_alert` with the resolved message string, which
         triggers :meth:`_display_alert` in the main thread via a
-        :attr:`~PyQt6.QtCore.Qt.ConnectionType.BlockingQueuedConnection`.
+        :attr:`Qt.ConnectionType.BlockingQueuedConnection`.
         The sequence thread is blocked until the user clicks *OK*.
 
         Keyword Parameters:
@@ -126,7 +126,7 @@ class AlertCommand(CommandPlugin):
                 ``message`` is not provided.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
             >>> cmd = AlertCommand()
@@ -145,7 +145,7 @@ class AlertCommand(CommandPlugin):
                 the configured :attr:`message_expr` setting.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
             >>> cmd = AlertCommand()
@@ -156,8 +156,8 @@ class AlertCommand(CommandPlugin):
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a settings widget with a message-expression editor.
 
-        Displays a :class:`~PyQt6.QtWidgets.QFormLayout` containing a
-        :class:`~PyQt6.QtWidgets.QLineEdit` that accepts a Python expression
+        Displays a :class:`QFormLayout` containing a
+        :class:`QLineEdit` that accepts a Python expression
         string for the alert message, and a brief description label.
 
         Keyword Parameters:
@@ -169,10 +169,10 @@ class AlertCommand(CommandPlugin):
                 The settings widget for the *Settings* tab.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
-            >>> from PyQt6.QtWidgets import QWidget
+            >>> from qtpy.QtWidgets import QWidget
             >>> isinstance(AlertCommand().config_widget(), QWidget)
             True
         """
@@ -211,7 +211,7 @@ class AlertCommand(CommandPlugin):
                 extended with ``"message_expr"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.command.alert import AlertCommand
             >>> d = AlertCommand().to_json()

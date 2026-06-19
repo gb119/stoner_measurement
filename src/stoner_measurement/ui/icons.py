@@ -1,6 +1,6 @@
 """Icon factories for the Stoner Measurement UI.
 
-Provides functions that create :class:`~PyQt6.QtGui.QIcon` objects used
+Provides functions that create :class:`QIcon` objects used
 throughout the application.  Where available, icons are loaded from bundled
 PNG resources under ``stoner_measurement/ui/resources/``; others are rendered
 programmatically.  Each loader falls back to a programmatic icon if the
@@ -13,8 +13,8 @@ import importlib.resources
 import importlib.resources.abc
 import math
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import (
+from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtGui import (
     QColor,
     QIcon,
     QImage,
@@ -115,7 +115,7 @@ def make_app_icon() -> QIcon:
     """Create the application icon from the bundled logo image.
 
     Loads `StonerLogo2.png` from the `stoner_measurement.ui` package data
-    and returns it as a :class:`~PyQt6.QtGui.QIcon`.  Falls back to a null
+    and returns it as a :class:`QIcon`.  Falls back to a null
     icon if the resource cannot be found.
 
     Returns:

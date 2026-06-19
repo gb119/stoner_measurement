@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QLabel, QTabWidget, QVBoxLayout, QWidget
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QApplication, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from stoner_measurement.core.plugin_manager import PluginManager
 
@@ -45,7 +45,7 @@ class ConfigPanel(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.core.plugin_manager import PluginManager
         >>> pm = PluginManager()
@@ -109,7 +109,7 @@ class ConfigPanel(QWidget):
                 clear the panel.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> from stoner_measurement.plugins.trace import DummyPlugin
@@ -142,7 +142,7 @@ class ConfigPanel(QWidget):
         single informational tab so the panel does not appear completely empty.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> pm = PluginManager()
@@ -161,7 +161,7 @@ class ConfigPanel(QWidget):
     def commit_pending_changes(self) -> None:
         """Commit any pending edits in the currently displayed configuration tabs.
 
-        Some input widgets (e.g. :class:`~PyQt6.QtWidgets.QLineEdit`) only
+        Some input widgets (e.g. :class:`QLineEdit`) only
         apply their value to the plugin when the widget loses focus or the user
         presses Return.  Toolbar and menu actions that do not take keyboard
         focus (the default Qt behaviour for toolbar buttons) would otherwise
@@ -171,11 +171,11 @@ class ConfigPanel(QWidget):
         This method inspects the application-wide focus widget.  If it is a
         descendant of this panel's tab widget it is explicitly cleared of focus,
         which causes Qt to emit the ``editingFinished`` signal on any focused
-        :class:`~PyQt6.QtWidgets.QLineEdit` and flush the edit to the plugin
+        :class:`QLineEdit` and flush the edit to the plugin
         before the action proceeds.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.plugin_manager import PluginManager
             >>> pm = PluginManager()

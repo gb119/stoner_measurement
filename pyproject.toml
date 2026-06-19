@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "stoner_measurement"
 version = "0.1.0"
-description = "A Python/PyQt6 application for running scientific measurements"
+description = "A Python/Qt application for running scientific measurements"
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Gavin Burnell", email = "g.burnell@leeds.ac.uk"},
 ]
-keywords = ["scientific", "measurement", "PyQt6", "pyqtgraph"]
+keywords = ["scientific", "measurement", "Qt", "PyQt5", "PyQt6", "pyqtgraph"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -29,7 +29,7 @@ dependencies = [
     "pandas>=2.0",
     "platformdirs>=4.9",
     "PyYAML>=6.0",
-    "PyQt6>=6.7",
+    "qtpy>=2.4",
     "pyqtgraph>=0.13",
     "qtconsole>=5.5",
     "numpy>=2.0",
@@ -37,6 +37,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pyqt6 = [
+    "PyQt6>=6.7",
+]
+pyqt5 = [
+    "PyQt5>=5.15.9",
+]
 docs = [
     "sphinx>=8.0",
     "sphinx-automodapi>=0.16",
@@ -116,10 +122,18 @@ show_missing = true
 
 [tool.pylint.typecheck]
 ignored-modules = [
+    "PyQt5",
+    "PyQt5.QtCore",
+    "PyQt5.QtGui",
+    "PyQt5.QtWidgets",
     "PyQt6",
     "PyQt6.QtCore",
     "PyQt6.QtGui",
     "PyQt6.QtWidgets",
+    "qtpy",
+    "qtpy.QtCore",
+    "qtpy.QtGui",
+    "qtpy.QtWidgets",
 ]
 
 [tool.pylint.format]

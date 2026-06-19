@@ -5,7 +5,7 @@ A plugin must:
 1. Inherit from :class:`BasePlugin`.
 2. Override :attr:`name` to provide a unique string identifier.
 3. Optionally override :meth:`config_widget` to supply a configuration
-   :class:`~PyQt6.QtWidgets.QWidget` that will appear as a tab in the
+   :class:`QWidget` that will appear as a tab in the
    right-hand panel.
 4. Optionally override :meth:`config_tabs` to contribute multiple labelled
    tabs to the configuration panel.
@@ -33,8 +33,8 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import asteval
-from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QTextBrowser, QWidget
+from qtpy.QtCore import QObject
+from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QTextBrowser, QWidget
 
 from stoner_measurement.plugins.plugin_config import load_plugin_config
 
@@ -356,7 +356,7 @@ class BasePlugin(ABC):
             >>> plugin = DummyPlugin()
             >>> plugin.engine_namespace   # detached — returns empty dict
             {}
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
             >>> engine = SequenceEngine()
@@ -393,7 +393,7 @@ class BasePlugin(ABC):
             >>> import logging
             >>> isinstance(plugin.log, logging.Logger)
             True
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
             >>> engine = SequenceEngine()
@@ -437,7 +437,7 @@ class BasePlugin(ABC):
                 Any exception raised during evaluation of *expr*.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -599,7 +599,7 @@ class BasePlugin(ABC):
                 current configuration.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -652,7 +652,7 @@ class BasePlugin(ABC):
                 module.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> original = DummyPlugin()
@@ -710,8 +710,8 @@ class BasePlugin(ABC):
 
         Returns:
             (QWidget):
-                A :class:`~PyQt6.QtWidgets.QWidget` with a
-                :class:`~PyQt6.QtWidgets.QLineEdit` for editing
+                A :class:`QWidget` with a
+                :class:`QLineEdit` for editing
                 :attr:`instance_name` and a label showing the plugin type.
         """
         widget = QWidget(parent)
@@ -832,7 +832,7 @@ class BasePlugin(ABC):
                 The configuration widget for this plugin.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()
@@ -894,7 +894,7 @@ class BasePlugin(ABC):
 
         Builds a ``(title, widget)`` pair for the *About* tab using the HTML
         returned by :meth:`_about_html`.  The widget is a
-        :class:`~PyQt6.QtWidgets.QTextBrowser` pre-loaded with the HTML.
+        :class:`QTextBrowser` pre-loaded with the HTML.
 
         Returns:
             (tuple[str, QWidget] | None):
@@ -902,7 +902,7 @@ class BasePlugin(ABC):
                 a non-``None`` string; ``None`` when there is no About content.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.base_plugin import BasePlugin
             >>> class _Minimal(BasePlugin):
@@ -961,7 +961,7 @@ class BasePlugin(ABC):
                 List of ``(tab_title, widget)`` pairs.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.base_plugin import BasePlugin
             >>> class _Minimal(BasePlugin):
@@ -1117,7 +1117,7 @@ class BasePlugin(ABC):
                 Lines of Python source code (without trailing newlines).
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> plugin = DummyPlugin()

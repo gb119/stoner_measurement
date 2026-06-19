@@ -13,9 +13,9 @@ import math
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6 import QtGui
-from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import (
+from qtpy import QtGui
+from qtpy.QtCore import QObject
+from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,

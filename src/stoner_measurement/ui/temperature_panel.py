@@ -1,11 +1,11 @@
 """Non-blocking temperature controller panel window.
 
-Provides :class:`TemperatureControlPanel`, a non-modal :class:`~PyQt6.QtWidgets.QWidget`
+Provides :class:`TemperatureControlPanel`, a non-modal :class:`QWidget`
 window that lets the user configure and monitor a temperature controller through
 the :class:`~stoner_measurement.temperature_control.engine.TemperatureControllerEngine`
 singleton.
 
-The panel has five sections arranged in a :class:`~PyQt6.QtWidgets.QTabWidget`:
+The panel has five sections arranged in a :class:`QTabWidget`:
 
 * **Connection** — driver type, transport type, address, Connect/Disconnect.
 * **Control** — setpoint, mode, ramp, PID, needle valve per loop.
@@ -28,9 +28,9 @@ import logging
 from datetime import UTC, datetime
 
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import Qt, Slot as pyqtSlot
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -155,7 +155,7 @@ class TemperatureControlPanel(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
         >>> panel = TemperatureControlPanel()
@@ -194,7 +194,7 @@ class TemperatureControlPanel(QWidget):
         """Show the panel and bring it to the front.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
             >>> panel = TemperatureControlPanel()
@@ -1147,7 +1147,7 @@ _ZONE_COLUMNS = [
 class _ZoneTableWidget(QWidget):
     """Self-contained widget for viewing and editing a zone PID table.
 
-    Displays a :class:`~PyQt6.QtWidgets.QTableWidget` with one row per zone
+    Displays a :class:`QTableWidget` with one row per zone
     entry.  Provides buttons to read the table from and write it to the
     connected temperature controller via the engine, and to serialise/
     deserialise the table as JSON.
@@ -1823,7 +1823,7 @@ class _LoopControlGroup(QGroupBox):
         Args:
             _index (int):
                 Index of the newly selected item in the mode combo box (unused;
-                the mode is read back via :meth:`~PyQt6.QtWidgets.QComboBox.currentData`).
+                the mode is read back via :meth:`QComboBox.currentData`).
         """
         self._update_mode_visibility(self._mode_combo.currentData())
 
@@ -2018,7 +2018,7 @@ def _line_edit(placeholder: str = "") -> QWidget:
         (QWidget):
             A line-edit widget.
     """
-    from PyQt6.QtWidgets import QLineEdit
+    from qtpy.QtWidgets import QLineEdit
 
     w = QLineEdit()
     w.setPlaceholderText(placeholder)

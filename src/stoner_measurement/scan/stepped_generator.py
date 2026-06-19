@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6 import QtGui
-from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import (
+from qtpy import QtGui
+from qtpy.QtCore import QObject
+from qtpy.QtWidgets import (
     QCheckBox,
     QFormLayout,
     QHBoxLayout,
@@ -71,7 +71,7 @@ class SteppedScanGenerator(BaseScanGenerator):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.25, True)])
         >>> gen.generate().tolist()
@@ -207,7 +207,7 @@ class SteppedScanGenerator(BaseScanGenerator):
                 each stage.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
             >>> gen.generate().tolist()
@@ -230,7 +230,7 @@ class SteppedScanGenerator(BaseScanGenerator):
                 A 1-D boolean array of the same length as :meth:`generate`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = SteppedScanGenerator(
             ...     start=0.0,
@@ -272,7 +272,7 @@ class SteppedScanGenerator(BaseScanGenerator):
                 A :class:`SteppedScanWidget` bound to this generator.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = SteppedScanGenerator()
             >>> widget = gen.config_widget()
@@ -292,7 +292,7 @@ class SteppedScanGenerator(BaseScanGenerator):
                 direct JSON serialisation.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.25, True)])
             >>> d = gen.to_json()
@@ -327,7 +327,7 @@ class SteppedScanGenerator(BaseScanGenerator):
                 A fully configured instance.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = SteppedScanGenerator(start=2.0, stages=[(4.0, 1.0, False)])
             >>> restored = SteppedScanGenerator._from_json_data(gen.to_json())
@@ -366,7 +366,7 @@ class SteppedScanWidget(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> gen = SteppedScanGenerator()
         >>> widget = SteppedScanWidget(generator=gen)
@@ -668,7 +668,7 @@ class SteppedScanWidget(QWidget):
                 The generator instance being configured.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = SteppedScanGenerator()
             >>> widget = SteppedScanWidget(generator=gen)

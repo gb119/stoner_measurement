@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PyQt6.QtCore import QSettings, QSize, Qt
-from PyQt6.QtGui import QAction, QKeySequence
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QSettings, QSize, Qt
+from qtpy.QtGui import QAction, QKeySequence
+from qtpy.QtWidgets import (
     QApplication,
     QFileDialog,
     QMainWindow,

@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QObject
+from qtpy.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
     QHeaderView,
@@ -50,7 +50,7 @@ class ListScanGenerator(BaseScanGenerator):
             Optional Qt parent object.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> gen = ListScanGenerator(stages=[(0.0, True), (1.0, True), (2.0, False)])
         >>> gen.generate().tolist()
@@ -98,7 +98,7 @@ class ListScanGenerator(BaseScanGenerator):
                 Returns an empty array when :attr:`stages` is empty.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = ListScanGenerator(stages=[(1.0, True), (3.0, False)])
             >>> gen.generate().tolist()
@@ -117,7 +117,7 @@ class ListScanGenerator(BaseScanGenerator):
                 Returns an empty array when :attr:`stages` is empty.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = ListScanGenerator(stages=[(1.0, True), (2.0, False), (3.0, True)])
             >>> gen.measure_flags().tolist()
@@ -139,7 +139,7 @@ class ListScanGenerator(BaseScanGenerator):
                 A :class:`ListScanWidget` bound to this generator.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = ListScanGenerator()
             >>> widget = gen.config_widget()
@@ -158,7 +158,7 @@ class ListScanGenerator(BaseScanGenerator):
                 direct JSON serialisation.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = ListScanGenerator(stages=[(1.0, True), (2.0, False)])
             >>> d = gen.to_json()
@@ -190,7 +190,7 @@ class ListScanGenerator(BaseScanGenerator):
                 A fully configured instance.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = ListScanGenerator(stages=[(1.0, True), (3.0, False)])
             >>> restored = ListScanGenerator._from_json_data(gen.to_json())
@@ -223,7 +223,7 @@ class ListScanWidget(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> gen = ListScanGenerator()
         >>> widget = ListScanWidget(generator=gen)
@@ -429,7 +429,7 @@ class ListScanWidget(QWidget):
                 The generator instance being configured.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> gen = ListScanGenerator()
             >>> widget = ListScanWidget(generator=gen)

@@ -15,9 +15,9 @@ from typing import Literal, TypedDict
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import QPoint, Qt, pyqtSlot
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from qtpy.QtCore import QPoint, Qt, Slot as pyqtSlot
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import (
     QCheckBox,
     QColorDialog,
     QComboBox,
@@ -128,7 +128,7 @@ class AxesConfigDialog(QDialog):
             Optional parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> dlg = AxesConfigDialog(x_axes=[], y_axes=[])
         >>> dlg.windowTitle()
@@ -344,7 +344,7 @@ class PlotWidget(QWidget):
             Optional Qt parent widget.
 
     Examples:
-        >>> from PyQt6.QtWidgets import QApplication
+        >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> widget = PlotWidget()
         >>> widget.append_point("my_trace", 1.0, 2.0)
@@ -814,7 +814,7 @@ class PlotWidget(QWidget):
                 Vertical axis value.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.append_point("sig", 0.0, 1.0)
@@ -850,7 +850,7 @@ class PlotWidget(QWidget):
                 New vertical axis data.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.set_trace("sig", [0.0, 1.0], [2.0, 3.0])
@@ -908,7 +908,7 @@ class PlotWidget(QWidget):
                 empty array for no y-error bars.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> import numpy as np
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
@@ -988,7 +988,7 @@ class PlotWidget(QWidget):
                 unchanged.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.set_default_axis_labels("Current (A)", "Voltage (V)")
@@ -1102,7 +1102,7 @@ class PlotWidget(QWidget):
                 :meth:`set_trace_style`.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.append_point("sig", 0.0, 1.0)
@@ -1146,7 +1146,7 @@ class PlotWidget(QWidget):
                 Name of the trace to remove.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.append_point("sig", 0.0, 1.0)
@@ -1174,7 +1174,7 @@ class PlotWidget(QWidget):
         """Remove all traces and their data.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.append_point("a", 1.0, 2.0)
@@ -1321,7 +1321,7 @@ class PlotWidget(QWidget):
                 ``"right"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.add_y_axis("temperature", "Temperature (K)", side="right")
@@ -1363,7 +1363,7 @@ class PlotWidget(QWidget):
                 Text label shown on the axis.  Defaults to *name* when empty.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.ensure_y_axis("temp", "Temperature (K)")
@@ -1400,7 +1400,7 @@ class PlotWidget(QWidget):
                 ``"top"``.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.add_x_axis("freq", "Frequency (Hz)", position="top")
@@ -1468,7 +1468,7 @@ class PlotWidget(QWidget):
                 If *trace_name*, *x_axis*, or *y_axis* are not registered.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.add_y_axis("temp", "Temperature (K)")
@@ -1518,7 +1518,7 @@ class PlotWidget(QWidget):
                 Copy of the x data list.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.append_point("sig", 1.0, 2.0)
@@ -1541,7 +1541,7 @@ class PlotWidget(QWidget):
                 Copy of the y data list.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.append_point("sig", 1.0, 2.0)
@@ -1557,7 +1557,7 @@ class PlotWidget(QWidget):
         """Sorted list of currently registered trace names.
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.append_point("b", 0.0, 1.0)
@@ -1572,7 +1572,7 @@ class PlotWidget(QWidget):
         """Sorted list of all registered axis names (x and y combined).
 
         Examples:
-            >>> from PyQt6.QtWidgets import QApplication
+            >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> sorted(widget.axis_names)
