@@ -543,6 +543,8 @@ class _ScanTabContainer(QWidget):
         """Replace the content widget with the current generator's config widget."""
         if self._content is not None:
             self.layout().removeWidget(self._content)
+            self._content.setParent(None)
+            self._content.close()
             self._content.hide()
             self._content.deleteLater()
             self._content = None
