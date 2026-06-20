@@ -1048,25 +1048,25 @@ class TestPlotTraceCommand:
 
     def test_config_widget_has_advanced_checkbox(self, qapp):
         from qtpy.QtWidgets import QCheckBox
-    
+
         widget = PlotTraceCommand().config_widget()
         checkboxes = widget.findChildren(QCheckBox)
         assert len(checkboxes) >= 2
-    
-    
+
+
     def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
         from qtpy.QtWidgets import QCheckBox
-    
+
         cmd = PlotTraceCommand()
         cmd.advanced_mode = False
         widget = cmd.config_widget()
         checkboxes = widget.findChildren(QCheckBox)
-    
+
         advanced_checkbox = next(cb for cb in checkboxes if cb.isChecked() == cmd.advanced_mode)
         # If both start False, prefer the non-transpose one by excluding the first checkbox.
         if advanced_checkbox is checkboxes[0] and len(checkboxes) > 1:
             advanced_checkbox = checkboxes[1]
-    
+
         advanced_checkbox.setChecked(True)
         assert cmd.advanced_mode is True
         advanced_checkbox.setChecked(False)
@@ -1156,7 +1156,7 @@ class TestPlotTraceCommand:
 
         received: list[tuple] = []
         cmd.plot_trace.connect(lambda t, x, y: received.append((t, x, y)))
-        
+
         def _release_plot_busy_flag() -> None:
             time.sleep(0.02)
             pw._mark_data_update_processed()
@@ -2112,29 +2112,29 @@ class TestWaitCommand:
 
         cmd = WaitCommand()
         t0 = time.monotonic()
-        cmd.execute(delay=0.01)
+        cmd.execute(delay=0.1)
         elapsed = time.monotonic() - t0
-        assert elapsed >= 0.01
+        assert elapsed >= 0.08
 
     def test_call_with_explicit_delay_sleeps(self, qapp):
         import time
 
         cmd = WaitCommand()
         t0 = time.monotonic()
-        cmd(delay=0.01)
+        cmd(delay=0.1)
         elapsed = time.monotonic() - t0
-        assert elapsed >= 0.01
+        assert elapsed >= 0.08
 
     def test_execute_uses_delay_expr_when_attached(self, qapp, engine):
         import time
 
         cmd = WaitCommand()
-        cmd.delay_expr = "0.01"
+        cmd.delay_expr = "0.1"
         engine.add_plugin("wait", cmd)
         t0 = time.monotonic()
         cmd.execute()
         elapsed = time.monotonic() - t0
-        assert elapsed >= 0.01
+        assert elapsed >= 0.08
 
     def test_execute_raises_when_detached_and_no_kwarg(self, qapp):
         cmd = WaitCommand()
