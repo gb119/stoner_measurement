@@ -35,6 +35,10 @@ from stoner_measurement.instruments.transport import (
     NullTransport,
     SerialTransport,
 )
+from stoner_measurement.temperature_control.config import (
+    load_temperature_controller_config,
+    save_temperature_controller_config,
+)
 from stoner_measurement.temperature_control.pubsub import TemperaturePublisher
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
@@ -109,6 +113,11 @@ class TemperatureControllerEngine(QObject):
         self._connected_driver_name: str | None = None
         self._connected_transport_name: str | None = None
         self._connected_address: str | None = None
+
+        self._preferred_driver_name: str = ""
+        self._preferred_transport_name: str = "Null (test)"
+        self._preferred_address: str = ""
+
         self._status: EngineStatus = EngineStatus.DISCONNECTED
         self._stability_config: StabilityConfig = StabilityConfig()
 
@@ -126,6 +135,43 @@ class TemperatureControllerEngine(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
+        self._apply_configuration(load_temperature_controller_config())
+
+    def _apply_configuration(self, config: dict) -> None:
+        """Apply engine configuration values from a mapping."""
+        connection = config.get("connection")
+        if isinstance(connection, dict):
+            self._preferred_driver_name = str(connection.get("driver", ""))
+            self._preferred_transport_name = str(
+                connection.get("transport", "Null (test)")
+            )
+            self._preferred_address = str(connection.get("address", ""))
+
+        poll_interval = config.get("poll_interval_ms")
+        if isinstance(poll_interval, int):
+            self.set_poll_interval(poll_interval)
+
+        stability = config.get("stability")
+        if isinstance(stability, dict):
+            self.set_stability_config(
+                StabilityConfig(
+                    tolerance_k=float(
+                        stability.get("tolerance_k", self._stability_config.tolerance_k)
+                    ),
+                    window_s=float(
+                        stability.get("window_s", self._stability_config.window_s)
+                    ),
+                    min_rate=float(
+                        stability.get("min_rate", self._stability_config.min_rate)
+                    ),
+                    unstable_holdoff_s=float(
+                        stability.get(
+                            "unstable_holdoff_s",
+                            self._stability_config.unstable_holdoff_s,
+                        )
+                    ),
+                )
+            )
 
     # ------------------------------------------------------------------
     # Singleton access
@@ -408,6 +454,54 @@ class TemperatureControllerEngine(QObject):
     def connected_address(self) -> str | None:
         """Return the active connection address when known."""
         return self._connected_address
+
+    @property
+    def preferred_driver_name(self) -> str:
+        """Return the preferred driver name from configuration."""
+        return self._preferred_driver_name
+
+    @preferred_driver_name.setter
+    def preferred_driver_name(self, value: str) -> None:
+        self._preferred_driver_name = value
+
+    @property
+    def preferred_transport_name(self) -> str:
+        """Return the preferred transport name from configuration."""
+        return self._preferred_transport_name
+
+    @preferred_transport_name.setter
+    def preferred_transport_name(self, value: str) -> None:
+        self._preferred_transport_name = value
+
+    @property
+    def preferred_address(self) -> str:
+        """Return the preferred connection address from configuration."""
+        return self._preferred_address
+
+    @preferred_address.setter
+    def preferred_address(self, value: str) -> None:
+        self._preferred_address = value
+
+    def configuration_dict(self) -> dict:
+        """Return the current engine configuration as a serialisable mapping."""
+        return {
+            "poll_interval_ms": self._timer.interval(),
+            "connection": {
+                "driver": self._preferred_driver_name,
+                "transport": self._preferred_transport_name,
+                "address": self._preferred_address,
+            },
+            "stability": {
+                "tolerance_k": self._stability_config.tolerance_k,
+                "window_s": self._stability_config.window_s,
+                "min_rate": self._stability_config.min_rate,
+                "unstable_holdoff_s": self._stability_config.unstable_holdoff_s,
+            },
+        }
+
+    def save_configuration(self):
+        """Persist the current engine configuration to the machine config file."""
+        return save_temperature_controller_config(self.configuration_dict())
 
     def set_setpoint(self, loop: int, value: float) -> None:
         """Set the temperature setpoint for *loop*.

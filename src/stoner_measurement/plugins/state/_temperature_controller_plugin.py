@@ -7,7 +7,6 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import (
-    QComboBox,
     QFormLayout,
     QLineEdit,
     QSpinBox,
@@ -15,16 +14,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.temperature_controller import TemperatureController
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.ui.widgets import SISpinBox
 
 if TYPE_CHECKING:
     from stoner_measurement.temperature_control.types import TemperatureEngineState
-
-_TRANSPORT_OPTIONS = ("Serial", "GPIB", "Ethernet", "Null (test)")
-
 
 def _normalise_channels(values: Iterable[str] | None) -> list[str] | None:
     if values is None:
@@ -43,18 +37,9 @@ class TemperatureControllerPluginMixin:
     """Shared engine-backed behaviour for temperature state scan/sweep plugins."""
 
     def _init_temperature_controller_plugin(self) -> None:
-        self.driver_name: str = self._available_driver_names()[0] if self._available_driver_names() else ""
-        self.transport_name: str = "Null (test)"
-        self.address: str = ""
         self.control_loop: int = 1
         self.ramp_rate: float = 1.0
         self.sensor_channels: list[str] | None = None
-
-    @staticmethod
-    def _available_driver_names() -> list[str]:
-        manager = InstrumentDriverManager()
-        manager.discover()
-        return sorted(manager.drivers_by_type(TemperatureController))
 
     def _refresh_catalogs(self) -> None:
         if self.sequence_engine is not None:
@@ -65,24 +50,8 @@ class TemperatureControllerPluginMixin:
 
     def _ensure_connected(self) -> TemperatureControllerEngine:
         engine = self._engine()
-        connected_driver = engine.connected_driver
-        current_name = type(connected_driver).__name__ if connected_driver is not None else ""
-        active_driver_name = getattr(engine, "connected_driver_name", current_name)
-        active_transport = getattr(engine, "connected_transport_name", None)
-        active_address = getattr(engine, "connected_address", None)
-        desired_driver_name = self.driver_name.strip()
-        desired_transport = self.transport_name.strip()
-        desired_address = self.address.strip()
-        needs_connect = (
-            connected_driver is None
-            or (desired_driver_name and active_driver_name != desired_driver_name)
-            or (active_transport is not None and active_transport != desired_transport)
-            or (active_address is not None and active_address != desired_address)
-        )
-        if needs_connect:
-            if not self.driver_name:
-                raise RuntimeError("No temperature controller driver selected.")
-            engine.connect_driver(desired_driver_name, desired_transport, desired_address)
+        if engine.connected_driver is None:
+            raise RuntimeError("No temperature controller is connected.")
         return engine
 
     def _engine_state(self, *, refresh: bool = False) -> TemperatureEngineState:
@@ -191,22 +160,12 @@ class TemperatureControllerPluginMixin:
 
     def _temperature_settings_to_json(self) -> dict[str, object]:
         return {
-            "driver_name": self.driver_name,
-            "transport_name": self.transport_name,
-            "address": self.address,
             "control_loop": self.control_loop,
             "ramp_rate": self.ramp_rate,
             "sensor_channels": None if self.sensor_channels is None else list(self.sensor_channels),
         }
 
     def _restore_temperature_settings(self, data: dict[str, object]) -> None:
-        if "driver_name" in data:
-            self.driver_name = str(data["driver_name"])
-        if "transport_name" in data:
-            transport = str(data["transport_name"])
-            self.transport_name = transport if transport in _TRANSPORT_OPTIONS else "Null (test)"
-        if "address" in data:
-            self.address = str(data["address"])
         if "control_loop" in data:
             self.control_loop = max(1, int(data["control_loop"]))
         if "ramp_rate" in data:
@@ -231,24 +190,6 @@ class _TemperatureControllerSettingsWidget(QWidget):
         root = QVBoxLayout(self)
         form = QFormLayout()
 
-        self._driver_combo = QComboBox(self)
-        self._driver_combo.setEditable(True)
-        self._driver_combo.addItems(self._plugin._available_driver_names())
-        self._driver_combo.setCurrentText(self._plugin.driver_name)
-        self._driver_combo.currentTextChanged.connect(self._on_driver_changed)
-        form.addRow("Driver:", self._driver_combo)
-
-        self._transport_combo = QComboBox(self)
-        self._transport_combo.addItems(_TRANSPORT_OPTIONS)
-        self._transport_combo.setCurrentText(self._plugin.transport_name)
-        self._transport_combo.currentTextChanged.connect(self._on_transport_changed)
-        form.addRow("Transport:", self._transport_combo)
-
-        self._address_edit = QLineEdit(self._plugin.address, self)
-        self._address_edit.setPlaceholderText("port=/dev/ttyUSB0;baud=9600, GPIB0::2::INSTR, or host:port")
-        self._address_edit.editingFinished.connect(self._on_address_changed)
-        form.addRow("Address:", self._address_edit)
-
         self._loop_spin = QSpinBox(self)
         self._loop_spin.setMinimum(1)
         self._loop_spin.setMaximum(99)
@@ -271,15 +212,6 @@ class _TemperatureControllerSettingsWidget(QWidget):
 
         root.addLayout(form)
         root.addStretch(1)
-
-    def _on_driver_changed(self, value: str) -> None:
-        self._plugin.driver_name = value.strip()
-
-    def _on_transport_changed(self, value: str) -> None:
-        self._plugin.transport_name = value
-
-    def _on_address_changed(self) -> None:
-        self._plugin.address = self._address_edit.text().strip()
 
     def _on_loop_changed(self, value: int) -> None:
         self._plugin.control_loop = max(1, int(value))

@@ -61,6 +61,8 @@ from qtpy.QtWidgets import (
 from stoner_measurement.instruments.addressing import (
     DEFAULT_ETHERNET_HOST,
     DEFAULT_ETHERNET_PORT,
+    parse_ethernet_address,
+    parse_serial_address,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.temperature_controller import (
@@ -193,6 +195,7 @@ class TemperatureControlPanel(QWidget):
         self._capabilities = None
 
         self._build_ui()
+        self._load_connection_preferences()
         self._load_chart_settings()
         self._connect_engine_signals()
 
@@ -467,6 +470,10 @@ class TemperatureControlPanel(QWidget):
         apply_btn = QPushButton("Apply Stability Settings")
         apply_btn.clicked.connect(self._on_apply_stability)
         form.addRow("", apply_btn)
+
+        save_btn = QPushButton("Save Settings to YAML")
+        save_btn.clicked.connect(self._on_save_configuration)
+        form.addRow("", save_btn)
 
         return widget
 
@@ -845,6 +852,48 @@ class TemperatureControlPanel(QWidget):
         if not tc_drivers:
             self._driver_combo.addItem("(no drivers found)", None)
 
+    def _load_connection_preferences(self) -> None:
+        """Initialise connection widgets from engine preferences."""
+        driver = self._engine.preferred_driver_name
+        if driver:
+            index = self._driver_combo.findText(driver)
+            if index >= 0:
+                self._driver_combo.setCurrentIndex(index)
+
+        transport = self._engine.preferred_transport_name
+        index = self._transport_combo.findText(transport)
+        if index >= 0:
+            self._transport_combo.setCurrentIndex(index)
+
+        self._restore_preferred_address()
+
+    def _restore_preferred_address(self) -> None:
+        """Restore transport-specific address widgets from engine preferences."""
+        transport = self._engine.preferred_transport_name
+        address = self._engine.preferred_address
+
+        if not address:
+            return
+
+        if transport == "Serial":
+            try:
+                port, baud = parse_serial_address(address)
+            except ValueError:
+                return
+            self._serial_port_combo.set_resource(port)
+            index = self._serial_baud_combo.findData(baud)
+            if index >= 0:
+                self._serial_baud_combo.setCurrentIndex(index)
+        elif transport == "GPIB":
+            self._gpib_resource_combo.set_resource(address)
+        elif transport == "Ethernet":
+            try:
+                host, port = parse_ethernet_address(address)
+            except ValueError:
+                return
+            self._eth_host_edit.setText(host)
+            self._eth_port_spin.setValue(port)
+
     @pyqtSlot(int)
     def _on_transport_changed(self, index: int) -> None:
         """Show the address fields appropriate to the selected transport type.
@@ -878,6 +927,9 @@ class TemperatureControlPanel(QWidget):
 
         try:
             transport_name, address = self._selected_transport(transport_index)
+            self._engine.preferred_driver_name = self._driver_combo.currentText()
+            self._engine.preferred_transport_name = transport_name
+            self._engine.preferred_address = address
             self._engine.connect_driver(
                 driver_name=self._driver_combo.currentText(),
                 transport_name=transport_name,
@@ -1356,6 +1408,25 @@ class TemperatureControlPanel(QWidget):
             unstable_holdoff_s=self._stab_holdoff_spin.value(),
         )
         self._engine.set_stability_config(cfg)
+
+    @pyqtSlot()
+    def _on_save_configuration(self) -> None:
+        """Save the current engine configuration to the machine YAML file."""
+        try:
+            path = self._engine.save_configuration()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Save Configuration",
+                f"Failed to save configuration:\n{exc}",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Save Configuration",
+            f"Configuration saved to:\n{path}",
+        )
 
     # ------------------------------------------------------------------
     # Chart tab slots

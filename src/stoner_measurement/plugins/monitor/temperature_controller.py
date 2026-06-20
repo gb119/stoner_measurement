@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QFormLayout,
     QGroupBox,
     QLineEdit,
@@ -20,16 +19,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.temperature_controller import TemperatureController
 from stoner_measurement.plugins.monitor.base import MonitorPlugin
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 
 if TYPE_CHECKING:
     from stoner_measurement.temperature_control.types import TemperatureEngineState
-
-_TRANSPORT_OPTIONS = ("Serial", "GPIB", "Ethernet", "Null (test)")
-
 
 def _parse_int_list(text: str, default: list[int]) -> list[int]:
     """Parse a comma-separated string of integers, returning *default* on failure."""
@@ -128,9 +122,6 @@ class TemperatureMonitorPlugin(MonitorPlugin):
     def __init__(self, parent=None) -> None:
         """Initialise the plugin with default settings."""
         super().__init__(parent)
-        self.driver_name: str = self._available_driver_names()[0] if self._available_driver_names() else ""
-        self.transport_name: str = "Null (test)"
-        self.address: str = ""
         self.control_loops: list[int] = [1]
         self.sensor_channels: list[str] | None = None
         self.report_setpoints: bool = True
@@ -158,13 +149,6 @@ class TemperatureMonitorPlugin(MonitorPlugin):
     # Engine helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _available_driver_names() -> list[str]:
-        """Return sorted list of registered temperature-controller driver names."""
-        manager = InstrumentDriverManager()
-        manager.discover()
-        return sorted(manager.drivers_by_type(TemperatureController))
-
     def _engine(self) -> TemperatureControllerEngine:
         """Return the singleton temperature controller engine."""
         return TemperatureControllerEngine.instance()
@@ -174,9 +158,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             self.sequence_engine._rebuild_data_catalogs()  # noqa: SLF001
 
     def _ensure_connected(self) -> TemperatureControllerEngine:
-        """Ensure the engine is connected to the configured driver.
-
-        Connects (or reconnects) only when necessary.
+        """Return the shared engine if a controller is already connected.
 
         Returns:
             (TemperatureControllerEngine):
@@ -184,26 +166,11 @@ class TemperatureMonitorPlugin(MonitorPlugin):
 
         Raises:
             RuntimeError:
-                If no driver name is configured.
+                If no temperature controller is connected.
         """
         engine = self._engine()
-        connected = engine.connected_driver
-        active_driver = getattr(engine, "connected_driver_name", type(connected).__name__ if connected else "")
-        active_transport = getattr(engine, "connected_transport_name", None)
-        active_address = getattr(engine, "connected_address", None)
-        desired_driver = self.driver_name.strip()
-        desired_transport = self.transport_name.strip()
-        desired_address = self.address.strip()
-        needs_connect = (
-            connected is None
-            or (desired_driver and active_driver != desired_driver)
-            or (active_transport is not None and active_transport != desired_transport)
-            or (active_address is not None and active_address != desired_address)
-        )
-        if needs_connect:
-            if not desired_driver:
-                raise RuntimeError("No temperature controller driver selected.")
-            engine.connect_driver(desired_driver, desired_transport, desired_address)
+        if engine.connected_driver is None:
+            raise RuntimeError("No temperature controller is connected.")
         return engine
 
     def _current_state(self) -> TemperatureEngineState:
@@ -641,9 +608,6 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         data = super().to_json()
         data.update(
             {
-                "driver_name": self.driver_name,
-                "transport_name": self.transport_name,
-                "address": self.address,
                 "control_loops": list(self.control_loops),
                 "sensor_channels": None if self.sensor_channels is None else list(self.sensor_channels),
                 "report_setpoints": self.report_setpoints,
@@ -662,13 +626,6 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             data (dict[str, object]):
                 Serialised configuration as produced by :meth:`to_json`.
         """
-        if "driver_name" in data:
-            self.driver_name = str(data["driver_name"])
-        if "transport_name" in data:
-            transport = str(data["transport_name"])
-            self.transport_name = transport if transport in _TRANSPORT_OPTIONS else "Null (test)"
-        if "address" in data:
-            self.address = str(data["address"])
         if "control_loops" in data:
             raw = data["control_loops"]
             if isinstance(raw, list):
@@ -741,30 +698,6 @@ class _TemperatureMonitorSettingsWidget(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
 
-        # ---- Connection group -----------------------------------------------
-        conn_group = QGroupBox("Connection", self)
-        conn_form = QFormLayout(conn_group)
-
-        self._driver_combo = QComboBox(conn_group)
-        self._driver_combo.setEditable(True)
-        self._driver_combo.addItems(self._plugin._available_driver_names())
-        self._driver_combo.setCurrentText(self._plugin.driver_name)
-        self._driver_combo.currentTextChanged.connect(self._on_driver_changed)
-        conn_form.addRow("Driver:", self._driver_combo)
-
-        self._transport_combo = QComboBox(conn_group)
-        self._transport_combo.addItems(_TRANSPORT_OPTIONS)
-        self._transport_combo.setCurrentText(self._plugin.transport_name)
-        self._transport_combo.currentTextChanged.connect(self._on_transport_changed)
-        conn_form.addRow("Transport:", self._transport_combo)
-
-        self._address_edit = QLineEdit(self._plugin.address, conn_group)
-        self._address_edit.setPlaceholderText("port=/dev/ttyUSB0;baud=9600, GPIB0::2::INSTR, or host:port")
-        self._address_edit.editingFinished.connect(self._on_address_changed)
-        conn_form.addRow("Address:", self._address_edit)
-
-        root.addWidget(conn_group)
-
         # ---- Channel / loop selection group ---------------------------------
         sel_group = QGroupBox("Channels & Loops", self)
         sel_form = QFormLayout(sel_group)
@@ -816,15 +749,6 @@ class _TemperatureMonitorSettingsWidget(QWidget):
         root.addStretch(1)
 
     # ---- Slots ---------------------------------------------------------------
-
-    def _on_driver_changed(self, value: str) -> None:
-        self._plugin.driver_name = value.strip()
-
-    def _on_transport_changed(self, value: str) -> None:
-        self._plugin.transport_name = value
-
-    def _on_address_changed(self) -> None:
-        self._plugin.address = self._address_edit.text().strip()
 
     def _on_loops_changed(self) -> None:
         text = self._loops_edit.text()

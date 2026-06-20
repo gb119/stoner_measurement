@@ -1,0 +1,12 @@
+poll_interval_ms: 2000
+
+connection:
+  driver: ""
+  transport: "Null (test)"
+  address: ""
+
+stability:
+  tolerance_k: 0.1
+  window_s: 60.0
+  min_rate: 0.005
+  unstable_holdoff_s: 5.0

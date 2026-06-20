@@ -119,15 +119,12 @@ class _FakeTemperatureDriver:
 
 class _FakeTemperatureEngine:
     def __init__(self) -> None:
-        self.connected_driver = None
-        self.connected_driver_name = None
-        self.connected_transport_name = None
-        self.connected_address = None
+        self._driver = _FakeTemperatureDriver()
+        self.connected_driver = self._driver
         self.connect_calls: list[tuple[str, str, str]] = []
         self.ramp_calls: list[tuple[int, float, bool]] = []
         self.setpoint_calls: list[tuple[int, float]] = []
         self.loop_settings_calls: list[int] = []
-        self._driver = _FakeTemperatureDriver()
         self._state = TemperatureEngineState(
             readings={
                 "A": TemperatureChannelReading(
@@ -148,13 +145,6 @@ class _FakeTemperatureEngine:
             at_setpoint={2: True},
             engine_status=EngineStatus.POLLING,
         )
-
-    def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
-        self.connect_calls.append((driver_name, transport_name, address))
-        self.connected_driver_name = driver_name
-        self.connected_transport_name = transport_name
-        self.connected_address = address
-        self.connected_driver = self._driver
 
     def read_controller_state(self):
         return self._state
@@ -229,7 +219,6 @@ def test_magnet_controller_sweep_plugin_serialises(monkeypatch, qapp):
 
 def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monkeypatch, qapp):
     engine = _FakeTemperatureEngine()
-    monkeypatch.setattr(temperature_module, "InstrumentDriverManager", _manager_factory("FakeTemp"))
     monkeypatch.setattr(
         temperature_module,
         "TemperatureControllerEngine",
@@ -243,7 +232,7 @@ def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monke
     plugin.configure()
     plugin.set_state(20.0)
 
-    assert engine.connect_calls == [("FakeTemp", "Null (test)", "")]
+    assert engine.connect_calls == []
     assert engine.ramp_calls[-1] == (2, plugin.ramp_rate, True)
     assert engine.setpoint_calls[-1] == (2, 20.0)
     assert plugin.get_state() == 7.5
@@ -259,7 +248,6 @@ def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monke
 
 def test_temperature_controller_sweep_plugin_round_trips(monkeypatch, qapp):
     engine = _FakeTemperatureEngine()
-    monkeypatch.setattr(temperature_module, "InstrumentDriverManager", _manager_factory("FakeTemp"))
     monkeypatch.setattr(
         temperature_module,
         "TemperatureControllerEngine",
@@ -309,9 +297,9 @@ def test_magnet_controller_plugin_reconnects_when_transport_settings_change(monk
     ]
 
 
-def test_temperature_controller_plugin_reconnects_when_transport_settings_change(monkeypatch, qapp):
+def test_temperature_controller_plugin_requires_existing_engine_connection(monkeypatch, qapp):
     engine = _FakeTemperatureEngine()
-    monkeypatch.setattr(temperature_module, "InstrumentDriverManager", _manager_factory("FakeTemp"))
+    engine.connected_driver = None
     monkeypatch.setattr(
         temperature_module,
         "TemperatureControllerEngine",
@@ -319,17 +307,10 @@ def test_temperature_controller_plugin_reconnects_when_transport_settings_change
     )
 
     plugin = TemperatureControllerScanPlugin()
-    plugin.transport_name = "Null (test)"
-    plugin.address = ""
-    plugin.connect()
-    plugin.transport_name = "GPIB"
-    plugin.address = "GPIB0::4::INSTR"
-    plugin.connect()
+    import pytest
 
-    assert engine.connect_calls == [
-        ("FakeTemp", "Null (test)", ""),
-        ("FakeTemp", "GPIB", "GPIB0::4::INSTR"),
-    ]
+    with pytest.raises(RuntimeError, match="No temperature controller is connected"):
+        plugin.connect()
 
 
 if __name__ == "__main__":

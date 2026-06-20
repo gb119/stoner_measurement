@@ -27,17 +27,6 @@ from stoner_measurement.temperature_control.types import (
 # ---------------------------------------------------------------------------
 
 
-class _FakeDriverManager:
-    def __init__(self, *names):
-        self._names = list(names)
-
-    def discover(self) -> None:
-        pass
-
-    def drivers_by_type(self, _instrument_type):
-        return {n: object for n in self._names}
-
-
 def _make_state(*, channels=("A", "B"), loops=(1,)) -> TemperatureEngineState:
     now = datetime.now(tz=UTC)
     readings = {
@@ -65,22 +54,12 @@ def _make_state(*, channels=("A", "B"), loops=(1,)) -> TemperatureEngineState:
 
 class _FakeEngine:
     def __init__(self, state: TemperatureEngineState | None = None) -> None:
-        self.connected_driver = None
-        self.connected_driver_name = None
-        self.connected_transport_name = None
-        self.connected_address = None
+        self.connected_driver = SimpleNamespace()
         self.connect_calls: list[tuple[str, str, str]] = []
         self.poll_calls: int = 0
         self._state: TemperatureEngineState = state or TemperatureEngineState(
             engine_status=EngineStatus.DISCONNECTED
         )
-
-    def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
-        self.connect_calls.append((driver_name, transport_name, address))
-        self.connected_driver_name = driver_name
-        self.connected_transport_name = transport_name
-        self.connected_address = address
-        self.connected_driver = SimpleNamespace()
 
     def get_engine_state(self) -> TemperatureEngineState:
         return self._state
@@ -99,16 +78,13 @@ class _FakeSequenceEngine:
         self.rebuild_calls += 1
 
 
-def _make_plugin(engine: _FakeEngine, monkeypatch, driver_name: str = "FakeTemp") -> TemperatureMonitorPlugin:
-    monkeypatch.setattr(tc_module, "InstrumentDriverManager", lambda: _FakeDriverManager(driver_name))
+def _make_plugin(engine: _FakeEngine, monkeypatch) -> TemperatureMonitorPlugin:
     monkeypatch.setattr(
         tc_module,
         "TemperatureControllerEngine",
         type("_FakeTCE", (), {"instance": staticmethod(lambda: engine)}),
     )
-    plugin = TemperatureMonitorPlugin()
-    plugin.driver_name = driver_name
-    return plugin
+    return TemperatureMonitorPlugin()
 
 
 # ---------------------------------------------------------------------------
@@ -394,49 +370,37 @@ def test_stable_method(monkeypatch, qapp):
 # ---------------------------------------------------------------------------
 
 
-def test_connect_calls_engine(monkeypatch, qapp):
+def test_connect_uses_existing_engine_connection(monkeypatch, qapp):
     engine = _FakeEngine()
     plugin = _make_plugin(engine, monkeypatch)
-    plugin.transport_name = "Null (test)"
-    plugin.address = ""
     plugin.connect()
-    assert engine.connect_calls == [("FakeTemp", "Null (test)", "")]
+    assert engine.connect_calls == []
     plugin.disconnect()
 
 
-def test_connect_raises_without_driver(monkeypatch, qapp):
+def test_connect_raises_without_connected_controller(monkeypatch, qapp):
     engine = _FakeEngine()
-    plugin = _make_plugin(engine, monkeypatch, driver_name="")
-    plugin.driver_name = ""
-    with pytest.raises(RuntimeError, match="No temperature controller driver selected"):
+    engine.connected_driver = None
+    plugin = _make_plugin(engine, monkeypatch)
+    with pytest.raises(RuntimeError, match="No temperature controller is connected"):
         plugin.connect()
 
 
 def test_connect_does_not_reconnect_when_already_connected(monkeypatch, qapp):
     engine = _FakeEngine()
     engine.connected_driver = SimpleNamespace()
-    engine.connected_driver_name = "FakeTemp"
-    engine.connected_transport_name = "Null (test)"
-    engine.connected_address = ""
     plugin = _make_plugin(engine, monkeypatch)
-    plugin.transport_name = "Null (test)"
-    plugin.address = ""
     plugin.connect()
     assert engine.connect_calls == []
     plugin.disconnect()
 
 
-def test_connect_reconnects_on_driver_change(monkeypatch, qapp):
+def test_connect_ignores_driver_name_when_engine_is_connected(monkeypatch, qapp):
     engine = _FakeEngine()
     engine.connected_driver = SimpleNamespace()
-    engine.connected_driver_name = "OldDriver"
-    engine.connected_transport_name = "Null (test)"
-    engine.connected_address = ""
-    plugin = _make_plugin(engine, monkeypatch, driver_name="FakeTemp")
-    plugin.transport_name = "Null (test)"
-    plugin.address = ""
+    plugin = _make_plugin(engine, monkeypatch)
     plugin.connect()
-    assert engine.connect_calls == [("FakeTemp", "Null (test)", "")]
+    assert engine.connect_calls == []
     plugin.disconnect()
 
 
@@ -497,9 +461,6 @@ def test_json_round_trip(monkeypatch, qapp):
     plugin.report_heater = False
     plugin.report_rate = True
     plugin.report_stability = False
-    plugin.transport_name = "Null (test)"
-    plugin.address = ""
-
     data = plugin.to_json()
     assert data["report_heater"] is False
     assert data["report_stability"] is False

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,7 @@ from stoner_measurement.temperature_control.engine import (
     TemperatureControllerEngine,
     _compute_rate,
 )
+from stoner_measurement.temperature_control import engine as engine_module
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     StabilityConfig,
@@ -181,6 +183,131 @@ class TestComputeRate:
 
 
 class TestEngineLifecycle:
+    def test_constructor_applies_configuration(self, monkeypatch, qapp):
+        monkeypatch.setattr(
+            engine_module,
+            "load_temperature_controller_config",
+            lambda: {
+                "connection": {
+                    "driver": "TestDriver",
+                    "transport": "Ethernet",
+                    "address": "testhost:1234",
+                },
+                "poll_interval_ms": 1234,
+                "stability": {
+                    "tolerance_k": 0.25,
+                    "window_s": 12.0,
+                    "min_rate": 0.02,
+                    "unstable_holdoff_s": 3.0,
+                },
+            },
+        )
+        engine = TemperatureControllerEngine()
+        assert engine._timer.interval() == 1234  # noqa: SLF001
+        assert engine.preferred_driver_name == "TestDriver"
+        assert engine.preferred_transport_name == "Ethernet"
+        assert engine.preferred_address == "testhost:1234"
+        assert engine._stability_config.tolerance_k == pytest.approx(0.25)  # noqa: SLF001
+        assert engine._stability_config.window_s == pytest.approx(12.0)  # noqa: SLF001
+        assert engine._stability_config.min_rate == pytest.approx(0.02)  # noqa: SLF001
+        assert engine._stability_config.unstable_holdoff_s == pytest.approx(3.0)  # noqa: SLF001
+        engine.shutdown()
+
+    def test_preferred_connection_properties_are_mutable(self, qapp):
+        engine = TemperatureControllerEngine()
+
+        engine.preferred_driver_name = "DriverA"
+        engine.preferred_transport_name = "Serial"
+        engine.preferred_address = "port=COM3;baud=115200"
+
+        assert engine.preferred_driver_name == "DriverA"
+        assert engine.preferred_transport_name == "Serial"
+        assert engine.preferred_address == "port=COM3;baud=115200"
+
+        engine.shutdown()
+
+    def test_configuration_dict_exports_current_settings(self, qapp):
+        engine = TemperatureControllerEngine()
+
+        engine.preferred_driver_name = "DriverA"
+        engine.preferred_transport_name = "Ethernet"
+        engine.preferred_address = "host:1234"
+        engine.set_poll_interval(1500)
+        engine.set_stability_config(
+            StabilityConfig(
+                tolerance_k=0.2,
+                window_s=30.0,
+                min_rate=0.01,
+                unstable_holdoff_s=2.0,
+            )
+        )
+
+        config = engine.configuration_dict()
+
+        assert config["poll_interval_ms"] == 1500
+        assert config["connection"] == {
+            "driver": "DriverA",
+            "transport": "Ethernet",
+            "address": "host:1234",
+        }
+        assert config["stability"]["tolerance_k"] == pytest.approx(0.2)
+        assert config["stability"]["window_s"] == pytest.approx(30.0)
+        assert config["stability"]["min_rate"] == pytest.approx(0.01)
+        assert config["stability"]["unstable_holdoff_s"] == pytest.approx(2.0)
+
+        engine.shutdown()
+
+    def test_save_configuration_writes_machine_config(self, monkeypatch, tmp_path, qapp):
+        from stoner_measurement.temperature_control import config as config_module
+
+        config_path = tmp_path / "temperature_controller.yaml"
+
+        monkeypatch.setattr(
+            config_module,
+            "machine_config_path",
+            lambda: config_path,
+        )
+
+        engine = TemperatureControllerEngine()
+        engine.preferred_driver_name = "DriverA"
+
+        path = engine.save_configuration()
+
+        assert path == config_path
+        assert path.exists()
+        assert "DriverA" in path.read_text(encoding="utf-8")
+
+        engine.shutdown()
+
+    def test_save_configuration_creates_timestamped_backup(
+        self, monkeypatch, tmp_path, qapp
+    ):
+        from stoner_measurement.temperature_control import config as config_module
+
+        config_path = tmp_path / "temperature_controller.yaml"
+        config_path.write_text("original: true\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            config_module,
+            "machine_config_path",
+            lambda: config_path,
+        )
+
+        engine = TemperatureControllerEngine()
+        engine.preferred_driver_name = "DriverB"
+
+        engine.save_configuration()
+
+        backups = list(
+            tmp_path.glob("temperature_controller.*.yaml")
+        )
+
+        assert len(backups) == 1
+        assert backups[0].read_text(encoding="utf-8") == "original: true\n"
+        assert "DriverB" in config_path.read_text(encoding="utf-8")
+
+        engine.shutdown()
+
     def test_instance_returns_same_object(self, qapp):
         e1 = TemperatureControllerEngine.instance()
         e2 = TemperatureControllerEngine.instance()
