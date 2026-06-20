@@ -1238,3 +1238,55 @@ class BasePlugin(ABC):
             []
         """
         return []
+
+    @property
+    def scan(self):
+        """Alias for a plugin's ``scan_generator`` attribute.
+
+        This convenience property exists primarily for interactive console
+        use, allowing ``plugin.scan`` instead of
+        ``plugin.scan_generator``.
+
+        Raises:
+            AttributeError:
+                If the plugin does not define a ``scan_generator``
+                attribute.
+        """
+        return getattr(self, "scan_generator")
+
+    def refresh(self) -> None:
+        """Refresh this plugin and any cached configuration widgets.
+
+        This method is intended for programmatic use (for example from the
+        console) after mutating plugin attributes directly. It refreshes only
+        this plugin's local state, the active scan generator (when present),
+        and any cached configuration widgets that expose a ``refresh()``
+        method.
+        """
+        scan_generator = getattr(self, "scan_generator", None)
+        if scan_generator is not None:
+            refresh = getattr(scan_generator, "refresh", None)
+            if callable(refresh):
+                refresh()
+
+        tabs = getattr(self, "_cached_config_tabs", None)
+        if tabs:
+            for _, widget in tabs:
+                refresh = getattr(widget, "refresh", None)
+                if callable(refresh):
+                    refresh()
+                widget.update()
+
+    def full_refresh(self) -> None:
+        """Recursively refresh this plugin and all member plugins.
+
+        The default implementation performs a local :meth:`refresh` and then
+        calls :meth:`full_refresh` on every plugin returned by
+        :meth:`member_plugins`.
+        """
+        self.refresh()
+
+        for plugin in self.member_plugins():
+            refresh = getattr(plugin, "full_refresh", None)
+            if callable(refresh):
+                refresh()

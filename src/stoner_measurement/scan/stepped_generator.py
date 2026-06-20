@@ -649,6 +649,19 @@ class SteppedScanWidget(QWidget):
             self._red_scatter.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))
         self._clear_current_marker()
 
+    def refresh(self) -> None:
+        """Reload widget state from the bound generator."""
+        self._updating = True
+        try:
+            self._start_spin.setValue(self._generator.start)
+            self._sync_table_to_generator()
+            self._update_units(self._generator.units)
+        finally:
+            self._updating = False
+
+        self._refresh_plot()
+        self.update()
+
     def _clear_current_marker(self) -> None:
         """Clear the current-point marker from the preview."""
         self._current_marker.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))

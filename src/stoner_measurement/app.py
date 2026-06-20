@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import importlib.resources
+import logging
 from pathlib import Path
 
 import platformdirs
@@ -42,6 +43,50 @@ _STATUS_BACKGROUND_RUNNING_COLOR = "#2e7d32"
 _STATUS_BACKGROUND_PAUSED_COLOR = "#ef6c00"
 _STATUS_BACKGROUND_ERROR_COLOR = "#c62828"
 
+logger = logging.getLogger(__name__)
+
+
+class SequenceView:
+    """Live view of the current sequence tree exposed in the console namespace."""
+
+    def __init__(self, steps_provider) -> None:
+        self._steps_provider = steps_provider
+
+    @property
+    def steps(self):
+        """Return the current nested sequence-step structure."""
+        return self._steps_provider()
+
+    @property
+    def top_level_plugins(self) -> list:
+        result = []
+        for step in self.steps:
+            plugin_or_name = step[0] if isinstance(step, tuple) else step
+            result.append(plugin_or_name)
+        return result
+
+    @property
+    def plugins(self) -> list:
+        """Return all plugin instances in the sequence tree."""
+        result = []
+
+        def visit(plugin):
+            result.append(plugin)
+            members = getattr(plugin, "member_plugins", None)
+            if callable(members):
+                for child in members():
+                    visit(child)
+
+        for plugin in self.top_level_plugins:
+            visit(plugin)
+        return result
+
+    def full_refresh(self) -> None:
+        """Recursively refresh all plugins in the current sequence."""
+        for plugin in self.top_level_plugins:
+            refresh = getattr(plugin, "full_refresh", None)
+            if callable(refresh):
+                refresh()
 
 class MeasurementApp(QMainWindow):
     """Top-level application window.
@@ -206,6 +251,11 @@ class MeasurementApp(QMainWindow):
                     step_plugins.append(step_plugin)
 
         _process(self._main_window.dock_panel.sequence_steps)
+
+        self._engine._namespace["sequence"] = SequenceView(  # noqa: SLF001
+            lambda: self._main_window.dock_panel.sequence_steps
+        )
+
         self._engine.update_step_plugin_catalog(step_plugins)
 
     def _on_plugins_changed(self) -> None:
@@ -523,6 +573,7 @@ class MeasurementApp(QMainWindow):
         """Build the main toolbar."""
         toolbar = QToolBar("Main Toolbar", self)
         toolbar.setObjectName("mainToolbar")
+        toolbar.setIconSize(QSize(32, 32))
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
@@ -544,23 +595,30 @@ class MeasurementApp(QMainWindow):
         self._add_configured_toolbar_buttons()
 
     def _toolbar_config_path(self) -> Path:
-        return Path(platformdirs.user_config_dir("stoner_measurement")) / "toolbar.yaml"
+        return platformdirs.user_config_path("stoner_measurement").parent / "toolbar.yaml"
 
     def _load_toolbar_configuration(self) -> dict:
         user_cfg = self._toolbar_config_path()
+        logger.debug(f"{user_cfg=} {user_cfg.exists()=}")
         if user_cfg.exists():
             try:
-                return yaml.safe_load(user_cfg.read_text(encoding="utf-8")) or {}
-            except Exception:
+                cfg =  yaml.safe_load(user_cfg.read_text(encoding="utf-8")) or {}
+                logger.info(f"User toolbar config {cfg}")
+                return cfg
+            except Exception as exc:
+                logger.error(f"Loading user config failed with {exc}")
                 return {}
         try:
             resource = importlib.resources.files("stoner_measurement.conf").joinpath("toolbar.yaml")
-            return yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
+            logger.debug(f"System {resource=}")
+            cfg = yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
+            logger.info(f"System toolbar config {cfg}")
+            return cfg
         except Exception:
             return {}
 
     def _find_toolbar_icon(self, name: str) -> QIcon:
-        user_icon = Path(platformdirs.user_config_dir("stoner_measurement")) / "resources" / name
+        user_icon = platformdirs.user_config_path("stoner_measurement").parent / "resources" / name
         if user_icon.exists():
             return QIcon(str(user_icon))
         try:
@@ -571,7 +629,8 @@ class MeasurementApp(QMainWindow):
             return QIcon()
 
     def _find_predefined_sequence(self, name: str) -> Path | None:
-        user_seq = Path(platformdirs.user_config_dir("stoner_measurement")) / "sequences" / name
+        user_seq = platformdirs.user_config_path("stoner_measurement").parent / "sequences" / name
+        logger.debug(f"Button clicked to load {user_seq=} {user_seq.exists()=}")
         if user_seq.exists():
             return user_seq
         try:
@@ -579,7 +638,8 @@ class MeasurementApp(QMainWindow):
             with importlib.resources.as_file(resource) as path:
                 if path.exists():
                     return path
-        except Exception:
+        except Exception as exc:
+            logger.error(f"Exception loading sequence {exc=}")
             pass
         return None
 
@@ -590,6 +650,7 @@ class MeasurementApp(QMainWindow):
             return
         self._toolbar.addSeparator()
         for button in buttons:
+            logger.debug(f"Loading toolbar: {button=}")
             if button.get("separator"):
                 self._toolbar.addSeparator()
                 continue

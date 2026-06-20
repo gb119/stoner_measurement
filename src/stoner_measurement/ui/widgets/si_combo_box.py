@@ -118,6 +118,10 @@ class SIComboBox(QComboBox):
         """
         return pg.functions.siFormat(value, suffix=unit, precision=precision)
 
+    def refresh(self) -> None:
+        """Refresh the widget display."""
+        self.update()
+
     # ------------------------------------------------------------------
     # Item-addition helpers
     # ------------------------------------------------------------------

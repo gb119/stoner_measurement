@@ -342,3 +342,14 @@ class RampScanWidget(QWidget):
     def get_generator(self) -> RampScanGenerator:
         """Return the :class:`RampScanGenerator` bound to this widget."""
         return self._generator
+
+    def refresh(self) -> None:
+        """Reload widget state from the generator."""
+        self._start_spin.setValue(self._generator.start)
+        self._end_spin.setValue(self._generator.end)
+        self._points_spin.setValue(self._generator.num_points)
+        self._mode_combo.setCurrentIndex(list(RampMode).index(self._generator.mode))
+        self._base_spin.setValue(self._generator.base)
+        self._update_units(self._generator.units)
+        self._refresh_plot()
+        self.update()

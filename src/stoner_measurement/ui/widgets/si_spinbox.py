@@ -95,3 +95,7 @@ class SISpinBox(pg.SpinBox):
             self.skipValidate = False
 
         return result
+
+    def refresh(self) -> None:
+        """Refresh the widget display."""
+        self.update()

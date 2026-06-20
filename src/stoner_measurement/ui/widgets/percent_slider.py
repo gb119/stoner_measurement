@@ -114,6 +114,10 @@ class PercentSliderWidget(QWidget):
             self._spinbox.blockSignals(False)
             self._slider.blockSignals(False)
 
+    def refresh(self) -> None:
+        """Refresh the widget display."""
+        self.update()
+
     def setEnabled(self, enabled: bool) -> None:  # noqa: N802 - Qt naming convention
         """Enable or disable both the slider and the spin box.
 

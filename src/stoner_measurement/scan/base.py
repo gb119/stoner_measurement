@@ -327,6 +327,16 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         self._stage_indices_cache = None
         self.values_changed.emit()
 
+    def refresh(self) -> None:
+        """Refresh any cached UI associated with this scan generator.
+
+        The default implementation invalidates cached generated values and
+        emits the standard change notification. Concrete generators may
+        override this method to additionally refresh cached configuration
+        widgets or recompute other derived state.
+        """
+        self._invalidate_cache()
+
     def stage_indices(self) -> np.ndarray:
         """Compute and return per-point stage indices.
 

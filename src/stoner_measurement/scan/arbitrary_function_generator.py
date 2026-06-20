@@ -355,3 +355,17 @@ class ArbitraryFunctionScanWidget(QWidget):
     def get_generator(self) -> ArbitraryFunctionScanGenerator:
         """Return the :class:`ArbitraryFunctionScanGenerator` bound to this widget."""
         return self._generator
+
+    def refresh(self) -> None:
+        """Reload widget state from the generator."""
+        self._points_spin.setValue(self._generator.num_points)
+        self._editor.set_text(self._generator.code)
+        if self._generator.syntax_error_line is not None and self._generator.syntax_error_message:
+            self._editor.set_syntax_error(
+                self._generator.syntax_error_line,
+                self._generator.syntax_error_message,
+            )
+        else:
+            self._editor.clear_syntax_error()
+        self._refresh_plot()
+        self.update()

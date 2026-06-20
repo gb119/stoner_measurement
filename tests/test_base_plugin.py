@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from stoner_measurement.app import SequenceView
 from stoner_measurement.plugins.base_plugin import (
     BasePlugin,
     _docstring_to_html,
@@ -441,6 +442,63 @@ class TestGenerateInstantiationCode:
         plugin = _MinimalPlugin()
         lines = plugin.generate_instantiation_code()
         assert lines[-1] == ""
+
+
+class TestConsoleApi:
+    """Tests for the console-facing convenience API."""
+
+    def test_scan_alias_returns_scan_generator(self):
+        class _PluginWithScan(_MinimalPlugin):
+            pass
+
+        scan = object()
+        plugin = _PluginWithScan()
+        plugin.scan_generator = scan
+
+        assert plugin.scan is scan
+
+    def test_scan_alias_raises_attribute_error_without_scan_generator(self):
+        plugin = _MinimalPlugin()
+
+        with pytest.raises(AttributeError):
+            _ = plugin.scan
+
+    def test_sequence_view_top_level_plugins(self):
+        p1 = _MinimalPlugin()
+        p2 = _MinimalPlugin()
+
+        sequence = SequenceView(lambda: [p1, (p2, [])])
+
+        assert sequence.top_level_plugins == [p1, p2]
+
+    def test_sequence_view_plugins_recurses_member_plugins(self):
+        child = _MinimalPlugin()
+
+        class _ParentPlugin(_MinimalPlugin):
+            def member_plugins(self):
+                return [child]
+
+        parent = _ParentPlugin()
+
+        sequence = SequenceView(lambda: [parent])
+
+        assert sequence.plugins == [parent, child]
+
+    def test_sequence_view_full_refresh_calls_plugin_full_refresh(self):
+        calls = []
+
+        class _RefreshPlugin(_MinimalPlugin):
+            def full_refresh(self):
+                calls.append(self)
+
+        p1 = _RefreshPlugin()
+        p2 = _RefreshPlugin()
+
+        sequence = SequenceView(lambda: [p1, p2])
+
+        sequence.full_refresh()
+
+        assert calls == [p1, p2]
 
 
 if __name__ == "__main__":

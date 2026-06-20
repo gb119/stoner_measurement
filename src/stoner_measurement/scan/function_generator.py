@@ -535,6 +535,21 @@ class FunctionScanWidget(QWidget):
         self._curve.setData(x, values)
         self._clear_current_marker()
 
+    def refresh(self) -> None:
+        """Reload widget state from the bound generator."""
+        self._waveform_combo.setCurrentIndex(
+            list(WaveformType).index(self._generator.waveform)
+        )
+        self._amplitude_spin.setValue(self._generator.amplitude)
+        self._offset_spin.setValue(self._generator.offset)
+        self._phase_spin.setValue(self._generator.phase)
+        self._exponent_spin.setValue(self._generator.exponent)
+        self._points_spin.setValue(self._generator.num_points)
+        self._periods_spin.setValue(self._generator.periods)
+        self._update_units(self._generator.units)
+        self._refresh_plot()
+        self.update()
+
     def _clear_current_marker(self) -> None:
         """Clear the current-point marker from the preview."""
         self._current_marker.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))

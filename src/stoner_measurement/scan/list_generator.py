@@ -437,3 +437,16 @@ class ListScanWidget(QWidget):
             True
         """
         return self._generator
+
+    def refresh(self) -> None:
+        """Reload table contents and preview from the generator."""
+        self._updating = True
+        try:
+            self._table.setRowCount(0)
+            for target, measure in self._generator.stages:
+                self._add_row(target, measure, update=False)
+        finally:
+            self._updating = False
+        self._update_units(self._generator.units)
+        self._refresh_plot()
+        self.update()
