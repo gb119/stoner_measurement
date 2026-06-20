@@ -499,6 +499,9 @@ class BasePlugin(ABC):
         hyphens replaced with underscores).  May be changed at runtime to
         support multiple instances of the same plugin type.
 
+        Use a class attribute _DEFAULT_INSTANCE followed by fallback to the
+        class's *name* attribute.
+
         Returns:
             (str):
                 A valid Python identifier.
@@ -512,7 +515,8 @@ class BasePlugin(ABC):
         try:
             return self._instance_name
         except AttributeError:
-            return self.name.lower().replace(" ", "_").replace("-", "_")
+            instance = getattr(self,"_DEFAULT_INSTANCE", self.name)
+            return instance.lower().replace(" ", "_").replace("-", "_")
 
     @instance_name.setter
     def instance_name(self, value: str) -> None:

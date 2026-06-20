@@ -116,6 +116,7 @@ jobs:
           path: coverage-pyqt6-314
 
       - name: Combine coverage
+        shell: bash
         run: |
           cp coverage-pyqt5-312/coverage-pyqt5-3.12 .
           cp coverage-pyqt5-314/coverage-pyqt5-3.14 .
@@ -137,6 +138,7 @@ jobs:
 
       - name: Upload coverage to Codacy
         if: github.event_name != 'pull_request'
+        shell: bash
         env:
           CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
         run: |
