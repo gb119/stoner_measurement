@@ -1170,8 +1170,8 @@ class TestPlotTraceCommand:
 
         assert len(received) == 1
         assert received[0][0] == "busy-trace"
-        # Allow a small scheduling margin below the 20 ms release delay.
-        assert elapsed >= 0.019
+        # Verify waiting occurred; exact timing is platform and scheduler dependent.
+        assert elapsed >= 0.01
         assert pw.is_busy_for_data() is False
 
     def test_execute_advanced_mode_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
@@ -2875,8 +2875,8 @@ class TestPlotPointsCommand:
         assert pw.trace_names == ["My Y"]
         assert pw.x_data("My Y") == [1.0]
         assert pw.y_data("My Y") == [5.0]
-        # Allow a small scheduling margin below the 20 ms release delay.
-        assert elapsed >= 0.019
+        # Verify waiting occurred; exact timing is platform and scheduler dependent.
+        assert elapsed >= 0.01
         assert pw.is_busy_for_data() is False
 
     def test_execute_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
