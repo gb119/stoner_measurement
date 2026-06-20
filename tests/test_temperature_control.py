@@ -703,6 +703,133 @@ class TestTemperatureControlPanel:
         assert curve_combo.itemText(named_curve_index) == "Standard Diode (5)"
         assert curve_combo.itemText(curve_combo.findData(2)) == "2"
 
+    def test_chart_widgets_exist(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        assert hasattr(panel, "_chart_widget")
+        assert hasattr(panel, "_legend_tree")
+
+    def test_rate_source_combo_populated(self, qapp):
+        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._configure_input_settings_tab(
+            ControllerCapabilities(
+                num_inputs=2,
+                num_loops=1,
+                input_channels=("A", "B"),
+                loop_numbers=(1,),
+                has_input_settings=True,
+            )
+        )
+
+        assert panel._rate_source_combo.count() == 2
+        assert panel._rate_source_combo.itemData(0) == "A"
+        assert panel._rate_source_combo.itemData(1) == "B"
+
+    def test_rate_source_selection_updates_channel(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._rate_source_combo.addItem("A", "A")
+        panel._rate_source_combo.addItem("B", "B")
+
+        panel._on_rate_source_changed(1)
+
+        assert panel._rate_source_channel == "B"
+
+    def test_legend_updates_existing_item(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+
+        panel._update_legend_value("T_A", "300 K")
+        panel._update_legend_value("T_A", "301 K")
+
+        assert panel._legend_tree.topLevelItemCount() == 1
+        item = panel._legend_tree.topLevelItem(0)
+        assert item.text(0) == "T_A"
+        assert item.text(1) == "301 K"
+
+    def test_clear_chart_clears_legend(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+
+        panel._update_legend_value("T_A", "300 K")
+        assert panel._legend_tree.topLevelItemCount() == 1
+
+        panel._on_clear_chart()
+
+        assert panel._legend_tree.topLevelItemCount() == 0
+        assert panel._legend_items == {}
+
+    def test_calculate_rate_linear_ramp(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        times = [0.0, 10.0, 20.0, 30.0, 40.0]
+        temps = [100.0, 101.0, 102.0, 103.0, 104.0]
+
+        _, rates = TemperatureControlPanel._calculate_rate(times, temps)
+
+        assert rates
+        assert rates[-1] == pytest.approx(6.0, abs=0.05)
+
+    def test_calculate_rate_flat_temperature(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        times = [0.0, 10.0, 20.0, 30.0, 40.0]
+        temps = [100.0, 100.0, 100.0, 100.0, 100.0]
+
+        _, rates = TemperatureControlPanel._calculate_rate(times, temps)
+
+        assert rates
+        assert rates[-1] == pytest.approx(0.0, abs=1e-6)
+
+    def test_calculate_rate_short_series(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        xs, ys = TemperatureControlPanel._calculate_rate(
+            [0.0, 10.0, 20.0],
+            [100.0, 101.0, 102.0],
+        )
+
+        assert xs == []
+        assert ys == []
+
+    def test_chart_settings_persist_rate_source(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._rate_source_channel = "B"
+        panel._save_chart_settings()
+
+        panel2 = TemperatureControlPanel()
+
+        assert panel2._rate_source_channel == "B"
+
+    def test_legend_item_has_icon(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._update_legend_value("T_A", "300 K")
+
+        item = panel._legend_tree.topLevelItem(0)
+        assert not item.icon(0).isNull()
+
+    def test_plotwidget_compact_mode(self, qapp):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget(
+            show_axis_controls=False,
+            show_trace_table=False,
+        )
+
+        assert not hasattr(widget, "_trace_table")
+        assert not hasattr(widget, "_configure_axes_button")
+
 
 # ---------------------------------------------------------------------------
 # Engine zone table methods

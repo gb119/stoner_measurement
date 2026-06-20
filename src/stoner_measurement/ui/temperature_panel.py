@@ -27,10 +27,11 @@ import json
 import logging
 from datetime import UTC, datetime
 
+import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, QSettings
 from stoner_measurement.qt_compat import pyqtSlot
-from qtpy.QtGui import QColor
+from qtpy.QtGui import QColor, QPixmap, QIcon
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -41,6 +42,8 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QColorDialog,
+    QMenu,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -49,6 +52,8 @@ from qtpy.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -79,6 +84,7 @@ from stoner_measurement.ui.widgets import (
     VisaResourceComboBox,
     VisaResourceStatus,
 )
+from stoner_measurement.ui.plot_widget import PlotWidget
 
 logger = logging.getLogger(__name__)
 
@@ -180,11 +186,14 @@ class TemperatureControlPanel(QWidget):
         self._chart_curves: dict[str, pg.PlotDataItem] = {}
 
         self._chart_duration_min: int = _CHART_DURATIONS[0][0]
+        self._rate_source_channel: str | None = None
+        self._legend_items: dict[str, QTreeWidgetItem] = {}
 
         # Current capabilities (populated after connection).
         self._capabilities = None
 
         self._build_ui()
+        self._load_chart_settings()
         self._connect_engine_signals()
 
     # ------------------------------------------------------------------
@@ -514,6 +523,14 @@ class TemperatureControlPanel(QWidget):
         selector_row.addStretch()
         layout.addLayout(selector_row)
 
+        rate_row = QHBoxLayout()
+        rate_row.addWidget(QLabel("Rate source:"))
+        self._rate_source_combo = QComboBox()
+        rate_row.addWidget(self._rate_source_combo)
+        self._rate_source_combo.currentIndexChanged.connect(self._on_rate_source_changed)
+        rate_row.addStretch()
+        layout.addLayout(rate_row)
+
         # Settings form
         self._input_settings_widget = _InputSettingsWidget(self._engine)
         layout.addWidget(self._input_settings_widget)
@@ -548,24 +565,26 @@ class TemperatureControlPanel(QWidget):
         controls.addWidget(clear_btn)
         layout.addLayout(controls)
 
-        # Splitter: temperature plot (top) / heater+needle plot (bottom)
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        content = QHBoxLayout()
 
-        self._temp_plot = pg.PlotWidget(title="Temperature")
-        self._temp_plot.setLabel("left", "Temperature", units="K")
-        self._temp_plot.setLabel("bottom", "Time", units="s ago")
-        self._temp_plot.addLegend()
-        self._temp_plot.showGrid(x=True, y=True, alpha=0.3)
-        splitter.addWidget(self._temp_plot)
+        self._chart_widget = PlotWidget(
+            show_axis_controls=False,
+            show_trace_table=False,
+        )
+        self._chart_widget.set_default_axis_labels("Time (s ago)", "Temperature (K)")
+        self._chart_widget.add_y_axis("output", "Output (%)")
+        self._chart_widget.add_y_axis("rate", "Rate (K/min)")
+        content.addWidget(self._chart_widget, stretch=4)
 
-        self._aux_plot = pg.PlotWidget(title="Heater / Needle Valve")
-        self._aux_plot.setLabel("left", "Output", units="%")
-        self._aux_plot.setLabel("bottom", "Time", units="s ago")
-        self._aux_plot.addLegend()
-        self._aux_plot.showGrid(x=True, y=True, alpha=0.3)
-        splitter.addWidget(self._aux_plot)
+        self._legend_tree = QTreeWidget()
+        self._legend_tree.setHeaderLabels(["Trace", "Value"])
+        self._legend_tree.setMinimumWidth(220)
+        self._legend_tree.itemChanged.connect(self._on_legend_item_changed)
+        self._legend_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._legend_tree.customContextMenuRequested.connect(self._on_legend_context_menu)
+        content.addWidget(self._legend_tree, stretch=1)
 
-        layout.addWidget(splitter)
+        layout.addLayout(content)
         return widget
 
     # --- Status bar ---
@@ -759,33 +778,59 @@ class TemperatureControlPanel(QWidget):
                 buf_t.pop(0)
                 buf_v.pop(0)
             xs = [t - now_ts for t in buf_t]
-            colour = _CHANNEL_COLOURS[i % len(_CHANNEL_COLOURS)]
-            self._upsert_chart_curve(
-                f"T_{ch}", xs, buf_v, pg.mkPen(color=colour, width=2), self._temp_plot, f"T {ch}"
+            trace_name = f"T_{ch}"
+            self._chart_widget.set_trace(trace_name, xs, buf_v)
+            self._chart_widget.assign_trace_axes(trace_name, y_axis="left")
+            self._chart_widget.set_trace_style(
+                trace_name,
+                colour=_CHANNEL_COLOURS[i % len(_CHANNEL_COLOURS)].name(),
             )
+            self._update_legend_value(trace_name, f"{reading.value:.2f} K")
+
+            if len(buf_t) >= 3 and ch == self._rate_source_channel:
+                rate_times, rate_ys = self._calculate_rate(buf_t, buf_v)
+                rate_xs = [t - now_ts for t in rate_times]
+
+                self._chart_widget.set_trace("dT/dt", rate_xs, rate_ys)
+                self._chart_widget.assign_trace_axes("dT/dt", y_axis="rate")
+                self._chart_widget.set_trace_style("dT/dt", colour="#666666")
+                if rate_ys:
+                    self._update_legend_value("dT/dt", f"{rate_ys[-1]:.3f} K/min")
 
         # Setpoint traces
         ts_ref = self._chart_times.get(next(iter(state.readings), ""), [])
         if ts_ref:
             xs = [t - now_ts for t in ts_ref]
-            sp_pen = pg.mkPen(color=_SETPOINT_COLOUR, width=1, style=Qt.PenStyle.DashLine)
             for loop, sp in state.setpoints.items():
                 sp_buf = self._align_buf_to_xs(f"SP_{loop}", xs, sp)
-                self._upsert_chart_curve(f"SP_{loop}", xs, sp_buf, sp_pen, self._temp_plot, f"SP {loop}")
+                trace_name = f"SP_{loop}"
+                self._chart_widget.set_trace(trace_name, xs, sp_buf)
+                self._chart_widget.assign_trace_axes(trace_name, y_axis="left")
+                self._chart_widget.set_trace_style(
+                    trace_name,
+                    line_style="dash",
+                    colour=_SETPOINT_COLOUR.name(),
+                )
+                self._update_legend_value(trace_name, f"{sp:.2f} K")
 
-            # Heater output traces
-            h_pen = pg.mkPen(color=_HEATER_COLOUR, width=2)
             for loop, ho in state.heater_outputs.items():
                 h_buf = self._align_buf_to_xs(f"H_{loop}", xs, ho)
-                self._upsert_chart_curve(
-                    f"H_{loop}", xs, h_buf, h_pen, self._aux_plot, f"Heater {loop}"
-                )
+                trace_name = f"H_{loop}"
+                self._chart_widget.set_trace(trace_name, xs, h_buf)
+                self._chart_widget.assign_trace_axes(trace_name, y_axis="output")
+                self._chart_widget.set_trace_style(trace_name, colour=_HEATER_COLOUR.name())
+                self._update_legend_value(trace_name, f"{ho:.1f} %")
 
-            # Needle valve
             if state.needle_valve is not None:
                 nv_buf = self._align_buf_to_xs("NV", xs, state.needle_valve)
-                nv_pen = pg.mkPen(color=_NEEDLE_COLOUR, width=2, style=Qt.PenStyle.DotLine)
-                self._upsert_chart_curve("NV", xs, nv_buf, nv_pen, self._aux_plot, "Needle valve")
+                self._chart_widget.set_trace("NV", xs, nv_buf)
+                self._chart_widget.assign_trace_axes("NV", y_axis="output")
+                self._chart_widget.set_trace_style(
+                    "NV",
+                    line_style="dot",
+                    colour=_NEEDLE_COLOUR.name(),
+                )
+                self._update_legend_value("NV", f"{state.needle_valve:.1f} %")
 
     # ------------------------------------------------------------------
     # Connection tab slots
@@ -998,13 +1043,27 @@ class TemperatureControlPanel(QWidget):
         self._input_channel_combo.clear()
         if enabled:
             self._input_settings_widget.set_curve_names(self._engine.get_calibration_curve_names())
+            self._rate_source_combo.blockSignals(True)
+            self._rate_source_combo.clear()
             for ch in caps.input_channels:
                 self._input_channel_combo.addItem(ch, ch)
+                self._rate_source_combo.addItem(ch, ch)
             if caps.input_channels:
                 self._input_settings_widget.set_channel(caps.input_channels[0])
+                if self._rate_source_channel in caps.input_channels:
+                    selected = self._rate_source_channel
+                else:
+                    selected = caps.input_channels[0]
+                    self._rate_source_channel = selected
+
+                index = self._rate_source_combo.findData(selected)
+                if index >= 0:
+                    self._rate_source_combo.setCurrentIndex(index)
+            self._rate_source_combo.blockSignals(False)
         else:
             self._input_settings_widget.set_curve_names({})
             self._input_settings_widget.clear()
+            self._rate_source_combo.clear()
         self._input_channel_combo.blockSignals(False)
 
     @pyqtSlot(int)
@@ -1018,6 +1077,215 @@ class TemperatureControlPanel(QWidget):
         channel = self._input_channel_combo.itemData(index)
         if channel is not None:
             self._input_settings_widget.set_channel(channel)
+
+    @pyqtSlot(int)
+    def _on_rate_source_changed(self, index: int) -> None:
+        """Select the temperature channel used for dT/dt calculation."""
+        self._rate_source_channel = self._rate_source_combo.itemData(index)
+        self._save_chart_settings()
+
+    def _on_legend_item_changed(self, item, column: int) -> None:
+        """Show/hide traces from legend checkboxes."""
+        trace = item.data(0, Qt.ItemDataRole.UserRole)
+        if not trace:
+            return
+        visible = item.checkState(0) == Qt.CheckState.Checked
+        self._chart_widget.set_trace_visible(trace, visible)
+        self._save_chart_settings()
+
+    def _on_legend_context_menu(self, pos) -> None:
+        """Show a trace styling context menu."""
+        item = self._legend_tree.itemAt(pos)
+        if item is None:
+            return
+
+        trace = item.data(0, Qt.ItemDataRole.UserRole)
+        if not trace:
+            return
+
+        menu = QMenu(self)
+
+        colour_action = menu.addAction("Colour…")
+
+        line_menu = menu.addMenu("Line Style")
+        line_actions = {
+            line_menu.addAction("Solid"): "solid",
+            line_menu.addAction("Dash"): "dash",
+            line_menu.addAction("Dot"): "dot",
+            line_menu.addAction("Dash-Dot"): "dash-dot",
+        }
+
+        width_menu = menu.addMenu("Line Width")
+        width_actions = {width_menu.addAction(str(w)): float(w) for w in (1, 2, 3, 4, 5)}
+
+        marker_menu = menu.addMenu("Marker")
+        marker_actions = {
+            marker_menu.addAction("None"): "none",
+            marker_menu.addAction("Circle"): "circle",
+            marker_menu.addAction("Square"): "square",
+            marker_menu.addAction("Triangle"): "triangle",
+            marker_menu.addAction("Diamond"): "diamond",
+            marker_menu.addAction("Cross"): "cross",
+        }
+
+        action = menu.exec(self._legend_tree.viewport().mapToGlobal(pos))
+        if action is None:
+            return
+
+        if action == colour_action:
+            current = self._chart_widget.trace_style(trace).get("colour", "#808080")
+            selected = QColorDialog.getColor(QColor(current), self, f"Select colour for {trace}")
+            if selected.isValid():
+                self._chart_widget.set_trace_style(trace, colour=selected.name())
+                pixmap = QPixmap(12, 12)
+                pixmap.fill(selected)
+                item.setIcon(0, QIcon(pixmap))
+                self._save_chart_settings()
+            return
+
+        if action in line_actions:
+            self._chart_widget.set_trace_style(trace, line_style=line_actions[action])
+            self._save_chart_settings()
+            return
+
+        if action in width_actions:
+            self._chart_widget.set_trace_style(trace, line_width=width_actions[action])
+            self._save_chart_settings()
+            return
+
+        if action in marker_actions:
+            self._chart_widget.set_trace_style(trace, point_style=marker_actions[action])
+            self._save_chart_settings()
+
+    def _update_legend_value(self, trace: str, value: str) -> None:
+        """Create or update a live-value legend entry."""
+        item = self._legend_items.get(trace)
+        if item is None:
+            item = QTreeWidgetItem([trace, value])
+            item.setData(0, Qt.ItemDataRole.UserRole, trace)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Checked)
+
+            style = self._chart_widget.trace_style(trace)
+            colour = QColor(style.get("colour", "#808080"))
+            pixmap = QPixmap(12, 12)
+            pixmap.fill(colour)
+            item.setIcon(0, QIcon(pixmap))
+
+            self._legend_tree.addTopLevelItem(item)
+            self._legend_items[trace] = item
+            self._restore_trace_settings(trace, item)
+        else:
+            item.setText(1, value)
+
+    def _save_chart_settings(self) -> None:
+        """Persist chart preferences."""
+        settings = QSettings()
+        settings.setValue("temperaturePanel/chart/rateSource", self._rate_source_channel)
+
+        for trace, item in self._legend_items.items():
+            settings.setValue(
+                f"temperaturePanel/chart/traceVisibility/{trace}",
+                item.checkState(0) == Qt.CheckState.Checked,
+            )
+            style = self._chart_widget.trace_style(trace)
+            for key, value in style.items():
+                settings.setValue(
+                    f"temperaturePanel/chart/traceStyle/{trace}/{key}",
+                    value,
+                )
+
+    def _load_chart_settings(self) -> None:
+        """Restore persisted chart preferences."""
+        settings = QSettings()
+        self._rate_source_channel = settings.value(
+            "temperaturePanel/chart/rateSource",
+            None,
+            type=str,
+        )
+
+    def _restore_trace_settings(self, trace: str, item: QTreeWidgetItem) -> None:
+        """Restore persisted visibility and style for a trace."""
+        settings = QSettings()
+
+        visible = settings.value(
+            f"temperaturePanel/chart/traceVisibility/{trace}",
+            True,
+            type=bool,
+        )
+
+        item.setCheckState(
+            0,
+            Qt.CheckState.Checked if visible else Qt.CheckState.Unchecked,
+        )
+        self._chart_widget.set_trace_visible(trace, visible)
+
+        colour = settings.value(
+            f"temperaturePanel/chart/traceStyle/{trace}/colour",
+            None,
+            type=str,
+        )
+        line_style = settings.value(
+            f"temperaturePanel/chart/traceStyle/{trace}/line",
+            None,
+            type=str,
+        )
+        point_style = settings.value(
+            f"temperaturePanel/chart/traceStyle/{trace}/point",
+            None,
+            type=str,
+        )
+
+        colour = colour or None
+        line_style = line_style or None
+        point_style = point_style or None
+
+        if any(v is not None for v in (colour, line_style, point_style)):
+            self._chart_widget.set_trace_style(
+                trace,
+                colour=colour,
+                line_style=line_style,
+                point_style=point_style,
+            )
+
+            style = self._chart_widget.trace_style(trace)
+            colour_name = style.get("colour", "#808080")
+            pixmap = QPixmap(12, 12)
+            pixmap.fill(QColor(colour_name))
+            item.setIcon(0, QIcon(pixmap))
+
+    @staticmethod
+    def _calculate_rate(times: list[float], values: list[float]) -> tuple[list[float], list[float]]:
+        """Calculate smoothed dT/dt using a rolling linear fit."""
+        if len(times) < 5:
+            return [], []
+
+        window_s = 30.0
+        xs_out: list[float] = []
+        ys_out: list[float] = []
+
+        for idx in range(len(times)):
+            t_end = times[idx]
+            pts = [
+                (t, v)
+                for t, v in zip(times, values, strict=False)
+                if (t_end - t) <= window_s and t <= t_end
+            ]
+            if len(pts) < 3:
+                continue
+
+            ts = np.asarray([p[0] for p in pts], dtype=float)
+            vs = np.asarray([p[1] for p in pts], dtype=float)
+            mean_t = float(np.mean(ts))
+            mean_v = float(np.mean(vs))
+            denom = float(np.sum((ts - mean_t) ** 2))
+            if np.isclose(denom, 0.0):
+                continue
+            slope = float(np.sum((ts - mean_t) * (vs - mean_v)) / denom)
+            xs_out.append(t_end)
+            ys_out.append(slope * 60.0)
+
+        return xs_out, ys_out
 
     def _rebuild_loop_groups(self, caps) -> None:
         """Rebuild per-loop control groups from the driver capabilities.
@@ -1108,14 +1376,10 @@ class TemperatureControlPanel(QWidget):
         """Clear all chart history buffers and remove all curve items."""
         self._chart_times.clear()
         self._chart_values.clear()
-        for key, curve in self._chart_curves.items():
-            try:
-                if key.startswith("H_") or key == "NV":
-                    self._aux_plot.removeItem(curve)
-                else:
-                    self._temp_plot.removeItem(curve)
-            except RuntimeError:
-                pass
+        self._legend_tree.clear()
+        self._legend_items.clear()
+        if hasattr(self, "_chart_widget"):
+            self._chart_widget.clear_all()
         self._chart_curves.clear()
 
 

@@ -356,8 +356,14 @@ class PlotWidget(QWidget):
     def __init__(
         self,
         parent: QWidget | None = None,
+        *,
+        show_axis_controls: bool = True,
+        show_trace_table: bool = True,
     ) -> None:
         super().__init__(parent)
+
+        self._show_axis_controls = show_axis_controls
+        self._show_trace_table = show_trace_table
 
         # Per-trace data storage: name → (x_list, y_list)
         self._trace_data: dict[str, tuple[list[float], list[float]]] = {}
@@ -391,8 +397,13 @@ class PlotWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._setup_axis_config_controls(layout)
-        self._setup_trace_table(layout)
+
+        if self._show_axis_controls:
+            self._setup_axis_config_controls(layout)
+
+        if self._show_trace_table:
+            self._setup_trace_table(layout)
+
         self._setup_pg_widget(layout)
         self._refresh_trace_and_axis_controls()
         self.setLayout(layout)
@@ -476,6 +487,9 @@ class PlotWidget(QWidget):
 
     def _refresh_trace_and_axis_controls(self) -> None:
         """Refresh table rows after trace or axis changes."""
+        if not hasattr(self, "_trace_table"):
+            return
+
         x_axes = self._x_axis_names()
         y_axes = self._y_axis_names()
         self._updating_trace_controls = True
@@ -569,6 +583,9 @@ class PlotWidget(QWidget):
 
     def _update_trace_table_height(self) -> None:
         """Limit visible trace rows to three before scrolling."""
+        if not hasattr(self, "_trace_table"):
+            return
+
         visible_rows = min(_MAX_VISIBLE_TRACE_ROWS, self._trace_table.rowCount())
         height = (
             self._trace_table.horizontalHeader().height()
@@ -585,6 +602,14 @@ class PlotWidget(QWidget):
             return
         self._trace_visible[trace_name] = visible
         self._traces[trace_name].setVisible(visible)
+
+    def set_trace_visible(self, trace_name: str, visible: bool) -> None:
+        """Public wrapper for changing trace visibility."""
+        self._set_trace_visibility(trace_name, visible)
+
+    def trace_style(self, trace_name: str) -> dict[str, str]:
+        """Return the current style dictionary for a trace."""
+        return dict(self._trace_style.get(trace_name, {}))
 
     def _on_trace_visibility_toggled(self, visible: bool) -> None:
         """Handle trace visibility checkbox changes."""
