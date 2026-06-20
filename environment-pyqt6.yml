@@ -31,6 +31,7 @@ dependencies:
   - ruff>=0.8
   - black>=26.3.1
   - sphinx>=8.0
+  - sphinx-automodapi>=0.16
   - sphinx-better-theme>=0.1.5
   - mypy_extensions>=1.1.0
   - pathspec>=1.1.1
