@@ -63,7 +63,7 @@ jobs:
           echo "Testing Python: ${{ matrix.python-version }}"
           python -c "from qtpy.QtCore import QLibraryInfo; print('Qt API:', __import__('qtpy').API_NAME); print('Qt plugins:', QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))"
           pytest --cov --cov-report=xml --cov-report=term-missing
-          mv .coverage .coverage.${{ matrix.qt-backend }}-${{ matrix.python-version }}
+          mv .coverage coverage-${{ matrix.qt-backend }}-${{ matrix.python-version }}
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
@@ -71,7 +71,7 @@ jobs:
         with:
           name: coverage-data-${{ matrix.qt-backend }}-${{ matrix.python-version }}
           path: |
-            .coverage.${{ matrix.qt-backend }}-${{ matrix.python-version }}
+            coverage-${{ matrix.qt-backend }}-${{ matrix.python-version }}
             coverage.xml
 
   coverage:
@@ -117,15 +117,15 @@ jobs:
 
       - name: Combine coverage
         run: |
-          cp coverage-pyqt5-312/.coverage.pyqt5-3.12 .
-          cp coverage-pyqt5-314/.coverage.pyqt5-3.14 .
-          cp coverage-pyqt6-312/.coverage.pyqt6-3.12 .
-          cp coverage-pyqt6-314/.coverage.pyqt6-3.14 .
+          cp coverage-pyqt5-312/coverage-pyqt5-3.12 .
+          cp coverage-pyqt5-314/coverage-pyqt5-3.14 .
+          cp coverage-pyqt6-312/coverage-pyqt6-3.12 .
+          cp coverage-pyqt6-314/coverage-pyqt6-3.14 .
           coverage combine \
-            .coverage.pyqt5-3.12 \
-            .coverage.pyqt5-3.14 \
-            .coverage.pyqt6-3.12 \
-            .coverage.pyqt6-3.14
+            coverage-pyqt5-3.12 \
+            coverage-pyqt5-3.14 \
+            coverage-pyqt6-3.12 \
+            coverage-pyqt6-3.14
           coverage xml -o coverage.xml
           coverage report
 
