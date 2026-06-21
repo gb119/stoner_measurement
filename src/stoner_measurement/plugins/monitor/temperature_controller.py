@@ -129,6 +129,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         self.report_heater: bool = True
         self.report_rate: bool = True
         self.report_stability: bool = True
+        self.force_fresh_poll: bool = False
         self._apply_initial_config()
 
     # ------------------------------------------------------------------
@@ -367,7 +368,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             >>> "setpoint_1" in reading_forced
             True
         """
-        if force_poll:
+        if force_poll or self.force_fresh_poll:
             polled = self._engine().read_controller_state()
             state = polled if polled is not None else self._current_state()
         else:
@@ -615,6 +616,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 "report_heater": self.report_heater,
                 "report_rate": self.report_rate,
                 "report_stability": self.report_stability,
+                "force_fresh_poll": self.force_fresh_poll,
             }
         )
         return data
@@ -659,6 +661,8 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             self.report_rate = bool(data["report_rate"])
         if "report_stability" in data:
             self.report_stability = bool(data["report_stability"])
+        if "force_fresh_poll" in data:
+            self.force_fresh_poll = bool(data["force_fresh_poll"])
 
     # ------------------------------------------------------------------
     # Configuration widget
@@ -745,6 +749,11 @@ class _TemperatureMonitorSettingsWidget(QWidget):
         self._cb_stability.toggled.connect(self._on_stability_toggled)
         param_form.addRow("Stability flags:", self._cb_stability)
 
+        self._cb_force_poll = QCheckBox(param_group)
+        self._cb_force_poll.setChecked(self._plugin.force_fresh_poll)
+        self._cb_force_poll.toggled.connect(self._on_force_poll_toggled)
+        param_form.addRow("Force fresh controller poll:", self._cb_force_poll)
+
         root.addWidget(param_group)
         root.addStretch(1)
 
@@ -778,4 +787,8 @@ class _TemperatureMonitorSettingsWidget(QWidget):
 
     def _on_stability_toggled(self, checked: bool) -> None:
         self._plugin.report_stability = checked
+        self._plugin._refresh_catalogs()
+
+    def _on_force_poll_toggled(self, checked: bool) -> None:
+        self._plugin.force_fresh_poll = checked
         self._plugin._refresh_catalogs()

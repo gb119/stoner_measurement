@@ -411,9 +411,11 @@ class _EngineThread(QThread):
                     exec(compiled, self._namespace)  # noqa: S102  # nosec B102  # pylint: disable=exec-used
             finally:
                 sys.settrace(old_tracer)
+            self.parent().notify_namespace_updated()  # type: ignore[union-attr]
             self.status_changed.emit("Idle")
             self.script_finished.emit()
         except KeyboardInterrupt:
+            self.parent().notify_namespace_updated()  # type: ignore[union-attr]
             self.status_changed.emit("Stopped")
         except SyntaxError as exc:
             self.error_output.emit(f"Syntax error: {exc}")
@@ -423,6 +425,7 @@ class _EngineThread(QThread):
             self._emit_script_error(exc_type, exc_value, exc_tb, code_str, customised=customised, line_map=line_map)
             self.status_changed.emit("Error")
         finally:
+            self.parent().notify_namespace_updated()  # type: ignore[union-attr]
             self._running_script = False
 
     def _emit_script_error(  # pylint: disable=too-many-arguments
@@ -536,8 +539,10 @@ class _EngineThread(QThread):
                     result = eval(source, self._namespace)  # noqa: S307  # nosec B307  # pylint: disable=eval-used
                     if result is not None:
                         out_stream.write(repr(result) + "\n")
+                    self.parent().notify_namespace_updated()  # type: ignore[union-attr]
                 except SyntaxError:
                     exec(source, self._namespace)  # noqa: S102  # nosec B102  # pylint: disable=exec-used
+                    self.parent().notify_namespace_updated()  # type: ignore[union-attr]
         except Exception:  # pylint: disable=broad-exception-caught
             self.error_output.emit(traceback.format_exc().rstrip())
 
@@ -617,6 +622,8 @@ class SequenceEngine(QObject):
     output = pyqtSignal(str)
     error_output = pyqtSignal(str)
     status_changed = pyqtSignal(str)
+    values_catalog_changed = pyqtSignal(dict)
+    namespace_updated = pyqtSignal()
     script_finished = pyqtSignal()
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -945,6 +952,8 @@ class SequenceEngine(QObject):
         self._namespace["_traces"] = traces
         self._namespace["_values"] = values
         self._namespace["_dataframes"] = dataframes
+        self.values_catalog_changed.emit(dict(values))
+        self.namespace_updated.emit()
 
     def _expected_dataframe_columns(self, plugin: Any, values_catalog: dict[str, str]) -> list[str]:
         """Return the expected DataFrame columns for a state plugin collecting data."""
@@ -1186,6 +1195,46 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         return dict(self._namespace.get("_values", {}))
+
+    def evaluate_expression(self, expression: str) -> Any:
+        """Evaluate *expression* against the live engine namespace.
+
+        Args:
+            expression (str):
+                Python expression to evaluate.
+
+        Returns:
+            (Any):
+                Result of evaluating *expression* in the shared namespace.
+
+        Raises:
+            Exception:
+                Propagates any exception raised while evaluating the
+                expression.
+        """
+        return eval(expression, self._namespace)  # noqa: S307  # nosec B307  # pylint: disable=eval-used
+
+    def notify_namespace_updated(self) -> None:
+        """Emit a notification that values in the live namespace may have changed."""
+        self.namespace_updated.emit()
+
+    def refresh_value_catalog(self) -> None:
+        """Rebuild and emit the current trace, value, and dataframe catalogues.
+
+        This public helper allows UI components to request a catalogue refresh
+        after sequence-editor or plugin-instance changes without depending on
+        a private engine implementation detail.
+        """
+        self._rebuild_data_catalogs()
+
+    def namespace_snapshot(self) -> dict[str, Any]:
+        """Return a shallow snapshot of the live engine namespace.
+
+        Returns:
+            (dict[str, Any]):
+                Copy of the current namespace dictionary.
+        """
+        return dict(self._namespace)
 
     @property
     def dataframes_catalog(self) -> dict[str, list[str]]:

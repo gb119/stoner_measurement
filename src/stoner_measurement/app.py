@@ -31,6 +31,7 @@ from stoner_measurement.ui.icons import (
 )
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
+from stoner_measurement.ui.value_watch import ValueWatchWindow
 from stoner_measurement.ui.settings_dialog import (
     KEY_DEFAULT_DATA_DIR,
     KEY_DEFAULT_SEQUENCE_TEMPLATE,
@@ -136,6 +137,12 @@ class MeasurementApp(QMainWindow):
         # Log viewer (created before actions so actions can reference it) ------
         self._log_viewer = LogViewerWindow(parent=None)
         self._engine.log_handler.record_emitted.connect(self._log_viewer.append_record)
+
+        self._value_watch = ValueWatchWindow(
+            engine=self._engine,
+            parent=None,
+            snap_reference_widget=self._main_window.tabs,
+        )
 
         # Temperature control panel (hidden initially) -------------------------
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
@@ -487,6 +494,11 @@ class MeasurementApp(QMainWindow):
         self._act_show_log.setStatusTip("Open the log viewer window")
         self._act_show_log.triggered.connect(self._on_show_log)
 
+        self._act_show_value_watch = QAction(self._find_toolbar_icon("watch_icon.png"), "Show &Value Watch", self)
+        self._act_show_value_watch.setShortcut(QKeySequence("Ctrl+Shift+L"))
+        self._act_show_value_watch.setStatusTip("Open the live value watch window")
+        self._act_show_value_watch.triggered.connect(self._on_show_value_watch)
+
         self._act_show_temp_panel = QAction(make_temperature_icon(), "Show &Temperature Control", self)
         self._act_show_temp_panel.setStatusTip("Open the temperature controller panel")
         self._act_show_temp_panel.triggered.connect(self._on_show_temp_panel)
@@ -547,6 +559,7 @@ class MeasurementApp(QMainWindow):
         view_menu.addAction(self._act_view_editor)
         view_menu.addSeparator()
         view_menu.addAction(self._act_show_log)
+        view_menu.addAction(self._act_show_value_watch)
 
         # Engines menu (contains per-engine submenus)
         engines_menu = menu_bar.addMenu("&Engines")
@@ -588,6 +601,7 @@ class MeasurementApp(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self._act_generate)
         toolbar.addSeparator()
+        toolbar.addAction(self._act_show_value_watch)
         toolbar.addAction(self._act_show_log)
         toolbar.addAction(self._act_show_temp_panel)
         toolbar.addAction(self._act_show_magnet_panel)
@@ -1209,6 +1223,10 @@ class MeasurementApp(QMainWindow):
     def _on_show_log(self) -> None:
         """Show the log viewer window, bringing it to the front if already open."""
         self._log_viewer.show_and_raise()
+
+    def _on_show_value_watch(self) -> None:
+        """Show the live value-watch window, bringing it to the front if open."""
+        self._value_watch.show_and_raise()
 
     def _update_window_title(self) -> None:
         """Refresh the window title to reflect the active tab and file."""

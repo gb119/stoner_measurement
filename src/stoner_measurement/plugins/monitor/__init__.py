@@ -5,11 +5,15 @@ Exports :class:`MonitorPlugin` (abstract base) from
 """
 
 from stoner_measurement.plugins.monitor.base import MonitorPlugin
+from stoner_measurement.plugins.monitor.magnet_controller import (
+    MagneticFieldMonitorPlugin,
+)
 from stoner_measurement.plugins.monitor.temperature_controller import (
     TemperatureMonitorPlugin,
 )
 
 __all__ = [
     "MonitorPlugin",
+    "MagneticFieldMonitorPlugin",
     "TemperatureMonitorPlugin",
 ]

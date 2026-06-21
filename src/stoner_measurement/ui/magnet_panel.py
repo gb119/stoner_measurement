@@ -390,9 +390,17 @@ class MagnetControlPanel(QWidget):
         self._target_field_spin.valueChanged.connect(self._on_target_field_changed)
         target_form.addRow("Target field:", self._target_field_spin)
 
-        self._target_current_label = QLabel("— A")
-        self._target_current_label.setToolTip("Equivalent current (computed from magnet constant)")
-        target_form.addRow("Equiv. current:", self._target_current_label)
+        self._target_current_spin = SISpinBox()
+        self._target_current_spin.setOpts(bounds=(-1000.0, 1000.0), decimals=4, suffix="A", siPrefix=True)
+        self._target_current_spin.valueChanged.connect(self._on_target_current_changed)
+        self._target_current_label = QLabel("—")
+        self._target_current_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        target_current_widget = QWidget()
+        target_current_row = QHBoxLayout(target_current_widget)
+        target_current_row.setContentsMargins(0, 0, 0, 0)
+        target_current_row.addWidget(self._target_current_spin, stretch=1)
+        target_current_row.addWidget(self._target_current_label)
+        target_form.addRow("Target current:", target_current_widget)
 
         go_btn_row = QHBoxLayout()
         self._btn_go = QPushButton("Go To Field")
@@ -414,11 +422,13 @@ class MagnetControlPanel(QWidget):
         self._ramp_field_spin = SISpinBox()
         self._ramp_field_spin.setOpts(bounds=(0.001, 10.0), decimals=4, suffix="T/min", siPrefix=True)
         self._ramp_field_spin.setValue(0.1)
+        self._ramp_field_spin.valueChanged.connect(self._on_ramp_field_changed)
         ramp_form.addRow("Field ramp rate:", self._ramp_field_spin)
 
         self._ramp_current_spin = SISpinBox()
         self._ramp_current_spin.setOpts(bounds=(0.01, 1000.0), decimals=3, suffix="A/min", siPrefix=True)
         self._ramp_current_spin.setValue(1.0)
+        self._ramp_current_spin.valueChanged.connect(self._on_ramp_current_changed)
         ramp_form.addRow("Current ramp rate:", self._ramp_current_spin)
 
         ramp_btn_row = QHBoxLayout()
@@ -964,17 +974,50 @@ class MagnetControlPanel(QWidget):
 
     @pyqtSlot(object)
     def _on_target_field_changed(self, value: float) -> None:
-        """Update the equivalent-current label when the target field changes.
+        """Update target current when the target field changes.
 
         Args:
             value (float):
                 New target field in tesla.
         """
         if self._magnet_constant > 0:
-            equiv_current = value / self._magnet_constant
-            self._target_current_label.setText(f"{equiv_current:.4f} A")
-        else:
-            self._target_current_label.setText("— A")
+            self._target_current_spin.blockSignals(True)
+            try:
+                self._target_current_spin.setValue(value / self._magnet_constant)
+                self._target_current_label.setText(f"{self._target_current_spin.value():.4f} A")
+            finally:
+                self._target_current_spin.blockSignals(False)
+
+    @pyqtSlot(object)
+    def _on_target_current_changed(self, value: float) -> None:
+        """Update target field when the target current changes."""
+        if self._magnet_constant > 0:
+            self._target_field_spin.blockSignals(True)
+            try:
+                self._target_field_spin.setValue(value * self._magnet_constant)
+                self._target_current_label.setText(f"{value:.4f} A")
+            finally:
+                self._target_field_spin.blockSignals(False)
+
+    @pyqtSlot(object)
+    def _on_ramp_field_changed(self, value: float) -> None:
+        """Update current ramp rate from field ramp rate."""
+        if self._magnet_constant > 0:
+            self._ramp_current_spin.blockSignals(True)
+            try:
+                self._ramp_current_spin.setValue(value / self._magnet_constant)
+            finally:
+                self._ramp_current_spin.blockSignals(False)
+
+    @pyqtSlot(object)
+    def _on_ramp_current_changed(self, value: float) -> None:
+        """Update field ramp rate from current ramp rate."""
+        if self._magnet_constant > 0:
+            self._ramp_field_spin.blockSignals(True)
+            try:
+                self._ramp_field_spin.setValue(value * self._magnet_constant)
+            finally:
+                self._ramp_field_spin.blockSignals(False)
 
     @pyqtSlot()
     def _on_go_to_field(self) -> None:
@@ -1000,7 +1043,6 @@ class MagnetControlPanel(QWidget):
     def _on_apply_ramp(self) -> None:
         """Apply the ramp rate settings to the engine."""
         self._engine.set_ramp_rate_field(self._ramp_field_spin.value())
-        self._engine.set_ramp_rate_current(self._ramp_current_spin.value())
 
     @pyqtSlot()
     def _on_read_ramp(self) -> None:
@@ -1008,10 +1050,23 @@ class MagnetControlPanel(QWidget):
         state = self._read_controller_state_or_warn("Ramp Rate")
         if state is None:
             return
-        if state.ramp_rate_field is not None:
-            self._ramp_field_spin.setValue(state.ramp_rate_field)
         if state.ramp_rate_current is not None:
-            self._ramp_current_spin.setValue(state.ramp_rate_current)
+            self._ramp_current_spin.blockSignals(True)
+            try:
+                self._ramp_current_spin.setValue(state.ramp_rate_current)
+            finally:
+                self._ramp_current_spin.blockSignals(False)
+        if state.ramp_rate_field is not None:
+            self._ramp_field_spin.blockSignals(True)
+            try:
+                self._ramp_field_spin.setValue(state.ramp_rate_field)
+            finally:
+                self._ramp_field_spin.blockSignals(False)
+        elif state.ramp_rate_current is not None:
+            self._on_ramp_current_changed(state.ramp_rate_current)
+            return
+        if state.ramp_rate_field is not None and state.ramp_rate_current is None:
+            self._on_ramp_field_changed(state.ramp_rate_field)
 
     @pyqtSlot()
     def _on_pause_ramp(self) -> None:
@@ -1064,6 +1119,7 @@ class MagnetControlPanel(QWidget):
         self._engine.set_limits(limits)
         # Refresh the equivalent-current label.
         self._on_target_field_changed(self._target_field_spin.value())
+        self._on_ramp_field_changed(self._ramp_field_spin.value())
 
     @pyqtSlot()
     def _on_read_limits(self) -> None:
@@ -1084,6 +1140,7 @@ class MagnetControlPanel(QWidget):
                 self._max_ramp_spin.setValue(limits.max_ramp_rate)
 
         self._on_target_field_changed(self._target_field_spin.value())
+        self._on_ramp_field_changed(self._ramp_field_spin.value())
 
     def _set_heater_state_label(self, heater_on: bool | None) -> None:
         """Update the heater state label text.

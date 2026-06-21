@@ -43,6 +43,7 @@ class MagnetState(Enum):
     """
 
     STANDBY = "standby"
+    HOLDING = "standby"
     RAMPING = "ramping"
     AT_TARGET = "at_target"
     PERSISTENT = "persistent"

@@ -173,6 +173,8 @@ class SimulatedMagnetController(MagnetController):
         self._heater = True
         self._magnet_constant = 0.1
         self._limits = MagnetLimits(max_current=100.0, max_field=10.0, max_ramp_rate=5.0)
+        self._coil_resistance = 0.1
+        self._coil_inductance = 3.0
         self._paused = False
         self._ramping = False
 
@@ -212,9 +214,13 @@ class SimulatedMagnetController(MagnetController):
 
     @property
     def voltage(self) -> float:
-        if not self._ramping:
-            return 0.0
-        return min(abs(self._ramp_rate_aps) * 0.05, 1.0)
+        current = self.current
+        didt = 0.0
+        if self._ramping:
+            delta = self._target_current - current
+            if abs(delta) > 1e-12:
+                didt = self._ramp_rate_aps if delta > 0 else -self._ramp_rate_aps
+        return self._coil_inductance * didt
 
     @property
     def status(self) -> MagnetStatus:
@@ -257,7 +263,7 @@ class SimulatedMagnetController(MagnetController):
         self._target_current = field / self._magnet_constant
 
     def set_ramp_rate_current(self, rate: float) -> None:
-        self._ramp_rate_aps = rate
+        self._ramp_rate_aps = rate / 60.0
 
     def set_ramp_rate_field(self, rate: float) -> None:
         self._ramp_rate_aps = rate / 60.0 / self._magnet_constant

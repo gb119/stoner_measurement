@@ -973,6 +973,10 @@ class TemperatureControlPanel(QWidget):
         self._input_channel_combo.blockSignals(True)
         self._input_channel_combo.clear()
         self._input_channel_combo.blockSignals(False)
+        self._rate_source_combo.blockSignals(True)
+        self._rate_source_combo.clear()
+        self._rate_source_combo.blockSignals(False)
+        self._rate_source_channel = None
         self._input_settings_widget.set_curve_names({})
         self._input_settings_widget.clear()
         # Reset address widget colours to disconnected state.
@@ -1034,31 +1038,38 @@ class TemperatureControlPanel(QWidget):
         """
         enabled = caps.has_input_settings
         self._tabs.setTabEnabled(self._input_settings_tab_index, enabled)
+
+        # Rate-of-change plotting only requires temperature channels, not
+        # editable input settings. Populate the rate-source selector whenever
+        # channels are available.
+        self._rate_source_combo.blockSignals(True)
+        self._rate_source_combo.clear()
+        for ch in caps.input_channels:
+            self._rate_source_combo.addItem(ch, ch)
+
+        if caps.input_channels:
+            if self._rate_source_channel in caps.input_channels:
+                selected = self._rate_source_channel
+            else:
+                selected = caps.input_channels[0]
+                self._rate_source_channel = selected
+
+            index = self._rate_source_combo.findData(selected)
+            if index >= 0:
+                self._rate_source_combo.setCurrentIndex(index)
+        self._rate_source_combo.blockSignals(False)
+
         self._input_channel_combo.blockSignals(True)
         self._input_channel_combo.clear()
         if enabled:
             self._input_settings_widget.set_curve_names(self._engine.get_calibration_curve_names())
-            self._rate_source_combo.blockSignals(True)
-            self._rate_source_combo.clear()
             for ch in caps.input_channels:
                 self._input_channel_combo.addItem(ch, ch)
-                self._rate_source_combo.addItem(ch, ch)
             if caps.input_channels:
                 self._input_settings_widget.set_channel(caps.input_channels[0])
-                if self._rate_source_channel in caps.input_channels:
-                    selected = self._rate_source_channel
-                else:
-                    selected = caps.input_channels[0]
-                    self._rate_source_channel = selected
-
-                index = self._rate_source_combo.findData(selected)
-                if index >= 0:
-                    self._rate_source_combo.setCurrentIndex(index)
-            self._rate_source_combo.blockSignals(False)
         else:
             self._input_settings_widget.set_curve_names({})
             self._input_settings_widget.clear()
-            self._rate_source_combo.clear()
         self._input_channel_combo.blockSignals(False)
 
     @pyqtSlot(int)
@@ -2167,8 +2178,8 @@ class _LoopControlGroup(QGroupBox):
         heater_output: float,
         mode,
         *,
-        _heater_range: int | None = None,
-        _input_channel: str | None = None,
+        heater_range: int | None = None,
+        input_channel: str | None = None,
     ) -> None:
         """Refresh live-readback labels from the engine polling state.
 
