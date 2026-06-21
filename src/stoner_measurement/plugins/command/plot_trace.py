@@ -94,27 +94,29 @@ def _safe_disconnect(signal: Any, slot: Any) -> None:
 
 
 class PlotTraceCommand(CommandPlugin):
-    """Command plugin that plots trace data to the main plot window.
+    """Plot a complete trace dataset in the main plot window.
 
-    The plugin supports two operating modes selected via the configuration UI:
+    Use this command when you want to send an already measured trace to the
+    plot window in one step. This is most commonly used after a trace plugin
+    has finished collecting a sweep, but it can also be used to plot derived
+    or transformed traces.
 
-    * **Simple mode** — choose a single trace from the sequence's trace
-      catalogue.  When :attr:`column_key` is empty and the trace has multiple
-      :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y` columns,
-      every such column is plotted as a separate named trace with error bars
-      derived from the corresponding
-      :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_D` (x-error)
-      and :data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_E`
-      (y-error) columns.  When :attr:`column_key` is set only the selected
-      column is plotted.  Axis labels are updated from
-      :attr:`~stoner_measurement.plugins.trace.TraceData.names` and
-      :attr:`~stoner_measurement.plugins.trace.TraceData.units` metadata.
-    * **Advanced mode** — independently specify Python expressions for the
-      x data, y data, and plot title.  This allows x and y data to be taken
-      from different trace channels.  The title expression is evaluated via
-      :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`.
+    In the configuration panel you can use two modes:
 
-    At runtime :meth:`execute` emits either the :attr:`plot_trace` signal
+    * **Simple mode**: select a trace from the trace catalogue. Optionally
+      choose a specific y-column, transpose x and y, select plot axes, and
+      set plotting style options.
+    * **Advanced mode**: provide separate expressions for x data, y data, and
+      the plot title. This is useful when you want to combine data from
+      different traces or channels.
+
+    If the selected trace includes metadata for axis names, units, or error
+    bars, this information is used automatically in simple mode. Optional
+    axis names and trace styling let you send traces to custom axes or control
+    how they appear in the plot.
+
+    For script-oriented use, :meth:`execute` emits either the
+    :attr:`plot_trace` signal
     (advanced mode) or the :attr:`plot_trace_with_errors` signal (simple mode)
     with the resolved title string, x/y arrays, and optional error-bar arrays.
     The :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`

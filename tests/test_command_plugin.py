@@ -2488,6 +2488,32 @@ class TestDetailsCommand:
 
         assert isinstance(DetailsCommand().config_widget(), QWidget)
 
+    def test_execute_raises_and_shows_warning_for_missing_required_fields(self, qapp, monkeypatch):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        warnings: list[str] = []
+
+        cmd.show_validation_error.disconnect(cmd._display_validation_error)
+        cmd.show_validation_error.connect(warnings.append)
+
+        with pytest.raises(ValueError, match="User.*Sample.*Project"):
+            cmd.execute()
+
+        assert warnings
+        assert "User" in warnings[0]
+        assert "Sample" in warnings[0]
+        assert "Project" in warnings[0]
+
+    def test_execute_allows_blank_notes(self, qapp):
+        from stoner_measurement.plugins.command.details import DetailsCommand
+
+        cmd = DetailsCommand()
+        cmd.user = "Alice"
+        cmd.sample = "S1"
+        cmd.project = "P1"
+        cmd.execute()
+
     def test_config_widget_user_field(self, qapp):
         from qtpy.QtWidgets import QLineEdit
 
@@ -2562,13 +2588,16 @@ class TestDetailsCommand:
         notes_edit.setPlainText("new notes")
         assert cmd.notes == "new notes"
 
-    def test_execute_is_noop(self, qapp):
+    def test_execute_passes_when_required_fields_are_present(self, qapp):
         from stoner_measurement.plugins.command.details import DetailsCommand
 
         cmd = DetailsCommand()
         cmd.user = "Alice"
+        cmd.sample = "S1"
+        cmd.project = "P1"
         cmd.execute()
         assert cmd.user == "Alice"
+        assert cmd.sample == "S1"
 
     def test_reported_traces_empty(self, qapp):
         from stoner_measurement.plugins.command.details import DetailsCommand

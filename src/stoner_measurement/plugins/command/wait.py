@@ -16,23 +16,24 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 
 
 class WaitCommand(CommandPlugin):
-    """Command plugin that pauses sequence execution for a specified duration.
+    """Pause the sequence for a specified time.
 
-    The delay is given as a Python expression string (``delay_expr``) that is
-    evaluated against the sequence engine namespace at runtime using
-    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`.  This
-    allows the delay to incorporate namespace variables such as loop counters
-    or instrument settings::
+    Use this command when the sequence needs to wait before continuing. Common
+    uses include allowing a system to settle after a change, adding a fixed
+    delay between steps, or making the delay depend on values already present
+    in the sequence namespace.
+
+    In the configuration panel, set the **delay expression** to either a fixed
+    number of seconds or a Python expression, for example::
 
         "settling_time * 1.5"
 
-    The :meth:`execute` and :meth:`__call__` methods accept an optional
-    keyword parameter ``delay`` that, when provided, overrides the evaluated
-    ``delay_expr`` setting.
+    When the step runs, the sequence sleeps for the resulting number of
+    seconds.
 
     Attributes:
         delay_expr (str):
-            Python expression string that evaluates to the delay in seconds
+            Python expression string that evaluates to the delay in seconds at
             (float).  Defaults to ``"1.0"``.
 
     Keyword Parameters:
@@ -40,6 +41,10 @@ class WaitCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
+        The :meth:`execute` and :meth:`__call__` methods accept an optional
+        keyword parameter ``delay`` that, when provided, overrides the
+        evaluated ``delay_expr`` setting.
+
         >>> from qtpy.QtWidgets import QApplication
         >>> _ = QApplication.instance() or QApplication([])
         >>> from stoner_measurement.plugins.command.wait import WaitCommand

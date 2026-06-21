@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 from qtpy.QtCore import Qt, QTimer
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -39,6 +38,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from stoner_measurement.qt_compat import pyqtSignal
 
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.plugins.trace.base import (
@@ -368,8 +368,8 @@ def _format_value_with_reference(value: Any, reference_value: Any, reference_unc
 class _ParamTableWidget(QWidget):
     """Table widget for configuring per-parameter bounds and initial values.
 
-    Displays one column per parameter detected in the fit function. The rows
-    show the minimum bound, editable initial value, maximum bound, the initial
+    Displays one column per parameter detected in the fit function. The columns
+    show the parameter names and the rows show the minimum bound, editable initial value, maximum bound, the initial
     values currently used by the fit, and the fitted value with uncertainty.
 
     Args:
@@ -629,31 +629,32 @@ _BEST_FIT_TRACE_KEY = "best_fit"
 
 
 class CurveFitPlugin(TransformPlugin):
-    """Curve-fitting transform plugin using scipy.optimize.curve_fit.
+    """Fit a user-defined model function to a selected trace.
 
-    Fits a user-defined function to a data trace selected from the sequence
-    engine.  The plugin provides three configuration tabs:
+    Use this transform when you want to extract model parameters from measured
+    data. It takes a selected trace, fits a function that you provide, and
+    reports the fitted parameter values and uncertainties as outputs that can
+    be plotted, saved, or reused elsewhere in the sequence.
+
+    The configuration UI is organised into three main tabs:
 
     * **Data** — contains the instance-name editor at the top, followed by
-      data-selection controls.  In *simple mode* choose a single trace; the
-      ``x`` and ``y`` arrays are taken from the
-      :class:`~stoner_measurement.plugins.trace.TraceData` object.  In
-      *advanced mode* supply independent Python expressions for ``x``, ``y``,
-      and an optional ``y``-uncertainty array (used as ``sigma``).
+      data-selection controls. In simple mode choose a trace and optionally a
+      specific y-column. In advanced mode provide expressions for x, y, and
+      optional y-uncertainty data.
     * **Fit Function** — write the fitting function as Python source code.
-      The function must be named ``fit`` and its first argument must be the
-      independent variable ``x``; subsequent arguments become the free
-      parameters.  An optional ``p0(x, y)`` function may also be defined to
-      compute initial parameter estimates; if absent the initial values are
-      taken from the Parameters table.
-    * **Parameters** — a table with one row per detected parameter.  Each row
-      allows an optional minimum bound, initial value, and maximum bound.
-      Two optional trace outputs can be enabled:
+      The function must be named ``fit``. An optional ``p0(x, y)`` function
+      can be added to generate initial parameter guesses automatically.
+    * **Parameters** — a table with one column per detected parameter.  Each
+      parameter column lets you set optional minimum, initial, and maximum
+      values. Optional outputs can also be enabled:
 
-      * *Initial fit trace* — the fitting function evaluated at the x data
-        using the initial parameter estimates (``p0``).
-      * *Best fit trace* — the fitting function evaluated at the x data using
-        the optimal parameters found by the fit.
+      * reporting the initial parameter values used by the fit
+      * generating an **initial fit** trace
+      * generating a **best fit** trace
+
+    This plugin executes user-supplied Python fit code. Only use trusted fit
+    definitions in normal workflows.
 
     Attributes:
         trace_key (str):
@@ -687,6 +688,9 @@ class CurveFitPlugin(TransformPlugin):
             When ``True``, the transform stores a ``"best_fit"`` trace in
             :attr:`data` containing the fitting function evaluated at the x
             data with the optimal parameters.
+        report_initial_values (bool):
+            When ``True``, the initial parameter values actually used for the fit
+            are also reported as scalar outputs in the values catalogue.
     """
 
     def __init__(self, parent=None) -> None:
@@ -707,6 +711,7 @@ class CurveFitPlugin(TransformPlugin):
         self.param_settings: dict[str, dict[str, float | None]] = {}
         # Optional trace outputs
         self.show_initial_trace: bool = False
+        self.report_initial_values: bool = False
         self.show_best_fit_trace: bool = False
         # Latest syntax error state for fit_code (for UI feedback).
         self.fit_code_syntax_error_line: int | None = None
@@ -785,6 +790,8 @@ class CurveFitPlugin(TransformPlugin):
         names: list[str] = []
         for pname in self.param_names:
             names.append(pname)
+            if self.report_initial_values:
+                names.append(f"{pname}_initial")
             names.append(f"{pname}_err")
         if self.show_initial_trace:
             names.append(_INITIAL_TRACE_KEY)
@@ -848,6 +855,8 @@ class CurveFitPlugin(TransformPlugin):
         names: list[str] = []
         for pname in self.param_names:
             names.append(pname)
+            if self.report_initial_values:
+                names.append(f"{pname}_initial")
             names.append(f"{pname}_err")
         return names
 
@@ -933,9 +942,12 @@ class CurveFitPlugin(TransformPlugin):
         # ---- 3. Build p0 and bounds --------------------------------------
         p0 = self._build_p0(p0_func, x_arr, y_arr)
         bounds = self._build_bounds()
+        result: dict[str, Any] = {}
+        used_initial_values = self._resolved_initial_values(p0)
+        if self.report_initial_values:
+            result.update(self._build_initial_value_results(used_initial_values))
 
         # ---- 4. Optionally compute the initial-parameter trace -----------
-        result: dict[str, Any] = {}
         if self.show_initial_trace:
             initial_trace = self._compute_initial_trace(
                 fit_func, x_arr, p0,
@@ -1322,6 +1334,20 @@ class CurveFitPlugin(TransformPlugin):
             if val is not None:
                 all_none = False
         return None if all_none else initials
+
+    def _resolved_initial_values(self, p0) -> list[float]:
+        """Return the actual initial values used by the fit."""
+        values = [1.0] * len(self.param_names) if p0 is None else list(p0)
+        if len(values) < len(self.param_names):
+            values.extend([_NAN] * (len(self.param_names) - len(values)))
+        return values[: len(self.param_names)]
+
+    def _build_initial_value_results(self, initial_values: list[float]) -> dict[str, float]:
+        """Build scalar outputs for the initial parameter values."""
+        result: dict[str, float] = {}
+        for i, pname in enumerate(self.param_names):
+            result[f"{pname}_initial"] = float(initial_values[i]) if i < len(initial_values) else _NAN
+        return result
 
     def _build_bounds(self):
         """Build the bounds tuple for scipy.optimize.curve_fit.
@@ -1761,8 +1787,10 @@ class CurveFitPlugin(TransformPlugin):
 
         The two widgets share a connection: when the editor contents change the
         parameter names are re-extracted and the parameter table is updated.
-        The *Parameters* tab also contains checkboxes for the optional trace
-        outputs (:attr:`show_initial_trace` and :attr:`show_best_fit_trace`).
+        The *Parameters* tab also contains checkboxes for the optional scalar
+        initial-value outputs and optional trace outputs
+        (:attr:`report_initial_values`, :attr:`show_initial_trace`, and
+        :attr:`show_best_fit_trace`).
 
         Args:
             parent (QWidget | None):
@@ -1785,6 +1813,13 @@ class CurveFitPlugin(TransformPlugin):
         self._param_table_widget = param_widget
         self._refresh_param_table_preview()
         param_layout.addWidget(param_widget)
+
+        report_initial_values_check = QCheckBox("Report initial parameter values", param_container)
+        report_initial_values_check.setChecked(self.report_initial_values)
+        report_initial_values_check.setToolTip(
+            "When enabled, the initial parameter values actually used by the fit are added to the values catalogue."
+        )
+        param_layout.addWidget(report_initial_values_check)
 
         # Optional trace output checkboxes.
         initial_check = QCheckBox("Calculate initial-parameter trace", param_container)
@@ -1837,12 +1872,16 @@ class CurveFitPlugin(TransformPlugin):
         self.transform_complete.connect(_on_transform_complete)
 
         # ---- Wire trace checkboxes to attributes -----------------------
+        def _on_report_initial_values_toggled(checked: bool) -> None:
+            self.report_initial_values = checked
+
         def _on_initial_toggled(checked: bool) -> None:
             self.show_initial_trace = checked
 
         def _on_best_fit_toggled(checked: bool) -> None:
             self.show_best_fit_trace = checked
 
+        report_initial_values_check.toggled.connect(_on_report_initial_values_toggled)
         initial_check.toggled.connect(_on_initial_toggled)
         best_fit_check.toggled.connect(_on_best_fit_toggled)
 
@@ -1860,7 +1899,8 @@ class CurveFitPlugin(TransformPlugin):
                 Base dict extended with ``"trace_key"``, ``"column_key"``,
                 ``"advanced_mode"``, ``"x_expr"``, ``"y_expr"``,
                 ``"y_error_expr"``, ``"fit_code"``, ``"param_names"``,
-                ``"param_settings"``, ``"show_initial_trace"``,
+                ``"param_settings"``, ``"report_initial_values"``,
+                ``"show_initial_trace"``,
                 and ``"show_best_fit_trace"``.
 
         Examples:
@@ -1885,6 +1925,7 @@ class CurveFitPlugin(TransformPlugin):
         d["fit_code"] = self.fit_code
         d["param_names"] = self.param_names
         d["param_settings"] = self.param_settings
+        d["report_initial_values"] = self.report_initial_values
         d["show_initial_trace"] = self.show_initial_trace
         d["show_best_fit_trace"] = self.show_best_fit_trace
         return d
@@ -1909,6 +1950,7 @@ class CurveFitPlugin(TransformPlugin):
             name: {k: (float(v) if v is not None else None) for k, v in entry.items()}
             for name, entry in raw_settings.items()
         }
+        self.report_initial_values = data.get("report_initial_values", False)
         self.show_initial_trace = data.get("show_initial_trace", False)
         self.show_best_fit_trace = data.get("show_best_fit_trace", False)
 

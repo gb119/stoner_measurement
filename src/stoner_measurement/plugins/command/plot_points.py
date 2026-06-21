@@ -110,32 +110,34 @@ def _default_label(key: str, engine_namespace: dict) -> str:
 
 
 class PlotPointsCommand(CommandPlugin):
-    """Command plugin that appends live scatter-plot points to the main plot.
+    """Append live data points to one or more plot traces.
 
-    Each time :meth:`execute` is called it reads the current x value (a
-    scalar from the ``_values`` catalogue) and each configured y value
-    (also scalars from the catalogue) and emits :attr:`plot_point` once per
-    y series as ``(label, x, y)``.  The signal is automatically connected to
-    :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.append_point` so
-    that the data appears in real-time in the main plot window.
+    Use this command inside loops or repeated measurement sections when you
+    want to build up a plot point-by-point during the run. It is especially
+    useful for live displays of quantities such as resistance vs temperature,
+    voltage vs field, or any other scalar value against another scalar value
+    already available in the sequence value catalogue.
 
-    Each y-series entry can independently target a different y-axis on the
-    plot widget.  If the specified y-axis does not yet exist it is created
-    automatically (on the right-hand side) when :meth:`execute` runs.
+    In the configuration panel you choose:
 
-    The configuration UI lets the user:
+    * one **X value**
+    * one or more **Y series**
+    * optional trace labels
+    * which plot axes those series should use
+    * optional formatting such as colour, line style, marker style, and sizes
 
-    * Select an **x value** from the ``_values`` catalogue.
-    * Select the **X axis** (shared for all series).
-    * Add one or more **y series**, each with its own value from the
-      catalogue, a customisable label, and an independently selectable
-      **y axis**.
+    Each time the command runs, it reads the current scalar x value and the
+    current scalar y value for each configured series, then appends those
+    points to the plot. New axes are created automatically if you assign a
+    series to an axis name that does not already exist.
 
     Attributes:
         x_key (str):
+            Key in the ``_values`` catalogue for the x data. The current
+            value is read each time the command executes.
+        y_entries (list[dict[str, str]]):
             Key in the ``_values`` catalogue for the x data.  Format is
             ``"{instance_name}:{quantity_name}"``.
-        y_entries (list[dict[str, str]]):
             Ordered list of y-series definitions.  Each entry is a dict with
             keys ``"key"`` (catalogue key), ``"label"`` (trace name shown
             in the legend), ``"y_axis"`` (y-axis name; defaults to

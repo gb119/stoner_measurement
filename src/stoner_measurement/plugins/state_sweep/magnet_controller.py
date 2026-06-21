@@ -9,7 +9,22 @@ from stoner_measurement.plugins.state_sweep.base import StateSweepPlugin
 
 
 class MagnetControllerSweepPlugin(MagnetControllerPluginMixin, StateSweepPlugin):
-    """State-sweep plugin that drives the magnet controller engine."""
+    """Sweep the magnet field continuously according to a sweep generator.
+
+    Use this plugin when you want the magnetic field to change continuously,
+    with data collected while the field is moving rather than only at a list
+    of settled set-points. This is useful for ramp-based measurements and for
+    experiments where timing relative to the ramp matters.
+
+    In the configuration tabs, you choose the magnet-controller settings and
+    the sweep generator that defines how the field should evolve with time.
+    The plugin then follows that generator while reporting the current control
+    value back to the sequence framework.
+
+    Attributes documented on the mixin and base classes control the detailed
+    ramp behaviour, tolerances, and engine integration for more technical
+    script-oriented use.
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -26,6 +41,10 @@ class MagnetControllerSweepPlugin(MagnetControllerPluginMixin, StateSweepPlugin)
     @property
     def units(self) -> str:
         return "T"
+
+    def __next__(self) -> bool:
+        """Advance the sweep using the configured sweep generator semantics."""
+        return super().__next__()
 
     def to_json(self) -> dict[str, object]:
         data = super().to_json()

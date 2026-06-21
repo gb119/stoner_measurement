@@ -239,6 +239,69 @@ class TestCurveFitPluginInit:
         p = CurveFitPlugin()
         assert p.param_names == ["a", "b"]
 
+    def test_output_names_include_initial_values_when_enabled(self, qapp):
+        p = CurveFitPlugin()
+        p.param_names = ["a", "b"]
+        p.report_initial_values = True
+        assert p.output_names == ["a", "a_initial", "a_err", "b", "b_initial", "b_err"]
+
+    def test_output_value_names_include_initial_values_when_enabled(self, qapp):
+        p = CurveFitPlugin()
+        p.param_names = ["a", "b"]
+        p.report_initial_values = True
+        assert p.output_value_names == ["a", "a_initial", "a_err", "b", "b_initial", "b_err"]
+
+
+class TestCurveFitInitialValueReporting:
+    def test_transform_reports_initial_values_from_table(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = CurveFitPlugin()
+        engine.add_plugin("curve_fit", plugin)
+        plugin.advanced_mode = True
+        plugin.x_expr = "_xdata"
+        plugin.y_expr = "_ydata"
+        plugin.fit_code = "def fit(x, a, b): return a * x + b"
+        plugin.param_names = ["a", "b"]
+        plugin.param_settings = {
+            "a": {"min": None, "initial": 3.0, "max": None},
+            "b": {"min": None, "initial": 4.0, "max": None},
+        }
+        plugin.report_initial_values = True
+        engine._namespace["_xdata"] = np.linspace(0.0, 1.0, 20)
+        engine._namespace["_ydata"] = 2.0 * engine._namespace["_xdata"] + 0.5
+
+        result = plugin.transform({})
+
+        assert result["a_initial"] == pytest.approx(3.0)
+        assert result["b_initial"] == pytest.approx(4.0)
+        engine.shutdown()
+
+    def test_transform_reports_initial_values_from_p0(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = CurveFitPlugin()
+        engine.add_plugin("curve_fit", plugin)
+        plugin.advanced_mode = True
+        plugin.x_expr = "_xdata"
+        plugin.y_expr = "_ydata"
+        plugin.fit_code = (
+            "def fit(x, a, b): return a * x + b\n"
+            "def p0(x, y): return (7.0, 8.0)"
+        )
+        plugin.param_names = ["a", "b"]
+        plugin.report_initial_values = True
+        engine._namespace["_xdata"] = np.linspace(0.0, 1.0, 20)
+        engine._namespace["_ydata"] = 2.0 * engine._namespace["_xdata"] + 0.5
+
+        result = plugin.transform({})
+
+        assert result["a_initial"] == pytest.approx(7.0)
+        assert result["b_initial"] == pytest.approx(8.0)
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # CurveFitPlugin.transform — actual fitting

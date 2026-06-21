@@ -46,15 +46,15 @@ _WINDOW_NAMES = [
 
 
 class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
-    """Filter selected y data by convolving with a configurable SciPy window.
+    """Smooth a selected trace by convolving it with a configurable window.
 
-    The plugin builds a window kernel from ``scipy.signal.windows.get_window``
-    and applies it to the selected y data using same-length convolution. It can
-    use plain trace selection or advanced expressions for x and y inputs.
+    Use this transform when you want a simple configurable smoothing or
+    windowed averaging operation. It applies a window function to the selected
+    y data and returns a filtered trace on the same x-axis.
 
-    Args:
-        parent (QObject | None):
-            Optional Qt parent object supplied by the plugin host.
+    In the configuration tabs, choose the input trace or advanced x/y
+    expressions, then select the SciPy window type, length, optional window
+    parameters, and whether the kernel should be normalised.
 
     Attributes:
         trace_key (str):
@@ -62,7 +62,6 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
         column_key (str):
             Selected y-column key from the chosen trace.
         advanced_mode (bool):
-            When ``True``, evaluate ``x_expr`` and ``y_expr`` instead of direct
             trace/column selection.
         x_expr (str):
             Expression used to compute x data in advanced mode.

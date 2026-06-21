@@ -57,29 +57,30 @@ def _parse_channel_list(text: str) -> list[str] | None:
 
 
 class TemperatureMonitorPlugin(MonitorPlugin):
-    """Monitor plugin that reads live parameters from the temperature controller engine.
+    """Publish live temperature-controller readings into the sequence value catalogue.
 
-    On connect, the plugin ensures the temperature controller engine is running and
-    connected to the configured driver.  The engine's most recent published state is
-    used for every :meth:`read` call so that no additional hardware traffic is
-    generated beyond the engine's own polling cycle.
+    Use this monitor when you want the sequence to have access to live
+    temperatures, setpoints, heater outputs, rates of change, and stability
+    flags from the temperature-controller engine. The selected quantities are
+    added to the sequence value catalogue and can then be plotted, saved,
+    displayed, or used by other sequence steps.
 
-    The parameters that are reported are configurable via the plugin's settings tab.
-    The user can choose any combination of:
+    In the configuration panel, choose which control loops and sensor channels
+    should be monitored, and then select which quantities to report. You can
+    enable any combination of:
 
-    * **Setpoint** — target temperature for each monitored control loop (K).
-    * **Temperature** — current sensor reading for each monitored channel (K).
-    * **Heater** — heater output percentage for each monitored control loop (%).
-    * **Rate of change** — estimated rate of temperature change for each channel (K/min).
-    * **Stability** — whether each monitored loop is stable at its setpoint (1.0 or 0.0).
+    * **Setpoint**
+    * **Temperature**
+    * **Heater**
+    * **Rate of change**
+    * **Stability**
 
-    All selected parameters are exposed both via :meth:`read` / :attr:`last_reading`
-    and as typed accessor methods on the instance itself
+    For more technical use, the selected parameters are exposed both via
+    :meth:`read` / :attr:`last_reading` and as typed accessor methods on the instance itself
     (:meth:`setpoint`, :meth:`temperature`, :meth:`heater`,
     :meth:`rate`, :meth:`stable`) so that they can be referenced directly in
     sequence scripts.
-
-    Attributes:
+ 
         driver_name (str):
             Registered instrument driver name.
         transport_name (str):

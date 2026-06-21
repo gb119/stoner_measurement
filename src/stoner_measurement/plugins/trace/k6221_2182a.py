@@ -179,21 +179,27 @@ class SourceRangeMode(enum.Enum):
 
 
 class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
-    """Trace plugin for the Keithley 6221 / 2182A synchronised list sweep.
+    """Measure an I-V sweep using a Keithley 6221 and 2182A.
 
-    The 6221 is programmed with the full current list derived from the active
-    scan generator.  Trigger-link handshaking synchronises the source and
-    measurement: after each source step and settling delay the 6221 asserts a
-    trigger-link pulse that starts a 2182A measurement; on completion the 2182A
-    asserts its meter-complete output which steps the 6221 to the next point.
-    Voltage readings accumulate in the 2182A trace buffer; the complete dataset
-    is retrieved and returned after the sweep finishes.
+    Use this plugin for current-driven transport measurements where a Keithley
+    6221 sources a list of current values and a Keithley 2182A measures the
+    corresponding voltage. It is intended for automated I-V acquisition with
+    hardware-triggered synchronisation between the two instruments.
 
-    The 2182A may be addressed directly over GPIB or through the 6221's built-in
-    RS-232 serial relay interface.
+    In the configuration tabs you choose the instrument connection mode, GPIB
+    resources, compliance behaviour, source delay, source range policy, 2182A
+    integration and filtering settings, and trigger-link line assignments. The
+    scan generator defines the current list that will be swept.
 
-    After acquisition, a single trace channel named ``"IV"`` is returned,
-    backed by a :class:`~pandas.DataFrame` with:
+    The result is a single trace channel named **IV**. Besides the measured
+    voltage, the plugin also derives resistance and power columns for
+    convenience.
+
+    For more technical use, the 6221 is programmed with the full current list
+    derived from the active scan generator and trigger-link handshaking keeps
+    the source and voltmeter synchronised. After acquisition, a single trace
+    channel named ``"IV"`` is returned, backed by a
+    :class:`~pandas.DataFrame` with:
 
     * **x** (index) — programmed source current in amps.
     * **V** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y`) —

@@ -35,17 +35,15 @@ def _safe_disconnect(signal: Any, slot: Any) -> None:
 
 
 class PlotClearCommand(CommandPlugin):
-    """Command plugin that clears all traces from the main plot window.
+    """Clear all traces from the main plot window.
 
-    When executed, emits the :attr:`plot_clear` signal which is automatically
-    connected to
-    :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.clear_all` whenever
-    the plugin is attached to a
-    :class:`~stoner_measurement.core.sequence_engine.SequenceEngine` whose
-    :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.plot_widget`
-    is set.
+    Use this command when you want to start a fresh plot at some point in the
+    sequence. A common pattern is to clear the plot just before a new sweep,
+    a new sample, or a new temperature/field branch so that old traces do not
+    remain visible and cause confusion.
 
-    This plugin has no configuration options beyond the instance name.
+    This plugin has no settings beyond its instance name. When the step runs,
+    every currently displayed trace is removed from the main plot window.
 
     Attributes:
         plot_clear (pyqtSignal):

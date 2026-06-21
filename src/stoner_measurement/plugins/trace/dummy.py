@@ -19,26 +19,27 @@ from stoner_measurement.scan import FunctionScanGenerator
 
 
 class DummyPlugin(TracePlugin):
-    """A built-in demo plugin that generates RSJ model I-V data with optional noise.
+    """Generate simulated I-V data without using real hardware.
 
-    Scan points are read from the active
-    :attr:`~stoner_measurement.plugins.trace.TracePlugin.scan_generator` and
-    interpreted as applied current values *I* (in A).  The corresponding
-    voltage is computed using the DC I-V characteristic of the resistively
-    shunted Josephson junction (RSJ) model and then perturbed by Gaussian noise:
+    Use this plugin for demonstrations, testing, and learning how trace
+    measurements work in the application. It produces synthetic current-voltage
+    data based on a simple Josephson-junction RSJ model, so you can build and
+    run sequences without connecting any instruments.
+
+    In the configuration panel, set the scan generator to choose the current
+    values, then adjust the model parameters for critical current, normal
+    resistance, and noise level. The result is a trace titled **RSJ I-V** with
+    current on the x-axis and voltage on the y-axis.
+
+    More technically, scan points are interpreted as applied current values
+    *I* (in A). The corresponding voltage is computed from the DC RSJ model:
 
     * ``V = 0`` when ``|I| < I_c``
     * ``V = sign(I) × R_n × √(I² − I_c²)`` when ``|I| ≥ I_c``
     * ``V += N(0, V_n)`` — independent Gaussian noise added to every sample
 
-    where *I_c* is the critical current, *R_n* is the normal-state resistance,
-    and *V_n* is the noise standard deviation.  All three parameters are stored
-    as Python expression strings and evaluated via the sequence engine's
-    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` method, so
-    they can reference any variable or numpy function in the engine namespace
-    (e.g. ``"I_start * 2"`` or ``"1e-3 * sqrt(R_n)"``).  They are configurable
-    on the *Settings* tab or can be overridden per measurement via the
-    ``parameters`` dict passed to :meth:`execute`.
+    where *I_c* is the critical current, *R_n* is the normal-state
+    resistance, and *V_n* is the noise standard deviation.
 
     Keyword Parameters:
         parent (QObject | None):

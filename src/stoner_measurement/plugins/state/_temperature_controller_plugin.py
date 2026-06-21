@@ -15,7 +15,6 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
-from stoner_measurement.ui.widgets import SISpinBox
 
 if TYPE_CHECKING:
     from stoner_measurement.temperature_control.types import TemperatureEngineState
@@ -40,6 +39,18 @@ class TemperatureControllerPluginMixin:
         self.control_loop: int = 1
         self.ramp_rate: float = 1.0
         self.sensor_channels: list[str] | None = None
+
+    def _state_control_loop(self, state: TemperatureEngineState | None = None) -> int:
+        """Return a control loop usable for reading state from *state*.
+
+        Prefer the configured :attr:`control_loop`, but fall back to any loop
+        reported by the engine state so read-only helpers can still function
+        with partial/mock state snapshots.
+        """
+        state = self._engine_state() if state is None else state
+        if self.control_loop in state.input_channels or self.control_loop in state.setpoints:
+            return self.control_loop
+        return next(iter(state.input_channels or state.setpoints), self.control_loop)
 
     def _refresh_catalogs(self) -> None:
         if self.sequence_engine is not None:
@@ -113,10 +124,11 @@ class TemperatureControllerPluginMixin:
 
     def _control_channel(self, state: TemperatureEngineState | None = None) -> str | None:
         state = self._engine_state() if state is None else state
-        channel = state.input_channels.get(self.control_loop)
+        loop = self._state_control_loop(state)
+        channel = state.input_channels.get(loop)
         if channel:
             return channel
-        settings = self._engine().get_loop_settings(self.control_loop)
+        settings = self._engine().get_loop_settings(loop)
         return None if settings is None or not settings.input_channel else settings.input_channel
 
     def get_state(self) -> float:
@@ -129,19 +141,22 @@ class TemperatureControllerPluginMixin:
             channel = self._control_channel(state)
             if channel and channel in state.readings:
                 return float(state.readings[channel].value)
-        setpoint = state.setpoints.get(self.control_loop)
+        loop = self._state_control_loop(state)
+        setpoint = state.setpoints.get(loop)
         if setpoint is not None:
             return float(setpoint)
         return float(getattr(self, "value", 0.0))
 
     def is_at_target(self) -> bool:
         state = self._engine_state()
-        return bool(state.at_setpoint.get(self.control_loop, False))
+        loop = self._state_control_loop(state)
+        return bool(state.at_setpoint.get(loop, False))
 
     @property
     def control_setpoint(self) -> float:
         state = self._engine_state()
-        setpoint = state.setpoints.get(self.control_loop)
+        loop = self._state_control_loop(state)
+        setpoint = state.setpoints.get(loop)
         return math.nan if setpoint is None else float(setpoint)
 
     def sensor_value(self, channel: str) -> float:
@@ -197,12 +212,6 @@ class _TemperatureControllerSettingsWidget(QWidget):
         self._loop_spin.valueChanged.connect(self._on_loop_changed)
         form.addRow("Control loop:", self._loop_spin)
 
-        self._ramp_rate_spin = SISpinBox()
-        self._ramp_rate_spin.setOpts(bounds=(0.0, 1e9), decimals=6, suffix="K/min")
-        self._ramp_rate_spin.setValue(self._plugin.ramp_rate)
-        self._ramp_rate_spin.sigValueChanged.connect(self._on_ramp_rate_changed)
-        form.addRow("Ramp rate:", self._ramp_rate_spin)
-
         self._sensor_edit = QLineEdit(
             "" if self._plugin.sensor_channels is None else ", ".join(self._plugin.sensor_channels), self
         )
@@ -216,9 +225,6 @@ class _TemperatureControllerSettingsWidget(QWidget):
     def _on_loop_changed(self, value: int) -> None:
         self._plugin.control_loop = max(1, int(value))
         self._plugin._refresh_catalogs()
-
-    def _on_ramp_rate_changed(self, spinbox: SISpinBox) -> None:
-        self._plugin.ramp_rate = max(0.0, float(spinbox.value()))
 
     def _on_sensors_changed(self) -> None:
         text = self._sensor_edit.text().strip()

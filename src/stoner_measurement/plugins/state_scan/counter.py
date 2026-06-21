@@ -16,14 +16,15 @@ from stoner_measurement.plugins.state_scan.base import StateScanPlugin
 
 
 class CounterPlugin(StateScanPlugin):
-    """A simple counter that tracks the current scan set-point as its state.
+    """A simple hardware-free scan axis for testing and examples.
 
-    :class:`CounterPlugin` is a hardware-free example of a
-    :class:`~stoner_measurement.plugins.state_scan.StateScanPlugin`.  The
-    internal counter is set immediately to whatever value the sequence engine
-    passes to :meth:`ramp_to`; no polling or settling time is required.
+    Use this plugin when you want a scan variable without connecting any real
+    hardware. It is useful for testing sequences, trying out plotting or data
+    collection logic, and understanding how state-scan plugins behave.
 
-    The counter is initialised to ``0.0`` at construction.
+    Each scan set-point is applied immediately, so there is no waiting for
+    settling and the plugin is always considered to be at target. Internally
+    it simply stores the current numeric value, initialised to ``0.0``.
 
     Keyword Parameters:
         parent (QObject | None):

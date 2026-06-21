@@ -129,45 +129,38 @@ def _to_float_or_nan(value: Any) -> float:
 
 
 class SaveCommand(CommandPlugin):
-    """Command plugin that saves current trace or state-control data to disc.
+    """Save traces or collected table data to a text file.
 
-    The save path is given as a Python expression string (``path_expr``) that
-    is evaluated against the sequence engine namespace at runtime using
-    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`.  This
-    allows the path to incorporate namespace variables such as loop counters,
-    timestamps, or instrument settings::
+    Use this command when you want to write the current measurement results to
+    disk from inside a sequence. It can save either:
+
+    * one or more trace datasets from the trace catalogue, or
+    * the accumulated table of data produced by a state-scan or state-sweep
+      plugin
+
+    In the configuration panel you choose the save mode, select which traces
+    or which data source to save, and provide a **path expression**. The path
+    can be a fixed filename or a Python expression that builds a filename from
+    current sequence variables, for example::
 
         "f'data/run_{run_index:03d}.txt'"
 
-    Two save modes are supported via :attr:`save_mode`:
-
-    * **Traces** (``"traces"``, default) — writes trace channel data from the
-      ``_traces`` catalogue.  :attr:`trace_selection` determines which traces
-      are saved; an empty dict saves all available traces.
-    * **Data** (``"data"``) — writes the accumulated
-      :class:`~pandas.DataFrame` from the
-      :class:`~stoner_measurement.plugins.state.StatePlugin`
-      instance named by :attr:`data_source`.
+    By default, existing files are not overwritten. Instead, if the chosen
+    filename already exists, a numeric suffix is added automatically.
 
     The output is a **TDI Format 2.0** tab-delimited text file structured as
     follows:
 
     * The top-left cell (row 0, column 0) contains ``"TDI Format 2.0"``.
-    * The remaining cells of row 0 are column headers — one per data column.
-      In trace mode each header has the form
+    * The remaining cells of row 0 are column headers. In trace mode each
+      header has the form
       ``"{channel_name}:{axis_label} ({axis_units})"``.  In data mode the
       DataFrame index is written first (header ``"index"`` unless the index is
       named), followed by DataFrame column names.
-    * The remaining cells of column 0 (rows 1 onwards) hold flattened
-      key-value metadata derived from two sources:
-
-      1. The ``to_json()`` state of every plugin registered with the engine,
-         formatted as ``{key}{typename}={repr(value)}``.  Nested dicts are
+    * The remaining cells of column 0 (rows 1 onwards) hold flattened metadata
+      from every plugin plus current scalar readings. Nested dicts are
          flattened using ``.`` separators; list items use ``[{index}]``
          notation.
-      2. The current scalar readings from the ``_values`` catalog, formatted
-         identically.
-
     * The remaining cells (rows 1 onwards, columns 1 onwards) contain the
       numerical data from each column.
 
@@ -179,13 +172,14 @@ class SaveCommand(CommandPlugin):
     Attributes:
         path_expr (str):
             Python expression string that evaluates to the file path.
-            Defaults to ``"'data/output.txt'"``.  When the expression evaluates
-            to a relative path it is resolved against the default data directory
-            configured in the application settings.  If no default data
-            directory is set the path is relative to the current working
+            Defaults to ``"'data/output.txt'"``. When the expression evaluates
+            to a relative path it is resolved against the default data
+            directory configured in the application settings. If no default
+            data directory is set the path is relative to the current working
             directory.
         save_mode (str):
-            Either ``"traces"`` (default) or ``"data"``.  Selects whether
+            Either ``"traces"`` (default) or ``"data"``. Selects whether
+            the plugin saves trace data or state-plugin table data.
             trace channels or a state-control plugin's DataFrame are saved.
         trace_selection (dict[str, bool]):
             Per-trace enable flags for trace mode.  Keys are trace catalogue

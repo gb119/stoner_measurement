@@ -185,7 +185,29 @@ class LockInReading:
 
 
 class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-name
-    """Trace plugin for one 6221 source and multiple SR830 lock-ins."""
+    """Measure one swept 6221 waveform parameter with one or more SR830 lock-ins.
+
+    Use this plugin when a Keithley 6221 provides an AC excitation and one or
+    more SR830 lock-in amplifiers measure the response. It is designed for
+    experiments where you want to scan the waveform amplitude, offset, or
+    frequency and record one or more lock-in outputs for each point.
+
+    In the configuration tabs you choose the 6221 resource and waveform
+    settings, common SR830 settings such as time constant and filtering, and
+    then define one or more individual lock-ins with their own labels,
+    resources, output selections, sensitivities, harmonic settings, and other
+    options. Optional automatic sensitivity handling and resistance conversion
+    can also be enabled.
+
+    The scan generator defines the swept values. The plugin returns one trace
+    per configured output channel, using the lock-in labels to build readable
+    channel names.
+
+    For more technical use, the later parts of this class and its attributes
+    document how waveform scan mode, lock-in entries, derived resistance
+    channels, auto-sensitivity, and offset correction are represented in the
+    plugin state.
+    """
 
     _scan_generator_class = ListScanGenerator
     _scan_generator_classes = [FunctionScanGenerator, SteppedScanGenerator, ListScanGenerator]

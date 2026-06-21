@@ -27,28 +27,28 @@ if TYPE_CHECKING:
 
 
 class MagneticFieldMonitorPlugin(MonitorPlugin):
-    """Monitor plugin that reads live parameters from the magnet controller engine.
+    """Publish live magnet-controller readings into the sequence value catalogue.
 
-    On connect, the plugin ensures the magnet controller engine is running and
-    connected to the configured driver. The engine's most recent published
-    state is used for every :meth:`read` call so that no additional hardware
-    traffic is generated beyond the engine's own polling cycle unless
-    :attr:`force_fresh_poll` is enabled.
+    Use this monitor when you want the sequence to have access to live magnet
+    information such as field, current, voltage, ramp rate, heater state, and
+    stability. The selected quantities appear in the sequence value catalogue
+    and can then be displayed, logged, plotted, saved, or used by other
+    plugins.
 
-    The parameters that are reported are configurable via the plugin's
-    settings tab. The user can choose any combination of:
+    In the configuration panel, choose which quantities should be reported.
+    You can enable any combination of:
 
-    * **Field** — current magnetic field (T).
-    * **Target field** — target magnetic field (T).
-    * **Current** — magnet current (A).
-    * **Voltage** — magnet voltage (V).
-    * **Field rate** — estimated rate of change of magnetic field (T/min).
-    * **Heater** — persistent-switch heater state (1.0 or 0.0).
-    * **At target** — whether the field is at target (1.0 or 0.0).
-    * **Stable** — whether the field is stable (1.0 or 0.0).
+    * **Field**
+    * **Target field**
+    * **Current**
+    * **Voltage**
+    * **Field rate**
+    * **Heater**
+    * **At target**
+    * **Stable**
 
-    All selected parameters are exposed both via :meth:`read` /
-    :attr:`last_reading` and as typed accessor methods on the instance itself
+    For more technical use, the selected parameters are exposed both via
+    :meth:`read` / :attr:`last_reading` and as typed accessor methods on the instance itself
     (:meth:`field`, :meth:`target_field`, :meth:`current`, :meth:`voltage`,
     :meth:`field_rate`, :meth:`heater`, :meth:`at_target`, :meth:`stable`) so
     that they can be referenced directly in sequence scripts.

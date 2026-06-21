@@ -35,26 +35,25 @@ def _safe_disconnect(signal: Any, slot: Any) -> None:
 
 
 class StatusCommand(CommandPlugin):
-    """Command plugin that sends a string message to the application status bar.
+    """Update the application status bar with a custom message.
 
-    The status text is given as a Python expression string (``status_expr``)
-    that is evaluated against the sequence engine namespace at runtime using
-    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`.  This
-    allows the message to incorporate live namespace variables::
+    Use this command when you want to show progress or context information to
+    the user while a sequence is running. Typical examples include indicating
+    the current step, the current scan index, or a short description of the
+    stage the sequence is entering.
+
+    In the configuration panel, set the **status expression** to the text you
+    want to appear in the status bar. This can be a fixed string or a Python
+    expression that uses current sequence variables, for example::
 
         "f'Step {step_index} of {total_steps} complete'"
 
-    At runtime :meth:`execute` emits the :attr:`status_message` signal with
-    the resolved string.  The signal is automatically connected to the engine's
-    ``status_changed`` signal when the plugin is attached, which in turn
-    updates the application status bar.
-
-    The :meth:`execute` and :meth:`__call__` methods accept an optional
-    keyword parameter ``status`` that, when provided, overrides the evaluated
-    ``status_expr`` setting.
+    When the step runs, the resolved text is sent to the application's status
+    bar.
 
     Attributes:
         status_expr (str):
+            Python expression string that evaluates to the status text.
             Python expression string that evaluates to the status string.
             Defaults to ``"'Ready'"``.
         status_message (pyqtSignal[str]):
@@ -62,6 +61,9 @@ class StatusCommand(CommandPlugin):
             Automatically connected to the engine's ``status_changed`` signal
             when the plugin is attached to a
             :class:`~stoner_measurement.core.sequence_engine.SequenceEngine`.
+            The :meth:`execute` and :meth:`__call__` methods also accept an
+            optional keyword parameter ``status`` that overrides the evaluated
+            ``status_expr`` for that call.
 
     Keyword Parameters:
         parent (QObject | None):

@@ -19,14 +19,17 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QWidget,
 )
 
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.plugins.command.base import CommandPlugin
 
 
@@ -72,15 +75,23 @@ def _top_level_dirs(root: Path) -> list[str]:
 
 
 class DetailsCommand(CommandPlugin):
-    """Command plugin that records measurement metadata in the sequence script.
+    """Store user, sample, project, and notes information for a measurement.
 
-    :class:`DetailsCommand` stores four metadata fields — *user*, *sample*,
-    *project*, and *notes* — that describe who is performing the measurement,
-    what is being measured, which project it belongs to, and any free-form
-    comments.
+    Use this command near the start of a sequence to record the basic details
+    that identify a run: who is performing it, which sample is being measured,
+    which project it belongs to, and any free-form notes. This information is
+    intended to be filled in from the configuration panel and then reused by
+    later steps such as saving or labelling data.
 
-    Unlike other command plugins, the generated sequence code does **not** call
-    ``{instance_name}()``.  Instead it emits four attribute-assignment
+    In normal use, fill in **User**, **Sample**, and **Project** before
+    running. These are treated as required fields. The **Project** field is
+    pre-populated from top-level folders in the configured default data
+    directory, but you can still type your own value. **Notes** can be used
+    for anything that may help interpret the data later.
+
+    For script-oriented use, this plugin behaves a little differently from
+    most command plugins. The generated sequence code does **not** call
+    ``{instance_name}()``. Instead it emits four attribute-assignment
     statements so that the values are set on the plugin instance in the engine
     namespace::
 
@@ -88,9 +99,6 @@ class DetailsCommand(CommandPlugin):
         details.sample = "Nb_film_001"
         details.project = "NbSC"
         details.notes = "Cooled overnight; base pressure 5e-7 mbar."
-
-    This allows subsequent sequence steps and data-saving plugins to read the
-    metadata directly from the instance (e.g. ``details.sample``).
 
     Attributes:
         user (str):
@@ -103,6 +111,10 @@ class DetailsCommand(CommandPlugin):
             directory (as configured in the application settings).
         notes (str):
             Free-form notes about the measurement.
+
+    This design allows later sequence steps and data-saving plugins to read
+    the metadata directly from the instance, for example
+    ``details.sample`` or ``details.project``.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -121,6 +133,8 @@ class DetailsCommand(CommandPlugin):
         False
     """
 
+    show_validation_error = pyqtSignal(str)
+
     def __init__(self, parent=None) -> None:
         """Initialise with empty metadata fields."""
         super().__init__(parent)
@@ -128,6 +142,14 @@ class DetailsCommand(CommandPlugin):
         self.sample: str = ""
         self.project: str = ""
         self.notes: str = ""
+        self.show_validation_error.connect(
+            self._display_validation_error,
+            type=Qt.ConnectionType.BlockingQueuedConnection,
+        )
+
+    def _display_validation_error(self, message: str) -> None:
+        """Display a blocking validation warning dialog."""
+        QMessageBox.warning(None, "Missing Details", message)
 
     @property
     def name(self) -> str:
@@ -149,6 +171,11 @@ class DetailsCommand(CommandPlugin):
     def execute(self) -> None:
         """Apply the stored metadata to the plugin instance.
 
+        Validates that the required metadata fields :attr:`user`,
+        :attr:`sample`, and :attr:`project` are non-blank.  If any are missing,
+        an alert dialog is shown identifying the missing field names and a
+        :class:`ValueError` is raised to stop sequence execution.
+
         Sets :attr:`user`, :attr:`sample`, :attr:`project`, and :attr:`notes`
         on *self*.  This method is present to satisfy the abstract-method
         contract of :class:`~stoner_measurement.plugins.command.base.CommandPlugin`;
@@ -162,12 +189,29 @@ class DetailsCommand(CommandPlugin):
             >>> from stoner_measurement.plugins.command.details import DetailsCommand
             >>> cmd = DetailsCommand()
             >>> cmd.user = "Alice"
+            >>> cmd.sample = "Nb_001"
+            >>> cmd.project = "NbSC"
             >>> cmd.execute()
             >>> cmd.user
             'Alice'
+
+        Raises:
+            ValueError:
+                If any of ``user``, ``sample``, or ``project`` are blank.
         """
-        # The attributes are already set; this is a no-op that satisfies the
-        # abstract-method requirement and ensures execute() is idempotent.
+        missing_fields = []
+        if not self.user.strip():
+            missing_fields.append("User")
+        if not self.sample.strip():
+            missing_fields.append("Sample")
+        if not self.project.strip():
+            missing_fields.append("Project")
+
+        if missing_fields:
+            field_text = ", ".join(missing_fields)
+            message = f"The following Details fields must be filled in before continuing: {field_text}."
+            self.show_validation_error.emit(message)
+            raise ValueError(message)
 
     def generate_action_code(
         self,

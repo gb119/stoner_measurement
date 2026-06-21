@@ -18,15 +18,16 @@ _OUTPUT_TRACE_KEY = "savgol"
 
 
 class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
-    """Apply Savitzky-Golay smoothing or derivatives to a selected trace column.
+    """Smooth a trace or calculate derivatives using a Savitzky-Golay filter.
 
-    This transform plugin reads one x/y trace pair from either a selected trace
-    channel or advanced expressions, applies ``scipy.signal.savgol_filter``, and
-    outputs either the smoothed signal or one derivative order of the signal.
+    Use this transform when you want to smooth noisy data while preserving
+    overall shape, or when you want to estimate derivatives from evenly
+    sampled or near-evenly sampled trace data.
 
-    Args:
-        parent (QObject | None):
-            Optional Qt parent object supplied by the plugin host.
+    In the configuration tabs, choose the input trace or advanced x/y
+    expressions, then set the filter window length, polynomial order, and the
+    output type. The output can be either the smoothed signal itself or a
+    derivative of selected order.
 
     Attributes:
         trace_key (str):
@@ -34,7 +35,6 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         column_key (str):
             Selected y-column key from the chosen trace.
         advanced_mode (bool):
-            When ``True``, evaluate ``x_expr`` and ``y_expr`` instead of direct
             trace/column selection.
         x_expr (str):
             Expression used to compute x data in advanced mode.

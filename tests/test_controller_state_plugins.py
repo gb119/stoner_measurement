@@ -1,6 +1,7 @@
 """Tests for engine-backed temperature and magnet state plugins."""
 
 from __future__ import annotations
+import math
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -311,3 +312,58 @@ if __name__ == "__main__":
     import pytest
 
     raise SystemExit(pytest.main([__file__, "--pdb"]))
+
+
+def test_magnet_controller_sweep_advances_targets_from_multisegment_generator(monkeypatch, qapp):
+    from stoner_measurement.sweep import MultiSegmentRampSweepGenerator
+
+    engine = _FakeMagnetEngine()
+    engine.connected_driver = object()
+    monkeypatch.setattr(
+        magnet_module,
+        "MagnetControllerEngine",
+        type("FakeMagnetControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MagnetControllerSweepPlugin()
+    plugin.sweep_generator = MultiSegmentRampSweepGenerator(
+        start=0.0,
+        segments=[(1.0, 0.2, True), (2.0, 0.3, True)],
+        poll_seconds=0.0,
+        state_sweep=plugin,
+        parent=plugin,
+    )
+    plugin.connect()
+    plugin.configure()
+    plugin._begin_sweep()
+
+    assert next(plugin) is True
+    assert engine.target_field_calls[-1] == 1.0
+    assert math.isclose(engine.ramp_rate_calls[-1], 12.0)
+
+
+def test_temperature_controller_sweep_advances_targets_from_multisegment_generator(monkeypatch, qapp):
+    from stoner_measurement.sweep import MultiSegmentRampSweepGenerator
+
+    engine = _FakeTemperatureEngine()
+    monkeypatch.setattr(
+        temperature_module,
+        "TemperatureControllerEngine",
+        type("FakeTemperatureControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = TemperatureControllerSweepPlugin()
+    plugin.sweep_generator = MultiSegmentRampSweepGenerator(
+        start=0.0,
+        segments=[(10.0, 2.0, True), (20.0, 3.0, True)],
+        poll_seconds=0.0,
+        state_sweep=plugin,
+        parent=plugin,
+    )
+    plugin.connect()
+    plugin.configure()
+    plugin._begin_sweep()
+
+    assert next(plugin) is True
+    assert engine.setpoint_calls[-1] == (1, 10.0)
+    assert engine.ramp_calls[-1] == (1, 120.0, True)

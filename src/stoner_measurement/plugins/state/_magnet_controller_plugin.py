@@ -174,11 +174,6 @@ class _MagnetControllerSettingsWidget(QWidget):
         form = QFormLayout()
 
         self._ramp_rate_spin = SISpinBox()
-        self._ramp_rate_spin.setOpts(bounds=(0.0, 1e9), decimals=6, suffix="T/min")
-        self._ramp_rate_spin.setValue(self._plugin.ramp_rate)
-        self._ramp_rate_spin.sigValueChanged.connect(self._on_ramp_rate_changed)
-        form.addRow("Ramp rate:", self._ramp_rate_spin)
-
         outputs_row = QHBoxLayout()
         selected = set(_OUTPUT_OPTIONS if self._plugin.report_outputs is None else self._plugin.report_outputs)
         for name in _OUTPUT_OPTIONS:
@@ -194,9 +189,6 @@ class _MagnetControllerSettingsWidget(QWidget):
 
         root.addLayout(form)
         root.addStretch(1)
-
-    def _on_ramp_rate_changed(self, spinbox: SISpinBox) -> None:
-        self._plugin.ramp_rate = max(0.0, float(spinbox.value()))
 
     def _on_outputs_changed(self) -> None:
         selected = [name for name, check in self._output_checks.items() if check.isChecked()]

@@ -39,7 +39,23 @@ _VALID_COLUMN_ROLES = {role for _, role in _ROLE_OPTIONS}
 
 
 class DataFrameTracePlugin(TransformPlugin):
-    """Build a trace from a selected state plugin's collected :class:`pandas.DataFrame`."""
+    """Convert a collected state-plugin data table into a plottable trace.
+
+    Use this transform when a state-scan or state-sweep plugin has built up a
+    data table and you want to turn some or all of its columns into a trace
+    that can be plotted or passed to later transform plugins.
+
+    In the configuration panel, choose the source data-table plugin, decide
+    whether the x-axis should come from the DataFrame index or from one of the
+    columns, and then select which remaining columns should be included in the
+    output trace. You can also assign a role to each selected column, such as
+    main data, x error, y error, or auxiliary data.
+
+    For more technical use, the transform returns a multicolumn
+    :class:`~stoner_measurement.plugins.trace.base.TraceData` object built
+    from the chosen DataFrame, with column roles taken from
+    :attr:`selected_column_roles`.
+    """
 
     def __init__(self, parent=None) -> None:
         """Initialise source and column-selection settings."""

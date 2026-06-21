@@ -18,30 +18,31 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 
 
 class AlertCommand(CommandPlugin):
-    """Command plugin that displays a modal alert dialog during sequence execution.
+    """Show a blocking message box during a sequence.
 
-    The message is given as a Python expression string (``message_expr``) that
-    is evaluated against the sequence engine namespace at runtime using
-    :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`.  This
-    allows the message to incorporate live namespace variables::
+    Use this command when you want the sequence to stop and wait for the user
+    to acknowledge an important message. Typical uses include prompting the
+    user to change a sample, check cryogen levels, confirm a manual wiring
+    change, or simply acknowledge that a particular stage has completed.
+
+    In the configuration panel, set the **message expression** to the text you
+    want to show. This can be a fixed string or a Python expression that
+    builds a message from current sequence variables, for example::
 
         "f'Measurement {run_index} complete — check sample temperature'"
 
-    At runtime :meth:`execute` emits the :attr:`show_alert` signal with the
-    resolved message string.  The signal is connected with
-    :attr:`~PyQt6.QtCore.Qt.ConnectionType.BlockingQueuedConnection` so that
-    the sequence thread blocks until the user clicks *OK*.
-
-    The :meth:`execute` and :meth:`__call__` methods accept an optional
-    keyword parameter ``message`` that, when provided, overrides the evaluated
-    ``message_expr`` setting.
+    When the step runs, an alert dialog is shown and the sequence does not
+    continue until the user presses **OK**.
 
     Attributes:
         message_expr (str):
-            Python expression string that evaluates to the alert message.
-            Defaults to ``"'Alert'"``.
+            Python expression string that evaluates to the alert message at
+            runtime. Defaults to ``"'Alert'"``.
         show_alert (pyqtSignal[str]):
-            Emitted by :meth:`execute` with the resolved message string.
+            Emitted by :meth:`execute` with the resolved message string. The
+            :meth:`execute` and :meth:`__call__` methods also accept an
+            optional keyword parameter ``message`` that, when provided,
+            overrides the evaluated ``message_expr`` setting for that call.
             Connected with
             :attr:`~PyQt6.QtCore.Qt.ConnectionType.BlockingQueuedConnection`
             to :meth:`_display_alert` so that the sequence thread waits for

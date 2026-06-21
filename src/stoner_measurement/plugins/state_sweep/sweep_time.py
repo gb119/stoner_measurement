@@ -12,7 +12,22 @@ from stoner_measurement.sweep import (
 
 
 class SweepTimePlugin(StateSweepPlugin):
-    """State-sweep plugin that sweeps elapsed time."""
+    """Use elapsed time itself as the swept variable.
+
+    Use this plugin when you want a measurement to run as a function of time
+    rather than as a function of a hardware control parameter. It is useful
+    for time traces, relaxation measurements, drift monitoring, or any
+    experiment where repeated data collection should follow a time-based sweep
+    generator.
+
+    In the configuration tabs, choose a sweep generator that defines the time
+    points or time profile. The plugin simply reports elapsed time in seconds;
+    it does not control any external hardware.
+
+    For script-oriented use, the internal state is the elapsed time measured
+    from a monotonic clock, with :meth:`set_state` adjusting the effective
+    start time accordingly.
+    """
 
     _sweep_generator_class = MonitorAndFilterSweepGenerator
     _sweep_generator_classes = [
