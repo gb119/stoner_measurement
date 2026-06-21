@@ -24,21 +24,23 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-import pyqtgraph as pg
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, QSettings
 from stoner_measurement.qt_compat import pyqtSlot
-from qtpy.QtGui import QColor
+from qtpy.QtGui import QColor, QIcon, QPixmap
 from qtpy.QtWidgets import (
     QComboBox,
+    QColorDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QSplitter,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -54,12 +56,18 @@ from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
 )
+from stoner_measurement.ui.plot_widget import PlotWidget
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
     SISpinBox,
     VisaResourceComboBox,
     VisaResourceStatus,
+    load_connection_preferences,
+    restore_preferred_address,
+    selected_transport,
+    set_address_widget_status,
+    show_transport_widget,
 )
 
 logger = logging.getLogger(__name__)
@@ -175,13 +183,15 @@ class MagnetControlPanel(QWidget):
         self._chart_current: list[float] = []
         self._chart_voltage: list[float] = []
         self._chart_heater: list[float] = []
-        self._chart_curves: dict[str, pg.PlotDataItem] = {}
+        self._legend_items: dict[str, QTreeWidgetItem] = {}
         self._chart_duration_min: int = _CHART_DURATIONS[0][0]
 
         # Cached magnet constant for current ↔ field conversion in UI.
         self._magnet_constant: float = 1.0
 
+        self._load_chart_settings()
         self._build_ui()
+        self._load_connection_preferences()
         self._connect_engine_signals()
 
     # ------------------------------------------------------------------
@@ -519,23 +529,26 @@ class MagnetControlPanel(QWidget):
         controls.addWidget(self._btn_clear_chart)
         layout.addLayout(controls)
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        content = QHBoxLayout()
 
-        self._field_plot = pg.PlotWidget(title="Magnetic Field")
-        self._field_plot.setLabel("left", "Field", units="T")
-        self._field_plot.setLabel("bottom", "Time", units="s ago")
-        self._field_plot.addLegend()
-        self._field_plot.showGrid(x=True, y=True, alpha=0.3)
-        splitter.addWidget(self._field_plot)
+        self._chart_widget = PlotWidget(
+            show_axis_controls=False,
+            show_trace_table=False,
+        )
+        self._chart_widget.set_default_axis_labels("Time (s ago)", "Field (T)")
+        self._chart_widget.add_y_axis("electrical", "Current / Voltage")
+        self._chart_widget.add_y_axis("heater", "Heater")
+        content.addWidget(self._chart_widget, stretch=4)
 
-        self._aux_plot = pg.PlotWidget(title="Current / Voltage / Heater")
-        self._aux_plot.setLabel("left", "Value")
-        self._aux_plot.setLabel("bottom", "Time", units="s ago")
-        self._aux_plot.addLegend()
-        self._aux_plot.showGrid(x=True, y=True, alpha=0.3)
-        splitter.addWidget(self._aux_plot)
+        self._legend_tree = QTreeWidget()
+        self._legend_tree.setHeaderLabels(["Trace", "Value"])
+        self._legend_tree.setMinimumWidth(220)
+        self._legend_tree.itemChanged.connect(self._on_legend_item_changed)
+        self._legend_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._legend_tree.customContextMenuRequested.connect(self._on_legend_context_menu)
+        content.addWidget(self._legend_tree, stretch=1)
 
-        layout.addWidget(splitter)
+        layout.addLayout(content)
         return widget
 
     # --- Status bar ---
@@ -558,6 +571,9 @@ class MagnetControlPanel(QWidget):
 
         self._at_target_label = QLabel("At target: —")
         bar_layout.addWidget(self._at_target_label)
+
+        self._stable_label = QLabel("Stable: —")
+        bar_layout.addWidget(self._stable_label)
 
         bar_layout.addStretch()
 
@@ -618,40 +634,15 @@ class MagnetControlPanel(QWidget):
         self._at_target_label.setText(
             f"{_colour_dot(at_colour)} At target: {'yes' if state.at_target else 'no'}"
         )
+        if hasattr(self, "_stable_label"):
+            stable_colour = "#44aa44" if state.stable else "#cc4444"
+            self._stable_label.setText(
+                f"{_colour_dot(stable_colour)} Stable: {'yes' if state.stable else 'no'}"
+            )
 
     # ------------------------------------------------------------------
     # Chart helpers
     # ------------------------------------------------------------------
-
-    def _upsert_chart_curve(
-        self,
-        key: str,
-        xs: list[float],
-        ys: list[float],
-        pen,
-        plot_widget,
-        name: str,
-    ) -> None:
-        """Create or update a named curve on *plot_widget*.
-
-        Args:
-            key (str):
-                Unique curve identifier.
-            xs (list[float]):
-                X-axis data.
-            ys (list[float]):
-                Y-axis data.
-            pen:
-                pyqtgraph pen for new curves.
-            plot_widget:
-                Plot item to add new curves to.
-            name (str):
-                Legend name for new curves.
-        """
-        if key not in self._chart_curves:
-            self._chart_curves[key] = plot_widget.plot(xs, ys, pen=pen, name=name)
-        else:
-            self._chart_curves[key].setData(xs, ys)
 
     def _update_chart(self, state: MagnetEngineState, now_ts: float) -> None:
         """Append the latest readings to chart buffers and redraw curves.
@@ -684,51 +675,203 @@ class MagnetControlPanel(QWidget):
 
         xs = [t - now_ts for t in self._chart_times]
 
-        self._upsert_chart_curve(
-            "field",
-            xs,
-            self._chart_field,
-            pg.mkPen(color=_FIELD_COLOUR, width=2),
-            self._field_plot,
-            "Field (T)",
-        )
+        self._chart_widget.set_trace("Field", xs, self._chart_field)
+        self._chart_widget.assign_trace_axes("Field", y_axis="left")
+        self._chart_widget.set_trace_style("Field", colour=_FIELD_COLOUR.name())
+        self._update_legend_value("Field", f"{field_val:.4f} T")
 
         # Target field as a horizontal dashed line.
         if state.target_field is not None and xs:
             target_ys = [state.target_field] * len(xs)
-            self._upsert_chart_curve(
-                "target",
-                xs,
-                target_ys,
-                pg.mkPen(color=_TARGET_COLOUR, width=1, style=Qt.PenStyle.DashLine),
-                self._field_plot,
+            self._chart_widget.set_trace("Target", xs, target_ys)
+            self._chart_widget.assign_trace_axes("Target", y_axis="left")
+            self._chart_widget.set_trace_style(
                 "Target",
+                colour=_TARGET_COLOUR.name(),
+                line_style="dash",
+            )
+            self._update_legend_value("Target", f"{state.target_field:.4f} T")
+
+        self._chart_widget.set_trace("Current", xs, self._chart_current)
+        self._chart_widget.assign_trace_axes("Current", y_axis="electrical")
+        self._chart_widget.set_trace_style("Current", colour=_CURRENT_COLOUR.name())
+        self._update_legend_value("Current", f"{reading.current:.4f} A")
+
+        self._chart_widget.set_trace("Voltage", xs, self._chart_voltage)
+        self._chart_widget.assign_trace_axes("Voltage", y_axis="electrical")
+        self._chart_widget.set_trace_style("Voltage", colour=_VOLTAGE_COLOUR.name())
+        self._update_legend_value(
+            "Voltage",
+            f"{(reading.voltage if reading.voltage is not None else 0.0):.4f} V",
+        )
+
+        self._chart_widget.set_trace("Heater", xs, self._chart_heater)
+        self._chart_widget.assign_trace_axes("Heater", y_axis="heater")
+        self._chart_widget.set_trace_style(
+            "Heater",
+            colour=_HEATER_COLOUR.name(),
+            line_style="dot",
+        )
+        self._update_legend_value(
+            "Heater",
+            "On" if reading.heater_on else "Off",
+        )
+
+    def _update_legend_value(self, trace: str, value: str) -> None:
+        """Create or update a live-value legend entry."""
+        item = self._legend_items.get(trace)
+        if item is None:
+            item = QTreeWidgetItem([trace, value])
+            item.setData(0, Qt.ItemDataRole.UserRole, trace)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Checked)
+
+            style = self._chart_widget.trace_style(trace)
+            colour = QColor(style.get("colour", "#808080"))
+            pixmap = QPixmap(12, 12)
+            pixmap.fill(colour)
+            item.setIcon(0, QIcon(pixmap))
+
+            self._legend_tree.addTopLevelItem(item)
+            self._legend_items[trace] = item
+            self._restore_trace_settings(trace, item)
+        else:
+            item.setText(1, value)
+
+    def _on_legend_item_changed(self, item, _column: int) -> None:
+        """Show/hide traces from legend checkboxes."""
+        trace = item.data(0, Qt.ItemDataRole.UserRole)
+        if not trace:
+            return
+        visible = item.checkState(0) == Qt.CheckState.Checked
+        self._chart_widget.set_trace_visible(trace, visible)
+        self._save_chart_settings()
+
+    def _on_legend_context_menu(self, pos) -> None:
+        """Show a trace styling context menu."""
+        item = self._legend_tree.itemAt(pos)
+        if item is None:
+            return
+
+        trace = item.data(0, Qt.ItemDataRole.UserRole)
+        if not trace:
+            return
+
+        menu = QMenu(self)
+
+        colour_action = menu.addAction("Colour…")
+
+        line_menu = menu.addMenu("Line Style")
+        line_actions = {
+            line_menu.addAction("Solid"): "solid",
+            line_menu.addAction("Dash"): "dash",
+            line_menu.addAction("Dot"): "dot",
+            line_menu.addAction("Dash-Dot"): "dash-dot",
+        }
+
+        marker_menu = menu.addMenu("Marker")
+        marker_actions = {
+            marker_menu.addAction("None"): "none",
+            marker_menu.addAction("Circle"): "circle",
+            marker_menu.addAction("Square"): "square",
+            marker_menu.addAction("Triangle"): "triangle",
+            marker_menu.addAction("Diamond"): "diamond",
+            marker_menu.addAction("Cross"): "cross",
+        }
+
+        action = menu.exec(self._legend_tree.viewport().mapToGlobal(pos))
+        if action is None:
+            return
+
+        if action == colour_action:
+            current = self._chart_widget.trace_style(trace).get("colour", "#808080")
+            selected = QColorDialog.getColor(QColor(current), self)
+            if selected.isValid():
+                self._chart_widget.set_trace_style(trace, colour=selected.name())
+                pixmap = QPixmap(12, 12)
+                pixmap.fill(selected)
+                item.setIcon(0, QIcon(pixmap))
+                self._save_chart_settings()
+            return
+
+        if action in line_actions:
+            self._chart_widget.set_trace_style(trace, line_style=line_actions[action])
+            self._save_chart_settings()
+            return
+
+        if action in marker_actions:
+            self._chart_widget.set_trace_style(trace, point_style=marker_actions[action])
+            self._save_chart_settings()
+
+    def _save_chart_settings(self) -> None:
+        """Persist chart preferences."""
+        settings = QSettings()
+
+        for trace, item in self._legend_items.items():
+            settings.setValue(
+                f"magnetPanel/chart/traceVisibility/{trace}",
+                item.checkState(0) == Qt.CheckState.Checked,
             )
 
-        self._upsert_chart_curve(
-            "current",
-            xs,
-            self._chart_current,
-            pg.mkPen(color=_CURRENT_COLOUR, width=2),
-            self._aux_plot,
-            "Current (A)",
+            style = self._chart_widget.trace_style(trace)
+            for key, value in style.items():
+                settings.setValue(
+                    f"magnetPanel/chart/traceStyle/{trace}/{key}",
+                    value,
+                )
+
+    def _load_chart_settings(self) -> None:
+        """Restore persisted chart preferences."""
+
+    def _restore_trace_settings(self, trace: str, item: QTreeWidgetItem) -> None:
+        """Restore persisted visibility and style for a trace."""
+        settings = QSettings()
+
+        visible = settings.value(
+            f"magnetPanel/chart/traceVisibility/{trace}",
+            True,
+            type=bool,
         )
-        self._upsert_chart_curve(
-            "voltage",
-            xs,
-            self._chart_voltage,
-            pg.mkPen(color=_VOLTAGE_COLOUR, width=2),
-            self._aux_plot,
-            "Voltage (V)",
+
+        item.setCheckState(
+            0,
+            Qt.CheckState.Checked if visible else Qt.CheckState.Unchecked,
         )
-        self._upsert_chart_curve(
-            "heater",
-            xs,
-            self._chart_heater,
-            pg.mkPen(color=_HEATER_COLOUR, width=1, style=Qt.PenStyle.DotLine),
-            self._aux_plot,
-            "Heater",
+        self._chart_widget.set_trace_visible(trace, visible)
+
+        colour = settings.value(
+            f"magnetPanel/chart/traceStyle/{trace}/colour",
+            None,
+            type=str,
         )
+        line_style = settings.value(
+            f"magnetPanel/chart/traceStyle/{trace}/line",
+            None,
+            type=str,
+        )
+        point_style = settings.value(
+            f"magnetPanel/chart/traceStyle/{trace}/point",
+            None,
+            type=str,
+        )
+
+        colour = colour or None
+        line_style = line_style or None
+        point_style = point_style or None
+
+        if any(v is not None for v in (colour, line_style, point_style)):
+            self._chart_widget.set_trace_style(
+                trace,
+                colour=colour,
+                line_style=line_style,
+                point_style=point_style,
+            )
+
+            style = self._chart_widget.trace_style(trace)
+            colour_name = style.get("colour", "#808080")
+            pixmap = QPixmap(12, 12)
+            pixmap.fill(QColor(colour_name))
+            item.setIcon(0, QIcon(pixmap))
 
     # ------------------------------------------------------------------
     # Connection tab slots
@@ -743,6 +886,12 @@ class MagnetControlPanel(QWidget):
         if not mc_drivers:
             self._driver_combo.addItem("(no drivers found)", None)
 
+    def _load_connection_preferences(self) -> None:
+        load_connection_preferences(self)
+
+    def _restore_preferred_address(self) -> None:
+        restore_preferred_address(self)
+
     @pyqtSlot(int)
     def _on_transport_changed(self, index: int) -> None:
         """Show the address fields for the selected transport.
@@ -751,19 +900,7 @@ class MagnetControlPanel(QWidget):
             index (int):
                 Index of the selected transport in the transport combo box.
         """
-        for w in (
-            self._serial_form_widget,
-            self._gpib_form_widget,
-            self._ethernet_form_widget,
-            self._null_form_widget,
-        ):
-            w.hide()
-        [
-            self._serial_form_widget,
-            self._gpib_form_widget,
-            self._ethernet_form_widget,
-            self._null_form_widget,
-        ][index].show()
+        show_transport_widget(self, index)
 
     @pyqtSlot()
     def _on_connect(self) -> None:
@@ -775,7 +912,11 @@ class MagnetControlPanel(QWidget):
         self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTING)
 
         try:
-            transport_name, address = self._selected_transport(transport_index)
+            transport_name, address = selected_transport(self, transport_index)
+            self._engine.preferred_driver_name = self._driver_combo.currentText()
+            self._engine.preferred_transport_name = transport_name
+            self._engine.preferred_address = address
+            self._engine.save_configuration()
             self._engine.connect_driver(
                 driver_name=self._driver_combo.currentText(),
                 transport_name=transport_name,
@@ -795,18 +936,7 @@ class MagnetControlPanel(QWidget):
             logger.exception("Failed to apply initial magnet limits after connection")
 
     def _set_address_widget_status(self, transport_index: int, status: VisaResourceStatus) -> None:
-        """Update connection-status colour on the active address widget.
-
-        Args:
-            transport_index (int):
-                Index of the currently selected transport.
-            status (VisaResourceStatus):
-                Status to apply.
-        """
-        if transport_index == 0:
-            self._serial_port_combo.set_status(status)
-        elif transport_index == 1:
-            self._gpib_resource_combo.set_status(status)
+        set_address_widget_status(self, transport_index, status)
 
     def _selected_transport(self, index: int) -> tuple[str, str]:
         """Return selected transport type and address string.
@@ -819,18 +949,7 @@ class MagnetControlPanel(QWidget):
             (tuple[str, str]):
                 Selected transport name and address.
         """
-        if index == 0:  # Serial
-            port = self._serial_port_combo.current_resource() or "/dev/ttyUSB0"
-            baud = self._serial_baud_combo.currentData()
-            return "Serial", f"port={port};baud={baud}"
-        if index == 1:  # GPIB
-            resource = self._gpib_resource_combo.current_resource() or "GPIB0::2::INSTR"
-            return "GPIB", resource
-        if index == 2:  # Ethernet
-            host = self._eth_host_edit.text().strip() or "localhost"
-            port = self._eth_port_spin.value()
-            return "Ethernet", f"{host}:{port}"
-        return "Null", ""
+        return selected_transport(self, index)
 
     @pyqtSlot()
     def _on_disconnect(self) -> None:
@@ -1032,12 +1151,8 @@ class MagnetControlPanel(QWidget):
         self._chart_current.clear()
         self._chart_voltage.clear()
         self._chart_heater.clear()
-        for key, curve in self._chart_curves.items():
-            try:
-                if key in ("current", "voltage", "heater"):
-                    self._aux_plot.removeItem(curve)
-                else:
-                    self._field_plot.removeItem(curve)
-            except RuntimeError:
-                pass
-        self._chart_curves.clear()
+        self._legend_items.clear()
+        if hasattr(self, "_legend_tree"):
+            self._legend_tree.clear()
+        if hasattr(self, "_chart_widget"):
+            self._chart_widget.clear_all()

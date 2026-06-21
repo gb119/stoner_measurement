@@ -16,6 +16,7 @@ from stoner_measurement.instruments import (
     MagnetController,
     Nanovoltmeter,
     SourceMeter,
+    TemperatureController,
 )
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.transport import NullTransport
@@ -39,6 +40,8 @@ class TestInstrumentDriverManager:
         manager = InstrumentDriverManager()
         manager.discover()
         discovered = manager.driver_classes
+        assert "SimulatedTemperatureController" in discovered
+        assert "SimulatedMagnetController" in discovered
         assert "Keithley2400" in discovered
         assert "Keithley2410" in discovered
         assert "Keithley2450" in discovered
@@ -68,6 +71,7 @@ class TestInstrumentDriverManager:
         manager = InstrumentDriverManager()
         manager.discover()
         magnets = manager.drivers_by_type(MagnetController)
+        assert "SimulatedMagnetController" in magnets
         assert "Lakeshore625" in magnets
         assert "OxfordIPS120" in magnets
         assert "OxfordMercuryIPS" in magnets
@@ -124,6 +128,93 @@ class TestInstrumentDriverManager:
         assert "SRS830" in lockins
         assert "LakeshoreM81LockIn" in lockins
         assert "Keithley2000" not in lockins
+
+    def test_drivers_by_type_filters_temperature_controllers(self):
+        manager = InstrumentDriverManager()
+        manager.discover()
+        controllers = manager.drivers_by_type(TemperatureController)
+        assert "SimulatedTemperatureController" in controllers
+        assert "Lakeshore336" in controllers
+
+
+class TestSimulatedDrivers:
+    def test_simulated_temperature_controller_moves_towards_setpoint(self):
+        from stoner_measurement.instruments.simulated import SimulatedTemperatureController
+
+        controller = SimulatedTemperatureController()
+        controller.connect()
+
+        start = controller.get_temperature("A")
+        controller.set_setpoint(1, start + 100.0)
+
+        controller._last_update -= 10.0  # pylint: disable=protected-access
+
+        later = controller.get_temperature("A")
+
+        assert later > start
+        assert later < start + 100.0
+
+    def test_simulated_temperature_controller_reports_ramp_state(self):
+        from stoner_measurement.instruments.simulated import SimulatedTemperatureController
+        from stoner_measurement.instruments.temperature_controller import RampState
+
+        controller = SimulatedTemperatureController()
+        controller.connect()
+
+        controller.set_setpoint(1, 350.0)
+
+        assert controller.get_ramp_state(1) is RampState.RAMPING
+
+        controller._last_update -= 400.0  # pylint: disable=protected-access
+
+        assert controller.get_ramp_state(1) is RampState.IDLE
+
+    def test_simulated_magnet_controller_ramps_towards_target(self):
+        from stoner_measurement.instruments.magnet_controller import MagnetState
+        from stoner_measurement.instruments.simulated import SimulatedMagnetController
+
+        controller = SimulatedMagnetController()
+        controller.connect()
+
+        controller.set_target_current(10.0)
+        controller._last_update -= 2.0  # pylint: disable=protected-access
+
+        status = controller.status
+
+        assert status.state is MagnetState.RAMPING
+        assert 0.0 < status.current < 10.0
+
+    def test_simulated_magnet_controller_reaches_target(self):
+        from stoner_measurement.instruments.magnet_controller import MagnetState
+        from stoner_measurement.instruments.simulated import SimulatedMagnetController
+
+        controller = SimulatedMagnetController()
+        controller.connect()
+
+        controller.set_target_current(10.0)
+        controller._last_update -= 20.0  # pylint: disable=protected-access
+
+        status = controller.status
+
+        assert status.state is MagnetState.AT_TARGET
+        assert status.at_target is True
+        assert status.voltage == pytest.approx(0.0)
+
+    def test_simulated_magnet_controller_pause_reports_standby(self):
+        from stoner_measurement.instruments.magnet_controller import MagnetState
+        from stoner_measurement.instruments.simulated import SimulatedMagnetController
+
+        controller = SimulatedMagnetController()
+        controller.connect()
+
+        controller.set_target_current(10.0)
+        controller.pause_ramp()
+
+        status = controller.status
+
+        assert status.state is MagnetState.STANDBY
+        assert status.at_target is False
+        assert status.voltage == pytest.approx(0.0)
 
     def test_discover_loads_third_party_entry_points(self, monkeypatch):
         fake_eps = [_FakeEntryPoint(name="third_party", target=_ThirdPartyInstrument)]

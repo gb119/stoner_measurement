@@ -34,6 +34,10 @@ from stoner_measurement.instruments.transport import (
     NullTransport,
     SerialTransport,
 )
+from stoner_measurement.magnet_control.config import (
+    load_magnet_controller_config,
+    save_magnet_controller_config,
+)
 from stoner_measurement.magnet_control.pubsub import MagnetPublisher
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
@@ -108,6 +112,10 @@ class MagnetControllerEngine(QObject):
         self._connected_driver_name: str | None = None
         self._connected_transport_name: str | None = None
         self._connected_address: str | None = None
+
+        self._preferred_driver_name: str = ""
+        self._preferred_transport_name: str = "Null (test)"
+        self._preferred_address: str = ""
         self._status: MagnetEngineStatus = MagnetEngineStatus.DISCONNECTED
         self._stability_config: MagnetStabilityConfig = MagnetStabilityConfig()
 
@@ -115,6 +123,7 @@ class MagnetControllerEngine(QObject):
         self._history: deque[tuple[datetime, float]] = deque(maxlen=_HISTORY_SIZE)
 
         # Stability tracking.
+        self._is_at_target: bool = False
         self._at_target_since: datetime | None = None
         self._unstable_since: datetime | None = None
         self._stable: bool = False
@@ -129,6 +138,40 @@ class MagnetControllerEngine(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
+        self._apply_configuration(load_magnet_controller_config())
+
+    def _apply_configuration(self, config: dict) -> None:
+        connection = config.get("connection")
+        if isinstance(connection, dict):
+            self._preferred_driver_name = str(connection.get("driver", ""))
+            self._preferred_transport_name = str(connection.get("transport", "Null (test)"))
+            self._preferred_address = str(connection.get("address", ""))
+
+        poll_interval = config.get("poll_interval_ms")
+        if isinstance(poll_interval, int):
+            self.set_poll_interval(poll_interval)
+
+        stability = config.get("stability")
+        if isinstance(stability, dict):
+            self.set_stability_config(
+                MagnetStabilityConfig(
+                    tolerance_t=float(
+                        stability.get("tolerance_t", self._stability_config.tolerance_t)
+                    ),
+                    window_s=float(
+                        stability.get("window_s", self._stability_config.window_s)
+                    ),
+                    min_rate=float(
+                        stability.get("min_rate", self._stability_config.min_rate)
+                    ),
+                    unstable_holdoff_s=float(
+                        stability.get(
+                            "unstable_holdoff_s",
+                            self._stability_config.unstable_holdoff_s,
+                        )
+                    ),
+                )
+            )
 
     # ------------------------------------------------------------------
     # Singleton access
@@ -208,6 +251,7 @@ class MagnetControllerEngine(QObject):
         self._driver = driver
         self._connected_driver_name = type(driver).__name__
         self._history.clear()
+        self._is_at_target = False
         self._at_target_since = None
         self._unstable_since = None
         self._stable = False
@@ -368,6 +412,7 @@ class MagnetControllerEngine(QObject):
         self._connected_transport_name = None
         self._connected_address = None
         self._history.clear()
+        self._is_at_target = False
         self._at_target_since = None
         self._unstable_since = None
         self._stable = False
@@ -405,6 +450,49 @@ class MagnetControllerEngine(QObject):
     def connected_address(self) -> str | None:
         """Return the active connection address when known."""
         return self._connected_address
+
+    @property
+    def preferred_driver_name(self) -> str:
+        return self._preferred_driver_name
+
+    @preferred_driver_name.setter
+    def preferred_driver_name(self, value: str) -> None:
+        self._preferred_driver_name = value
+
+    @property
+    def preferred_transport_name(self) -> str:
+        return self._preferred_transport_name
+
+    @preferred_transport_name.setter
+    def preferred_transport_name(self, value: str) -> None:
+        self._preferred_transport_name = value
+
+    @property
+    def preferred_address(self) -> str:
+        return self._preferred_address
+
+    @preferred_address.setter
+    def preferred_address(self, value: str) -> None:
+        self._preferred_address = value
+
+    def configuration_dict(self) -> dict:
+        return {
+            "poll_interval_ms": self._timer.interval(),
+            "connection": {
+                "driver": self._preferred_driver_name,
+                "transport": self._preferred_transport_name,
+                "address": self._preferred_address,
+            },
+            "stability": {
+                "tolerance_t": self._stability_config.tolerance_t,
+                "window_s": self._stability_config.window_s,
+                "min_rate": self._stability_config.min_rate,
+                "unstable_holdoff_s": self._stability_config.unstable_holdoff_s,
+            },
+        }
+
+    def save_configuration(self):
+        return save_magnet_controller_config(self.configuration_dict())
 
     def set_target_field(self, field: float) -> None:
         """Set the target magnetic field.
@@ -639,6 +727,8 @@ class MagnetControllerEngine(QObject):
             target_current=self._target_current,
             ramp_rate_field=self._ramp_rate_field,
             ramp_rate_current=self._ramp_rate_current,
+            at_target=self._is_at_target,
+            stable=self._stable,
             engine_status=self._status,
         )
 
@@ -748,7 +838,8 @@ class MagnetControllerEngine(QObject):
             ramp_rate_field=self._ramp_rate_field,
             ramp_rate_current=self._ramp_rate_current,
             magnet_constant=magnet_constant,
-            at_target=self._stable,
+            at_target=self._is_at_target,
+            stable=self._stable,
             engine_status=MagnetEngineStatus.POLLING,
         )
 
@@ -763,11 +854,13 @@ class MagnetControllerEngine(QObject):
         """
         cfg = self._stability_config
         if field is None or self._target_field is None:
+            self._is_at_target = False
             self._at_target_since = None
             self._try_clear_stable(now, cfg)
             return
 
         currently_at = abs(field - self._target_field) < cfg.tolerance_t
+        self._is_at_target = currently_at
         field_rate = _compute_rate(self._history)
 
         if currently_at:

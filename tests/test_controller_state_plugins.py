@@ -165,7 +165,7 @@ class _FakeTemperatureEngine:
 
 def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
     engine = _FakeMagnetEngine()
-    monkeypatch.setattr(magnet_module, "InstrumentDriverManager", _manager_factory("FakeMagnet"))
+    engine.connected_driver = object()
     monkeypatch.setattr(
         magnet_module,
         "MagnetControllerEngine",
@@ -177,7 +177,7 @@ def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
     plugin.connect()
     plugin.set_state(1.25)
 
-    assert engine.connect_calls == [("FakeMagnet", "Null (test)", "")]
+    assert engine.connect_calls == []
     assert engine.ramp_rate_calls[-1] == plugin.ramp_rate
     assert engine.ramp_to_field_calls == [1.25]
     assert plugin.get_state() == 0.75
@@ -193,7 +193,7 @@ def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
 
 def test_magnet_controller_sweep_plugin_serialises(monkeypatch, qapp):
     engine = _FakeMagnetEngine()
-    monkeypatch.setattr(magnet_module, "InstrumentDriverManager", _manager_factory("FakeMagnet"))
+    engine.connected_driver = object()
     monkeypatch.setattr(
         magnet_module,
         "MagnetControllerEngine",
@@ -274,9 +274,9 @@ def test_temperature_controller_sweep_plugin_round_trips(monkeypatch, qapp):
     }
 
 
-def test_magnet_controller_plugin_reconnects_when_transport_settings_change(monkeypatch, qapp):
+def test_magnet_controller_plugin_requires_existing_engine_connection(monkeypatch, qapp):
     engine = _FakeMagnetEngine()
-    monkeypatch.setattr(magnet_module, "InstrumentDriverManager", _manager_factory("FakeMagnet"))
+    engine.connected_driver = None
     monkeypatch.setattr(
         magnet_module,
         "MagnetControllerEngine",
@@ -284,17 +284,11 @@ def test_magnet_controller_plugin_reconnects_when_transport_settings_change(monk
     )
 
     plugin = MagnetControllerScanPlugin()
-    plugin.transport_name = "Null (test)"
-    plugin.address = ""
-    plugin.connect()
-    plugin.transport_name = "Ethernet"
-    plugin.address = "localhost:7020"
-    plugin.connect()
 
-    assert engine.connect_calls == [
-        ("FakeMagnet", "Null (test)", ""),
-        ("FakeMagnet", "Ethernet", "localhost:7020"),
-    ]
+    import pytest
+
+    with pytest.raises(RuntimeError, match="No magnet controller is connected"):
+        plugin.connect()
 
 
 def test_temperature_controller_plugin_requires_existing_engine_connection(monkeypatch, qapp):

@@ -16,6 +16,13 @@ from stoner_measurement.ui.widgets.visa_resource_widget import (
     VisaResourceStatus,
     list_visa_resources,
 )
+from stoner_measurement.ui.widgets.controller_connection import (
+    load_connection_preferences,
+    restore_preferred_address,
+    selected_transport,
+    set_address_widget_status,
+    show_transport_widget,
+)
 
 __all__ = [
     "FILTER_ALL",
@@ -24,6 +31,11 @@ __all__ = [
     "PercentSliderWidget",
     "SIComboBox",
     "SISpinBox",
+    "load_connection_preferences",
+    "restore_preferred_address",
+    "selected_transport",
+    "set_address_widget_status",
+    "show_transport_widget",
     "VisaInterfaceType",
     "VisaResourceComboBox",
     "VisaResourceStatus",

@@ -23,6 +23,14 @@ Closing the window only hides it; the engine keeps running.
 
 from __future__ import annotations
 
+from stoner_measurement.ui.widgets import (
+    load_connection_preferences,
+    restore_preferred_address,
+    selected_transport,
+    set_address_widget_status,
+    show_transport_widget,
+)
+
 import json
 import logging
 from datetime import UTC, datetime
@@ -48,7 +56,6 @@ from qtpy.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -61,8 +68,6 @@ from qtpy.QtWidgets import (
 from stoner_measurement.instruments.addressing import (
     DEFAULT_ETHERNET_HOST,
     DEFAULT_ETHERNET_PORT,
-    parse_ethernet_address,
-    parse_serial_address,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.temperature_controller import (
@@ -853,46 +858,10 @@ class TemperatureControlPanel(QWidget):
             self._driver_combo.addItem("(no drivers found)", None)
 
     def _load_connection_preferences(self) -> None:
-        """Initialise connection widgets from engine preferences."""
-        driver = self._engine.preferred_driver_name
-        if driver:
-            index = self._driver_combo.findText(driver)
-            if index >= 0:
-                self._driver_combo.setCurrentIndex(index)
-
-        transport = self._engine.preferred_transport_name
-        index = self._transport_combo.findText(transport)
-        if index >= 0:
-            self._transport_combo.setCurrentIndex(index)
-
-        self._restore_preferred_address()
+        load_connection_preferences(self)
 
     def _restore_preferred_address(self) -> None:
-        """Restore transport-specific address widgets from engine preferences."""
-        transport = self._engine.preferred_transport_name
-        address = self._engine.preferred_address
-
-        if not address:
-            return
-
-        if transport == "Serial":
-            try:
-                port, baud = parse_serial_address(address)
-            except ValueError:
-                return
-            self._serial_port_combo.set_resource(port)
-            index = self._serial_baud_combo.findData(baud)
-            if index >= 0:
-                self._serial_baud_combo.setCurrentIndex(index)
-        elif transport == "GPIB":
-            self._gpib_resource_combo.set_resource(address)
-        elif transport == "Ethernet":
-            try:
-                host, port = parse_ethernet_address(address)
-            except ValueError:
-                return
-            self._eth_host_edit.setText(host)
-            self._eth_port_spin.setValue(port)
+        restore_preferred_address(self)
 
     @pyqtSlot(int)
     def _on_transport_changed(self, index: int) -> None:
@@ -902,19 +871,7 @@ class TemperatureControlPanel(QWidget):
             index (int):
                 Index of the selected transport in the transport combo box.
         """
-        for w in (
-            self._serial_form_widget,
-            self._gpib_form_widget,
-            self._ethernet_form_widget,
-            self._null_form_widget,
-        ):
-            w.hide()
-        [
-            self._serial_form_widget,
-            self._gpib_form_widget,
-            self._ethernet_form_widget,
-            self._null_form_widget,
-        ][index].show()
+        show_transport_widget(self, index)
 
     @pyqtSlot()
     def _on_connect(self) -> None:
@@ -926,7 +883,7 @@ class TemperatureControlPanel(QWidget):
         self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTING)
 
         try:
-            transport_name, address = self._selected_transport(transport_index)
+            transport_name, address = selected_transport(self, transport_index)
             self._engine.preferred_driver_name = self._driver_combo.currentText()
             self._engine.preferred_transport_name = transport_name
             self._engine.preferred_address = address
@@ -980,10 +937,7 @@ class TemperatureControlPanel(QWidget):
             status (VisaResourceStatus):
                 Status to apply.
         """
-        if transport_index == 0:
-            self._serial_port_combo.set_status(status)
-        elif transport_index == 1:
-            self._gpib_resource_combo.set_status(status)
+        set_address_widget_status(self, transport_index, status)
 
     def _selected_transport(self, index: int) -> tuple[str, str]:
         """Return selected transport type and address string.
@@ -996,18 +950,7 @@ class TemperatureControlPanel(QWidget):
             (tuple[str, str]):
                 Selected transport name and address.
         """
-        if index == 0:  # Serial
-            port = self._serial_port_combo.current_resource() or "/dev/ttyUSB0"
-            baud = self._serial_baud_combo.currentData()
-            return "Serial", f"port={port};baud={baud}"
-        if index == 1:  # GPIB
-            resource = self._gpib_resource_combo.current_resource() or "GPIB0::2::INSTR"
-            return "GPIB", resource
-        if index == 2:  # Ethernet
-            host = self._eth_host_edit.text().strip() or "localhost"
-            port = self._eth_port_spin.value()
-            return "Ethernet", f"{host}:{port}"
-        return "Null", ""
+        return selected_transport(self, index)
 
     @pyqtSlot()
     def _on_disconnect(self) -> None:
@@ -1136,7 +1079,7 @@ class TemperatureControlPanel(QWidget):
         self._rate_source_channel = self._rate_source_combo.itemData(index)
         self._save_chart_settings()
 
-    def _on_legend_item_changed(self, item, column: int) -> None:
+    def _on_legend_item_changed(self, item, _column: int) -> None:
         """Show/hide traces from legend checkboxes."""
         trace = item.data(0, Qt.ItemDataRole.UserRole)
         if not trace:
@@ -2224,8 +2167,8 @@ class _LoopControlGroup(QGroupBox):
         heater_output: float,
         mode,
         *,
-        heater_range: int | None = None,
-        input_channel: str | None = None,
+        _heater_range: int | None = None,
+        _input_channel: str | None = None,
     ) -> None:
         """Refresh live-readback labels from the engine polling state.
 

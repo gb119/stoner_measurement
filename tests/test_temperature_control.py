@@ -1153,6 +1153,46 @@ class TestEngineCalibrationCurveNames:
         engine.shutdown()
 
 
+class TestSimulatedTemperatureControllerIntegration:
+    def test_engine_reads_simulated_temperature_controller(self, qapp):
+        from stoner_measurement.instruments.simulated import (
+            SimulatedTemperatureController,
+        )
+
+        engine = TemperatureControllerEngine()
+        driver = SimulatedTemperatureController()
+
+        engine.connect_instrument(driver)
+
+        state = engine.read_controller_state()
+
+        assert state is not None
+        assert "A" in state.readings
+        assert 250.0 < state.readings["A"].value < 350.0
+        assert 1 in state.setpoints
+
+        engine.shutdown()
+
+    def test_engine_observes_simulated_temperature_change(self, qapp):
+        from stoner_measurement.instruments.simulated import (
+            SimulatedTemperatureController,
+        )
+
+        engine = TemperatureControllerEngine()
+        driver = SimulatedTemperatureController()
+
+        engine.connect_instrument(driver)
+
+        first = engine.read_controller_state()
+        driver.set_setpoint(1, 400.0)
+        driver._last_update -= 15.0  # pylint: disable=protected-access
+        second = engine.read_controller_state()
+
+        assert second.readings["A"].value > first.readings["A"].value
+
+        engine.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
 

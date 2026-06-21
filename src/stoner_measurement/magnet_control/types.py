@@ -115,7 +115,11 @@ class MagnetEngineState:
         magnet_constant (float | None):
             Magnet constant in tesla per amp, or ``None`` if not configured.
         at_target (bool):
-            ``True`` when the output is at the programmed target.
+            ``True`` when the current field is within the configured target
+            tolerance.
+        stable (bool):
+            ``True`` when the field has remained at target for the configured
+            stability window with an acceptably low rate of change.
         engine_status (MagnetEngineStatus):
             Current operational status of the engine.
 
@@ -137,6 +141,7 @@ class MagnetEngineState:
     ramp_rate_current: float | None = None
     magnet_constant: float | None = None
     at_target: bool = False
+    stable: bool = False
     engine_status: MagnetEngineStatus = field(default=MagnetEngineStatus.DISCONNECTED)
 
 

@@ -1,10 +1,10 @@
-"""Helpers for loading temperature-controller engine configuration."""
+"""Helpers for loading magnet-controller engine configuration."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
-from datetime import UTC, datetime
 from typing import Any
 
 import platformdirs
@@ -17,22 +17,19 @@ _MAX_CONFIG_BACKUPS = 20
 
 
 def machine_config_path() -> Path:
-    """Return the per-machine temperature-controller config path."""
     root = Path(platformdirs.user_config_dir("stoner_measurement"))
-    return root / "temperature_controller.yaml"
+    return root / "magnet_controller.yaml"
 
 
-def load_temperature_controller_config() -> dict[str, Any]:
-    """Load merged bundled and per-machine engine configuration."""
+def load_magnet_controller_config() -> dict[str, Any]:
     bundled = load_yaml_mapping(
-        resources.files(_BUNDLED_CONFIG_PACKAGE).joinpath("temperature_controller.yaml")
+        resources.files(_BUNDLED_CONFIG_PACKAGE).joinpath("magnet_controller.yaml")
     )
     machine = load_yaml_mapping(machine_config_path())
     return deep_merge(bundled, machine)
 
 
-def save_temperature_controller_config(config: dict[str, Any]) -> Path:
-    """Save machine-specific temperature-controller configuration."""
+def save_magnet_controller_config(config: dict[str, Any]) -> Path:
     path = machine_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 

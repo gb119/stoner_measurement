@@ -22,6 +22,7 @@ from stoner_measurement.magnet_control.engine import (
     MagnetControllerEngine,
     _compute_rate,
 )
+from stoner_measurement.magnet_control import engine as engine_module
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
@@ -302,6 +303,131 @@ class TestComputeRate:
 
 
 class TestEngineLifecycle:
+    def test_constructor_applies_configuration(self, monkeypatch, qapp):
+        monkeypatch.setattr(
+            engine_module,
+            "load_magnet_controller_config",
+            lambda: {
+                "connection": {
+                    "driver": "TestDriver",
+                    "transport": "Ethernet",
+                    "address": "testhost:1234",
+                },
+                "poll_interval_ms": 1234,
+                "stability": {
+                    "tolerance_t": 0.25,
+                    "window_s": 12.0,
+                    "min_rate": 0.02,
+                    "unstable_holdoff_s": 3.0,
+                },
+            },
+        )
+        engine = MagnetControllerEngine()
+        assert engine._timer.interval() == 1234  # noqa: SLF001
+        assert engine.preferred_driver_name == "TestDriver"
+        assert engine.preferred_transport_name == "Ethernet"
+        assert engine.preferred_address == "testhost:1234"
+        assert engine._stability_config.tolerance_t == pytest.approx(0.25)  # noqa: SLF001
+        assert engine._stability_config.window_s == pytest.approx(12.0)  # noqa: SLF001
+        assert engine._stability_config.min_rate == pytest.approx(0.02)  # noqa: SLF001
+        assert engine._stability_config.unstable_holdoff_s == pytest.approx(3.0)  # noqa: SLF001
+        engine.shutdown()
+
+    def test_preferred_connection_properties_are_mutable(self, qapp):
+        engine = MagnetControllerEngine()
+
+        engine.preferred_driver_name = "DriverA"
+        engine.preferred_transport_name = "Serial"
+        engine.preferred_address = "port=COM3;baud=115200"
+
+        assert engine.preferred_driver_name == "DriverA"
+        assert engine.preferred_transport_name == "Serial"
+        assert engine.preferred_address == "port=COM3;baud=115200"
+
+        engine.shutdown()
+
+    def test_configuration_dict_exports_current_settings(self, qapp):
+        engine = MagnetControllerEngine()
+
+        engine.preferred_driver_name = "DriverA"
+        engine.preferred_transport_name = "Ethernet"
+        engine.preferred_address = "host:1234"
+        engine.set_poll_interval(1500)
+        engine.set_stability_config(
+            MagnetStabilityConfig(
+                tolerance_t=0.2,
+                window_s=30.0,
+                min_rate=0.01,
+                unstable_holdoff_s=2.0,
+            )
+        )
+
+        config = engine.configuration_dict()
+
+        assert config["poll_interval_ms"] == 1500
+        assert config["connection"] == {
+            "driver": "DriverA",
+            "transport": "Ethernet",
+            "address": "host:1234",
+        }
+        assert config["stability"]["tolerance_t"] == pytest.approx(0.2)
+        assert config["stability"]["window_s"] == pytest.approx(30.0)
+        assert config["stability"]["min_rate"] == pytest.approx(0.01)
+        assert config["stability"]["unstable_holdoff_s"] == pytest.approx(2.0)
+
+        engine.shutdown()
+
+    def test_save_configuration_writes_machine_config(self, monkeypatch, tmp_path, qapp):
+        from stoner_measurement.magnet_control import config as config_module
+
+        config_path = tmp_path / "magnet_controller.yaml"
+
+        monkeypatch.setattr(
+            config_module,
+            "machine_config_path",
+            lambda: config_path,
+        )
+
+        engine = MagnetControllerEngine()
+        engine.preferred_driver_name = "DriverA"
+
+        path = engine.save_configuration()
+
+        assert path == config_path
+        assert path.exists()
+        assert "DriverA" in path.read_text(encoding="utf-8")
+
+        engine.shutdown()
+
+    def test_save_configuration_creates_timestamped_backup(
+        self, monkeypatch, tmp_path, qapp
+    ):
+        from stoner_measurement.magnet_control import config as config_module
+
+        config_path = tmp_path / "magnet_controller.yaml"
+        config_path.write_text("original: true\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            config_module,
+            "machine_config_path",
+            lambda: config_path,
+        )
+
+        engine = MagnetControllerEngine()
+        engine.preferred_driver_name = "DriverB"
+
+        engine.save_configuration()
+
+        backups = list(
+            tmp_path.glob("magnet_controller.*.yaml")
+        )
+
+        assert len(backups) == 1
+        assert backups[0].read_text(encoding="utf-8") == "original: true\n"
+        assert "DriverB" in config_path.read_text(encoding="utf-8")
+
+        engine.shutdown()
+
     def test_instance_returns_same_object(self, qapp):
         e1 = MagnetControllerEngine.instance()
         e2 = MagnetControllerEngine.instance()
@@ -540,6 +666,57 @@ class TestCommandApiNoOpsWhenDisconnected:
 
 
 class TestEngineStabilityEvaluation:
+    def test_engine_state_reports_at_target_before_stable(self, qapp):
+        engine = MagnetControllerEngine()
+        engine._stability_config = MagnetStabilityConfig(
+            tolerance_t=0.001, window_s=60.0, min_rate=0.001
+        )
+        engine._target_field = 1.0
+
+        t0 = datetime.now(tz=UTC)
+        engine._history.append((t0, 1.0))
+        engine._evaluate_stability(1.0, t0)
+
+        state = engine.get_engine_state()
+
+        assert state.at_target is True
+        assert state.stable is False
+        engine.shutdown()
+
+    def test_engine_state_reports_stable_after_window(self, qapp):
+        engine = MagnetControllerEngine()
+        engine._stability_config = MagnetStabilityConfig(
+            tolerance_t=0.001, window_s=1.0, min_rate=0.001
+        )
+        engine._target_field = 1.0
+
+        t0 = datetime.now(tz=UTC)
+        for i in range(5):
+            engine._history.append((t0 + timedelta(seconds=i * 0.25), 1.0))
+
+        engine._evaluate_stability(1.0, t0)
+        engine._evaluate_stability(1.0, t0 + timedelta(seconds=5))
+
+        state = engine.get_engine_state()
+
+        assert state.at_target is True
+        assert state.stable is True
+        engine.shutdown()
+
+    def test_engine_state_reports_not_at_target_when_outside_tolerance(self, qapp):
+        engine = MagnetControllerEngine()
+        engine._stability_config = MagnetStabilityConfig(tolerance_t=0.001)
+        engine._target_field = 1.0
+
+        t0 = datetime.now(tz=UTC)
+        engine._evaluate_stability(2.0, t0)
+
+        state = engine.get_engine_state()
+
+        assert state.at_target is False
+        assert state.stable is False
+        engine.shutdown()
+
     def test_at_target_flag_true_when_within_tolerance(self, qapp):
         engine = MagnetControllerEngine()
         engine._stability_config = MagnetStabilityConfig(tolerance_t=0.001)
@@ -853,6 +1030,48 @@ class TestMagnetControlPanel:
         assert panel._max_current_spin.value() == pytest.approx(88.0)
         assert panel._max_field_spin.value() == pytest.approx(7.5)
         assert panel._max_ramp_spin.value() == pytest.approx(0.9)
+
+
+class TestSimulatedMagnetControllerIntegration:
+    def test_engine_reads_simulated_magnet_controller(self, qapp):
+        from stoner_measurement.instruments.simulated import (
+            SimulatedMagnetController,
+        )
+
+        engine = MagnetControllerEngine()
+        driver = SimulatedMagnetController()
+
+        engine.connect_instrument(driver)
+
+        state = engine.read_controller_state()
+
+        assert state is not None
+        assert state.reading is not None
+        assert state.reading.field == pytest.approx(0.0)
+
+        engine.shutdown()
+
+    def test_engine_observes_simulated_field_ramp(self, qapp):
+        from stoner_measurement.instruments.simulated import (
+            SimulatedMagnetController,
+        )
+
+        engine = MagnetControllerEngine()
+        driver = SimulatedMagnetController()
+
+        engine.connect_instrument(driver)
+
+        engine.set_target_field(1.0)
+        driver._last_update -= 20.0  # pylint: disable=protected-access
+
+        state = engine.read_controller_state()
+
+        assert state is not None
+        assert state.reading is not None
+        assert state.reading.field is not None
+        assert state.reading.field > 0.0
+
+        engine.shutdown()
 
 
 if __name__ == "__main__":

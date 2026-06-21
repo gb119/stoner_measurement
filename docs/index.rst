@@ -7,6 +7,7 @@ Stoner Measurement
 
    installation
    usage
+   simulated_instruments
    console_api
    third_party_plugins
    api/index
