@@ -10,7 +10,6 @@ name: stoner_measurement
 channels:
   - phygbu
   - conda-forge
-  - defaults
 dependencies:
   - python>=3.13
   - pip

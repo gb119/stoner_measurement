@@ -69,6 +69,7 @@ class Lakeshore625(MagnetController, MagnetSupply):
             protocol (BaseProtocol | None):
                 Protocol instance. Uses :class:`LakeshoreProtocol` when omitted.
         """
+        transport._use_mav=False
         super().__init__(transport=transport, protocol=protocol if protocol is not None else LakeshoreProtocol())
         self._magnet_constant = 1.0
         self._limits = MagnetLimits(max_current=0.0, max_field=None, max_ramp_rate=None)
