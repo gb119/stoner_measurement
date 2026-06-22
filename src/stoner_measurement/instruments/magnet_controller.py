@@ -53,6 +53,32 @@ class MagnetState(Enum):
     UNKNOWN = "unknown"
 
 
+class HeaterState(Enum):
+    """Persistent switch heater state.
+
+    Attributes:
+        ON:
+            Persistent switch heater is energised and the switch is open.
+        OFF:
+            Persistent switch heater is de-energised and the switch is closed.
+        WARMING:
+            Persistent switch heater is transitioning from off to on.
+        COOLING:
+            Persistent switch heater is transitioning from on to off.
+        FAULT:
+            Heater state cannot be trusted due to an instrument fault.
+        UNKNOWN:
+            Heater state is not available from the instrument.
+    """
+
+    ON = "on"
+    OFF = "off"
+    WARMING = "warming"
+    COOLING = "cooling"
+    FAULT = "fault"
+    UNKNOWN = "unknown"
+
+
 @dataclass
 class MagnetLimits:
     """Operating limits for a superconducting magnet power supply.
@@ -93,8 +119,12 @@ class MagnetStatus:
         heater_on (bool | None):
             ``True`` when the persistent switch heater is energised,
             ``False`` when it is off, or ``None`` if the state is unknown.
+        heater_state (HeaterState):
+            Rich persistent-switch heater state including transition states.
         at_target (bool):
             ``True`` when the output has reached the programmed target.
+        persistent_field (float | None):
+            Field trapped when entering persistent mode, if known.
         message (str | None):
             Optional human-readable status or error message from the
             instrument, or ``None`` if no message is available.
@@ -107,6 +137,10 @@ class MagnetStatus:
     persistent: bool
     heater_on: bool | None
     at_target: bool
+    heater_state: HeaterState = HeaterState.UNKNOWN
+    persistent_field: float | None = None
+    message: str | None = None
+    persistent_field: float | None = None
     message: str | None = None
 
 
@@ -226,6 +260,14 @@ class MagnetSupply(Protocol):
 
     def pause_ramp(self) -> None:
         """Pause an active ramp."""
+        ...
+
+    def hold(self) -> None:
+        """Hold the present output without changing field."""
+        ...
+
+    def go_to_zero(self) -> None:
+        """Ramp the supply output to zero using the instrument zero action."""
         ...
 
     def abort_ramp(self) -> None:
@@ -626,6 +668,23 @@ class MagnetController(BaseInstrument):
     @abstractmethod
     def heater_off(self) -> None:
         """De-energise the persistent switch heater.
+
+        Raises:
+            ConnectionError:
+                If the transport is not open.
+        """
+
+    @abstractmethod
+    def return_to_local(self) -> None:
+        """Return the controller front panel to local/manual operation.
+
+        This is intended as a safety-oriented handoff from software control
+        back to an in-person operator, for example during disconnect or after
+        a quench condition has been detected.
+
+        Implementations should prefer a non-locked local or remote/local mode
+        that leaves the instrument operable from the front panel. They should
+        not place the controller into a remotely locked-out state.
 
         Raises:
             ConnectionError:

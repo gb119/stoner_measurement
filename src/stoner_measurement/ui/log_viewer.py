@@ -8,6 +8,7 @@ colour-coded list with fine-grained filtering controls.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -82,11 +83,14 @@ class LogFilterState:
             Allowed logger-name prefixes. ``None`` means all discovered sources.
         traffic_mode (str):
             One of the keys in :data:`_TRAFFIC_FILTER_LABELS`.
+        message_pattern (str):
+            Optional regular expression that must match the rendered message.
     """
 
     min_level: int = logging.DEBUG
     enabled_prefixes: set[str] | None = None
     traffic_mode: str = "all"
+    message_pattern: str = ""
 
 
 @dataclass(slots=True)
@@ -100,6 +104,10 @@ class FileLogState:
             Minimum level a record must meet to be written.
         enabled_prefixes (set[str] | None):
             Allowed logger-name prefixes. ``None`` means all discovered sources.
+        message_pattern (str):
+            Optional regular expression that must match the rendered message.
+        traffic_mode (str):
+            One of the keys in :data:`_TRAFFIC_FILTER_LABELS`.
         append (bool):
             When ``True``, append to an existing file instead of overwriting it.
     """
@@ -107,6 +115,8 @@ class FileLogState:
     file_path: str | None = None
     min_level: int = logging.DEBUG
     enabled_prefixes: set[str] | None = None
+    message_pattern: str = ""
+    traffic_mode: str = "all"
     append: bool = True
 
 
@@ -323,6 +333,10 @@ class LogViewerWindow(QWidget):
         for key, label in _TRAFFIC_FILTER_LABELS.items():
             self._traffic_filter.addItem(label, key)
         self._traffic_filter.currentIndexChanged.connect(self._on_filter_changed)
+        self._message_filter = QLineEdit(self)
+        self._message_filter.setPlaceholderText("Message regexp")
+        self._message_filter.setClearButtonEnabled(True)
+        self._message_filter.textChanged.connect(self._on_filter_changed)
 
         self._btn_display_sources = QPushButton(_DISPLAY_SOURCE_BUTTON_TEXT, self)
         self._btn_display_sources.setCheckable(True)
@@ -357,6 +371,14 @@ class LogViewerWindow(QWidget):
         self._file_level = self._build_level_combo(self._file_panel)
         self._file_level.currentIndexChanged.connect(self._on_file_config_changed)
 
+        self._file_traffic_filter = QComboBox(self._file_panel)
+        for key, label in _TRAFFIC_FILTER_LABELS.items():
+            self._file_traffic_filter.addItem(label, key)
+        self._file_traffic_filter.currentIndexChanged.connect(self._on_file_config_changed)
+        self._file_message_filter = QLineEdit(self._file_panel)
+        self._file_message_filter.setPlaceholderText("Message regexp")
+        self._file_message_filter.setClearButtonEnabled(True)
+        self._file_message_filter.textChanged.connect(self._on_file_config_changed)
         self._file_sources = LogSourcesWidget(self._file_panel)
         self._file_sources.sources_changed.connect(self._on_file_config_changed)
         self._file_sources_scroll = self._build_sources_scroll_area(self._file_sources, self._file_panel)
@@ -448,6 +470,8 @@ class LogViewerWindow(QWidget):
         filter_row.addWidget(self._display_level)
         filter_row.addWidget(QLabel("Traffic", self))
         filter_row.addWidget(self._traffic_filter)
+        filter_row.addWidget(QLabel("Message", self))
+        filter_row.addWidget(self._message_filter, 1)
         filter_row.addWidget(self._btn_display_sources)
         filter_row.addStretch()
         filter_row.addWidget(self._btn_clear)
@@ -464,13 +488,17 @@ class LogViewerWindow(QWidget):
         file_grid.addWidget(self._file_mode, 2, 1)
         file_grid.addWidget(QLabel("Min level", self._file_panel), 2, 2)
         file_grid.addWidget(self._file_level, 2, 3)
-        file_grid.addWidget(self._file_sources_scroll, 3, 0, 1, 4)
+        file_grid.addWidget(QLabel("Traffic", self._file_panel), 3, 0)
+        file_grid.addWidget(self._file_traffic_filter, 3, 1, 1, 3)
+        file_grid.addWidget(QLabel("Message", self._file_panel), 4, 0)
+        file_grid.addWidget(self._file_message_filter, 4, 1, 1, 3)
+        file_grid.addWidget(self._file_sources_scroll, 5, 0, 1, 4)
         button_row = QHBoxLayout()
         button_row.setContentsMargins(0, 0, 0, 0)
         button_row.addStretch()
         button_row.addWidget(self._btn_file_apply)
         button_row.addWidget(self._btn_file_stop)
-        file_grid.addLayout(button_row, 4, 0, 1, 4)
+        file_grid.addLayout(button_row, 6, 0, 1, 4)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -515,6 +543,7 @@ class LogViewerWindow(QWidget):
     def _on_filter_changed(self, *_args: object) -> None:
         """Rebuild the visible log list after a display filter change."""
         self._sync_filter_state_from_controls()
+        self._validate_regex_field(self._message_filter)
         self._output.clear()
         for record in self._records:
             if self._record_matches_filter(record, self._filter_state):
@@ -524,6 +553,7 @@ class LogViewerWindow(QWidget):
     def _on_file_config_changed(self, *_args: object) -> None:
         """Update cached file-logging state after a settings change."""
         self._sync_file_state_from_controls()
+        self._validate_regex_field(self._file_message_filter)
         self._update_file_logging_controls()
         self._save_settings()
 
@@ -546,6 +576,7 @@ class LogViewerWindow(QWidget):
         self._filter_state.min_level = int(self._display_level.currentData() or logging.DEBUG)
         self._filter_state.traffic_mode = str(self._traffic_filter.currentData() or "all")
         self._filter_state.enabled_prefixes = self._display_sources.selected_prefixes
+        self._filter_state.message_pattern = self._message_filter.text().strip()
 
     def _sync_file_state_from_controls(self) -> None:
         """Copy the file-logging controls into :attr:`_file_log_state`."""
@@ -553,6 +584,8 @@ class LogViewerWindow(QWidget):
         self._file_log_state.file_path = text or None
         self._file_log_state.min_level = int(self._file_level.currentData() or logging.DEBUG)
         self._file_log_state.enabled_prefixes = self._file_sources.selected_prefixes
+        self._file_log_state.traffic_mode = str(self._file_traffic_filter.currentData() or "all")
+        self._file_log_state.message_pattern = self._file_message_filter.text().strip()
         self._file_log_state.append = bool(self._file_mode.currentData())
 
     def _logger_name_matches_prefix(self, logger_name: str, prefix: str) -> bool:
@@ -581,6 +614,8 @@ class LogViewerWindow(QWidget):
             return False
         if not self._record_matches_enabled_prefixes(record, state.enabled_prefixes):
             return False
+        if not self._record_matches_message_pattern(record, getattr(state, "message_pattern", "")):
+            return False
         return self._record_matches_traffic_mode(record, getattr(state, "traffic_mode", "all"))
 
     def _record_matches_traffic_mode(self, record: logging.LogRecord, mode: str) -> bool:
@@ -598,6 +633,40 @@ class LogViewerWindow(QWidget):
         if mode == "no-comms":
             return channel != "instrument_comms"
         return True
+
+    def _validate_regex_field(self, field: QLineEdit) -> None:
+        """Update *field* styling and tooltip based on regexp validity."""
+        pattern = field.text().strip()
+        if not pattern:
+            field.setStyleSheet("")
+            field.setToolTip("")
+            return
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            field.setStyleSheet("QLineEdit { background-color: #fff0f0; }")
+            field.setToolTip(f"Invalid regular expression: {exc}")
+            return
+        field.setStyleSheet("")
+        field.setToolTip("")
+
+    def _validate_regex_fields(self) -> None:
+        """Refresh validation state for all regexp input fields."""
+        self._validate_regex_field(self._message_filter)
+        self._validate_regex_field(self._file_message_filter)
+
+    def _record_matches_message_pattern(self, record: logging.LogRecord, pattern: str) -> bool:
+        """Return ``True`` when *record* passes the message regexp *pattern*."""
+        if not pattern:
+            return True
+        try:
+            message = record.getMessage()
+        except (TypeError, KeyError, ValueError):
+            message = str(record.msg)
+        try:
+            return re.search(pattern, message) is not None
+        except re.error:
+            return True
 
     def _format_record_text(self, record: logging.LogRecord) -> str:
         """Return the on-screen text representation for *record*."""
@@ -702,6 +771,7 @@ class LogViewerWindow(QWidget):
             settings.beginGroup(_SETTINGS_GROUP)
             self._set_combo_data(self._display_level, settings.value("display_min_level", logging.DEBUG, int))
             self._set_combo_data(self._traffic_filter, settings.value("display_traffic_mode", "all", str))
+            self._message_filter.setText(settings.value("display_message_pattern", "", str))
             self._display_sources.set_selected_prefixes(
                 self._read_prefix_setting(settings, "display_enabled_prefixes")
             )
@@ -713,12 +783,15 @@ class LogViewerWindow(QWidget):
             self._file_path.setText(settings.value("file_path", "", str))
             self._set_combo_data(self._file_mode, settings.value("file_append", True, bool))
             self._set_combo_data(self._file_level, settings.value("file_min_level", logging.DEBUG, int))
+            self._set_combo_data(self._file_traffic_filter, settings.value("file_traffic_mode", "all", str))
+            self._file_message_filter.setText(settings.value("file_message_pattern", "", str))
             self._file_sources.set_selected_prefixes(
                 self._read_prefix_setting(settings, "file_enabled_prefixes")
             )
             settings.endGroup()
         finally:
             self._restoring_settings = False
+        self._validate_regex_fields()
 
     def _save_settings(self) -> None:
         """Persist viewer settings using :class:`QSettings`."""
@@ -728,6 +801,7 @@ class LogViewerWindow(QWidget):
         settings.beginGroup(_SETTINGS_GROUP)
         settings.setValue("display_min_level", int(self._display_level.currentData() or logging.DEBUG))
         settings.setValue("display_traffic_mode", self._traffic_filter.currentData() or "all")
+        settings.setValue("display_message_pattern", self._message_filter.text().strip())
         settings.setValue(
             "display_enabled_prefixes",
             self._serialise_prefixes(self._display_sources.selected_prefixes),
@@ -738,6 +812,8 @@ class LogViewerWindow(QWidget):
         settings.setValue("file_path", self._file_path.text().strip())
         settings.setValue("file_append", bool(self._file_mode.currentData()))
         settings.setValue("file_min_level", int(self._file_level.currentData() or logging.DEBUG))
+        settings.setValue("file_traffic_mode", self._file_traffic_filter.currentData() or "all")
+        settings.setValue("file_message_pattern", self._file_message_filter.text().strip())
         settings.setValue(
             "file_enabled_prefixes",
             self._serialise_prefixes(self._file_sources.selected_prefixes),

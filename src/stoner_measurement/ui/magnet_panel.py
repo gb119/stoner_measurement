@@ -50,11 +50,16 @@ from stoner_measurement.instruments.addressing import (
     DEFAULT_ETHERNET_PORT,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.magnet_controller import MagnetController
+from stoner_measurement.instruments.magnet_controller import (
+    HeaterState,
+    MagnetController,
+    MagnetState,
+)
 from stoner_measurement.magnet_control.engine import MagnetControllerEngine
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
+    MagnetReading,
 )
 from stoner_measurement.ui.plot_widget import PlotWidget
 from stoner_measurement.ui.widgets import (
@@ -448,11 +453,20 @@ class MagnetControlPanel(QWidget):
         ramp_ctrl_layout = QHBoxLayout(ramp_ctrl_group)
         self._btn_pause_ramp = QPushButton("Pause Ramp")
         self._btn_pause_ramp.clicked.connect(self._on_pause_ramp)
+        self._btn_hold = QPushButton("Hold")
+        self._btn_hold.clicked.connect(self._on_hold)
+        self._btn_zero = QPushButton("Go To Zero")
+        self._btn_zero.clicked.connect(self._on_go_to_zero)
         self._btn_abort_ramp = QPushButton("Abort Ramp")
         self._btn_abort_ramp.clicked.connect(self._on_abort_ramp)
         ramp_ctrl_layout.addWidget(self._btn_pause_ramp)
+        ramp_ctrl_layout.addWidget(self._btn_hold)
+        ramp_ctrl_layout.addWidget(self._btn_zero)
         ramp_ctrl_layout.addWidget(self._btn_abort_ramp)
         ramp_ctrl_layout.addStretch()
+        self._ramp_action_label = QLabel("—")
+        self._ramp_action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ramp_ctrl_layout.addWidget(self._ramp_action_label)
         layout.addWidget(ramp_ctrl_group)
 
         # Persistent switch heater group.
@@ -471,6 +485,7 @@ class MagnetControlPanel(QWidget):
         heater_btn_row.addWidget(self._btn_read_heater)
         heater_btn_row.addStretch()
         self._heater_state_label = QLabel("—")
+        self._heater_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         heater_form.addRow("State:", self._heater_state_label)
         heater_form.addRow("", heater_btn_row)
         layout.addWidget(heater_group)
@@ -634,7 +649,10 @@ class MagnetControlPanel(QWidget):
         if state.magnet_constant is not None and state.magnet_constant > 0:
             self._magnet_constant = state.magnet_constant
 
-        self._set_heater_state_label(self._heater_on_from_state(state))
+        self._set_heater_state_label(self._heater_state_from_state(state))
+        self._update_heater_controls(state)
+        self._set_ramp_action_label(state)
+        self._update_ramp_controls(state)
         self._update_chart(state, now_ts)
 
         self._updated_label.setText(
@@ -649,6 +667,11 @@ class MagnetControlPanel(QWidget):
             self._stable_label.setText(
                 f"{_colour_dot(stable_colour)} Stable: {'yes' if state.stable else 'no'}"
             )
+        if state.reading is not None and state.reading.quench_detected:
+            self._status_label.setText(f"{_colour_dot('#c62828')} Engine: quench")
+            self._at_target_label.setText(f"{_colour_dot('#c62828')} At target: no")
+            if hasattr(self, "_stable_label"):
+                self._stable_label.setText(f"{_colour_dot('#c62828')} Stable: no")
 
     # ------------------------------------------------------------------
     # Chart helpers
@@ -1074,6 +1097,16 @@ class MagnetControlPanel(QWidget):
         self._engine.pause_ramp()
 
     @pyqtSlot()
+    def _on_hold(self) -> None:
+        """Hold the present output without changing field."""
+        self._engine.hold()
+
+    @pyqtSlot()
+    def _on_go_to_zero(self) -> None:
+        """Ramp the supply output to zero."""
+        self._engine.go_to_zero()
+
+    @pyqtSlot()
     def _on_abort_ramp(self) -> None:
         """Abort the active ramp."""
         reply = QMessageBox.question(
@@ -1101,7 +1134,8 @@ class MagnetControlPanel(QWidget):
         state = self._read_controller_state_or_warn("Persistent Switch Heater")
         if state is None:
             return
-        self._set_heater_state_label(self._heater_on_from_state(state))
+        self._set_heater_state_label(self._heater_state_from_state(state))
+        self._update_heater_controls(state)
 
     @pyqtSlot()
     def _on_apply_limits(self) -> None:
@@ -1142,32 +1176,174 @@ class MagnetControlPanel(QWidget):
         self._on_target_field_changed(self._target_field_spin.value())
         self._on_ramp_field_changed(self._ramp_field_spin.value())
 
-    def _set_heater_state_label(self, heater_on: bool | None) -> None:
+    def _set_heater_state_label(self, heater_state: HeaterState | None) -> None:
         """Update the heater state label text.
 
         Args:
-            heater_on (bool | None):
-                ``True`` for on, ``False`` for off, or ``None`` when unknown.
+            heater_state (HeaterState | None):
+                Current rich heater state, or ``None`` when unavailable.
         """
-        if heater_on is True:
-            self._heater_state_label.setText("On")
-        elif heater_on is False:
-            self._heater_state_label.setText("Off")
-        else:
-            self._heater_state_label.setText("Unknown")
+        label = "Unknown"
+        fg = "#202020"
+        bg = "#d0d0d0"
+        if heater_state is HeaterState.ON:
+            label = "On"
+            fg = "#ffffff"
+            bg = "#2e7d32"
+        elif heater_state is HeaterState.OFF:
+            label = "Off"
+            fg = "#ffffff"
+            bg = "#616161"
+        elif heater_state is HeaterState.WARMING:
+            label = "Warming"
+            fg = "#202020"
+            bg = "#ffd54f"
+        elif heater_state is HeaterState.COOLING:
+            label = "Cooling"
+            fg = "#ffffff"
+            bg = "#1e88e5"
+        elif heater_state is HeaterState.FAULT:
+            label = "Fault"
+            fg = "#ffffff"
+            bg = "#c62828"
 
-    def _heater_on_from_state(self, state: MagnetEngineState) -> bool | None:
-        """Return the heater readback from a controller state snapshot.
+        self._heater_state_label.setText(label)
+        self._heater_state_label.setStyleSheet(
+            f"QLabel {{ background-color: {bg}; color: {fg}; "
+            "border: 1px solid #808080; border-radius: 4px; padding: 4px 8px; }}"
+        )
+
+    def _heater_state_from_state(self, state: MagnetEngineState) -> HeaterState | None:
+        """Return the heater state from a controller state snapshot."""
+        return state.reading.heater_state if state.reading is not None else None
+
+    def _set_ramp_action_label(self, state: MagnetEngineState) -> None:
+        """Update the ramp-action indicator from the latest controller state."""
+        reading = state.reading
+        label = "Unknown"
+        fg = "#202020"
+        bg = "#d0d0d0"
+        if reading is None:
+            pass
+        elif reading.quench_detected or reading.state is MagnetState.QUENCH:
+            label = "Quench"
+            fg = "#ffffff"
+            bg = "#c62828"
+        elif reading.state is MagnetState.RAMPING:
+            target_field = state.target_field
+            field = reading.field
+            if target_field is not None and abs(target_field) < 1e-9:
+                label = "Ramping to zero"
+                fg = "#ffffff"
+                bg = "#1565c0"
+            elif field is not None and target_field is not None and abs(target_field) < abs(field):
+                label = "Ramping down"
+                fg = "#ffffff"
+                bg = "#1e88e5"
+            else:
+                label = "Ramping"
+                fg = "#202020"
+                bg = "#ffd54f"
+        elif reading.state in {MagnetState.STANDBY, MagnetState.HOLDING, MagnetState.AT_TARGET}:
+            label = "Holding"
+            fg = "#ffffff"
+            bg = "#2e7d32"
+        elif reading.state is MagnetState.PERSISTENT:
+            label = "Persistent"
+            fg = "#ffffff"
+            bg = "#616161"
+        elif reading.state is MagnetState.FAULT:
+            label = "Fault"
+            fg = "#ffffff"
+            bg = "#c62828"
+
+        self._ramp_action_label.setText(label)
+        self._ramp_action_label.setStyleSheet(
+            f"QLabel {{ background-color: {bg}; color: {fg}; "
+            "border: 1px solid #808080; border-radius: 4px; padding: 4px 8px; }}"
+        )
+
+    def _update_ramp_controls(self, state: MagnetEngineState) -> None:
+        """Update ramp-control button enabled states from the latest polled state."""
+        reading = state.reading
+        if reading is None:
+            self._btn_pause_ramp.setEnabled(False)
+            self._btn_hold.setEnabled(False)
+            self._btn_zero.setEnabled(False)
+            self._btn_abort_ramp.setEnabled(False)
+            return
+
+        in_transition = reading.heater_state in {HeaterState.WARMING, HeaterState.COOLING}
+        ramping = reading.state is MagnetState.RAMPING
+        at_zero = abs(reading.current) <= 0.01 and (reading.field is None or abs(reading.field) <= 1e-4)
+        faulted = reading.state in {MagnetState.FAULT, MagnetState.QUENCH}
+
+        self._btn_pause_ramp.setEnabled(ramping and not faulted)
+        self._btn_hold.setEnabled(ramping and not faulted)
+        self._btn_zero.setEnabled((not in_transition) and (not at_zero) and (not faulted))
+        self._btn_abort_ramp.setEnabled(ramping and not faulted)
+
+        self._btn_pause_ramp.setToolTip("Pause the active ramp and hold the present output.")
+        self._btn_hold.setToolTip("Hold the present field/current.")
+        self._btn_zero.setToolTip("Ramp the supply output to zero." if not in_transition else "Go To Zero is disabled while the heater is transitioning.")
+        self._btn_abort_ramp.setToolTip("Abort the active ramp immediately.")
+
+    def _update_heater_controls(self, state: MagnetEngineState) -> None:
+        """Update heater button enabled states from the latest polled state.
 
         Args:
             state (MagnetEngineState):
                 Controller state snapshot.
-
-        Returns:
-            (bool | None):
-                Heater state, or ``None`` when unavailable.
         """
-        return state.reading.heater_on if state.reading is not None else None
+        reading = state.reading
+        if reading is None:
+            self._btn_heater_on.setEnabled(False)
+            self._btn_heater_off.setEnabled(False)
+            return
+
+        heater_state = reading.heater_state
+        in_transition = heater_state in {HeaterState.WARMING, HeaterState.COOLING}
+        heater_is_on = heater_state is HeaterState.ON
+        heater_is_off = heater_state is HeaterState.OFF
+        ramping = reading.state is MagnetState.RAMPING
+
+        persistent_matches_target = True
+        if state.target_current is not None:
+            if reading.persistent_current is None:
+                persistent_matches_target = False
+            else:
+                delta_current = abs(reading.persistent_current - state.target_current)
+                tolerance = max(abs(state.target_current) * 0.01, 0.01)
+                persistent_matches_target = delta_current <= tolerance
+
+        can_turn_on = (
+            (not heater_is_on)
+            and (not in_transition)
+            and persistent_matches_target
+        )
+        can_turn_off = (
+            (not heater_is_off)
+            and (not in_transition)
+            and (not ramping)
+        )
+
+        self._btn_heater_on.setEnabled(can_turn_on)
+        self._btn_heater_off.setEnabled(can_turn_off)
+
+        if in_transition:
+            self._btn_heater_on.setToolTip("Heater is transitioning; wait for a stable state.")
+            self._btn_heater_off.setToolTip("Heater is transitioning; wait for a stable state.")
+        else:
+            self._btn_heater_on.setToolTip(
+                "Enable the persistent switch heater."
+                if can_turn_on
+                else "Heater On is disabled because the heater is already on, or the persistent current is unknown, or the persistent current does not match the target within 1% or 10 mA."
+            )
+            self._btn_heater_off.setToolTip(
+                "Disable the persistent switch heater."
+                if can_turn_off
+                else "Heater Off is disabled because the heater is off, the heater is transitioning, or the magnet is ramping."
+            )
 
     def _read_controller_state_or_warn(self, title: str) -> MagnetEngineState | None:
         """Read current controller state and show a warning if unavailable.

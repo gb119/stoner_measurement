@@ -27,6 +27,7 @@ from stoner_measurement.instruments.addressing import (
     parse_serial_address,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
+from stoner_measurement.instruments.magnet_controller import MagnetState
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
@@ -133,6 +134,7 @@ class MagnetControllerEngine(QObject):
         self._target_current: float | None = None
         self._ramp_rate_field: float | None = None
         self._ramp_rate_current: float | None = None
+        self._quench_active: bool = False
         self._latest_state: MagnetEngineState = MagnetEngineState(engine_status=self._status)
 
         self._timer = QTimer(self)
@@ -587,6 +589,7 @@ class MagnetControllerEngine(QObject):
         if self._driver is None:
             return
         try:
+            self._validate_ramp_allowed()
             self._driver.ramp_to_target()
         except Exception:
             logger.exception("Failed to start ramp to target")
@@ -601,6 +604,7 @@ class MagnetControllerEngine(QObject):
         if self._driver is None:
             return
         try:
+            self._validate_ramp_allowed()
             self._driver.set_target_field(field)
             self._target_field = field
             self._driver.ramp_to_target()
@@ -616,6 +620,30 @@ class MagnetControllerEngine(QObject):
         except Exception:
             logger.exception("Failed to pause ramp")
 
+    def hold(self) -> None:
+        """Hold the present output without changing field."""
+        if self._driver is None:
+            return
+        try:
+            self._driver.hold()
+        except Exception:
+            logger.exception("Failed to hold present field/current")
+
+    def go_to_zero(self) -> None:
+        """Ramp the supply output to zero using the controller zero action."""
+        if self._driver is None:
+            return
+        try:
+            self._validate_ramp_allowed()
+            self._driver.go_to_zero()
+            self._target_field = 0.0
+            try:
+                self._target_current = 0.0
+            except Exception:
+                pass
+        except Exception:
+            logger.exception("Failed to go to zero")
+
     def abort_ramp(self) -> None:
         """Abort an active ramp immediately."""
         if self._driver is None:
@@ -630,6 +658,7 @@ class MagnetControllerEngine(QObject):
         if self._driver is None:
             return
         try:
+            self._validate_heater_on_allowed()
             self._driver.heater_on()
         except Exception:
             logger.exception("Failed to turn heater on")
@@ -684,6 +713,7 @@ class MagnetControllerEngine(QObject):
 
         self._set_status(MagnetEngineStatus.POLLING)
         self._latest_state = state
+        self._handle_quench_state(state)
         self.publisher.reading_updated.emit(state.reading)
         self.publisher.state_updated.emit(state)
         return state
@@ -781,6 +811,15 @@ class MagnetControllerEngine(QObject):
         """
         try:
             if driver.is_connected:
+                try:
+                    driver.return_to_local()
+                except Exception:
+                    logger.exception(
+                        "Failed to return magnet controller to local mode %s",
+                        log_context,
+                    )
+                if not driver.is_connected:
+                    return
                 driver.disconnect()
         except Exception:
             logger.exception("Error while disconnecting magnet controller %s", log_context)
@@ -815,21 +854,29 @@ class MagnetControllerEngine(QObject):
         # Evaluate stability.
         self._evaluate_stability(field_val, now)
 
+        try:
+            magnet_constant: float | None = driver.magnet_constant
+        except Exception:
+            magnet_constant = None
+
+        persistent_current: float | None = None
+        if status.persistent_field is not None and magnet_constant not in {None, 0.0}:
+            persistent_current = status.persistent_field / magnet_constant
+
         reading = MagnetReading(
             timestamp=now,
             field=field_val,
             current=status.current,
             voltage=status.voltage,
             heater_on=status.heater_on,
+            heater_state=status.heater_state,
             state=status.state,
+            persistent_current=persistent_current,
+            persistent_field=status.persistent_field,
             at_target=status.at_target,
+            quench_detected=status.state is MagnetState.QUENCH,
             field_rate=field_rate,
         )
-
-        try:
-            magnet_constant: float | None = driver.magnet_constant
-        except Exception:
-            magnet_constant = None
 
         return MagnetEngineState(
             reading=reading,
@@ -877,6 +924,33 @@ class MagnetControllerEngine(QObject):
             self._at_target_since = None
             self._try_clear_stable(now, cfg)
 
+    def _validate_ramp_allowed(self) -> None:
+        """Raise if a field change should be blocked for heater-safety reasons."""
+        status = self._driver.status
+        heater_state = getattr(status.heater_state, "value", str(status.heater_state)).lower()
+        if heater_state in {"warming", "cooling"}:
+            raise RuntimeError("Cannot change magnetic field while the switch heater is transitioning.")
+
+    def _validate_heater_on_allowed(self) -> None:
+        """Raise if turning the heater on would be unsafe in persistent mode."""
+        status = self._driver.status
+        heater_state = getattr(status.heater_state, "value", str(status.heater_state)).lower()
+        if heater_state in {"warming", "cooling"}:
+            raise RuntimeError("Cannot turn switch heater on while it is already transitioning.")
+        if not status.persistent:
+            return
+        persistent_field = status.persistent_field
+        supply_field = status.field
+        if persistent_field is None or supply_field is None:
+            raise RuntimeError(
+                "Cannot safely turn the switch heater on in persistent mode because the trapped and supply fields cannot be verified."
+            )
+        cfg = self._stability_config
+        if abs(supply_field - persistent_field) > cfg.tolerance_t:
+            raise RuntimeError(
+                "Cannot turn the switch heater on in persistent mode until the power-supply field matches the trapped persistent field."
+            )
+
     def _try_clear_stable(self, now: datetime, cfg: MagnetStabilityConfig) -> None:
         """Clear the stable flag after the holdoff period has elapsed.
 
@@ -909,6 +983,23 @@ class MagnetControllerEngine(QObject):
             self._status = status
             self._latest_state = replace(self._latest_state, engine_status=status)
             self.publisher.engine_status_changed.emit(status)
+
+    def _handle_quench_state(self, state: MagnetEngineState) -> None:
+        """Emit a critical log when a quench is newly detected."""
+        quench_detected = bool(state.reading is not None and state.reading.quench_detected)
+        if quench_detected and not self._quench_active:
+            logger.critical("MagnetControllerEngine: quench detected by magnet controller.")
+            driver = self._driver
+            if driver is not None and driver.is_connected:
+                try:
+                    driver.return_to_local()
+                except Exception:
+                    logger.exception(
+                        "MagnetControllerEngine: failed to return magnet controller to local mode after quench."
+                    )
+            self._quench_active = True
+        elif not quench_detected:
+            self._quench_active = False
 
 
 # ---------------------------------------------------------------------------

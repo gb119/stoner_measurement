@@ -62,9 +62,15 @@ class MagnetControllerPluginMixin:
         return state
 
     def _magnet_limits(self) -> tuple[float, float]:
+        self._raise_if_quenched(self._engine_state())
         limits = self._engine().get_limits()
         max_field = None if limits is None else limits.max_field
         return (float("-inf"), float("inf") if max_field is None else float(max_field))
+
+    def _raise_if_quenched(self, state: MagnetEngineState) -> None:
+        """Raise to stop scripts when the magnet controller reports a quench."""
+        if state.reading is not None and state.reading.quench_detected:
+            raise RuntimeError("Magnet controller reported a quench condition.")
 
     @property
     def limits(self) -> tuple[float, float]:
@@ -72,9 +78,10 @@ class MagnetControllerPluginMixin:
 
     def connect(self) -> None:
         self._ensure_connected()
-        self._engine_state(refresh=True)
+        self._raise_if_quenched(self._engine_state(refresh=True))
 
     def configure(self) -> None:
+        self._raise_if_quenched(self._engine_state())
         self._engine().set_ramp_rate_field(self.ramp_rate)
 
     def disconnect(self) -> None:
@@ -82,16 +89,19 @@ class MagnetControllerPluginMixin:
 
     def set_state(self, value: float) -> None:
         engine = self._ensure_connected()
+        self._raise_if_quenched(self._engine_state(refresh=True))
         engine.set_ramp_rate_field(self.ramp_rate)
         engine.ramp_to_field(float(value))
 
     def set_target(self, value: float) -> None:
         engine = self._ensure_connected()
+        self._raise_if_quenched(self._engine_state(refresh=True))
         engine.set_target_field(float(value))
         engine.ramp_to_target()
 
     def set_rate(self, value: float) -> None:
         self.ramp_rate = max(0.0, float(value)) * 60.0
+        self._raise_if_quenched(self._engine_state())
         engine = self._engine()
         if engine.connected_driver is not None:
             engine.set_ramp_rate_field(self.ramp_rate)
@@ -100,6 +110,7 @@ class MagnetControllerPluginMixin:
         state = self._engine_state()
         if state.reading is None:
             state = self._engine_state(refresh=True)
+        self._raise_if_quenched(state)
         if state.reading is not None and state.reading.field is not None:
             return float(state.reading.field)
         if state.target_field is not None:
@@ -108,11 +119,13 @@ class MagnetControllerPluginMixin:
 
     def is_at_target(self) -> bool:
         state = self._engine_state()
+        self._raise_if_quenched(state)
         return bool(state.reading is not None and state.reading.at_target)
 
     @property
     def field(self) -> float:
         state = self._engine_state()
+        self._raise_if_quenched(state)
         if state.reading is None or state.reading.field is None:
             return math.nan
         return float(state.reading.field)
@@ -120,6 +133,7 @@ class MagnetControllerPluginMixin:
     @property
     def current(self) -> float:
         state = self._engine_state()
+        self._raise_if_quenched(state)
         if state.reading is None:
             return math.nan
         return float(state.reading.current)
@@ -127,6 +141,7 @@ class MagnetControllerPluginMixin:
     @property
     def voltage(self) -> float:
         state = self._engine_state()
+        self._raise_if_quenched(state)
         if state.reading is None or state.reading.voltage is None:
             return math.nan
         return float(state.reading.voltage)

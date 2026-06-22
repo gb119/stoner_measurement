@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from stoner_measurement.instruments.magnet_controller import (
+    HeaterState,
     MagnetController,
     MagnetLimits,
     MagnetState,
@@ -28,7 +29,6 @@ _TERMINAL_RAMP_STATES = {
     MagnetState.PERSISTENT,
     MagnetState.QUIESCENT,
 }
-_HEATER_ON_VALUES = {"1", "ON", "on", "True", "true"}
 
 
 class Lakeshore625(MagnetController, MagnetSupply):
@@ -156,13 +156,15 @@ class Lakeshore625(MagnetController, MagnetSupply):
                 self._comms_logger.warning("RDGST? returned unhandled status bits 0x%X; marking status UNKNOWN", bits)
                 state = MagnetState.UNKNOWN
         at_target = state in _TERMINAL_RAMP_STATES
+        heater_state = self._read_heater_state()
         return MagnetStatus(
             state=state,
             current=self.current,
             field=self.field,
             voltage=self.voltage,
             persistent=False,
-            heater_on=self.heater,
+            heater_on=heater_state is HeaterState.ON,
+            heater_state=heater_state,
             at_target=at_target,
             message=raw,
         )
@@ -193,10 +195,9 @@ class Lakeshore625(MagnetController, MagnetSupply):
 
         Returns:
             (bool):
-                ``True`` when the heater is enabled.
+                ``True`` when the heater is stably on.
         """
-        value = self.query("PSH?").strip()
-        return value in _HEATER_ON_VALUES
+        return self._read_heater_state() is HeaterState.ON
 
     def set_target_current(self, current: float) -> None:
         """Set the target current in amps.
@@ -294,6 +295,14 @@ class Lakeshore625(MagnetController, MagnetSupply):
         """Pause an active ramp."""
         self.write("PAUSE")
 
+    def hold(self) -> None:
+        """Hold the present output without changing field."""
+        self.write("PAUSE")
+
+    def go_to_zero(self) -> None:
+        """Ramp the supply output to zero."""
+        self.write("ZERO")
+
     def abort_ramp(self) -> None:
         """Abort ramping immediately."""
         self.write("ABORT")
@@ -305,6 +314,10 @@ class Lakeshore625(MagnetController, MagnetSupply):
     def heater_off(self) -> None:
         """Disable the persistent switch heater."""
         self.write("PSH 0")
+
+    def return_to_local(self) -> None:
+        """No-op for the Lakeshore 625, which has no Oxford-style local handoff command."""
+        return
 
     def _query_float(self, command: str) -> float:
         """Query the instrument and parse a numeric response.
@@ -344,3 +357,26 @@ class Lakeshore625(MagnetController, MagnetSupply):
                 return
             time.sleep(poll_period)
         raise TimeoutError("Timed out waiting for Lakeshore 625 ramp to complete.")
+
+    def _read_heater_state(self) -> HeaterState:
+        """Read and decode the persistent-switch heater state.
+
+        The ``PSH?`` response is interpreted as a two-bit flag:
+        bit 0 is the nominal heater state (1 = on, 0 = off), and
+        bit 1 indicates the state is transitioning.
+
+        Returns:
+            (HeaterState):
+                Decoded shared heater-state enum.
+        """
+        raw = self.query("PSH?").strip()
+        try:
+            value = int(raw)
+        except ValueError:
+            return HeaterState.UNKNOWN
+        return {
+            0: HeaterState.OFF,
+            1: HeaterState.ON,
+            2: HeaterState.COOLING,
+            3: HeaterState.WARMING,
+        }.get(value, HeaterState.UNKNOWN)

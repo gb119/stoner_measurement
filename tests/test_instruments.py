@@ -77,6 +77,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInReserveMode,
 )
 from stoner_measurement.instruments.magnet_controller import (
+    HeaterState,
     MagnetController,
     MagnetState,
     MagnetStatus,
@@ -1909,15 +1910,32 @@ class TestLakeshore625:
         assert m.heater is True
         assert t.write_log == [b"PSH 1\r\n", b"PSH 0\r\n", b"PSH?\r\n"]
 
+    def test_heater_property_false_during_transition(self):
+        t = _null(responses=[b"2\r\n", b"3\r\n"])
+        m = Lakeshore625(transport=t)
+        assert m.heater is False
+        assert m.heater is False
+        assert t.write_log == [b"PSH?\r\n", b"PSH?\r\n"]
+
+    def test_status_maps_heater_transition_states(self):
+        for psh_reply, expected in ((b"2\r\n", HeaterState.COOLING), (b"3\r\n", HeaterState.WARMING)):
+            t = _null(
+                responses=[b"2\r\n", psh_reply, b"1.1\r\n", b"0.3\r\n", b"0.2\r\n"]
+            )
+            m = Lakeshore625(transport=t)
+            status = m.status
+            assert status.heater_state is expected
+            assert status.heater_on is False
+
     def test_status_maps_state(self):
         # RDGST? returns numeric bit-coded status: bit 1 (0x02) = AT_TARGET
         t = _null(
             responses=[
                 b"2\r\n",
+                b"0\r\n",
                 b"1.1\r\n",
                 b"0.3\r\n",
                 b"0.2\r\n",
-                b"0\r\n",
             ]
         )
         m = Lakeshore625(transport=t)
@@ -1928,7 +1946,7 @@ class TestLakeshore625:
         assert status.field == pytest.approx(0.3)
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
-        assert t.write_log == [b"RDGST?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n", b"PSH?\r\n"]
+        assert t.write_log == [b"RDGST?\r\n", b"PSH?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n"]
 
     def test_status_maps_ramping_state(self):
         # RDGST? bit 0 (0x01) = RAMPING
@@ -2049,6 +2067,7 @@ class TestLakeshore625:
                 voltage=0.0,
                 persistent=False,
                 heater_on=False,
+                heater_state=HeaterState.OFF,
                 at_target=False,
                 message="ramping",
             )
@@ -2162,6 +2181,7 @@ class TestOxfordIPS120:
                 voltage=0.0,
                 persistent=False,
                 heater_on=False,
+                heater_state=HeaterState.OFF,
                 at_target=False,
                 message="X00A1C0H0P0",
             )
@@ -4455,11 +4475,12 @@ class TestOxfordMercuryIPS:
         t = _null(
             responses=[
                 b"STAT:DEV:PSU.M1:PSU:ACTN:RTOS\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:STAF:NORM\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+0.50000T\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+1.00000A\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.05000V\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
-                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",                
             ]
         )
         m = OxfordMercuryIPS(transport=t)
@@ -4470,17 +4491,19 @@ class TestOxfordMercuryIPS:
         assert status.voltage == pytest.approx(0.05)
         assert status.at_target is False
         assert status.heater_on is True
+        assert status.heater_state.value == "on"
         assert status.persistent is False
 
     def test_status_at_target_when_hold_and_field_matches(self):
         t = _null(
             responses=[
                 b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:STAF:NORM\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+1.00000T\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+2.00000A\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00001V\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
-                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",                
             ]
         )
         m = OxfordMercuryIPS(transport=t)
@@ -4492,6 +4515,7 @@ class TestOxfordMercuryIPS:
         t = _null(
             responses=[
                 b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:STAF:NORM\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+0.50000T\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+1.00000A\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00001V\n",
@@ -4508,6 +4532,7 @@ class TestOxfordMercuryIPS:
         t = _null(
             responses=[
                 b"STAT:DEV:PSU.M1:PSU:ACTN:HOLD\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:STAF:NORM\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FLD:+1.00000T\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+0.00000A\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00000V\n",
@@ -4519,6 +4544,7 @@ class TestOxfordMercuryIPS:
         status = m.status
         assert status.persistent is True
         assert status.heater_on is False
+        assert status.heater_state.value == "off"
 
     def test_read_sig_float_raises_on_invalid_response(self):
         t = _null(responses=[b"STAT:DEV:PSU.M1:PSU:SIG:FLD:NOT_A_NUMBER\n"])
@@ -4537,7 +4563,9 @@ class TestOxfordMercuryIPS:
                 voltage=0.0,
                 persistent=False,
                 heater_on=True,
+                heater_state=HeaterState.ON,
                 at_target=False,
+                persistent_field=None,
             )
 
         monkeypatch.setattr(OxfordMercuryIPS, "status", property(_always_ramping))

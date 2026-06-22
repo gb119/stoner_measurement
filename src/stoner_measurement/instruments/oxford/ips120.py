@@ -6,6 +6,7 @@ import re
 import time
 
 from stoner_measurement.instruments.magnet_controller import (
+    HeaterState,
     MagnetController,
     MagnetLimits,
     MagnetState,
@@ -70,6 +71,24 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         super().__init__(transport=transport, protocol=protocol if protocol is not None else OxfordProtocol())
         self._magnet_constant = 1.0
         self._limits = MagnetLimits(max_current=0.0, max_field=None, max_ramp_rate=None)
+
+    def connect(self) -> None:
+        """Open the connection, verify identity, and select a safe remote mode.
+
+        The IPS120 supports remote-locked operation, which should be avoided.
+        After connecting, this driver explicitly selects the non-locked
+        remote/local mode so the front panel remains usable.
+        """
+        super().connect()
+        self._set_safe_remote_mode()
+
+    def disconnect(self) -> None:
+        """Return the IPS120 to local/manual control before disconnecting."""
+        try:
+            if self.is_connected:
+                self.return_to_local()
+        finally:
+            super().disconnect()
 
     def identify(self) -> str:
         """Return the instrument identity string.
@@ -143,11 +162,19 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         """
         status_reply = self.query("X").strip()
         tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_RE.findall(status_reply)}
+        system_status = (
+            int(status_reply[1])
+            if len(status_reply) > 1 and status_reply[0] == "X" and status_reply[1].isdigit()
+            else 0
+        )
         activity = tokens.get("A", 0)
         state = _ACTIVITY_STATE_MAP.get(activity, MagnetState.UNKNOWN)
-        persistent = tokens.get("P", 0) > 0
-        heater_on = tokens.get("H", 0) > 0
-        at_target = state in _TERMINAL_RAMP_STATES
+        if system_status == 1:
+            state = MagnetState.QUENCH
+        heater_state = self._decode_heater_state(tokens.get("H", 0))
+        persistent = heater_state is HeaterState.OFF and tokens.get("P", 0) > 0
+        heater_on = heater_state is HeaterState.ON
+        at_target = state in _TERMINAL_RAMP_STATES and state is not MagnetState.QUENCH
         return MagnetStatus(
             state=state,
             current=self.current,
@@ -155,6 +182,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             voltage=self.voltage,
             persistent=persistent,
             heater_on=heater_on,
+            heater_state=heater_state,
             at_target=at_target,
             message=status_reply,
         )
@@ -189,7 +217,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         """
         status_reply = self.query("X").strip()
         tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_RE.findall(status_reply)}
-        return tokens.get("H", 0) > 0
+        return self._decode_heater_state(tokens.get("H", 0)) is HeaterState.ON
 
     def set_target_current(self, current: float) -> None:
         """Set the target current in amps.
@@ -287,6 +315,14 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         """Pause an active ramp."""
         self.write("A0")
 
+    def hold(self) -> None:
+        """Hold the present output without changing field."""
+        self.write("A0")
+
+    def go_to_zero(self) -> None:
+        """Ramp the supply output to zero."""
+        self.write("A2")
+
     def abort_ramp(self) -> None:
         """Abort ramping immediately by clamping the output."""
         self.write("A3")
@@ -298,6 +334,10 @@ class OxfordIPS120(MagnetController, MagnetSupply):
     def heater_off(self) -> None:
         """Disable the persistent switch heater."""
         self.write("H0")
+
+    def return_to_local(self) -> None:
+        """Return the IPS120 to front-panel local mode."""
+        self.write("C0")
 
     def _query_float(self, command: str) -> float:
         """Query the instrument and parse a numeric response.
@@ -339,3 +379,20 @@ class OxfordIPS120(MagnetController, MagnetSupply):
                 return
             time.sleep(poll_period)
         raise TimeoutError("Timed out waiting for Oxford IPS120 ramp to complete.")
+
+    @staticmethod
+    def _decode_heater_state(value: int) -> HeaterState:
+        """Convert the IPS120 H-token into a shared heater state."""
+        return {
+            0: HeaterState.OFF,
+            1: HeaterState.ON,
+            2: HeaterState.OFF,
+            3: HeaterState.FAULT,
+            5: HeaterState.WARMING,
+            6: HeaterState.COOLING,
+            8: HeaterState.UNKNOWN,
+        }.get(value, HeaterState.UNKNOWN)
+
+    def _set_safe_remote_mode(self) -> None:
+        """Select remote control without locking out the front panel."""
+        self.write("C1")

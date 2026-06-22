@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 
 from stoner_measurement.instruments.magnet_controller import (
+    HeaterState,
     MagnetController,
     MagnetLimits,
     MagnetState,
@@ -172,6 +173,9 @@ class SimulatedMagnetController(MagnetController):
         self._ramp_rate_aps = 1.0
         self._heater = True
         self._magnet_constant = 0.1
+        self._heater_state = HeaterState.ON
+        self._persistent_field: float | None = None
+        self._supply_current_at_persistent_entry: float | None = None
         self._limits = MagnetLimits(max_current=100.0, max_field=10.0, max_ramp_rate=5.0)
         self._coil_resistance = 0.1
         self._coil_inductance = 3.0
@@ -227,6 +231,9 @@ class SimulatedMagnetController(MagnetController):
         current = self.current
         at_target = abs(self._target_current - current) < 1e-6
 
+        if self._heater_state is HeaterState.WARMING:
+            self._heater_state = HeaterState.ON
+
         if at_target:
             state = MagnetState.AT_TARGET
         elif self._ramping:
@@ -239,8 +246,10 @@ class SimulatedMagnetController(MagnetController):
             current=current,
             field=current * self._magnet_constant,
             voltage=self.voltage,
-            persistent=not self._heater,
-            heater_on=self._heater,
+            persistent=self._heater_state is HeaterState.OFF,
+            heater_on=self._heater_state is HeaterState.ON,
+            heater_state=self._heater_state,
+            persistent_field=self._persistent_field,
             at_target=at_target,
         )
 
@@ -254,7 +263,7 @@ class SimulatedMagnetController(MagnetController):
 
     @property
     def heater(self) -> bool:
-        return self._heater
+        return self._heater_state is HeaterState.ON
 
     def set_target_current(self, current: float) -> None:
         self._target_current = current
@@ -275,16 +284,22 @@ class SimulatedMagnetController(MagnetController):
         self._limits = limits
 
     def ramp_to_target(self) -> None:
+        if self._heater_state in {HeaterState.WARMING, HeaterState.COOLING}:
+            raise RuntimeError("Cannot ramp while the switch heater is in transition.")
         self._paused = False
         self._ramping = abs(self._target_current - self._current) > 1e-6
 
     def ramp_to_current(self, current: float, *, wait: bool = False) -> None:
         self.set_target_current(current)
+        if self._heater_state in {HeaterState.WARMING, HeaterState.COOLING}:
+            raise RuntimeError("Cannot ramp while the switch heater is in transition.")
         self._paused = False
         self._ramping = True
 
     def ramp_to_field(self, field: float, *, wait: bool = False) -> None:
         self.set_target_field(field)
+        if self._heater_state in {HeaterState.WARMING, HeaterState.COOLING}:
+            raise RuntimeError("Cannot ramp while the switch heater is in transition.")
         self._paused = False
         self._ramping = True
 
@@ -292,13 +307,38 @@ class SimulatedMagnetController(MagnetController):
         self._paused = True
         self._ramping = False
 
+    def hold(self) -> None:
+        """Hold the present output without changing field."""
+        self.pause_ramp()
+
+    def go_to_zero(self) -> None:
+        """Ramp the simulated supply output to zero."""
+        self._target_current = 0.0
+        self._paused = False
+        self._ramping = abs(self._current) > 1e-6
+
     def abort_ramp(self) -> None:
         self._target_current = self.current
         self._paused = True
         self._ramping = False
 
     def heater_on(self) -> None:
+        persistent_entry_current = self._supply_current_at_persistent_entry or 0.0
+        if self._persistent_field is not None and abs(self._current - persistent_entry_current) > 1e-6:
+            raise RuntimeError(
+                "Cannot turn heater on in persistent mode until the supply "
+                "current matches the trapped persistent current."
+            )
+        self._heater_state = HeaterState.WARMING
         self._heater = True
 
     def heater_off(self) -> None:
+        self._persistent_field = self.field
+        self._supply_current_at_persistent_entry = self.current
+        self._heater_state = HeaterState.COOLING
         self._heater = False
+        self._heater_state = HeaterState.OFF
+
+    def return_to_local(self) -> None:
+        """No-op for the simulated controller, which has no front panel."""
+        return

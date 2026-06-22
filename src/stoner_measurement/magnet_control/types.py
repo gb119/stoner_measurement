@@ -13,7 +13,10 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from stoner_measurement.instruments.magnet_controller import MagnetState
+    from stoner_measurement.instruments.magnet_controller import (
+        HeaterState,
+        MagnetState,
+    )
 
 
 class MagnetEngineStatus(Enum):
@@ -55,10 +58,18 @@ class MagnetReading:
         heater_on (bool | None):
             ``True`` when the persistent switch heater is energised,
             ``False`` when it is off, or ``None`` if unknown.
+        heater_state (HeaterState):
+            Rich heater state including transition states.
         state (MagnetState):
             Current operational state of the magnet supply.
+        persistent_current (float | None):
+            Persistent-mode trapped current in amps, if known.
+        persistent_field (float | None):
+            Field trapped when entering persistent mode, if known.
         at_target (bool):
             ``True`` when the output has reached the programmed target.
+        quench_detected (bool):
+            ``True`` when the controller reports a quench condition.
         field_rate (float):
             Estimated rate of change of the field in tesla per minute.
             Defaults to ``0.0`` until enough readings have accumulated.
@@ -87,6 +98,10 @@ class MagnetReading:
     heater_on: bool | None
     state: MagnetState
     at_target: bool
+    heater_state: HeaterState | None = None
+    persistent_current: float | None = None
+    persistent_field: float | None = None
+    quench_detected: bool = False
     field_rate: float = 0.0
 
 

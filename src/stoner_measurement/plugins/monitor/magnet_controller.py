@@ -124,6 +124,11 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
         """Return the engine's latest published state."""
         return self._engine().get_engine_state()
 
+    def _raise_if_quenched(self, state: MagnetEngineState) -> None:
+        """Raise to stop scripts when the magnet controller reports a quench."""
+        if state.reading is not None and state.reading.quench_detected:
+            raise RuntimeError("Magnet controller reported a quench condition.")
+
     def connect(self) -> None:
         """Ensure the engine is connected and start the polling timer.
 
@@ -141,6 +146,7 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             ... except RuntimeError:
             ...     pass
         """
+        self._raise_if_quenched(self._current_state())
         self._ensure_connected()
         self.start_monitoring()
 
@@ -268,6 +274,7 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
         else:
             state = self._current_state()
 
+        self._raise_if_quenched(state)
         reading = state.reading
         result: dict[str, float] = {}
 
@@ -306,7 +313,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             (float):
                 Magnetic field in tesla, or ``math.nan`` when unavailable.
         """
-        reading = self._current_state().reading
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        reading = state.reading
         return math.nan if reading is None or reading.field is None else float(reading.field)
 
     def target_field(self) -> float:
@@ -317,7 +326,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
                 Target magnetic field in tesla, or ``math.nan`` when
                 unavailable.
         """
-        value = self._current_state().target_field
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        value = state.target_field
         return math.nan if value is None else float(value)
 
     def current(self) -> float:
@@ -327,7 +338,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             (float):
                 Magnet current in amps, or ``math.nan`` when unavailable.
         """
-        reading = self._current_state().reading
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        reading = state.reading
         return math.nan if reading is None else float(reading.current)
 
     def voltage(self) -> float:
@@ -337,7 +350,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             (float):
                 Magnet voltage in volts, or ``math.nan`` when unavailable.
         """
-        reading = self._current_state().reading
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        reading = state.reading
         return math.nan if reading is None or reading.voltage is None else float(reading.voltage)
 
     def field_rate(self) -> float:
@@ -347,7 +362,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             (float):
                 Field ramp rate in T/min, or ``math.nan`` when unavailable.
         """
-        reading = self._current_state().reading
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        reading = state.reading
         return math.nan if reading is None else float(reading.field_rate)
 
     def heater(self) -> float:
@@ -358,7 +375,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
                 ``1.0`` when the heater is on, ``0.0`` when it is off, or
                 ``math.nan`` when unavailable.
         """
-        reading = self._current_state().reading
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        reading = state.reading
         if reading is None or reading.heater_on is None:
             return math.nan
         return 1.0 if reading.heater_on else 0.0
@@ -370,7 +389,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             (float):
                 ``1.0`` when at target or ``0.0`` otherwise.
         """
-        return 1.0 if self._current_state().at_target else 0.0
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        return 1.0 if state.at_target else 0.0
 
     def stable(self) -> float:
         """Return whether the magnetic field is stable.
@@ -379,7 +400,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             (float):
                 ``1.0`` when stable or ``0.0`` otherwise.
         """
-        return 1.0 if self._current_state().stable else 0.0
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        return 1.0 if state.stable else 0.0
 
     def reported_values(self) -> dict[str, str]:
         """Return a mapping of output names to accessor expressions.

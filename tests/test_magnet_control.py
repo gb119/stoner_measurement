@@ -49,6 +49,7 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
             A concrete :class:`MagnetController` subclass instance.
     """
     from stoner_measurement.instruments.magnet_controller import (
+        HeaterState,
         MagnetController,
         MagnetLimits,
         MagnetState,
@@ -91,7 +92,9 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
                 voltage=0.05,
                 persistent=False,
                 heater_on=True,
+                heater_state=HeaterState.ON,
                 at_target=True,
+                persistent_field=None,
             )
 
         @property
@@ -145,6 +148,9 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
         def heater_off(self):
             pass
 
+        def return_to_local(self):
+            pass
+
     return _FakeMC(NullTransport(), OxfordProtocol(), field, current)
 
 
@@ -183,7 +189,7 @@ def _make_history(
 
 class TestMagnetReading:
     def test_defaults_field_rate(self):
-        from stoner_measurement.instruments.magnet_controller import MagnetState
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
 
         r = MagnetReading(
             timestamp=datetime.now(tz=UTC),
@@ -191,13 +197,15 @@ class TestMagnetReading:
             current=10.0,
             voltage=0.05,
             heater_on=True,
+            heater_state=HeaterState.ON,
             state=MagnetState.AT_TARGET,
+            persistent_field=None,
             at_target=True,
         )
         assert r.field_rate == pytest.approx(0.0)
 
     def test_none_field(self):
-        from stoner_measurement.instruments.magnet_controller import MagnetState
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
 
         r = MagnetReading(
             timestamp=datetime.now(tz=UTC),
@@ -205,7 +213,9 @@ class TestMagnetReading:
             current=0.0,
             voltage=None,
             heater_on=None,
+            heater_state=HeaterState.UNKNOWN,
             state=MagnetState.UNKNOWN,
+            persistent_field=None,
             at_target=False,
         )
         assert r.field is None
@@ -221,7 +231,7 @@ class TestMagnetEngineState:
         assert state.magnet_constant is None
 
     def test_with_values(self):
-        from stoner_measurement.instruments.magnet_controller import MagnetState
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
 
         reading = MagnetReading(
             timestamp=datetime.now(tz=UTC),
@@ -229,7 +239,9 @@ class TestMagnetEngineState:
             current=20.0,
             voltage=0.1,
             heater_on=True,
+            heater_state=HeaterState.ON,
             state=MagnetState.RAMPING,
+            persistent_field=None,
             at_target=False,
         )
         state = MagnetEngineState(
@@ -962,6 +974,7 @@ class TestMagnetControlPanel:
 
     def test_read_heater_updates_heater_state_label(self, monkeypatch, qapp):
         from stoner_measurement.instruments.magnet_controller import MagnetState
+        from stoner_measurement.instruments.magnet_controller import HeaterState
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         panel = MagnetControlPanel()
@@ -975,6 +988,7 @@ class TestMagnetControlPanel:
                     current=10.0,
                     voltage=0.1,
                     heater_on=False,
+                    heater_state=HeaterState.OFF,
                     state=MagnetState.STANDBY,
                     at_target=False,
                 ),

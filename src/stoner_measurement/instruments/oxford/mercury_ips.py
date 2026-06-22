@@ -12,6 +12,7 @@ import re
 import time
 
 from stoner_measurement.instruments.magnet_controller import (
+    HeaterState,
     MagnetController,
     MagnetLimits,
     MagnetState,
@@ -110,6 +111,22 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         self._uid = device_uid
         self._magnet_constant = 1.0
         self._limits = MagnetLimits(max_current=0.0, max_field=None, max_ramp_rate=None)
+
+    def disconnect(self) -> None:
+        """Return the Mercury iPS to local/manual control before disconnecting."""
+        try:
+            if self.is_connected:
+                self.return_to_local()
+        finally:
+            super().disconnect()
+
+    def return_to_local(self) -> None:
+        """Return the Mercury iPS front panel to local/manual operation.
+
+        Mercury subsystems use the ``CLOC`` command to hand control back to
+        the local front panel.
+        """
+        self.write(f"SET:DEV:{self._uid}:PSU:CLOC")
 
     def identify(self) -> str:
         """Return the instrument identity string.
@@ -231,12 +248,15 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         """
         action = self._read_action()
         state = _ACTION_STATE_MAP.get(action, MagnetState.UNKNOWN)
+        if self._quench_detected():
+            state = MagnetState.QUENCH
         fld = self._read_sig_float("FLD")
         cur = self._read_sig_float("CURR")
         volt = self._read_sig_float("VOLT")
         fset = self._read_sig_float("FSET")
-        heater = self._read_heater_state()
-        persistent = not heater
+        heater_state = self._read_heater_state()
+        heater = heater_state is HeaterState.ON
+        persistent = heater_state is HeaterState.OFF
         at_target = state in _TERMINAL_RAMP_STATES and abs(fld - fset) < _AT_TARGET_FIELD_TOLERANCE
         if at_target and state == MagnetState.STANDBY:
             state = MagnetState.AT_TARGET
@@ -247,6 +267,7 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
             voltage=volt,
             persistent=persistent,
             heater_on=heater,
+            heater_state=heater_state,
             at_target=at_target,
         )
 
@@ -284,7 +305,7 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
             ConnectionError:
                 If the transport is not open.
         """
-        return self._read_heater_state()
+        return self._read_heater_state() is HeaterState.ON
 
     def set_target_current(self, current: float) -> None:
         """Set the target output current.
@@ -440,6 +461,20 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         """
         self.write(f"SET:DEV:{self._uid}:PSU:ACTN:HOLD")
 
+    def hold(self) -> None:
+        """Hold the present output without changing field.
+
+        Sends ``SET:DEV:<uid>:PSU:ACTN:HOLD`` to the instrument.
+        """
+        self.write(f"SET:DEV:{self._uid}:PSU:ACTN:HOLD")
+
+    def go_to_zero(self) -> None:
+        """Ramp the supply output to zero.
+
+        Sends ``SET:DEV:<uid>:PSU:ACTN:RTOZ`` to the instrument.
+        """
+        self.write(f"SET:DEV:{self._uid}:PSU:ACTN:RTOZ")
+
     def abort_ramp(self) -> None:
         """Abort an active ramp, holding the output at its current value.
 
@@ -502,15 +537,23 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         except ValueError as exc:
             raise ValueError(f"Invalid numeric response for {signal}: {raw!r}") from exc
 
-    def _read_heater_state(self) -> bool:
+    def _read_heater_state(self) -> HeaterState:
         """Read the switch heater state from the instrument.
 
         Returns:
-            (bool):
-                ``True`` when the heater is on, ``False`` when off.
+            (HeaterState):
+                Shared heater-state enum.
         """
         raw = self.query(f"READ:DEV:{self._uid}:PSU:SIG:SWHT").strip()
-        return raw.rsplit(":", maxsplit=1)[-1].upper() == "ON"
+        token = raw.rsplit(":", maxsplit=1)[-1].upper()
+        return {
+            "ON": HeaterState.ON,
+            "OFF": HeaterState.OFF,
+            "WARMING": HeaterState.WARMING,
+            "HEATING": HeaterState.WARMING,
+            "COOLING": HeaterState.COOLING,
+            "FAULT": HeaterState.FAULT,
+        }.get(token, HeaterState.UNKNOWN)
 
     def _read_action(self) -> str:
         """Read the current action state token from the instrument.
@@ -522,6 +565,12 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         """
         raw = self.query(f"READ:DEV:{self._uid}:PSU:ACTN").strip()
         return raw.rsplit(":", maxsplit=1)[-1].upper()
+
+    def _quench_detected(self) -> bool:
+        """Return ``True`` when the Mercury status flags report a trip/quench."""
+        raw = self.query(f"READ:DEV:{self._uid}:PSU:SIG:STAF").strip()
+        token = raw.rsplit(":", maxsplit=1)[-1].upper()
+        return "TRIP" in token
 
     def _wait_for_ramp_complete(self, *, timeout: float = 600.0, poll_period: float = 0.25) -> None:
         """Wait for the ramp to reach a terminal state, timing out if unsuccessful.
