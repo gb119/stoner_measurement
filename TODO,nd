@@ -1,6 +1,0 @@
-# Notes of features/bugs to work on
-
-1. Log window - regular expression to filter on for messages
-2. Magnet control panel and engine - need switch heater to understand transition states
-3. Lakeshroe 625 - check that it can read the field-current constant from the supply and limits.
-4. Keithley 6221-lockins: separate entries to specify multiple channels to read per lockin, remove current calcualtion
