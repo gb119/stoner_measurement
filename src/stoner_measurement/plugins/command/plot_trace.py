@@ -45,6 +45,7 @@ from stoner_measurement.plugins.trace.base import (
     COLUMN_ROLE_E,
     COLUMN_ROLE_Y,
 )
+from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -764,7 +765,7 @@ class PlotTraceCommand(CommandPlugin):
             return
         hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
         button.setText(hex_colour)
-        button.setStyleSheet(f"QPushButton {{ background-color: {hex_colour}; }}")
+        button.setStyleSheet(button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour)))
 
     def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
         """Open a colour picker and return the selected hex colour or current value.

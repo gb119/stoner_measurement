@@ -17,6 +17,8 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import QPlainTextEdit, QWidget
 
+from stoner_measurement.ui.theme import colour
+
 _SYNTAX_MARKER_MIN_SIZE = 6
 _SYNTAX_MARKER_MAX_SIZE = 10
 _SYNTAX_MARKER_INNER_PADDING = 2
@@ -65,11 +67,11 @@ class PythonHighlighter(QSyntaxHighlighter):
 
     def _build_rules(self) -> None:
         """Populate self._rules with (pattern, format) pairs."""
-        keyword_fmt = self._make_format("#0000ff", bold=True)
-        builtin_fmt = self._make_format("#7d26cd")
-        string_fmt = self._make_format("#008000", italic=True)
-        number_fmt = self._make_format("#b05a00")
-        comment_fmt = self._make_format("#808080", italic=True)
+        keyword_fmt = self._make_format(colour("syntax_keyword"), bold=True)
+        builtin_fmt = self._make_format(colour("syntax_builtin"))
+        string_fmt = self._make_format(colour("syntax_string"), italic=True)
+        number_fmt = self._make_format(colour("syntax_number"))
+        comment_fmt = self._make_format(colour("syntax_comment"), italic=True)
 
         # Keywords
         kw_pattern = r"\b(?:" + "|".join(re.escape(kw) for kw in keyword.kwlist) + r")\b"
@@ -307,7 +309,7 @@ class EditorWidget(QPlainTextEdit):
             event: The paint event forwarded from :class:`_LineNumberArea`.
         """
         painter = QPainter(self._line_number_area)
-        painter.fillRect(event.rect(), QColor("#f0f0f0"))
+        painter.fillRect(event.rect(), QColor(colour("gutter_background")))
 
         block = self.firstVisibleBlock()
         block_number = block.blockNumber()
@@ -316,7 +318,7 @@ class EditorWidget(QPlainTextEdit):
         bottom = top + int(self.blockBoundingRect(block).height())
         line_height = int(self.blockBoundingRect(block).height())
 
-        painter.setPen(QColor("#808080"))
+        painter.setPen(QColor(colour("gutter_text")))
         fm = QFontMetrics(self.font())
 
         while block.isValid() and top <= event.rect().bottom():
@@ -362,9 +364,9 @@ class EditorWidget(QPlainTextEdit):
         )
         marker_y = top + max(0, (line_height - marker_size) // 2)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#d32f2f"))
+        painter.setBrush(QColor(colour("syntax_error_marker")))
         painter.drawEllipse(1, marker_y, marker_size, marker_size)
-        painter.setPen(QColor("#808080"))
+        painter.setPen(QColor(colour("gutter_text")))
 
     def _highlight_current_line(self) -> None:
         """Highlight the line that contains the text cursor."""
@@ -373,7 +375,7 @@ class EditorWidget(QPlainTextEdit):
         extra: list[QTextEdit.ExtraSelection] = []
         if not self.isReadOnly():
             selection = QTextEdit.ExtraSelection()
-            selection.format.setBackground(QColor("#fffde7"))
+            selection.format.setBackground(QColor(colour("editor_current_line")))
             selection.format.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
             selection.cursor = self.textCursor()
             selection.cursor.clearSelection()

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from qtpy.QtCore import QSettings
 from qtpy.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -21,11 +22,14 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from stoner_measurement.ui.theme import DEFAULT_THEME, available_themes
 
 #: Settings key for the default data directory.
 KEY_DEFAULT_DATA_DIR = "app/default_data_directory"
 #: Settings key for the default sequence template path.
 KEY_DEFAULT_SEQUENCE_TEMPLATE = "app/default_sequence_template"
+#: Settings key for the application theme.
+KEY_THEME = "app/theme"
 
 
 def make_app_settings() -> QSettings:
@@ -66,6 +70,8 @@ class SettingsDialog(QDialog):
     * **Default sequence template** — path to a JSON sequence file that is
       loaded whenever a new sequence is created or the application starts.  If
       the path is empty or the file does not exist an empty sequence is used.
+    * **Theme** — choose between the available application themes. The selected
+      theme is saved in the application settings file and restored on startup.
 
     Changes are written to the INI-format settings file returned by
     :func:`make_app_settings` when the user clicks *OK*.
@@ -123,6 +129,14 @@ class SettingsDialog(QDialog):
         template_row.addWidget(template_browse)
         form.addRow("Default sequence template:", template_row)
 
+        # Theme row
+        self._theme_combo = QComboBox(self)
+        self._theme_combo.addItems([name.capitalize() for name in available_themes()])
+        saved_theme = settings.value(KEY_THEME, DEFAULT_THEME, type=str).strip().lower() or DEFAULT_THEME
+        index = max(0, available_themes().index(saved_theme) if saved_theme in available_themes() else 0)
+        self._theme_combo.setCurrentIndex(index)
+        form.addRow("Theme:", self._theme_combo)
+
         # ── Button box ────────────────────────────────────────────────────
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
@@ -168,5 +182,6 @@ class SettingsDialog(QDialog):
         settings = make_app_settings()
         settings.setValue(KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
         settings.setValue(KEY_DEFAULT_SEQUENCE_TEMPLATE, self._template_edit.text().strip())
+        settings.setValue(KEY_THEME, self._theme_combo.currentText().strip().lower())
         settings.sync()
         self.accept()

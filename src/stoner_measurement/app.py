@@ -27,7 +27,11 @@ from stoner_measurement.ui.icons import (
     make_generate_icon,
     make_log_icon,
     make_magnet_icon,
+    make_pause_icon,
+    make_run_icon,
+    make_stop_icon,
     make_temperature_icon,
+    make_watch_icon,
 )
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
@@ -35,16 +39,21 @@ from stoner_measurement.ui.value_watch import ValueWatchWindow
 from stoner_measurement.ui.settings_dialog import (
     KEY_DEFAULT_DATA_DIR,
     KEY_DEFAULT_SEQUENCE_TEMPLATE,
+    KEY_THEME,
     SettingsDialog,
     make_app_settings,
 )
-
-_STATUS_BACKGROUND_DEFAULT_COLOR = "#6b7280"
-_STATUS_BACKGROUND_RUNNING_COLOR = "#2e7d32"
-_STATUS_BACKGROUND_PAUSED_COLOR = "#ef6c00"
-_STATUS_BACKGROUND_ERROR_COLOR = "#c62828"
+from stoner_measurement.ui.theme import colour, status_bar_stylesheet, theme_name
 
 logger = logging.getLogger(__name__)
+
+# Backward-compatible status-bar colour constants retained for tests and
+# external imports. These mirror the current theme token defaults at import
+# time.
+_STATUS_BACKGROUND_DEFAULT_COLOR = colour("status_default")
+_STATUS_BACKGROUND_RUNNING_COLOR = colour("status_running")
+_STATUS_BACKGROUND_PAUSED_COLOR = colour("status_paused")
+_STATUS_BACKGROUND_ERROR_COLOR = colour("status_error")
 
 
 class SequenceView:
@@ -349,7 +358,7 @@ class MeasurementApp(QMainWindow):
     def _show_status_message(
         self,
         message: str,
-        background_colour: str = _STATUS_BACKGROUND_DEFAULT_COLOR,
+        background_colour: str = colour("status_default"),
     ) -> None:
         """Show a status-bar message and apply a coloured background.
 
@@ -360,12 +369,7 @@ class MeasurementApp(QMainWindow):
                 CSS colour value used for the status bar background.
         """
         self._status_bar.showMessage(message)
-        self._status_bar.setStyleSheet(
-            "QStatusBar { "
-            f"background-color: {background_colour}; "
-            "color: white; } "
-            "QStatusBar::item { border: none; }"
-        )
+        self._status_bar.setStyleSheet(status_bar_stylesheet(background_colour))
 
     def _on_engine_status_changed(self, status: str) -> None:
         """Update status text and colour in response to sequence-engine status changes.
@@ -375,14 +379,14 @@ class MeasurementApp(QMainWindow):
                 Current sequence engine state string.
         """
         colour_by_status = {
-            "Running": _STATUS_BACKGROUND_RUNNING_COLOR,
-            "Paused": _STATUS_BACKGROUND_PAUSED_COLOR,
-            "Error": _STATUS_BACKGROUND_ERROR_COLOR,
+            "Running": colour("status_running"),
+            "Paused": colour("status_paused"),
+            "Error": colour("status_error"),
         }
-        background_colour = _STATUS_BACKGROUND_DEFAULT_COLOR
-        for state, colour in colour_by_status.items():
+        background_colour = colour("status_default")
+        for state, status_colour in colour_by_status.items():
             if status.startswith(state):
-                background_colour = colour
+                background_colour = status_colour
                 break
         self._show_status_message(status, background_colour)
 
@@ -424,7 +428,7 @@ class MeasurementApp(QMainWindow):
     def _build_sequence_actions(self, style: QStyle) -> None:
         """Create sequence-related QAction instances."""
         self._act_run = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay),
+            make_run_icon(),
             "&Run",
             self,
         )
@@ -433,7 +437,7 @@ class MeasurementApp(QMainWindow):
         self._act_run.triggered.connect(self._on_run)
 
         self._act_pause = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_MediaPause),
+            make_pause_icon(),
             "&Pause",
             self,
         )
@@ -442,7 +446,7 @@ class MeasurementApp(QMainWindow):
         self._act_pause.triggered.connect(self._on_pause)
 
         self._act_stop = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_MediaStop),
+            make_stop_icon(),
             "S&top",
             self,
         )
@@ -494,7 +498,7 @@ class MeasurementApp(QMainWindow):
         self._act_show_log.setStatusTip("Open the log viewer window")
         self._act_show_log.triggered.connect(self._on_show_log)
 
-        self._act_show_value_watch = QAction(self._find_toolbar_icon("watch_icon.png"), "Show &Value Watch", self)
+        self._act_show_value_watch = QAction(make_watch_icon(), "Show &Value Watch", self)
         self._act_show_value_watch.setShortcut(QKeySequence("Ctrl+Shift+L"))
         self._act_show_value_watch.setStatusTip("Open the live value watch window")
         self._act_show_value_watch.triggered.connect(self._on_show_value_watch)
@@ -1217,8 +1221,16 @@ class MeasurementApp(QMainWindow):
 
     def _on_settings(self) -> None:
         """Open the Preferences dialogue."""
+        previous_theme = theme_name()
         dlg = SettingsDialog(parent=self)
-        dlg.exec()
+        if dlg.exec():
+            new_theme = make_app_settings().value(KEY_THEME, previous_theme, type=str)
+            if new_theme != previous_theme:
+                QMessageBox.information(
+                    self,
+                    "Restart Required",
+                    "Theme changes will take effect after restarting Stoner Measurement.",
+                )
 
     def _on_show_log(self) -> None:
         """Show the log viewer window, bringing it to the front if already open."""

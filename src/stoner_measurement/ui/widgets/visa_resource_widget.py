@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+from stoner_measurement.ui.theme import colour
 
 #: Stylesheet templates for each connection status.  ``{bg}`` is replaced
 #: with the actual background colour token.
@@ -27,9 +28,9 @@ _STYLE_TEMPLATE = "QComboBox {{ background-color: {bg}; }}"
 #: Mapping from status to background colour CSS token.
 _STATUS_COLOURS: dict[str, str] = {
     "disconnected": "",  # empty ⇒ default palette background
-    "connecting": "#FFD580",  # amber
-    "connected": "#90EE90",  # light green
-    "error": "#FFAAAA",  # light red
+    "connecting": "#ffd580",
+    "connected": "#90ee90",
+    "error": "#ffaaaa",
 }
 
 

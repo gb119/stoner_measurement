@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from stoner_measurement.ui.theme import colour
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -269,6 +270,28 @@ class _IPythonConsoleWidget(QWidget):
         mono = QFont("Courier New", 9)
         mono.setStyleHint(QFont.StyleHint.Monospace)
         self._console.font = mono
+        self._console.set_default_style(colors="linux")
+        tooltip_base = colour("tooltip_base")
+        tooltip_border = colour("border")
+        tooltip_text = colour("tooltip_text")
+        self._console.style_sheet = f"""
+QWidget {{
+    background-color: {colour("base")};
+    color: {colour("text")};
+}}
+
+QPlainTextEdit, QTextEdit {{
+    background-color: {colour("base")};
+    color: {colour("text")};
+    selection-background-color: {colour("highlight")};
+    selection-color: {colour("highlighted_text")};
+}}
+QToolTip {{
+    color: {tooltip_text};
+    background-color: {tooltip_base};
+    border: 1px solid {tooltip_border};
+}}
+"""
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -373,7 +396,7 @@ class _IPythonConsoleWidget(QWidget):
         """
         escaped = _html_lib.escape(text).replace("\n", "<br/>")
         self._console._append_html(
-            f'<span style="color: #cc0000">{escaped}</span>',
+            f'<span style="color: {colour("console_error")}">{escaped}</span>',
             before_prompt=True,
         )
 

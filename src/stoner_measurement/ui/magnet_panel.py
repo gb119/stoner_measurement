@@ -62,6 +62,7 @@ from stoner_measurement.magnet_control.types import (
     MagnetReading,
 )
 from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.theme import indicator_label_stylesheet
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
@@ -1208,10 +1209,7 @@ class MagnetControlPanel(QWidget):
             bg = "#c62828"
 
         self._heater_state_label.setText(label)
-        self._heater_state_label.setStyleSheet(
-            f"QLabel {{ background-color: {bg}; color: {fg}; "
-            "border: 1px solid #808080; border-radius: 4px; padding: 4px 8px; }}"
-        )
+        self._heater_state_label.setStyleSheet(indicator_label_stylesheet(bg, fg))
 
     def _heater_state_from_state(self, state: MagnetEngineState) -> HeaterState | None:
         """Return the heater state from a controller state snapshot."""
@@ -1258,10 +1256,7 @@ class MagnetControlPanel(QWidget):
             bg = "#c62828"
 
         self._ramp_action_label.setText(label)
-        self._ramp_action_label.setStyleSheet(
-            f"QLabel {{ background-color: {bg}; color: {fg}; "
-            "border: 1px solid #808080; border-radius: 4px; padding: 4px 8px; }}"
-        )
+        self._ramp_action_label.setStyleSheet(indicator_label_stylesheet(bg, fg))
 
     def _update_ramp_controls(self, state: MagnetEngineState) -> None:
         """Update ramp-control button enabled states from the latest polled state."""

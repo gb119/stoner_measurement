@@ -36,6 +36,12 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from stoner_measurement.ui.theme import (
+    apply_pyqtgraph_dark_theme,
+    button_swatch_stylesheet,
+    colour,
+    contrasting_text_colour,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -444,8 +450,8 @@ class PlotWidget(QWidget):
         self._pg_widget.setObjectName("pgPlotWidget")
         self._pg_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._pg_widget.customContextMenuRequested.connect(self._open_axes_dialog)
-        self._pg_widget.setBackground("w")
-        self._pg_widget.showGrid(x=True, y=True, alpha=0.3)
+        self._pg_widget.setBackground(colour("plot_background"))
+        self._pg_widget.showGrid(x=True, y=True, alpha=0.25)
         self._pg_widget.setLabel("left", "Value")
         self._pg_widget.setLabel("bottom", "Step")
         plot_item: pg.PlotItem = self._pg_widget.getPlotItem()
@@ -463,6 +469,7 @@ class PlotWidget(QWidget):
         self._axis_grid["bottom"] = True
         self._axis_grid["left"] = True
         self._plot_item.vb.sigResized.connect(self._sync_view_box_geometry)
+        apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         layout.addWidget(self._pg_widget)
 
     # ------------------------------------------------------------------
@@ -631,7 +638,7 @@ class PlotWidget(QWidget):
             return
         hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
         button.setText(hex_colour)
-        button.setStyleSheet(f"QPushButton {{ background-color: {hex_colour}; }}")
+        button.setStyleSheet(button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour)))
 
     def _on_trace_colour_button_clicked(self) -> None:
         """Open a colour picker dialog and apply the chosen trace colour."""
@@ -1232,6 +1239,7 @@ class PlotWidget(QWidget):
         if name not in self._axis_items:
             raise KeyError(f"Unknown axis: {name!r}")
         self._axis_items[name].setLabel(label)
+        apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
 
     def set_axis_log_scale(self, name: str, log_scale: bool) -> None:
         """Set logarithmic scaling mode for an axis.
@@ -1259,7 +1267,7 @@ class PlotWidget(QWidget):
         """Apply aggregate grid visibility from per-axis flags."""
         x_grid_enabled = any(self._axis_grid.get(axis_name, False) for axis_name in self._x_axis_names())
         y_grid_enabled = any(self._axis_grid.get(axis_name, False) for axis_name in self._y_axis_names())
-        self._pg_widget.showGrid(x=x_grid_enabled, y=y_grid_enabled, alpha=0.3)
+        self._pg_widget.showGrid(x=x_grid_enabled, y=y_grid_enabled, alpha=0.25)
 
     def set_axis_grid(self, name: str, enabled: bool) -> None:
         """Set grid visibility preference for an axis.
@@ -1360,6 +1368,7 @@ class PlotWidget(QWidget):
         axis.setLabel(label)
         self._plot_item.layout.addItem(axis, 2, 3 if side == "right" else 0)
         self._axis_items[name] = axis
+        apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         self._axis_orientations[name] = "y"
         self._axis_log_scale[name] = False
         self._axis_grid[name] = self._axis_grid.get("left", True)
@@ -1439,6 +1448,7 @@ class PlotWidget(QWidget):
         axis.setLabel(label)
         self._plot_item.layout.addItem(axis, 0 if position == "top" else 4, 1)
         self._axis_items[name] = axis
+        apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         self._axis_orientations[name] = "x"
         self._axis_log_scale[name] = False
         self._axis_grid[name] = self._axis_grid.get("bottom", True)

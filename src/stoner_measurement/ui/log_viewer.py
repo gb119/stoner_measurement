@@ -33,14 +33,15 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from stoner_measurement.ui.theme import colour, validation_error_lineedit_stylesheet
 
 #: Colour map from logging level to display colour.
 _LEVEL_COLOURS: dict[int, QColor] = {
-    logging.DEBUG: QColor("purple"),
-    logging.INFO: QColor("navy"),
-    logging.WARNING: QColor("maroon"),
-    logging.ERROR: QColor("red"),
-    logging.CRITICAL: QColor("darkred"),
+    logging.DEBUG: QColor(colour("log_debug")),
+    logging.INFO: QColor(colour("log_info")),
+    logging.WARNING: QColor(colour("log_warning")),
+    logging.ERROR: QColor(colour("log_error")),
+    logging.CRITICAL: QColor(colour("log_critical")),
 }
 
 _TRAFFIC_FILTER_LABELS: dict[str, str] = {
@@ -644,7 +645,7 @@ class LogViewerWindow(QWidget):
         try:
             re.compile(pattern)
         except re.error as exc:
-            field.setStyleSheet("QLineEdit { background-color: #fff0f0; }")
+            field.setStyleSheet(validation_error_lineedit_stylesheet())
             field.setToolTip(f"Invalid regular expression: {exc}")
             return
         field.setStyleSheet("")

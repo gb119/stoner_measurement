@@ -92,6 +92,10 @@ from stoner_measurement.ui.widgets import (
     VisaResourceStatus,
 )
 from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.theme import (
+    colour,
+    disabled_tab_stylesheet,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +109,7 @@ _CHANNEL_COLOURS = [
 ]
 
 #: Colour for setpoint trace lines.
-_SETPOINT_COLOUR = QColor("black")
+_SETPOINT_COLOUR = QColor(colour("setpoint_trace"))
 
 #: Colour for heater output trace.
 _HEATER_COLOUR = QColor("saddlebrown")
@@ -243,6 +247,7 @@ class TemperatureControlPanel(QWidget):
     def _build_ui(self) -> None:
         """Build all UI sections and assemble the tab widget."""
         self._tabs = QTabWidget(self)
+        self._tabs.setStyleSheet(disabled_tab_stylesheet())
 
         self._tabs.addTab(self._build_connection_tab(), "Connection")
         self._tabs.addTab(self._build_control_tab(), "Control")
@@ -805,7 +810,7 @@ class TemperatureControlPanel(QWidget):
 
                 self._chart_widget.set_trace("dT/dt", rate_xs, rate_ys)
                 self._chart_widget.assign_trace_axes("dT/dt", y_axis="rate")
-                self._chart_widget.set_trace_style("dT/dt", colour="#666666")
+                self._chart_widget.set_trace_style("dT/dt", colour=colour("muted_text"))
                 if rate_ys:
                     self._update_legend_value("dT/dt", f"{rate_ys[-1]:.3f} K/min")
 

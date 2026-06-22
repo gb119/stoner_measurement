@@ -39,6 +39,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -809,7 +810,6 @@ class PlotPointsCommand(CommandPlugin):
             colour (str):
                 Colour string (hex, named, or empty for auto).
         """
-        btn_id = button.objectName() or f"colour_btn_{id(button)}"
         if not colour:
             button.setText("(auto)")
             button.setStyleSheet("")
@@ -820,7 +820,9 @@ class PlotPointsCommand(CommandPlugin):
             return
         hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
         button.setText(hex_colour)
-        button.setStyleSheet(f"QPushButton#{btn_id} {{ background-color: {hex_colour}; }}")
+        button.setStyleSheet(
+            button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour))
+        )
 
     def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
         """Open a colour picker and return the selected hex colour or current value.

@@ -15,6 +15,7 @@ import math
 
 from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
+    QBrush,
     QColor,
     QIcon,
     QImage,
@@ -24,6 +25,7 @@ from qtpy.QtGui import (
     QPolygonF,
 )
 
+from stoner_measurement.ui.theme import colour
 
 def _load_resource_icon(resource_path: str) -> QIcon | None:
     """Load a PNG icon from the bundled resources directory.
@@ -107,6 +109,101 @@ def make_generate_icon(size: int = 32) -> QIcon:
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
     painter.drawEllipse(QPointF(cx, cy), hole_r, hole_r)
 
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
+def make_run_icon(size: int = 32) -> QIcon:
+    """Create a dark-mode-friendly run icon."""
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#66bb6a"))
+    margin = size * 0.18
+    points = [
+        QPointF(margin, margin),
+        QPointF(size - margin, size / 2.0),
+        QPointF(margin, size - margin),
+    ]
+    painter.drawPolygon(QPolygonF(points))
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
+def make_pause_icon(size: int = 32) -> QIcon:
+    """Create a dark-mode-friendly pause icon."""
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#ffca28"))
+    bar_w = size * 0.18
+    gap = size * 0.12
+    total_w = 2 * bar_w + gap
+    left = (size - total_w) / 2.0
+    top = size * 0.18
+    height = size * 0.64
+    painter.drawRoundedRect(QRectF(left, top, bar_w, height), 2, 2)
+    painter.drawRoundedRect(QRectF(left + bar_w + gap, top, bar_w, height), 2, 2)
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
+def make_stop_icon(size: int = 32) -> QIcon:
+    """Create a dark-mode-friendly stop icon."""
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#ef5350"))
+    side = size * 0.56
+    left = (size - side) / 2.0
+    top = (size - side) / 2.0
+    painter.drawRoundedRect(QRectF(left, top, side, side), 3, 3)
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
+def make_watch_icon(size: int = 32) -> QIcon:
+    """Create a dark-mode-friendly binoculars icon for value watch."""
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    body = QColor(colour("plot_foreground"))
+    highlight = QColor(colour("value_display_text"))
+    bridge = QColor(colour("muted_text"))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(body)
+    left_body = QRectF(size * 0.12, size * 0.22, size * 0.28, size * 0.42)
+    right_body = QRectF(size * 0.60, size * 0.22, size * 0.28, size * 0.42)
+    painter.drawRoundedRect(left_body, size * 0.08, size * 0.08)
+    painter.drawRoundedRect(right_body, size * 0.08, size * 0.08)
+    painter.setBrush(QBrush(bridge))
+    painter.drawRoundedRect(QRectF(size * 0.39, size * 0.28, size * 0.22, size * 0.10), 2, 2)
+    painter.drawRoundedRect(QRectF(size * 0.31, size * 0.12, size * 0.38, size * 0.09), 2, 2)
+    painter.setBrush(QBrush(highlight))
+    painter.drawEllipse(QRectF(size * 0.17, size * 0.28, size * 0.18, size * 0.18))
+    painter.drawEllipse(QRectF(size * 0.65, size * 0.28, size * 0.18, size * 0.18))
+    painter.setBrush(QBrush(body))
+    left_barrel = [
+        QPointF(size * 0.19, size * 0.60),
+        QPointF(size * 0.33, size * 0.60),
+        QPointF(size * 0.29, size * 0.84),
+        QPointF(size * 0.15, size * 0.84),
+    ]
+    right_barrel = [
+        QPointF(size * 0.67, size * 0.60),
+        QPointF(size * 0.81, size * 0.60),
+        QPointF(size * 0.85, size * 0.84),
+        QPointF(size * 0.71, size * 0.84),
+    ]
+    painter.drawPolygon(left_barrel)
+    painter.drawPolygon(right_barrel)
     painter.end()
     return QIcon(QPixmap.fromImage(img))
 

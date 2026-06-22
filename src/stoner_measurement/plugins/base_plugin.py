@@ -37,6 +37,7 @@ from qtpy.QtCore import QObject
 from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QTextBrowser, QWidget
 
 from stoner_measurement.plugins.plugin_config import load_plugin_config
+from stoner_measurement.ui.theme import validation_error_lineedit_stylesheet
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -731,7 +732,7 @@ class BasePlugin(ABC):
                 self.instance_name = new_name
             else:
                 # Highlight the field and revert to the current valid value.
-                name_edit.setStyleSheet("border: 1px solid red;")
+                name_edit.setStyleSheet(validation_error_lineedit_stylesheet())
                 name_edit.setToolTip(
                     f"{new_name!r} is not a valid Python identifier. "
                     "Use only letters, digits and underscores, "

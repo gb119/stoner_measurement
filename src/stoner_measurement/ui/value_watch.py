@@ -17,11 +17,22 @@ from qtpy.QtCore import QSettings, Qt  # pylint: disable=no-name-in-module
 
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.qt_compat import pyqtSignal, pyqtSlot
+from stoner_measurement.ui.theme import (
+    colour,
+    muted_label_stylesheet,
+    value_display_frame_stylesheet,
+)
 
 _SETTINGS_GROUP = "ValueWatch"
 _CONFIG_BUTTON_TEXT = "Configure…"
 _MAX_COLUMNS = 2
-_BUTTON_STYLE_CHECKED = "QPushButton:checked { background-color: #dbeafe; color: #1f2937; border: 1px solid #93c5fd; }"
+_BUTTON_STYLE_CHECKED = (
+    "QPushButton:checked { "
+    f"background-color: {colour('highlight')}; "
+    f"color: {colour('highlighted_text')}; "
+    f"border: 1px solid {colour('link')}; "
+    "}"
+)
 _EDGE_SNAP_THRESHOLD_PX = 24
 _EDGE_SNAP_WIDTH_RATIO = 0.25
 _EDGE_SNAP_MIN_WIDTH_PX = 320
@@ -127,7 +138,7 @@ class ValueSelectionWidget(QtWidgets.QWidget):
 
         self._empty_label = QtWidgets.QLabel(self._list_container)
         self._empty_label.setWordWrap(True)
-        self._empty_label.setStyleSheet("QLabel { color: #6b7280; padding: 8px 4px; }")
+        self._empty_label.setStyleSheet(muted_label_stylesheet())
         self._empty_label.hide()
         self._list_layout.insertWidget(0, self._empty_label)
 
@@ -295,7 +306,7 @@ class _WatchDisplay(QtWidgets.QWidget):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         self._value_label.setMinimumHeight(56)
-        self._value_label.setStyleSheet("QLabel { color: #10b981; }")
+        self._value_label.setStyleSheet(f"QLabel {{ color: {colour('value_display_text')}; }}")
         self._value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self._suffix_label = QtWidgets.QLabel("", self)
@@ -307,17 +318,13 @@ class _WatchDisplay(QtWidgets.QWidget):
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
         self._suffix_label.setMinimumHeight(56)
-        self._suffix_label.setStyleSheet("QLabel { color: #10b981; }")
+        self._suffix_label.setStyleSheet(f"QLabel {{ color: {colour('value_display_text')}; }}")
         self._suffix_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self._display_frame = QtWidgets.QFrame(self)
         self._display_frame.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
         self._display_frame.setStyleSheet(
-            "QFrame {"
-            " background-color: #111827;"
-            " border: 2px solid #374151;"
-            " border-radius: 8px;"
-            "}"
+            value_display_frame_stylesheet() +
             "QLabel {"
             " background: transparent;"
             "}"
@@ -690,7 +697,7 @@ class ValueWatchWindow(QtWidgets.QWidget):
         if not enabled_entries:
             empty = QtWidgets.QLabel("No watched values selected.", self._display_widget)
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("QLabel { color: #6b7280; padding: 24px; }")
+            empty.setStyleSheet(f"QLabel {{ color: {colour('muted_text')}; padding: 24px; }}")
             self._display_layout.addWidget(empty, 0, 0)
             self._empty_state_label = empty
             return
