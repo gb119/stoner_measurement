@@ -14,6 +14,7 @@ command API; they never talk to instrument drivers directly.
 from __future__ import annotations
 
 import logging
+import threading
 from collections import deque
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -138,6 +139,7 @@ class MagnetControllerEngine(QObject):
         self._latest_state: MagnetEngineState = MagnetEngineState(engine_status=self._status)
 
         self._timer = QTimer(self)
+        self._engine_lock = threading.RLock()
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
         self._apply_configuration(load_magnet_controller_config())
@@ -236,29 +238,30 @@ class MagnetControllerEngine(QObject):
             RuntimeError:
                 If the engine has been shut down.
         """
-        if self._status == MagnetEngineStatus.STOPPED:
-            raise RuntimeError("Engine has been shut down and cannot accept new connections.")
-        self._timer.stop()
-        if self._driver is not None:
-            self._disconnect_driver(self._driver, log_context="before replacing magnet controller")
-        try:
-            if not driver.is_connected:
-                driver.connect()
-            else:
-                driver.confirm_identity()
-        except Exception:
-            self._driver = None
-            self._set_status(MagnetEngineStatus.DISCONNECTED)
-            raise
-        self._driver = driver
-        self._connected_driver_name = type(driver).__name__
-        self._history.clear()
-        self._is_at_target = False
-        self._at_target_since = None
-        self._unstable_since = None
-        self._stable = False
-        self._set_status(MagnetEngineStatus.CONNECTED)
-        self._timer.start()
+        with self._engine_lock:
+            if self._status == MagnetEngineStatus.STOPPED:
+                raise RuntimeError("Engine has been shut down and cannot accept new connections.")
+            self._timer.stop()
+            if self._driver is not None:
+                self._disconnect_driver(self._driver, log_context="before replacing magnet controller")
+            try:
+                if not driver.is_connected:
+                    driver.connect()
+                else:
+                    driver.confirm_identity()
+            except Exception:
+                self._driver = None
+                self._set_status(MagnetEngineStatus.DISCONNECTED)
+                raise
+            self._driver = driver
+            self._connected_driver_name = type(driver).__name__
+            self._history.clear()
+            self._is_at_target = False
+            self._at_target_since = None
+            self._unstable_since = None
+            self._stable = False
+            self._set_status(MagnetEngineStatus.CONNECTED)
+            self._timer.start()
         logger.info("MagnetControllerEngine: connected to %s", type(driver).__name__)
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
@@ -407,25 +410,26 @@ class MagnetControllerEngine(QObject):
     def disconnect_instrument(self) -> None:
         """Stop polling and release the driver reference."""
         self._timer.stop()
-        if self._driver is not None:
-            self._disconnect_driver(self._driver, log_context="on disconnect")
-        self._driver = None
-        self._connected_driver_name = None
-        self._connected_transport_name = None
-        self._connected_address = None
-        self._history.clear()
-        self._is_at_target = False
-        self._at_target_since = None
-        self._unstable_since = None
-        self._stable = False
-        self._set_status(MagnetEngineStatus.DISCONNECTED)
-        self._latest_state = MagnetEngineState(
-            target_field=self._target_field,
-            target_current=self._target_current,
-            ramp_rate_field=self._ramp_rate_field,
-            ramp_rate_current=self._ramp_rate_current,
-            engine_status=self._status,
-        )
+        with self._engine_lock:
+            if self._driver is not None:
+                self._disconnect_driver(self._driver, log_context="on disconnect")
+            self._driver = None
+            self._connected_driver_name = None
+            self._connected_transport_name = None
+            self._connected_address = None
+            self._history.clear()
+            self._is_at_target = False
+            self._at_target_since = None
+            self._unstable_since = None
+            self._stable = False
+            self._set_status(MagnetEngineStatus.DISCONNECTED)
+            self._latest_state = MagnetEngineState(
+                target_field=self._target_field,
+                target_current=self._target_current,
+                ramp_rate_field=self._ramp_rate_field,
+                ramp_rate_current=self._ramp_rate_current,
+                engine_status=self._status,
+            )
         logger.info("MagnetControllerEngine: disconnected.")
 
     @property
@@ -503,13 +507,14 @@ class MagnetControllerEngine(QObject):
             field (float):
                 Desired target field in tesla.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_target_field(field)
-            self._target_field = field
-        except Exception:
-            logger.exception("Failed to set target field to %s T", field)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_target_field(field)
+                self._target_field = field
+            except Exception:
+                logger.exception("Failed to set target field to %s T", field)
 
     def set_target_current(self, current: float) -> None:
         """Set the target output current.
@@ -518,13 +523,14 @@ class MagnetControllerEngine(QObject):
             current (float):
                 Desired target current in amps.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_target_current(current)
-            self._target_current = current
-        except Exception:
-            logger.exception("Failed to set target current to %s A", current)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_target_current(current)
+                self._target_current = current
+            except Exception:
+                logger.exception("Failed to set target current to %s A", current)
 
     def set_ramp_rate_field(self, rate: float) -> None:
         """Set the field ramp rate.
@@ -533,13 +539,14 @@ class MagnetControllerEngine(QObject):
             rate (float):
                 Ramp rate in tesla per minute.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_ramp_rate_field(rate)
-            self._ramp_rate_field = rate
-        except Exception:
-            logger.exception("Failed to set field ramp rate to %s T/min", rate)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_ramp_rate_field(rate)
+                self._ramp_rate_field = rate
+            except Exception:
+                logger.exception("Failed to set field ramp rate to %s T/min", rate)
 
     def set_ramp_rate_current(self, rate: float) -> None:
         """Set the current ramp rate.
@@ -548,13 +555,14 @@ class MagnetControllerEngine(QObject):
             rate (float):
                 Ramp rate in amps per minute.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_ramp_rate_current(rate)
-            self._ramp_rate_current = rate
-        except Exception:
-            logger.exception("Failed to set current ramp rate to %s A/min", rate)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_ramp_rate_current(rate)
+                self._ramp_rate_current = rate
+            except Exception:
+                logger.exception("Failed to set current ramp rate to %s A/min", rate)
 
     def set_magnet_constant(self, tesla_per_amp: float) -> None:
         """Set the magnet constant used for field/current conversion.
@@ -563,12 +571,13 @@ class MagnetControllerEngine(QObject):
             tesla_per_amp (float):
                 Magnet constant in tesla per amp.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_magnet_constant(tesla_per_amp)
-        except Exception:
-            logger.exception("Failed to set magnet constant to %s T/A", tesla_per_amp)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_magnet_constant(tesla_per_amp)
+            except Exception:
+                logger.exception("Failed to set magnet constant to %s T/A", tesla_per_amp)
 
     def set_limits(self, limits: MagnetLimits) -> None:
         """Set operating limits for the connected magnet supply.
@@ -577,22 +586,24 @@ class MagnetControllerEngine(QObject):
             limits (MagnetLimits):
                 Maximum current, field, and ramp rate limits.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_limits(limits)
-        except Exception:
-            logger.exception("Failed to set magnet limits")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_limits(limits)
+            except Exception:
+                logger.exception("Failed to set magnet limits")
 
     def ramp_to_target(self) -> None:
         """Start ramping to the currently programmed target."""
-        if self._driver is None:
-            return
-        try:
-            self._validate_ramp_allowed()
-            self._driver.ramp_to_target()
-        except Exception:
-            logger.exception("Failed to start ramp to target")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._validate_ramp_allowed()
+                self._driver.ramp_to_target()
+            except Exception:
+                logger.exception("Failed to start ramp to target")
 
     def ramp_to_field(self, field: float) -> None:
         """Set a new target field and begin ramping.
@@ -601,76 +612,83 @@ class MagnetControllerEngine(QObject):
             field (float):
                 Desired target field in tesla.
         """
-        if self._driver is None:
-            return
-        try:
-            self._validate_ramp_allowed()
-            self._driver.set_target_field(field)
-            self._target_field = field
-            self._driver.ramp_to_target()
-        except Exception:
-            logger.exception("Failed to ramp to field %s T", field)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._validate_ramp_allowed()
+                self._driver.set_target_field(field)
+                self._target_field = field
+                self._driver.ramp_to_target()
+            except Exception:
+                logger.exception("Failed to ramp to field %s T", field)
 
     def pause_ramp(self) -> None:
         """Pause an active ramp, holding the output at its current value."""
-        if self._driver is None:
-            return
-        try:
-            self._driver.pause_ramp()
-        except Exception:
-            logger.exception("Failed to pause ramp")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.pause_ramp()
+            except Exception:
+                logger.exception("Failed to pause ramp")
 
     def hold(self) -> None:
         """Hold the present output without changing field."""
-        if self._driver is None:
-            return
-        try:
-            self._driver.hold()
-        except Exception:
-            logger.exception("Failed to hold present field/current")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.hold()
+            except Exception:
+                logger.exception("Failed to hold present field/current")
 
     def go_to_zero(self) -> None:
         """Ramp the supply output to zero using the controller zero action."""
-        if self._driver is None:
-            return
-        try:
-            self._validate_ramp_allowed()
-            self._driver.go_to_zero()
-            self._target_field = 0.0
+        with self._engine_lock:
+            if self._driver is None:
+                return
             try:
-                self._target_current = 0.0
+                self._validate_ramp_allowed()
+                self._driver.go_to_zero()
+                self._target_field = 0.0
+                try:
+                    self._target_current = 0.0
+                except Exception:
+                    pass
             except Exception:
-                pass
-        except Exception:
-            logger.exception("Failed to go to zero")
+                logger.exception("Failed to go to zero")
 
     def abort_ramp(self) -> None:
         """Abort an active ramp immediately."""
-        if self._driver is None:
-            return
-        try:
-            self._driver.abort_ramp()
-        except Exception:
-            logger.exception("Failed to abort ramp")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.abort_ramp()
+            except Exception:
+                logger.exception("Failed to abort ramp")
 
     def heater_on(self) -> None:
         """Energise the persistent switch heater."""
-        if self._driver is None:
-            return
-        try:
-            self._validate_heater_on_allowed()
-            self._driver.heater_on()
-        except Exception:
-            logger.exception("Failed to turn heater on")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._validate_heater_on_allowed()
+                self._driver.heater_on()
+            except Exception:
+                logger.exception("Failed to turn heater on")
 
     def heater_off(self) -> None:
         """De-energise the persistent switch heater."""
-        if self._driver is None:
-            return
-        try:
-            self._driver.heater_off()
-        except Exception:
-            logger.exception("Failed to turn heater off")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.heater_off()
+            except Exception:
+                logger.exception("Failed to turn heater off")
 
     def set_stability_config(self, config: MagnetStabilityConfig) -> None:
         """Replace the stability-evaluation configuration.
@@ -702,20 +720,21 @@ class MagnetControllerEngine(QObject):
                 Freshly read engine state, or ``None`` when no controller is
                 connected or the read fails.
         """
-        if self._driver is None:
-            return None
-        try:
-            state = self._build_state()
-        except Exception:
-            logger.exception("MagnetControllerEngine: read-state error")
-            self._set_status(MagnetEngineStatus.ERROR)
-            return None
+        with self._engine_lock:
+            if self._driver is None:
+                return None
+            try:
+                state = self._build_state()
+            except Exception:
+                logger.exception("MagnetControllerEngine: read-state error")
+                self._set_status(MagnetEngineStatus.ERROR)
+                return None
 
-        self._set_status(MagnetEngineStatus.POLLING)
-        self._latest_state = state
-        self._handle_quench_state(state)
-        self.publisher.reading_updated.emit(state.reading)
-        self.publisher.state_updated.emit(state)
+            self._set_status(MagnetEngineStatus.POLLING)
+            self._latest_state = state
+            self._handle_quench_state(state)
+            self.publisher.reading_updated.emit(state.reading)
+            self.publisher.state_updated.emit(state)
         return state
 
     def get_limits(self) -> MagnetLimits | None:
@@ -725,13 +744,14 @@ class MagnetControllerEngine(QObject):
             (MagnetLimits | None):
                 Active limits, or ``None`` when disconnected or unavailable.
         """
-        if self._driver is None:
-            return None
-        try:
-            return self._driver.limits
-        except Exception:
-            logger.exception("MagnetControllerEngine: failed to read limits")
-            return None
+        with self._engine_lock:
+            if self._driver is None:
+                return None
+            try:
+                return self._driver.limits
+            except Exception:
+                logger.exception("MagnetControllerEngine: failed to read limits")
+                return None
 
     def get_engine_state(self) -> MagnetEngineState:
         """Return a snapshot of the current engine state without polling.
@@ -780,20 +800,21 @@ class MagnetControllerEngine(QObject):
             <MagnetEngineStatus.STOPPED: 'stopped'>
         """
         self._timer.stop()
-        if self._driver is not None:
-            self._disconnect_driver(self._driver, log_context="on shutdown")
-        self._driver = None
-        self._connected_driver_name = None
-        self._connected_transport_name = None
-        self._connected_address = None
-        self._set_status(MagnetEngineStatus.STOPPED)
-        self._latest_state = MagnetEngineState(
-            target_field=self._target_field,
-            target_current=self._target_current,
-            ramp_rate_field=self._ramp_rate_field,
-            ramp_rate_current=self._ramp_rate_current,
-            engine_status=self._status,
-        )
+        with self._engine_lock:
+            if self._driver is not None:
+                self._disconnect_driver(self._driver, log_context="on shutdown")
+            self._driver = None
+            self._connected_driver_name = None
+            self._connected_transport_name = None
+            self._connected_address = None
+            self._set_status(MagnetEngineStatus.STOPPED)
+            self._latest_state = MagnetEngineState(
+                target_field=self._target_field,
+                target_current=self._target_current,
+                ramp_rate_field=self._ramp_rate_field,
+                ramp_rate_current=self._ramp_rate_current,
+                engine_status=self._status,
+            )
         if MagnetControllerEngine._singleton is self:
             MagnetControllerEngine._singleton = None
         logger.info("MagnetControllerEngine: shut down.")

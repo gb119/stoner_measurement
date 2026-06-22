@@ -14,6 +14,7 @@ command API; they never talk to instrument drivers directly.
 from __future__ import annotations
 
 import logging
+import threading
 from collections import deque
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -133,6 +134,7 @@ class TemperatureControllerEngine(QObject):
         self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
 
         self._timer = QTimer(self)
+        self._engine_lock = threading.RLock()
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
         self._apply_configuration(load_temperature_controller_config())
@@ -233,29 +235,30 @@ class TemperatureControllerEngine(QObject):
             RuntimeError:
                 If the engine has been shut down.
         """
-        if self._status == EngineStatus.STOPPED:
-            raise RuntimeError("Engine has been shut down and cannot accept new connections.")
-        self._timer.stop()
-        if self._driver is not None:
-            self._disconnect_driver(self._driver, log_context="before replacing temperature controller")
-        try:
-            if not driver.is_connected:
-                driver.connect()
-            else:
-                driver.confirm_identity()
-        except Exception as exc:
-            self._driver = None
-            self._set_status(EngineStatus.DISCONNECTED)
-            logger.error(f"Exception {exc}\n{format_exc()}")
-            raise
-        self._driver = driver
-        self._connected_driver_name = type(driver).__name__
-        self._history.clear()
-        self._at_setpoint_since.clear()
-        self._unstable_since.clear()
-        self._stable.clear()
-        self._set_status(EngineStatus.CONNECTED)
-        self._timer.start()
+        with self._engine_lock:
+            if self._status == EngineStatus.STOPPED:
+                raise RuntimeError("Engine has been shut down and cannot accept new connections.")
+            self._timer.stop()
+            if self._driver is not None:
+                self._disconnect_driver(self._driver, log_context="before replacing temperature controller")
+            try:
+                if not driver.is_connected:
+                    driver.connect()
+                else:
+                    driver.confirm_identity()
+            except Exception as exc:
+                self._driver = None
+                self._set_status(EngineStatus.DISCONNECTED)
+                logger.error("Exception %s\n%s", exc, format_exc())
+                raise
+            self._driver = driver
+            self._connected_driver_name = type(driver).__name__
+            self._history.clear()
+            self._at_setpoint_since.clear()
+            self._unstable_since.clear()
+            self._stable.clear()
+            self._set_status(EngineStatus.CONNECTED)
+            self._timer.start()
         logger.info("TemperatureControllerEngine: connected to %s", type(driver).__name__)
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
@@ -408,18 +411,19 @@ class TemperatureControllerEngine(QObject):
     def disconnect_instrument(self) -> None:
         """Stop polling and release the driver reference."""
         self._timer.stop()
-        if self._driver is not None:
-            self._disconnect_driver(self._driver, log_context="on disconnect")
-        self._driver = None
-        self._connected_driver_name = None
-        self._connected_transport_name = None
-        self._connected_address = None
-        self._history.clear()
-        self._at_setpoint_since.clear()
-        self._unstable_since.clear()
-        self._stable.clear()
-        self._set_status(EngineStatus.DISCONNECTED)
-        self._latest_state = TemperatureEngineState(engine_status=self._status)
+        with self._engine_lock:
+            if self._driver is not None:
+                self._disconnect_driver(self._driver, log_context="on disconnect")
+            self._driver = None
+            self._connected_driver_name = None
+            self._connected_transport_name = None
+            self._connected_address = None
+            self._history.clear()
+            self._at_setpoint_since.clear()
+            self._unstable_since.clear()
+            self._stable.clear()
+            self._set_status(EngineStatus.DISCONNECTED)
+            self._latest_state = TemperatureEngineState(engine_status=self._status)
         logger.info("TemperatureControllerEngine: disconnected.")
 
     @property
@@ -512,12 +516,13 @@ class TemperatureControllerEngine(QObject):
             value (float):
                 Desired setpoint in Kelvin.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_setpoint(loop, value)
-        except Exception:
-            logger.exception("Failed to set setpoint for loop %d", loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_setpoint(loop, value)
+            except Exception:
+                logger.exception("Failed to set setpoint for loop %d", loop)
 
     def set_heater_range(self, loop: int, range_: int) -> None:
         """Set the heater range index for *loop*.
@@ -528,12 +533,13 @@ class TemperatureControllerEngine(QObject):
             range_ (int):
                 Heater range index (instrument-specific; ``0`` = heater off).
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_heater_range(loop, range_)
-        except Exception:
-            logger.exception("Failed to set heater range for loop %d", loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_heater_range(loop, range_)
+            except Exception:
+                logger.exception("Failed to set heater range for loop %d", loop)
 
     def set_pid(self, loop: int, p: float, i: float, d: float) -> None:
         """Set the PID parameters for *loop*.
@@ -548,12 +554,13 @@ class TemperatureControllerEngine(QObject):
             d (float):
                 Derivative gain.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_pid(loop, p, i, d)
-        except Exception:
-            logger.exception("Failed to set PID for loop %d", loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_pid(loop, p, i, d)
+            except Exception:
+                logger.exception("Failed to set PID for loop %d", loop)
 
     def set_ramp(self, loop: int, rate: float, enabled: bool) -> None:
         """Configure setpoint ramping for *loop*.
@@ -566,13 +573,14 @@ class TemperatureControllerEngine(QObject):
             enabled (bool):
                 ``True`` to activate the ramp function.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_ramp_rate(loop, rate)
-            self._driver.set_ramp_enabled(loop, enabled)
-        except Exception:
-            logger.exception("Failed to set ramp for loop %d", loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_ramp_rate(loop, rate)
+                self._driver.set_ramp_enabled(loop, enabled)
+            except Exception:
+                logger.exception("Failed to set ramp for loop %d", loop)
 
     def set_loop_mode(self, loop: int, mode) -> None:
         """Set the control mode for *loop*.
@@ -583,12 +591,13 @@ class TemperatureControllerEngine(QObject):
             mode (ControlMode):
                 Desired control mode.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_loop_mode(loop, mode)
-        except Exception:
-            logger.exception("Failed to set loop mode for loop %d", loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_loop_mode(loop, mode)
+            except Exception:
+                logger.exception("Failed to set loop mode for loop %d", loop)
 
     def get_needle_valve(self) -> float | None:
         """Return the current cryogen gas-flow (needle valve) position.
@@ -611,15 +620,16 @@ class TemperatureControllerEngine(QObject):
             True
             >>> engine.shutdown()
         """
-        if self._driver is None:
+        with self._engine_lock:
+            if self._driver is None:
+                return None
+            try:
+                caps = self._driver.get_capabilities()
+                if caps.has_cryogen_control:
+                    return self._driver.get_gas_flow()
+            except Exception:
+                logger.exception("Failed to read needle valve position")
             return None
-        try:
-            caps = self._driver.get_capabilities()
-            if caps.has_cryogen_control:
-                return self._driver.get_gas_flow()
-        except Exception:
-            logger.exception("Failed to read needle valve position")
-        return None
 
     def set_needle_valve(self, position: float) -> None:
         """Set the cryogen gas-flow (needle valve) position.
@@ -631,14 +641,15 @@ class TemperatureControllerEngine(QObject):
             position (float):
                 Desired valve opening as a percentage (0–100 %).
         """
-        if self._driver is None:
-            return
-        try:
-            caps = self._driver.get_capabilities()
-            if caps.has_cryogen_control:
-                self._driver.set_gas_flow(position)
-        except Exception:
-            logger.exception("Failed to set needle valve position")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                caps = self._driver.get_capabilities()
+                if caps.has_cryogen_control:
+                    self._driver.set_gas_flow(position)
+            except Exception:
+                logger.exception("Failed to set needle valve position")
 
     def set_gas_auto(self, auto: bool) -> None:
         """Enable or disable automatic gas-flow control on the connected instrument.
@@ -651,14 +662,15 @@ class TemperatureControllerEngine(QObject):
                 ``True`` to engage automatic gas-flow control; ``False`` for
                 manual.
         """
-        if self._driver is None:
-            return
-        try:
-            caps = self._driver.get_capabilities()
-            if caps.has_gas_auto_mode:
-                self._driver.set_gas_auto(auto)
-        except Exception:
-            logger.exception("Failed to set gas auto mode")
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                caps = self._driver.get_capabilities()
+                if caps.has_gas_auto_mode:
+                    self._driver.set_gas_auto(auto)
+            except Exception:
+                logger.exception("Failed to set gas auto mode")
 
     def set_input_channel(self, loop: int, channel: str) -> None:
         """Assign a sensor channel as the input for control *loop*.
@@ -669,12 +681,13 @@ class TemperatureControllerEngine(QObject):
             channel (str):
                 Sensor channel identifier to assign.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_input_channel(loop, channel)
-        except Exception:
-            logger.exception("Failed to set input channel for loop %d", loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_input_channel(loop, channel)
+            except Exception:
+                logger.exception("Failed to set input channel for loop %d", loop)
 
     def set_all_loop_settings(  # pylint: disable=too-many-arguments
         self,
@@ -719,33 +732,34 @@ class TemperatureControllerEngine(QObject):
             heater_range (int):
                 Heater range index.
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_setpoint(loop, setpoint)
-        except Exception:
-            logger.exception("Failed to set setpoint for loop %d", loop)
-        try:
-            self._driver.set_loop_mode(loop, mode)
-        except Exception:
-            logger.exception("Failed to set loop mode for loop %d", loop)
-        try:
-            self._driver.set_input_channel(loop, input_channel)
-        except Exception:
-            logger.exception("Failed to set input channel for loop %d", loop)
-        try:
-            self._driver.set_ramp_rate(loop, ramp_rate)
-            self._driver.set_ramp_enabled(loop, ramp_enabled)
-        except Exception:
-            logger.exception("Failed to set ramp for loop %d", loop)
-        try:
-            self._driver.set_pid(loop, pid_p, pid_i, pid_d)
-        except Exception:
-            logger.exception("Failed to set PID for loop %d", loop)
-        try:
-            self._driver.set_heater_range(loop, heater_range)
-        except Exception:
-            logger.exception("Failed to set heater range for loop %d", loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_setpoint(loop, setpoint)
+            except Exception:
+                logger.exception("Failed to set setpoint for loop %d", loop)
+            try:
+                self._driver.set_loop_mode(loop, mode)
+            except Exception:
+                logger.exception("Failed to set loop mode for loop %d", loop)
+            try:
+                self._driver.set_input_channel(loop, input_channel)
+            except Exception:
+                logger.exception("Failed to set input channel for loop %d", loop)
+            try:
+                self._driver.set_ramp_rate(loop, ramp_rate)
+                self._driver.set_ramp_enabled(loop, ramp_enabled)
+            except Exception:
+                logger.exception("Failed to set ramp for loop %d", loop)
+            try:
+                self._driver.set_pid(loop, pid_p, pid_i, pid_d)
+            except Exception:
+                logger.exception("Failed to set PID for loop %d", loop)
+            try:
+                self._driver.set_heater_range(loop, heater_range)
+            except Exception:
+                logger.exception("Failed to set heater range for loop %d", loop)
 
     def set_manual_heater_output(self, loop: int, output: float) -> None:
         """Set the manual heater output for open-loop control of *loop*.
@@ -770,14 +784,15 @@ class TemperatureControllerEngine(QObject):
             >>> engine.set_manual_heater_output(1, 25.0)  # no driver connected — silently ignored
             >>> engine.shutdown()
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_manual_heater_output(loop, output)
-        except NotImplementedError:
-            logger.warning("Driver does not support setting manual heater output for loop %d", loop)
-        except Exception:
-            logger.exception("Failed to set manual heater output for loop %d", loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_manual_heater_output(loop, output)
+            except NotImplementedError:
+                logger.warning("Driver does not support setting manual heater output for loop %d", loop)
+            except Exception:
+                logger.exception("Failed to set manual heater output for loop %d", loop)
 
     def get_zone_table(self, loop: int) -> list[ZoneEntry] | None:
         """Query the hardware for the complete zone table of control *loop*.
@@ -805,22 +820,23 @@ class TemperatureControllerEngine(QObject):
             True
             >>> engine.shutdown()
         """
-        if self._driver is None:
-            return None
-        try:
-            num = self._driver.get_num_zones(loop)
-        except Exception:
-            logger.exception("Failed to read number of zones for loop %d", loop)
-            return []
-        if not num:
-            return []
-        entries = []
-        for i in range(1, num + 1):
+        with self._engine_lock:
+            if self._driver is None:
+                return None
             try:
-                entries.append(self._driver.get_zone(loop, i))
+                num = self._driver.get_num_zones(loop)
             except Exception:
-                logger.exception("Failed to read zone %d for loop %d", i, loop)
-        return entries
+                logger.exception("Failed to read number of zones for loop %d", loop)
+                return []
+            if not num:
+                return []
+            entries = []
+            for i in range(1, num + 1):
+                try:
+                    entries.append(self._driver.get_zone(loop, i))
+                except Exception:
+                    logger.exception("Failed to read zone %d for loop %d", i, loop)
+            return entries
 
     def set_zone_table(self, loop: int, entries: list[ZoneEntry]) -> None:
         """Write a complete zone table for control *loop*.
@@ -845,13 +861,14 @@ class TemperatureControllerEngine(QObject):
             >>> engine.set_zone_table(1, [])  # no-op when no driver
             >>> engine.shutdown()
         """
-        if self._driver is None:
-            return
-        for i, entry in enumerate(entries, start=1):
-            try:
-                self._driver.set_zone(loop, i, entry)
-            except Exception:
-                logger.exception("Failed to write zone %d for loop %d", i, loop)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            for i, entry in enumerate(entries, start=1):
+                try:
+                    self._driver.set_zone(loop, i, entry)
+                except Exception:
+                    logger.exception("Failed to write zone %d for loop %d", i, loop)
 
     def get_input_channel_settings(self, channel: str) -> InputChannelSettings | None:
         """Query the hardware for the input configuration of sensor *channel*.
@@ -877,13 +894,14 @@ class TemperatureControllerEngine(QObject):
             True
             >>> engine.shutdown()
         """
-        if self._driver is None:
-            return None
-        try:
-            return self._driver.get_input_channel_settings(channel)
-        except Exception:
-            logger.exception("Failed to read input channel settings for channel %s", channel)
-            return None
+        with self._engine_lock:
+            if self._driver is None:
+                return None
+            try:
+                return self._driver.get_input_channel_settings(channel)
+            except Exception:
+                logger.exception("Failed to read input channel settings for channel %s", channel)
+                return None
 
     def set_input_channel_settings(self, channel: str, settings: InputChannelSettings) -> None:
         """Apply input configuration settings to sensor *channel*.
@@ -908,12 +926,13 @@ class TemperatureControllerEngine(QObject):
             >>> engine.set_input_channel_settings("A", settings)  # no-op when no driver  # doctest: +SKIP
             >>> engine.shutdown()
         """
-        if self._driver is None:
-            return
-        try:
-            self._driver.set_input_channel_settings(channel, settings)
-        except Exception:
-            logger.exception("Failed to set input channel settings for channel %s", channel)
+        with self._engine_lock:
+            if self._driver is None:
+                return
+            try:
+                self._driver.set_input_channel_settings(channel, settings)
+            except Exception:
+                logger.exception("Failed to set input channel settings for channel %s", channel)
 
     def get_calibration_curve_names(self) -> dict[int, str]:
         """Return calibration-curve names reported by the connected driver.
@@ -925,13 +944,14 @@ class TemperatureControllerEngine(QObject):
             (dict[int, str]):
                 Mapping from curve number to curve name.
         """
-        if self._driver is None:
-            return {}
-        try:
-            return self._driver.get_calibration_curve_names()
-        except Exception:
-            logger.exception("Failed to read calibration curve names")
-            return {}
+        with self._engine_lock:
+            if self._driver is None:
+                return {}
+            try:
+                return self._driver.get_calibration_curve_names()
+            except Exception:
+                logger.exception("Failed to read calibration curve names")
+                return {}
 
     def _safe_read_loop(self, func, loop: int, description: str, default):
         """Invoke *func(loop)*, returning *default* and logging on any error.
@@ -970,55 +990,56 @@ class TemperatureControllerEngine(QObject):
                 Current hardware settings for *loop*, or ``None`` if
                 disconnected.
         """
-        if self._driver is None:
-            return None
-        from stoner_measurement.instruments.temperature_controller import ControlMode
+        with self._engine_lock:
+            if self._driver is None:
+                return None
+            from stoner_measurement.instruments.temperature_controller import ControlMode
 
-        setpoint = self._safe_read_loop(self._driver.get_setpoint, loop, "setpoint", 0.0)
-        mode = self._safe_read_loop(
-            self._driver.get_loop_mode, loop, "loop mode", ControlMode.CLOSED_LOOP
-        )
-        input_channel = self._safe_read_loop(
-            self._driver.get_input_channel, loop, "input channel", ""
-        )
-        ramp_enabled = self._safe_read_loop(
-            self._driver.get_ramp_enabled, loop, "ramp enabled", False
-        )
-        ramp_rate = self._safe_read_loop(self._driver.get_ramp_rate, loop, "ramp rate", 0.0)
-
-        try:
-            pid = self._driver.get_pid(loop)
-            pid_p, pid_i, pid_d = pid.p, pid.i, pid.d
-        except Exception:
-            logger.exception("Failed to read PID for loop %d", loop)
-            pid_p = pid_i = pid_d = 0.0
-
-        try:
-            heater_range: int | None = self._driver.get_heater_range(loop)
-        except Exception:
-            heater_range = None
-
-        manual_output: float | None = None
-        if mode == ControlMode.OPEN_LOOP:
-            # In open-loop mode the heater output is under direct manual
-            # control, so the current heater output percentage *is* the
-            # manual output setting.
-            manual_output = self._safe_read_loop(
-                self._driver.get_heater_output, loop, "heater output", None
+            setpoint = self._safe_read_loop(self._driver.get_setpoint, loop, "setpoint", 0.0)
+            mode = self._safe_read_loop(
+                self._driver.get_loop_mode, loop, "loop mode", ControlMode.CLOSED_LOOP
             )
+            input_channel = self._safe_read_loop(
+                self._driver.get_input_channel, loop, "input channel", ""
+            )
+            ramp_enabled = self._safe_read_loop(
+                self._driver.get_ramp_enabled, loop, "ramp enabled", False
+            )
+            ramp_rate = self._safe_read_loop(self._driver.get_ramp_rate, loop, "ramp rate", 0.0)
 
-        return LoopSettings(
-            setpoint=setpoint,
-            mode=mode,
-            input_channel=input_channel,
-            ramp_enabled=ramp_enabled,
-            ramp_rate=ramp_rate,
-            pid_p=pid_p,
-            pid_i=pid_i,
-            pid_d=pid_d,
-            heater_range=heater_range,
-            manual_output=manual_output,
-        )
+            try:
+                pid = self._driver.get_pid(loop)
+                pid_p, pid_i, pid_d = pid.p, pid.i, pid.d
+            except Exception:
+                logger.exception("Failed to read PID for loop %d", loop)
+                pid_p = pid_i = pid_d = 0.0
+
+            try:
+                heater_range: int | None = self._driver.get_heater_range(loop)
+            except Exception:
+                heater_range = None
+
+            manual_output: float | None = None
+            if mode == ControlMode.OPEN_LOOP:
+                # In open-loop mode the heater output is under direct manual
+                # control, so the current heater output percentage *is* the
+                # manual output setting.
+                manual_output = self._safe_read_loop(
+                    self._driver.get_heater_output, loop, "heater output", None
+                )
+
+            return LoopSettings(
+                setpoint=setpoint,
+                mode=mode,
+                input_channel=input_channel,
+                ramp_enabled=ramp_enabled,
+                ramp_rate=ramp_rate,
+                pid_p=pid_p,
+                pid_i=pid_i,
+                pid_d=pid_d,
+                heater_range=heater_range,
+                manual_output=manual_output,
+            )
 
     def set_stability_config(self, config: StabilityConfig) -> None:
         """Replace the stability-evaluation configuration.
@@ -1051,20 +1072,21 @@ class TemperatureControllerEngine(QObject):
                 Freshly read engine state, or ``None`` when no controller is
                 connected or the read fails.
         """
-        if self._driver is None:
-            return None
-        try:
-            state = self._build_state()
-        except Exception:
-            logger.exception("TemperatureControllerEngine: read-state error")
-            self._set_status(EngineStatus.ERROR)
-            return None
+        with self._engine_lock:
+            if self._driver is None:
+                return None
+            try:
+                state = self._build_state()
+            except Exception:
+                logger.exception("TemperatureControllerEngine: read-state error")
+                self._set_status(EngineStatus.ERROR)
+                return None
 
-        self._set_status(EngineStatus.POLLING)
-        self._latest_state = state
-        for reading in state.readings.values():
-            self.publisher.channel_reading.emit(reading)
-        self.publisher.state_updated.emit(state)
+            self._set_status(EngineStatus.POLLING)
+            self._latest_state = state
+            for reading in state.readings.values():
+                self.publisher.channel_reading.emit(reading)
+            self.publisher.state_updated.emit(state)
         return state
 
     def get_engine_state(self) -> TemperatureEngineState:
@@ -1089,14 +1111,15 @@ class TemperatureControllerEngine(QObject):
             <EngineStatus.STOPPED: 'stopped'>
         """
         self._timer.stop()
-        if self._driver is not None:
-            self._disconnect_driver(self._driver, log_context="on shutdown")
-        self._driver = None
-        self._connected_driver_name = None
-        self._connected_transport_name = None
-        self._connected_address = None
-        self._set_status(EngineStatus.STOPPED)
-        self._latest_state = TemperatureEngineState(engine_status=self._status)
+        with self._engine_lock:
+            if self._driver is not None:
+                self._disconnect_driver(self._driver, log_context="on shutdown")
+            self._driver = None
+            self._connected_driver_name = None
+            self._connected_transport_name = None
+            self._connected_address = None
+            self._set_status(EngineStatus.STOPPED)
+            self._latest_state = TemperatureEngineState(engine_status=self._status)
         if TemperatureControllerEngine._singleton is self:
             TemperatureControllerEngine._singleton = None
         logger.info("TemperatureControllerEngine: shut down.")
