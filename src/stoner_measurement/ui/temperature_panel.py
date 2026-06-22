@@ -102,21 +102,21 @@ logger = logging.getLogger(__name__)
 
 #: Colours assigned to successive temperature channels on the chart.
 _CHANNEL_COLOURS = [
-    QColor("royalblue"),
-    QColor("darkorange"),
-    QColor("forestgreen"),
-    QColor("firebrick"),
-    QColor("mediumpurple"),
+    QColor(colour("trace_blue")),
+    QColor(colour("trace_orange")),
+    QColor(colour("trace_green")),
+    QColor(colour("trace_red")),
+    QColor(colour("trace_purple")),
 ]
 
 #: Colour for setpoint trace lines.
 _SETPOINT_COLOUR = QColor(colour("setpoint_trace"))
 
 #: Colour for heater output trace.
-_HEATER_COLOUR = QColor("saddlebrown")
+_HEATER_COLOUR = QColor(colour("trace_brown"))
 
 #: Colour for needle valve trace.
-_NEEDLE_COLOUR = QColor("teal")
+_NEEDLE_COLOUR = QColor(colour("trace_teal"))
 
 #: Available chart duration options (minutes, label).
 _CHART_DURATIONS: list[tuple[int, str]] = [
@@ -859,9 +859,12 @@ class TemperatureControlPanel(QWidget):
         """Populate the driver combo with discovered TemperatureController drivers."""
         self._driver_combo.clear()
         tc_drivers = self._driver_manager.drivers_by_type(TemperatureController)
+        added = 0
         for name in sorted(tc_drivers):
-            self._driver_combo.addItem(name, tc_drivers[name])
-        if not tc_drivers:
+            if not name.startswith("_"):
+                self._driver_combo.addItem(name, tc_drivers[name])
+                added += 1
+        if added == 0:
             self._driver_combo.addItem("(no drivers found)", None)
 
     def _load_connection_preferences(self) -> None:
@@ -987,6 +990,8 @@ class TemperatureControlPanel(QWidget):
         self._input_settings_widget.set_curve_names({})
         self._input_settings_widget.clear()
         # Reset address widget colours to disconnected state.
+        self._set_address_widget_status(2, VisaResourceStatus.DISCONNECTED)
+        self._set_address_widget_status(3, VisaResourceStatus.DISCONNECTED)
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
 

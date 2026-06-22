@@ -27,6 +27,7 @@ from stoner_measurement.temperature_control.types import (
     TemperatureChannelReading,
     TemperatureEngineState,
 )
+from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceStatus
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -773,6 +774,45 @@ class TestTemperatureControlPanel:
                 import inspect
 
                 assert not inspect.isabstract(cls)
+
+    def test_driver_combo_filters_out_underscore_prefixed_temperature_drivers(
+        self, qapp, monkeypatch
+    ):
+        from stoner_measurement.instruments.temperature_controller import TemperatureController
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        monkeypatch.setattr(
+            panel._driver_manager,
+            "drivers_by_type",
+            lambda _cls: {
+                "_HiddenTemperatureDriver": TemperatureController,
+                "VisibleTemperatureDriver": TemperatureController,
+            },
+        )
+
+        panel._populate_driver_combo()
+
+        items = [panel._driver_combo.itemText(i) for i in range(panel._driver_combo.count())]
+        assert "VisibleTemperatureDriver" in items
+        assert "_HiddenTemperatureDriver" not in items
+
+    def test_null_transport_connect_sets_address_status_connected(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._transport_combo.setCurrentText("Null (test)")
+        panel._on_connect()
+
+        assert "background-color" in panel._null_form_widget.styleSheet()
+
+    def test_disconnect_clears_null_transport_address_status(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._set_address_widget_status(3, VisaResourceStatus.CONNECTED)
+        panel._on_disconnect()
+        assert panel._null_form_widget.styleSheet() == ""
 
     def test_has_input_settings_tab(self, qapp):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel

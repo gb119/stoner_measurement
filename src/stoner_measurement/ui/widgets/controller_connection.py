@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
+from qtpy.QtWidgets import QWidget
+
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
     parse_serial_address,
 )
 from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceStatus
+
+_STATUS_BACKGROUND = {
+    VisaResourceStatus.DISCONNECTED: "",
+    VisaResourceStatus.CONNECTING: "#fff3cd",
+    VisaResourceStatus.CONNECTED: "#90ee90",
+    VisaResourceStatus.ERROR: "#f8d7da",
+}
+
+
+def _set_widget_background(widget: QWidget, status: VisaResourceStatus) -> None:
+    """Apply a connection-status background colour to a generic widget."""
+    colour = _STATUS_BACKGROUND.get(status, "")
+    if colour:
+        widget.setStyleSheet(f"QWidget {{ background-color: {colour}; }}")
+    else:
+        widget.setStyleSheet("")
 
 
 def load_connection_preferences(panel) -> None:
@@ -88,3 +106,9 @@ def set_address_widget_status(panel, transport_index: int, status: VisaResourceS
         panel._serial_port_combo.set_status(status)
     elif transport_index == 1:
         panel._gpib_resource_combo.set_status(status)
+    elif transport_index == 2:
+        _set_widget_background(panel._ethernet_form_widget, status)
+        _set_widget_background(panel._eth_host_edit, status)
+        _set_widget_background(panel._eth_port_spin, status)
+    elif transport_index == 3:
+        _set_widget_background(panel._null_form_widget, status)

@@ -1,108 +1,131 @@
 # Copilot general instructions
 
+## Critical rules
+
+- Prefer widgets from ``ui.widgets`` over stock Qt widgets.
+- Route all hardware interaction through instrument drivers in the
+  ``instruments`` sub-package.
+- Generate instrument-specific commands only in driver code, not in UI code or
+  sequence plugins.
+- Use Google-style docstrings in British English.
+- Class docstrings on concrete classes in the plugins hierarchy are used as end user
+  documentation.
+- For public APIs, document arguments, keyword parameters, return values,
+  raised exceptions, attributes, notes, and examples as applicable.
+- Follow naming, import ordering, line-length, whitespace, and Markdown rules
+  in this file.
+
 ## Project Context
 
-This is an application for carrying out scientific measurements by communicating
-with lab instruments via USB/Serial/GPIB/Ethernet interfaces. It should provide
-user interface to set configuration settings specific for particular
-measurements (e.g. instruments, communications addresses, instrument specific
-settings such as range, measurement time etc), and user interface to define a
-measurement sequence that should be rendered into python code and then executed
-in a sequence engine. Code running in the sequence engine will communicate data
-and status to the user interface through asynchronous messaging.
+This application performs scientific measurements by communicating with lab
+instruments over USB, Serial, GPIB, and Ethernet. It provides:
+
+- UI for measurement-specific configuration, such as instrument selection,
+  communication addresses, and instrument-specific settings
+- UI for defining a measurement sequence
+- rendering of the measurement sequence into Python code for execution in a
+  sequence engine
+- asynchronous communication of data and status from the sequence engine back
+  to the UI
 
 ## UI guidelines
 
-In general favour the widgets defined in the ui.widgets package over stock qt
-ones. for quantities that have physical units, show the units in the widget and
-where numbers outside the range 0.1-1000, support SI prefixes too.
+- Prefer widgets from ``ui.widgets`` over stock Qt widgets.
+- For quantities with physical units, display units in the widget.
+- Where values fall outside the range 0.1-1000, support SI prefixes.
+- Use British English spelling.
 
 ## Hardware Interaction
 
-Where the code needs to interact with hardware (.e.g scientific instruments connected 
-via GPIB, Serial, USB, Ethernet etc), this should be done via Instrument drivers
-that live int he instruments sub-package. This package defines a class heirarchy
-that covers different instrument types (power supply, controllers, metars and so 
-forth) as well as sub-classes for specific instruments. All instrument specific commands
-should be generated from within the driver code and not place in partiocular
-sequence plugins or UI elements. This ensures that tracing down incorrectly formatted
-commands is much easier.
+- All hardware interaction must go through instrument drivers in the
+  ``instruments`` sub-package.
+- The driver package defines a class hierarchy for instrument types
+  (e.g. power supplies, controllers, meters) and concrete instrument
+  subclasses.
+- Generate all instrument-specific commands in driver code, not in sequence
+  plugins or UI code.
+- Keeping command generation in drivers makes malformed commands easier to
+  trace.
 
+## Docstring formatting
 
-## Docstring Formatting
+Apply these rules to all Python docstrings for functions, classes, methods, and
+modules:
 
-All docstrings for python functions, classes, methods and modules should confirm
-to the following:
+- Use Google-style docstrings.
+- Use British English.
+- Start with a one-line summary on the opening line and end it with a period.
 
-- Generally the format is based on Google standard
-- Written in British English
-- There is a one line summary that starts on the same line as the opening quotes
-  and terminated with a period.
-- All public classes, methods and functions should conform to the following:
-  - The position arguments are described in an Args: section, the keyword
-    parameters in a "Keyword Parameters:" section.
-  - Parameters are listed as "name (type):" then a newline and indent with the
+For end-user documentation docstrings on concrete classes in the plugins hierarchy, do the
+following:
+- Start with a description of the purpose of the plugin aimed at the end user doing
+  measurements.
+- Describe the configuration tabs and options for the end-user audience.
+- Describe the instance attributes (including inherited ones) for the more advanced user
+  interacting via the Script tab or QtConsole.
+- Give examples of interacting with the plugin via the console.
+
+For public classes, methods, and functions, do the following:
+- Use ``Args:`` for positional arguments.
+- Use ``Keyword Parameters:`` for keyword arguments.
+- Format parameters as ``name (type):`` followed by an indented description.
+- Use ``Returns:`` for return values.
+  - For a single return value, use ``(type):`` followed by an indented
     description.
-  - Return values are in a "Returns:" section. For single return values the
-    format is "(type):" newline and indent and then description. Tuples
-    (multiple return values) are given a sequence of single value blocks.
-  - Exceptions that are specifically raised are in a "Raises:" section.
-  - Class attributes are in a "Attributes:" section and follow a similar
-    structure to parameters.
-  - Any details of the algorithm etc are in a "Notes:" section.
-  - Public methods and functions should have examples of usage in an "Examples:"
-    section
-  - The Class constructor should be documented in the class docstring rather
-    than the `__init__` method's docstring.
+  - For tuples, document each returned value as a separate value block.
+- Use ``Raises:`` for explicitly raised exceptions.
+- Use ``Attributes:`` for class attributes, using the same structure as
+  parameters.
+- Use ``Notes:`` for algorithm details or similar supporting information.
+- Use ``Examples:`` for usage examples.
+- Document constructor behaviour in the class docstring rather than in the
+  ``__init__`` docstring.
 
-- Private methods, functions should conform to the following:
-  - If the function or method is called outside of the same scope (e.g. in an
-    inherited class or different module) then it should be documented as a
-    public method or function
-  - Otherwise, only the summary needs to be provided and other sections are
-    optional.
+For private methods and functions:
+- If used outside the immediate scope (e.g. by subclasses or other modules),
+  document them like public APIs.
+- Otherwise, only the summary is required; other sections are optional.
 
-- Modules should conform to the following:
-  - The docstring should include a brief overview of the contents of the module,
-    highlighting common aspects of the contents.
+For module docstrings:
+- Include a brief overview of the module contents and their common themes.
 
 ## Code formatting
 
-### Class, function, method and variable naming conventions
+### Naming
 
-The following apply to entities created by copilot. Unless specifically
+The following apply to entities created by Copilot. Unless specifically
 instructed, do not rename existing entities that do not conform to the
 following.
 
-- Classes should follow PascalCase conventions
-- functions, methods and variables not in module level scope follow snake_case
-  conventions
-- Variables in the module level scope follow CAPITAL case convention
+- Classes: PascalCase
+- Functions, methods, and non-module-level variables: snake_case
+- Module-level variables: CAPITAL_CASE
 
-### imports
+### Imports
 
-Group imports as follows:
+Group imports in this order:
 
 - standard library imports
-- well known third party packages such as numpy, matplotlib, scipy, pandas
+- well-known third-party packages such as numpy, matplotlib, scipy, pandas
 - other third party packages
 - imports from within this package, including relative imports
 
-Within each group, sort imports alphabetically. Where possible combine imports
-from the same module into one statement.
+Within each group, do the following:
+- sort imports alphabetically.
+- combine imports from the same module where practical
 
 ### Line length
 
-- For user examples, the line length is 79 characters, for all other files use
-  119 characters.
-- Otherwise follow black coding standards.
-- Avoid line splits that are not compatible with the versions of python
-  specified in the package building scripts.
-- remove trailing whitespace at the end of lines
+- Use a maximum line length of 79 characters in user examples.
+- Use a maximum line length of 119 characters elsewhere.
+- Otherwise, follow Black formatting conventions.
+- Avoid line splits incompatible with the Python versions specified in the
+  package build scripts.
+- Remove trailing whitespace at the end of lines.
 - Ensure blank lines only contain an end of line character and not any other
   whitespace.
 
-## Issues and Bugs discovered during copilot operations
+## Issues and bugs discovered during Copilot and other LLM operations
 
 If a new issue or bug is discovered during editing or creating other features,
 create a GitHub issue to track it. When creating issues, include:
@@ -117,13 +140,13 @@ create a GitHub issue to track it. When creating issues, include:
 If a GitHub issue is fixed during your work, close the issue with a reference to
 the commit or PR that fixed it.
 
-## Markdown Formatting
+## Markdown formatting
 
-When changing markdown files, follow these guidelines:
+When changing Markdown files, follow these guidelines:
 
-- Use markdownlint to identify errors in markdown formatting and fix any it
+- Use markdownlint to identify errors in Markdown formatting and fix any it
   flags.
 - Use a maximum line length of 119 characters.
 - Use British English spellings in text except where code requires differently.
 - Pay particular attention to spacing around lists, headers and code blocks.
-- Verify that files referenced in mardown files, such as images, actually exist.
+- Verify that files referenced in Markdown files, such as images, actually exist.

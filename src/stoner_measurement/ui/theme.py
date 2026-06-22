@@ -56,6 +56,14 @@ THEMES: dict[str, dict[str, str]] = {
         "log_error": "#ef9a9a",
         "log_critical": "#ff8a80",
         "tab_disabled_text": "#7f8c98",
+        "trace_blue": "#7cb9ff",
+        "trace_orange": "#ffb86b",
+        "trace_green": "#7ee787",
+        "trace_red": "#ff7b72",
+        "trace_purple": "#c297ff",
+        "trace_brown": "#d2a679",
+        "trace_teal": "#5eead4",
+        "trace_target": "#f0f0f0",
         "setpoint_trace": "#f5f5f5",
     },
     "light": {
@@ -108,6 +116,14 @@ THEMES: dict[str, dict[str, str]] = {
         "log_error": "#c62828",
         "log_critical": "#8e0000",
         "tab_disabled_text": "#9aa0a6",
+        "trace_blue": "#4169e1",
+        "trace_orange": "#d97706",
+        "trace_green": "#228b22",
+        "trace_red": "#b22222",
+        "trace_purple": "#9370db",
+        "trace_brown": "#8b4513",
+        "trace_teal": "#0f766e",
+        "trace_target": "#202124",
         "setpoint_trace": "#202124",
     },
 }
@@ -192,8 +208,9 @@ def value_display_frame_stylesheet() -> str:
 def apply_pyqtgraph_dark_theme(plot_item, axis_items: dict[str, object]) -> None:
     """Apply dark-mode colors to a pyqtgraph PlotItem and its axes."""
     foreground = colour("plot_foreground")
-    grid_alpha = 96
-
+    grid_alpha = 64
+    grid_opacity = 0.15
+    
     for axis in axis_items.values():
         try:
             axis.setPen(foreground)
@@ -216,7 +233,7 @@ def apply_pyqtgraph_dark_theme(plot_item, axis_items: dict[str, object]) -> None
         pass
 
     try:
-        plot_item.showGrid(x=True, y=True, alpha=0.25)
+        plot_item.showGrid(x=True, y=True, alpha=grid_opacity)
     except AttributeError:
         pass
 

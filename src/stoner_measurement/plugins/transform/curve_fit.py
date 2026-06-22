@@ -48,6 +48,7 @@ from stoner_measurement.plugins.trace.base import (
 )
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.ui.editor_widget import EditorWidget
+from stoner_measurement.ui.theme import colour
 
 if TYPE_CHECKING:
     pass
@@ -403,11 +404,22 @@ class _ParamTableWidget(QWidget):
 
         self._table = QTableWidget(len(_PARAM_TABLE_ROW_LABELS), 0, self)
         self._table.setVerticalHeaderLabels(_PARAM_TABLE_ROW_LABELS)
+        self._table.setShowGrid(True)
+        self._table.setGridStyle(Qt.PenStyle.SolidLine)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self._table.setToolTip(
             "Leave Min/Initial/Max blank to use defaults.\n"
             "Min/Max constrain the curve fit; Initial provides manual starting values."
+        )
+        self._table.setStyleSheet(
+            "QTableWidget { "
+            f"border: 1px solid {colour('border')}; "
+            f"gridline-color: {colour('border')}; "
+            "} "
+            "QTableCornerButton::section { "
+            f"border: 1px solid {colour('border')}; "
+            "}"
         )
         self._table.itemChanged.connect(self.settings_changed)
         layout.addWidget(self._table)

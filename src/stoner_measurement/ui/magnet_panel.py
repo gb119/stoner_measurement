@@ -63,7 +63,10 @@ from stoner_measurement.magnet_control.types import (
 )
 from stoner_measurement.ui.icons import make_magnet_icon
 from stoner_measurement.ui.plot_widget import PlotWidget
-from stoner_measurement.ui.theme import indicator_label_stylesheet
+from stoner_measurement.ui.theme import (
+    colour,
+    indicator_label_stylesheet,
+)
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
@@ -80,19 +83,19 @@ from stoner_measurement.ui.widgets import (
 logger = logging.getLogger(__name__)
 
 #: Colour for the field trace.
-_FIELD_COLOUR = QColor("royalblue")
+_FIELD_COLOUR = QColor(colour("trace_blue"))
 
 #: Colour for the current trace.
-_CURRENT_COLOUR = QColor("darkorange")
+_CURRENT_COLOUR = QColor(colour("trace_orange"))
 
 #: Colour for the voltage trace.
-_VOLTAGE_COLOUR = QColor("forestgreen")
+_VOLTAGE_COLOUR = QColor(colour("trace_green"))
 
 #: Colour for the heater state trace.
-_HEATER_COLOUR = QColor("firebrick")
+_HEATER_COLOUR = QColor(colour("trace_red"))
 
 #: Colour for the target-field horizontal marker.
-_TARGET_COLOUR = QColor("black")
+_TARGET_COLOUR = QColor(colour("trace_target"))
 
 #: Available chart duration options (minutes, label).
 _CHART_DURATIONS: list[tuple[int, str]] = [
@@ -917,9 +920,12 @@ class MagnetControlPanel(QWidget):
         """Populate the driver combo with discovered MagnetController drivers."""
         self._driver_combo.clear()
         mc_drivers = self._driver_manager.drivers_by_type(MagnetController)
+        added = 0
         for name in sorted(mc_drivers):
-            self._driver_combo.addItem(name, mc_drivers[name])
-        if not mc_drivers:
+            if not name.startswith("_"):
+                self._driver_combo.addItem(name, mc_drivers[name])
+                added += 1
+        if added == 0:
             self._driver_combo.addItem("(no drivers found)", None)
 
     def _load_connection_preferences(self) -> None:
@@ -991,6 +997,8 @@ class MagnetControlPanel(QWidget):
     def _on_disconnect(self) -> None:
         """Tell the engine to disconnect."""
         self._engine.disconnect_instrument()
+        self._set_address_widget_status(2, VisaResourceStatus.DISCONNECTED)
+        self._set_address_widget_status(3, VisaResourceStatus.DISCONNECTED)
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
 

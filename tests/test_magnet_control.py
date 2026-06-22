@@ -29,6 +29,7 @@ from stoner_measurement.magnet_control.types import (
     MagnetReading,
     MagnetStabilityConfig,
 )
+from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceStatus
 
 # ---------------------------------------------------------------------------
 # Helpers — fake driver
@@ -927,6 +928,45 @@ class TestMagnetControlPanel:
         # Should have at least one entry (possibly "(no drivers found)" if none
         # are registered, but the combo should not be empty).
         assert panel._driver_combo.count() >= 1
+
+    def test_driver_combo_filters_out_underscore_prefixed_magnet_drivers(
+        self, qapp, monkeypatch
+    ):
+        from stoner_measurement.instruments.magnet_controller import MagnetController
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        monkeypatch.setattr(
+            panel._driver_manager,
+            "drivers_by_type",
+            lambda _cls: {
+                "_HiddenMagnetDriver": MagnetController,
+                "VisibleMagnetDriver": MagnetController,
+            },
+        )
+
+        panel._populate_driver_combo()
+
+        items = [panel._driver_combo.itemText(i) for i in range(panel._driver_combo.count())]
+        assert "VisibleMagnetDriver" in items
+        assert "_HiddenMagnetDriver" not in items
+
+    def test_null_transport_connect_sets_address_status_connected(self, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        panel._transport_combo.setCurrentText("Null (test)")
+        panel._on_connect()
+
+        assert "background-color" in panel._null_form_widget.styleSheet()
+
+    def test_disconnect_clears_null_transport_address_status(self, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        panel._set_address_widget_status(3, VisaResourceStatus.CONNECTED)
+        panel._on_disconnect()
+        assert panel._null_form_widget.styleSheet() == ""
 
     def test_apply_limits_updates_magnet_constant(self, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel

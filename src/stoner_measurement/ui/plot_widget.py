@@ -45,18 +45,21 @@ from stoner_measurement.ui.theme import (
 
 logger = logging.getLogger(__name__)
 
+# Plot grid opacity used by pyqtgraph's PlotItem.showGrid().
+_PLOT_GRID_ALPHA = 0.15
+
 # Colour palette used when automatically assigning colours to new traces.
 _TRACE_COLOURS = [
-    "royalblue",
-    "darkorange",
-    "forestgreen",
-    "firebrick",
-    "mediumpurple",
-    "saddlebrown",
+    colour("trace_blue"),
+    colour("trace_orange"),
+    colour("trace_green"),
+    colour("trace_red"),
+    colour("trace_purple"),
+    colour("trace_brown"),
     "deeppink",
     "dimgray",
     "olive",
-    "teal",
+    colour("trace_teal"),
 ]
 
 _LINE_STYLES: dict[str, Qt.PenStyle] = {
@@ -175,6 +178,8 @@ class AxesConfigDialog(QDialog):
         table = QTableWidget(tab)
         table.setColumnCount(5)
         table.setHorizontalHeaderLabels(["Name", "Title", "Scale", "Grid", "Remove"])
+        table.setShowGrid(True)
+        table.setGridStyle(Qt.PenStyle.SolidLine)
         table.verticalHeader().setVisible(False)
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -184,6 +189,15 @@ class AxesConfigDialog(QDialog):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        table.setStyleSheet(
+            "QTableWidget { "
+            f"border: 1px solid {colour('border')}; "
+            f"gridline-color: {colour('border')}; "
+            "} "
+            "QTableCornerButton::section { "
+            f"border: 1px solid {colour('border')}; "
+            "}"
+        )
         layout.addWidget(table)
         self._tables[axis_kind] = table
 
@@ -451,7 +465,7 @@ class PlotWidget(QWidget):
         self._pg_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._pg_widget.customContextMenuRequested.connect(self._open_axes_dialog)
         self._pg_widget.setBackground(colour("plot_background"))
-        self._pg_widget.showGrid(x=True, y=True, alpha=0.25)
+        self._pg_widget.showGrid(x=True, y=True, alpha=_PLOT_GRID_ALPHA)
         self._pg_widget.setLabel("left", "Value")
         self._pg_widget.setLabel("bottom", "Step")
         plot_item: pg.PlotItem = self._pg_widget.getPlotItem()
@@ -1265,9 +1279,9 @@ class PlotWidget(QWidget):
 
     def _update_grid_state(self) -> None:
         """Apply aggregate grid visibility from per-axis flags."""
-        x_grid_enabled = any(self._axis_grid.get(axis_name, False) for axis_name in self._x_axis_names())
-        y_grid_enabled = any(self._axis_grid.get(axis_name, False) for axis_name in self._y_axis_names())
-        self._pg_widget.showGrid(x=x_grid_enabled, y=y_grid_enabled, alpha=0.25)
+        x_grid_enabled = bool(self._axis_grid.get("bottom", False))
+        y_grid_enabled = bool(self._axis_grid.get("left", False))
+        self._pg_widget.showGrid(x=x_grid_enabled, y=y_grid_enabled, alpha=_PLOT_GRID_ALPHA)
 
     def set_axis_grid(self, name: str, enabled: bool) -> None:
         """Set grid visibility preference for an axis.
@@ -1371,7 +1385,7 @@ class PlotWidget(QWidget):
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         self._axis_orientations[name] = "y"
         self._axis_log_scale[name] = False
-        self._axis_grid[name] = self._axis_grid.get("left", True)
+        self._axis_grid[name] = False
         self._view_boxes[name] = self._create_pair_view_box("bottom", name)
         self._update_grid_state()
         self._refresh_trace_and_axis_controls()
@@ -1451,7 +1465,7 @@ class PlotWidget(QWidget):
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         self._axis_orientations[name] = "x"
         self._axis_log_scale[name] = False
-        self._axis_grid[name] = self._axis_grid.get("bottom", True)
+        self._axis_grid[name] = False
         self._view_boxes[name] = self._create_pair_view_box(name, "left")
         self._update_grid_state()
         self._refresh_trace_and_axis_controls()
