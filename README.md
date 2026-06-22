@@ -1,42 +1,142 @@
-# stoner_measurement
+# Stoner Measurement
 
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://gb119.github.io/stoner_measurement/)
 [![PyPI](https://img.shields.io/pypi/v/stoner_measurement)](https://pypi.org/project/stoner_measurement/)
 [![Run Tests](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml/badge.svg)](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e)](https://app.codacy.com/gh/gb119/stoner_measurement/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
-A Python/PyQt6 desktop application for building and running scientific
-measurement sequences with laboratory instruments.
+Stoner Measurement is a desktop application for building, running, and saving
+automated laboratory measurements.
 
-## Features
+It is designed for experimental scientists who want to combine common
+measurement actions — such as setting fields, changing temperature, waiting for
+stability, collecting readings, monitoring values, and plotting data live —
+without needing to write code for every measurement.
 
-- **Two execution workflows** — run a drag-and-drop sequence in the Measurement
-  tab, or run/edit Python directly in the Script Editor tab.
-- **Plugin-based sequence engine** — command, trace, state-control, monitor,
-  transform, and sequence plugins are discovered from
-  `stoner_measurement.plugins` entry points.
-- **Live data and namespace model** — sequence execution updates `_traces` and
-  `_values` (runtime data dictionaries available to scripts/plugins), supports
-  NumPy in the runtime namespace, and streams logs to the built-in log viewer.
-- **Instrument abstraction layer** — transport/protocol composition plus common
-  instrument interfaces (source meter, current source, nanovoltmeter, magnet
-  controller, temperature controller) with built-in and third-party driver
-  discovery.
-- **Persistent workflows** — save/load both measurement sequences and scripts.
+You can use it in two ways:
 
-## Quick start
+- **Measurement mode** — build a measurement by adding steps in the graphical
+  interface.
+- **Script Editor mode** — run or edit Python directly when you want more
+  control.
 
-### Prerequisites
+During a run, the application can display live plots, show logged messages,
+track live values, and open dedicated temperature-control and magnet-control
+panels.
+
+## What you can do with it
+
+Stoner Measurement is intended for experiments where you need to coordinate
+several instruments in a repeatable way. Typical uses include:
+
+- transport measurements as a function of temperature, field, or time
+- automated sweeps and scans
+- live monitoring of instrument state
+- scripted or semi-scripted measurement procedures
+- reusing saved measurement sequences for routine experiments
+
+The application supports instrument drivers for common laboratory roles such as:
+
+- source meters
+- current sources
+- nanovoltmeters
+- magnet controllers
+- temperature controllers
+
+## Main parts of the application
+
+The main window contains two top-level work areas.
+
+### 1. Measurement
+
+This is the main workspace for routine use. It contains three panels:
+
+| Area | Purpose |
+| --- | --- |
+| **Left panel** | Plugin list, sequence tree, and monitoring controls |
+| **Centre panel** | Live plotting area for measurement data |
+| **Right panel** | Configuration for the currently selected step |
+
+A typical workflow is:
+
+1. Choose a plugin from the available list.
+2. Add it to the measurement sequence.
+3. Select the step and edit its settings in the right-hand panel.
+4. Repeat until the full procedure has been built.
+5. Run the sequence and watch the data update live.
+
+### 2. Script Editor
+
+This tab provides a Python editor and an interactive console. It is useful when:
+
+- you want to inspect or modify generated code
+- you prefer to run measurements as Python scripts
+- you need custom logic beyond the standard graphical workflow
+
+## Main windows and tools
+
+In addition to the main measurement editor, the application provides several
+supporting tools:
+
+- **Log Viewer** — shows messages generated while the application and sequence
+  are running
+- **Value Watch** — shows live values exposed by the running sequence
+- **Temperature Control** — a dedicated non-modal panel for configuring and
+  monitoring a temperature controller
+- **Magnet Control** — a dedicated non-modal panel for configuring and
+  monitoring a magnet controller
+- **Preferences** — application settings such as theme and default paths
+
+The main toolbar includes built-in actions for creating, opening, and saving
+measurements or scripts, running and stopping a sequence, generating Python code
+from the measurement tree, and opening the monitoring windows.
+
+## Running a measurement
+
+For a typical experiment:
+
+1. Open the **Measurement** tab.
+2. Add the required steps to the sequence.
+3. Configure each step in the right-hand panel.
+4. Save the sequence if you want to reuse it later.
+5. Click **Run**.
+6. Watch the live plot, log viewer, or value watch as the experiment proceeds.
+
+Depending on your setup, you may also open the temperature or magnet control
+panels from the toolbar or the Engines menu.
+
+## Saving your work
+
+The application supports saving and loading both:
+
+- **measurement sequences** built in the graphical editor
+- **Python scripts** used in the Script Editor
+
+The New, Open, Save, and Save As actions automatically apply to whichever main
+tab is currently active.
+
+## Installation
+
+### Requirements
 
 - Python 3.12 or newer
+- A working Qt environment via one of the supported bindings
+- Instrument-specific dependencies if you want to use hardware drivers beyond
+  the basic application install
 
-### Install
+### Install from PyPI
 
 ```bash
 pip install stoner_measurement
 ```
 
-Or, to install from source:
+If you need a specific Qt binding, install one separately, for example:
+
+```bash
+pip install PyQt6
+```
+
+### Install from source
 
 ```bash
 git clone https://github.com/gb119/stoner_measurement.git
@@ -44,7 +144,9 @@ cd stoner_measurement
 pip install -e ".[dev,docs]"
 ```
 
-### Launch
+## Launching the application
+
+From the command line:
 
 ```bash
 stoner-measurement
@@ -57,47 +159,35 @@ from stoner_measurement.main import main
 main()
 ```
 
-## Application overview
+## Notes for system administrators and advanced users
 
-The main window contains a Measurement workspace and a Script Editor workspace.
+### Configuration locations
 
-The Measurement workspace is divided into three panels:
+The application stores user-specific configuration in the platform-specific user
+configuration area.
 
-| Panel              | Description                                            |
-| ------------------ | ------------------------------------------------------ |
-| **Left (25 %)**    | Plugin list, sequence tree, and monitoring widgets.    |
-| **Central (50 %)** | Live PyQtGraph plotting area for sequence data.        |
-| **Right (25 %)**   | Tabbed configuration panel for selected plugins/steps. |
+Within this project, machine-specific configuration files are resolved relative
+to:
 
-Menus and toolbar actions support sequence/script creation, opening/saving,
-run/pause/stop, Python code generation from the sequence tree, and opening the
-log viewer window.
+```text
+platformdirs.user_config_path("stoner_measurement").parent
+```
 
-## Running a measurement
+This avoids creating an unnecessarily nested
+`.../stoner_measurement/stoner_measurement` directory.
 
-1. Select a plugin in the **left panel** and click _Add Step_.
-2. Repeat for each step you need.
-3. Configure each step via the corresponding tab in the **right panel**.
-4. Click _Run_ to render and execute the generated sequence script.
+### Plugin configuration files
 
-## Plugin configuration files
-
-Plugin defaults are stored as YAML files shipped inside the
-`stoner_measurement.conf.plugins` package. In a source checkout these files live
-under:
+Plugin defaults are shipped as YAML files inside:
 
 ```text
 src/stoner_measurement/conf/plugins/
 ```
 
-Each file contains keys matching the plugin's `to_json()` /
-`_restore_from_json()` settings, so the files can be edited outside the
-application.
-
-Per-machine overrides live in the user configuration directory under:
+Per-machine overrides are stored under:
 
 ```text
-<platformdirs.user_config_dir("stoner_measurement")>/plugins/
+<platformdirs.user_config_path("stoner_measurement").parent>/plugins/
 ```
 
 On Linux this is typically:
@@ -106,22 +196,47 @@ On Linux this is typically:
 ~/.config/stoner_measurement/plugins/
 ```
 
-The file name is derived from the plugin name, converted to lowercase with
-spaces and hyphens replaced by underscores. For example, the bundled defaults
-for the dummy plugin are packaged in `stoner_measurement.conf.plugins` as
-`dummy.yaml` (`src/stoner_measurement/conf/plugins/dummy.yaml` in a source
-checkout), and a rig-specific override can be created at
-`~/.config/stoner_measurement/plugins/dummy.yaml`.
+These YAML files match the plugin settings used by the application, so they can
+be edited outside the GUI when a local setup needs different defaults, such as
+instrument addresses or site-specific options.
 
-When a plugin is instantiated, the bundled YAML is loaded first and then any
-per-machine YAML overlay is applied on top. To create a rig-specific setup, copy
-the bundled YAML for the plugin you need and edit only the keys that differ on
-that measurement rig, such as VISA resource addresses.
+When a plugin is instantiated, bundled defaults are loaded first and then any
+per-machine override is applied on top.
 
-## Documentation
+### Toolbar configuration
 
-Full documentation — including the API reference, a guide to writing your own
-plugins and instrument drivers, and contribution guidelines — is available at:
+The application supports additional configurable toolbar buttons for loading
+predefined measurement sequences.
+
+The bundled example configuration is:
+
+```text
+src/stoner_measurement/conf/toolbar.yaml
+```
+
+A user-specific toolbar configuration can be stored as:
+
+```text
+<platformdirs.user_config_path("stoner_measurement").parent>/toolbar.yaml
+```
+
+Additional icons and predefined sequences are searched for in the corresponding
+user configuration folders before falling back to bundled resources.
+
+## Notes for developers
+
+Stoner Measurement is structured around:
+
+- a plugin-based sequence system
+- instrument driver abstractions built from transport/protocol layers
+- a Qt-based desktop interface
+- a sequence engine that can execute generated Python code
+- pytest-based tests and Sphinx documentation
+
+Plugins are discovered from the
+`stoner_measurement.plugins` entry-point group.
+
+Full developer and API documentation is available at:
 
 <https://gb119.github.io/stoner_measurement/>
 

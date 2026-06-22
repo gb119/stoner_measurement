@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.plugin_config import load_plugin_config, machine_config_path
 from stoner_measurement.plugins.trace import DummyPlugin
@@ -11,15 +13,15 @@ class TestPluginConfigHelpers:
     """Tests for standalone plugin-config helper functions."""
 
     def test_machine_config_path_normalises_plugin_name(self, monkeypatch, tmp_path):
-        root = tmp_path / "config-root"
+        root = tmp_path / "config-root" / "stoner_measurement"
         monkeypatch.setattr(
-            "stoner_measurement.plugins.plugin_config.platformdirs.user_config_dir",
-            lambda appname: str(root),
+            "stoner_measurement.plugins.plugin_config.platformdirs.user_config_path",
+            lambda appname: root,
         )
 
         path = machine_config_path("Plot Trace")
 
-        assert path == root / "plugins" / "plot_trace.yaml"
+        assert path == root.parent / "plugins" / "plot_trace.yaml"
 
     def test_load_plugin_config_merges_bundled_and_machine_yaml(self, monkeypatch, tmp_path):
         bundled_dir = tmp_path / "bundled"
@@ -55,8 +57,8 @@ class TestPluginConfigHelpers:
             lambda package: bundled_dir,
         )
         monkeypatch.setattr(
-            "stoner_measurement.plugins.plugin_config.platformdirs.user_config_dir",
-            lambda appname: str(machine_root),
+            "stoner_measurement.plugins.plugin_config.platformdirs.user_config_path",
+            lambda appname: machine_root / "stoner_measurement",
         )
 
         config = load_plugin_config("Dummy")

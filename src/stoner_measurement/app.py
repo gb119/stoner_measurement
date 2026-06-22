@@ -613,7 +613,7 @@ class MeasurementApp(QMainWindow):
         self._add_configured_toolbar_buttons()
 
     def _toolbar_config_path(self) -> Path:
-        return Path(platformdirs.user_config_dir("stoner_measurement")) / "toolbar.yaml"
+        return platformdirs.user_config_path("stoner_measurement").parent / "toolbar.yaml"
 
     def _load_toolbar_configuration(self) -> dict:
         user_cfg = self._toolbar_config_path()
@@ -636,7 +636,7 @@ class MeasurementApp(QMainWindow):
             return {}
 
     def _find_toolbar_icon(self, name: str) -> QIcon:
-        user_icon = Path(platformdirs.user_config_dir("stoner_measurement")) / "resources" / name
+        user_icon = platformdirs.user_config_path("stoner_measurement").parent / "resources" / name
         if user_icon.exists():
             return QIcon(str(user_icon))
         try:
@@ -647,7 +647,7 @@ class MeasurementApp(QMainWindow):
             return QIcon()
 
     def _find_predefined_sequence(self, name: str) -> Path | None:
-        user_seq = Path(platformdirs.user_config_dir("stoner_measurement")) / "sequences" / name
+        user_seq = platformdirs.user_config_path("stoner_measurement").parent / "sequences" / name
         logger.debug(f"Button clicked to load {user_seq=} {user_seq.exists()=}")
         if user_seq.exists():
             return user_seq

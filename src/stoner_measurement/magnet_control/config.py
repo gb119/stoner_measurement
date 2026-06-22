@@ -17,7 +17,7 @@ _MAX_CONFIG_BACKUPS = 20
 
 
 def machine_config_path() -> Path:
-    root = Path(platformdirs.user_config_dir("stoner_measurement"))
+    root = platformdirs.user_config_path("stoner_measurement").parent
     return root / "magnet_controller.yaml"
 
 

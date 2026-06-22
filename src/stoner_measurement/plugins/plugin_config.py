@@ -36,7 +36,7 @@ _deep_merge = deep_merge
 
 def machine_config_path(plugin_name: str) -> Path:
     """Return the per-machine YAML config path for *plugin_name*."""
-    root = Path(platformdirs.user_config_dir("stoner_measurement"))
+    root = platformdirs.user_config_path("stoner_measurement").parent
     return root / "plugins" / f"{_plugin_config_stem(plugin_name)}.yaml"
 
 
