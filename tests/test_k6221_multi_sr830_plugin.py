@@ -19,11 +19,10 @@ from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
     Keithley6221_MultiSR830Plugin,
     LockInOutput,
-    ResistanceCurrentMode,
     TraceStatus,
     WaveformScanMode,
 )
-from stoner_measurement.plugins.trace.k6221_multi_sr830 import LockInEntry, LockInReading
+from stoner_measurement.plugins.trace.k6221_multi_sr830 import LockInEntry, LockInReading, _ROW_OUTPUTS
 
 
 def _make_plugin() -> Keithley6221_MultiSR830Plugin:
@@ -77,7 +76,6 @@ class TestJsonRoundTrip:
         plugin._auto_sensitivity_low = 0.2
         plugin._auto_sensitivity_high = 0.8
         plugin._resistance_enabled = True
-        plugin._resistance_mode = ResistanceCurrentMode.RMS
         plugin._lockin_entries = [
             LockInEntry(label="X1", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,)),
             LockInEntry(label="T2", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)),
@@ -89,7 +87,6 @@ class TestJsonRoundTrip:
         assert restored._phase_marker_tlink == 5
         assert restored._time_constant == pytest.approx(3.0)
         assert restored._auto_sensitivity_enabled is True
-        assert restored._resistance_mode is ResistanceCurrentMode.RMS
         assert [entry.label for entry in restored._lockin_entries] == ["X1", "T2"]
         assert [entry.outputs for entry in restored._lockin_entries] == [
             (LockInOutput.X,),
@@ -171,6 +168,56 @@ class TestUi:
         checkboxes = settings_widget.findChildren(QCheckBox)
         texts = [cb.text() for cb in checkboxes]
         assert any("Offset" in t for t in texts)
+
+        output_widget = table.cellWidget(_ROW_OUTPUTS, 0)
+        assert output_widget is not None
+        output_checks = {
+            cb.text(): cb for cb in output_widget.findChildren(QCheckBox) if cb.text() in {"X", "Y", "R", "THETA"}
+        }
+        assert set(output_checks) == {"X", "Y", "R", "THETA"}
+        assert output_checks["X"].isChecked()
+        assert not output_checks["Y"].isChecked()
+        assert not output_checks["R"].isChecked()
+        assert not output_checks["THETA"].isChecked()
+
+        assert table.columnWidth(0) >= 180
+
+        all_texts = [cb.text() for cb in checkboxes]
+        assert "Use RMS current" not in all_texts
+        assert "Use peak current" not in all_texts
+
+    def test_output_checkboxes_allow_multiple_outputs(self, qapp):
+        plugin = _make_plugin()
+        tabs = plugin.config_tabs()
+        settings_widget = tabs[1][1]
+        table = settings_widget.findChildren(QTableWidget)[0]
+
+        output_widget = table.cellWidget(_ROW_OUTPUTS, 0)
+        assert output_widget is not None
+        output_checks = {
+            cb.text(): cb for cb in output_widget.findChildren(QCheckBox) if cb.text() in {"X", "Y", "R", "THETA"}
+        }
+
+        output_checks["Y"].click()
+        output_checks["R"].click()
+
+        assert plugin._lockin_entries[0].outputs == (LockInOutput.X, LockInOutput.Y, LockInOutput.R)
+
+    def test_output_checkboxes_keep_at_least_one_output_selected(self, qapp):
+        plugin = _make_plugin()
+        tabs = plugin.config_tabs()
+        settings_widget = tabs[1][1]
+        table = settings_widget.findChildren(QTableWidget)[0]
+
+        output_widget = table.cellWidget(_ROW_OUTPUTS, 0)
+        assert output_widget is not None
+        output_checks = {
+            cb.text(): cb for cb in output_widget.findChildren(QCheckBox) if cb.text() in {"X", "Y", "R", "THETA"}
+        }
+
+        output_checks["X"].click()
+
+        assert plugin._lockin_entries[0].outputs == (LockInOutput.X,)
 
 
 class TestConfiguration:
@@ -478,15 +525,9 @@ class TestChannelsAndResistance:
         assert data["X label"].units["y"] == "V"
         assert data["X label resistance"].units["y"] == "\u03a9"
 
-    def test_resistance_conversion_modes(self, qapp):
+    def test_resistance_conversion_uses_rms_current_from_peak_amplitude(self, qapp):
         plugin = _make_plugin()
-        assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(2.0)
-
-        plugin._resistance_mode = ResistanceCurrentMode.RMS
         assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(2.0 * np.sqrt(2.0))
-
-        plugin._resistance_mode = ResistanceCurrentMode.PEAK_TO_PEAK
-        assert plugin._convert_to_resistance(1.0, 0.5) == pytest.approx(1.0)
 
     def test_multi_output_channel_labelling(self, qapp):
         plugin = _make_plugin()
@@ -612,6 +653,13 @@ class TestConnect:
         assert plugin._k6221 is None
         assert plugin._lockins == []
         assert plugin.status is TraceStatus.ERROR
+
+
+class TestResistanceConversion:
+    def test_convert_to_resistance_uses_rms_current_from_peak_amplitude(self, qapp):
+        plugin = _make_plugin()
+        resistance = plugin._convert_to_resistance(signal=1.0, amplitude=2.0)
+        assert resistance == pytest.approx(np.sqrt(2.0) / 2.0)
 
     def test_sr830_connect_exception_closes_transports_and_resets_state(self, qapp):
         """Verify connect() cleans up and resets state when an SR830 raises during connection."""

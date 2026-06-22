@@ -51,6 +51,11 @@ class StatusCommand(CommandPlugin):
     When the step runs, the resolved text is sent to the application's status
     bar.
 
+    The configuration tab contains the standard instance-name field together
+    with the **status expression** editor. The Help/About tab uses this
+    docstring to explain how the expression is evaluated and how the resulting
+    text is routed to the application's status display.
+
     Attributes:
         status_expr (str):
             Python expression string that evaluates to the status text.

@@ -47,6 +47,12 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
     * **At target**
     * **Stable**
 
+    The configuration tab presents these quantities as independent check boxes,
+    allowing you to publish only the values needed by the rest of the
+    sequence. The same tab also includes a **force fresh poll** option for
+    cases where each read should actively request an updated hardware state
+    from the controller engine instead of relying on cached values.
+
     For more technical use, the selected parameters are exposed both via
     :meth:`read` / :attr:`last_reading` and as typed accessor methods on the instance itself
     (:meth:`field`, :meth:`target_field`, :meth:`current`, :meth:`voltage`,

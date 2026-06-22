@@ -35,7 +35,6 @@ from stoner_measurement.plugins.trace.k6221_2182a import (
 from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
     Keithley6221_MultiSR830Plugin,
     LockInOutput,
-    ResistanceCurrentMode,
     WaveformScanMode,
 )
 
@@ -53,7 +52,6 @@ __all__ = [
     "Keithley6221_MultiSR830Plugin",
     "LockInOutput",
     "SourceRangeMode",
-    "ResistanceCurrentMode",
     "TraceData",
     "TracePlugin",
     "TraceStatus",

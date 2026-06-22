@@ -691,6 +691,23 @@ class CurveFitPlugin(TransformPlugin):
         report_initial_values (bool):
             When ``True``, the initial parameter values actually used for the fit
             are also reported as scalar outputs in the values catalogue.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = CurveFitPlugin()
+        >>> plugin.name
+        'Curve Fit'
+        >>> plugin.output_trace_names
+        ['fit']
+        >>> sorted(name for name in plugin.output_value_names if name.endswith(" a") or name.endswith(" b"))
+        []
+        >>> plugin.advanced_mode
+        False
     """
 
     def __init__(self, parent=None) -> None:

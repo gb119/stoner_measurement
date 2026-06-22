@@ -21,9 +21,32 @@ class TemperatureControllerSweepPlugin(TemperatureControllerPluginMixin, StateSw
     with time. The plugin then follows that generator while reporting the
     current control value back to the sequence framework.
 
-    Attributes documented on the mixin and base classes control the detailed
-    loop selection, stability handling, ramp behaviour, and engine integration
-    for more technical script-oriented use.
+    The temperature-specific tab provides the detailed control-loop and
+    stability settings from
+    :class:`~stoner_measurement.plugins.state._temperature_controller_plugin.TemperatureControllerPluginMixin`,
+    while the sweep tab defines the time evolution of the requested
+    temperature. The Help/About tab uses this docstring to explain how
+    continuous temperature ramps are configured.
+
+    Attributes:
+        loop (int):
+            Control loop used by the inherited controller logic.
+        wait_for_stable (bool):
+            Inherited controller setting controlling whether stability criteria
+            are enforced in addition to target tracking.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = TemperatureControllerSweepPlugin()
+        >>> plugin.name
+        'Temperature Controller'
+        >>> plugin.state_name
+        'Control Value'
     """
 
     def __init__(self, parent=None) -> None:

@@ -24,9 +24,30 @@ class SweepTimePlugin(StateSweepPlugin):
     points or time profile. The plugin simply reports elapsed time in seconds;
     it does not control any external hardware.
 
+    The sweep-generator tab is therefore the main configuration surface for
+    this plugin. It defines the time points, sample intervals, or multi-segment
+    timing profile to follow. The Help/About tab uses this docstring to explain
+    that the plugin measures elapsed time rather than commanding an instrument.
+
     For script-oriented use, the internal state is the elapsed time measured
     from a monotonic clock, with :meth:`set_state` adjusting the effective
     start time accordingly.
+
+    Attributes:
+        _start_time (float):
+            Monotonic-clock reference time used to convert between elapsed time
+            and the plugin's reported state.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = SweepTimePlugin()
+        >>> plugin.units
+        's'
     """
 
     _sweep_generator_class = MonitorAndFilterSweepGenerator

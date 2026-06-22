@@ -61,6 +61,7 @@ from stoner_measurement.magnet_control.types import (
     MagnetEngineStatus,
     MagnetReading,
 )
+from stoner_measurement.ui.icons import make_magnet_icon
 from stoner_measurement.ui.plot_widget import PlotWidget
 from stoner_measurement.ui.theme import indicator_label_stylesheet
 from stoner_measurement.ui.widgets import (
@@ -177,6 +178,7 @@ class MagnetControlPanel(QWidget):
         super().__init__(parent)
         self.setWindowTitle("Magnet Control")
         self.setMinimumSize(640, 520)
+        self.setWindowIcon(make_magnet_icon())
         self.setWindowFlags(Qt.WindowType.Window)
 
         self._engine = MagnetControllerEngine.instance()

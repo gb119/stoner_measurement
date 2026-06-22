@@ -22,9 +22,33 @@ class MagnetControllerScanPlugin(MagnetControllerPluginMixin, StateScanPlugin):
     the target has been reached according to the underlying magnet-controller
     state logic.
 
-    Attributes documented on the mixin and base classes control the detailed
-    ramp behaviour, tolerances, and engine integration for more technical
-    script-oriented use.
+    The magnet-specific tab provides the detailed field-control settings
+    defined by :class:`~stoner_measurement.plugins.state._magnet_controller_plugin.MagnetControllerPluginMixin`,
+    while the scan tab defines the list of target fields. The Help/About tab
+    uses this docstring to describe how those controls work together during a
+    stepped field scan.
+
+    Attributes:
+        wait_for_stable (bool):
+            When inherited mixin settings request it, wait for the magnet
+            controller to report a stable field rather than merely reaching the
+            nominal target.
+        tolerance (float):
+            Allowed field error when deciding whether the target has been
+            reached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = MagnetControllerScanPlugin()
+        >>> plugin.name
+        'Magnet Controller'
+        >>> plugin.units
+        'T'
     """
 
     def __init__(self, parent=None) -> None:

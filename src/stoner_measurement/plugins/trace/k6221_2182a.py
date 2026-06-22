@@ -191,6 +191,14 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     integration and filtering settings, and trigger-link line assignments. The
     scan generator defines the current list that will be swept.
 
+    The source/instrument tab therefore configures how the 6221 and 2182A are
+    connected and triggered, while the scan tab defines the current points. The
+    compliance controls select either a direct voltage limit or a resistance-
+    based derived limit. Additional controls configure the 2182A integration
+    time, voltage range, digital and analogue filtering, relative mode, and
+    digit count. The Help/About tab uses this docstring to explain how those
+    settings map to the automated I-V measurement.
+
     The result is a single trace channel named **IV**. Besides the measured
     voltage, the plugin also derives resistance and power columns for
     convenience.

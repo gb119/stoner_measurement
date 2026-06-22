@@ -127,6 +127,12 @@ class PlotPointsCommand(CommandPlugin):
     * which plot axes those series should use
     * optional formatting such as colour, line style, marker style, and sizes
 
+    The configuration tab therefore acts as a small live-plot series editor.
+    One control chooses the x source, while a scrollable list of y-series rows
+    lets you add or remove plotted quantities and customise their presentation.
+    The Help/About tab uses this docstring to explain how catalogue keys,
+    axis names, and style overrides affect the emitted live plot updates.
+
     Each time the command runs, it reads the current scalar x value and the
     current scalar y value for each configured series, then appends those
     points to the plot. New axes are created automatically if you assign a

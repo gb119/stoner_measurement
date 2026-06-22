@@ -21,9 +21,31 @@ class MagnetControllerSweepPlugin(MagnetControllerPluginMixin, StateSweepPlugin)
     The plugin then follows that generator while reporting the current control
     value back to the sequence framework.
 
-    Attributes documented on the mixin and base classes control the detailed
-    ramp behaviour, tolerances, and engine integration for more technical
-    script-oriented use.
+    The magnet-specific tab provides the detailed field-control settings from
+    :class:`~stoner_measurement.plugins.state._magnet_controller_plugin.MagnetControllerPluginMixin`,
+    while the sweep tab defines the time evolution of the requested field. The
+    Help/About tab uses this docstring to explain how continuous field ramps
+    are configured.
+
+    Attributes:
+        wait_for_stable (bool):
+            Inherited controller setting controlling whether stability criteria
+            are enforced in addition to target tracking.
+        tolerance (float):
+            Allowed field error used by the inherited controller logic.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = MagnetControllerSweepPlugin()
+        >>> plugin.name
+        'Magnet Controller'
+        >>> plugin.state_name
+        'Control Value'
     """
 
     def __init__(self, parent=None) -> None:

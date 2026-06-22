@@ -31,6 +31,11 @@ class WaitCommand(CommandPlugin):
     When the step runs, the sequence sleeps for the resulting number of
     seconds.
 
+    The configuration tab contains the standard instance-name field and a
+    single **delay expression** editor. The Help/About tab uses this docstring
+    to explain that the expression is evaluated in the sequence namespace and
+    converted to a delay in seconds.
+
     Attributes:
         delay_expr (str):
             Python expression string that evaluates to the delay in seconds at

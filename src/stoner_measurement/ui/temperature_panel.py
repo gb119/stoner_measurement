@@ -96,6 +96,7 @@ from stoner_measurement.ui.theme import (
     colour,
     disabled_tab_stylesheet,
 )
+from stoner_measurement.ui.icons import make_temperature_icon
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,7 @@ class TemperatureControlPanel(QWidget):
         super().__init__(parent)
         self.setWindowTitle("Temperature Control")
         self.setMinimumSize(700, 560)
+        self.setWindowIcon(make_temperature_icon())
         self.setWindowFlags(Qt.WindowType.Window)
 
         self._engine = TemperatureControllerEngine.instance()

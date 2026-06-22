@@ -34,6 +34,15 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
     plugin takes selected x/y data, sorts it by x, resamples it onto a uniform
     grid, and then performs either a forward FFT or an inverse FFT.
 
+    In the configuration tabs, the data-selection tab lets you choose either a
+    source trace and y column or advanced x/y expressions. A second tab selects
+    whether the transform is forward or inverse. The Help/About tab uses this
+    docstring to explain the difference between those modes and the meaning of
+    the output columns.
+
+    The output trace contains magnitude, real, imaginary, and phase columns,
+    all sharing a reciprocal-domain x axis.
+
     Attributes:
         trace_key (str):
             Key in the ``_traces`` catalogue used in simple mode. Defaults to

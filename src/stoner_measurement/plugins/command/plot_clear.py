@@ -42,8 +42,10 @@ class PlotClearCommand(CommandPlugin):
     a new sample, or a new temperature/field branch so that old traces do not
     remain visible and cause confusion.
 
-    This plugin has no settings beyond its instance name. When the step runs,
-    every currently displayed trace is removed from the main plot window.
+    This plugin has no settings beyond the standard instance-name field on the
+    configuration tab. The Help/About tab uses this docstring to explain that
+    no trace selection is needed: when the step runs, every currently
+    displayed trace is removed from the main plot window.
 
     Attributes:
         plot_clear (pyqtSignal):

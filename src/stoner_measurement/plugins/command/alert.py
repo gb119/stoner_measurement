@@ -31,6 +31,10 @@ class AlertCommand(CommandPlugin):
 
         "f'Measurement {run_index} complete — check sample temperature'"
 
+    The configuration tab otherwise only contains the standard instance-name
+    field. The Help/About tab uses this docstring to explain both the purpose
+    of the command and how the message expression is interpreted at runtime.
+
     When the step runs, an alert dialog is shown and the sequence does not
     continue until the user presses **OK**.
 

@@ -236,8 +236,8 @@ def make_app_icon() -> QIcon:
 def make_temperature_icon(size: int = 32) -> QIcon:
     """Create a simple thermometer icon for the *Temperature Control* action.
 
-    Draws a thermometer outline with a filled bulb at the bottom and a column
-    representing the mercury level.
+    Draws a high-contrast thermometer outline with a filled bulb at the bottom
+    and a bright mercury column for visibility in dark mode.
 
     Keyword Parameters:
         size (int):
@@ -259,40 +259,64 @@ def make_temperature_icon(size: int = 32) -> QIcon:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
     cx = size / 2.0
-    bulb_r = size * 0.18
-    bulb_cy = size * 0.78
-    stem_w = size * 0.12
-    stem_top = size * 0.08
-    stem_bottom = bulb_cy - bulb_r * 0.6
+    bulb_r = size * 0.19
+    bulb_cy = size * 0.77
+    tube_w = size * 0.22
+    tube_top = size * 0.08
+    tube_bottom = bulb_cy - bulb_r * 0.45
+    mercury_w = tube_w * 0.42
+    fill_top = tube_top + (tube_bottom - tube_top) * 0.32
+    glass_colour = QColor(245, 245, 245)
+    outline_colour = QColor(35, 35, 35)
+    mercury_colour = QColor("#ff5252")
+    highlight_colour = QColor(255, 255, 255, 170)
+    outline_pen = painter.pen()
+    outline_pen.setColor(outline_colour)
+    outline_pen.setWidth(max(1, size // 18))
 
-    # Stem outline
-    painter.setBrush(QColor(220, 220, 220))
-    painter.setPen(QColor(100, 100, 100))
+    # Thermometer tube.
+    painter.setBrush(glass_colour)
+    painter.setPen(outline_pen)
     painter.drawRoundedRect(
-        int(cx - stem_w / 2),
-        int(stem_top),
-        int(stem_w),
-        int(stem_bottom - stem_top),
-        int(stem_w / 2),
-        int(stem_w / 2),
+        QRectF(cx - tube_w / 2, tube_top, tube_w, tube_bottom - tube_top),
+        tube_w / 2,
+        tube_w / 2,
     )
 
-    # Mercury fill in stem (roughly 60 % full)
-    fill_top = stem_top + (stem_bottom - stem_top) * 0.40
-    painter.setBrush(QColor(200, 30, 30))
+    # Mercury column.
+    painter.setBrush(mercury_colour)
     painter.setPen(Qt.PenStyle.NoPen)
-    inner_w = stem_w * 0.55
-    painter.drawRect(
-        int(cx - inner_w / 2),
-        int(fill_top),
-        int(inner_w),
-        int(stem_bottom - fill_top),
+    painter.drawRoundedRect(
+        QRectF(cx - mercury_w / 2, fill_top, mercury_w, tube_bottom - fill_top),
+        mercury_w / 2,
+        mercury_w / 2,
     )
 
-    # Bulb
-    painter.setBrush(QColor(200, 30, 30))
-    painter.setPen(QColor(100, 100, 100))
+    # Bulb.
+    painter.setBrush(mercury_colour)
+    painter.setPen(outline_pen)
     painter.drawEllipse(QPointF(cx, bulb_cy), bulb_r, bulb_r)
+
+    # Bulb highlight.
+    painter.setBrush(highlight_colour)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawEllipse(
+        QPointF(cx - bulb_r * 0.35, bulb_cy - bulb_r * 0.35),
+        bulb_r * 0.32,
+        bulb_r * 0.32,
+    )
+
+    # Scale ticks.
+    tick_pen = painter.pen()
+    tick_pen.setColor(outline_colour)
+    tick_pen.setWidth(max(1, size // 28))
+    painter.setPen(tick_pen)
+    for fraction in (0.18, 0.34, 0.50, 0.66):
+        y = tube_top + (tube_bottom - tube_top) * fraction
+        painter.drawLine(
+            QPointF(cx + tube_w * 0.78, y),
+            QPointF(cx + tube_w * 1.18, y),
+        )
 
     painter.end()
     return QIcon(QPixmap.fromImage(img))
@@ -368,8 +392,8 @@ def make_log_icon(size: int = 32) -> QIcon:
 def make_magnet_icon(size: int = 32) -> QIcon:
     """Create a horseshoe-magnet icon for the *Magnet Control* action.
 
-    Draws a stylised horseshoe magnet with two blue poles connected by a
-    curved yoke, with red/blue pole tips labelled *N* and *S*.
+    Draws a high-contrast stylised horseshoe magnet with a bright body and
+    coloured pole tips for visibility in dark mode.
 
     Keyword Parameters:
         size (int):
@@ -391,64 +415,52 @@ def make_magnet_icon(size: int = 32) -> QIcon:
     painter = QPainter(img)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-    pole_w = size * 0.22
-    pole_h = size * 0.45
-    gap = size * 0.20
-    total_w = 2 * pole_w + gap
-    left_x = (size - total_w) / 2.0
-    right_x = left_x + pole_w + gap
-    top_y = size * 0.10
-    yoke_h = size * 0.22
-
-    yoke_colour = QColor(40, 80, 200)
-    outline_colour = QColor(20, 40, 120)
-    outline_pen_width = max(1, size // 24)
-
-    # Build the horseshoe path: outer arch minus inner cut-out + two legs.
-    yoke_rect = QRectF(left_x, top_y, total_w, yoke_h * 2)
-    yoke_path = QPainterPath()
-    yoke_path.addRoundedRect(yoke_rect, yoke_h, yoke_h)
-
-    inner_inset = pole_w * 0.9
-    inner_rect = QRectF(
-        left_x + inner_inset,
-        top_y,
-        gap - (inner_inset - pole_w) * 2,
-        yoke_h * 2.5,
-    )
-    inner_path = QPainterPath()
-    inner_path.addRoundedRect(inner_rect, yoke_h * 0.7, yoke_h * 0.7)
-    horseshoe = yoke_path.subtracted(inner_path)
-
-    left_pole_rect = QRectF(left_x, top_y + yoke_h, pole_w, pole_h)
-    horseshoe.addRect(left_pole_rect)
-    right_pole_rect = QRectF(right_x, top_y + yoke_h, pole_w, pole_h)
-    horseshoe.addRect(right_pole_rect)
-
-    # Fill body then pole tips.
+    outer_rect = QRectF(size * 0.14, size * 0.10, size * 0.72, size * 0.74)
+    inner_rect = QRectF(size * 0.33, size * 0.25, size * 0.34, size * 0.44)
+    body_colour = QColor(235, 235, 235)
+    outline_colour = QColor(40, 40, 40)
+    north_colour = QColor("#ff5252")
+    south_colour = QColor("#42a5f5")
     outline_pen = painter.pen()
     outline_pen.setColor(outline_colour)
-    outline_pen.setWidth(outline_pen_width)
-    painter.setBrush(yoke_colour)
+    outline_pen.setWidth(max(1, size // 16))
+
+    horseshoe = QPainterPath()
+    horseshoe.addRoundedRect(outer_rect, size * 0.24, size * 0.24)
+    inner_path = QPainterPath()
+    inner_path.addRoundedRect(inner_rect, size * 0.12, size * 0.12)
+    horseshoe = horseshoe.subtracted(inner_path)
+    horseshoe.addRect(QRectF(size * 0.34, size * 0.54, size * 0.32, size * 0.28))
+
+    painter.setBrush(body_colour)
     painter.setPen(outline_pen)
     painter.drawPath(horseshoe)
 
-    tip_h = pole_h * 0.30
-    tip_top = top_y + yoke_h + pole_h - tip_h
+    tip_y = size * 0.59
+    tip_h = size * 0.22
+    tip_w = size * 0.16
 
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(200, 40, 40))
-    painter.drawRect(QRectF(left_x, tip_top, pole_w, tip_h))
-    painter.setBrush(QColor(40, 100, 200))
-    painter.drawRect(QRectF(right_x, tip_top, pole_w, tip_h))
+    painter.setBrush(north_colour)
+    painter.drawRoundedRect(QRectF(size * 0.14, tip_y, tip_w, tip_h), 2, 2)
+    painter.setBrush(south_colour)
+    painter.drawRoundedRect(QRectF(size * 0.70, tip_y, tip_w, tip_h), 2, 2)
 
     label_font = painter.font()
-    label_font.setPixelSize(max(6, int(size * 0.22)))
+    label_font.setPixelSize(max(6, int(size * 0.18)))
     label_font.setBold(True)
     painter.setFont(label_font)
-    painter.setPen(QColor(255, 255, 255))
-    painter.drawText(QRectF(left_x, tip_top, pole_w, tip_h), Qt.AlignmentFlag.AlignCenter, "N")
-    painter.drawText(QRectF(right_x, tip_top, pole_w, tip_h), Qt.AlignmentFlag.AlignCenter, "S")
+    painter.setPen(QColor("#ffffff"))
+    painter.drawText(
+        QRectF(size * 0.14, tip_y, tip_w, tip_h),
+        Qt.AlignmentFlag.AlignCenter,
+        "N",
+    )
+    painter.drawText(
+        QRectF(size * 0.70, tip_y, tip_w, tip_h),
+        Qt.AlignmentFlag.AlignCenter,
+        "S",
+    )
 
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(outline_pen)

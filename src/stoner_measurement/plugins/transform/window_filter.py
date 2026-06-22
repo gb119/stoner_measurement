@@ -56,13 +56,19 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
     expressions, then select the SciPy window type, length, optional window
     parameters, and whether the kernel should be normalised.
 
+    The data-selection tab determines where the input arrays come from, while
+    the window tab configures the convolution kernel. The Help/About tab uses
+    this docstring to explain the available window options, optional parameter
+    text, and the effect of the symmetric and normalisation switches.
+
     Attributes:
         trace_key (str):
             Selected trace key used when advanced mode is disabled.
         column_key (str):
             Selected y-column key from the chosen trace.
         advanced_mode (bool):
-            trace/column selection.
+            When ``True``, use advanced x/y expressions instead of direct
+            trace and column selection.
         x_expr (str):
             Expression used to compute x data in advanced mode.
         y_expr (str):
@@ -85,8 +91,13 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
         zero-sum normalisation) are logged and produce no transform output.
 
     Examples:
-        Select a trace and y column, then choose a window type and length on
-        the Window tab to smooth noisy data while keeping the original x axis.
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = WindowFilterPlugin()
+        >>> plugin.name
+        'Window Filter'
+        >>> plugin.output_trace_names
+        ['filtered']
     """
 
     def __init__(self, parent=None) -> None:

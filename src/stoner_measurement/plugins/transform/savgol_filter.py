@@ -29,13 +29,19 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
     output type. The output can be either the smoothed signal itself or a
     derivative of selected order.
 
+    The data-selection tab determines where the input arrays come from, while
+    the filter tab configures the Savitzky-Golay operation itself. The
+    Help/About tab uses this docstring to explain the meaning of the window
+    length, polynomial order, and derivative order controls.
+
     Attributes:
         trace_key (str):
             Selected trace key used when advanced mode is disabled.
         column_key (str):
             Selected y-column key from the chosen trace.
         advanced_mode (bool):
-            trace/column selection.
+            When ``True``, use advanced x/y expressions instead of direct
+            trace and column selection.
         x_expr (str):
             Expression used to compute x data in advanced mode.
         y_expr (str):
@@ -53,9 +59,13 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         units for derivative outputs as ``y_unit/x_unit^n``.
 
     Examples:
-        Add the plugin to a sequence, choose a source trace and y column on the
-        Data tab, then choose filter settings on the Filter tab to generate a
-        smoothed or differentiated output trace.
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = SavitzkyGolayPlugin()
+        >>> plugin.name
+        'Savitzky-Golay'
+        >>> plugin.output_trace_names
+        ['savgol']
     """
 
     def __init__(self, parent=None) -> None:

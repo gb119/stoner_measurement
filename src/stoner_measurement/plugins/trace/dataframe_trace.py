@@ -51,10 +51,34 @@ class DataFrameTracePlugin(TransformPlugin):
     output trace. You can also assign a role to each selected column, such as
     main data, x error, y error, or auxiliary data.
 
+    The main tab therefore acts as a mapping tool between the collected table
+    and trace semantics: one source plugin is chosen, one x source is chosen,
+    and each exported column can be given a role. The Help/About tab uses this
+    docstring to describe those choices and their effect on the emitted
+    :class:`~stoner_measurement.plugins.trace.base.TraceData`.
+
     For more technical use, the transform returns a multicolumn
     :class:`~stoner_measurement.plugins.trace.base.TraceData` object built
     from the chosen DataFrame, with column roles taken from
     :attr:`selected_column_roles`.
+
+    Attributes:
+        source_plugin (str):
+            Instance name of the state plugin whose DataFrame should be
+            converted.
+        x_source (str):
+            DataFrame index sentinel or column name used for the output x axis.
+        selected_columns (list[str]):
+            DataFrame columns to include in the output trace.
+        selected_column_roles (dict[str, str]):
+            Mapping from selected column names to trace column-role codes.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = DataFrameTracePlugin()
+        >>> plugin.name
+        'DataFrame Trace'
     """
 
     def __init__(self, parent=None) -> None:

@@ -124,11 +124,19 @@ show_missing = true
 
 [tool.pylint.typecheck]
 ignored-modules = [
+    "pyqtgraph",
+    "qtpy",
+    "qtpy.QtCore",
+    "qtpy.QtGui",
+    "qtpy.QtWidgets",
     "PyQt6",
     "PyQt6.QtCore",
     "PyQt6.QtGui",
     "PyQt6.QtWidgets",
 ]
+
+[tool.pylint.imports]
+ignored-modules = ["pyqtgraph", "qtpy", "qtpy.QtCore", "qtpy.QtGui", "qtpy.QtWidgets"]
 
 [tool.pylint.format]
 max-line-length = 119

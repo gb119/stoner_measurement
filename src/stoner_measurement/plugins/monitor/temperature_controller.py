@@ -75,12 +75,19 @@ class TemperatureMonitorPlugin(MonitorPlugin):
     * **Rate of change**
     * **Stability**
 
+    The configuration tab includes text fields for the control-loop list and
+    sensor-channel list, together with check boxes for each reported quantity.
+    A blank sensor-channel list means all channels currently known to the
+    temperature-controller engine. A **force fresh poll** option is also
+    available when each read should explicitly refresh the controller state.
+
     For more technical use, the selected parameters are exposed both via
     :meth:`read` / :attr:`last_reading` and as typed accessor methods on the instance itself
     (:meth:`setpoint`, :meth:`temperature`, :meth:`heater`,
     :meth:`rate`, :meth:`stable`) so that they can be referenced directly in
     sequence scripts.
- 
+
+    Attributes:
         driver_name (str):
             Registered instrument driver name.
         transport_name (str):

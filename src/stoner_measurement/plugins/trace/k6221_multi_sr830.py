@@ -92,14 +92,6 @@ class WaveformScanMode(enum.Enum):
     FREQUENCY = "frequency"
 
 
-class ResistanceCurrentMode(enum.Enum):
-    """How to interpret the 6221 sine amplitude when computing resistance."""
-
-    RMS = "rms"
-    PEAK = "peak"
-    PEAK_TO_PEAK = "peak_to_peak"
-
-
 @dataclass
 class LockInEntry:
     """Configuration for one SR830 instance.
@@ -192,21 +184,88 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     experiments where you want to scan the waveform amplitude, offset, or
     frequency and record one or more lock-in outputs for each point.
 
-    In the configuration tabs you choose the 6221 resource and waveform
-    settings, common SR830 settings such as time constant and filtering, and
-    then define one or more individual lock-ins with their own labels,
-    resources, output selections, sensitivities, harmonic settings, and other
-    options. Optional automatic sensitivity handling and resistance conversion
-    can also be enabled.
+    In the configuration tabs you first choose the 6221 connection and source
+    settings, including the GPIB resource, the waveform parameter to scan, the
+    fixed sine settings that are not being swept, the trigger-link output line,
+    and the source-range policy. The same page also provides common SR830
+    settings such as time constant, filter slope, input coupling, line-filter
+    rejection, and the cooldown multiple used to decide how long to wait
+    between successive readings. A resistance-conversion option can be enabled
+    to add derived resistance channels from the measured lock-in voltages.
+
+    The second tab contains the lock-in configuration table. Each column
+    represents one SR830. For each lock-in you set a human-readable label,
+    resource string, selected output channels, sensitivity, whether that
+    lock-in participates in auto-sensitivity, harmonic, reference phase,
+    whether auto-phase should be run during configuration, output offset,
+    expand factor, and reserve mode. Multiple outputs may be selected for each
+    lock-in using separate check boxes for X, Y, R, and THETA.
 
     The scan generator defines the swept values. The plugin returns one trace
     per configured output channel, using the lock-in labels to build readable
-    channel names.
+    channel names. When resistance conversion is enabled, additional derived
+    channels are produced for non-angular outputs.
 
-    For more technical use, the later parts of this class and its attributes
-    document how waveform scan mode, lock-in entries, derived resistance
-    channels, auto-sensitivity, and offset correction are represented in the
-    plugin state.
+    Attributes:
+        _6221_resource (str):
+            VISA resource string for the Keithley 6221 current source.
+        _scan_mode (WaveformScanMode):
+            Which 6221 waveform parameter is scanned: amplitude, offset, or
+            frequency.
+        _waveform_amplitude (float):
+            Fixed sine-wave amplitude in amps when amplitude is not the scanned
+            quantity. This is interpreted as a zero-to-peak current.
+        _waveform_offset (float):
+            Fixed DC current offset in amps when offset is not the scanned
+            quantity.
+        _waveform_frequency (float):
+            Fixed sine-wave frequency in hertz when frequency is not the
+            scanned quantity.
+        _phase_marker_tlink (int):
+            Trigger-link output line used by the 6221 phase marker.
+        _time_constant (float):
+            Common SR830 time constant in seconds.
+        _filter_slope (int):
+            Common SR830 low-pass filter slope in dB/octave.
+        _input_coupling (LockInInputCoupling):
+            Common SR830 input coupling mode.
+        _line_filter (LockInLineFilter):
+            Common SR830 line-frequency rejection setting.
+        _read_rate_multiple (float):
+            Multiplier applied to the time constant when enforcing a minimum
+            interval between readings.
+        _auto_sensitivity_enabled (bool):
+            Master enable for automatic sensitivity adjustment.
+        _auto_sensitivity_low (float):
+            Lower signal-to-full-scale ratio threshold for auto-sensitivity.
+        _auto_sensitivity_high (float):
+            Upper signal-to-full-scale ratio threshold for auto-sensitivity.
+        _offset_enabled (bool):
+            When ``True``, apply stored or measured output-offset corrections to
+            X, Y, and R readings.
+        _source_range_mode (str):
+            6221 source-range policy: ``"AUTO"``, ``"BEST"``, or ``"FIXED"``.
+        _resistance_enabled (bool):
+            When ``True``, emit derived resistance channels for non-angular
+            lock-in outputs.
+        _lockin_entries (list[LockInEntry]):
+            Per-lock-in configuration entries defining labels, resources,
+            outputs, sensitivity, harmonic, phase, and related settings.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = Keithley6221_MultiSR830Plugin()
+        >>> plugin.name
+        'k6221_multi_sr830'
+        >>> plugin.trace_title
+        '6221 + multi-SR830'
+        >>> plugin.channel_names
+        ['LIA 1']
     """
 
     _scan_generator_class = ListScanGenerator
@@ -237,7 +296,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._source_range_mode: str = "BEST"
 
         self._resistance_enabled: bool = False
-        self._resistance_mode: ResistanceCurrentMode = ResistanceCurrentMode.PEAK
 
         self._lockin_entries: list[LockInEntry] = [LockInEntry()]
 
@@ -588,7 +646,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 "offset_enabled": self._offset_enabled,
                 "source_range_mode": self._source_range_mode,
                 "resistance_enabled": self._resistance_enabled,
-                "resistance_mode": self._resistance_mode.value,
                 "lockins": [entry.to_json() for entry in self._lockin_entries],
             }
         )
@@ -628,12 +685,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._offset_enabled = bool(data.get("offset_enabled", self._offset_enabled))
         self._source_range_mode = str(data.get("source_range_mode", self._source_range_mode))
         self._resistance_enabled = bool(data.get("resistance_enabled", self._resistance_enabled))
-        self._resistance_mode = self._parse_enum(
-            ResistanceCurrentMode,
-            data.get("resistance_mode", self._resistance_mode.value),
-            self._resistance_mode,
-            "resistance_mode",
-        )
 
         restored_entries = data.get("lockins", [])
         if isinstance(restored_entries, list) and restored_entries:
@@ -790,19 +841,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         resistance_enabled.setChecked(self._resistance_enabled)
         resistance_enabled.toggled.connect(lambda checked: setattr(self, "_resistance_enabled", bool(checked)))
 
-        resistance_mode_combo = QComboBox()
-        resistance_mode_combo.addItem("Use RMS current", ResistanceCurrentMode.RMS)
-        resistance_mode_combo.addItem("Use peak current", ResistanceCurrentMode.PEAK)
-        resistance_mode_combo.addItem("Use peak-to-peak current", ResistanceCurrentMode.PEAK_TO_PEAK)
-        resistance_mode_combo.setCurrentIndex(resistance_mode_combo.findData(self._resistance_mode))
-        resistance_mode_combo.currentIndexChanged.connect(
-            lambda index: setattr(self, "_resistance_mode", resistance_mode_combo.itemData(index))
-        )
-
         derived_form.addRow(resistance_enabled)
-        derived_form.addRow("Current interpretation:", resistance_mode_combo)
         sc_layout.addWidget(derived_group)
-        sc_layout.addStretch(1)
+        sc_layout.addStretch()
 
         # ---- Tab 2: Lock-ins ----
         lockins_page = QWidget()
@@ -829,9 +870,14 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lockins_table.setColumnCount(n_cols)
             for col in range(n_cols):
                 lockins_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+                lockins_table.setColumnWidth(col, 180)
 
             for col, entry in enumerate(self._lockin_entries):
                 label_edit = QLineEdit(entry.label)
+                outputs_widget = QWidget()
+                outputs_layout = QVBoxLayout(outputs_widget)
+                outputs_layout.setContentsMargins(4, 2, 4, 2)
+                outputs_layout.setSpacing(2)
                 label_edit.textChanged.connect(
                     lambda text, *, idx=col: setattr(self._lockin_entries[idx], "label", text)
                 )
@@ -843,8 +889,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     lambda text, *, idx=col: setattr(self._lockin_entries[idx], "resource", text.strip())
                 )
                 lockins_table.setCellWidget(_ROW_RESOURCE, col, resource_widget)
-
-                outputs_edit = QLineEdit(", ".join(output.value for output in entry.outputs))
 
                 sensitivity_combo = SIComboBox(unit="V")
                 for value in _SR830_SENSITIVITIES:
@@ -902,25 +946,37 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 reserve_combo.addItem("Low noise", LockInReserveMode.LOW_NOISE)
                 reserve_combo.setCurrentIndex(reserve_combo.findData(entry.reserve_mode))
 
-                def _sync_outputs(
-                    text: str,
-                    *,
-                    idx=col,
-                    output_widget=outputs_edit,
+                output_checks: list[tuple[LockInOutput, QCheckBox]] = []
+
+                def _sync_outputs_from_checks(
+                    checks=output_checks,
                     offset_widget=offset_local,
                     expand_widget=expand_combo,
                 ) -> None:
-                    try:
-                        outputs = self._parse_outputs(text)
-                    except ValueError:
-                        output_widget.setText(", ".join(output.value for output in self._lockin_entries[idx].outputs))
-                        outputs = self._lockin_entries[idx].outputs
-                    self._lockin_entries[idx].outputs = outputs
+                    outputs = tuple(output for output, checkbox in checks if checkbox.isChecked())
+                    if not outputs:
+                        checks[0][1].blockSignals(True)
+                        checks[0][1].setChecked(True)
+                        checks[0][1].blockSignals(False)
+                        outputs = (checks[0][0],)
+                    self._lockin_entries[col].outputs = outputs
                     supports_offset = any(output.offset_channel() is not None for output in outputs)
                     offset_widget.setEnabled(supports_offset)
                     expand_widget.setEnabled(supports_offset)
 
-                outputs_edit.editingFinished.connect(lambda *, edit=outputs_edit: _sync_outputs(edit.text()))
+                def _make_output_toggled_handler() -> callable:
+                    def _handle_output_toggled(_checked: bool) -> None:
+                        _sync_outputs_from_checks()
+
+                    return _handle_output_toggled
+
+                for output in LockInOutput:
+                    checkbox = QCheckBox(output.value)
+                    checkbox.setChecked(output in entry.outputs)
+                    checkbox.toggled.connect(_make_output_toggled_handler())
+                    output_checks.append((output, checkbox))
+                    outputs_layout.addWidget(checkbox)
+
                 offset_local.valueChanged.connect(
                     lambda value, *, idx=col: setattr(self._lockin_entries[idx], "offset_pct", float(value))
                 )
@@ -934,12 +990,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                         self._lockin_entries[idx], "reserve_mode", combo.itemData(index)
                     )
                 )
-
-                lockins_table.setCellWidget(_ROW_OUTPUTS, col, outputs_edit)
+                outputs_layout.addStretch()
+                lockins_table.setCellWidget(_ROW_OUTPUTS, col, outputs_widget)
                 lockins_table.setCellWidget(_ROW_OFFSET_PCT, col, offset_local)
                 lockins_table.setCellWidget(_ROW_EXPAND, col, expand_combo)
                 lockins_table.setCellWidget(_ROW_RESERVE, col, reserve_combo)
-                _sync_outputs(outputs_edit.text(), idx=col)
+                _sync_outputs_from_checks()
 
             remove_button.setEnabled(len(self._lockin_entries) > 1)
             lockins_table.blockSignals(False)
@@ -1320,12 +1376,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return abs(self._waveform_amplitude)
 
     def _convert_to_resistance(self, signal: float, amplitude: float) -> float:
-        if self._resistance_mode is ResistanceCurrentMode.RMS:
-            current = amplitude / math.sqrt(2.0)
-        elif self._resistance_mode is ResistanceCurrentMode.PEAK_TO_PEAK:
-            current = amplitude * 2.0
-        else:
-            current = amplitude
+        """Convert an RMS lock-in voltage reading into resistance using the 6221 peak current amplitude."""
+        current = amplitude / math.sqrt(2.0)
         if abs(current) <= _ZERO_CURRENT_THRESHOLD:
             return float("nan")
         return signal / current

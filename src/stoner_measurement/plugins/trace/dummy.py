@@ -31,6 +31,11 @@ class DummyPlugin(TracePlugin):
     resistance, and noise level. The result is a trace titled **RSJ I-V** with
     current on the x-axis and voltage on the y-axis.
 
+    The configuration tabs include the standard trace scan-generator controls
+    plus simple text-entry fields for the RSJ model parameters. The Help/About
+    tab uses this docstring to explain both the physical meaning of those
+    parameters and the fact that the plugin is entirely hardware-free.
+
     More technically, scan points are interpreted as applied current values
     *I* (in A). The corresponding voltage is computed from the DC RSJ model:
 
@@ -41,9 +46,27 @@ class DummyPlugin(TracePlugin):
     where *I_c* is the critical current, *R_n* is the normal-state
     resistance, and *V_n* is the noise standard deviation.
 
+    Attributes:
+        _critical_current (str):
+            Python expression string for the critical current parameter.
+        _normal_resistance (str):
+            Python expression string for the normal-state resistance.
+        _noise_level (str):
+            Python expression string for the additive Gaussian noise level.
+        _rounding_level (str):
+            Python expression string controlling current rounding behaviour used
+            by the implementation.
+
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = DummyPlugin()
+        >>> plugin.name
+        'Dummy'
     """
 
     def __init__(self, parent=None) -> None:

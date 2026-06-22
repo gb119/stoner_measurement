@@ -26,6 +26,16 @@ class CounterPlugin(StateScanPlugin):
     settling and the plugin is always considered to be at target. Internally
     it simply stores the current numeric value, initialised to ``0.0``.
 
+    The configuration tabs consist mainly of the standard state-scan controls,
+    especially the scan-generator settings that define the sequence of values
+    to visit. There are no hardware-specific settings for this plugin. The
+    Help/About tab uses this docstring to explain the role of the plugin as a
+    minimal example scan axis.
+
+    Attributes:
+        _count (float):
+            Current stored counter value representing the present scan state.
+
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
