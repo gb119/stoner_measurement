@@ -1,4 +1,16 @@
 {
-  "version": "template",
-  "steps": []
+  "version": "0.1.0",
+  "steps": [
+    {
+      "plugin": {
+        "type": "command",
+        "class": "stoner_measurement.plugins.command.details:DetailsCommand",
+        "instance_name": "details",
+        "user": "",
+        "sample": "",
+        "project": "",
+        "notes": ""
+      }
+    }
+  ]
 }

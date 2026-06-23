@@ -39,7 +39,22 @@ class SISpinBox(pg.SpinBox):
         >>> spin.setOpts(value=200.0)
         >>> spin.value()
         200.0
+
+    Notes:
+        The base :class:`pyqtgraph.SpinBox` can render a little tightly with
+        the application's default font metrics, especially in dark mode. This
+        subclass therefore also applies a slightly larger minimum height so the
+        text and suffix remain fully visible and appear better centred
+        vertically.
     """
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Initialise the SI-aware spin box."""
+        super().__init__(*args, **kwargs)
+        minimum_height = max(self.minimumHeight(), 28)
+        self.setMinimumHeight(minimum_height)
+        line_edit = self.lineEdit()
+        line_edit.setMinimumHeight(max(line_edit.minimumHeight(), minimum_height - 4))
 
     def interpret(self) -> float | int | bool:
         """Return the value represented by the current text, or ``False``.
@@ -86,13 +101,13 @@ class SISpinBox(pg.SpinBox):
         # parsing rules are respected without duplicating internal logic.
         # We reconstruct from the normalised prefix + user_input to avoid any
         # trailing whitespace artefacts in the original text.
-        self.skipValidate = True
+        self.skipValidate = True  # pylint: disable=invalid-name
         try:
             le.setText(self.opts["prefix"] + user_input + suffix)
             result = super().interpret()
         finally:
             le.setText(original_text)
-            self.skipValidate = False
+            self.skipValidate = False  # pylint: disable=invalid-name
 
         return result
 

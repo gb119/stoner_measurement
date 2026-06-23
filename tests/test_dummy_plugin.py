@@ -146,6 +146,26 @@ class TestDummyPlugin:
         tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
         assert isinstance(tabs[0][1], QWidget)
 
+    def test_statistics_checkbox_is_on_scan_tab(self, qapp, qtbot):
+        """The shared trace statistics switch should live on the common Scan tab."""
+        from qtpy.QtWidgets import QCheckBox
+
+        plugin = DummyPlugin()
+        tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
+        scan_widget = tabs[0][1]
+        checkboxes = scan_widget.findChildren(QCheckBox)
+        texts = [cb.text() for cb in checkboxes]
+        assert "Report channel average and standard deviation outputs" in texts
+
+    def test_statistics_checkbox_is_not_on_settings_tab(self, qapp, qtbot):
+        """The shared trace statistics switch should no longer be injected into Settings."""
+        from qtpy.QtWidgets import QCheckBox
+
+        plugin = DummyPlugin()
+        tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
+        settings_widget = tabs[1][1]
+        assert all(cb.text() != "Report channel average and standard deviation outputs" for cb in settings_widget.findChildren(QCheckBox))
+
     def test_about_tab_is_third(self, qapp, qtbot):
         plugin = DummyPlugin()
         tabs = _register_tab_widgets(qtbot, plugin.config_tabs())

@@ -506,10 +506,25 @@ class TestKeithley2400:
         t = _null(responses=[b"1.000000E-01\n"])
         assert Keithley2400(transport=t).get_compliance() == pytest.approx(0.1)
 
+    def test_get_compliance_current_mode_queries_voltage_protection(self):
+        t = _null(responses=[b"1.000000E+01\n"])
+        assert Keithley2400(transport=t).get_compliance(SourceMode.CURR) == pytest.approx(10.0)
+        assert t.write_log == [b":SENS:VOLT:PROT?\n"]
+
     def test_set_compliance(self):
         t = _null()
         Keithley2400(transport=t).set_compliance(0.05)
         assert t.write_log[-1] == b":SENS:CURR:PROT 0.05\n"
+
+    def test_set_compliance_current_mode_writes_voltage_protection(self):
+        t = _null()
+        Keithley2400(transport=t).set_compliance(5.0, SourceMode.CURR)
+        assert t.write_log == [b":SENS:VOLT:PROT 5.0\n"]
+
+    def test_set_compliance_from_resistance_current_mode(self):
+        t = _null()
+        assert Keithley2400(transport=t).set_compliance_from_resistance(1000.0, source_level=0.002, source_mode=SourceMode.CURR) == pytest.approx(2.0)
+        assert t.write_log[-1] == b":SENS:VOLT:PROT 2.0\n"
 
     def test_get_nplc(self):
         t = _null(responses=[b"1.000000E+00\n"])
@@ -664,6 +679,31 @@ class TestKeithley2400:
             b":TRAC:DATA?\n",
             b":TRAC:DATA? 1,2\n",
         ]
+
+    def test_read_buffer_records_parses_explicit_format(self):
+        t = _null(responses=[b"1,2,3,4,5,6,7,8,9,10\n"])
+        records = Keithley2400(transport=t).read_buffer_records(("VOLT", "CURR", "RES", "TIME", "STAT"))
+        assert len(records) == 2
+        assert records[0].voltage == pytest.approx(1.0)
+        assert records[0].current == pytest.approx(2.0)
+        assert records[0].resistance == pytest.approx(3.0)
+        assert records[0].time == pytest.approx(4.0)
+        assert records[0].status == pytest.approx(5.0)
+        assert t.write_log == [b":FORM:DATA ASC\n", b":FORM:ELEM VOLT,CURR,RES,TIME,STAT\n", b":TRAC:DATA?\n"]
+
+    def test_check_error_queue_returns_terminating_no_error(self):
+        t = _null(responses=[b'-200,"Execution error"\n', b'0,"No error"\n'])
+        errors = Keithley2400(transport=t).check_error_queue(raise_on_error=False)
+        assert errors == ((-200, "Execution error"), (0, "No error"))
+
+    def test_check_error_queue_raises_on_instrument_error(self):
+        t = _null(responses=[b'-200,"Execution error"\n', b'0,"No error"\n'])
+        with pytest.raises(RuntimeError, match="Execution error"):
+            Keithley2400(transport=t).check_error_queue()
+
+    def test_check_error_queue_accepts_plain_no_error_message(self):
+        t = _null(responses=[b'0,"No error"\n'])
+        assert Keithley2400(transport=t).check_error_queue(raise_on_error=False) == ((0, "No error"),)
 
     def test_buffer_size_validation(self):
         with pytest.raises(ValueError, match="positive"):

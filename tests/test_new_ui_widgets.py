@@ -14,6 +14,7 @@ from stoner_measurement.app import (
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
 from stoner_measurement.ui.script_tab import ScriptTab
+from stoner_measurement.ui.theme import theme_stylesheet
 from stoner_measurement.ui.widgets import SISpinBox
 
 
@@ -642,6 +643,18 @@ class TestSISpinBox:
     def test_creates_widget(self, qapp):
         spin = SISpinBox()
         assert spin is not None
+
+    def test_applies_minimum_height_for_readability(self, qapp):
+        """Spin box and editor should use a taller default height."""
+        spin = SISpinBox()
+        assert spin.minimumHeight() >= 28
+        assert spin.lineEdit().minimumHeight() >= 24
+
+    def test_theme_stylesheet_contains_checkbox_and_tab_polish(self, qapp):
+        """Global theme stylesheet should include checkbox and tab styling."""
+        qss = theme_stylesheet()
+        assert "QCheckBox::indicator" in qss
+        assert "QTabBar::tab:selected" in qss
 
     def test_value_with_explicit_suffix_unchanged(self, qapp):
         """Standard behaviour: user types the full unit string."""

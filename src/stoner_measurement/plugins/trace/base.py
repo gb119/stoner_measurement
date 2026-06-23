@@ -35,7 +35,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import numpy as np
 import pandas as pd
 from qtpy.QtCore import QObject
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -46,6 +45,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from stoner_measurement.qt_compat import pyqtSignal
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.scan import (
@@ -631,6 +631,16 @@ class _ScanPage(QWidget):
         scan_container = _ScanTabContainer(plugin, parent=self)
         layout.addWidget(scan_container)
 
+        # --- Common trace output options ---
+        output_form = QFormLayout()
+        stats_check = QCheckBox("Report channel average and standard deviation outputs")
+        stats_check.setChecked(plugin._report_channel_statistics)
+        stats_check.toggled.connect(plugin._set_report_channel_statistics)
+        output_form.addRow(stats_check)
+        output_widget = QWidget()
+        output_widget.setLayout(output_form)
+        layout.addWidget(output_widget)
+
 
 class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     """Abstract base class for plugins that collect (x, y) data traces.
@@ -1187,11 +1197,6 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         ]
 
         settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
-        stats_check = QCheckBox("Report channel average and standard deviation outputs")
-        stats_check.setChecked(self._report_channel_statistics)
-        stats_check.toggled.connect(self._set_report_channel_statistics)
-        self._attach_statistics_checkbox(settings_widget, stats_check)
-
         tabs.append((f"{self.name} \u2013 Settings", settings_widget))
 
         about_tab = self._make_about_tab()
@@ -1468,27 +1473,3 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Cached statistic value, or ``nan`` if unavailable.
         """
         return float(self.channel_statistics.get(channel, {}).get(statistic, float("nan")))
-
-    def _attach_statistics_checkbox(self, settings_widget: QWidget, checkbox: QCheckBox) -> None:
-        """Attach the statistics checkbox to the top of the settings widget.
-
-        Args:
-            settings_widget (QWidget):
-                Settings tab widget to augment.
-            checkbox (QCheckBox):
-                Checkbox controlling channel statistics output reporting.
-        """
-        layout = settings_widget.layout()
-        if layout is None:
-            layout = QVBoxLayout(settings_widget)
-
-        if isinstance(layout, QFormLayout):
-            layout.insertRow(0, checkbox)
-            return
-
-        if hasattr(layout, "insertWidget"):
-            layout.insertWidget(0, checkbox)
-            return
-
-        if hasattr(layout, "addWidget"):
-            layout.addWidget(checkbox)

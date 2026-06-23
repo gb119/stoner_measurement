@@ -24,8 +24,14 @@ THEMES: dict[str, dict[str, str]] = {
         "disabled_text": "#8b949e",
         "border": "#5c6370",
         "placeholder_text": "#9aa4af",
+        "border_subtle": "#7b8493",
         "status_default": "#4b5563",
         "status_running": "#2e7d32",
+        "checkbox_checked_fill": "#3d8bfd",
+        "checkbox_check": "#ffffff",
+        "tab_selected_background": "#34465f",
+        "tab_selected_border": "#6f8fb8",
+        "tab_selected_text": "#ffffff",
         "status_paused": "#ef6c00",
         "status_error": "#c62828",
         "validation_error_background": "#4a2226",
@@ -84,8 +90,14 @@ THEMES: dict[str, dict[str, str]] = {
         "disabled_text": "#80868b",
         "border": "#babfc4",
         "placeholder_text": "#80868b",
+        "border_subtle": "#9aa0a6",
         "status_default": "#d6d9de",
         "status_running": "#43a047",
+        "checkbox_checked_fill": "#1a73e8",
+        "checkbox_check": "#202124",
+        "tab_selected_background": "#e7eef9",
+        "tab_selected_border": "#8aa8d6",
+        "tab_selected_text": "#202124",
         "status_paused": "#fb8c00",
         "status_error": "#e53935",
         "validation_error_background": "#fdeaea",
@@ -210,7 +222,7 @@ def apply_pyqtgraph_dark_theme(plot_item, axis_items: dict[str, object]) -> None
     foreground = colour("plot_foreground")
     grid_alpha = 64
     grid_opacity = 0.15
-    
+
     for axis in axis_items.values():
         try:
             axis.setPen(foreground)
@@ -322,12 +334,18 @@ def make_palette() -> QPalette:
 def theme_stylesheet() -> str:
     """Return a small global stylesheet for theme polish."""
     border = colour("border")
+    subtle_border = colour("border_subtle")
     background = colour("button")
     base = colour("base")
     text = colour("text")
     tooltip_base = colour("tooltip_base")
     tooltip_text = colour("tooltip_text")
     highlight = colour("highlight")
+    selected_tab_background = colour("tab_selected_background")
+    checkbox_checked_fill = colour("checkbox_checked_fill")
+    checkbox_check = colour("checkbox_check")
+    selected_tab_border = colour("tab_selected_border")
+    selected_tab_text = colour("tab_selected_text")
     tree_qss = tree_stylesheet()
     return f"""
 QToolTip {{
@@ -348,7 +366,32 @@ QTabBar::tab {{
 }}
 
 QTabBar::tab:selected {{
-    background: {base};
+    background: {selected_tab_background};
+    color: {selected_tab_text};
+    border-color: {selected_tab_border};
+    font-weight: 600;
+}}
+
+QTabBar::tab:hover:!selected {{
+    border-color: {subtle_border};
+}}
+
+QCheckBox {{
+    spacing: 6px;
+}}
+
+QCheckBox::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 1px solid {subtle_border};
+    border-radius: 3px;
+    background-color: {base};
+}}
+
+QCheckBox::indicator:checked {{
+    border: 1px solid {highlight};
+    background-color: {checkbox_checked_fill};
+    image: none;
 }}
 
 QHeaderView::section {{

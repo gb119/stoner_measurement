@@ -14,6 +14,9 @@ References:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
+
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.source_meter import (
@@ -33,6 +36,41 @@ _VALID_MEASURE_FUNCTIONS = frozenset({"VOLT", "CURR", "RES"})
 #: NPLC range supported by the Keithley 2400.
 _NPLC_MIN = 0.01
 _NPLC_MAX = 10.0
+
+_VALID_FORMAT_ELEMENTS = frozenset({"VOLT", "CURR", "RES", "TIME", "STAT"})
+
+
+class FilterType(Enum):
+    """Digital reading-filter type supported by the Keithley 2400."""
+
+    REPEAT = "REP"
+    MOVING = "MOV"
+
+
+class TerminalSelection(Enum):
+    """Source/output terminal selection for the Keithley 2400."""
+
+    FRONT = "FRON"
+    REAR = "REAR"
+
+
+class SenseWiringMode(Enum):
+    """2-wire or 4-wire remote-sense configuration."""
+
+    TWO_WIRE = "2W"
+    FOUR_WIRE = "4W"
+
+
+
+@dataclass(frozen=True)
+class BufferReading:
+    """Parsed reading-buffer record from a Keithley 2400 trace transfer."""
+
+    voltage: float | None = None
+    current: float | None = None
+    resistance: float | None = None
+    time: float | None = None
+    status: float | None = None
 
 
 class Keithley2400(SourceMeter):
@@ -151,6 +189,161 @@ class Keithley2400(SourceMeter):
         mode = source_mode if source_mode is not None else self.get_source_mode()
         return ":SOUR:VOLT" if mode == SourceMode.VOLT else ":SOUR:CURR"
 
+    @staticmethod
+    def _normalise_format_element(element: str) -> str:
+        """Normalise a :FORM:ELEM token to the instrument's canonical short name.
+
+        Args:
+            element (str):
+                Raw format-element token.
+
+        Returns:
+            (str):
+                Canonical short-format element name accepted by the driver.
+
+        Raises:
+            ValueError:
+                If *element* is not one of the supported trace-format fields.
+        """
+        token = element.strip().strip("'\"").upper()
+        if ":" in token:
+            token = token.split(":", 1)[0]
+        if token not in _VALID_FORMAT_ELEMENTS:
+            raise ValueError(
+                f"Invalid format element {element!r}; "
+                f"must be drawn from {sorted(_VALID_FORMAT_ELEMENTS)!r}."
+            )
+        return token
+
+    @staticmethod
+    def _coerce_optional_float(value: float | None) -> float | None:
+        """Return *value* as ``float`` when present, otherwise ``None``.
+
+        Args:
+            value (float | None):
+                Value to normalise.
+
+        Returns:
+            (float | None):
+                ``None`` if *value* is ``None``, otherwise ``float(value)``.
+        """
+        if value is None:
+            return None
+        return float(value)
+
+    def _parse_buffer_records(
+        self,
+        payload: str,
+        elements: tuple[str, ...],
+    ) -> tuple[BufferReading, ...]:
+        """Parse a trace-buffer payload into structured reading records.
+
+        Args:
+            payload (str):
+                Raw comma-separated buffer payload returned by the instrument.
+            elements (tuple[str, ...]):
+                Ordered format-element names describing each record.
+
+        Returns:
+            (tuple[BufferReading, ...]):
+                Parsed structured reading records.
+
+        Raises:
+            ValueError:
+                If *elements* is empty or the payload width does not match the
+                configured record format.
+        """
+        values = self._parse_csv_floats(payload)
+        width = len(elements)
+        if width == 0:
+            raise ValueError("At least one format element must be configured.")
+        if len(values) % width:
+            raise ValueError(
+                f"Malformed buffer payload with {len(values)} values for format width {width}."
+            )
+
+        records: list[BufferReading] = []
+        for index in range(0, len(values), width):
+            row = dict(zip(elements, values[index : index + width], strict=False))
+            records.append(
+                BufferReading(
+                    voltage=self._coerce_optional_float(row.get("VOLT")),
+                    current=self._coerce_optional_float(row.get("CURR")),
+                    resistance=self._coerce_optional_float(row.get("RES")),
+                    time=self._coerce_optional_float(row.get("TIME")),
+                    status=self._coerce_optional_float(row.get("STAT")),
+                )
+            )
+        return tuple(records)
+
+    def _compliance_prefix(self, source_mode: SourceMode | None = None) -> str:
+        """Return the sense compliance prefix for the selected source mode.
+
+        Args:
+            source_mode (SourceMode | None):
+                Source mode to evaluate. If ``None``, use the driver's
+                backward-compatible default interpretation.
+
+        Returns:
+            (str):
+                ``":SENS:CURR:PROT"`` for voltage source mode, otherwise
+                ``":SENS:VOLT:PROT"``.
+        """
+        mode = source_mode if source_mode is not None else SourceMode.VOLT
+        return ":SENS:CURR:PROT" if mode == SourceMode.VOLT else ":SENS:VOLT:PROT"
+
+    def _source_prefix_for_mode(self, source_mode: SourceMode | None = None) -> str:
+        """Return the source subsystem prefix for the selected source mode.
+
+        Args:
+            source_mode (SourceMode | None):
+                Optional source mode. If ``None``, query the instrument.
+
+        Returns:
+            (str):
+                ``":SOUR:VOLT"`` for voltage source mode, otherwise
+                ``":SOUR:CURR"``.
+        """
+        mode = source_mode if source_mode is not None else self.get_source_mode()
+        return ":SOUR:VOLT" if mode == SourceMode.VOLT else ":SOUR:CURR"
+
+    def _sense_prefix_for_mode(self, source_mode: SourceMode | None = None) -> str:
+        """Return the sensed quantity prefix complementary to the source mode.
+
+        Args:
+            source_mode (SourceMode | None):
+                Optional source mode. If ``None``, query the instrument.
+
+        Returns:
+            (str):
+                ``":SENS:CURR"`` for voltage source mode, otherwise
+                ``":SENS:VOLT"``.
+        """
+        mode = source_mode if source_mode is not None else self.get_source_mode()
+        return ":SENS:CURR" if mode == SourceMode.VOLT else ":SENS:VOLT"
+
+    def _parse_error_response(self, response: str) -> tuple[int | None, str]:
+        """Parse a ``:SYST:ERR?`` response into numeric code and message.
+
+        Args:
+            response (str):
+                Raw error-queue response string from the instrument.
+
+        Returns:
+            (tuple[int | None, str]):
+                Parsed numeric error code, if available, and the associated
+                message text.
+        """
+        text = response.strip()
+        if "," not in text:
+            return None, text
+        code_text, message = text.split(",", 1)
+        try:
+            code = int(code_text.strip())
+        except ValueError:
+            code = None
+        return code, message.strip().strip('"')
+
     # ------------------------------------------------------------------
     # Source mode
     # ------------------------------------------------------------------
@@ -262,7 +455,7 @@ class Keithley2400(SourceMeter):
     # Compliance
     # ------------------------------------------------------------------
 
-    def get_compliance(self) -> float:
+    def get_compliance(self, source_mode: SourceMode | None = None) -> float:
         """Return the compliance limit in amps (voltage mode) or volts (current mode).
 
         Returns:
@@ -283,9 +476,9 @@ class Keithley2400(SourceMeter):
             0.1
             >>> k.disconnect()
         """
-        return float(self.query(":SENS:CURR:PROT?"))
+        return float(self.query(f"{self._compliance_prefix(source_mode)}?"))
 
-    def set_compliance(self, value: float) -> None:
+    def set_compliance(self, value: float, source_mode: SourceMode | None = None) -> None:
         """Set the compliance limit.
 
         Args:
@@ -307,7 +500,43 @@ class Keithley2400(SourceMeter):
             b':SENS:CURR:PROT 0.05\\n'
             >>> k.disconnect()
         """
-        self.write(f":SENS:CURR:PROT {value}")
+        self.write(f"{self._compliance_prefix(source_mode)} {value}")
+
+    def get_compliance_from_resistance(self, source_level: float | None = None) -> float:
+        """Return the effective compliance derived from a resistance threshold.
+
+        In voltage-source mode this returns the current compliance corresponding
+        to a minimum allowed resistance. In current-source mode it returns the
+        voltage compliance corresponding to a maximum allowed resistance.
+        """
+        level = self.get_source_level() if source_level is None else float(source_level)
+        return self.get_compliance() / abs(level) if abs(level) > 0.0 else float("inf")
+
+    def set_compliance_from_resistance(
+        self,
+        resistance: float,
+        *,
+        source_level: float | None = None,
+        source_mode: SourceMode | None = None,
+    ) -> float:
+        """Set compliance from a resistance threshold and return the set limit.
+
+        For current-source mode, ``compliance = |I| * resistance`` so the
+        resistance is interpreted as a maximum allowed resistance.
+
+        For voltage-source mode, ``compliance = |V| / resistance`` so the
+        resistance is interpreted as a minimum allowed resistance.
+        """
+        if resistance <= 0.0:
+            raise ValueError("Resistance threshold must be positive.")
+        mode = source_mode if source_mode is not None else self.get_source_mode()
+        level = self.get_source_level() if source_level is None else float(source_level)
+        if mode == SourceMode.CURR:
+            compliance = abs(level) * resistance
+        else:
+            compliance = abs(level) / resistance
+        self.set_compliance(compliance, mode)
+        return compliance
 
     # ------------------------------------------------------------------
     # NPLC
@@ -364,6 +593,142 @@ class Keithley2400(SourceMeter):
             raise ValueError(f"NPLC {value} out of range [{_NPLC_MIN}, {_NPLC_MAX}].")
         self.write(f":SENS:VOLT:NPLC {value}")
         self.write(f":SENS:CURR:NPLC {value}")
+
+    # ------------------------------------------------------------------
+    # Source / sense ranges and advanced measurement options
+    # ------------------------------------------------------------------
+
+    def set_source_range(self, value: float, source_mode: SourceMode | None = None) -> None:
+        """Set the fixed source range for the selected source function.
+
+        Args:
+            value (float):
+                Positive source range in volts or amps.
+            source_mode (SourceMode | None):
+                Optional explicit source mode. If ``None``, the active mode is
+                queried from the instrument.
+
+        Raises:
+            ValueError:
+                If *value* is not positive.
+        """
+        if value <= 0.0:
+            raise ValueError("Source range must be positive.")
+        self.write(f"{self._source_prefix(source_mode)}:RANG {value}")
+
+    def set_sense_range(self, value: float, source_mode: SourceMode | None = None) -> None:
+        """Set the fixed measurement range for the sensed quantity.
+
+        Args:
+            value (float):
+                Positive sense range in volts or amps.
+            source_mode (SourceMode | None):
+                Optional explicit source mode. If ``None``, the active mode is
+                queried from the instrument.
+
+        Raises:
+            ValueError:
+                If *value* is not positive.
+        """
+        if value <= 0.0:
+            raise ValueError("Sense range must be positive.")
+        self.write(f"{self._sense_prefix_for_mode(source_mode)}:RANG {value}")
+
+    def set_source_autorange(self, enabled: bool, source_mode: SourceMode | None = None) -> None:
+        """Enable or disable source autoranging for the selected source function.
+
+        Args:
+            enabled (bool):
+                ``True`` to enable autorange, ``False`` for fixed range mode.
+            source_mode (SourceMode | None):
+                Optional explicit source mode. If ``None``, the active mode is
+                queried from the instrument.
+        """
+        self.write(f"{self._source_prefix(source_mode)}:RANG:AUTO {1 if enabled else 0}")
+
+    def set_sense_autorange(self, enabled: bool, source_mode: SourceMode | None = None) -> None:
+        """Enable or disable measurement autoranging for the sensed quantity.
+
+        Args:
+            enabled (bool):
+                ``True`` to enable autorange, ``False`` for fixed range mode.
+            source_mode (SourceMode | None):
+                Optional explicit source mode. If ``None``, the active mode is
+                queried from the instrument.
+        """
+        self.write(f"{self._sense_prefix_for_mode(source_mode)}:RANG:AUTO {1 if enabled else 0}")
+
+    def set_remote_sense(self, enabled: bool) -> None:
+        """Enable or disable 4-wire remote sensing.
+
+        Args:
+            enabled (bool):
+                ``True`` for 4-wire sensing, ``False`` for 2-wire sensing.
+        """
+        self.write(f":SYST:RSEN {1 if enabled else 0}")
+
+    def set_terminal_selection(self, terminal: TerminalSelection) -> None:
+        """Select the front or rear source/output terminals.
+
+        Args:
+            terminal (TerminalSelection):
+                Terminal selection enum value.
+        """
+        self.write(f":ROUT:TERM {terminal.value}")
+
+    def set_filter_enabled(self, enabled: bool, source_mode: SourceMode | None = None) -> None:
+        """Enable or disable the digital averaging filter on the sensed quantity.
+
+        Args:
+            enabled (bool):
+                ``True`` to enable the filter, ``False`` to disable it.
+            source_mode (SourceMode | None):
+                Optional explicit source mode. If ``None``, the active mode is
+                queried from the instrument.
+        """
+        self.write(f"{self._sense_prefix_for_mode(source_mode)}:AVER:STAT {1 if enabled else 0}")
+
+    def set_filter_count(self, count: int, source_mode: SourceMode | None = None) -> None:
+        """Set the digital averaging-filter count for the sensed quantity.
+
+        Args:
+            count (int):
+                Number of readings in the digital filter window.
+            source_mode (SourceMode | None):
+                Optional explicit source mode. If ``None``, the active mode is
+                queried from the instrument.
+
+        Raises:
+            ValueError:
+                If *count* is not positive.
+        """
+        if count <= 0:
+            raise ValueError("Filter count must be positive.")
+        self.write(f"{self._sense_prefix_for_mode(source_mode)}:AVER:COUN {count}")
+
+    def set_filter_type(self, filter_type: FilterType, source_mode: SourceMode | None = None) -> None:
+        """Set the digital filter type for the sensed quantity.
+
+        Args:
+            filter_type (FilterType):
+                Filter type enum value.
+            source_mode (SourceMode | None):
+                Optional explicit source mode. If ``None``, the active mode is
+                queried from the instrument.
+        """
+        self.write(f"{self._sense_prefix_for_mode(source_mode)}:AVER:TCON {filter_type.value}")
+
+    def set_median_filter_enabled(self, enabled: bool, source_mode: SourceMode | None = None) -> None:
+        """Enable or disable the median filter on the sensed quantity.
+
+        Args:
+            enabled (bool):
+                ``True`` to enable the median filter, ``False`` to disable it.
+            source_mode (SourceMode | None):
+                Optional explicit source mode. If ``None``, the active mode is
+                queried from the instrument.
+        """
+        self.write(f"{self._sense_prefix_for_mode(source_mode)}:MED:STAT {1 if enabled else 0}")
 
     # ------------------------------------------------------------------
     # Measurements
@@ -701,6 +1066,119 @@ class Keithley2400(SourceMeter):
             >>> k.disconnect()
         """
         self.write(":ABOR")
+
+    def wait_for_operation_complete(self) -> None:
+        """Block until prior instrument operations have completed."""
+        self.query("*OPC?")
+
+    def reset_timestamp(self) -> None:
+        """Reset the instrument's absolute timestamp counter."""
+        self.write(":SYST:TIME:RES")
+
+    def set_format_data_ascii(self) -> None:
+        """Select ASCII transfer format for reading data."""
+        self.write(":FORM:DATA ASC")
+
+    def set_format_elements(self, elements: tuple[str, ...]) -> None:
+        """Set the reading elements returned by READ/FETCH/TRACE queries."""
+        if not elements:
+            raise ValueError("At least one format element must be provided.")
+        normalised = tuple(self._normalise_format_element(element) for element in elements)
+        self.write(f":FORM:ELEM {','.join(normalised)}")
+
+    def set_trace_feed_sense(self) -> None:
+        """Configure the trace buffer to store raw sense readings."""
+        self.write(":TRAC:FEED SENS")
+
+    def set_trace_feed_continuous_next(self) -> None:
+        """Enable trace-buffer fill on the next initiated acquisition."""
+        self.write(":TRAC:FEED:CONT NEXT")
+
+    def set_trace_feed_continuous_never(self) -> None:
+        """Disable trace-buffer filling."""
+        self.write(":TRAC:FEED:CONT NEV")
+
+    def get_buffer_count(self) -> int:
+        """Return the actual number of readings currently stored in the buffer."""
+        return int(float(self.query(":TRAC:POIN:ACT?")))
+
+    def get_error(self) -> tuple[int | None, str]:
+        """Return the oldest queued system error."""
+        return self._parse_error_response(self.query(":SYST:ERR?"))
+
+    def drain_error_queue(self) -> tuple[tuple[int | None, str], ...]:
+        """Drain the system error queue until the terminating no-error entry."""
+        errors: list[tuple[int | None, str]] = []
+        while True:
+            error = self.get_error()
+            errors.append(error)
+            code, message = error
+            if code == 0 or message.lower() == "no error":
+                break
+        return tuple(errors)
+
+    def check_error_queue(self, *, raise_on_error: bool = True) -> tuple[tuple[int | None, str], ...]:
+        """Drain the error queue and optionally raise if instrument errors exist."""
+        errors = self.drain_error_queue()
+        real_errors = tuple(error for error in errors if error[0] != 0 and error[1].lower() != "no error")
+        if raise_on_error and real_errors:
+            formatted = "; ".join(
+                f"{code if code is not None else '?'}:{message}" for code, message in real_errors
+            )
+            raise RuntimeError(f"Keithley 2400 reported SCPI errors: {formatted}")
+        return errors
+
+    def read_buffer_records(
+        self,
+        elements: tuple[str, ...],
+        count: int | None = None,
+    ) -> tuple[BufferReading, ...]:
+        """Read and parse trace-buffer readings according to explicit format elements.
+
+        Args:
+            elements (tuple[str, ...]):
+                Ordered :FORM:ELEM configuration used for the transfer.
+            count (int | None):
+                Optional number of readings to read from the start of the buffer.
+
+        Returns:
+            (tuple[BufferReading, ...]):
+                Parsed buffer records.
+        """
+        normalised = tuple(self._normalise_format_element(element) for element in elements)
+        self.set_format_data_ascii()
+        self.set_format_elements(normalised)
+        if count is None:
+            payload = self.query(":TRAC:DATA?")
+        else:
+            if count <= 0:
+                raise ValueError("Requested buffer count must be positive.")
+            payload = self.query(f":TRAC:DATA? 1,{count}")
+        return self._parse_buffer_records(payload, normalised)
+
+    def configure_buffer(
+        self,
+        size: int,
+        *,
+        elements: tuple[str, ...] = ("VOLT", "CURR", "RES", "TIME", "STAT"),
+    ) -> None:
+        """Configure the trace buffer and transfer format for buffered acquisition."""
+        self.set_format_data_ascii()
+        self.set_format_elements(elements)
+        self.clear_buffer()
+        self.set_buffer_size(size)
+        self.set_trace_feed_sense()
+        self.set_trace_feed_continuous_next()
+
+    def safe_output_off(self) -> None:
+        """Best-effort output disable helper for cleanup paths."""
+        try:
+            source_mode = self.get_source_mode()
+            self.set_source_level(0.0)
+            self.write(f"{self._source_prefix(source_mode)}:MODE FIX")
+        except Exception:
+            pass
+        self.enable_output(False)
 
     def set_buffer_size(self, size: int) -> None:
         """Set reading buffer capacity.
