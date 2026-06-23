@@ -11,7 +11,7 @@ import logging
 import threading
 from collections.abc import Sequence
 from itertools import cycle
-from typing import Literal, TypedDict
+from typing import Callable, Literal, TypedDict
 
 import numpy as np
 import pyqtgraph as pg
@@ -28,6 +28,7 @@ from qtpy.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QLineEdit,
     QPushButton,
     QTableWidget,
@@ -45,8 +46,12 @@ from stoner_measurement.ui.theme import (
 
 logger = logging.getLogger(__name__)
 
-# Plot grid opacity used by pyqtgraph's PlotItem.showGrid().
+# Plot grid opacity used by pyqtgraph AxisItem.setGrid().
 _PLOT_GRID_ALPHA = 0.15
+
+_AXIS_LAYOUT_ROW = {"top": 0, "bottom": 4}
+_LEFT_AXIS_BASE_COLUMN = 0
+_RIGHT_AXIS_BASE_COLUMN = 3
 
 # Colour palette used when automatically assigning colours to new traces.
 _TRACE_COLOURS = [
@@ -110,6 +115,10 @@ class _AxisDialogEntry(TypedDict):
     label: str
     log_scale: bool
     grid: bool
+    side: str
+    visible: bool
+    minimum: float | None
+    maximum: float | None
     removable: bool
 
 
@@ -122,8 +131,43 @@ class _AxisDialogChanges(TypedDict):
     labels: dict[str, str]
     log_scale: dict[str, bool]
     grid: dict[str, bool]
+    side: dict[str, str]
     removed: _AxisNameBuckets
-    visible_axes: _AxisNameBuckets
+    ranges: dict[str, tuple[float | None, float | None]]
+    visible_axes: dict[str, bool]
+
+
+class _CoupledViewBox(pg.ViewBox):
+    """ViewBox that notifies its owning PlotWidget about drag lifecycle."""
+
+    def __init__(self, owner: "PlotWidget", *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._owner = owner
+
+    def mouseDragEvent(self, ev, axis=None):  # type: ignore[override]
+        """Track drag start/finish so axis coupling is only active while dragging."""
+        if hasattr(ev, "isStart") and ev.isStart():
+            self._owner._begin_mouse_axis_coupling(self)
+        try:
+            super().mouseDragEvent(ev, axis=axis)
+        finally:
+            if hasattr(ev, "isFinish") and ev.isFinish():
+                self._owner._end_mouse_axis_coupling(self)
+
+    def wheelEvent(self, ev, axis=None):  # type: ignore[override]
+        """Treat wheel zoom as a short manual interaction on this view box."""
+        self._owner._begin_mouse_axis_coupling(self)
+        try:
+            super().wheelEvent(ev, axis=axis)
+        finally:
+            self._owner._end_mouse_axis_coupling(self)
+
+    def mouseClickEvent(self, ev):  # type: ignore[override]
+        """Ensure transient coupling is cancelled on click release paths."""
+        try:
+            super().mouseClickEvent(ev)
+        finally:
+            self._owner._end_mouse_axis_coupling(self)
 
 
 class AxesConfigDialog(QDialog):
@@ -150,6 +194,7 @@ class AxesConfigDialog(QDialog):
         *,
         x_axes: list[_AxisDialogEntry],
         y_axes: list[_AxisDialogEntry],
+        on_range_changed: Callable[[str, float | None, float | None], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -158,26 +203,35 @@ class AxesConfigDialog(QDialog):
         self._removed_axes: dict[str, set[str]] = {"x": set(), "y": set()}
         self._tables: dict[str, QTableWidget] = {}
         self._add_name_inputs: dict[str, QLineEdit] = {}
+        self._on_range_changed = on_range_changed
         self._add_label_inputs: dict[str, QLineEdit] = {}
 
         root = QVBoxLayout(self)
         tabs = QTabWidget(self)
         tabs.addTab(self._build_axis_tab("x", x_axes), "X Axes")
         tabs.addTab(self._build_axis_tab("y", y_axes), "Y Axes")
+        help_text = (
+            "Grid lines are enabled per axis but displayed once per orientation. "
+            "Use Min/Max to set a manual visible range for an axis, or leave "
+            "either field blank to keep that axis on auto-range."
+        )
+        help_label = QLabel(self)
+        help_label.setWordWrap(True)
+        help_label.setText(help_text)
         root.addWidget(tabs)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        root.addWidget(help_label)
         root.addWidget(buttons)
 
     def _build_axis_tab(self, axis_kind: Literal["x", "y"], axes: list[_AxisDialogEntry]) -> QWidget:
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
-
         table = QTableWidget(tab)
-        table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(["Name", "Title", "Scale", "Grid", "Remove"])
+        table.setColumnCount(9)
+        table.setHorizontalHeaderLabels(["Show", "Name", "Title", "Position", "Scale", "Grid lines", "Min", "Max", "Remove"])
         table.setShowGrid(True)
         table.setGridStyle(Qt.PenStyle.SolidLine)
         table.verticalHeader().setVisible(False)
@@ -185,10 +239,14 @@ class AxesConfigDialog(QDialog):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
         table.setStyleSheet(
             "QTableWidget { "
             f"border: 1px solid {colour('border')}; "
@@ -219,7 +277,11 @@ class AxesConfigDialog(QDialog):
                 axis_name=str(axis["name"]),
                 axis_label=str(axis["label"]),
                 log_scale=bool(axis["log_scale"]),
+                side=str(axis["side"]),
+                visible=bool(axis["visible"]),
                 grid_enabled=bool(axis["grid"]),
+                minimum=axis["minimum"],
+                maximum=axis["maximum"],
                 removable=bool(axis["removable"]),
             )
         return tab
@@ -228,7 +290,7 @@ class AxesConfigDialog(QDialog):
         table = self._tables[axis_kind]
         names: set[str] = set()
         for row in range(table.rowCount()):
-            item = table.item(row, 0)
+            item = table.item(row, 1)
             if item is None:
                 continue
             names.add(item.text())
@@ -249,7 +311,11 @@ class AxesConfigDialog(QDialog):
             axis_name=axis_name,
             axis_label=axis_label,
             log_scale=False,
+            side="top" if axis_kind == "x" else "right",
+            visible=True,
             grid_enabled=False,
+            minimum=None,
+            maximum=None,
             removable=True,
         )
         name_input.clear()
@@ -262,43 +328,101 @@ class AxesConfigDialog(QDialog):
         axis_name: str,
         axis_label: str,
         log_scale: bool,
+        side: str,
+        visible: bool,
         grid_enabled: bool,
+        minimum: float | None,
+        maximum: float | None,
         removable: bool,
     ) -> None:
         table = self._tables[axis_kind]
         row = table.rowCount()
         table.insertRow(row)
 
+        visible_checkbox = QCheckBox(table)
+        visible_checkbox.setChecked(visible)
+        table.setCellWidget(row, 0, visible_checkbox)
+
         name_item = QTableWidgetItem(axis_name)
         name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        table.setItem(row, 0, name_item)
+        table.setItem(row, 1, name_item)
 
         label_edit = QLineEdit(axis_label, table)
-        table.setCellWidget(row, 1, label_edit)
+        table.setCellWidget(row, 2, label_edit)
+
+        side_combo = QComboBox(table)
+        side_combo.addItems(["top", "bottom"] if axis_kind == "x" else ["left", "right"])
+        side_combo.setCurrentText(side)
+        table.setCellWidget(row, 3, side_combo)
 
         scale_combo = QComboBox(table)
         scale_combo.addItems(["linear", "log"])
         scale_combo.setCurrentText("log" if log_scale else "linear")
-        table.setCellWidget(row, 2, scale_combo)
+        table.setCellWidget(row, 4, scale_combo)
 
         grid_checkbox = QCheckBox(table)
         grid_checkbox.setChecked(grid_enabled)
-        table.setCellWidget(row, 3, grid_checkbox)
+        table.setCellWidget(row, 5, grid_checkbox)
+
+        minimum_edit = QLineEdit("" if minimum is None else f"{minimum:g}", table)
+        minimum_edit.setPlaceholderText("auto")
+        minimum_edit.editingFinished.connect(
+            lambda kind=axis_kind, row_index=row: self._emit_range_change(kind, row_index)
+        )
+        table.setCellWidget(row, 6, minimum_edit)
+
+        maximum_edit = QLineEdit("" if maximum is None else f"{maximum:g}", table)
+        maximum_edit.setPlaceholderText("auto")
+        maximum_edit.editingFinished.connect(lambda kind=axis_kind, row_index=row: self._emit_range_change(kind, row_index))
+        table.setCellWidget(row, 7, maximum_edit)
 
         remove_button = QPushButton("Remove", table)
         remove_button.setEnabled(removable)
         remove_button.clicked.connect(
             lambda _checked=False, kind=axis_kind, row_index=row: self._mark_axis_removed(kind, row_index)
         )
-        table.setCellWidget(row, 4, remove_button)
+        table.setCellWidget(row, 8, remove_button)
 
     def _mark_axis_removed(self, axis_kind: Literal["x", "y"], row: int) -> None:
         table = self._tables[axis_kind]
-        item = table.item(row, 0)
+        item = table.item(row, 1)
         if item is None:
             return
         self._removed_axes[axis_kind].add(item.text())
         table.setRowHidden(row, True)
+
+    def _emit_range_change(self, axis_kind: Literal["x", "y"], row: int) -> None:
+        """Emit a live range update for the given table row."""
+        if self._on_range_changed is None:
+            return
+        table = self._tables[axis_kind]
+        if table.isRowHidden(row):
+            return
+        item = table.item(row, 1)
+        if item is None:
+            return
+        axis_name = item.text()
+        minimum_widget = table.cellWidget(row, 6)
+        maximum_widget = table.cellWidget(row, 7)
+        minimum = None
+        maximum = None
+        if isinstance(minimum_widget, QLineEdit):
+            minimum_text = minimum_widget.text().strip()
+            if minimum_text:
+                try:
+                    minimum = float(minimum_text)
+                except ValueError:
+                    return
+        if isinstance(maximum_widget, QLineEdit):
+            maximum_text = maximum_widget.text().strip()
+            if maximum_text:
+                try:
+                    maximum = float(maximum_text)
+                except ValueError:
+                    return
+        if minimum is not None and maximum is not None and minimum >= maximum:
+            return
+        self._on_range_changed(axis_name, minimum, maximum)
 
     def axis_changes(self) -> _AxisDialogChanges:
         """Return staged axis operations from the dialog.
@@ -311,36 +435,63 @@ class AxesConfigDialog(QDialog):
         labels: dict[str, str] = {}
         log_scale: dict[str, bool] = {}
         grid: dict[str, bool] = {}
-        additions: dict[str, list[str]] = {"x": [], "y": []}
+        side: dict[str, str] = {}
+        ranges: dict[str, tuple[float | None, float | None]] = {}
+        visible_axes: dict[str, bool] = {}
         for axis_kind in ("x", "y"):
             table = self._tables[axis_kind]
             for row in range(table.rowCount()):
                 if table.isRowHidden(row):
                     continue
-                item = table.item(row, 0)
+                item = table.item(row, 1)
                 if item is None:
                     continue
                 axis_name = item.text()
-                label_widget = table.cellWidget(row, 1)
-                scale_widget = table.cellWidget(row, 2)
-                grid_widget = table.cellWidget(row, 3)
+                visible_widget = table.cellWidget(row, 0)
+                label_widget = table.cellWidget(row, 2)
+                side_widget = table.cellWidget(row, 3)
+                scale_widget = table.cellWidget(row, 4)
+                grid_widget = table.cellWidget(row, 5)
+                minimum_widget = table.cellWidget(row, 6)
+                maximum_widget = table.cellWidget(row, 7)
                 if isinstance(label_widget, QLineEdit):
                     labels[axis_name] = label_widget.text().strip() or axis_name
+                if isinstance(side_widget, QComboBox):
+                    side[axis_name] = side_widget.currentText()
                 if isinstance(scale_widget, QComboBox):
                     log_scale[axis_name] = scale_widget.currentText() == "log"
                 if isinstance(grid_widget, QCheckBox):
                     grid[axis_name] = grid_widget.isChecked()
-                if axis_name not in self._removed_axes[axis_kind]:
-                    additions[axis_kind].append(axis_name)
+                minimum = None
+                maximum = None
+                if isinstance(minimum_widget, QLineEdit):
+                    minimum_text = minimum_widget.text().strip()
+                    if minimum_text:
+                        try:
+                            minimum = float(minimum_text)
+                        except ValueError:
+                            minimum = None
+                if isinstance(maximum_widget, QLineEdit):
+                    maximum_text = maximum_widget.text().strip()
+                    if maximum_text:
+                        try:
+                            maximum = float(maximum_text)
+                        except ValueError:
+                            maximum = None
+                ranges[axis_name] = (minimum, maximum)
+                if isinstance(visible_widget, QCheckBox):
+                    visible_axes[axis_name] = visible_widget.isChecked()
         return {
             "labels": labels,
             "log_scale": log_scale,
             "grid": grid,
+            "side": side,
             "removed": {
                 "x": sorted(self._removed_axes["x"]),
                 "y": sorted(self._removed_axes["y"]),
             },
-            "visible_axes": additions,
+            "ranges": ranges,
+            "visible_axes": visible_axes,
         }
 
 
@@ -399,8 +550,12 @@ class PlotWidget(QWidget):
         self._trace_point_size: dict[str, float] = {}
         self._trace_visible: dict[str, bool] = {}
         self._pending_data_updates: int = 0
+        self._right_dragged = False
         self._pending_data_updates_lock = threading.Lock()
         self._updating_trace_controls = False
+        self._mouse_axis_coupling_active = False
+        self._active_mouse_view_box: pg.ViewBox | None = None
+        self._updating_mouse_axis_coupling = False
         # Colour cycle for auto-assignment
         self._colour_cycle = cycle(_TRACE_COLOURS)
 
@@ -412,8 +567,16 @@ class PlotWidget(QWidget):
         self._axis_items: dict[str, pg.AxisItem] = {}
         # Axis orientation registry: axis_name → "x" | "y".
         self._axis_orientations: dict[str, Literal["x", "y"]] = {}
+        # Axis side/position registry: y → left|right, x → top|bottom.
+        self._axis_sides: dict[str, str] = {}
+        # Axis visibility registry.
+        self._axis_visible: dict[str, bool] = {}
+        # Axis offset ordering on each side.
+        self._axis_order: dict[tuple[str, str], list[str]] = {}
         self._axis_log_scale: dict[str, bool] = {}
         self._axis_grid: dict[str, bool] = {}
+        self._axis_manual_range: dict[str, tuple[float | None, float | None]] = {}
+        self._axis_auto_range: dict[str, tuple[bool, bool]] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -433,7 +596,10 @@ class PlotWidget(QWidget):
         controls = QHBoxLayout()
         self._configure_axes_button = QPushButton("Configure Axes…", self)
         self._configure_axes_button.clicked.connect(self._open_axes_dialog)
+        self._home_button = QPushButton("Home", self)
+        self._home_button.clicked.connect(self.reset_all_view_ranges)
         controls.addWidget(self._configure_axes_button)
+        controls.addWidget(self._home_button)
         controls.addStretch(1)
         layout.addLayout(controls)
 
@@ -460,12 +626,14 @@ class PlotWidget(QWidget):
 
     def _setup_pg_widget(self, layout: QVBoxLayout) -> None:
         """Create the pyqtgraph PlotWidget, register default axes, and add to layout."""
-        self._pg_widget = pg.PlotWidget()
+        self._pg_widget = pg.PlotWidget(viewBox=_CoupledViewBox(self))
         self._pg_widget.setObjectName("pgPlotWidget")
         self._pg_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._pg_widget.customContextMenuRequested.connect(self._open_axes_dialog)
         self._pg_widget.setBackground(colour("plot_background"))
-        self._pg_widget.showGrid(x=True, y=True, alpha=_PLOT_GRID_ALPHA)
+        scene = self._pg_widget.scene()
+        scene.sigMouseClicked.connect(self._on_scene_mouse_clicked)
+        if hasattr(scene, "sigMouseDragged"):
+            scene.sigMouseDragged.connect(self._on_scene_mouse_dragged)
         self._pg_widget.setLabel("left", "Value")
         self._pg_widget.setLabel("bottom", "Step")
         plot_item: pg.PlotItem = self._pg_widget.getPlotItem()
@@ -478,11 +646,23 @@ class PlotWidget(QWidget):
         self._axis_items["bottom"] = plot_item.getAxis("bottom")
         self._axis_orientations["left"] = "y"
         self._axis_orientations["bottom"] = "x"
+        self._axis_sides["left"] = "left"
+        self._axis_sides["bottom"] = "bottom"
+        self._axis_visible["left"] = True
+        self._axis_visible["bottom"] = True
         self._axis_log_scale["bottom"] = False
         self._axis_log_scale["left"] = False
+        self._axis_auto_range["bottom"] = (True, True)
+        self._axis_auto_range["left"] = (True, True)
+        self._axis_order[("y", "left")] = ["left"]
+        self._axis_order[("x", "bottom")] = ["bottom"]
         self._axis_grid["bottom"] = True
         self._axis_grid["left"] = True
         self._plot_item.vb.sigResized.connect(self._sync_view_box_geometry)
+        self._axis_manual_range["bottom"] = self._axis_range("bottom")
+        self._axis_manual_range["left"] = self._axis_range("left")
+        self._register_view_box_signals(self._plot_item.vb)
+        self._update_grid_state()
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         layout.addWidget(self._pg_widget)
 
@@ -497,6 +677,183 @@ class PlotWidget(QWidget):
             if key == ("bottom", "left"):
                 continue
             view_box.setGeometry(rect)
+        self._layout_additional_axes()
+
+    def _layout_additional_axes(self) -> None:
+        """Place axes on the plot layout with offsets for shared sides."""
+        for side in ("left", "right"):
+            for offset, axis_name in enumerate(self._axis_order.get(("y", side), [])):
+                axis_item = self._axis_items.get(axis_name)
+                if axis_item is None:
+                    continue
+                column = (
+                    _LEFT_AXIS_BASE_COLUMN - offset
+                    if side == "left"
+                    else _RIGHT_AXIS_BASE_COLUMN + offset
+                )
+                self._plot_item.layout.addItem(axis_item, 2, column)
+
+        for side in ("top", "bottom"):
+            for offset, axis_name in enumerate(self._axis_order.get(("x", side), [])):
+                axis_item = self._axis_items.get(axis_name)
+                if axis_item is None:
+                    continue
+                row = (
+                    _AXIS_LAYOUT_ROW["top"] - offset
+                    if side == "top"
+                    else _AXIS_LAYOUT_ROW["bottom"] + offset
+                )
+                self._plot_item.layout.addItem(axis_item, row, 1)
+
+    def _capture_manual_axis_range(self, name: str) -> None:
+        """Store the current visible range as the manual range for an axis."""
+        self._axis_manual_range[name] = self._axis_range(name)
+        self._axis_auto_range[name] = (False, False)
+
+    def _reapply_manual_axis_ranges(self) -> None:
+        """Re-apply stored auto/manual range states after structural axis changes."""
+        for axis_name in list(self._axis_items):
+            self._apply_axis_range_state(axis_name)
+
+    def _set_axis_auto_state(
+        self,
+        name: str,
+        min_auto: bool,
+        max_auto: bool | None = None,
+    ) -> None:
+        """Record per-bound auto-range state for an axis."""
+        if max_auto is None:
+            max_auto = min_auto
+        current_minimum, current_maximum = self._axis_manual_range.get(name, self._axis_range(name))
+        visible_minimum, visible_maximum = self._axis_range(name)
+        self._axis_auto_range[name] = (bool(min_auto), bool(max_auto))
+        self._axis_manual_range[name] = (
+            visible_minimum if min_auto else current_minimum,
+            visible_maximum if max_auto else current_maximum,
+        )
+
+    def _apply_axis_range_state(self, name: str) -> None:
+        """Apply the stored auto/manual range state for an axis."""
+        min_auto, max_auto = self._axis_auto_range.get(name, (True, True))
+        minimum, maximum = self._axis_manual_range.get(name, self._axis_range(name))
+        self.set_axis_range(
+            name,
+            minimum=None if min_auto else minimum,
+            maximum=None if max_auto else maximum,
+        )
+
+    def _axis_range_display_values(self, name: str) -> tuple[float | None, float | None]:
+        """Return dialog/display range values, blanking auto bounds."""
+        min_auto, max_auto = self._axis_auto_range.get(name, (True, True))
+        minimum, maximum = self._axis_manual_range.get(name, self._axis_range(name))
+        return (None if min_auto else minimum, None if max_auto else maximum)
+
+    def _on_axis_view_range_changed(self, _view_box=None, changed=None) -> None:
+        """Mark affected axes as manual when the user pans/zooms."""
+        if not changed:
+            return
+        source_view_box = _view_box if isinstance(_view_box, pg.ViewBox) else self._active_mouse_view_box
+        x_changed = bool(changed[0])
+        y_changed = bool(changed[1])
+        if self._mouse_axis_coupling_active and not self._updating_mouse_axis_coupling:
+            self._updating_mouse_axis_coupling = True
+            try:
+                if x_changed and source_view_box is not None:
+                    self._synchronise_mouse_managed_axes("x", source_view_box)
+                if y_changed and source_view_box is not None:
+                    self._synchronise_mouse_managed_axes("y", source_view_box)
+            finally:
+                self._updating_mouse_axis_coupling = False
+        if x_changed:
+            for axis_name in self._x_axis_names():
+                self._capture_manual_axis_range(axis_name)
+        if y_changed:
+            for axis_name in self._y_axis_names():
+                self._capture_manual_axis_range(axis_name)
+
+    def _mouse_event_in_plot(self, ev) -> bool:
+        """Return whether a scene mouse event occurred inside the plot view box."""
+        if not hasattr(ev, "scenePos"):
+            return False
+        scene_pos = ev.scenePos()
+        if scene_pos is None:
+            return False
+        return self._plot_item.vb.sceneBoundingRect().contains(scene_pos)
+
+    def _begin_mouse_axis_coupling(self, view_box: pg.ViewBox) -> None:
+        """Enable temporary multi-axis coupling for a specific active view box."""
+        self._active_mouse_view_box = view_box
+        self._mouse_axis_coupling_active = True
+
+    def _end_mouse_axis_coupling(self, view_box: pg.ViewBox | None = None) -> None:
+        """Disable temporary coupling when the active mouse interaction ends."""
+        if view_box is not None and self._active_mouse_view_box is not None and view_box is not self._active_mouse_view_box:
+            return
+        self._mouse_axis_coupling_active = False
+        self._active_mouse_view_box = None
+
+    def _synchronise_mouse_managed_axes(
+        self,
+        orientation: Literal["x", "y"],
+        source_view_box: pg.ViewBox,
+    ) -> None:
+        """Copy the active mouse-driven range across axes of one orientation."""
+        source_range = source_view_box.viewRange()[0 if orientation == "x" else 1]
+        source_minimum = float(source_range[0])
+        source_maximum = float(source_range[1])
+        axis_constant = pg.ViewBox.XAxis if orientation == "x" else pg.ViewBox.YAxis
+        for view_box in self._pair_view_boxes.values():
+            if view_box is source_view_box:
+                continue
+            view_box.enableAutoRange(axis=axis_constant, enable=False)
+            if orientation == "x":
+                view_box.setRange(xRange=(source_minimum, source_maximum), padding=0.0)
+            else:
+                view_box.setRange(yRange=(source_minimum, source_maximum), padding=0.0)
+
+    def _register_view_box_signals(self, view_box: pg.ViewBox) -> None:
+        """Connect range-change tracking for a view box."""
+        if hasattr(view_box, "sigRangeChangedManually"):
+            view_box.sigRangeChangedManually.connect(self._on_axis_view_range_changed)
+
+    def _register_axis_side(self, name: str, orientation: Literal["x", "y"], side: str) -> None:
+        """Register axis side and ordering metadata."""
+        self._axis_sides[name] = side
+        key = (orientation, side)
+        order = self._axis_order.setdefault(key, [])
+        if name not in order:
+            order.append(name)
+
+    def _unregister_axis_side(self, name: str, orientation: Literal["x", "y"]) -> None:
+        """Remove axis from side-order registries."""
+        side = self._axis_sides.pop(name, None)
+        if side is None:
+            return
+        key = (orientation, side)
+        if key in self._axis_order and name in self._axis_order[key]:
+            self._axis_order[key].remove(name)
+            if not self._axis_order[key]:
+                self._axis_order.pop(key, None)
+
+    def _on_scene_mouse_dragged(self, ev) -> None:
+        """Ignore drag events for context-menu purposes."""
+        if hasattr(ev, "buttonDownScenePos") and ev.buttonDownScenePos(Qt.MouseButton.RightButton) is not None:
+            self._right_dragged = True
+
+    def _on_scene_mouse_clicked(self, ev) -> None:
+        """Open axis settings only for a plain right-click release, not a drag."""
+        self._end_mouse_axis_coupling()
+        if ev.button() == Qt.MouseButton.RightButton:
+            if getattr(self, "_right_dragged", False):
+                self._right_dragged = False
+                return
+            self._open_axes_dialog()
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        """Track right-button press state."""
+        if event.button() == Qt.MouseButton.RightButton:
+            self._right_dragged = False
+        super().mousePressEvent(event)
 
     def _x_axis_names(self) -> list[str]:
         """Return sorted names of registered x-axes."""
@@ -518,7 +875,7 @@ class PlotWidget(QWidget):
             self._trace_table.clearContents()
             self._trace_table.setRowCount(len(self.trace_names))
             for row, trace_name in enumerate(self.trace_names):
-                style = self._trace_style[trace_name]
+                style = self._trace_style.get(trace_name, {})
                 x_axis, y_axis = self._trace_axes.get(trace_name, ("bottom", "left"))
                 self._build_trace_table_row(row, trace_name, style, x_axis, y_axis, x_axes, y_axes)
         finally:
@@ -672,7 +1029,7 @@ class PlotWidget(QWidget):
         if not selected.isValid():
             return
         self.set_trace_style(trace_name=trace_name, colour=selected.name(QColor.NameFormat.HexRgb))
-        self._update_colour_button(sender,selected.name(QColor.NameFormat.HexRgb))
+        self._update_colour_button(sender, selected.name(QColor.NameFormat.HexRgb))
 
     def _on_trace_line_style_changed(self, line_style: str) -> None:
         """Update trace line style from a table control."""
@@ -738,6 +1095,10 @@ class PlotWidget(QWidget):
                     "name": name,
                     "label": axis.labelText or name,
                     "log_scale": self._axis_log_scale.get(name, False),
+                    "side": self._axis_sides.get(name, "bottom" if axis_kind == "x" and name == "bottom" else "left" if axis_kind == "y" and name == "left" else "top" if axis_kind == "x" else "right"),
+                    "visible": self._axis_visible.get(name, name in {"bottom", "left"}),
+                    "minimum": self._axis_range_display_values(name)[0],
+                    "maximum": self._axis_range_display_values(name)[1],
                     "grid": self._axis_grid.get(name, False),
                     "removable": name not in {"bottom", "left"},
                 }
@@ -757,6 +1118,7 @@ class PlotWidget(QWidget):
         dialog = AxesConfigDialog(
             x_axes=self._axis_entries("x"),
             y_axes=self._axis_entries("y"),
+            on_range_changed=self.set_axis_range,
             parent=self,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -765,48 +1127,74 @@ class PlotWidget(QWidget):
         labels = changes["labels"]
         log_scale = changes["log_scale"]
         grid = changes["grid"]
+        ranges = changes["ranges"]
+        previous_manual = dict(self._axis_manual_range)
+        previous_auto = dict(self._axis_auto_range)
+        sides = changes["side"]
         removed_x = changes["removed"]["x"]
         removed_y = changes["removed"]["y"]
-        visible_x = set(changes["visible_axes"]["x"])
-        visible_y = set(changes["visible_axes"]["y"])
+        visible_axes = changes["visible_axes"]
 
         for axis_name, axis_label in labels.items():
             if axis_name in self._axis_items:
                 self.set_axis_label(axis_name, axis_label)
+        for axis_name, side in sides.items():
+            if axis_name in self._axis_items:
+                self.set_axis_side(axis_name, side)
         for axis_name, enabled in log_scale.items():
             if axis_name in self._axis_items:
                 self.set_axis_log_scale(axis_name, enabled)
         for axis_name, enabled in grid.items():
             if axis_name in self._axis_items:
                 self.set_axis_grid(axis_name, enabled)
+        for axis_name, (minimum, maximum) in ranges.items():
+            if axis_name in self._axis_items:
+                previous_min_auto, previous_max_auto = previous_auto.get(axis_name, (True, True))
+                previous_minimum, previous_maximum = previous_manual.get(axis_name, self._axis_range(axis_name))
+                if (
+                    minimum == (None if previous_min_auto else previous_minimum)
+                    and maximum == (None if previous_max_auto else previous_maximum)
+                ):
+                    if previous_min_auto and previous_max_auto:
+                        continue
+                    if minimum == previous_minimum and maximum == previous_maximum:
+                        continue
+                self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
         for axis_name in removed_x + removed_y:
             if axis_name in self._axis_items:
                 self.remove_axis(axis_name)
 
+        visible_x = {name for name in labels if name not in removed_x and sides.get(name) in {"top", "bottom"}}
+        visible_y = {name for name in labels if name not in removed_y and sides.get(name) in {"left", "right"}}
         added_x_axes = sorted(name for name in visible_x if name not in existing_x)
         added_y_axes = sorted(name for name in visible_y if name not in existing_y)
         for axis_name in added_x_axes:
             axis_label = labels.get(axis_name, axis_name)
-            self.add_x_axis(axis_name, axis_label, position="top")
+            self.add_x_axis(axis_name, axis_label, position=sides.get(axis_name, "top"))
             self.set_axis_log_scale(axis_name, log_scale.get(axis_name, False))
             self.set_axis_grid(axis_name, grid.get(axis_name, False))
+            minimum, maximum = ranges.get(axis_name, (None, None))
+            self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
         for axis_name in added_y_axes:
             axis_label = labels.get(axis_name, axis_name)
-            self.add_y_axis(axis_name, axis_label, side="right")
+            self.add_y_axis(axis_name, axis_label, side=sides.get(axis_name, "right"))
             self.set_axis_log_scale(axis_name, log_scale.get(axis_name, False))
             self.set_axis_grid(axis_name, grid.get(axis_name, False))
+            minimum, maximum = ranges.get(axis_name, (None, None))
+            self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
+        for axis_name, visible in visible_axes.items():
+            if axis_name in self._axis_items:
+                self.set_axis_visible(axis_name, visible)
 
     def _create_pair_view_box(self, x_axis: str, y_axis: str) -> pg.ViewBox:
         """Create a view box for the given axis pair."""
         if (x_axis, y_axis) in self._pair_view_boxes:
             return self._pair_view_boxes[(x_axis, y_axis)]
 
-        view_box = pg.ViewBox()
+        view_box = _CoupledViewBox(self)
         self._plot_item.scene().addItem(view_box)
-        if x_axis == "bottom":
-            view_box.setXLink(self._plot_item.vb)
-        if y_axis == "left":
-            view_box.setYLink(self._plot_item.vb)
+        self._register_view_box_signals(view_box)
+        view_box.enableAutoRange()
 
         self._pair_view_boxes[(x_axis, y_axis)] = view_box
         self._sync_view_box_geometry()
@@ -842,6 +1230,37 @@ class PlotWidget(QWidget):
             self._refresh_trace_and_axis_controls()
         return self._traces[trace_name]
 
+    def _refresh_auto_ranges_for_view_box(self, view_box: pg.ViewBox, x_axis: str, y_axis: str) -> None:
+        """Re-apply auto/manual range policy for one axis pair after data changes."""
+        x_min_auto, x_max_auto = self._axis_auto_range.get(x_axis, (True, True))
+        y_min_auto, y_max_auto = self._axis_auto_range.get(y_axis, (True, True))
+        if x_min_auto and x_max_auto and y_min_auto and y_max_auto:
+            view_box.enableAutoRange()
+            view_box.autoRange()
+            return
+        if x_min_auto or x_max_auto:
+            view_box.enableAutoRange(axis=pg.ViewBox.XAxis, enable=True)
+        else:
+            view_box.enableAutoRange(axis=pg.ViewBox.XAxis, enable=False)
+        if y_min_auto or y_max_auto:
+            view_box.enableAutoRange(axis=pg.ViewBox.YAxis, enable=True)
+        else:
+            view_box.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
+        view_box.autoRange()
+        self._apply_axis_range_state(x_axis)
+        self._apply_axis_range_state(y_axis)
+
+    def _refresh_auto_ranges_for_trace(self, trace_name: str) -> None:
+        """Update auto-ranged axes for the axis pair used by one trace."""
+        x_axis, y_axis = self._trace_axes.get(trace_name, ("bottom", "left"))
+        view_box = self._pair_view_boxes.get((x_axis, y_axis), self._plot_item.vb)
+        self._refresh_auto_ranges_for_view_box(view_box, x_axis, y_axis)
+
+    def _refresh_all_auto_ranges(self) -> None:
+        """Update auto-ranged axes for all registered axis pairs."""
+        for (x_axis, y_axis), view_box in self._pair_view_boxes.items():
+            self._refresh_auto_ranges_for_view_box(view_box, x_axis, y_axis)
+
     # ------------------------------------------------------------------
     # Public API — trace management
     # ------------------------------------------------------------------
@@ -874,6 +1293,7 @@ class PlotWidget(QWidget):
             xs.append(float(x))
             ys.append(float(y))
             curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+            self._refresh_auto_ranges_for_trace(trace_name)
         finally:
             self._mark_data_update_processed()
 
@@ -921,6 +1341,7 @@ class PlotWidget(QWidget):
         ys = list(map(float, y_data))
         self._trace_data[trace_name] = (xs, ys)
         curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+        self._refresh_auto_ranges_for_trace(trace_name)
 
     @pyqtSlot(str, object, object, object, object)
     def set_trace_with_errors(
@@ -1237,6 +1658,29 @@ class PlotWidget(QWidget):
     # Public API — axis management
     # ------------------------------------------------------------------
 
+    def _axis_range(self, name: str) -> tuple[float | None, float | None]:
+        """Return the currently visible range for an axis."""
+        if name not in self._axis_items:
+            raise KeyError(f"Unknown axis: {name!r}")
+        orientation = self._axis_orientations[name]
+        if orientation == "x":
+            linked_y = "left"
+            for x_axis, y_axis in self._pair_view_boxes:
+                if x_axis == name:
+                    linked_y = y_axis
+                    break
+            view_box = self._pair_view_boxes.get((name, linked_y), self._plot_item.vb)
+            minimum, maximum = view_box.viewRange()[0]
+        else:
+            linked_x = "bottom"
+            for x_axis, y_axis in self._pair_view_boxes:
+                if y_axis == name:
+                    linked_x = x_axis
+                    break
+            view_box = self._pair_view_boxes.get((linked_x, name), self._plot_item.vb)
+            minimum, maximum = view_box.viewRange()[1]
+        return float(minimum), float(maximum)
+
     def set_axis_label(self, name: str, label: str) -> None:
         """Set the displayed title for an axis.
 
@@ -1277,11 +1721,111 @@ class PlotWidget(QWidget):
                 self._axis_log_scale.get(y_axis, False),
             )
 
+    def set_axis_side(self, name: str, side: str) -> None:
+        """Move an axis to a different side of the plot."""
+        if name not in self._axis_items:
+            raise KeyError(f"Unknown axis: {name!r}")
+        orientation = self._axis_orientations[name]
+        valid_sides = {"x": {"top", "bottom"}, "y": {"left", "right"}}[orientation]
+        if side not in valid_sides:
+            raise ValueError(f"Invalid side {side!r} for {orientation}-axis.")
+        self._unregister_axis_side(name, orientation)
+        self._register_axis_side(name, orientation, side)
+        axis_item = self._axis_items[name]
+        self._plot_item.layout.removeItem(axis_item)
+        self._layout_additional_axes()
+        self._reapply_manual_axis_ranges()
+        if self._axis_visible.get(name, True):
+            axis_item.show()
+        else:
+            axis_item.hide()
+        apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
+
+    def set_axis_visible(self, name: str, visible: bool) -> None:
+        """Show or hide an axis item."""
+        if name not in self._axis_items:
+            raise KeyError(f"Unknown axis: {name!r}")
+        self._axis_visible[name] = bool(visible)
+        if visible:
+            self._axis_items[name].show()
+        else:
+            self._axis_items[name].hide()
+
+    def reset_all_view_ranges(self) -> None:
+        """Reset all axis view ranges to their auto-ranged home state."""
+        for axis_name in self._axis_items:
+            self._set_axis_auto_state(axis_name, True, True)
+        for view_box in self._pair_view_boxes.values():
+            view_box.enableAutoRange()
+            view_box.autoRange()
+        self._refresh_all_auto_ranges()
+
+    def set_axis_range(self, name: str, minimum: float | None = None, maximum: float | None = None) -> None:
+        """Set the visible range for an axis with independent auto/manual bounds.
+
+        Passing ``None`` for either bound leaves that bound on auto-range while
+        a numeric value fixes it manually.
+        """
+        if name not in self._axis_items:
+            raise KeyError(f"Unknown axis: {name!r}")
+        min_auto = minimum is None
+        max_auto = maximum is None
+        orientation = self._axis_orientations[name]
+        if minimum is not None and maximum is not None and minimum >= maximum:
+            raise ValueError(f"Axis minimum must be less than maximum for {name!r}.")
+        current_minimum, current_maximum = self._axis_range(name)
+        stored_minimum, stored_maximum = self._axis_manual_range.get(name, (current_minimum, current_maximum))
+        manual_minimum = current_minimum if min_auto else minimum
+        manual_maximum = current_maximum if max_auto else maximum
+        if minimum is not None:
+            stored_minimum = minimum
+        if maximum is not None:
+            stored_maximum = maximum
+        if minimum is None and maximum is None:
+            stored_minimum, stored_maximum = current_minimum, current_maximum
+        self._axis_manual_range[name] = (stored_minimum, stored_maximum)
+        self._axis_auto_range[name] = (min_auto, max_auto)
+        targets = [
+            view_box
+            for (x_axis, y_axis), view_box in self._pair_view_boxes.items()
+            if (orientation == "x" and x_axis == name) or (orientation == "y" and y_axis == name)
+        ]
+        if not targets:
+            targets = [self._plot_item.vb]
+        axis_constant = pg.ViewBox.XAxis if orientation == "x" else pg.ViewBox.YAxis
+        for view_box in targets:
+            if min_auto and max_auto:
+                view_box.enableAutoRange(axis=axis_constant, enable=True)
+            else:
+                view_box.enableAutoRange(axis=axis_constant, enable=True)
+                view_box.autoRange()
+                autorange_minimum, autorange_maximum = (
+                    view_box.viewRange()[0] if orientation == "x" else view_box.viewRange()[1]
+                )
+                final_minimum = autorange_minimum if min_auto else manual_minimum
+                final_maximum = autorange_maximum if max_auto else manual_maximum
+                if final_minimum >= final_maximum:
+                    raise ValueError(f"Axis minimum must be less than maximum for {name!r}.")
+                view_box.enableAutoRange(axis=axis_constant, enable=False)
+                if orientation == "x":
+                    view_box.setRange(xRange=(final_minimum, final_maximum), padding=0.0)
+                else:
+                    view_box.setRange(yRange=(final_minimum, final_maximum), padding=0.0)
+
     def _update_grid_state(self) -> None:
-        """Apply aggregate grid visibility from per-axis flags."""
-        x_grid_enabled = bool(self._axis_grid.get("bottom", False))
-        y_grid_enabled = bool(self._axis_grid.get("left", False))
-        self._pg_widget.showGrid(x=x_grid_enabled, y=y_grid_enabled, alpha=_PLOT_GRID_ALPHA)
+        """Apply grid visibility directly to each axis item.
+
+        PyQtGraph's PlotItem.showGrid() only exposes one shared x-grid and one
+        shared y-grid for the whole plot, which cannot represent independent
+        per-axis visibility for top/bottom or left/right axes. Applying the
+        grid state to each AxisItem allows those axis-specific preferences to
+        be preserved even while traces are updated dynamically.
+        """
+        for name, axis_item in self._axis_items.items():
+            if self._axis_grid.get(name, False):
+                axis_item.setGrid(_PLOT_GRID_ALPHA)
+            else:
+                axis_item.setGrid(False)
 
     def set_axis_grid(self, name: str, enabled: bool) -> None:
         """Set grid visibility preference for an axis.
@@ -1290,7 +1834,7 @@ class PlotWidget(QWidget):
             name (str):
                 Registered axis name.
             enabled (bool):
-                Whether this axis contributes to grid visibility.
+                Whether this axis contributes to aggregate grid visibility.
 
         Raises:
             KeyError:
@@ -1339,10 +1883,14 @@ class PlotWidget(QWidget):
         axis_item = self._axis_items.pop(name)
         self._plot_item.layout.removeItem(axis_item)
         axis_item.hide()
+        self._axis_visible.pop(name, None)
+        self._unregister_axis_side(name, orientation)
         self._axis_orientations.pop(name, None)
         self._view_boxes.pop(name, None)
         self._axis_log_scale.pop(name, None)
         self._axis_grid.pop(name, None)
+        self._axis_auto_range.pop(name, None)
+        self._axis_manual_range.pop(name, None)
         self._update_grid_state()
         self._refresh_trace_and_axis_controls()
 
@@ -1380,13 +1928,19 @@ class PlotWidget(QWidget):
             return
         axis = pg.AxisItem(side)
         axis.setLabel(label)
-        self._plot_item.layout.addItem(axis, 2, 3 if side == "right" else 0)
+        axis.setGrid(False)
         self._axis_items[name] = axis
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         self._axis_orientations[name] = "y"
+        self._register_axis_side(name, "y", side)
+        self._axis_visible[name] = True
         self._axis_log_scale[name] = False
+        self._axis_auto_range[name] = (True, True)
+        self._axis_manual_range[name] = self._axis_range("left")
         self._axis_grid[name] = False
         self._view_boxes[name] = self._create_pair_view_box("bottom", name)
+        self._layout_additional_axes()
+        self._reapply_manual_axis_ranges()
         self._update_grid_state()
         self._refresh_trace_and_axis_controls()
 
@@ -1460,13 +2014,19 @@ class PlotWidget(QWidget):
             return
         axis = pg.AxisItem(position)
         axis.setLabel(label)
-        self._plot_item.layout.addItem(axis, 0 if position == "top" else 4, 1)
+        axis.setGrid(False)
         self._axis_items[name] = axis
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         self._axis_orientations[name] = "x"
+        self._register_axis_side(name, "x", position)
+        self._axis_visible[name] = True
         self._axis_log_scale[name] = False
+        self._axis_auto_range[name] = (True, True)
+        self._axis_manual_range[name] = self._axis_range("bottom")
         self._axis_grid[name] = False
         self._view_boxes[name] = self._create_pair_view_box(name, "left")
+        self._layout_additional_axes()
+        self._reapply_manual_axis_ranges()
         self._update_grid_state()
         self._refresh_trace_and_axis_controls()
 

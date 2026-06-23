@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from qtpy.QtGui import QColor
-from qtpy.QtWidgets import QDialog, QHeaderView, QLabel, QTreeWidgetItem
+from qtpy.QtWidgets import QDialog, QHeaderView, QLabel, QLineEdit, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
@@ -1304,28 +1304,70 @@ class TestPlotWidget:
 
     def test_axes_config_dialog_creates_and_collects_changes(self, qapp):
         dialog = AxesConfigDialog(
-            x_axes=[{"name": "bottom", "label": "Step", "log_scale": False, "grid": True, "removable": False}],
-            y_axes=[{"name": "left", "label": "Value", "log_scale": False, "grid": True, "removable": False}],
+            x_axes=[
+                {
+                    "name": "bottom",
+                    "label": "Step",
+                    "log_scale": False,
+                    "grid": True,
+                    "side": "bottom",
+                    "visible": True,
+                    "minimum": 0.0,
+                    "maximum": 10.0,
+                    "removable": False,
+                }
+            ],
+            y_axes=[
+                {
+                    "name": "left",
+                    "label": "Value",
+                    "log_scale": False,
+                    "grid": True,
+                    "side": "left",
+                    "visible": True,
+                    "minimum": -1.0,
+                    "maximum": 1.0,
+                    "removable": False,
+                }
+            ],
         )
         dialog._add_name_inputs["x"].setText("freq")
         dialog._add_label_inputs["x"].setText("Frequency (Hz)")
         dialog._add_axis_row_from_inputs("x")
         changes = dialog.axis_changes()
-        assert "freq" in changes["visible_axes"]["x"]
+        assert changes["visible_axes"]["freq"] is True
         assert changes["labels"]["freq"] == "Frequency (Hz)"
+        assert changes["ranges"]["bottom"] == (0.0, 10.0)
+        assert changes["ranges"]["left"] == (-1.0, 1.0)
+        assert changes["ranges"]["freq"] == (None, None)
         dialog.reject()
         assert dialog.result() == QDialog.DialogCode.Rejected
 
     def test_axes_config_dialog_rejects_name_used_by_other_axis_kind(self, qapp):
         dialog = AxesConfigDialog(
-            x_axes=[{"name": "bottom", "label": "Step", "log_scale": False, "grid": True, "removable": False}],
-            y_axes=[{"name": "left", "label": "Value", "log_scale": False, "grid": True, "removable": False}],
+            x_axes=[
+                {
+                    "name": "bottom",
+                    "label": "Step",
+                    "log_scale": False,
+                    "grid": True,
+                    "side": "bottom",
+                    "visible": True,
+                    "minimum": None,
+                    "maximum": None,
+                    "removable": False,
+                }
+            ],
+            y_axes=[
+                {"name": "left", "label": "Value", "log_scale": False, "grid": True, "side": "left", "visible": True, "minimum": None, "maximum": None, "removable": False}
+            ],
         )
         dialog._add_name_inputs["x"].setText("left")
         dialog._add_label_inputs["x"].setText("Colliding Left")
         dialog._add_axis_row_from_inputs("x")
         changes = dialog.axis_changes()
-        assert "left" not in changes["visible_axes"]["x"]
+        assert set(changes["visible_axes"]) == {"bottom", "left"}
+        assert changes["labels"]["left"] == "Value"
         dialog.reject()
 
     def test_open_axes_dialog_applies_additions_and_removals(self, qapp, monkeypatch):
@@ -1346,8 +1388,10 @@ class TestPlotWidget:
                     "labels": {"bottom": "Step", "left": "Value", "freq": "Frequency (Hz)"},
                     "log_scale": {"bottom": False, "left": False, "freq": True},
                     "grid": {"bottom": True, "left": True, "freq": False},
+                    "side": {"bottom": "bottom", "left": "left", "freq": "top"},
                     "removed": {"x": [], "y": ["temp"]},
-                    "visible_axes": {"x": ["bottom", "freq"], "y": ["left"]},
+                    "ranges": {"bottom": (None, None), "left": (None, None), "freq": (1.0, 2.0)},
+                    "visible_axes": {"bottom": True, "left": True, "freq": True},
                 }
 
         monkeypatch.setattr("stoner_measurement.ui.plot_widget.AxesConfigDialog", _FakeDialog)
@@ -1357,6 +1401,69 @@ class TestPlotWidget:
         assert "freq" in widget.axis_names
         assert widget._axis_items["freq"].labelText == "Frequency (Hz)"
         assert widget._axis_log_scale["freq"] is True
+
+    def test_axis_entries_show_blank_bounds_for_auto_axes(self, qapp):
+        widget = PlotWidget()
+        entry = widget._axis_entries("x")[0]
+        assert entry["name"] == "bottom"
+        assert entry["minimum"] is None
+        assert entry["maximum"] is None
+
+    def test_set_axis_range_supports_partial_auto_bounds(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        widget.append_point("sig", 2.0, 3.0)
+        widget.set_axis_range("bottom", minimum=0.5, maximum=None)
+        assert widget._axis_auto_range["bottom"] == (False, True)
+        assert widget._axis_manual_range["bottom"][0] == pytest.approx(0.5)
+        entry = widget._axis_entries("x")[0]
+        assert entry["minimum"] == pytest.approx(0.5)
+        assert entry["maximum"] is None
+
+    def test_reset_all_view_ranges_restores_full_auto_bounds(self, qapp):
+        widget = PlotWidget()
+        widget.append_point("sig", 0.0, 1.0)
+        widget.append_point("sig", 2.0, 3.0)
+        widget.set_axis_range("bottom", minimum=0.5, maximum=None)
+        widget.reset_all_view_ranges()
+        assert widget._axis_auto_range["bottom"] == (True, True)
+        entry = widget._axis_entries("x")[0]
+        assert entry["minimum"] is None
+        assert entry["maximum"] is None
+
+    def test_axes_config_dialog_live_range_callback(self, qapp):
+        calls = []
+
+        def on_range_changed(axis_name, minimum, maximum):
+            calls.append((axis_name, minimum, maximum))
+
+        dialog = AxesConfigDialog(
+            x_axes=[
+                {
+                    "name": "bottom",
+                    "label": "Step",
+                    "log_scale": False,
+                    "grid": True,
+                    "side": "bottom",
+                    "visible": True,
+                    "minimum": None,
+                    "maximum": None,
+                    "removable": False,
+                }
+            ],
+            y_axes=[],
+            on_range_changed=on_range_changed,
+        )
+        table = dialog._tables["x"]
+        minimum_edit = table.cellWidget(0, 6)
+        maximum_edit = table.cellWidget(0, 7)
+        assert isinstance(minimum_edit, QLineEdit)
+        assert isinstance(maximum_edit, QLineEdit)
+        minimum_edit.setText("1.5")
+        maximum_edit.setText("3.5")
+        dialog._emit_range_change("x", 0)
+        assert calls == [("bottom", 1.5, 3.5)]
+
 
     def test_add_y_axis(self, qapp):
         widget = PlotWidget()

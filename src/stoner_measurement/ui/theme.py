@@ -220,15 +220,12 @@ def value_display_frame_stylesheet() -> str:
 def apply_pyqtgraph_dark_theme(plot_item, axis_items: dict[str, object]) -> None:
     """Apply dark-mode colors to a pyqtgraph PlotItem and its axes."""
     foreground = colour("plot_foreground")
-    grid_alpha = 64
-    grid_opacity = 0.15
 
     for axis in axis_items.values():
         try:
             axis.setPen(foreground)
             axis.setTextPen(foreground)
             axis.setTickPen(foreground)
-            axis.setGrid(grid_alpha)
             axis.gridPen = QColor(colour("plot_grid"))
             label_style = {"color": foreground}
             current_label = getattr(axis, "labelText", "") or ""
@@ -241,11 +238,6 @@ def apply_pyqtgraph_dark_theme(plot_item, axis_items: dict[str, object]) -> None
 
     try:
         plot_item.getViewBox().setBorder(None)
-    except AttributeError:
-        pass
-
-    try:
-        plot_item.showGrid(x=True, y=True, alpha=grid_opacity)
     except AttributeError:
         pass
 
