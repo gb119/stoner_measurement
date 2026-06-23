@@ -3,33 +3,52 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
-import platformdirs
 import yaml
 
 from stoner_measurement.config_utils import deep_merge, load_yaml_mapping
+from stoner_measurement.resources import bundled_resource_path, user_config_file
 
-_BUNDLED_CONFIG_PACKAGE = "stoner_measurement.conf"
 _MAX_CONFIG_BACKUPS = 20
 
 
 def machine_config_path() -> Path:
-    root = platformdirs.user_config_path("stoner_measurement").parent
-    return root / "magnet_controller.yaml"
+    """Return the per-machine magnet-controller config path.
+
+    Returns:
+        (Path):
+            Path of the user override YAML file for the magnet controller.
+    """
+    return user_config_file("magnet_controller.yaml")
 
 
 def load_magnet_controller_config() -> dict[str, Any]:
+    """Load merged bundled and per-machine engine configuration.
+
+    Returns:
+        (dict[str, Any]):
+            Deep-merged magnet-controller configuration mapping.
+    """
     bundled = load_yaml_mapping(
-        resources.files(_BUNDLED_CONFIG_PACKAGE).joinpath("magnet_controller.yaml")
+        bundled_resource_path("", "magnet_controller.yaml") or Path("__missing__")
     )
     machine = load_yaml_mapping(machine_config_path())
     return deep_merge(bundled, machine)
 
 
 def save_magnet_controller_config(config: dict[str, Any]) -> Path:
+    """Save machine-specific magnet-controller configuration.
+
+    Args:
+        config (dict[str, Any]):
+            Configuration mapping to write.
+
+    Returns:
+        (Path):
+            Path written to disk.
+    """
     path = machine_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 

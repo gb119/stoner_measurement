@@ -8,7 +8,6 @@ panel for filtering and selecting watched values.
 
 from __future__ import annotations
 
-import importlib.resources
 from dataclasses import dataclass
 from math import floor, isfinite, log10
 
@@ -17,6 +16,7 @@ from qtpy.QtCore import QSettings, Qt  # pylint: disable=no-name-in-module
 
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.qt_compat import pyqtSignal, pyqtSlot
+from stoner_measurement.resources import bundled_resource_path
 from stoner_measurement.ui.theme import (
     colour,
     muted_label_stylesheet,
@@ -414,13 +414,13 @@ def _seven_segment_font_family() -> str:
         return cached
     family = ""
     try:
-        resource = importlib.resources.files("stoner_measurement.conf").joinpath("resources").joinpath("7segment.ttf")
-        with importlib.resources.as_file(resource) as path:
+        path = bundled_resource_path("resources", "7segment.ttf")
+        if path is not None:
             font_id = QtGui.QFontDatabase.addApplicationFont(str(path))
-        if font_id >= 0:
-            families = QtGui.QFontDatabase.applicationFontFamilies(font_id)
-            if families:
-                family = families[0]
+            if font_id >= 0:
+                families = QtGui.QFontDatabase.applicationFontFamilies(font_id)
+                if families:
+                    family = families[0]
     except Exception:  # pylint: disable=broad-except
         family = ""
     setattr(_seven_segment_font_family, "_cached_family", family)
@@ -968,7 +968,10 @@ class ValueWatchWindow(QtWidgets.QWidget):
         scroll_frame = max(0, 2 * self._display_scroll.frameWidth())
         scrollbar_allowance = 24
         return max(
-            _DISPLAY_FIXED_WIDTH, _DISPLAY_FIXED_WIDTH + spacing + viewport_margins + scroll_frame + scrollbar_allowance
+            _DISPLAY_FIXED_WIDTH,
+            _DISPLAY_FIXED_WIDTH
+            + spacing + viewport_margins + scroll_frame
+            + scrollbar_allowance,
         )
 
     def _refresh_catalog_from_engine(self) -> None:

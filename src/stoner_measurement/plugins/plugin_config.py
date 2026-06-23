@@ -10,16 +10,13 @@ Machine-specific values take precedence over the bundled defaults.
 
 from __future__ import annotations
 
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
-import platformdirs
-from collections.abc import Mapping
-
 from stoner_measurement.config_utils import deep_merge, load_yaml_mapping
+from stoner_measurement.resources import bundled_resource_path, user_resource_file
 
-_BUNDLED_CONFIG_PACKAGE = "stoner_measurement.conf.plugins"
+_BUNDLED_PLUGIN_SUBDIR = "plugins"
 
 
 def _plugin_config_stem(plugin_name: str) -> str:
@@ -36,16 +33,15 @@ _deep_merge = deep_merge
 
 def machine_config_path(plugin_name: str) -> Path:
     """Return the per-machine YAML config path for *plugin_name*."""
-    root = platformdirs.user_config_path("stoner_measurement").parent
-    return root / "plugins" / f"{_plugin_config_stem(plugin_name)}.yaml"
+    return user_resource_file("plugins", f"{_plugin_config_stem(plugin_name)}.yaml")
 
 
 def _load_bundled_config(plugin_name: str) -> dict[str, Any]:
     """Load the bundled YAML config for *plugin_name* if present."""
-    config_file = resources.files(_BUNDLED_CONFIG_PACKAGE).joinpath(
-        f"{_plugin_config_stem(plugin_name)}.yaml"
+    config_file = bundled_resource_path(
+        _BUNDLED_PLUGIN_SUBDIR, f"{_plugin_config_stem(plugin_name)}.yaml"
     )
-    return _load_yaml_mapping(config_file)
+    return _load_yaml_mapping(config_file or Path("__missing__"))
 
 
 def load_plugin_config(plugin_name: str, *, machine_only: bool = False) -> dict[str, Any]:

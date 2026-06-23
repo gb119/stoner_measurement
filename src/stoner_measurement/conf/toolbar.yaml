@@ -31,6 +31,13 @@
 #   1. <user-config-dir>/resources/<image>
 #   2. bundled stoner_measurement.conf/resources/<image>
 #
+# Default new-sequence template lookup:
+#
+#   1. <user-config-dir>/sequences/sequence_template.json
+#   2. bundled stoner_measurement.conf/sequences/sequence_template.json
+#
+# The application loads this fixed filename on startup and when creating a new sequence.
+#
 # Sequence lookup order:
 #
 #   1. <user-config-dir>/sequences/<sequence>

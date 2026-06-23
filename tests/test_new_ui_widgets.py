@@ -541,11 +541,7 @@ class TestMeasurementApp:
             cfg_root = tmp_path
             shutil.copyfile(Path("tests/data/toolbar.yaml"), cfg_root / "toolbar.yaml")
 
-            monkeypatch.setattr(
-                "stoner_measurement.app.platformdirs.user_config_dir",
-                lambda _appname: str(cfg_root),
-            )
-
+            monkeypatch.setattr("stoner_measurement.resources.user_config_root", lambda: cfg_root)
             config = app._load_toolbar_configuration()
             assert "buttons" in config
             assert any(btn.get("name") == "Test Button" for btn in config["buttons"])
@@ -563,11 +559,7 @@ class TestMeasurementApp:
             cfg_root / "resources" / "test-sequence.png",
         )
 
-        monkeypatch.setattr(
-            "stoner_measurement.app.platformdirs.user_config_dir",
-            lambda _appname: str(cfg_root),
-        )
-
+        monkeypatch.setattr("stoner_measurement.resources.user_config_root", lambda: cfg_root)
         app = MeasurementApp()
         try:
             actions = [a for a in app._toolbar.actions() if a.text() == "Test Button"]
@@ -583,11 +575,7 @@ class TestMeasurementApp:
         (cfg_root / "sequences").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(Path("tests/data/test-sequence.json"), cfg_root / "sequences" / "test-sequence.json")
 
-        monkeypatch.setattr(
-            "stoner_measurement.app.platformdirs.user_config_dir",
-            lambda _appname: str(cfg_root),
-        )
-
+        monkeypatch.setattr("stoner_measurement.resources.user_config_root", lambda: cfg_root)
         app = MeasurementApp()
         try:
             app._current_measurement_path = Path("dummy.json")

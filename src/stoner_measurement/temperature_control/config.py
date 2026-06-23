@@ -2,30 +2,27 @@
 
 from __future__ import annotations
 
-from importlib import resources
-from pathlib import Path
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-import platformdirs
 import yaml
 
 from stoner_measurement.config_utils import deep_merge, load_yaml_mapping
+from stoner_measurement.resources import bundled_resource_path, user_config_file
 
-_BUNDLED_CONFIG_PACKAGE = "stoner_measurement.conf"
 _MAX_CONFIG_BACKUPS = 20
 
 
 def machine_config_path() -> Path:
     """Return the per-machine temperature-controller config path."""
-    root = platformdirs.user_config_path("stoner_measurement").parent
-    return root / "temperature_controller.yaml"
+    return user_config_file("temperature_controller.yaml")
 
 
 def load_temperature_controller_config() -> dict[str, Any]:
     """Load merged bundled and per-machine engine configuration."""
     bundled = load_yaml_mapping(
-        resources.files(_BUNDLED_CONFIG_PACKAGE).joinpath("temperature_controller.yaml")
+        bundled_resource_path("", "temperature_controller.yaml") or Path("__missing__")
     )
     machine = load_yaml_mapping(machine_config_path())
     return deep_merge(bundled, machine)

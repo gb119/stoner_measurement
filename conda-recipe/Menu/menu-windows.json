@@ -1,0 +1,11 @@
+{
+  "menu_name": "Stoner Measurement",
+  "menu_items": [
+    {
+      "name": "Stoner Measurement",
+      "description": "Run the Stoner Measurement application",
+      "pyscript": "stoner-measurement",
+      "icon": "../src/stoner_measurement/ui/StonerLogo2.png"
+    }
+  ]
+}

@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import json
-import importlib.resources
 import logging
 from pathlib import Path
 
-import platformdirs
-import yaml
 from qtpy.QtCore import QSettings, QSize, Qt
 from qtpy.QtGui import QAction, QIcon, QKeySequence
 from qtpy.QtWidgets import (
@@ -23,6 +20,12 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
+from stoner_measurement.resources import (
+    find_predefined_sequence,
+    find_sequence_template,
+    find_toolbar_icon,
+    load_toolbar_config,
+)
 from stoner_measurement.ui.icons import (
     make_generate_icon,
     make_log_icon,
@@ -38,7 +41,6 @@ from stoner_measurement.ui.main_window import MainWindow
 from stoner_measurement.ui.value_watch import ValueWatchWindow
 from stoner_measurement.ui.settings_dialog import (
     KEY_DEFAULT_DATA_DIR,
-    KEY_DEFAULT_SEQUENCE_TEMPLATE,
     KEY_THEME,
     SettingsDialog,
     make_app_settings,
@@ -69,6 +71,7 @@ class SequenceView:
 
     @property
     def top_level_plugins(self) -> list:
+        """Return the plugin instance from each top-level sequence step."""
         result = []
         for step in self.steps:
             plugin_or_name = step[0] if isinstance(step, tuple) else step
@@ -425,8 +428,10 @@ class MeasurementApp(QMainWindow):
         self._act_exit.setStatusTip("Exit the application")
         self._act_exit.triggered.connect(self.close)
 
-    def _build_sequence_actions(self, style: QStyle) -> None:
+    def _build_sequence_actions(self, _style: QStyle) -> None:
         """Create sequence-related QAction instances."""
+        del _style
+
         self._act_run = QAction(
             make_run_icon(),
             "&Run",
@@ -610,67 +615,32 @@ class MeasurementApp(QMainWindow):
         toolbar.addAction(self._act_show_temp_panel)
         toolbar.addAction(self._act_show_magnet_panel)
         self._toolbar = toolbar
+        self._configured_toolbar_items = []
         self._add_configured_toolbar_buttons()
 
-    def _toolbar_config_path(self) -> Path:
-        return platformdirs.user_config_path("stoner_measurement").parent / "toolbar.yaml"
-
     def _load_toolbar_configuration(self) -> dict:
-        user_cfg = self._toolbar_config_path()
-        logger.debug(f"{user_cfg=} {user_cfg.exists()=}")
-        if user_cfg.exists():
-            try:
-                cfg =  yaml.safe_load(user_cfg.read_text(encoding="utf-8")) or {}
-                logger.info(f"User toolbar config {cfg}")
-                return cfg
-            except Exception as exc:
-                logger.error(f"Loading user config failed with {exc}")
-                return {}
-        try:
-            resource = importlib.resources.files("stoner_measurement.conf").joinpath("toolbar.yaml")
-            logger.debug(f"System {resource=}")
-            cfg = yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
-            logger.info(f"System toolbar config {cfg}")
-            return cfg
-        except Exception:
-            return {}
+        return load_toolbar_config()
 
     def _find_toolbar_icon(self, name: str) -> QIcon:
-        user_icon = platformdirs.user_config_path("stoner_measurement").parent / "resources" / name
-        if user_icon.exists():
-            return QIcon(str(user_icon))
-        try:
-            resource = importlib.resources.files("stoner_measurement.conf").joinpath("resources").joinpath(name)
-            with importlib.resources.as_file(resource) as path:
-                return QIcon(str(path))
-        except Exception:
-            return QIcon()
+        path = find_toolbar_icon(name)
+        return QIcon(str(path)) if path is not None else QIcon()
 
     def _find_predefined_sequence(self, name: str) -> Path | None:
-        user_seq = platformdirs.user_config_path("stoner_measurement").parent / "sequences" / name
-        logger.debug(f"Button clicked to load {user_seq=} {user_seq.exists()=}")
-        if user_seq.exists():
-            return user_seq
-        try:
-            resource = importlib.resources.files("stoner_measurement.conf").joinpath("sequences").joinpath(name)
-            with importlib.resources.as_file(resource) as path:
-                if path.exists():
-                    return path
-        except Exception as exc:
-            logger.error(f"Exception loading sequence {exc=}")
-            pass
-        return None
+        return find_predefined_sequence(name)
+
+    def _find_sequence_template(self) -> Path | None:
+        return find_sequence_template()
 
     def _add_configured_toolbar_buttons(self) -> None:
         config = self._load_toolbar_configuration()
         buttons = config.get("buttons", [])
         if not buttons:
             return
-        self._toolbar.addSeparator()
+        self._configured_toolbar_items.append(self._toolbar.addSeparator())
         for button in buttons:
-            logger.debug(f"Loading toolbar: {button=}")
+            logger.debug("Loading toolbar button definition: %s", button)
             if button.get("separator"):
-                self._toolbar.addSeparator()
+                self._configured_toolbar_items.append(self._toolbar.addSeparator())
                 continue
             sequence = button.get("sequence")
             if not sequence:
@@ -686,6 +656,17 @@ class MeasurementApp(QMainWindow):
                 lambda checked=False, seq=sequence: self._load_predefined_sequence(seq)
             )
             self._toolbar.addAction(action)
+            self._configured_toolbar_items.append(action)
+
+    def _refresh_configured_toolbar_buttons(self) -> None:
+        """Remove and rebuild toolbar items loaded from toolbar.yaml."""
+        for item in self._configured_toolbar_items:
+            if isinstance(item, QAction):
+                self._toolbar.removeAction(item)
+            else:
+                self._toolbar.removeAction(item)
+        self._configured_toolbar_items = []
+        self._add_configured_toolbar_buttons()
 
     def _load_predefined_sequence(self, sequence_name: str) -> None:
         from stoner_measurement.core.serializer import sequence_from_json
@@ -838,37 +819,36 @@ class MeasurementApp(QMainWindow):
     # ------------------------------------------------------------------
 
     def _load_template_sequence(self) -> None:
-        """Load the default sequence template, or an empty sequence if none is set.
+        """Load the default sequence template, or an empty sequence if none is found.
 
-        Reads the ``app/default_sequence_template`` setting from the application
-        preferences INI file.  If the path is non-empty and the file exists the
-        sequence is deserialised and loaded into the dock panel.  In all other
-        cases (no path configured, file missing, or parse error) an empty
+        The template is loaded from ``sequence_template.json`` using the same
+        lookup order as predefined toolbar sequences:
+
+        * ``<user-config-dir>/sequences/sequence_template.json``
+        * bundled ``stoner_measurement.conf/sequences/sequence_template.json``
+
+        If no template is found, or the file cannot be parsed, an empty
         sequence is loaded instead.
         """
         from stoner_measurement.core.serializer import sequence_from_json
 
-        settings = make_app_settings()
-        template_str = settings.value(KEY_DEFAULT_SEQUENCE_TEMPLATE, "", type=str)
-        if template_str:
-            template_path = Path(template_str)
-            if template_path.exists():
-                try:
-                    data = json.loads(template_path.read_text(encoding="utf-8"))
-                    steps = sequence_from_json(data)
-                    self._main_window.dock_panel.load_sequence(steps)
-                    return
-                except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError):
-                    pass
+        template_path = self._find_sequence_template()
+        if template_path is not None:
+            try:
+                data = json.loads(template_path.read_text(encoding="utf-8"))
+                steps = sequence_from_json(data)
+                self._main_window.dock_panel.load_sequence(steps)
+                return
+            except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError):
+                pass
         self._main_window.dock_panel.load_sequence([])
 
     def _on_new_measurement(self) -> None:
         """Clear the measurement sequence and start a new one.
 
         Asks the user to confirm discarding the current sequence, then clears
-        the sequence tree and resets the current file path.  If a default
-        sequence template is configured in the application preferences and the
-        file exists, that template is loaded instead of an empty sequence.
+        the sequence tree and resets the current file path. If a default
+        sequence template file exists, that template is loaded instead of an empty sequence.
         """
         self._load_template_sequence()
         self._current_measurement_path = None
@@ -1224,6 +1204,8 @@ class MeasurementApp(QMainWindow):
         previous_theme = theme_name()
         dlg = SettingsDialog(parent=self)
         if dlg.exec():
+            if dlg.toolbar_saved:
+                self._refresh_configured_toolbar_buttons()
             new_theme = make_app_settings().value(KEY_THEME, previous_theme, type=str)
             if new_theme != previous_theme:
                 QMessageBox.information(

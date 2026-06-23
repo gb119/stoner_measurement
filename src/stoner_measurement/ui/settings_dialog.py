@@ -11,23 +11,33 @@ from pathlib import Path
 
 from qtpy.QtCore import QSettings
 from qtpy.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLineEdit,
+    QMessageBox,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QLabel,
     QVBoxLayout,
     QWidget,
 )
+from stoner_measurement.resources import (
+    load_toolbar_config,
+    save_toolbar_config,
+    user_config_root,
+)
 from stoner_measurement.ui.theme import DEFAULT_THEME, available_themes
 
+_ROW_TYPE_SEPARATOR = "__separator__"
 #: Settings key for the default data directory.
 KEY_DEFAULT_DATA_DIR = "app/default_data_directory"
-#: Settings key for the default sequence template path.
-KEY_DEFAULT_SEQUENCE_TEMPLATE = "app/default_sequence_template"
 #: Settings key for the application theme.
 KEY_THEME = "app/theme"
 
@@ -67,11 +77,10 @@ class SettingsDialog(QDialog):
 
     * **Default data directory** — the directory used as the starting point for
       file-open and file-save dialogues (sequences, scripts, and data files).
-    * **Default sequence template** — path to a JSON sequence file that is
-      loaded whenever a new sequence is created or the application starts.  If
-      the path is empty or the file does not exist an empty sequence is used.
     * **Theme** — choose between the available application themes. The selected
       theme is saved in the application settings file and restored on startup.
+    * **Toolbar buttons** — editable list of user toolbar button definitions
+      saved to the user ``toolbar.yaml`` configuration file.
 
     Changes are written to the INI-format settings file returned by
     :func:`make_app_settings` when the user clicks *OK*.
@@ -94,6 +103,8 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(520)
 
         settings = make_app_settings()
+        self.toolbar_saved = False
+        self._toolbar_cfg = load_toolbar_config()
 
         # ── Form ──────────────────────────────────────────────────────────
         form = QFormLayout()
@@ -114,21 +125,6 @@ class SettingsDialog(QDialog):
         data_dir_row.addWidget(data_dir_browse)
         form.addRow("Default data directory:", data_dir_row)
 
-        # Default sequence template row
-        self._template_edit = QLineEdit(self)
-        self._template_edit.setPlaceholderText("(none — start with empty sequence)")
-        self._template_edit.setText(settings.value(KEY_DEFAULT_SEQUENCE_TEMPLATE, "", type=str))
-
-        template_browse = QPushButton("Browse…", self)
-        template_browse.setFixedWidth(80)
-        template_browse.clicked.connect(self._browse_template)
-
-        template_row = QHBoxLayout()
-        template_row.setContentsMargins(0, 0, 0, 0)
-        template_row.addWidget(self._template_edit)
-        template_row.addWidget(template_browse)
-        form.addRow("Default sequence template:", template_row)
-
         # Theme row
         self._theme_combo = QComboBox(self)
         self._theme_combo.addItems([name.capitalize() for name in available_themes()])
@@ -136,6 +132,51 @@ class SettingsDialog(QDialog):
         index = max(0, available_themes().index(saved_theme) if saved_theme in available_themes() else 0)
         self._theme_combo.setCurrentIndex(index)
         form.addRow("Theme:", self._theme_combo)
+
+        # Toolbar editor
+        self._toolbar_table = QTableWidget(0, 4, self)
+        self._toolbar_table.setHorizontalHeaderLabels(["Button name / separator", "Sequence", "Icon", "Tooltip"])
+        self._toolbar_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._toolbar_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._toolbar_table.verticalHeader().setVisible(False)
+        header = self._toolbar_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._toolbar_table.setMinimumHeight(220)
+        self._load_toolbar_rows()
+
+        toolbar_buttons_row = QHBoxLayout()
+        toolbar_buttons_row.setContentsMargins(0, 0, 0, 0)
+        add_toolbar_button = QPushButton("Add Button", self)
+        add_toolbar_button.clicked.connect(self._add_toolbar_row)
+        add_separator_button = QPushButton("Add Separator", self)
+        add_separator_button.clicked.connect(self._add_separator_row)
+        remove_toolbar_button = QPushButton("Remove Selected", self)
+        remove_toolbar_button.clicked.connect(self._remove_selected_toolbar_row)
+        save_toolbar_button = QPushButton("Save Toolbar", self)
+        save_toolbar_button.clicked.connect(self._save_toolbar_from_ui)
+        toolbar_buttons_row.addWidget(add_toolbar_button)
+        toolbar_buttons_row.addWidget(add_separator_button)
+        toolbar_buttons_row.addWidget(remove_toolbar_button)
+        toolbar_buttons_row.addStretch(1)
+        toolbar_buttons_row.addWidget(save_toolbar_button)
+
+        toolbar_layout = QVBoxLayout()
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.addWidget(self._toolbar_table)
+        toolbar_help = QLabel(
+            "Sequences are looked up by filename in the user and bundled "
+            "sequences folders. Icons are looked up by filename in the user "
+            "and bundled resources folders. Saving always writes a user "
+            "toolbar.yaml override.",
+            self,
+        )
+        toolbar_help.setWordWrap(True)
+        toolbar_layout.addWidget(toolbar_help)
+        toolbar_layout.addLayout(toolbar_buttons_row)
+        form.addRow("Toolbar buttons:", toolbar_layout)
 
         # ── Button box ────────────────────────────────────────────────────
         button_box = QDialogButtonBox(
@@ -156,6 +197,141 @@ class SettingsDialog(QDialog):
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _load_toolbar_rows(self) -> None:
+        """Populate the toolbar table from the effective toolbar configuration."""
+        for button in self._toolbar_cfg.get("buttons", []):
+            if button.get("separator"):
+                self._add_separator_row()
+                continue
+            self._add_toolbar_row(
+                name=button.get("name", ""),
+                sequence=button.get("sequence", ""),
+                icon=button.get("image", ""),
+                tooltip=button.get("tooltip", ""),
+            )
+
+    def _make_file_picker_cell(
+        self,
+        value: str,
+        browse_callback,
+        placeholder: str = "",
+        enabled: bool = True,
+    ) -> QWidget:
+        """Create a line-edit plus browse-button cell widget."""
+        cell = QWidget(self)
+        layout = QHBoxLayout(cell)
+        layout.setContentsMargins(0, 0, 0, 0)
+        edit = QLineEdit(value, cell)
+        if placeholder:
+            edit.setPlaceholderText(placeholder)
+        edit.setEnabled(enabled)
+        browse = QPushButton("…", cell)
+        browse.setFixedWidth(32)
+        browse.setEnabled(enabled)
+        browse.clicked.connect(lambda: browse_callback(edit))
+        layout.addWidget(edit)
+        layout.addWidget(browse)
+        return cell
+
+    def _set_separator_row_state(self, row: int, is_separator: bool) -> None:
+        """Update a row to behave as either a button row or separator row."""
+        name_item = self._toolbar_table.item(row, 0)
+        if name_item is None:
+            name_item = QTableWidgetItem()
+            self._toolbar_table.setItem(row, 0, name_item)
+        if is_separator:
+            name_item.setText("--- separator ---")
+            name_item.setData(0x0100, _ROW_TYPE_SEPARATOR)
+            name_item.setFlags(name_item.flags())
+            for col in (1, 2, 3):
+                item = self._toolbar_table.item(row, col)
+                if item is not None:
+                    item.setText("")
+                cell_widget = self._toolbar_table.cellWidget(row, col)
+                if cell_widget is not None:
+                    cell_widget.setEnabled(False)
+        else:
+            if name_item.text() == "--- separator ---":
+                name_item.setText("")
+            name_item.setData(0x0100, None)
+            for col in (1, 2, 3):
+                cell_widget = self._toolbar_table.cellWidget(row, col)
+                if cell_widget is not None:
+                    cell_widget.setEnabled(True)
+
+    def _add_toolbar_row(
+        self,
+        checked: bool = False,
+        name: str = "",
+        sequence: str = "",
+        icon: str = "",
+        tooltip: str = "",
+    ) -> None:
+        """Add one editable toolbar-button row to the table."""
+        del checked
+        row = self._toolbar_table.rowCount()
+        self._toolbar_table.insertRow(row)
+        self._toolbar_table.setItem(row, 0, QTableWidgetItem(name))
+        self._toolbar_table.setItem(row, 3, QTableWidgetItem(tooltip))
+
+        sequence_cell = self._make_file_picker_cell(
+            sequence,
+            self._browse_sequence_for_row,
+            placeholder="sequence JSON filename",
+        )
+        self._toolbar_table.setCellWidget(row, 1, sequence_cell)
+
+        icon_cell = self._make_file_picker_cell(
+            icon,
+            self._browse_icon_for_row,
+            placeholder="icon filename",
+        )
+        self._toolbar_table.setCellWidget(row, 2, icon_cell)
+
+    def _add_separator_row(self, checked: bool = False) -> None:
+        """Add one toolbar separator row to the table."""
+        del checked
+        row = self._toolbar_table.rowCount()
+        self._toolbar_table.insertRow(row)
+        self._toolbar_table.setItem(row, 0, QTableWidgetItem())
+        self._toolbar_table.setItem(row, 3, QTableWidgetItem(""))
+        sequence_cell = self._make_file_picker_cell("", self._browse_sequence_for_row, enabled=False)
+        icon_cell = self._make_file_picker_cell("", self._browse_icon_for_row, enabled=False)
+        self._toolbar_table.setCellWidget(row, 1, sequence_cell)
+        self._toolbar_table.setCellWidget(row, 2, icon_cell)
+        self._set_separator_row_state(row, True)
+
+    def _row_is_separator(self, row: int) -> bool:
+        """Return True if the given table row represents a separator."""
+        item = self._toolbar_table.item(row, 0)
+        return bool(item and item.data(0x0100) == _ROW_TYPE_SEPARATOR)
+
+    def _remove_selected_toolbar_row(self) -> None:
+        """Remove the currently selected toolbar row, if any."""
+        row = self._toolbar_table.currentRow()
+        if row >= 0:
+            self._toolbar_table.removeRow(row)
+
+    def _browse_icon_for_row(self, line_edit: QLineEdit) -> None:
+        """Choose an icon file and store its basename in the row editor."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Toolbar Icon", "", "Image Files (*.png *.svg *.ico *.jpg *.jpeg);;All Files (*)"
+        )
+        if path:
+            line_edit.setText(Path(path).name)
+
+    def _browse_sequence_for_row(self, line_edit: QLineEdit) -> None:
+        """Choose a sequence file and store its basename in the row editor."""
+        start_dir = str(user_config_root() / "sequences")
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Toolbar Sequence",
+            start_dir,
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if path:
+            line_edit.setText(Path(path).name)
+
     def _browse_data_dir(self) -> None:
         """Open a directory-chooser and populate the data-directory field."""
         current = self._data_dir_edit.text().strip()
@@ -164,24 +340,90 @@ class SettingsDialog(QDialog):
         if path:
             self._data_dir_edit.setText(path)
 
-    def _browse_template(self) -> None:
-        """Open a file-chooser and populate the sequence-template field."""
-        current = self._template_edit.text().strip()
-        start_dir = str(Path(current).parent) if current else ""
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Default Sequence Template",
-            start_dir,
-            "JSON Files (*.json);;All Files (*)",
-        )
-        if path:
-            self._template_edit.setText(path)
+    def _validate_toolbar_rows(self) -> list[str]:
+        """Return human-readable validation warnings for the toolbar table."""
+        warnings = []
+        seen_sequences: set[str] = set()
+        seen_names: set[str] = set()
+        for row in range(self._toolbar_table.rowCount()):
+            if self._row_is_separator(row):
+                continue
+            name_item = self._toolbar_table.item(row, 0)
+            tooltip_item = self._toolbar_table.item(row, 3)
+            sequence_cell = self._toolbar_table.cellWidget(row, 1)
+            sequence_edit = sequence_cell.findChild(QLineEdit) if sequence_cell is not None else None
+            name = name_item.text().strip() if name_item is not None else ""
+            sequence = sequence_edit.text().strip() if sequence_edit is not None else ""
+            if not sequence:
+                warnings.append(f"Row {row + 1}: button entries should specify a sequence filename.")
+                continue
+            effective_name = name or Path(sequence).stem
+            if effective_name in seen_names:
+                warnings.append(f"Row {row + 1}: duplicate button name '{effective_name}'.")
+            else:
+                seen_names.add(effective_name)
+            if sequence in seen_sequences:
+                warnings.append(f"Row {row + 1}: duplicate sequence filename '{sequence}'.")
+            else:
+                seen_sequences.add(sequence)
+            if tooltip_item is not None and not tooltip_item.text().strip():
+                warnings.append(f"Row {row + 1}: tooltip is empty.")
+        return warnings
+
+    def _collect_toolbar_config_from_ui(self) -> dict:
+        """Build a toolbar configuration mapping from the table contents."""
+        buttons = []
+        for row in range(self._toolbar_table.rowCount()):
+            name_item = self._toolbar_table.item(row, 0)
+            tooltip_item = self._toolbar_table.item(row, 3)
+            sequence_cell = self._toolbar_table.cellWidget(row, 1)
+            icon_cell = self._toolbar_table.cellWidget(row, 2)
+            sequence_edit = sequence_cell.findChild(QLineEdit) if sequence_cell is not None else None
+            icon_edit = icon_cell.findChild(QLineEdit) if icon_cell is not None else None
+
+            if self._row_is_separator(row):
+                buttons.append({"separator": True})
+                continue
+
+            name = name_item.text().strip() if name_item is not None else ""
+            sequence = sequence_edit.text().strip() if sequence_edit is not None else ""
+            tooltip = tooltip_item.text().strip() if tooltip_item is not None else ""
+            image = icon_edit.text().strip() if icon_edit is not None else ""
+
+            if not sequence:
+                continue
+            entry = {"name": name or Path(sequence).stem, "sequence": sequence}
+            if image:
+                entry["image"] = image
+            if tooltip:
+                entry["tooltip"] = tooltip
+            buttons.append(entry)
+        return {"buttons": buttons}
+
+    def _save_toolbar_from_ui(self) -> None:
+        """Save the toolbar table contents to the user toolbar.yaml file."""
+        warnings = self._validate_toolbar_rows()
+        if warnings:
+            message = "Toolbar configuration has some issues:\n\n- " + "\n- ".join(warnings)
+            result = QMessageBox.warning(
+                self,
+                "Toolbar Validation Warnings",
+                message,
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if result != QMessageBox.StandardButton.Save:
+                return
+        config = self._collect_toolbar_config_from_ui()
+        path = save_toolbar_config(config)
+        QMessageBox.information(self, "Toolbar Saved", f"Toolbar configuration saved to:\n{path}")
+        self._toolbar_cfg = config
+        self.toolbar_saved = True
 
     def _on_accept(self) -> None:
         """Write the current field values to the INI settings file."""
         settings = make_app_settings()
         settings.setValue(KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
-        settings.setValue(KEY_DEFAULT_SEQUENCE_TEMPLATE, self._template_edit.text().strip())
         settings.setValue(KEY_THEME, self._theme_combo.currentText().strip().lower())
         settings.sync()
         self.accept()
