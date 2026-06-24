@@ -9,6 +9,7 @@ are ordinary instrument drivers and are therefore discovered automatically by
 from __future__ import annotations
 
 import time
+from math import copysign
 
 from stoner_measurement.instruments.magnet_controller import (
     HeaterState,
@@ -16,6 +17,11 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetLimits,
     MagnetState,
     MagnetStatus,
+)
+from stoner_measurement.instruments.motor_controller import (
+    MotorController,
+    MotorMoveDirection,
+    MotorStatus,
 )
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.temperature_controller import (
@@ -342,3 +348,117 @@ class SimulatedMagnetController(MagnetController):
     def return_to_local(self) -> None:
         """No-op for the simulated controller, which has no front panel."""
         return
+
+
+class SimulatedMotorController(MotorController):
+    """Simple simulated motor controller."""
+
+    _EXPECTED_IDENTITY_TOKENS = ("SIMULATED MOTOR CONTROLLER",)
+
+    def __init__(self, transport=None, protocol=None) -> None:
+        super().__init__(
+            transport=transport if transport is not None else NullTransport(),
+            protocol=protocol if protocol is not None else ScpiProtocol(),
+        )
+        self._last_update = time.monotonic()
+        self._position = 0.0
+        self._target_position = 0.0
+        self._velocity = 10.0
+        self._acceleration = 30.0
+        self._current_velocity = 0.0
+        self._home_position = 0.0
+        self._homed = True
+        self._moving = False
+
+    def identify(self) -> str:
+        return "OpenAI,Simulated Motor Controller,SIMMOTOR001,1.0"
+
+    def _update(self) -> None:
+        now = time.monotonic()
+        dt = now - self._last_update
+        self._last_update = now
+
+        if not self._moving:
+            self._current_velocity = 0.0
+            return
+
+        delta = self._target_position - self._position
+        distance = abs(delta)
+        direction = copysign(1.0, delta) if distance > 0.0 else 0.0
+
+        if distance <= 1e-9:
+            self._position = self._target_position
+            self._moving = False
+            self._current_velocity = 0.0
+            return
+
+        max_velocity = max(self._velocity, 1e-9)
+        accel = max(self._acceleration, 1e-9)
+        stopping_distance = (self._current_velocity ** 2) / (2.0 * accel)
+
+        if stopping_distance >= distance:
+            self._current_velocity = max(0.0, self._current_velocity - accel * dt)
+        else:
+            self._current_velocity = min(max_velocity, self._current_velocity + accel * dt)
+
+        step = self._current_velocity * dt
+        if step >= distance:
+            self._position = self._target_position
+            self._moving = False
+            self._current_velocity = 0.0
+        else:
+            self._position += direction * step
+
+    def set_velocity(self, velocity: float) -> None:
+        self._velocity = max(float(velocity), 0.0)
+
+    def set_acceleration(self, acceleration: float) -> None:
+        self._acceleration = max(float(acceleration), 0.0)
+
+    def move_to_angle(
+        self,
+        angle: float,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
+        self._update()
+        del direction
+        self._target_position = float(angle)
+        self._moving = abs(self._target_position - self._position) > 1e-9
+
+    def move_home(self) -> None:
+        self.move_to_angle(self._home_position)
+
+    def set_home(self, angle: float = 0.0) -> None:
+        self._update()
+        offset = self._position - float(angle)
+        self._position -= offset
+        self._target_position -= offset
+        self._home_position = float(angle)
+        self._homed = True
+
+    def get_position(self) -> float:
+        self._update()
+        return self._position
+
+    def get_target_position(self) -> float | None:
+        self._update()
+        return self._target_position
+
+    def is_moving(self) -> bool:
+        self._update()
+        return self._moving
+
+    def has_reached_target_position(self, tolerance: float = 0.01) -> bool:
+        self._update()
+        return abs(self._target_position - self._position) <= tolerance
+
+    @property
+    def status(self) -> MotorStatus:
+        """Return a consolidated motor status snapshot."""
+        return MotorStatus(
+            current_angle=self.get_position(),
+            target_angle=self.get_target_position(),
+            moving=self.is_moving(),
+            homed=self._homed,
+            revolutions=int(self.get_position() // 360.0),
+        )

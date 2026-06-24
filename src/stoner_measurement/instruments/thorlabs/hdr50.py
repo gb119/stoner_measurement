@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from stoner_measurement.instruments.thorlabs._kinesis_base import KinesisMotorBase
+from stoner_measurement.instruments.thorlabs._kinesis_base import _KinesisMotorBase
 
 
-class ThorlabsHDR50(KinesisMotorBase):
+class ThorlabsHDR50(_KinesisMotorBase):
     """Driver for Thorlabs HDR50 driven through pylablib's Kinesis API.
 
     This driver is intentionally tolerant of small pylablib API naming

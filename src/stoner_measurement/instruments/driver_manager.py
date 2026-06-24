@@ -162,6 +162,8 @@ class InstrumentDriverManager:
         for _, cls in inspect.getmembers(module, inspect.isclass):
             if not issubclass(cls, BaseInstrument):
                 continue
+            if cls.__name__.startswith("_"):
+                continue
             if cls.__module__ != getattr(module, "__name__", ""):
                 continue
             if inspect.isabstract(cls):

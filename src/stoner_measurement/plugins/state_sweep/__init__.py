@@ -4,6 +4,9 @@ from stoner_measurement.plugins.state_sweep.base import StateSweepPlugin
 from stoner_measurement.plugins.state_sweep.magnet_controller import (
     MagnetControllerSweepPlugin,
 )
+from stoner_measurement.plugins.state_sweep.motor_controller import (
+    MotorControllerSweepPlugin,
+)
 from stoner_measurement.plugins.state_sweep.sweep_time import SweepTimePlugin
 from stoner_measurement.plugins.state_sweep.temperature_controller import (
     TemperatureControllerSweepPlugin,
@@ -11,6 +14,7 @@ from stoner_measurement.plugins.state_sweep.temperature_controller import (
 
 __all__ = [
     "MagnetControllerSweepPlugin",
+    "MotorControllerSweepPlugin",
     "StateSweepPlugin",
     "SweepTimePlugin",
     "TemperatureControllerSweepPlugin",

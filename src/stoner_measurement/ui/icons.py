@@ -389,6 +389,122 @@ def make_log_icon(size: int = 32) -> QIcon:
     return QIcon(QPixmap.fromImage(img))
 
 
+def make_motor_icon(size: int = 32) -> QIcon:
+    """Create a rotary-stage icon for the *Motor Control* action.
+
+    Draws a high-contrast stepper-motor body beneath a wrapped rotary dial with
+    a gold pointer, inspired by classic rotation-stage control buttons while
+    remaining clear in both light and dark application themes.
+
+    Keyword Parameters:
+        size (int):
+            Side length in pixels of the square icon.  Defaults to ``32``.
+
+    Returns:
+        (QIcon):
+            The rendered motor-control icon.
+
+    Examples:
+        >>> icon = make_motor_icon()
+        >>> icon.isNull()
+        False
+    """
+    # pylint: disable=too-many-locals
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    outline_colour = QColor(40, 40, 40)
+    dial_face = QColor(238, 238, 238)
+    dial_ring = QColor(150, 150, 150)
+    motor_body = QColor(70, 76, 86)
+    motor_highlight = QColor(120, 128, 140)
+    shaft_colour = QColor(220, 220, 220)
+    pointer_colour = QColor("#f4b400")
+    home_mark_colour = QColor("#42a5f5")
+
+    outline_pen = painter.pen()
+    outline_pen.setColor(outline_colour)
+    outline_pen.setWidth(max(1, size // 18))
+
+    dial_cx = size * 0.52
+    dial_cy = size * 0.38
+    dial_r = size * 0.26
+
+    painter.setPen(outline_pen)
+    painter.setBrush(dial_face)
+    painter.drawEllipse(QPointF(dial_cx, dial_cy), dial_r, dial_r)
+
+    ring_pen = painter.pen()
+    ring_pen.setColor(dial_ring)
+    ring_pen.setWidth(max(1, size // 24))
+    painter.setPen(ring_pen)
+    for angle_deg in range(-120, 241, 30):
+        angle_rad = math.radians(angle_deg)
+        outer = QPointF(
+            dial_cx + math.cos(angle_rad) * dial_r * 0.92,
+            dial_cy - math.sin(angle_rad) * dial_r * 0.92,
+        )
+        inner = QPointF(
+            dial_cx + math.cos(angle_rad) * dial_r * 0.72,
+            dial_cy - math.sin(angle_rad) * dial_r * 0.72,
+        )
+        painter.drawLine(inner, outer)
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(home_mark_colour)
+    painter.drawEllipse(QPointF(dial_cx, dial_cy - dial_r * 0.78), size * 0.035, size * 0.035)
+
+    pointer_angle = math.radians(65)
+    pointer_tip = QPointF(
+        dial_cx + math.cos(pointer_angle) * dial_r * 0.78,
+        dial_cy - math.sin(pointer_angle) * dial_r * 0.78,
+    )
+    pointer_left = QPointF(
+        dial_cx + math.cos(pointer_angle + 2.45) * dial_r * 0.20,
+        dial_cy - math.sin(pointer_angle + 2.45) * dial_r * 0.20,
+    )
+    pointer_right = QPointF(
+        dial_cx + math.cos(pointer_angle - 2.45) * dial_r * 0.20,
+        dial_cy - math.sin(pointer_angle - 2.45) * dial_r * 0.20,
+    )
+    painter.setBrush(pointer_colour)
+    painter.drawPolygon(QPolygonF([pointer_tip, pointer_left, pointer_right]))
+
+    painter.setBrush(shaft_colour)
+    painter.drawEllipse(QPointF(dial_cx, dial_cy), size * 0.06, size * 0.06)
+
+    motor_rect = QRectF(size * 0.18, size * 0.56, size * 0.46, size * 0.22)
+    painter.setPen(outline_pen)
+    painter.setBrush(motor_body)
+    painter.drawRoundedRect(motor_rect, size * 0.05, size * 0.05)
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(motor_highlight)
+    painter.drawRoundedRect(
+        QRectF(
+            motor_rect.x() + size * 0.03,
+            motor_rect.y() + size * 0.03,
+            motor_rect.width() * 0.82,
+            motor_rect.height() * 0.28,
+        ),
+        size * 0.03,
+        size * 0.03,
+    )
+
+    painter.setBrush(shaft_colour)
+    painter.drawRoundedRect(
+        QRectF(size * 0.60, size * 0.62, size * 0.13, size * 0.09),
+        size * 0.02,
+        size * 0.02,
+    )
+
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
 def make_magnet_icon(size: int = 32) -> QIcon:
     """Create a horseshoe-magnet icon for the *Magnet Control* action.
 

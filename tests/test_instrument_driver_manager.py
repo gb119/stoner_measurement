@@ -216,6 +216,93 @@ class TestSimulatedDrivers:
         assert status.at_target is False
         assert status.voltage == pytest.approx(0.0)
 
+    def test_simulated_motor_controller_moves_towards_target(self):
+        from stoner_measurement.instruments.simulated import SimulatedMotorController
+        from stoner_measurement.instruments.motor_controller import MotorMoveDirection
+
+        controller = SimulatedMotorController()
+        controller.connect()
+        controller.set_velocity(20.0)
+        controller.set_acceleration(60.0)
+        controller.move_to_angle(30.0, direction=MotorMoveDirection.CLOCKWISE)
+
+        controller._last_update -= 0.5  # pylint: disable=protected-access
+
+        status = controller.status
+
+        assert status.moving is True
+        assert status.target_angle == pytest.approx(30.0)
+        assert 0.0 < status.current_angle < 30.0
+        assert status.homed is True
+
+    def test_simulated_motor_controller_reaches_target(self):
+        from stoner_measurement.instruments.simulated import SimulatedMotorController
+        from stoner_measurement.instruments.motor_controller import MotorMoveDirection
+
+        controller = SimulatedMotorController()
+        controller.connect()
+        controller.set_velocity(20.0)
+        controller.set_acceleration(60.0)
+        controller.move_to_angle(30.0, direction=MotorMoveDirection.CLOCKWISE)
+
+        controller._last_update -= 5.0  # pylint: disable=protected-access
+
+        status = controller.status
+
+        assert status.current_angle == pytest.approx(30.0)
+        assert status.target_angle == pytest.approx(30.0)
+        assert status.moving is False
+
+    def test_simulated_motor_controller_accepts_absolute_targets_as_given(self):
+        from stoner_measurement.instruments.simulated import SimulatedMotorController
+        from stoner_measurement.instruments.motor_controller import MotorMoveDirection
+
+        controller = SimulatedMotorController()
+        controller.connect()
+        controller._position = 270.0  # pylint: disable=protected-access
+        controller.move_to_angle(90.0, direction=MotorMoveDirection.CLOCKWISE)
+
+        assert controller.get_target_position() == pytest.approx(90.0)
+
+        controller._position = 90.0  # pylint: disable=protected-access
+        controller.move_to_angle(270.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+
+        assert controller.get_target_position() == pytest.approx(270.0)
+
+        controller._position = 90.0  # pylint: disable=protected-access
+        controller.move_to_angle(135.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        assert controller.get_target_position() == pytest.approx(135.0)
+        controller._position = 180.0  # pylint: disable=protected-access
+        controller.move_to_angle(-180.0, direction=MotorMoveDirection.COUNTERCLOCKWISE)
+        assert controller.get_target_position() == pytest.approx(-180.0)
+
+        controller._position = 0.0  # pylint: disable=protected-access
+        controller.move_to_angle(180.0, direction=MotorMoveDirection.CLOCKWISE)
+        assert controller.get_target_position() == pytest.approx(180.0)
+
+        controller._position = 180.0  # pylint: disable=protected-access
+        controller.move_to_angle(-180.0, direction=MotorMoveDirection.COUNTERCLOCKWISE)
+        assert controller.get_target_position() == pytest.approx(-180.0)
+        controller._position = -180.0  # pylint: disable=protected-access
+        controller.move_to_angle(270.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        assert controller.get_target_position() == pytest.approx(270.0)
+
+        controller._position = 10.0  # pylint: disable=protected-access
+        controller.move_to_angle(100.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        assert controller.get_target_position() == pytest.approx(100.0)
+
+        controller._position = -180.0  # pylint: disable=protected-access
+        controller.move_to_angle(180.0, direction=MotorMoveDirection.CLOCKWISE)
+        assert controller.get_target_position() == pytest.approx(180.0)
+
+        controller._position = 170.0  # pylint: disable=protected-access
+        controller.move_to_angle(190.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        assert controller.get_target_position() == pytest.approx(190.0)
+
+        controller._position = 185.0  # pylint: disable=protected-access
+        controller.move_to_angle(188.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        assert controller.get_target_position() == pytest.approx(188.0)
+
     def test_discover_loads_third_party_entry_points(self, monkeypatch):
         fake_eps = [_FakeEntryPoint(name="third_party", target=_ThirdPartyInstrument)]
         monkeypatch.setattr(

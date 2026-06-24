@@ -17,7 +17,7 @@ _MotorFactory = Callable[[str], Any]
 _MISSING = object()
 
 
-class KinesisMotorBase(MotorController):
+class _KinesisMotorBase(MotorController):
     """Shared base for Thorlabs pylablib/Kinesis motor drivers.
 
     Handles all common Kinesis motor operations: connection lifecycle, motion

@@ -54,12 +54,29 @@ from stoner_measurement.plugins.command import (
     PlotTraceCommand,
     SaveCommand,
 )
-from stoner_measurement.plugins.monitor import MonitorPlugin
+from stoner_measurement.plugins.monitor import (
+    MagneticFieldMonitorPlugin,
+    MonitorPlugin,
+    MotorAngleMonitorPlugin,
+    TemperatureMonitorPlugin,
+)
 from stoner_measurement.plugins.sequence import SequencePlugin, TopLevelSequence
 from stoner_measurement.plugins.state import StatePlugin
 from stoner_measurement.plugins.state_control import StateControlPlugin
-from stoner_measurement.plugins.state_scan import CounterPlugin, StateScanPlugin
-from stoner_measurement.plugins.state_sweep import StateSweepPlugin, SweepTimePlugin
+from stoner_measurement.plugins.state_scan import (
+    CounterPlugin,
+    MagnetControllerScanPlugin,
+    MotorControllerScanPlugin,
+    StateScanPlugin,
+    TemperatureControllerScanPlugin,
+)
+from stoner_measurement.plugins.state_sweep import (
+    MagnetControllerSweepPlugin,
+    MotorControllerSweepPlugin,
+    StateSweepPlugin,
+    SweepTimePlugin,
+    TemperatureControllerSweepPlugin,
+)
 from stoner_measurement.plugins.trace import TraceData, TracePlugin
 from stoner_measurement.plugins.transform import TransformPlugin
 
@@ -69,14 +86,23 @@ __all__ = [
     "CounterPlugin",
     "DetailsCommand",
     "MonitorPlugin",
+    "MagneticFieldMonitorPlugin",
+    "MotorAngleMonitorPlugin",
     "PlotTraceCommand",
     "SaveCommand",
     "SequencePlugin",
     "StateControlPlugin",
     "StatePlugin",
     "StateScanPlugin",
+    "MagnetControllerScanPlugin",
+    "MotorControllerScanPlugin",
+    "TemperatureControllerScanPlugin",
     "StateSweepPlugin",
+    "MagnetControllerSweepPlugin",
+    "MotorControllerSweepPlugin",
     "SweepTimePlugin",
+    "TemperatureControllerSweepPlugin",
+    "TemperatureMonitorPlugin",
     "TopLevelSequence",
     "TraceData",
     "TracePlugin",

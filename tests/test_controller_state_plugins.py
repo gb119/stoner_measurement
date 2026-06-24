@@ -14,12 +14,17 @@ from stoner_measurement.magnet_control.types import (
     MagnetReading,
 )
 from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.monitor import MotorAngleMonitorPlugin
 from stoner_measurement.plugins.state import (
     _magnet_controller_plugin as magnet_module,
 )
 from stoner_measurement.plugins.state import (
+    _motor_controller_plugin as motor_module,
+)
+from stoner_measurement.plugins.state import (
     _temperature_controller_plugin as temperature_module,
 )
+from stoner_measurement.plugins.state_scan import MotorControllerScanPlugin
 from stoner_measurement.plugins.state_scan import (
     MagnetControllerScanPlugin,
     TemperatureControllerScanPlugin,
@@ -27,6 +32,7 @@ from stoner_measurement.plugins.state_scan import (
 from stoner_measurement.plugins.state_sweep import (
     MagnetControllerSweepPlugin,
     TemperatureControllerSweepPlugin,
+    MotorControllerSweepPlugin,
 )
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
@@ -162,6 +168,51 @@ class _FakeTemperatureEngine:
     def get_loop_settings(self, loop: int):
         self.loop_settings_calls.append(int(loop))
         return SimpleNamespace(input_channel="B")
+
+
+class _FakeMotorEngine:
+    def __init__(self) -> None:
+        self.connected_driver = object()
+        self.connected_driver_name = "SimulatedMotorController"
+        self.connected_transport_name = "Null (test)"
+        self.connected_address = ""
+        self.connect_calls: list[tuple[str, str, str]] = []
+        self.velocity_calls: list[float] = []
+        self.acceleration_calls: list[float] = []
+        self.move_calls: list[float] = []
+        self.read_calls = 0
+        self._state = SimpleNamespace(
+            reading=SimpleNamespace(
+                angle=12.5,
+                target_angle=15.0,
+                moving=True,
+                angular_rate=2.5,
+            ),
+            target_angle=15.0,
+            velocity=5.0,
+            acceleration=10.0,
+            at_target=True,
+            stable=False,
+        )
+
+    def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
+        self.connect_calls.append((driver_name, transport_name, address))
+
+    def read_controller_state(self):
+        self.read_calls += 1
+        return self._state
+
+    def get_engine_state(self):
+        return self._state
+
+    def set_velocity(self, value: float) -> None:
+        self.velocity_calls.append(float(value))
+
+    def set_acceleration(self, value: float) -> None:
+        self.acceleration_calls.append(float(value))
+
+    def move_to_angle(self, value: float) -> None:
+        self.move_calls.append(float(value))
 
 
 def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
@@ -367,3 +418,29 @@ def test_temperature_controller_sweep_advances_targets_from_multisegment_generat
     assert next(plugin) is True
     assert engine.setpoint_calls[-1] == (1, 10.0)
     assert engine.ramp_calls[-1] == (1, 120.0, True)
+
+
+def test_motor_angle_monitor_plugin_reports_engine_values(monkeypatch, qapp):
+    engine = _FakeMotorEngine()
+    from stoner_measurement.plugins.monitor import motor_controller as motor_monitor_module
+
+    monkeypatch.setattr(
+        motor_monitor_module,
+        "MotorControllerEngine",
+        type("FakeMotorControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MotorAngleMonitorPlugin()
+    plugin.connect()
+    values = plugin.read(force_poll=True)
+
+    assert engine.read_calls >= 1
+    assert values == {
+        "angle": 12.5,
+        "target_angle": 15.0,
+        "moving": 1.0,
+        "angular_rate": 2.5,
+        "at_target": 1.0,
+        "stable": 0.0,
+    }
+    assert plugin.reported_values()["motor_angle_monitor:Angle"] == "motor_angle_monitor.angle()"

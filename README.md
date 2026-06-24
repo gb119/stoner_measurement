@@ -107,6 +107,46 @@ panels from the toolbar or the Engines menu.
 
 ## Saving your work
 
+## Using the control engines from scripts
+
+The package also exposes the shared controller engines for scripting and
+interactive use. This is useful when you want to prototype automation logic
+without building a full GUI measurement sequence.
+
+For motor control, a simulated driver is available for testing:
+
+```python
+from stoner_measurement import MotorControllerEngine, SimulatedMotorController
+
+driver = SimulatedMotorController()
+engine = MotorControllerEngine()
+engine.connect_instrument(driver)
+
+engine.set_velocity(20.0)
+engine.set_acceleration(60.0)
+engine.move_to_angle(45.0)
+
+state = engine.read_controller_state()
+if state is not None and state.reading is not None:
+    print("Angle:", state.reading.angle)
+    print("Target:", state.reading.target_angle)
+    print("Moving:", state.reading.moving)
+
+engine.shutdown()
+```
+
+Equivalent top-level public imports are also available for the other shared
+controller systems:
+
+- `TemperatureControllerEngine`
+- `MagnetControllerEngine`
+- `MotorControllerEngine`
+
+Alongside these, the corresponding engine state and reading types are exported
+for use in scripts and notebooks.
+
+## Saving your work
+
 The application supports saving and loading both:
 
 - **measurement sequences** built in the graphical editor

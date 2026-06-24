@@ -1,0 +1,21 @@
+poll_interval_ms: 1000
+
+connection:
+  driver: ""
+  transport: "Null (test)"
+  address: ""
+
+motion:
+  velocity_deg_s: 10.0
+  acceleration_deg_s2: 10.0
+  direction: "clockwise"
+
+limits:
+  clockwise_deg: 190.0
+  counterclockwise_deg: 170.0
+
+stability:
+  tolerance_deg: 0.1
+  window_s: 10.0
+  min_rate: 0.001
+  unstable_holdoff_s: 2.0

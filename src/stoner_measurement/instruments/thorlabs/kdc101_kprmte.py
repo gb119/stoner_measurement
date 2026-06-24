@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from stoner_measurement.instruments.thorlabs._kinesis_base import KinesisMotorBase
+from stoner_measurement.instruments.thorlabs._kinesis_base import _KinesisMotorBase
 
 
-class ThorlabsKDC101KPRMTE(KinesisMotorBase):
+class ThorlabsKDC101KPRMTE(_KinesisMotorBase):
     """Driver for a Thorlabs KDC101 controller with a KPRMTE servo stage."""
 
     _EXPECTED_IDENTITY_TOKENS = ("KDC101", "KPRMTE", "THORLABS")

@@ -45,8 +45,13 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.oxford.OxfordIPS120` — concrete magnet supply driver
 * :class:`~stoner_measurement.instruments.oxford.OxfordMercuryIPS` — concrete magnet supply driver
 * :class:`~stoner_measurement.instruments.srs.SRS830` — concrete lock-in amplifier driver
-* :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81LockIn` — concrete lock-in amplifier driver
+* :class:`~stoner_measurement.instruments.lakeshore.LakeshoreM81LockIn` —
+  concrete lock-in amplifier driver
 * :class:`~stoner_measurement.instruments.thorlabs.ThorlabsHDR50` — concrete motor driver
+* :class:`~stoner_measurement.instruments.simulated.SimulatedTemperatureController` —
+  concrete simulated temperature controller
+* :class:`~stoner_measurement.instruments.simulated.SimulatedMagnetController` — concrete simulated magnet controller
+* :class:`~stoner_measurement.instruments.simulated.SimulatedMotorController` — concrete simulated motor controller
 * :class:`~stoner_measurement.instruments.thorlabs.ThorlabsKDC101KPRMTE` — concrete motor driver
 """
 
@@ -103,6 +108,11 @@ from stoner_measurement.instruments.nanovoltmeter import (
     NanovoltmeterCapabilities,
     NanovoltmeterFunction,
     NanovoltmeterTriggerSource,
+)
+from stoner_measurement.instruments.simulated import (
+    SimulatedMagnetController,
+    SimulatedMotorController,
+    SimulatedTemperatureController,
 )
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
@@ -181,6 +191,9 @@ __all__ = [
     "RampState",
     "SensorStatus",
     "SourceMeter",
+    "SimulatedMagnetController",
+    "SimulatedMotorController",
+    "SimulatedTemperatureController",
     "SourceMeterCapabilities",
     "SourceMode",
     "SourceSweepConfiguration",
