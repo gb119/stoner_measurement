@@ -408,13 +408,13 @@ class TestGenerateInstantiationCode:
     def test_guard_uses_instance_name(self):
         plugin = _MinimalPlugin()
         lines = plugin.generate_instantiation_code()
-        assert lines[0] == "if 'minimal' not in globals():"
+        assert lines[0] == 'if "minimal" not in globals():'
 
     def test_guard_uses_custom_instance_name(self):
         plugin = _MinimalPlugin()
         plugin.instance_name = "my_plugin"
         lines = plugin.generate_instantiation_code()
-        assert lines[0] == "if 'my_plugin' not in globals():"
+        assert lines[0] == 'if "my_plugin" not in globals():'
 
     def test_reconstruction_uses_base_plugin_from_json(self):
         plugin = _MinimalPlugin()

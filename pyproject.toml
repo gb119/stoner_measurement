@@ -65,6 +65,7 @@ dev = [
 [project.scripts]
 stoner-measurement = "stoner_measurement.main:main"
 stoner-measurement-install-menu = "stoner_measurement.desktop_integration:main"
+stoner-measurement-round-dial-demo = "stoner_measurement.round_dial_demo:main"
 
 [project.entry-points."stoner_measurement.plugins"]
 counter = "stoner_measurement.plugins.state_scan.counter:CounterPlugin"

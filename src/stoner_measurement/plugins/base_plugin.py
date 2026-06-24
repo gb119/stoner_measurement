@@ -1128,7 +1128,7 @@ class BasePlugin(ABC):
             >>> plugin = DummyPlugin()
             >>> lines = plugin.generate_instantiation_code()
             >>> lines[0]
-            "if 'dummy' not in globals():"
+            'if "dummy" not in globals():'
             >>> '_BasePlugin.from_json' in lines[1]
             True
             >>> '_json.loads' in lines[1]
@@ -1137,7 +1137,7 @@ class BasePlugin(ABC):
         var_name = self.instance_name
         config_dict_repr = repr(self.to_json())
         return [
-            f"if {var_name!r} not in globals():",
+            f'if "{var_name}" not in globals():',
             f"    {var_name} = _BasePlugin.from_json({config_dict_repr})",
             "",
         ]
