@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from qtpy.QtWidgets import QWidget
 
 from stoner_measurement.instruments.addressing import (
@@ -17,6 +19,42 @@ _STATUS_BACKGROUND = {
     VisaResourceStatus.ERROR: "#f8d7da",
 }
 
+_TRANSPORT_NAME_ALIASES = {
+    "null": "Null (test)",
+    "null (test)": "Null (test)",
+    "serial": "Serial",
+    "gpib": "GPIB",
+    "ethernet": "Ethernet",
+}
+
+
+def _normalise_transport_name(name: str) -> str:
+    """Return the canonical UI label for a transport name.
+
+    Args:
+        name (str):
+            Stored or selected transport name.
+
+    Returns:
+        (str):
+            Canonical combo-box label.
+    """
+    return _TRANSPORT_NAME_ALIASES.get(str(name).strip().lower(), str(name).strip())
+
+
+def _transport_combo_labels(panel) -> Iterable[str]:
+    """Yield all transport combo labels for *panel*."""
+    for index in range(panel._transport_combo.count()):
+        yield panel._transport_combo.itemText(index)
+
+
+def _transport_index_from_name(panel, transport: str) -> int:
+    """Return the combo-box index for *transport*, accepting aliases."""
+    canonical = _normalise_transport_name(transport)
+    for index, label in enumerate(_transport_combo_labels(panel)):
+        if _normalise_transport_name(label) == canonical:
+            return index
+    return -1
 
 def _set_widget_background(widget: QWidget, status: VisaResourceStatus) -> None:
     """Apply a connection-status background colour to a generic widget."""
@@ -36,7 +74,7 @@ def load_connection_preferences(panel) -> None:
             panel._driver_combo.setCurrentIndex(index)
 
     transport = panel._engine.preferred_transport_name
-    index = panel._transport_combo.findText(transport)
+    index = _transport_index_from_name(panel, transport)
     if index >= 0:
         panel._transport_combo.setCurrentIndex(index)
 
@@ -45,7 +83,7 @@ def load_connection_preferences(panel) -> None:
 
 def restore_preferred_address(panel) -> None:
     """Restore transport-specific address widgets from engine preferences."""
-    transport = panel._engine.preferred_transport_name
+    transport = _normalise_transport_name(panel._engine.preferred_transport_name)
     address = panel._engine.preferred_address
 
     if not address:
@@ -97,7 +135,7 @@ def selected_transport(panel, index: int) -> tuple[str, str]:
         host = panel._eth_host_edit.text().strip() or "localhost"
         port = panel._eth_port_spin.value()
         return "Ethernet", f"{host}:{port}"
-    return "Null", ""
+    return "Null (test)", ""
 
 
 def set_address_widget_status(panel, transport_index: int, status: VisaResourceStatus) -> None:
