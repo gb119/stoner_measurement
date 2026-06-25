@@ -14,6 +14,7 @@ References:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
 
@@ -38,6 +39,7 @@ _NPLC_MIN = 0.01
 _NPLC_MAX = 10.0
 
 _VALID_FORMAT_ELEMENTS = frozenset({"VOLT", "CURR", "RES", "TIME", "STAT"})
+logger = logging.getLogger(__name__)
 
 
 class FilterType(Enum):
@@ -1177,7 +1179,7 @@ class Keithley2400(SourceMeter):
             self.set_source_level(0.0)
             self.write(f"{self._source_prefix(source_mode)}:MODE FIX")
         except Exception:
-            pass
+            logger.debug("Failed to reset Keithley 2400 source level during output-off cleanup", exc_info=True)
         self.enable_output(False)
 
     def set_buffer_size(self, size: int) -> None:

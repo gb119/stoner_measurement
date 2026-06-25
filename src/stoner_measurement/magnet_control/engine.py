@@ -21,7 +21,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import QObject, QTimer
-from stoner_measurement.qt_compat import pyqtSlot
 
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
@@ -47,6 +46,7 @@ from stoner_measurement.magnet_control.types import (
     MagnetReading,
     MagnetStabilityConfig,
 )
+from stoner_measurement.qt_compat import pyqtSlot
 
 if TYPE_CHECKING:
     from stoner_measurement.instruments.magnet_controller import (
@@ -655,7 +655,7 @@ class MagnetControllerEngine(QObject):
                 try:
                     self._target_current = 0.0
                 except Exception:
-                    pass
+                    logger.debug("Failed to cache zero target current after go-to-zero command", exc_info=True)
             except Exception:
                 logger.exception("Failed to go to zero")
 
@@ -878,6 +878,7 @@ class MagnetControllerEngine(QObject):
         try:
             magnet_constant: float | None = driver.magnet_constant
         except Exception:
+            logger.debug("Failed to read magnet constant while updating magnet state", exc_info=True)
             magnet_constant = None
 
         persistent_current: float | None = None

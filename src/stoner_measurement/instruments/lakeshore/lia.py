@@ -187,7 +187,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
                 :attr:`~LockInReferenceSource.EXTERNAL`.
         """
         token = self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:RSRC?").strip().upper()
-        return LockInReferenceSource.INTERNAL if token == "INT" else LockInReferenceSource.EXTERNAL
+        return LockInReferenceSource.INTERNAL if token == "INT" else LockInReferenceSource.EXTERNAL  # nosec B105 - SCPI token, not a credential.
 
     def set_reference_source(self, source: LockInReferenceSource) -> None:
         """Set the reference source.
@@ -325,7 +325,7 @@ class LakeshoreM81LockIn(LockInAmplifier):
                 :attr:`~LockInInputCoupling.AC` or :attr:`~LockInInputCoupling.DC`.
         """
         token = self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:CPLS?").strip().upper()
-        return LockInInputCoupling.DC if token == "DC" else LockInInputCoupling.AC
+        return LockInInputCoupling.DC if token == "DC" else LockInInputCoupling.AC  # nosec B105 - SCPI token, not a credential.
 
     def set_input_coupling(self, coupling: LockInInputCoupling) -> None:
         """Set the input coupling mode.

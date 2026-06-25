@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import html as _html_lib
+import logging
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from io import StringIO
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt
-from stoner_measurement.qt_compat import pyqtSlot
 from qtpy.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from qtpy.QtWidgets import (
     QHBoxLayout,
@@ -19,10 +19,14 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.theme import colour
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
+
+logger = logging.getLogger(__name__)
 
 try:
     from qtconsole.inprocess import QtInProcessKernelManager
@@ -424,7 +428,7 @@ QToolTip {{
         try:
             self._shutdown_kernel()
         except Exception:
-            pass
+            logger.debug("Failed to shut down in-process console kernel during finalization", exc_info=True)
 
 
 class ConsoleWidget(QWidget):

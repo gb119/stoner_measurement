@@ -38,7 +38,6 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from stoner_measurement.qt_compat import pyqtSignal
 
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.plugins.trace.base import (
@@ -47,6 +46,7 @@ from stoner_measurement.plugins.trace.base import (
     TraceData,
 )
 from stoner_measurement.plugins.transform.base import TransformPlugin
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.editor_widget import EditorWidget
 from stoner_measurement.ui.theme import colour
 
@@ -1417,6 +1417,7 @@ class CurveFitPlugin(TransformPlugin):
         try:
             fit_func, p0_func = self._compile_fit_code()
         except Exception:
+            self.log.debug("CurveFit: failed to compile fit code while reading parameter overrides", exc_info=True)
             return {}, False
 
         if fit_func is None:
@@ -1427,6 +1428,7 @@ class CurveFitPlugin(TransformPlugin):
             try:
                 x_data, y_data, _, _, _, _ = self._get_data_arrays()
             except Exception:
+                self.log.debug("CurveFit: failed to read data while computing p0 parameter overrides", exc_info=True)
                 return {}, True
             if x_data is None or y_data is None:
                 return {}, True
@@ -1563,7 +1565,7 @@ class CurveFitPlugin(TransformPlugin):
             if isinstance(cols, list):
                 return cols
         except Exception:
-            pass
+            self.log.debug("CurveFit: failed to inspect columns for trace %r.", trace_key, exc_info=True)
         return []
 
     def _build_column_combo(self, widget: QWidget) -> QComboBox:

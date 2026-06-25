@@ -40,7 +40,7 @@ class TraceChannelSelectionMixin:
             if isinstance(cols, list):
                 return cols
         except Exception:
-            pass
+            self.log.debug("Failed to inspect columns for trace %r.", trace_key, exc_info=True)
         return []
 
     def _populate_column_combo(self, combo: QComboBox, trace_key: str) -> None:

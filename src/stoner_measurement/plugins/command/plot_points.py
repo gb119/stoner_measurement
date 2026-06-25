@@ -19,10 +19,10 @@ series, it is created automatically (on the right-hand side) when
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
 from qtpy.QtCore import Qt
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QColorDialog,
@@ -39,6 +39,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
 
 if TYPE_CHECKING:
@@ -862,14 +863,16 @@ class PlotPointsCommand(CommandPlugin):
 
         ensure_x = getattr(pw, "ensure_x_axis", None)
         if callable(ensure_x):
+            ensure_x = cast(Callable[[str, str], None], ensure_x)
             x_axis = self.x_axis_name or _DEFAULT_X_AXIS
-            ensure_x(x_axis, x_axis)
+            ensure_x(x_axis, x_axis)  # pylint: disable=not-callable
 
         ensure_y = getattr(pw, "ensure_y_axis", None)
         if callable(ensure_y):
+            ensure_y = cast(Callable[[str, str], None], ensure_y)
             for entry in self.y_entries:
                 y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS) or _DEFAULT_Y_AXIS
-                ensure_y(y_axis, y_axis)
+                ensure_y(y_axis, y_axis)  # pylint: disable=not-callable
 
 
 def _entry_style_dict(entry: dict) -> dict:

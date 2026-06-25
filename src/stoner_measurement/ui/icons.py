@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.resources
 import importlib.resources.abc
+import logging
 import math
 
 from qtpy.QtCore import QPointF, QRectF, Qt
@@ -26,6 +27,9 @@ from qtpy.QtGui import (
 )
 
 from stoner_measurement.ui.theme import colour
+
+logger = logging.getLogger(__name__)
+
 
 def _load_resource_icon(resource_path: str) -> QIcon | None:
     """Load a PNG icon from the bundled resources directory.
@@ -77,7 +81,7 @@ def make_generate_icon(size: int = 32) -> QIcon:
         if icon is not None:
             return icon
     except Exception:  # noqa: BLE001
-        pass
+        logger.debug("Falling back to generated build icon after resource load failed", exc_info=True)
 
     # Programmatic fallback: eight-toothed gear.
     img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
@@ -347,7 +351,7 @@ def make_log_icon(size: int = 32) -> QIcon:
         if icon is not None:
             return icon
     except Exception:  # noqa: BLE001
-        pass
+        logger.debug("Falling back to generated log icon after resource load failed", exc_info=True)
 
     # Programmatic fallback: document with coloured log lines.
     img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)

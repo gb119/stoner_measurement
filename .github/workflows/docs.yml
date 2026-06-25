@@ -32,7 +32,7 @@ jobs:
             graphviz-dev
 
       - name: Set up Miniconda
-        uses: conda-incubator/setup-miniconda@v3
+        uses: conda-incubator/setup-miniconda@fc2d68f6413eb2d87b895e92f8584b5b94a10167
         with:
           auto-update-conda: true
           activate-environment: stoner_measurement
