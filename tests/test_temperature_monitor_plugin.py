@@ -550,6 +550,5 @@ def test_widget_rebuilds_catalogs_on_output_settings_change(monkeypatch, qapp):
 
 
 if __name__ == "__main__":
-    import pytest
 
     raise SystemExit(pytest.main([__file__, "--pdb"]))

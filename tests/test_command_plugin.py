@@ -3239,6 +3239,5 @@ class TestPlotPointsCommand:
 
 
 if __name__ == "__main__":
-    import pytest
 
     raise SystemExit(pytest.main([__file__, "--pdb"]))

@@ -620,7 +620,6 @@ class TestMeasure:
         from unittest.mock import MagicMock, patch
 
         import numpy as np
-        import pytest
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -639,7 +638,6 @@ class TestMeasure:
         from unittest.mock import MagicMock, patch
 
         import numpy as np
-        import pytest
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
@@ -848,6 +846,5 @@ class TestComplianceBounds:
 
 
 if __name__ == "__main__":
-    import pytest
 
     raise SystemExit(pytest.main([__file__, "--pdb"]))
