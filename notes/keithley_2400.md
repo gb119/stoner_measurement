@@ -1,5 +1,7 @@
 # Keithley 2400 Series SourceMeter Python/SCPI Programming Context for LLMs
 
+<!-- markdownlint-disable MD013 -->
+
 This document is intended to be pasted into an LLM prompt as technical context for generating Python code that controls Keithley 2400-series SourceMeter instruments over GPIB, RS-232, USB-GPIB, or LAN-to-GPIB adapters. It is based on the Keithley **Series 2400 SourceMeter User’s Manual, document 2400S-900-01 Rev. K, September 2011**. The manual covers models in the 2400 family, including the 2400, 2400-LV, 2401, 2410, 2420, 2425, 2430, and 2440. Always check the exact model limits before generating source levels, ranges, pulse commands, or compliance values.
 
 > Safety: the 2400 family can source hazardous voltage and current. Generated code must default the output OFF, set conservative compliance limits before enabling output, and turn output OFF in `finally` blocks. The manual warns that shock hazards may exist above 30 V RMS, 42.4 V peak, or 60 VDC, and the terminals are for Category I/II style measurement/control connections rather than arbitrary mains connections.

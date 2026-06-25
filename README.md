@@ -105,8 +105,6 @@ For a typical experiment:
 Depending on your setup, you may also open the temperature or magnet control
 panels from the toolbar or the Engines menu.
 
-## Saving your work
-
 ## Using the control engines from scripts
 
 The package also exposes the shared controller engines for scripting and

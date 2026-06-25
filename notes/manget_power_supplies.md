@@ -1,3 +1,5 @@
+﻿# Magnet Power Supply Command Cross-Reference
+
 Below is a **strict command‑by‑command cross‑reference table** between:
 
 * ✅ **Lake Shore 625 (LS625)** — Chapter 5
@@ -14,9 +16,9 @@ This is organised as a **true mapping table**:
 
 ***
 
-# 📘 Full Command Cross‑Reference Table
+## 📘 Full Command Cross‑Reference Table
 
-## 🧲 1. Setpoint / Target Commands
+### 🧲 1. Setpoint / Target Commands
 
 | Function                  | Lake Shore 625  | IPS120   | Mercury IPS           | Notes                           |
 | ------------------------- | --------------- | -------- | --------------------- | ------------------------------- |
@@ -27,7 +29,7 @@ This is organised as a **true mapping table**:
 
 ***
 
-## 🚀 2. Ramp / Sweep Rate
+### 🚀 2. Ramp / Sweep Rate
 
 | Function       | Lake Shore 625 | IPS120   | Mercury IPS          | Notes                   |
 | -------------- | -------------- | -------- | -------------------- | ----------------------- |
@@ -37,7 +39,7 @@ This is organised as a **true mapping table**:
 
 ***
 
-## ⚙️ 3. Ramp Execution / State
+### ⚙️ 3. Ramp Execution / State
 
 | Function               | Lake Shore 625 | IPS120 | Mercury IPS   | Notes                     |
 | ---------------------- | -------------- | ------ | ------------- | ------------------------- |
@@ -48,7 +50,7 @@ This is organised as a **true mapping table**:
 
 ***
 
-## 🔌 4. Output Enable / Control Mode
+### 🔌 4. Output Enable / Control Mode
 
 | Function       | Lake Shore 625 | IPS120  | Mercury IPS        | Notes                           |
 | -------------- | -------------- | ------- | ------------------ | ------------------------------- |
@@ -59,7 +61,7 @@ This is organised as a **true mapping table**:
 
 ***
 
-## 🔥 5. Persistent Switch (Heater)
+### 🔥 5. Persistent Switch (Heater)
 
 | Function                | Lake Shore 625 | IPS120 | Mercury IPS        | Notes                |
 | ----------------------- | -------------- | ------ | ------------------ | -------------------- |
@@ -69,7 +71,7 @@ This is organised as a **true mapping table**:
 
 ***
 
-## 📊 6. Voltage & Measurement
+### 📊 6. Voltage & Measurement
 
 | Function     | Lake Shore 625 | IPS120 | Mercury IPS      | Notes          |
 | ------------ | -------------- | ------ | ---------------- | -------------- |
@@ -79,7 +81,7 @@ This is organised as a **true mapping table**:
 
 ***
 
-## ⚡ 7. Limits & Protection
+### ⚡ 7. Limits & Protection
 
 | Function           | Lake Shore 625       | IPS120          | Mercury IPS         | Notes                    |
 | ------------------ | -------------------- | --------------- | ------------------- | ------------------------ |
@@ -89,7 +91,7 @@ This is organised as a **true mapping table**:
 
 ***
 
-## 📡 8. Status / Diagnostics
+### 📡 8. Status / Diagnostics
 
 | Function        | Lake Shore 625    | IPS120         | Mercury IPS       | Notes                      |
 | --------------- | ----------------- | -------------- | ----------------- | -------------------------- |
@@ -99,7 +101,7 @@ This is organised as a **true mapping table**:
 
 ***
 
-## ⚙️ 9. Polarity / Direction
+### ⚙️ 9. Polarity / Direction
 
 | Function         | Lake Shore 625    | IPS120  | Mercury IPS                | Notes           |
 | ---------------- | ----------------- | ------- | -------------------------- | --------------- |
@@ -108,11 +110,11 @@ This is organised as a **true mapping table**:
 
 ***
 
-## 🧠 10. Control Model Commands (Grouped)
+### 🧠 10. Control Model Commands (Grouped)
 
-### ✅ Lake Shore 625 (flat procedural)
+#### ✅ Lake Shore 625 (flat procedural)
 
-```
+```text
 SETI
 RATE
 RAMP
@@ -127,9 +129,9 @@ RDGST?
 
 ***
 
-### ✅ IPS120 (compact state-machine)
+#### ✅ IPS120 (compact state-machine)
 
-```
+```text
 I     → target
 S     → ramp rate
 A     → activity (A0–A3)
@@ -142,9 +144,9 @@ X     → status
 
 ***
 
-### ✅ Mercury IPS (hierarchical system)
+#### ✅ Mercury IPS (hierarchical system)
 
-```
+```text
 SET:DEV:...:CURR
 SET:DEV:...:RSET
 SET:DEV:...:ACTN
@@ -157,9 +159,9 @@ READ:DEV:...:STAT?
 
 ***
 
-# 🔍 11. Commands With NO Direct Equivalent
+## 🔍 11. Commands With NO Direct Equivalent
 
-## ✅ Unique to IPS120
+### ✅ Unique to IPS120
 
 | Command | Purpose                      |
 | ------- | ---------------------------- |
@@ -169,7 +171,7 @@ READ:DEV:...:STAT?
 
 ***
 
-## ✅ Unique to Mercury IPS
+### ✅ Unique to Mercury IPS
 
 | Command                   | Purpose                |
 | ------------------------- | ---------------------- |
@@ -180,7 +182,7 @@ READ:DEV:...:STAT?
 
 ***
 
-## ✅ Unique to Lake Shore 625
+### ✅ Unique to Lake Shore 625
 
 | Command                  | Purpose                          |
 | ------------------------ | -------------------------------- |
@@ -190,9 +192,9 @@ READ:DEV:...:STAT?
 
 ***
 
-# 🧠 12. True One-to-One Equivalence Summary
+## 🧠 12. True One-to-One Equivalence Summary
 
-## Core shared control set
+### Core shared control set
 
 | Physical concept | LS625  | IPS120 | Mercury     |
 | ---------------- | ------ | ------ | ----------- |
@@ -205,17 +207,17 @@ READ:DEV:...:STAT?
 
 ***
 
-# ✅ Final Interpretation
+## ✅ Final Interpretation
 
-## 🔑 All three share the same physical control loop:
+### 🔑 All three share the same physical control loop
 
-```
+```text
 Target → Ramp rate → State → Output → Magnet
 ```
 
 ***
 
-## ⚖️ But differ in *how commands express this*:
+### ⚖️ But differ in *how commands express this*
 
 | Instrument  | Expression                        |
 | ----------- | --------------------------------- |
@@ -225,7 +227,7 @@ Target → Ramp rate → State → Output → Magnet
 
 ***
 
-## 🧠 One-line comparison
+### 🧠 One-line comparison
 
 * **LS625** → procedural command interface
 * **IPS120** → compact symbolic state machine

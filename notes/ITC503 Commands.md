@@ -1,14 +1,14 @@
-***
-
-# 📘 ITC503 Programmer’s Reference Sheet
+﻿# 📘 ITC503 Programmer’s Reference Sheet
 
 ***
 
-# 🧭 1. Command Model Overview
+***
+
+## 🧭 1. Command Model Overview
 
 The ITC503 has **two layers of control**:
 
-## 🔹 Layer 1 – Real‑time control (Chapter 9)
+### 🔹 Layer 1 – Real‑time control (Chapter 9)
 
 * Immediate commands (single letter)
 * Register readback (`Rn`)
@@ -20,7 +20,7 @@ The ITC503 has **two layers of control**:
 
 ***
 
-## 🔹 Layer 2 – Programmed control (Chapter 10)
+### 🔹 Layer 2 – Programmed control (Chapter 10)
 
 * “Specialist” commands
 * Used to configure:
@@ -29,17 +29,17 @@ The ITC503 has **two layers of control**:
 
 ***
 
-# 🔌 2. Command Syntax
+## 🔌 2. Command Syntax
 
-## ✅ Write commands
+### ✅ Write commands
 
-```
+```text
 <Letter><value>
 ```
 
 Examples:
 
-```
+```text
 T300     → set temperature
 P20      → proportional band
 O50      → 50% heater
@@ -47,9 +47,9 @@ O50      → 50% heater
 
 ***
 
-## ✅ Read commands
+### ✅ Read commands
 
-```
+```text
 Rn
 ```
 
@@ -57,9 +57,9 @@ Returns integer (scaled; see instrument settings)
 
 ***
 
-## ✅ Status query
+### ✅ Status query
 
-```
+```text
 X
 ```
 
@@ -67,11 +67,11 @@ Returns encoded status string
 
 ***
 
-# 📊 3. Read Registers (Chapter 9)
+## 📊 3. Read Registers (Chapter 9)
 
-## 🔹 Core registers
+### 🔹 Core registers
 
-```
+```text
 R0   → Set temperature  
 R1   → Sensor 1 temperature  
 R2   → Sensor 2 temperature  
@@ -87,9 +87,9 @@ R10  → Derivative time
 
 ***
 
-## 🔹 Diagnostics
+### 🔹 Diagnostics
 
-```
+```text
 R11 → Channel 1 frequency / 4  
 R12 → Channel 2 frequency / 4  
 R13 → Channel 3 frequency / 4  
@@ -97,20 +97,20 @@ R13 → Channel 3 frequency / 4
 
 ***
 
-# 🌡️ 4. Temperature & Control Commands
+## 🌡️ 4. Temperature & Control Commands
 
-## 🔹 Setpoint
+### 🔹 Setpoint
 
-```
+```text
 Tvalue     → Set temperature
 R0         → Read setpoint
 ```
 
 ***
 
-## 🔹 Control mode
+### 🔹 Control mode
 
-```
+```text
 A0  → Manual  
 A1  → Automatic (PID)  
 A2  → Auto (variant-dependent mode)
@@ -118,9 +118,9 @@ A2  → Auto (variant-dependent mode)
 
 ***
 
-## 🔹 Sensor selection
+### 🔹 Sensor selection
 
-```
+```text
 C0 → Sensor 1  
 C1 → Sensor 2  
 C2 → Sensor 3  
@@ -128,35 +128,35 @@ C2 → Sensor 3
 
 ***
 
-# 🔥 5. Heater Control
+## 🔥 5. Heater Control
 
-```
+```text
 Ovalue   → Set manual heater output (%)  
 Hn       → Heater range (0–max)  
 ```
 
 Read:
 
-```
+```text
 R5 → Heater %  
 R6 → Heater voltage  
 ```
 
 ***
 
-# ⚙️ 6. PID Control (Immediate)
+## ⚙️ 6. PID Control (Immediate)
 
-## 🔹 Set
+### 🔹 Set
 
-```
+```text
 Pvalue   → Proportional band  
 Ivalue   → Integral time  
 Dvalue   → Derivative time  
 ```
 
-## 🔹 Read
+### 🔹 Read
 
-```
+```text
 R8 → P  
 R9 → I  
 R10 → D  
@@ -164,9 +164,9 @@ R10 → D
 
 ***
 
-# 🚀 7. Sweep Control (Execution – Chapter 9)
+## 🚀 7. Sweep Control (Execution – Chapter 9)
 
-```
+```text
 S0  → Stop sweep  
 S1  → Start sweep  
 Sn  → Jump to program step n (2–32)
@@ -183,11 +183,11 @@ Sn  → Jump to program step n (2–32)
 
 ***
 
-# 📡 8. Status String (`X`)
+## 📡 8. Status String (`X`)
 
 Example:
 
-```
+```text
 X0A1C1S05H2L0
 ```
 
@@ -205,25 +205,25 @@ X0A1C1S05H2L0
 
 ***
 
-# 🗂️ 9. Chapter 10 – Specialist Commands
+## 🗂️ 9. Chapter 10 – Specialist Commands
 
 This is where the ITC503 becomes **programmable and stateful**.
 
 ***
 
-# ⚙️ 9.1 PID Table Programming
+## ⚙️ 9.1 PID Table Programming
 
-## ✅ Concept
+### ✅ Sweep table concept
 
 You define **multiple PID sets** tied to temperature regions:
 
-```
+```text
 Temperature range → P, I, D
 ```
 
 ***
 
-## ✅ Capabilities
+### ✅ Capabilities
 
 * Store multiple PID entries
 * Automatically select based on temperature
@@ -231,9 +231,9 @@ Temperature range → P, I, D
 
 ***
 
-## ✅ Structure (conceptual)
+### ✅ Sweep table structure (conceptual)
 
-```
+```text
 Entry n:
   T_low
   T_high
@@ -244,7 +244,7 @@ Entry n:
 
 ***
 
-## ✅ Use case
+### ✅ Use case
 
 Instead of:
 
@@ -260,15 +260,15 @@ Switched automatically
 
 ***
 
-# 🚀 9.2 Sweep Table Programming
+## 🚀 9.2 Sweep Table Programming
 
-## ✅ Concept
+### ✅ Concept
 
 Defines a **multi-step temperature program**
 
 ***
 
-## ✅ Each step includes:
+### ✅ Each step includes
 
 * Target temperature
 * Sweep characteristics
@@ -276,9 +276,9 @@ Defines a **multi-step temperature program**
 
 ***
 
-## ✅ Structure (conceptual)
+### ✅ Structure (conceptual)
 
-```
+```text
 Step 1: T1  
 Step 2: T2  
 Step 3: T3  
@@ -288,9 +288,9 @@ Step N
 
 ***
 
-## ✅ Execution
+### ✅ Execution
 
-```
+```text
 S1 → start  
 S5 → jump to step 5  
 S0 → stop  
@@ -298,18 +298,18 @@ S0 → stop
 
 ***
 
-## ✅ Special behaviour
+### ✅ Special behaviour
 
 * Odd step entry triggers **pre-step temperature snap**
 * Even steps → normal progression
 
 ***
 
-# 🧠 10. Internal Model
+## 🧠 10. Internal Model
 
 The ITC503 can be understood as:
 
-```
+```text
              ┌─────────────────────┐
              │   PID TABLE         │
              └────────┬────────────┘
@@ -330,24 +330,24 @@ The ITC503 can be understood as:
 
 ***
 
-# ⚖️ 11. Key Operational Differences vs Modern Controllers
+## ⚖️ 11. Key Operational Differences vs Modern Controllers
 
 | Feature                  | ITC503 |
 | ------------------------ | ------ |
-| Immediate control        | ✅      |
-| Register-based readback  | ✅      |
-| PID table switching      | ✅      |
-| Sweep program execution  | ✅      |
-| Continuous ramp          | ❌      |
-| Self-describing commands | ❌      |
+| Immediate control        | Yes    |
+| Register-based readback  | Yes    |
+| PID table switching      | Yes    |
+| Sweep program execution  | Yes    |
+| Continuous ramp          | No     |
+| Self-describing commands | No     |
 
 ***
 
-# ✅ 12. Minimal Working Command Sequences
+## ✅ 12. Minimal Working Command Sequences
 
-## 🔹 Basic temperature control
+### 🔹 Basic temperature control
 
-```
+```text
 C0        → select sensor 1  
 T300      → set temperature  
 A1        → enable control  
@@ -355,26 +355,26 @@ A1        → enable control
 
 ***
 
-## 🔹 Manual heater control
+### 🔹 Manual heater control
 
-```
+```text
 A0        → manual  
 O40       → 40% output  
 ```
 
 ***
 
-## 🔹 Start programmed temperature run
+### 🔹 Start programmed temperature run
 
-```
+```text
 S1        → start sweep program  
 ```
 
 ***
 
-## 🔹 Read everything important
+### 🔹 Read everything important
 
-```
+```text
 R0  → setpoint  
 R1  → temperature  
 R5  → heater  
@@ -384,11 +384,11 @@ X   → system status
 
 ***
 
-# ✅ Final Takeaways
+## ✅ Final Takeaways
 
 The ITC503 is fundamentally:
 
-### ✅ A hybrid system:
+### ✅ A hybrid system
 
 * **Registers (R0–R13)** for live values
 * **Immediate commands (T, P, I, D, etc.)**

@@ -1,11 +1,10 @@
+﻿# 📘 IPS120 Programmer’s Reference (Chapter 8–aligned)
 
 ***
 
-# 📘 IPS120 Programmer’s Reference (Chapter 8–aligned)
-
 ***
 
-# 🧭 1. Command Model Overview
+## 🧭 1. Command Model Overview
 
 The IPS120 uses a **single-layer command system**:
 
@@ -15,7 +14,7 @@ The IPS120 uses a **single-layer command system**:
 
 ***
 
-## ✅ Command types
+### ✅ Command types
 
 | Type          | Format            | Example |
 | ------------- | ----------------- | ------- |
@@ -25,11 +24,11 @@ The IPS120 uses a **single-layer command system**:
 
 ***
 
-# 📊 2. Readback Registers (`R`)
+## 📊 2. Readback Registers (`R`)
 
-## 🔹 Core registers
+### 🔹 Core registers
 
-```
+```text
 R0   → Demand current (setpoint)
 R1   → Measured current
 R2   → Measured voltage
@@ -42,7 +41,7 @@ R7   → Measured field (when fitted / field mode active)
 
 ***
 
-## 🔹 Notes
+### 🔹 Control mode notes
 
 * Units depend on instrument configuration:
   * Current mode (A)
@@ -51,17 +50,17 @@ R7   → Measured field (when fitted / field mode active)
 
 ***
 
-# ⚙️ 3. Core Control Commands
+## ⚙️ 3. Core Control Commands
 
-## 🔹 `I` — Set current / field target
+### 🔹 `I` — Set current / field target
 
-```
+```text
 I<value>
 ```
 
 Example:
 
-```
+```text
 I50.0
 ```
 
@@ -70,15 +69,15 @@ I50.0
 
 ***
 
-## 🔹 `S` — Set sweep (ramp) rate
+### 🔹 `S` — Set sweep (ramp) rate
 
-```
+```text
 S<value>
 ```
 
 Example:
 
-```
+```text
 S0.2
 ```
 
@@ -87,9 +86,9 @@ S0.2
 
 ***
 
-## 🔹 `A` — Activity (state machine)
+### 🔹 `A` — Activity (state machine)
 
-```
+```text
 A0 → Hold  
 A1 → Ramp to demand  
 A2 → Ramp to zero  
@@ -98,7 +97,7 @@ A3 → Clamp (fast stop / safe state)
 
 ***
 
-## 🔹 Behaviour summary
+### 🔹 Behaviour summary
 
 | Command | Action                                     |
 | ------- | ------------------------------------------ |
@@ -109,18 +108,18 @@ A3 → Clamp (fast stop / safe state)
 
 ***
 
-# 🔥 4. Persistent Switch Control
+## 🔥 4. Persistent Switch Control
 
-## 🔹 `H` — Heater control
+### 🔹 `H` — Heater control
 
-```
+```text
 H0 → Heater OFF (persistent mode ON)
 H1 → Heater ON (power supply drives current)
 ```
 
 ***
 
-## 🔹 Behaviour
+### 🔹 Protection behaviour
 
 | Heater | Mode                   |
 | ------ | ---------------------- |
@@ -129,18 +128,18 @@ H1 → Heater ON (power supply drives current)
 
 ***
 
-## 🔹 Important constraint
+### 🔹 Important constraint
 
 * You should **only ramp with heater ON**
 * Switching heater OFF traps current in magnet
 
 ***
 
-# 🧲 5. Polarity / Output Direction
+## 🧲 5. Polarity / Output Direction
 
-## 🔹 `D` — Polarity (if fitted)
+### 🔹 `D` — Polarity (if fitted)
 
-```
+```text
 D0 → Positive  
 D1 → Negative
 ```
@@ -149,11 +148,11 @@ D1 → Negative
 
 ***
 
-# ⚙️ 6. Control / Mode Settings
+## ⚙️ 6. Control / Mode Settings
 
-## 🔹 `C` — Control mode
+### 🔹 `C` — Control mode
 
-```
+```text
 C0 → Local control
 C1 → Remote & locked
 C2 → Remote & unlocked
@@ -161,34 +160,34 @@ C2 → Remote & unlocked
 
 ***
 
-## 🔹 Notes
+### 🔹 Notes
 
 * Required for remote automation
 * Typical usage:
 
-```
+```text
 C1
 ```
 
 ***
 
-# 📡 7. Status Command
+## 📡 7. Status Command
 
-## 🔹 `X` — System status string
+### 🔹 `X` — System status string
 
-```
+```text
 X
 ```
 
 Returns encoded string, e.g.:
 
-```
+```text
 X0A1H1M00P00
 ```
 
 ***
 
-## 🔹 Key fields
+### 🔹 Key fields
 
 | Field | Meaning                   |
 | ----- | ------------------------- |
@@ -199,24 +198,24 @@ X0A1H1M00P00
 
 ***
 
-## 🔹 Interpretation
+### 🔹 Interpretation
 
 Must parse character-by-character — no delimiters.
 
 ***
 
-# 🔌 8. Limit and Protection System
+## 🔌 8. Limit and Protection System
 
-## 🔹 Read-only via registers
+### 🔹 Read-only via registers
 
-```
+```text
 R5 → Current limit  
 R6 → Voltage limit  
 ```
 
 ***
 
-## 🔹 Behaviour
+### 🔹 Behaviour
 
 * Limits are enforced automatically
 * If exceeded:
@@ -225,16 +224,16 @@ R6 → Voltage limit
 
 ***
 
-# ⚠️ 9. Protection / Fault Behaviour
+## ⚠️ 9. Protection / Fault Behaviour
 
-## 🔹 `A3` — Clamp (if supported)
+### 🔹 `A3` — Clamp (if supported)
 
 * Immediately stops ramp
 * Forces safe output behaviour
 
 ***
 
-## 🔹 Fault indications
+### 🔹 Fault indications
 
 * Reflected in `X` status string
 * May include:
@@ -244,9 +243,9 @@ R6 → Voltage limit
 
 ***
 
-# 🧠 10. Internal Control Model
+## 🧠 10. Internal Control Model
 
-```
+```text
           ┌────────────────────┐
           │ Demand Current (I) │
           └─────────┬──────────┘
@@ -270,11 +269,11 @@ R6 → Voltage limit
 
 ***
 
-# 🧪 11. Complete Command List (Chapter 8 Summary)
+## 🧪 11. Complete Command List (Chapter 8 Summary)
 
-## ✅ Control commands
+### ✅ Control commands
 
-```
+```text
 A0–A3    → Activity control  
 C0–C2    → Control/remote mode  
 D0–D1    → Output polarity (if available)  
@@ -285,20 +284,20 @@ S<value> → Set ramp rate
 
 ***
 
-## ✅ Readback commands
+### ✅ Readback commands
 
-```
+```text
 R0–R7 → System registers  
 X     → Full status string  
 ```
 
 ***
 
-# 🧪 12. Minimal Working Sequences
+## 🧪 12. Minimal Working Sequences
 
-## 🔹 Ramp to field
+### 🔹 Ramp to field
 
-```
+```text
 C1        → remote control  
 H1        → heater ON  
 I50.0     → target current  
@@ -308,34 +307,34 @@ A1        → start ramp
 
 ***
 
-## 🔹 Hold current
+### 🔹 Hold current
 
-```
+```text
 A0
 ```
 
 ***
 
-## 🔹 Go to zero
+### 🔹 Go to zero
 
-```
+```text
 A2
 ```
 
 ***
 
-## 🔹 Enter persistent mode
+### 🔹 Enter persistent mode
 
-```
+```text
 A0  
 H0  
 ```
 
 ***
 
-## 🔹 Read state
+### 🔹 Read state
 
-```
+```text
 R1   → current  
 R2   → voltage  
 R4   → ramp rate  
@@ -345,20 +344,20 @@ X    → full system state
 
 ***
 
-# ⚖️ 13. Key Differences vs ITC503
+## ⚖️ 13. Key Differences vs ITC503
 
 | Feature             | ITC503 | IPS120 |
 | ------------------- | ------ | ------ |
-| Registers           | ✅      | ✅      |
-| PID control         | ✅      | ❌      |
-| PID tables          | ✅      | ❌      |
-| Sweep program       | ✅      | ❌      |
-| Continuous ramp     | ❌      | ✅      |
+| Registers           | Yes    | Yes    |
+| PID control         | Yes    | No     |
+| PID tables          | Yes    | No     |
+| Sweep program       | Yes    | No     |
+| Continuous ramp     | No     | Yes    |
 | Internal automation | High   | Low    |
 
 ***
 
-# ✅ Final Takeaways
+## ✅ Final Takeaways
 
 The IPS120 is:
 
@@ -371,7 +370,7 @@ The IPS120 is:
 
 ***
 
-### ✅ A **state machine**
+#### ✅ A **state machine**
 
 * Controlled via:
   * `A` activity
@@ -380,11 +379,10 @@ The IPS120 is:
 
 ***
 
-### ⚠️ Key operational constraints
+#### ⚠️ Key operational constraints
 
 * Heater must be **ON for ramping**
 * Persistent mode must be handled carefully
 * Status parsing (`X`) is essential for safe control
 
 ***
-
