@@ -19,7 +19,6 @@ from qtpy.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
-from stoner_measurement.ui.theme import colour
 
 #: Stylesheet templates for each connection status.  ``{bg}`` is replaced
 #: with the actual background colour token.

@@ -13,7 +13,6 @@ import urllib.parse
 from abc import ABC, abstractmethod
 from enum import Enum
 
-from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.lock_registry import canonical_resource_key
 from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE
 

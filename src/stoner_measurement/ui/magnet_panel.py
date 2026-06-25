@@ -59,7 +59,6 @@ from stoner_measurement.magnet_control.engine import MagnetControllerEngine
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
-    MagnetReading,
 )
 from stoner_measurement.ui.icons import make_magnet_icon
 from stoner_measurement.ui.plot_widget import PlotWidget

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 

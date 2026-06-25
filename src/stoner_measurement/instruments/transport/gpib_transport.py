@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import re
 from time import perf_counter, sleep
-from traceback import format_exc
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.errors import InstrumentError

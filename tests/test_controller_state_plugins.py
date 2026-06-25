@@ -19,12 +19,8 @@ from stoner_measurement.plugins.state import (
     _magnet_controller_plugin as magnet_module,
 )
 from stoner_measurement.plugins.state import (
-    _motor_controller_plugin as motor_module,
-)
-from stoner_measurement.plugins.state import (
     _temperature_controller_plugin as temperature_module,
 )
-from stoner_measurement.plugins.state_scan import MotorControllerScanPlugin
 from stoner_measurement.plugins.state_scan import (
     MagnetControllerScanPlugin,
     TemperatureControllerScanPlugin,
@@ -32,7 +28,6 @@ from stoner_measurement.plugins.state_scan import (
 from stoner_measurement.plugins.state_sweep import (
     MagnetControllerSweepPlugin,
     TemperatureControllerSweepPlugin,
-    MotorControllerSweepPlugin,
 )
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
