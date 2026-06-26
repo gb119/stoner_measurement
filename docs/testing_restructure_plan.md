@@ -165,19 +165,35 @@ Result:
 - Full collection: 2386 tests collected.
 - Focused Ruff import/name checks passed.
 
+## Completed In Third Migration Pass
+
+- Moved the scan generator tests into `tests/unit/scan/`:
+  - `tests/test_scan_generators.py` -> `tests/unit/scan/test_scan_generators.py`
+  - `tests/test_stepped_scan_generator.py` -> `tests/unit/scan/test_stepped_scan_generator.py`
+  - `tests/test_list_scan_generator.py` -> `tests/unit/scan/test_list_scan_generator.py`
+  - `tests/test_ramp_scan_generator.py` -> `tests/unit/scan/test_ramp_scan_generator.py`
+  - `tests/test_arbitrary_function_scan_generator.py` -> `tests/unit/scan/test_arbitrary_function_scan_generator.py`
+- Verified the migrated tranche:
+
+```powershell
+conda run -n stoner_measurement pytest tests/unit/scan --tb=short
+conda run -n stoner_measurement pytest --collect-only -q
+conda run -n stoner_measurement ruff check tests/unit/scan --select "F401,F811,F821,F841"
+```
+
+Result:
+
+- Scan tranche: 274 passed.
+- Full collection: 2386 tests collected.
+- Focused Ruff import/name checks passed.
+
 ## Next Recommended Migration Batch
 
-1. Move scan generator tests into `tests/unit/scan/`:
-   - `tests/test_scan_generators.py`
-   - `tests/test_stepped_scan_generator.py`
-   - `tests/test_list_scan_generator.py`
-   - `tests/test_ramp_scan_generator.py`
-   - `tests/test_arbitrary_function_scan_generator.py`
-2. Start transport contract tests in `tests/unit/instruments/contracts/`, then
+1. Start transport contract tests in `tests/unit/instruments/contracts/`, then
    move concrete transport tests under `tests/unit/instruments/transport/`.
-3. Add first cold-spot tests for `ui/settings_dialog.py` under
+2. Add first cold-spot tests for `ui/settings_dialog.py` under
    `tests/unit/ui/dialogs/test_settings_dialog.py`.
-4. Begin splitting `tests/test_command_plugin.py` into
+3. Begin splitting `tests/test_command_plugin.py` into
    `tests/unit/plugins/command/test_<command>.py`.
-5. Begin splitting `tests/test_instruments.py` into
+4. Begin splitting `tests/test_instruments.py` into
    `tests/unit/instruments/drivers/` once transport contracts are in place.
