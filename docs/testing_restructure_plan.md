@@ -279,9 +279,135 @@ Result:
 - Full collection: 2401 tests collected.
 - Focused Ruff import/name checks passed.
 
+## Completed In Eighth Migration Pass
+
+- Began splitting `tests/test_command_plugin.py` into
+  `tests/unit/plugins/command/test_<command>.py`.
+- Moved the low-dependency command coverage into focused unit files:
+  - `tests/unit/plugins/command/test_base_command.py`
+  - `tests/unit/plugins/command/test_wait_command.py`
+  - `tests/unit/plugins/command/test_status_command.py`
+  - `tests/unit/plugins/command/test_alert_command.py`
+  - `tests/unit/plugins/command/test_plot_clear_command.py`
+- Trimmed `tests/test_command_plugin.py` so it now retains only the larger
+  `SaveCommand`, `PlotTraceCommand`, `DetailsCommand`, and `PlotPointsCommand`
+  groups for follow-up passes.
+- Updated the migrated base command config-tabs assertion to match the current
+  base plugin contract: command config tab first, optional About tab last.
+- Verified the tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\plugins\command\test_base_command.py tests\unit\plugins\command\test_wait_command.py tests\unit\plugins\command\test_status_command.py tests\unit\plugins\command\test_alert_command.py tests\unit\plugins\command\test_plot_clear_command.py tests\test_command_plugin.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\plugins\command tests\test_command_plugin.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Command-plugin tranche: 256 passed.
+- Full collection: 2401 tests collected.
+- Ruff checks passed for the migrated command files and remaining command
+  plugin file.
+
+## Completed In Ninth Migration Pass
+
+- Continued splitting `tests/test_command_plugin.py` by moving
+  `DetailsCommand` coverage into
+  `tests/unit/plugins/command/test_details_command.py`.
+- Replaced repeated inline imports in the migrated tests with module-level
+  imports for the command, Qt widgets, settings helpers, and `BasePlugin`.
+- Trimmed `tests/test_command_plugin.py` so it now retains only the larger
+  `SaveCommand`, `PlotTraceCommand`, and `PlotPointsCommand` groups.
+- Verified the tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\plugins\command\test_details_command.py tests\test_command_plugin.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\plugins\command tests\test_command_plugin.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Details-command tranche plus remaining command monolith: 174 passed.
+- Full collection: 2401 tests collected.
+- Ruff checks passed for the command test area.
+
+## Completed In Tenth Migration Pass
+
+- Continued splitting `tests/test_command_plugin.py` by moving
+  `PlotPointsCommand` coverage into
+  `tests/unit/plugins/command/test_plot_points_command.py`.
+- Kept the small plot-timeout test double local to the new file so
+  `PlotPointsCommand` tests are independent of the remaining PlotTrace block.
+- Trimmed `tests/test_command_plugin.py` so it now retains only
+  `SaveCommand` and `PlotTraceCommand` coverage.
+- Verified the tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\plugins\command\test_plot_points_command.py tests\test_command_plugin.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\plugins\command tests\test_command_plugin.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Plot-points tranche plus remaining command monolith: 153 passed.
+- Full collection: 2401 tests collected.
+- Ruff checks passed for the command test area.
+
+## Completed In Eleventh Migration Pass
+
+- Continued splitting `tests/test_command_plugin.py` by moving
+  `SaveCommand` coverage into
+  `tests/unit/plugins/command/test_save_command.py`.
+- Preserved the existing Save command test bodies during the move and added a
+  focused module header/imports.
+- Trimmed `tests/test_command_plugin.py` so it now contains only
+  `PlotTraceCommand` coverage, making the final monolith removal a straight
+  PlotTrace move/rename.
+- Verified the tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\plugins\command\test_save_command.py tests\test_command_plugin.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\plugins\command tests\test_command_plugin.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Save-command tranche plus remaining PlotTrace monolith: 118 passed.
+- Full collection: 2401 tests collected.
+- Ruff checks passed for the command test area.
+
+## Completed In Twelfth Migration Pass
+
+- Finished splitting the command plugin monolith by moving the remaining
+  `PlotTraceCommand` coverage from `tests/test_command_plugin.py` to
+  `tests/unit/plugins/command/test_plot_trace_command.py`.
+- Removed the top-level `tests/test_command_plugin.py` monolith.
+- Preserved IDE/direct-file execution for the split command test files by
+  adding a small `if __name__ == "__main__": pytest.main([__file__, "--pdb"])`
+  block to each new command test module.
+- Verified the final command-plugin tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\plugins\command\test_plot_trace_command.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\plugins\command
+conda run -n stoner_measurement python -m pytest tests\unit\plugins\command --tb=short
+conda run -n stoner_measurement python tests\unit\plugins\command\test_wait_command.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- PlotTrace command tranche: 64 passed.
+- Command test area: 256 passed.
+- Direct-file smoke test: `test_wait_command.py` passed when run as a script.
+- Full collection: 2401 tests collected.
+- Ruff checks passed for the command test area.
+- `tests/test_command_plugin.py` no longer exists.
+
 ## Next Recommended Migration Batch
 
-1. Begin splitting `tests/test_command_plugin.py` into
-   `tests/unit/plugins/command/test_<command>.py`.
-2. Begin splitting `tests/test_instruments.py` into
+1. Begin splitting `tests/test_instruments.py` into
    `tests/unit/instruments/drivers/` once transport contracts are in place.
