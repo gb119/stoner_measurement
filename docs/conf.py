@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 # -- Project information -------------------------------------------------------
 
 project = "Stoner Measurement"
-copyright = "2024, Gavin Burnell"
+copyright = "2024, Gavin Burnell"  # pylint: disable=redefined-builtin
 author = "Gavin Burnell"
 release = "0.1.0"
 

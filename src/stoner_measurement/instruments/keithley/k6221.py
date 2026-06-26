@@ -118,7 +118,7 @@ class Keithley6221(CurrentSource):
     def state(self)->_K6221_STATE:
         """Determine the state of the 6221 through status queries."""
         self.clear()
-        stb=self.read_status_byte()
+        self.read_status_byte()
         outp=self.output_enabled()
         oper=self.get_operating_status()
         if not outp:

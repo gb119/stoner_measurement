@@ -1,3 +1,6 @@
+from stoner_measurement.scan import SteppedScanGenerator
+
+
 class DummyPlugin:
     def __init__(self):
         self.scan_generator = SteppedScanGenerator()  # default to SteppedScanGenerator

@@ -335,7 +335,6 @@ def theme_stylesheet() -> str:
     highlight = colour("highlight")
     selected_tab_background = colour("tab_selected_background")
     checkbox_checked_fill = colour("checkbox_checked_fill")
-    checkbox_check = colour("checkbox_check")
     selected_tab_border = colour("tab_selected_border")
     selected_tab_text = colour("tab_selected_text")
     tree_qss = tree_stylesheet()

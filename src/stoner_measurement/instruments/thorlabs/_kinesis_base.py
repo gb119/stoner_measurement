@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from stoner_measurement.instruments.motor_controller import MotorController, MotorStatus
+from stoner_measurement.instruments.motor_controller import MotorController, MotorMoveDirection, MotorStatus
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.transport.null_transport import NullTransport
 
@@ -137,8 +137,13 @@ class _KinesisMotorBase(MotorController):
             return
         raise NotImplementedError("Motor object does not expose a supported acceleration API.")
 
-    def move_to_angle(self, angle: float) -> None:
+    def move_to_angle(
+        self,
+        angle: float,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
         """Move to an absolute angular position in degrees."""
+        del direction
         self._ensure_connected()
         self._target_angle = angle
         if self._call_first_available(("move_to",), angle) is not _MISSING:

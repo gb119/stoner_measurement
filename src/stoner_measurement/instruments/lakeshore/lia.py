@@ -7,6 +7,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInAmplifierCapabilities,
     LockInInputCoupling,
     LockInReferenceSource,
+    LockinRefenceEdge,
 )
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
@@ -189,13 +190,18 @@ class LakeshoreM81LockIn(LockInAmplifier):
         token = self._query_without_transport_log(f":SENS{self._sense_slot}:LIA:RSRC?").strip().upper()
         return LockInReferenceSource.INTERNAL if token == "INT" else LockInReferenceSource.EXTERNAL  # nosec B105 - SCPI token, not a credential.
 
-    def set_reference_source(self, source: LockInReferenceSource) -> None:
+    def set_reference_source(
+        self,
+        source: LockInReferenceSource,
+        edge: LockinRefenceEdge = LockinRefenceEdge.FALLING,
+    ) -> None:
         """Set the reference source.
 
         Args:
             source (LockInReferenceSource):
                 Reference source to select.
         """
+        del edge
         token = "INT" if source is LockInReferenceSource.INTERNAL else "EXT"
         self.write(f":SENS{self._sense_slot}:LIA:RSRC {token}")
 

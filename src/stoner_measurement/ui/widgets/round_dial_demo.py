@@ -6,7 +6,6 @@ from qtpy.QtCore import QTimer, Qt
 from qtpy.QtWidgets import (
     QComboBox,
     QLabel,
-    QLabel,
     QSizePolicy,
     QVBoxLayout,
     QWidget,

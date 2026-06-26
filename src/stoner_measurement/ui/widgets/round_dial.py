@@ -1043,7 +1043,6 @@ class RoundDialWidget(QWidget):
         font.setBold(False)
         font.setPointSizeF(max(self._minimum_label_point_size, min(self.width(), self.height()) * self._label_font_scale))
         metrics = QFontMetricsF(font)
-        side = min(self.width(), self.height())
         top_space = self.height() * self._top_reserved_fraction
         bottom_space = self.height() * self._bottom_reserved_fraction
         usable_height = max(1.0, self.height() - top_space - bottom_space)

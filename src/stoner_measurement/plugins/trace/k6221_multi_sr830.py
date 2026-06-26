@@ -6,7 +6,7 @@ import enum
 import logging
 import math
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
@@ -948,23 +948,34 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
                 output_checks: list[tuple[LockInOutput, QCheckBox]] = []
 
-                def _sync_outputs_from_checks(
-                    checks=output_checks,
-                    offset_widget=offset_local,
-                    expand_widget=expand_combo,
-                ) -> None:
-                    outputs = tuple(output for output, checkbox in checks if checkbox.isChecked())
-                    if not outputs:
-                        checks[0][1].blockSignals(True)
-                        checks[0][1].setChecked(True)
-                        checks[0][1].blockSignals(False)
-                        outputs = (checks[0][0],)
-                    self._lockin_entries[col].outputs = outputs
-                    supports_offset = any(output.offset_channel() is not None for output in outputs)
-                    offset_widget.setEnabled(supports_offset)
-                    expand_widget.setEnabled(supports_offset)
+                def _make_sync_outputs_from_checks(
+                    checks: list[tuple[LockInOutput, QCheckBox]],
+                    offset_widget: SISpinBox,
+                    expand_widget: QComboBox,
+                    idx: int,
+                ) -> Callable[[], None]:
+                    def _sync_outputs_from_checks() -> None:
+                        outputs = tuple(output for output, checkbox in checks if checkbox.isChecked())
+                        if not outputs:
+                            checks[0][1].blockSignals(True)
+                            checks[0][1].setChecked(True)
+                            checks[0][1].blockSignals(False)
+                            outputs = (checks[0][0],)
+                        self._lockin_entries[idx].outputs = outputs
+                        supports_offset = any(output.offset_channel() is not None for output in outputs)
+                        offset_widget.setEnabled(supports_offset)
+                        expand_widget.setEnabled(supports_offset)
 
-                def _make_output_toggled_handler() -> callable:
+                    return _sync_outputs_from_checks
+
+                _sync_outputs_from_checks = _make_sync_outputs_from_checks(
+                    output_checks,
+                    offset_local,
+                    expand_combo,
+                    col,
+                )
+
+                def _make_output_toggled_handler() -> Callable[[bool], None]:
                     def _handle_output_toggled(_checked: bool) -> None:
                         _sync_outputs_from_checks()
 

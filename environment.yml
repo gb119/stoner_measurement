@@ -13,6 +13,10 @@ channels:
 dependencies:
   - python>=3.13
   - pip
+  - pip:
+      - build
+      - twine
+      - check-manifest
   - setuptools>=61
   # Runtime dependencies
   - asteval>=1.0
@@ -46,3 +50,10 @@ dependencies:
   - sphinx-better-theme>=0.1.5
   - mypy_extensions>=1.1.0
   - pathspec>=1.1.1
+  # Development tooling
+  - pylint
+  - bandit
+  - pre-commit
+  - mypy
+  - pytest-timeout
+  - pytest-mock
