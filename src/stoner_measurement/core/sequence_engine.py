@@ -84,7 +84,13 @@ _DEFAULT_PLOT_READY_POLL_SECONDS = 0.01
 _INTERPRETER_INTERNALS = frozenset({"__builtins__", "__name__", "__doc__", "__package__", "__spec__", "__loader__"})
 
 
-class _QtLogHandler(logging.Handler, QObject):
+class _QtLogEmitter(QObject):
+    """Qt signal emitter owned by :class:`_QtLogHandler`."""
+
+    record_emitted = pyqtSignal(logging.LogRecord)
+
+
+class _QtLogHandler(logging.Handler):
     """A :class:`logging.Handler` that forwards log records via a Qt signal.
 
     Instances of this handler can be attached to a Python :class:`logging.Logger`
@@ -109,11 +115,24 @@ class _QtLogHandler(logging.Handler, QObject):
         True
     """
 
-    record_emitted = pyqtSignal(logging.LogRecord)
-
     def __init__(self, parent: QObject | None = None, level: int = logging.DEBUG) -> None:
         logging.Handler.__init__(self, level)
-        QObject.__init__(self, parent)
+        self._emitter = _QtLogEmitter(parent)
+        self.record_emitted = self._emitter.record_emitted
+        if parent is not None:
+            parent.destroyed.connect(lambda *_args: self._detach_from_loggers())
+
+    def _detach_from_loggers(self) -> None:
+        """Remove this handler from any logger that still references it."""
+        loggers = [logging.getLogger()]
+        loggers.extend(
+            logger
+            for logger in logging.Logger.manager.loggerDict.values()
+            if isinstance(logger, logging.Logger)
+        )
+        for logger in loggers:
+            logger.removeHandler(self)
+        self.close()
 
     def emit(self, record: logging.LogRecord) -> None:
         """Forward *record* to all connected Qt slots.

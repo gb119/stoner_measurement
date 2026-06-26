@@ -187,13 +187,101 @@ Result:
 - Full collection: 2386 tests collected.
 - Focused Ruff import/name checks passed.
 
+## Completed In Fourth Migration Pass
+
+- Started transport contract tests in `tests/unit/instruments/contracts/` with
+  reusable checks for open/close, context-manager lifecycle, and query
+  write-then-read behavior.
+- Moved the concrete `NullTransport` tests from `tests/test_instruments.py` to
+  `tests/unit/instruments/transport/test_null_transport.py`.
+- Left the existing URI parsing and GPIB/PyVISA tests in `tests/test_instruments.py`
+  for the next transport-focused pass so they can move with their mock resource
+  scaffolding.
+- Verified the migrated tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts tests\unit\instruments\transport\test_null_transport.py --tb=short
+conda run -n stoner_measurement python -m pytest --collect-only -q
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\contracts tests\unit\instruments\transport\test_null_transport.py --select F401,F811,F821,F841
+```
+
+Result:
+
+- Transport tranche: 13 passed.
+- Full collection: 2389 tests collected.
+- Focused Ruff import/name checks passed.
+
+## Completed In Fifth Migration Pass
+
+- Continued transport migration by moving URI/resource parsing tests from
+  `tests/test_instruments.py` to
+  `tests/unit/instruments/transport/test_transport_uri.py`.
+- Moved GPIB protocol termination and `PassThroughGpibTransport` tests from
+  `tests/test_instruments.py` to
+  `tests/unit/instruments/transport/test_gpib_transport.py`.
+- Kept serial flow-control tests in `tests/test_instruments.py` for a later
+  serial-specific transport pass.
+- Verified the migrated tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts tests\unit\instruments\transport --tb=short
+conda run -n stoner_measurement python -m pytest --collect-only -q
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\transport tests\unit\instruments\contracts --select F401,F811,F821,F841
+```
+
+Result:
+
+- Transport tranche: 48 passed.
+- Full collection: 2389 tests collected.
+- Focused Ruff import/name checks passed.
+
+## Completed In Sixth Migration Pass
+
+- Finished the transport reshuffle from `tests/test_instruments.py` by moving:
+  - UDP socket tests to `tests/unit/instruments/transport/test_udp_transport.py`
+  - Ethernet framing tests to `tests/unit/instruments/transport/test_ethernet_transport.py`
+  - Serial flow-control tests to `tests/unit/instruments/transport/test_serial_transport.py`
+- Left instrument locking and driver behavior in `tests/test_instruments.py` for
+  the later driver-focused split.
+- Verified the migrated tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts tests\unit\instruments\transport --tb=short
+conda run -n stoner_measurement python -m pytest --collect-only -q
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\transport tests\unit\instruments\contracts --select F401,F811,F821,F841
+```
+
+Result:
+
+- Transport tranche: 66 passed.
+- Full collection: 2391 tests collected.
+- Focused Ruff import/name checks passed.
+
+## Completed In Seventh Migration Pass
+
+- Added first cold-spot tests for `ui/settings_dialog.py` under
+  `tests/unit/ui/dialogs/test_settings_dialog.py`.
+- Covered construction from saved settings, unknown-theme fallback,
+  accept/reject persistence behavior, toolbar row loading/collection/removal,
+  validation warnings, and save/cancel handling without touching real user
+  settings or toolbar config files.
+- Verified the tranche:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\ui\dialogs --tb=short
+conda run -n stoner_measurement python -m pytest --collect-only -q
+conda run -n stoner_measurement python -m ruff check tests\unit\ui\dialogs --select F401,F811,F821,F841
+```
+
+Result:
+
+- Settings-dialog tranche: 10 passed.
+- Full collection: 2401 tests collected.
+- Focused Ruff import/name checks passed.
+
 ## Next Recommended Migration Batch
 
-1. Start transport contract tests in `tests/unit/instruments/contracts/`, then
-   move concrete transport tests under `tests/unit/instruments/transport/`.
-2. Add first cold-spot tests for `ui/settings_dialog.py` under
-   `tests/unit/ui/dialogs/test_settings_dialog.py`.
-3. Begin splitting `tests/test_command_plugin.py` into
+1. Begin splitting `tests/test_command_plugin.py` into
    `tests/unit/plugins/command/test_<command>.py`.
-4. Begin splitting `tests/test_instruments.py` into
+2. Begin splitting `tests/test_instruments.py` into
    `tests/unit/instruments/drivers/` once transport contracts are in place.

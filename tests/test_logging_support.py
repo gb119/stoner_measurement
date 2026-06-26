@@ -49,6 +49,27 @@ class TestQtLogHandler:
         assert len(received) == 1
         assert received[0] is record
 
+    def test_parent_does_not_own_handler_qobject(self, qapp):
+        from qtpy.QtCore import QObject
+
+        parent = QObject()
+        handler = _QtLogHandler(parent=parent)
+
+        assert not isinstance(handler, QObject)
+        assert handler._emitter.parent() is parent
+
+    def test_parent_destroyed_detaches_handler_from_loggers(self, qapp):
+        from qtpy.QtCore import QObject
+
+        logger = logging.getLogger(ROOT_LOGGER_NAME)
+        parent = QObject()
+        handler = _QtLogHandler(parent=parent)
+        logger.addHandler(handler)
+
+        parent.destroyed.emit(parent)
+
+        assert handler not in logger.handlers
+
 
 # ---------------------------------------------------------------------------
 # SequenceEngine logging integration
