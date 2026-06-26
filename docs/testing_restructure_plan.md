@@ -1,0 +1,147 @@
+# Testing Restructure Plan
+
+This document records the test-suite restructure so future Codex sessions can
+continue without rediscovering the same coverage map.
+
+## Current Baseline
+
+Baseline command, run from the repository root:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement pytest --cov=stoner_measurement --cov-report=json:coverage.json --cov-report=term-missing
+```
+
+Latest observed result:
+
+- 2386 tests passed.
+- Combined branch-aware coverage: 74%.
+- Statement coverage: 78%.
+- Branch coverage: 57%.
+
+The lower branch coverage means new tests should prefer branch/edge cases over
+more happy-path assertions for already-covered code.
+
+## Target Layout
+
+```text
+tests/
+  unit/
+    scan/
+    sweep/
+    instruments/
+      transport/
+      drivers/
+      contracts/
+    plugins/
+      command/
+      trace/
+      transform/
+      state/
+      monitor/
+    ui/
+      widgets/
+      panels/
+      dialogs/
+    control/
+      magnet/
+      motor/
+      temperature/
+    core/
+  integration/
+    app/
+    sequence/
+    plugin_workflows/
+  fixtures/
+    fake_instruments.py
+    fake_transports.py
+    qt_helpers.py
+    plugin_factories.py
+```
+
+## Hot Test Files
+
+These files carry too much unrelated behavior and should be split by module or
+contract as they are touched:
+
+| File | Tests | Lines | Suggested split |
+| --- | ---: | ---: | --- |
+| `tests/test_instruments.py` | 452 | 4692 | `unit/instruments/drivers/` plus shared driver contracts |
+| `tests/test_command_plugin.py` | 256 | 3244 | `unit/plugins/command/test_<command>.py` |
+| `tests/test_ui.py` | 139 | 1876 | `unit/ui/widgets/`, `unit/ui/panels/`, `integration/app/` |
+| `tests/test_plugin_subtypes.py` | 121 | 1092 | plugin contracts plus subtype-specific unit files |
+| `tests/test_curve_fit_plugin.py` | 109 | 1241 | keep focused, but split UI/config from fit execution |
+| `tests/test_sequence_engine.py` | 100 | 906 | `unit/core/` and `integration/sequence/` |
+
+## Cold Coverage Spots
+
+Ranked by missed lines plus missed branches:
+
+| Module | Coverage | Debt | Recommended approach |
+| --- | ---: | ---: | --- |
+| `ui/temperature_panel.py` | 54% | 623 | Extract/test state helpers; add thin Qt signal tests |
+| `ui/widgets/round_dial.py` | 44% | 539 | Parametrize modes, label placement, color/theme branches |
+| `ui/value_watch.py` | 43% | 419 | Unit-test model/state transitions before full widget flows |
+| `ui/dock_panel.py` | 63% | 413 | Split tree-model behavior from drag/drop integration |
+| `ui/magnet_panel.py` | 60% | 362 | Test state rendering and command enablement with fake engine |
+| `ui/settings_dialog.py` | 9% | 267 | Quick win: construct/apply/cancel/reset/validation tests |
+| `temperature_control/engine.py` | 63% | 246 | Contract tests for driver connection and state transitions |
+| `plugins/trace/k6221_multi_sr830.py` | 80% | 212 | Fill branch cases around config validation and UI callbacks |
+| `plugins/trace/keithley_2400.py` | 68% | 193 | Split config UI, sweep construction, execution branches |
+| `magnet_control/engine.py` | 71% | 179 | Add fake-driver state transition tests |
+| `instruments/transport/gpib_transport.py` | 46% | 173 | Mock PyVISA resources under a transport contract |
+| `sweep/monitor_and_filter_generator.py` | 36% | 166 | Pure unit tests for filtering, abort, and monitor branches |
+
+## Migration Rules
+
+- Move tests by behavior, not by old filename.
+- Prefer one test module per production module unless a contract file covers a
+  family of implementations.
+- Keep slow app-level workflows under `tests/integration/`.
+- Keep widget construction, signal, and property synchronization tests under
+  `tests/unit/ui/`.
+- Use contract helper functions for repeated interfaces:
+  - transport open/read/write/error behavior
+  - instrument identity, validation, query/write mapping
+  - plugin JSON/config/generated-code/lifecycle behavior
+  - monitor/state plugin connect/read/reported-values behavior
+- When adding coverage to cold UI modules, first look for extractable pure
+  helpers. Avoid testing large panels only through full application workflows.
+- Keep `QT_QPA_PLATFORM=offscreen` for Qt test runs.
+- Use `conda run -n stoner_measurement ...` for every project command.
+
+## Suggested CI Buckets
+
+```text
+fast unit: non-Qt logic, contracts, serializers
+qt unit: widgets/panels/dialogs with offscreen Qt
+integration: app/plugin workflow tests
+coverage: combined report
+```
+
+Possible commands:
+
+```powershell
+conda run -n stoner_measurement pytest tests/unit
+conda run -n stoner_measurement pytest tests/unit/ui
+conda run -n stoner_measurement pytest tests/integration
+conda run -n stoner_measurement pytest --cov=stoner_measurement --cov-report=term-missing
+```
+
+## Completed In First Migration Pass
+
+- Created the target directory skeleton.
+- Moved the first low-risk widget tests to `tests/unit/ui/widgets/`.
+- Verified nested pytest discovery for the migrated tests.
+
+## Next Recommended Migration Batch
+
+1. Move `tests/test_round_dial.py` to `tests/unit/ui/widgets/test_round_dial.py`.
+2. Split `tests/test_ui.py`:
+   - `TestDockPanel` -> `tests/unit/ui/panels/test_dock_panel.py`
+   - `TestPlotWidget` -> `tests/unit/ui/widgets/test_plot_widget.py`
+   - `TestConfigPanel` -> `tests/unit/ui/panels/test_config_panel.py`
+   - `TestMainWindow` -> `tests/integration/app/test_main_window.py`
+3. Move scan generator tests into `tests/unit/scan/`.
+4. Start transport contract tests in `tests/unit/instruments/contracts/`.
+5. Add first cold-spot tests for `ui/settings_dialog.py`.
