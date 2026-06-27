@@ -20,7 +20,7 @@ Physically, the motor drives a shaft that **must not rotate beyond ± soft‑lim
 - The motor must **not** rotate:
   - clockwise past `+soft_limit`
   - counter‑clockwise past `−soft_limit`
-- The motor controller enforces this unless the caller explicitly sets `force=True`.
+- The motor controller engine enforces this unless the caller explicitly sets `force=True`.
 
 ---
 
@@ -54,7 +54,7 @@ If `current` or `target` lies outside `[-soft_limit, +soft_limit]`, adjust by ad
 - **If direction = CCW**  
   If `target > current`, subtract 360° repeatedly until `target < current`.
 
-### **Step 3 — Soft‑limit enforcement**
+### **Step 3 — Soft-limit enforcement**
 
 After adjustments:
 

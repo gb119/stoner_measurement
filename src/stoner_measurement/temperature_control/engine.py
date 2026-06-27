@@ -22,7 +22,6 @@ from traceback import format_exc
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import QObject, QTimer
-from stoner_measurement.qt_compat import pyqtSlot
 
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
@@ -36,6 +35,7 @@ from stoner_measurement.instruments.transport import (
     NullTransport,
     SerialTransport,
 )
+from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.temperature_control.config import (
     load_temperature_controller_config,
     save_temperature_controller_config,
@@ -1087,6 +1087,7 @@ class TemperatureControllerEngine(QObject):
             for reading in state.readings.values():
                 self.publisher.channel_reading.emit(reading)
             self.publisher.state_updated.emit(state)
+            self.publisher.poll_activity.emit()
         return state
 
     def get_engine_state(self) -> TemperatureEngineState:

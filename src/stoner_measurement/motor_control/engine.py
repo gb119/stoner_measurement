@@ -10,19 +10,18 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import QObject, QTimer
-from stoner_measurement.qt_compat import pyqtSlot
 
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
     parse_serial_address,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
 from stoner_measurement.instruments.motor_controller import (
     MotorMoveDirection,
-    resolve_wrapped_target_angle,
+    resolve_relative_motor_move,
     wrap_angle_360,
 )
+from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
     GpibTransport,
@@ -40,6 +39,7 @@ from stoner_measurement.motor_control.types import (
     MotorReading,
     MotorStabilityConfig,
 )
+from stoner_measurement.qt_compat import pyqtSlot
 
 if TYPE_CHECKING:
     from stoner_measurement.instruments.motor_controller import MotorController
@@ -72,8 +72,7 @@ class MotorControllerEngine(QObject):
         self._preferred_address: str = ""
         self._status: MotorEngineStatus = MotorEngineStatus.DISCONNECTED
         self._stability_config: MotorStabilityConfig = MotorStabilityConfig()
-        self._safe_clockwise_limit: float = 190.0
-        self._safe_counterclockwise_limit: float = 170.0
+        self._soft_limit: float = 190.0
 
         self._history: deque[tuple[datetime, float]] = deque(maxlen=_HISTORY_SIZE)
         self._is_at_target: bool = False
@@ -134,17 +133,20 @@ class MotorControllerEngine(QObject):
             direction_name = str(motion.get("direction", self._move_direction.value))
             try:
                 self._move_direction = MotorMoveDirection(direction_name)
+                if self._move_direction is MotorMoveDirection.TOWARDS_ZERO:
+                    self._move_direction = MotorMoveDirection.SHORTEST
             except ValueError:
                 logger.warning("Unknown saved motor move direction %r; keeping default.", direction_name)
 
         limits = config.get("limits")
         if isinstance(limits, dict):
-            self._safe_clockwise_limit = float(
-                limits.get("clockwise_deg", self._safe_clockwise_limit)
-            )
-            self._safe_counterclockwise_limit = float(
-                limits.get("counterclockwise_deg", self._safe_counterclockwise_limit)
-            )
+            soft_limit = limits.get("soft_limit_deg")
+            if isinstance(soft_limit, (int, float)):
+                self._soft_limit = abs(float(soft_limit))
+            else:
+                clockwise_limit = limits.get("clockwise_deg", self._soft_limit)
+                counterclockwise_limit = limits.get("counterclockwise_deg", self._soft_limit)
+                self._soft_limit = max(abs(float(clockwise_limit)), abs(float(counterclockwise_limit)))
 
     @classmethod
     def instance(cls) -> MotorControllerEngine:
@@ -335,8 +337,7 @@ class MotorControllerEngine(QObject):
                 "direction": self._move_direction.value,
             },
             "limits": {
-                "clockwise_deg": self._safe_clockwise_limit,
-                "counterclockwise_deg": self._safe_counterclockwise_limit,
+                "soft_limit_deg": self._soft_limit,
             },
             "stability": {
                 "tolerance_deg": self._stability_config.tolerance_deg,
@@ -378,36 +379,29 @@ class MotorControllerEngine(QObject):
         self,
         angle: float,
         direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+        *,
+        force: bool = False,
     ) -> None:
-        """Command the connected controller to move to a wrapped absolute angle."""
+        """Command the connected controller to move to an angle via a relative move."""
         with self._engine_lock:
             if self._driver is None:
                 return
             try:
                 current_angle = float(self._driver.get_position())
-                display_target = wrap_angle_360(float(angle))
-                resolved_target = resolve_wrapped_target_angle(
+                plan = resolve_relative_motor_move(
                     current_angle,
-                    display_target,
+                    float(angle),
                     direction,
-                    clockwise_limit=self._safe_clockwise_limit,
-                    counterclockwise_limit=self._safe_counterclockwise_limit,
+                    soft_limit=self._soft_limit,
+                    force=force,
                 )
-                if (
-                    resolved_target > self._safe_clockwise_limit
-                    or resolved_target < -self._safe_counterclockwise_limit
-                ):
-                    raise ValueError(
-                        f"Resolved motor target {resolved_target:.3f}° exceeds allowed "
-                        f"absolute range -{self._safe_counterclockwise_limit:.3f}° "
-                        f"to +{self._safe_clockwise_limit:.3f}°."
-                    )
-                self._driver.move_to_angle(resolved_target, direction=direction)
-                self._target_angle = resolved_target
-                self._display_target_angle = display_target
-                self._move_direction = direction
+                self._driver.move_relative(plan.relative_angle, direction=plan.direction)
+                self._target_angle = plan.target_angle
+                self._display_target_angle = wrap_angle_360(plan.target_angle)
+                self._move_direction = plan.direction
             except Exception:
                 logger.exception("Failed to move motor to %s deg with direction %s", angle, direction.value)
+                raise
 
     def set_home(self, angle: float = 0.0) -> None:
         """Set the current position reference as the motor home angle."""
@@ -458,6 +452,7 @@ class MotorControllerEngine(QObject):
             self._latest_state = state
             self.publisher.reading_updated.emit(state.reading)
             self.publisher.state_updated.emit(state)
+            self.publisher.poll_activity.emit()
         return state
 
     def get_engine_state(self) -> MotorEngineState:

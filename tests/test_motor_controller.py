@@ -7,7 +7,11 @@ from dataclasses import dataclass
 import pytest
 
 from stoner_measurement.instruments.errors import InstrumentError
-from stoner_measurement.instruments.motor_controller import MotorController
+from stoner_measurement.instruments.motor_controller import (
+    MotorController,
+    MotorMoveDirection,
+    resolve_relative_motor_move,
+)
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.thorlabs import ThorlabsHDR50, ThorlabsKDC101KPRMTE
 from stoner_measurement.instruments.transport import NullTransport
@@ -16,6 +20,42 @@ from stoner_measurement.instruments.transport import NullTransport
 def test_motor_controller_is_abstract():
     with pytest.raises(TypeError):
         MotorController(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+
+
+def test_resolve_relative_motor_move_uses_documented_soft_limit_algorithm():
+    plan = resolve_relative_motor_move(
+        -190.0,
+        190.0,
+        MotorMoveDirection.SHORTEST,
+        soft_limit=200.0,
+    )
+
+    assert plan.current_angle == pytest.approx(-190.0)
+    assert plan.target_angle == pytest.approx(190.0)
+    assert plan.relative_angle == pytest.approx(380.0)
+    assert plan.direction is MotorMoveDirection.CLOCKWISE
+
+
+def test_resolve_relative_motor_move_rejects_soft_limit_violation_unless_forced():
+    with pytest.raises(ValueError, match="soft-limit"):
+        resolve_relative_motor_move(
+            170.0,
+            -160.0,
+            MotorMoveDirection.CLOCKWISE,
+            soft_limit=190.0,
+        )
+
+    plan = resolve_relative_motor_move(
+        170.0,
+        -160.0,
+        MotorMoveDirection.CLOCKWISE,
+        soft_limit=190.0,
+        force=True,
+    )
+
+    assert plan.target_angle == pytest.approx(200.0)
+    assert plan.relative_angle == pytest.approx(30.0)
+    assert plan.direction is MotorMoveDirection.CLOCKWISE
 
 
 @dataclass

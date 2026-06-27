@@ -9,9 +9,9 @@ from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QGridLayout,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -20,15 +20,14 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from stoner_measurement.qt_compat import pyqtSlot
 
 from stoner_measurement.instruments.addressing import (
     DEFAULT_ETHERNET_HOST,
     DEFAULT_ETHERNET_PORT,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.motor_controller import MotorController
 from stoner_measurement.instruments.motor_controller import (
+    MotorController,
     MotorMoveDirection,
     wrap_angle_360,
 )
@@ -37,6 +36,7 @@ from stoner_measurement.motor_control.types import (
     MotorEngineState,
     MotorEngineStatus,
 )
+from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.theme import indicator_label_stylesheet
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
@@ -119,7 +119,17 @@ class MotorControlPanel(QWidget):
         root.setSpacing(4)
         root.addWidget(self._tabs)
         root.addWidget(status_bar)
+        root.addLayout(self._build_hide_button_row())
         self.setLayout(root)
+
+    def _build_hide_button_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addStretch()
+        self._btn_hide = QPushButton("Hide")
+        self._btn_hide.setToolTip("Hide this panel")
+        self._btn_hide.clicked.connect(self.hide)
+        row.addWidget(self._btn_hide)
+        return row
 
     def _build_connection_tab(self) -> QWidget:
         widget = QWidget()
@@ -248,7 +258,7 @@ class MotorControlPanel(QWidget):
         self._direction_combo = QComboBox()
         self._direction_combo.addItem("Clockwise", MotorMoveDirection.CLOCKWISE)
         self._direction_combo.addItem("Counter-clockwise", MotorMoveDirection.COUNTERCLOCKWISE)
-        self._direction_combo.addItem("Move through 0°", MotorMoveDirection.TOWARDS_ZERO)
+        self._direction_combo.addItem("Shortest", MotorMoveDirection.SHORTEST)
         motion_form.addRow("Direction:", self._direction_combo)
 
         btn_row = QHBoxLayout()
@@ -405,7 +415,10 @@ class MotorControlPanel(QWidget):
             self._velocity_spin.setValue(self._engine._velocity)  # pylint: disable=protected-access
         if self._engine._acceleration is not None:  # pylint: disable=protected-access
             self._acceleration_spin.setValue(self._engine._acceleration)  # pylint: disable=protected-access
-        index = self._direction_combo.findData(self._engine._move_direction)  # pylint: disable=protected-access
+        direction = self._engine._move_direction  # pylint: disable=protected-access
+        if direction is MotorMoveDirection.TOWARDS_ZERO:
+            direction = MotorMoveDirection.SHORTEST
+        index = self._direction_combo.findData(direction)
         if index >= 0:
             self._direction_combo.setCurrentIndex(index)
 
@@ -462,10 +475,24 @@ class MotorControlPanel(QWidget):
         self._engine.preferred_address = address
         self._engine.set_velocity(self._velocity_spin.value())
         self._engine.set_acceleration(self._acceleration_spin.value())
-        self._engine.move_to_angle(
-            self._target_angle_spin.value(),
-            direction=self._direction_combo.currentData(),
-        )
+        target_angle = self._target_angle_spin.value()
+        direction = self._direction_combo.currentData()
+        try:
+            self._engine.move_to_angle(target_angle, direction=direction)
+        except ValueError as exc:
+            response = QMessageBox.warning(
+                self,
+                "Motor Soft Limit",
+                (
+                    f"{exc}\n\n"
+                    "This move exceeds the configured motor soft limit. Continue anyway?\n\n"
+                    "Reset the home position after any forced move."
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if response == QMessageBox.StandardButton.Yes:
+                self._engine.move_to_angle(target_angle, direction=direction, force=True)
 
     @pyqtSlot()
     def _on_read_state(self) -> None:
@@ -475,7 +502,13 @@ class MotorControlPanel(QWidget):
         if state.target_angle is not None:
             self._target_angle_spin.setValue(wrap_angle_360(state.target_angle))
         if state.move_direction is not None:
-            self._direction_combo.setCurrentText(state.move_direction.replace("_", " ").title())
+            try:
+                direction = MotorMoveDirection(state.move_direction)
+            except ValueError:
+                direction = MotorMoveDirection.CLOCKWISE
+            index = self._direction_combo.findData(direction)
+            if index >= 0:
+                self._direction_combo.setCurrentIndex(index)
         if state.velocity is not None:
             self._velocity_spin.setValue(state.velocity)
         if state.acceleration is not None:

@@ -9,8 +9,8 @@ and any number of subscribers (UI panels, sequence plugins, monitors).
 from __future__ import annotations
 
 from qtpy.QtCore import QObject
-from stoner_measurement.qt_compat import pyqtSignal
 
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     TemperatureChannelReading,
@@ -38,6 +38,8 @@ class TemperaturePublisher(QObject):
         engine_status_changed (pyqtSignal):
             Emitted whenever the engine's :class:`~stoner_measurement.temperature_control.types.EngineStatus`
             changes.  Carries the new :class:`~stoner_measurement.temperature_control.types.EngineStatus` value.
+        poll_activity (pyqtSignal):
+            Emitted after each successful hardware poll.
 
     Examples:
         >>> from qtpy.QtWidgets import QApplication
@@ -55,3 +57,4 @@ class TemperaturePublisher(QObject):
     channel_reading: pyqtSignal = pyqtSignal(TemperatureChannelReading)
     state_updated: pyqtSignal = pyqtSignal(TemperatureEngineState)
     engine_status_changed: pyqtSignal = pyqtSignal(EngineStatus)
+    poll_activity: pyqtSignal = pyqtSignal()

@@ -11,8 +11,7 @@ motion:
   direction: "clockwise"
 
 limits:
-  clockwise_deg: 190.0
-  counterclockwise_deg: 170.0
+  soft_limit_deg: 190.0
 
 stability:
   tolerance_deg: 0.1

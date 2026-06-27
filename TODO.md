@@ -18,5 +18,5 @@
     stability_sensor, hold_off_time)
 13. Related, make stability critiera use specific sensors.
 14. For all engines, add engine status (polling, not polling) on status bbar right hand side.
-15. For all planels, add a Hide button in bottom right corner.
+15. For all planels, add a Hide button in bottom right corner. - DONE
 16. Re work motor controller shortest distance algorithm.

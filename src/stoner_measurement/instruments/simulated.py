@@ -425,6 +425,18 @@ class SimulatedMotorController(MotorController):
         self._target_position = float(angle)
         self._moving = abs(self._target_position - self._position) > 1e-9
 
+    def move_relative(
+        self,
+        angle: float,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
+        self._update()
+        signed_angle = abs(float(angle))
+        if direction is MotorMoveDirection.COUNTERCLOCKWISE:
+            signed_angle = -signed_angle
+        self._target_position = self._position + signed_angle
+        self._moving = abs(self._target_position - self._position) > 1e-9
+
     def move_home(self) -> None:
         self.move_to_angle(self._home_position)
 

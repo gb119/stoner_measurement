@@ -20,17 +20,9 @@ class MotorMoveDirection(Enum):
 
     CLOCKWISE = "clockwise"
     COUNTERCLOCKWISE = "counterclockwise"
+    SHORTEST = "shortest"
+    # Backwards-compatible alias for older saved configurations/tests.
     TOWARDS_ZERO = "towards_zero"
-
-
-def _display_signed_angle(angle: float) -> float:
-    """Return angle displayed in the conventional signed wrapped range [-180, 180]."""
-    wrapped = wrap_angle_360(angle)
-    if wrapped > 180.0:
-        return wrapped - 360.0
-    if _is_effectively_equal(wrapped, 180.0):
-        return 180.0
-    return wrapped
 
 
 def wrap_angle_360(angle: float) -> float:
@@ -41,76 +33,14 @@ def wrap_angle_360(angle: float) -> float:
     return wrapped
 
 
-def _is_effectively_equal(angle_a: float, angle_b: float, tolerance: float = 1e-9) -> bool:
-    """Return ``True`` when two angles are numerically equal within tolerance."""
-    return abs(float(angle_a) - float(angle_b)) <= tolerance
+@dataclass(frozen=True)
+class MotorMovePlan:
+    """Resolved relative motor move."""
 
-
-def _is_signed_180_pair(current_angle: float, target_angle: float) -> bool:
-    """Return ``True`` for the special case of ``+180`` to ``-180`` or vice versa."""
-    return (
-        _is_effectively_equal(abs(float(current_angle)), 180.0)
-        and _is_effectively_equal(abs(float(target_angle)), 180.0)
-        and float(current_angle) * float(target_angle) < 0.0
-    )
-
-
-def _path_crosses_threshold(
-    start_wrapped: float,
-    delta: float,
-    threshold_wrapped: float,
-) -> bool:
-    """Return ``True`` when the wrapped move path passes through a threshold angle."""
-    if abs(delta) <= 0.0:
-        return False
-
-    end_unwrapped = start_wrapped + delta
-    low = min(start_wrapped, end_unwrapped)
-    high = max(start_wrapped, end_unwrapped)
-    threshold = wrap_angle_360(threshold_wrapped)
-
-    start_cycle = int((low - threshold) // 360.0)
-    end_cycle = int((high - threshold) // 360.0)
-    for cycle in range(start_cycle, end_cycle + 1):
-        crossing = threshold + 360.0 * cycle
-        if low < crossing <= high:
-            return True
-    return False
-
-
-def _path_stays_within_safe_window(
-    start_wrapped: float,
-    delta: float,
-    clockwise_limit: float,
-    counterclockwise_limit: float,
-) -> bool:
-    """Return ``True`` when the move stays within the configured safe window."""
-    if abs(delta) <= 0.0:
-        return True
-    if delta > 0.0:
-        return not _path_crosses_threshold(start_wrapped, delta, clockwise_limit)
-    return not _path_crosses_threshold(start_wrapped, delta, counterclockwise_limit)
-
-
-def _distance_from_safe_window_boundary(
-    start_wrapped: float, delta: float, clockwise_limit: float, counterclockwise_limit: float
-) -> float:
-    """Return the distance between the path and the relevant configured safe boundary."""
-    end_wrapped = wrap_angle_360(start_wrapped + delta)
-    if abs(delta) <= 0.0:
-        clockwise_margin = min(abs(start_wrapped - clockwise_limit), abs(end_wrapped - clockwise_limit))
-        counterclockwise_margin = min(
-            abs(start_wrapped - counterclockwise_limit),
-            abs(end_wrapped - counterclockwise_limit),
-        )
-        return min(clockwise_margin, counterclockwise_margin)
-    if delta > 0.0:
-        if _path_crosses_threshold(start_wrapped, delta, clockwise_limit):
-            return 0.0
-        return min(abs(start_wrapped - clockwise_limit), abs(end_wrapped - clockwise_limit))
-    if _path_crosses_threshold(start_wrapped, delta, counterclockwise_limit):
-        return 0.0
-    return min(abs(start_wrapped - counterclockwise_limit), abs(end_wrapped - counterclockwise_limit))
+    current_angle: float
+    target_angle: float
+    relative_angle: float
+    direction: MotorMoveDirection
 
 
 def resolve_wrapped_target_angle(
@@ -120,68 +50,70 @@ def resolve_wrapped_target_angle(
     clockwise_limit: float = 190.0,
     counterclockwise_limit: float = 170.0,
 ) -> float:
-    """Resolve a wrapped target angle into an absolute target angle."""
-    current = float(current_angle)
-    target = float(target_angle)
-    current_wrapped = wrap_angle_360(current)
-    target_wrapped = wrap_angle_360(target)
-    if direction is MotorMoveDirection.CLOCKWISE:
-        delta = (target_wrapped - current_wrapped) % 360.0
-        return current + delta
-    if direction is MotorMoveDirection.COUNTERCLOCKWISE:
-        delta = -((current_wrapped - target_wrapped) % 360.0)
-        return current + delta
-    if _is_signed_180_pair(current, target):
-        if current > 0.0 and target < 0.0:
-            counterclockwise_delta = -360.0
-            return current + counterclockwise_delta
-        if current < 0.0 and target > 0.0:
-            clockwise_delta = 360.0
-            return current + clockwise_delta
-    clockwise_delta = (target_wrapped - current_wrapped) % 360.0
-    counterclockwise_delta = -((current_wrapped - target_wrapped) % 360.0)
-    clockwise_is_safe = _path_stays_within_safe_window(
-        current_wrapped, clockwise_delta, clockwise_limit, counterclockwise_limit
-    )
-    counterclockwise_is_safe = _path_stays_within_safe_window(
-        current_wrapped, counterclockwise_delta, clockwise_limit, counterclockwise_limit
+    """Resolve a target angle for legacy callers using the larger configured soft limit."""
+    soft_limit = max(abs(float(clockwise_limit)), abs(float(counterclockwise_limit)))
+    return resolve_relative_motor_move(current_angle, target_angle, direction, soft_limit=soft_limit).target_angle
+
+
+def resolve_relative_motor_move(
+    current_angle: float,
+    target_angle: float,
+    direction: MotorMoveDirection,
+    *,
+    soft_limit: float,
+    force: bool = False,
+) -> MotorMovePlan:
+    """Resolve a requested angle into a relative move inside ``±soft_limit``."""
+    limit = abs(float(soft_limit))
+    current = _normalise_angle_to_soft_limit(current_angle, limit)
+    target = _normalise_angle_to_soft_limit(target_angle, limit)
+    requested_direction = _normalise_move_direction(direction)
+    resolved_direction = requested_direction
+
+    if requested_direction is MotorMoveDirection.CLOCKWISE:
+        while target < current:
+            target += 360.0
+    elif requested_direction is MotorMoveDirection.COUNTERCLOCKWISE:
+        while target > current:
+            target -= 360.0
+    else:
+        resolved_direction = (
+            MotorMoveDirection.COUNTERCLOCKWISE
+            if target < current
+            else MotorMoveDirection.CLOCKWISE
+        )
+
+    if not force and not -limit <= target <= limit:
+        raise ValueError(
+            f"Motor target {target:.3f}° exceeds the configured soft-limit range "
+            f"-{limit:.3f}° to +{limit:.3f}°."
+        )
+
+    return MotorMovePlan(
+        current_angle=current,
+        target_angle=target,
+        relative_angle=abs(target - current),
+        direction=resolved_direction,
     )
 
-    if clockwise_is_safe and not counterclockwise_is_safe:
-        return current + clockwise_delta
-    if counterclockwise_is_safe and not clockwise_is_safe:
-        return current + counterclockwise_delta
-    if clockwise_is_safe and counterclockwise_is_safe:
-        if abs(clockwise_delta) < abs(counterclockwise_delta):
-            return current + clockwise_delta
-        if abs(counterclockwise_delta) < abs(clockwise_delta):
-            return current + counterclockwise_delta
 
-    clockwise_distance = _distance_from_safe_window_boundary(
-        current_wrapped, clockwise_delta, clockwise_limit, counterclockwise_limit
-    )
-    counterclockwise_distance = _distance_from_safe_window_boundary(
-        current_wrapped, counterclockwise_delta, clockwise_limit, counterclockwise_limit
-    )
-    if clockwise_distance > counterclockwise_distance:
-        return current + clockwise_delta
-    if counterclockwise_distance > clockwise_distance:
-        return current + counterclockwise_delta
-    clockwise_target = current + clockwise_delta
-    counterclockwise_target = current + counterclockwise_delta
-    if abs(_display_signed_angle(counterclockwise_target)) < abs(_display_signed_angle(clockwise_target)):
-        return counterclockwise_target
-    if abs(_display_signed_angle(clockwise_target)) < abs(_display_signed_angle(counterclockwise_target)):
-        return clockwise_target
-    if abs(counterclockwise_target) < abs(clockwise_target):
-        return counterclockwise_target
-    if abs(clockwise_target) < abs(counterclockwise_target):
-        return clockwise_target
-    if _display_signed_angle(counterclockwise_target) < _display_signed_angle(clockwise_target):
-        return counterclockwise_target
-    if clockwise_delta <= abs(counterclockwise_delta):
-        return current + clockwise_delta
-    return current + counterclockwise_delta
+def _normalise_move_direction(direction: MotorMoveDirection) -> MotorMoveDirection:
+    """Return the canonical direction mode."""
+    if direction is MotorMoveDirection.TOWARDS_ZERO:
+        return MotorMoveDirection.SHORTEST
+    return direction
+
+
+def _normalise_angle_to_soft_limit(angle: float, soft_limit: float) -> float:
+    """Normalise *angle* into the ``[-soft_limit, +soft_limit]`` range."""
+    if soft_limit < 180.0:
+        raise ValueError(f"soft_limit must be at least 180 degrees, got {soft_limit}.")
+    value = float(angle)
+    while value > soft_limit:
+        value -= 360.0
+    while value < -soft_limit:
+        value += 360.0
+    return value
 
 
 @dataclass
@@ -244,6 +176,14 @@ class Motor(Protocol):
         direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
     ) -> None:
         """Move to an absolute angle in degrees."""
+        ...
+
+    def move_relative(
+        self,
+        angle: float,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
+        """Move by *angle* degrees in *direction*."""
         ...
 
     def move_home(self) -> None:
@@ -309,6 +249,18 @@ class MotorController(BaseInstrument):
         direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
     ) -> None:
         """Move to an absolute angle in degrees."""
+
+    def move_relative(
+        self,
+        angle: float,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
+        """Move by *angle* degrees in *direction* using the absolute move API."""
+        signed_angle = abs(float(angle))
+        canonical_direction = _normalise_move_direction(direction)
+        if canonical_direction is MotorMoveDirection.COUNTERCLOCKWISE:
+            signed_angle = -signed_angle
+        self.move_to_angle(self.get_position() + signed_angle, direction=canonical_direction)
 
     @abstractmethod
     def move_home(self) -> None:

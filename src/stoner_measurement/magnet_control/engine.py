@@ -735,6 +735,7 @@ class MagnetControllerEngine(QObject):
             self._handle_quench_state(state)
             self.publisher.reading_updated.emit(state.reading)
             self.publisher.state_updated.emit(state)
+            self.publisher.poll_activity.emit()
         return state
 
     def get_limits(self) -> MagnetLimits | None:

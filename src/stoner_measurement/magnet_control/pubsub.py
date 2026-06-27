@@ -9,13 +9,13 @@ and any number of subscribers (UI panels, sequence plugins, monitors).
 from __future__ import annotations
 
 from qtpy.QtCore import QObject
-from stoner_measurement.qt_compat import pyqtSignal
 
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
     MagnetReading,
 )
+from stoner_measurement.qt_compat import pyqtSignal
 
 
 class MagnetPublisher(QObject):
@@ -39,6 +39,8 @@ class MagnetPublisher(QObject):
             Emitted whenever the engine's
             :class:`~stoner_measurement.magnet_control.types.MagnetEngineStatus`
             changes.  Carries the new status value.
+        poll_activity (pyqtSignal):
+            Emitted after each successful hardware poll.
 
     Examples:
         >>> from qtpy.QtWidgets import QApplication
@@ -56,3 +58,4 @@ class MagnetPublisher(QObject):
     reading_updated: pyqtSignal = pyqtSignal(MagnetReading)
     state_updated: pyqtSignal = pyqtSignal(MagnetEngineState)
     engine_status_changed: pyqtSignal = pyqtSignal(MagnetEngineStatus)
+    poll_activity: pyqtSignal = pyqtSignal()

@@ -15,11 +15,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from stoner_measurement.temperature_control import engine as engine_module
 from stoner_measurement.temperature_control.engine import (
     TemperatureControllerEngine,
     _compute_rate,
 )
-from stoner_measurement.temperature_control import engine as engine_module
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     StabilityConfig,
@@ -734,6 +734,17 @@ class TestTemperatureControlPanel:
         panel.show()
         assert panel.isVisible()
         panel.close()
+        assert not panel.isVisible()
+
+    def test_hide_button_hides_panel(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel.show()
+        assert panel._btn_hide.text() == "Hide"
+        assert panel.isVisible()
+        panel._btn_hide.click()
+        qapp.processEvents()
         assert not panel.isVisible()
 
     def test_has_all_tabs(self, qapp):

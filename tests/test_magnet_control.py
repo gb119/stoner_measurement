@@ -18,11 +18,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from stoner_measurement.magnet_control import engine as engine_module
 from stoner_measurement.magnet_control.engine import (
     MagnetControllerEngine,
     _compute_rate,
 )
-from stoner_measurement.magnet_control import engine as engine_module
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
@@ -902,6 +902,17 @@ class TestMagnetControlPanel:
         panel.close()
         assert not panel.isVisible()
 
+    def test_hide_button_hides_panel(self, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        panel.show()
+        assert panel._btn_hide.text() == "Hide"
+        assert panel.isVisible()
+        panel._btn_hide.click()
+        qapp.processEvents()
+        assert not panel.isVisible()
+
     def test_has_all_tabs(self, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
@@ -1013,8 +1024,7 @@ class TestMagnetControlPanel:
         assert panel._target_field_spin.value() == pytest.approx(1.75)
 
     def test_read_heater_updates_heater_state_label(self, monkeypatch, qapp):
-        from stoner_measurement.instruments.magnet_controller import MagnetState
-        from stoner_measurement.instruments.magnet_controller import HeaterState
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         panel = MagnetControlPanel()

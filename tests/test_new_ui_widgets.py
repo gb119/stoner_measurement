@@ -13,8 +13,9 @@ from stoner_measurement.app import (
 )
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget, PythonHighlighter
+from stoner_measurement.ui.engine_status_indicators import EngineActivityStatusWidget
 from stoner_measurement.ui.script_tab import ScriptTab
-from stoner_measurement.ui.theme import theme_stylesheet
+from stoner_measurement.ui.theme import colour, theme_stylesheet
 from stoner_measurement.ui.widgets import SISpinBox
 
 
@@ -384,6 +385,35 @@ class TestScriptTab:
         assert tab.text == ""
 
 
+class TestEngineActivityStatusWidget:
+    def test_creates_three_engine_indicators(self, qapp):
+        widget = EngineActivityStatusWidget()
+        assert widget.temperature_indicator is not None
+        assert widget.magnet_indicator is not None
+        assert widget.motor_indicator is not None
+
+    def test_status_updates_change_indicator_state(self, qapp):
+        widget = EngineActivityStatusWidget()
+        widget.set_temperature_status("connected")
+        widget.set_magnet_status("error")
+        widget.set_motor_status("disconnected")
+
+        assert widget.temperature_indicator.status_text == "connected"
+        assert widget.magnet_indicator.status_text == "error"
+        assert widget.motor_indicator.status_text == "disconnected"
+
+    def test_poll_blink_temporarily_uses_highlight_colour(self, qapp):
+        from qtpy.QtWidgets import QFrame
+
+        widget = EngineActivityStatusWidget()
+        widget.set_temperature_status("connected")
+        widget.blink_temperature()
+
+        dot = widget.temperature_indicator.findChild(QFrame, "tempEngineActivityDot")
+        assert dot is not None
+        assert colour("highlight") in dot.styleSheet()
+
+
 class TestMeasurementApp:
     def test_has_menu_bar(self, qapp):
         app = MeasurementApp()
@@ -407,6 +437,35 @@ class TestMeasurementApp:
         app = MeasurementApp()
         assert app.statusBar() is not None
         app._engine.shutdown()
+
+    def test_status_bar_has_engine_activity_indicators(self, qapp):
+        app = MeasurementApp()
+        try:
+            widget = app._engine_activity_status
+            assert widget.temperature_indicator.status_text in {"disconnected", "stopped"}
+            assert widget.magnet_indicator.status_text in {"disconnected", "stopped"}
+            assert widget.motor_indicator.status_text in {"disconnected", "stopped"}
+        finally:
+            app._engine.shutdown()
+
+    def test_controller_status_signals_update_status_bar_indicators(self, qapp):
+        from stoner_measurement.magnet_control.types import MagnetEngineStatus
+        from stoner_measurement.motor_control.types import MotorEngineStatus
+        from stoner_measurement.temperature_control.types import EngineStatus
+
+        app = MeasurementApp()
+        try:
+            app._temp_panel._engine.publisher.engine_status_changed.emit(EngineStatus.CONNECTED)
+            app._magnet_panel._engine.publisher.engine_status_changed.emit(MagnetEngineStatus.ERROR)
+            app._motor_panel._engine.publisher.engine_status_changed.emit(MotorEngineStatus.POLLING)
+            qapp.processEvents()
+
+            widget = app._engine_activity_status
+            assert widget.temperature_indicator.status_text == "connected"
+            assert widget.magnet_indicator.status_text == "error"
+            assert widget.motor_indicator.status_text == "polling"
+        finally:
+            app._engine.shutdown()
 
     def test_status_bar_defaults_to_grey_background(self, qapp):
         app = MeasurementApp()

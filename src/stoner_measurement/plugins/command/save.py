@@ -226,6 +226,8 @@ class SaveCommand(CommandPlugin):
         self.trace_selection: dict[str, bool] = {}
         self.data_source: str = ""
         self.no_overwrite: bool = True
+        self.incremental_save: bool = False
+        self._incremental_files: dict[str, dict[str, str | int]] = {}
 
     @property
     def name(self) -> str:
@@ -361,9 +363,25 @@ class SaveCommand(CommandPlugin):
         )
         if _save_mode == "data" and not columns:
             return
-        dest = self._resolve_destination(no_overwrite=_no_overwrite)
         rows = self._build_rows(metadata=metadata, columns=columns)
-        self._write_rows(dest=dest, rows=rows)
+
+        if _save_mode == "data" and self.incremental_save:
+            dest = self._write_incremental_data_rows(
+                metadata=metadata,
+                columns=columns,
+                rows=rows,
+                no_overwrite=_no_overwrite,
+            )
+        else:
+            original = self._resolve_original_destination()
+            dest = self._next_available_destination(original) if _no_overwrite else original
+            self._write_rows(dest=dest, rows=rows)
+            if _save_mode == "data":
+                self._record_saved_file(
+                    original=original,
+                    dest=dest,
+                    data_rows=self._data_row_count(columns),
+                )
         self.log.info("Data saved to %s", dest)
 
     def _resolve_effective_options(
@@ -396,6 +414,13 @@ class SaveCommand(CommandPlugin):
 
     def _resolve_destination(self, *, no_overwrite: bool) -> pathlib.Path:
         """Evaluate :attr:`path_expr`, resolve to a writable path, and apply no-overwrite."""
+        dest = self._resolve_original_destination()
+        if no_overwrite:
+            dest = self._next_available_destination(dest)
+        return dest
+
+    def _resolve_original_destination(self) -> pathlib.Path:
+        """Evaluate :attr:`path_expr` and resolve it to the configured output path."""
         path_val = self.eval(self.path_expr)
         if not isinstance(path_val, str):
             raise TypeError(f"SaveCommand.path_expr must evaluate to a str, got {type(path_val).__name__!r}")
@@ -412,15 +437,20 @@ class SaveCommand(CommandPlugin):
             if data_dir:
                 dest = pathlib.Path(data_dir) / dest
 
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if no_overwrite and dest.exists():
-            stem = dest.stem
-            suffix = dest.suffix
-            parent_dir = dest.parent
-            counter = 1
-            while dest.exists():
-                dest = parent_dir / f"{stem}_{counter:03d}{suffix}"
-                counter += 1
+        return dest
+
+    def _next_available_destination(self, dest: pathlib.Path) -> pathlib.Path:
+        """Return *dest* or a numeric-suffixed variant that does not exist."""
+        if not dest.exists():
+            return dest
+
+        stem = dest.stem
+        suffix = dest.suffix
+        parent_dir = dest.parent
+        counter = 1
+        while dest.exists():
+            dest = parent_dir / f"{stem}_{counter:03d}{suffix}"
+            counter += 1
         return dest
 
     def _build_metadata(self, *, ns: dict[str, Any]) -> list[str]:
@@ -539,8 +569,75 @@ class SaveCommand(CommandPlugin):
 
     def _write_rows(self, *, dest: pathlib.Path, rows: list[list[str]]) -> None:
         """Write the tab-delimited TDI rows to *dest*."""
+        dest.parent.mkdir(parents=True, exist_ok=True)
         content = "\n".join("\t".join(row) for row in rows) + "\n"
         dest.write_text(content, encoding="utf-8")
+
+    def _write_incremental_data_rows(
+        self,
+        *,
+        metadata: list[str],
+        columns: list[tuple[str, np.ndarray]],
+        rows: list[list[str]],
+        no_overwrite: bool,
+    ) -> pathlib.Path:
+        """Write or append data-mode rows according to the incremental save state."""
+        original = self._resolve_original_destination()
+        original_key = str(original)
+        entry = self._incremental_files.get(original_key)
+        if entry is None:
+            actual = self._next_available_destination(original) if no_overwrite else original
+            entry = {"actual_filename": str(actual), "rows_saved": 0}
+            self._incremental_files[original_key] = entry
+
+        dest = pathlib.Path(str(entry["actual_filename"]))
+        rows_saved = int(entry["rows_saved"])
+        meta_rows = len(metadata)
+        data_rows = self._data_row_count(columns)
+
+        if rows_saved < meta_rows:
+            self._write_rows(dest=dest, rows=rows)
+        elif data_rows > rows_saved:
+            self._append_data_rows(dest=dest, columns=columns, start=rows_saved, stop=data_rows)
+
+        entry["rows_saved"] = data_rows
+        return dest
+
+    def _append_data_rows(
+        self,
+        *,
+        dest: pathlib.Path,
+        columns: list[tuple[str, np.ndarray]],
+        start: int,
+        stop: int,
+    ) -> None:
+        """Append data rows without metadata to an existing TDI file."""
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        lines = []
+        for i in range(start, stop):
+            data_cells = [str(col[1][i]) if i < len(col[1]) else "" for col in columns]
+            lines.append("\t".join([""] + data_cells))
+        if not lines:
+            return
+        with dest.open("a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+
+    def _record_saved_file(
+        self,
+        *,
+        original: pathlib.Path,
+        dest: pathlib.Path,
+        data_rows: int,
+    ) -> None:
+        """Track the latest non-incremental data save for the current original filename."""
+        self._incremental_files[str(original)] = {
+            "actual_filename": str(dest),
+            "rows_saved": data_rows,
+        }
+
+    def _data_row_count(self, columns: list[tuple[str, np.ndarray]]) -> int:
+        """Return the number of data rows available across the supplied columns."""
+        return max((len(col[1]) for col in columns), default=0)
 
     def __call__(
         self,
@@ -803,6 +900,16 @@ class SaveCommand(CommandPlugin):
             data_form.addRow("Data source:", source_edit)
             data_form.addRow(QLabel("<i>No state-control plugins available.</i>", data_widget))
 
+        incremental_check = QCheckBox(data_widget)
+        incremental_check.setChecked(self.incremental_save)
+        incremental_check.setToolTip("When checked, append newly available rows during data-mode saves.")
+
+        def _apply_incremental(state: int) -> None:
+            self.incremental_save = bool(state)
+
+        incremental_check.stateChanged.connect(_apply_incremental)
+        data_form.addRow("Save incrementally:", incremental_check)
+
         data_widget.setLayout(data_form)
         return data_widget
 
@@ -836,6 +943,7 @@ class SaveCommand(CommandPlugin):
         d["trace_selection"] = self.trace_selection
         d["data_source"] = self.data_source
         d["no_overwrite"] = self.no_overwrite
+        d["incremental_save"] = self.incremental_save
         return d
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -855,3 +963,6 @@ class SaveCommand(CommandPlugin):
             self.data_source = data["data_source"]
         if "no_overwrite" in data:
             self.no_overwrite = bool(data["no_overwrite"])
+        if "incremental_save" in data:
+            self.incremental_save = bool(data["incremental_save"])
+        self._incremental_files = {}

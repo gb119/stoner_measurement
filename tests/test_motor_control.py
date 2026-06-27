@@ -64,9 +64,10 @@ class TestSimulatedMotorControllerIntegration:
         driver = SimulatedMotorController()
         engine.connect_instrument(driver)
 
-        driver._position = 270.0  # pylint: disable=protected-access
+        driver._position = 170.0  # pylint: disable=protected-access
         driver._target_position = 123.0  # pylint: disable=protected-access
-        engine.move_to_angle(90.0, direction=MotorMoveDirection.CLOCKWISE)
+        with pytest.raises(ValueError, match="soft-limit"):
+            engine.move_to_angle(-160.0, direction=MotorMoveDirection.CLOCKWISE)
 
         assert driver.get_target_position() == pytest.approx(123.0)
 
@@ -94,7 +95,7 @@ class TestSimulatedMotorControllerIntegration:
 
         engine.shutdown()
 
-    def test_engine_resolves_move_through_zero_with_safe_limit_rules(self, qapp):
+    def test_engine_force_allows_soft_limit_override(self, qapp):
         _repo_qapp(qapp)
 
         engine = MotorControllerEngine()
@@ -102,9 +103,46 @@ class TestSimulatedMotorControllerIntegration:
         engine.connect_instrument(driver)
 
         driver._position = 170.0  # pylint: disable=protected-access
-        engine.move_to_angle(190.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        engine.move_to_angle(-160.0, direction=MotorMoveDirection.CLOCKWISE, force=True)
 
-        assert driver.get_target_position() == pytest.approx(-170.0)
+        assert driver.get_target_position() == pytest.approx(200.0)
+        state = engine.get_engine_state()
+        assert state.target_angle == pytest.approx(200.0)
+        assert state.displayed_angle == pytest.approx(200.0)
+        assert state.move_direction == "clockwise"
+
+        engine.shutdown()
+
+    def test_engine_uses_relative_move_for_signed_soft_limit_wraparound(self, qapp):
+        _repo_qapp(qapp)
+
+        engine = MotorControllerEngine()
+        driver = SimulatedMotorController()
+        engine.connect_instrument(driver)
+
+        engine._soft_limit = 200.0  # pylint: disable=protected-access
+        driver._position = -190.0  # pylint: disable=protected-access
+        engine.move_to_angle(190.0, direction=MotorMoveDirection.SHORTEST)
+
+        assert driver.get_target_position() == pytest.approx(190.0)
+        state = engine.get_engine_state()
+        assert state.target_angle == pytest.approx(190.0)
+        assert state.displayed_angle == pytest.approx(190.0)
+        assert state.move_direction == "clockwise"
+
+        engine.shutdown()
+
+    def test_engine_resolves_shortest_moves_with_soft_limit_rules(self, qapp):
+        _repo_qapp(qapp)
+
+        engine = MotorControllerEngine()
+        driver = SimulatedMotorController()
+        engine.connect_instrument(driver)
+
+        driver._position = 170.0  # pylint: disable=protected-access
+        engine.move_to_angle(190.0, direction=MotorMoveDirection.SHORTEST)
+
+        assert driver.get_target_position() == pytest.approx(190.0)
         assert engine.get_engine_state().displayed_angle == pytest.approx(190.0)
 
         engine.shutdown()
@@ -113,7 +151,7 @@ class TestSimulatedMotorControllerIntegration:
         driver = SimulatedMotorController()
         engine.connect_instrument(driver)
         driver._position = 90.0  # pylint: disable=protected-access
-        engine.move_to_angle(135.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        engine.move_to_angle(135.0, direction=MotorMoveDirection.SHORTEST)
         assert driver.get_target_position() == pytest.approx(135.0)
 
         engine.shutdown()
@@ -123,9 +161,9 @@ class TestSimulatedMotorControllerIntegration:
         engine.connect_instrument(driver)
         driver._position = 180.0  # pylint: disable=protected-access
         engine.move_to_angle(-180.0, direction=MotorMoveDirection.COUNTERCLOCKWISE)
-        assert driver.get_target_position() == pytest.approx(180.0)
+        assert driver.get_target_position() == pytest.approx(-180.0)
         state = engine.get_engine_state()
-        assert state.target_angle == pytest.approx(180.0)
+        assert state.target_angle == pytest.approx(-180.0)
         assert state.displayed_angle == pytest.approx(180.0)
 
         engine.shutdown()
@@ -138,9 +176,9 @@ class TestSimulatedMotorControllerIntegration:
         assert driver.get_target_position() == pytest.approx(180.0)
         driver._position = 180.0  # pylint: disable=protected-access
         engine.move_to_angle(-180.0, direction=MotorMoveDirection.COUNTERCLOCKWISE)
-        assert driver.get_target_position() == pytest.approx(180.0)
+        assert driver.get_target_position() == pytest.approx(-180.0)
         driver._position = -180.0  # pylint: disable=protected-access
-        engine.move_to_angle(270.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        engine.move_to_angle(270.0, direction=MotorMoveDirection.SHORTEST)
         assert driver.get_target_position() == pytest.approx(-90.0)
 
         engine.shutdown()
@@ -149,9 +187,8 @@ class TestSimulatedMotorControllerIntegration:
         driver = SimulatedMotorController()
         engine.connect_instrument(driver)
         driver._position = 175.0  # pylint: disable=protected-access
-        engine._safe_clockwise_limit = 220.0  # pylint: disable=protected-access
-        engine._safe_counterclockwise_limit = 140.0  # pylint: disable=protected-access
-        engine.move_to_angle(205.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        engine._soft_limit = 220.0  # pylint: disable=protected-access
+        engine.move_to_angle(205.0, direction=MotorMoveDirection.SHORTEST)
         assert driver.get_target_position() == pytest.approx(205.0)
 
         engine.shutdown()
@@ -160,7 +197,7 @@ class TestSimulatedMotorControllerIntegration:
         driver = SimulatedMotorController()
         engine.connect_instrument(driver)
         driver._position = 175.0  # pylint: disable=protected-access
-        engine.move_to_angle(205.0, direction=MotorMoveDirection.TOWARDS_ZERO)
+        engine.move_to_angle(205.0, direction=MotorMoveDirection.SHORTEST)
         assert driver.get_target_position() == pytest.approx(-155.0)
 
         engine.shutdown()
@@ -184,6 +221,82 @@ class TestSimulatedMotorControllerIntegration:
         assert engine.status in {MotorEngineStatus.CONNECTED, MotorEngineStatus.POLLING}
 
         engine.shutdown()
+
+
+class TestMotorControlPanel:
+    def test_creates_widget(self, qapp):
+        _repo_qapp(qapp)
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+        assert panel is not None
+        assert panel.windowTitle() == "Motor Control"
+
+    def test_close_hides_not_destroys(self, qapp):
+        _repo_qapp(qapp)
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+        panel.show()
+        assert panel.isVisible()
+        panel.close()
+        assert not panel.isVisible()
+
+    def test_hide_button_hides_panel(self, qapp):
+        _repo_qapp(qapp)
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+        panel.show()
+        assert panel._btn_hide.text() == "Hide"
+        assert panel.isVisible()
+        panel._btn_hide.click()
+        qapp.processEvents()
+        assert not panel.isVisible()
+
+    def test_soft_limit_prompt_retries_confirmed_forced_move(self, qapp, monkeypatch):
+        _repo_qapp(qapp)
+        from qtpy.QtWidgets import QMessageBox
+
+        from stoner_measurement.ui import motor_panel as motor_panel_module
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        class _PromptingEngine:
+            def __init__(self):
+                self.calls = []
+                self.preferred_driver_name = ""
+                self.preferred_transport_name = ""
+                self.preferred_address = ""
+
+            def set_velocity(self, value):
+                self.velocity = value
+
+            def set_acceleration(self, value):
+                self.acceleration = value
+
+            def move_to_angle(self, angle, *, direction, force=False):
+                self.calls.append((angle, direction, force))
+                if not force:
+                    raise ValueError("soft-limit violation")
+
+        engine = _PromptingEngine()
+        panel = MotorControlPanel()
+        panel._engine = engine  # pylint: disable=protected-access
+        panel._target_angle_spin.setValue(205.0)  # pylint: disable=protected-access
+        panel._direction_combo.setCurrentIndex(0)  # pylint: disable=protected-access
+
+        monkeypatch.setattr(
+            motor_panel_module.QMessageBox,
+            "warning",
+            lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+        )
+
+        panel._on_apply_and_move()  # pylint: disable=protected-access
+
+        assert engine.calls == [
+            (205.0, MotorMoveDirection.CLOCKWISE, False),
+            (205.0, MotorMoveDirection.CLOCKWISE, True),
+        ]
 
 
 def test_top_level_public_motor_exports():

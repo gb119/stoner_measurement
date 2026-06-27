@@ -9,7 +9,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from stoner_measurement.instruments.motor_controller import MotorController, MotorMoveDirection, MotorStatus
+from stoner_measurement.instruments.motor_controller import (
+    MotorController,
+    MotorMoveDirection,
+    MotorStatus,
+)
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.transport.null_transport import NullTransport
 
@@ -149,6 +153,23 @@ class _KinesisMotorBase(MotorController):
         if self._call_first_available(("move_to",), angle) is not _MISSING:
             return
         raise NotImplementedError("Motor object does not expose move_to().")
+
+    def move_relative(
+        self,
+        angle: float,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
+        """Move by *angle* degrees in *direction*."""
+        self._ensure_connected()
+        signed_angle = abs(float(angle))
+        if direction is MotorMoveDirection.COUNTERCLOCKWISE:
+            signed_angle = -signed_angle
+        self._target_angle = self.get_position() + signed_angle
+        if self._call_first_available(("move_by", "move_relative"), signed_angle) is not _MISSING:
+            return
+        if self._call_first_available(("move_to",), self._target_angle) is not _MISSING:
+            return
+        raise NotImplementedError("Motor object does not expose a supported relative or absolute move API.")
 
     def move_home(self) -> None:
         """Move to the configured home position."""

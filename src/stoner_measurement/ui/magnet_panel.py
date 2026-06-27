@@ -254,7 +254,18 @@ class MagnetControlPanel(QWidget):
         root.setSpacing(4)
         root.addWidget(self._tabs)
         root.addWidget(status_bar)
+        root.addLayout(self._build_hide_button_row())
         self.setLayout(root)
+
+    def _build_hide_button_row(self) -> QHBoxLayout:
+        """Build the bottom-right Hide button row."""
+        row = QHBoxLayout()
+        row.addStretch()
+        self._btn_hide = QPushButton("Hide")
+        self._btn_hide.setToolTip("Hide this panel")
+        self._btn_hide.clicked.connect(self.hide)
+        row.addWidget(self._btn_hide)
+        return row
 
     # --- Connection tab ---
 

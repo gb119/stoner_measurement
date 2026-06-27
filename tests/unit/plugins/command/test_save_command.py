@@ -235,15 +235,20 @@ class TestSaveCommand:
     def test_default_no_overwrite_true(self, qapp):
         assert SaveCommand().no_overwrite is True
 
+    def test_default_incremental_save_false(self, qapp):
+        assert SaveCommand().incremental_save is False
+
     def test_to_json_includes_new_fields(self, qapp):
         cmd = SaveCommand()
         cmd.save_mode = "data"
         cmd.data_source = "my_state"
         cmd.no_overwrite = False
+        cmd.incremental_save = True
         d = cmd.to_json()
         assert d["save_mode"] == "data"
         assert d["data_source"] == "my_state"
         assert d["no_overwrite"] is False
+        assert d["incremental_save"] is True
         assert "trace_selection" in d
 
     def test_restore_from_json_new_fields(self, qapp):
@@ -253,12 +258,14 @@ class TestSaveCommand:
         cmd.save_mode = "data"
         cmd.data_source = "ctrl"
         cmd.no_overwrite = False
+        cmd.incremental_save = True
         cmd.trace_selection = {"dummy:Dummy": False}
         restored = BasePlugin.from_json(cmd.to_json())
         assert isinstance(restored, SaveCommand)
         assert restored.save_mode == "data"
         assert restored.data_source == "ctrl"
         assert restored.no_overwrite is False
+        assert restored.incremental_save is True
         assert restored.trace_selection == {"dummy:Dummy": False}
 
     # ------------------------------------------------------------------
@@ -476,6 +483,73 @@ class TestSaveCommand:
 
         assert not out_file.exists()
         assert any("not found" in r.message for r in caplog.records)
+
+    def test_incremental_data_mode_appends_only_new_rows(self, qapp, engine, tmp_path):
+        import pandas as pd
+
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        counter = CounterPlugin()
+        engine.add_plugin("counter", counter)
+        counter._data = pd.DataFrame(  # noqa: SLF001
+            [{"value": float(i)} for i in range(40)]
+        )
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.save_mode = "data"
+        cmd.data_source = "counter"
+        cmd.incremental_save = True
+        cmd.no_overwrite = False
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        cmd.execute()
+        first_lines = out_file.read_text(encoding="utf-8").splitlines()
+
+        counter._data = pd.DataFrame(  # noqa: SLF001
+            [{"value": float(i)} for i in range(43)]
+        )
+        cmd.execute()
+
+        second_lines = out_file.read_text(encoding="utf-8").splitlines()
+        assert second_lines[: len(first_lines)] == first_lines
+        assert len(second_lines) == len(first_lines) + 3
+        assert [line.split("\t", maxsplit=1)[0] for line in second_lines[-3:]] == ["", "", ""]
+        assert [line.split("\t")[1] for line in second_lines[-3:]] == ["40.0", "41.0", "42.0"]
+
+    def test_incremental_data_mode_reuses_no_overwrite_filename(self, qapp, engine, tmp_path):
+        import pandas as pd
+
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        counter = CounterPlugin()
+        engine.add_plugin("counter", counter)
+        counter._data = pd.DataFrame(  # noqa: SLF001
+            [{"value": float(i)} for i in range(40)]
+        )
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.save_mode = "data"
+        cmd.data_source = "counter"
+        cmd.incremental_save = True
+        cmd.no_overwrite = True
+        out_file = tmp_path / "out.txt"
+        out_file.write_text("sentinel\n", encoding="utf-8")
+        cmd.path_expr = repr(str(out_file))
+
+        cmd.execute()
+        counter._data = pd.DataFrame(  # noqa: SLF001
+            [{"value": float(i)} for i in range(41)]
+        )
+        cmd.execute()
+
+        versioned = tmp_path / "out_001.txt"
+        assert out_file.read_text(encoding="utf-8") == "sentinel\n"
+        assert versioned.exists()
+        assert not (tmp_path / "out_002.txt").exists()
+        assert versioned.read_text(encoding="utf-8").splitlines()[-1].split("\t")[1] == "40.0"
 
     # ------------------------------------------------------------------
     # Config widget — new controls

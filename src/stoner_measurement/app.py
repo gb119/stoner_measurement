@@ -26,6 +26,7 @@ from stoner_measurement.resources import (
     find_toolbar_icon,
     load_toolbar_config,
 )
+from stoner_measurement.ui.engine_status_indicators import EngineActivityStatusWidget
 from stoner_measurement.ui.icons import (
     make_generate_icon,
     make_log_icon,
@@ -39,7 +40,6 @@ from stoner_measurement.ui.icons import (
 )
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
-from stoner_measurement.ui.value_watch import ValueWatchWindow
 from stoner_measurement.ui.settings_dialog import (
     KEY_DEFAULT_DATA_DIR,
     KEY_THEME,
@@ -47,6 +47,7 @@ from stoner_measurement.ui.settings_dialog import (
     make_app_settings,
 )
 from stoner_measurement.ui.theme import colour, status_bar_stylesheet, theme_name
+from stoner_measurement.ui.value_watch import ValueWatchWindow
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,9 @@ class MeasurementApp(QMainWindow):
         # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
+        self._engine_activity_status = EngineActivityStatusWidget(self._status_bar)
+        self._status_bar.addPermanentWidget(self._engine_activity_status)
+        self._wire_engine_activity_status()
         self._show_status_message("Ready")
         self._engine.status_changed.connect(self._on_engine_status_changed)
 
@@ -212,6 +216,26 @@ class MeasurementApp(QMainWindow):
     # ------------------------------------------------------------------
     # Plugin synchronisation
     # ------------------------------------------------------------------
+
+    def _wire_engine_activity_status(self) -> None:
+        """Connect background controller engine signals to status-bar indicators."""
+        temp_engine = self._temp_panel._engine  # noqa: SLF001
+        magnet_engine = self._magnet_panel._engine  # noqa: SLF001
+        motor_engine = self._motor_panel._engine  # noqa: SLF001
+
+        status = self._engine_activity_status
+
+        temp_engine.publisher.engine_status_changed.connect(status.set_temperature_status)
+        temp_engine.publisher.poll_activity.connect(status.blink_temperature)
+        status.set_temperature_status(temp_engine.status)
+
+        magnet_engine.publisher.engine_status_changed.connect(status.set_magnet_status)
+        magnet_engine.publisher.poll_activity.connect(status.blink_magnet)
+        status.set_magnet_status(magnet_engine.status)
+
+        motor_engine.publisher.engine_status_changed.connect(status.set_motor_status)
+        motor_engine.publisher.poll_activity.connect(status.blink_motor)
+        status.set_motor_status(motor_engine.status)
 
     def _on_plugin_selected_for_config(self, plugin: object) -> None:
         """Sync sequence-step plugins into the engine namespace, then show config.
@@ -1283,9 +1307,7 @@ class MeasurementApp(QMainWindow):
         settings = QSettings()
         settings.setValue("mainWindow/geometry", self.saveGeometry())
         self._engine.shutdown()
-        from stoner_measurement.temperature_control.engine import (
-            TemperatureControllerEngine,
-        )
-
-        TemperatureControllerEngine.instance().shutdown()
+        self._temp_panel._engine.shutdown()  # noqa: SLF001
+        self._magnet_panel._engine.shutdown()  # noqa: SLF001
+        self._motor_panel._engine.shutdown()  # noqa: SLF001
         super().closeEvent(event)

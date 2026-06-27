@@ -23,25 +23,17 @@ Closing the window only hides it; the engine keeps running.
 
 from __future__ import annotations
 
-from stoner_measurement.ui.widgets import (
-    load_connection_preferences,
-    restore_preferred_address,
-    selected_transport,
-    set_address_widget_status,
-    show_transport_widget,
-)
-
 import json
 import logging
 from datetime import UTC, datetime
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import Qt, QSettings
-from stoner_measurement.qt_compat import pyqtSlot
-from qtpy.QtGui import QColor, QPixmap, QIcon
+from qtpy.QtCore import QSettings, Qt
+from qtpy.QtGui import QColor, QIcon, QPixmap
 from qtpy.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
@@ -50,7 +42,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QColorDialog,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -77,11 +68,18 @@ from stoner_measurement.instruments.temperature_controller import (
     TemperatureController,
     ZoneEntry,
 )
+from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     StabilityConfig,
     TemperatureEngineState,
+)
+from stoner_measurement.ui.icons import make_temperature_icon
+from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.theme import (
+    colour,
+    disabled_tab_stylesheet,
 )
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
@@ -90,13 +88,12 @@ from stoner_measurement.ui.widgets import (
     SISpinBox,
     VisaResourceComboBox,
     VisaResourceStatus,
+    load_connection_preferences,
+    restore_preferred_address,
+    selected_transport,
+    set_address_widget_status,
+    show_transport_widget,
 )
-from stoner_measurement.ui.plot_widget import PlotWidget
-from stoner_measurement.ui.theme import (
-    colour,
-    disabled_tab_stylesheet,
-)
-from stoner_measurement.ui.icons import make_temperature_icon
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +132,9 @@ _STATUS_COLOURS: dict[EngineStatus, str] = {
     EngineStatus.ERROR: "#cc0000",
 }
 
+_SETTINGS_ORGANISATION = "University of Leeds"
+_SETTINGS_APPLICATION = "Stoner Measurement"
+
 
 def _colour_dot(colour: str, size: int = 12) -> str:
     """Return an HTML span rendering a filled coloured circle for use in labels.
@@ -155,6 +155,11 @@ def _colour_dot(colour: str, size: int = 12) -> str:
         f'<span style="display:inline-block;width:{size}px;height:{size}px;'
         f"border-radius:{size // 2}px;background:{colour};\"></span>"
     )
+
+
+def _panel_settings() -> QSettings:
+    """Return the application settings store used by this panel."""
+    return QSettings(_SETTINGS_ORGANISATION, _SETTINGS_APPLICATION)
 
 
 class TemperatureControlPanel(QWidget):
@@ -269,7 +274,18 @@ class TemperatureControlPanel(QWidget):
         root.setSpacing(4)
         root.addWidget(self._tabs)
         root.addWidget(status_bar)
+        root.addLayout(self._build_hide_button_row())
         self.setLayout(root)
+
+    def _build_hide_button_row(self) -> QHBoxLayout:
+        """Build the bottom-right Hide button row."""
+        row = QHBoxLayout()
+        row.addStretch()
+        self._btn_hide = QPushButton("Hide")
+        self._btn_hide.setToolTip("Hide this panel")
+        self._btn_hide.clicked.connect(self.hide)
+        row.addWidget(self._btn_hide)
+        return row
 
     # --- Connection tab ---
 
@@ -1099,7 +1115,10 @@ class TemperatureControlPanel(QWidget):
     @pyqtSlot(int)
     def _on_rate_source_changed(self, index: int) -> None:
         """Select the temperature channel used for dT/dt calculation."""
-        self._rate_source_channel = self._rate_source_combo.itemData(index)
+        channel = self._rate_source_combo.itemData(index)
+        if not channel:
+            return
+        self._rate_source_channel = channel
         self._save_chart_settings()
 
     def _on_legend_item_changed(self, item, _column: int) -> None:
@@ -1198,7 +1217,7 @@ class TemperatureControlPanel(QWidget):
 
     def _save_chart_settings(self) -> None:
         """Persist chart preferences."""
-        settings = QSettings()
+        settings = _panel_settings()
         settings.setValue("temperaturePanel/chart/rateSource", self._rate_source_channel)
 
         for trace, item in self._legend_items.items():
@@ -1212,19 +1231,21 @@ class TemperatureControlPanel(QWidget):
                     f"temperaturePanel/chart/traceStyle/{trace}/{key}",
                     value,
                 )
+        settings.sync()
 
     def _load_chart_settings(self) -> None:
         """Restore persisted chart preferences."""
-        settings = QSettings()
-        self._rate_source_channel = settings.value(
+        settings = _panel_settings()
+        rate_source = settings.value(
             "temperaturePanel/chart/rateSource",
             None,
             type=str,
         )
+        self._rate_source_channel = rate_source or None
 
     def _restore_trace_settings(self, trace: str, item: QTreeWidgetItem) -> None:
         """Restore persisted visibility and style for a trace."""
-        settings = QSettings()
+        settings = _panel_settings()
 
         visible = settings.value(
             f"temperaturePanel/chart/traceVisibility/{trace}",
