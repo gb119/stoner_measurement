@@ -34,12 +34,12 @@ from stoner_measurement.instruments.current_source import CurrentWaveform
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInExpandFactor,
-    LockInInputSource,
     LockInInputCoupling,
+    LockInInputSource,
     LockInLineFilter,
     LockInOutput,
-    LockInReferenceSource,
     LockinRefenceEdge,
+    LockInReferenceSource,
     LockInReserveMode,
 )
 from stoner_measurement.instruments.srs.sr830 import SRS830
@@ -1223,7 +1223,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                         value = output_value
                     channel_values[spec.name].append(float(value))
                 self._apply_auto_sensitivity(readings)
-        except:
+        except Exception:
             self._k6221.enable_output(False)
             raise
 

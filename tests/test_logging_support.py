@@ -98,7 +98,6 @@ class TestSequenceEngineLogging:
         assert handler not in logger.handlers
 
     def test_log_handler_property_returns_handler(self, engine):
-        from stoner_measurement.core.sequence_engine import _QtLogHandler
         assert isinstance(engine.log_handler, _QtLogHandler)
 
     def test_log_record_emitted_via_handler(self, engine):

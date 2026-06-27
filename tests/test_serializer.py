@@ -304,9 +304,8 @@ class TestSequenceSerializer:
         data = sequence_to_json([plugin])
         steps = sequence_from_json(data)
         assert len(steps) == 1
-        from stoner_measurement.plugins.trace import DummyPlugin as _D
 
-        assert isinstance(steps[0], _D)
+        assert isinstance(steps[0], DummyPlugin)
         assert steps[0].instance_name == "test_dummy"
 
     def test_sequence_from_json_preserves_nesting(self, qapp):

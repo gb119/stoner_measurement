@@ -706,15 +706,15 @@ class TestSISpinBox:
 
     def test_exported_from_ui_widgets(self, qapp):
         """SISpinBox is accessible via the widgets package public API."""
-        from stoner_measurement.ui.widgets import SISpinBox as _SISpinBox
+        import stoner_measurement.ui.widgets as widgets
 
-        assert _SISpinBox is SISpinBox
+        assert widgets.SISpinBox is SISpinBox
 
     def test_exported_from_ui(self, qapp):
         """SISpinBox is accessible via the top-level ui package."""
-        from stoner_measurement.ui import SISpinBox as _SISpinBox
+        import stoner_measurement.ui as ui
 
-        assert _SISpinBox is SISpinBox
+        assert ui.SISpinBox is SISpinBox
 
 
 if __name__ == "__main__":

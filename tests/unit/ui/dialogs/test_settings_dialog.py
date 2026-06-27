@@ -160,7 +160,7 @@ class TestSettingsDialogToolbarSave:
         dialog = SettingsDialog()
         dialog._add_toolbar_row(name="Broken", sequence="")
         saved = []
-        monkeypatch.setattr(settings_module, "save_toolbar_config", lambda config: saved.append(config))
+        monkeypatch.setattr(settings_module, "save_toolbar_config", saved.append)
         monkeypatch.setattr(
             settings_module.QMessageBox,
             "warning",

@@ -36,6 +36,6 @@ class TestUdpTransport:
         UdpTransport(host="10.0.0.1", port=8000).close()
 
     def test_exported_from_transport_package(self):
-        from stoner_measurement.instruments.transport import UdpTransport as ExportedUdpTransport
+        import stoner_measurement.instruments.transport as transport
 
-        assert ExportedUdpTransport is UdpTransport
+        assert transport.UdpTransport is UdpTransport

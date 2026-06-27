@@ -174,7 +174,7 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=pm)
 
         received = []
-        panel.plugin_selected.connect(lambda p: received.append(p))
+        panel.plugin_selected.connect(received.append)
 
         panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
@@ -195,7 +195,7 @@ class TestDockPanel:
         panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
 
         received = []
-        panel.plugin_selected.connect(lambda p: received.append(p))
+        panel.plugin_selected.connect(received.append)
         panel._sequence_tree.setCurrentItem(None)  # clear current item
 
         assert len(received) == 1

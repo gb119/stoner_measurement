@@ -225,7 +225,6 @@ class TestDummyPlugin:
         assert plugin.status is TraceStatus.IDLE
 
     def test_measure_yields_data(self, qapp):
-        import numpy as np
         import pandas as pd
 
         plugin = DummyPlugin()

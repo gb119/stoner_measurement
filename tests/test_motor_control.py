@@ -187,18 +187,18 @@ class TestSimulatedMotorControllerIntegration:
 
 
 def test_top_level_public_motor_exports():
+    import stoner_measurement as top_level
     from stoner_measurement import (
         MotorControllerEngine as TopLevelMotorControllerEngine,
     )
-    from stoner_measurement import MotorEngineState, MotorReading, SimulatedMotorController
     from stoner_measurement.instruments import (
         SimulatedMotorController as InstrumentsSimulatedMotorController,
     )
 
     assert TopLevelMotorControllerEngine is MotorControllerEngine
-    assert MotorEngineState.__name__ == "MotorEngineState"
-    assert MotorReading.__name__ == "MotorReading"
-    assert SimulatedMotorController is InstrumentsSimulatedMotorController
+    assert top_level.MotorEngineState.__name__ == "MotorEngineState"
+    assert top_level.MotorReading.__name__ == "MotorReading"
+    assert top_level.SimulatedMotorController is InstrumentsSimulatedMotorController
 
 
 if __name__ == "__main__":

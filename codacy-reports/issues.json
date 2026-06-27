@@ -1,0 +1,916 @@
+﻿{
+  "issues": [
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport 'numpy' (imported line 7)",
+      "filePath": "tests/test_dummy_plugin.py",
+      "lineNumber": 228,
+      "lineText": "        import numpy as np",
+      "resultDataId": 131471063997,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Agentlinter_clarity_undefined-term",
+        "severityLevel": "Info",
+        "category": "Comprehensibility"
+      },
+      "message": "Undefined acronym \"GUI\" — define on first use or add to glossary.",
+      "filePath": "AGENTS.md",
+      "lineNumber": 66,
+      "lineText": "GUI/widget tests so the correct Qt stack is available.",
+      "resultDataId": 131507788320,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "expected 1 blank line before a nested definition, found 0 (E306)",
+      "filePath": "tests/test_sequence_engine.py",
+      "lineNumber": 835,
+      "lineText": "        def _request_stop() -> None:",
+      "resultDataId": 131492435311,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "Keithley6221_MultiSR830Plugin._plugin_config_tabs is too complex (24) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/trace/k6221_multi_sr830.py",
+      "lineNumber": 696,
+      "lineText": "    def _plugin_config_tabs(self) -> QWidget:",
+      "resultDataId": 131503815001,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "do not use bare 'except' (E722)",
+      "filePath": "src/stoner_measurement/plugins/trace/k6221_multi_sr830.py",
+      "lineNumber": 1226,
+      "lineText": "        except:",
+      "resultDataId": 131505371242,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "line too long (188 > 159 characters) (E501)",
+      "filePath": "src/stoner_measurement/ui/magnet_panel.py",
+      "lineNumber": 1344,
+      "lineText": "                else \"Heater On is disabled because the heater is already on, or the persistent current is unknown, or the persistent current does not match the target within 1% or 10 mA.\"",
+      "resultDataId": 131506286583,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "RoundDialWidget._preferred_label_values is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/ui/widgets/round_dial.py",
+      "lineNumber": 899,
+      "lineText": "    def _preferred_label_values(self) -> list[float]:",
+      "resultDataId": 131507271517,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport 'DummyPlugin' (imported line 300)",
+      "filePath": "tests/test_serializer.py",
+      "lineNumber": 307,
+      "lineText": "        from stoner_measurement.plugins.trace import DummyPlugin as _D",
+      "resultDataId": 131471063986,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "variable 'valueChanged' in class scope should not be mixedCase (N815)",
+      "filePath": "src/stoner_measurement/ui/widgets/round_dial.py",
+      "lineNumber": 77,
+      "lineText": "    valueChanged = Signal(float)",
+      "resultDataId": 131507271510,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0108",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lambda may not be necessary",
+      "filePath": "tests/unit/ui/dialogs/test_settings_dialog.py",
+      "lineNumber": 163,
+      "lineText": "        monkeypatch.setattr(settings_module, \"save_toolbar_config\", lambda config: saved.append(config))",
+      "resultDataId": 131507878085,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "variable 'pyqtSlot' in global scope should not be mixedCase (N816)",
+      "filePath": "src/stoner_measurement/qt_compat.py",
+      "lineNumber": 6,
+      "lineText": "pyqtSlot = Slot",
+      "resultDataId": 131505873750,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_C0200",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Consider using enumerate instead of iterating with range and len",
+      "filePath": "src/stoner_measurement/ui/temperature_panel.py",
+      "lineNumber": 1285,
+      "lineText": "        for idx in range(len(times)):",
+      "resultDataId": 131505935294,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "markdownlint_MD032",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lists should be surrounded by blank lines",
+      "filePath": ".github/copilot-instructions.md",
+      "lineNumber": 116,
+      "lineText": "- sort imports alphabetically.",
+      "resultDataId": 131506586050,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Agentlinter_completeness_has-identity",
+        "severityLevel": "Info",
+        "category": "Comprehensibility"
+      },
+      "message": "No identity/persona defined. Without this, the agent has no consistent personality.",
+      "filePath": "AGENTS.md",
+      "lineNumber": 1,
+      "lineText": "﻿# Codex Instructions",
+      "resultDataId": 131507788319,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0108",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lambda may not be necessary",
+      "filePath": "tests/test_sequence_engine.py",
+      "lineNumber": 893,
+      "lineText": "    engine.status_changed.connect(lambda s: received.append(s))",
+      "resultDataId": 131471063993,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "continuation line unaligned for hanging indent (E131)",
+      "filePath": "src/stoner_measurement/plugins/trace/keithley_2400.py",
+      "lineNumber": 1022,
+      "lineText": "             \"and timer modes. Optional trigger output routing can be enabled for \"",
+      "resultDataId": 131506946693,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "TraceChannelSelectionMixin._wire_data_source_widgets is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/transform/_trace_selection.py",
+      "lineNumber": 144,
+      "lineText": "    def _wire_data_source_widgets(",
+      "resultDataId": 131496066521,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport 'SimulatedMotorController' (imported line 8)",
+      "filePath": "tests/test_motor_control.py",
+      "lineNumber": 193,
+      "lineText": "    from stoner_measurement import MotorEngineState, MotorReading, SimulatedMotorController",
+      "resultDataId": 131507344629,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Semgrep_codacy.python.i18n.no-hardcoded-strftime",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "Avoid hardcoded date format strings in strftime.",
+      "filePath": "src/stoner_measurement/ui/log_viewer.py",
+      "lineNumber": 674,
+      "lineText": "        timestamp = datetime.fromtimestamp(record.created).strftime(\"%H:%M:%S\")",
+      "resultDataId": 131490080388,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport 'UdpTransport' (imported line 7)",
+      "filePath": "tests/unit/instruments/transport/test_udp_transport.py",
+      "lineNumber": 39,
+      "lineText": "        from stoner_measurement.instruments.transport import UdpTransport as ExportedUdpTransport",
+      "resultDataId": 131507878084,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "variable 'valueChanged' in class scope should not be mixedCase (N815)",
+      "filePath": "src/stoner_measurement/ui/widgets/si_combo_box.py",
+      "lineNumber": 75,
+      "lineText": "    valueChanged = pyqtSignal(float)",
+      "resultDataId": 131484101365,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "variable 'pyqtSignal' in global scope should not be mixedCase (N816)",
+      "filePath": "src/stoner_measurement/qt_compat.py",
+      "lineNumber": 5,
+      "lineText": "pyqtSignal = Signal",
+      "resultDataId": 131505873751,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "variable 'valueChanged' in class scope should not be mixedCase (N815)",
+      "filePath": "src/stoner_measurement/ui/widgets/percent_slider.py",
+      "lineNumber": 47,
+      "lineText": "    valueChanged = pyqtSignal(float)",
+      "resultDataId": 131482739310,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Semgrep_codacy.python.i18n.no-hardcoded-strftime",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "Avoid hardcoded date format strings in strftime.",
+      "filePath": "src/stoner_measurement/motor_control/config.py",
+      "lineNumber": 37,
+      "lineText": "        timestamp = datetime.now(tz=UTC).strftime(\"%Y%m%d-%H%M%S\")",
+      "resultDataId": 131507344631,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Semgrep_codacy.python.i18n.no-hardcoded-strftime",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "Avoid hardcoded date format strings in strftime.",
+      "filePath": "src/stoner_measurement/ui/magnet_panel.py",
+      "lineNumber": 664,
+      "lineText": "            f\"Last updated: {datetime.fromtimestamp(now_ts).strftime('%H:%M:%S')}\"",
+      "resultDataId": 131481511602,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotPointsCommand.sequence_engine is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/command/plot_points.py",
+      "lineNumber": 243,
+      "lineText": "    def sequence_engine(self, engine: SequenceEngine | None) -> None:",
+      "resultDataId": 131495908444,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "_make_fake_driver is too complex (25) (MC0001)",
+      "filePath": "tests/test_magnet_control.py",
+      "lineNumber": 39,
+      "lineText": "def _make_fake_driver(field: float = 1.0, current: float = 10.0):",
+      "resultDataId": 131481511604,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Semgrep_codacy.python.i18n.no-hardcoded-strftime",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "Avoid hardcoded date format strings in strftime.",
+      "filePath": "src/stoner_measurement/temperature_control/config.py",
+      "lineNumber": 37,
+      "lineText": "        timestamp = datetime.now(tz=UTC).strftime(\"%Y%m%d-%H%M%S\")",
+      "resultDataId": 131505954504,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "resolve_wrapped_target_angle is too complex (19) (MC0001)",
+      "filePath": "src/stoner_measurement/instruments/motor_controller.py",
+      "lineNumber": 116,
+      "lineText": "def resolve_wrapped_target_angle(",
+      "resultDataId": 131507344621,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "DataFrameTracePlugin._build_data_tab is too complex (28) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/trace/dataframe_trace.py",
+      "lineNumber": 232,
+      "lineText": "    def _build_data_tab(self, parent: QWidget | None = None) -> QWidget:",
+      "resultDataId": 131496627731,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Semgrep_codacy.python.i18n.no-hardcoded-strftime",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "Avoid hardcoded date format strings in strftime.",
+      "filePath": "src/stoner_measurement/ui/motor_panel.py",
+      "lineNumber": 362,
+      "lineText": "            f\"Last updated: {datetime.fromtimestamp(now_ts).strftime('%H:%M:%S')}\"",
+      "resultDataId": 131507344632,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Agentlinter_completeness_has-tools",
+        "severityLevel": "Info",
+        "category": "Documentation"
+      },
+      "message": "No tool documentation found. The agent doesn't know what tools are available or how to use them.",
+      "filePath": "AGENTS.md",
+      "lineNumber": 1,
+      "lineText": "﻿# Codex Instructions",
+      "resultDataId": 131507788318,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotWidget._open_axes_dialog is too complex (21) (MC0001)",
+      "filePath": "src/stoner_measurement/ui/plot_widget.py",
+      "lineNumber": 1108,
+      "lineText": "    def _open_axes_dialog(self, _pos: QPoint | None = None) -> None:",
+      "resultDataId": 131507121299,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "Keithley6221_2182APlugin._plugin_config_tabs is too complex (34) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/trace/k6221_2182a.py",
+      "lineNumber": 949,
+      "lineText": "    def _plugin_config_tabs(self) -> QWidget:",
+      "resultDataId": 131483626056,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Semgrep_codacy.python.i18n.no-hardcoded-strftime",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "Avoid hardcoded date format strings in strftime.",
+      "filePath": "src/stoner_measurement/ui/temperature_panel.py",
+      "lineNumber": 708,
+      "lineText": "            f\"Last updated: {datetime.fromtimestamp(now_ts).strftime('%H:%M:%S')}\"",
+      "resultDataId": 131479107323,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "markdownlint_MD032",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lists should be surrounded by blank lines",
+      "filePath": ".github/copilot-instructions.md",
+      "lineNumber": 63,
+      "lineText": "- Start with a description of the purpose of the plugin aimed at the end user doing",
+      "resultDataId": 131506586049,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotTraceCommand.sequence_engine is too complex (21) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/command/plot_trace.py",
+      "lineNumber": 299,
+      "lineText": "    def sequence_engine(self, engine: SequenceEngine | None) -> None:",
+      "resultDataId": 131484898281,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "line too long (171 > 159 characters) (E501)",
+      "filePath": "tests/unit/ui/widgets/test_plot_widget.py",
+      "lineNumber": 153,
+      "lineText": "                {\"name\": \"left\", \"label\": \"Value\", \"log_scale\": False, \"grid\": True, \"side\": \"left\", \"visible\": True, \"minimum\": None, \"maximum\": None, \"removable\": False}",
+      "resultDataId": 131507831513,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "variable 'currentTextChanged' in class scope should not be mixedCase (N815)",
+      "filePath": "src/stoner_measurement/ui/widgets/visa_resource_widget.py",
+      "lineNumber": 235,
+      "lineText": "    currentTextChanged: pyqtSignal = pyqtSignal(str)",
+      "resultDataId": 131483632075,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "TestEngineLifecycle.test_connect_then_disconnect is too complex (18) (MC0001)",
+      "filePath": "tests/test_temperature_control.py",
+      "lineNumber": 335,
+      "lineText": "    def test_connect_then_disconnect(self, qapp):",
+      "resultDataId": 131479107315,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "_StateSweepPage._build_data_collection_section is too complex (16) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/state_sweep/base.py",
+      "lineNumber": 151,
+      "lineText": "    def _build_data_collection_section(self, plugin: StateSweepPlugin, layout: QVBoxLayout) -> None:",
+      "resultDataId": 131493343008,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "AxesConfigDialog.axis_changes is too complex (18) (MC0001)",
+      "filePath": "src/stoner_measurement/ui/plot_widget.py",
+      "lineNumber": 427,
+      "lineText": "    def axis_changes(self) -> _AxisDialogChanges:",
+      "resultDataId": 131507121300,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport 'SISpinBox' (imported line 18)",
+      "filePath": "tests/test_new_ui_widgets.py",
+      "lineNumber": 709,
+      "lineText": "        from stoner_measurement.ui.widgets import SISpinBox as _SISpinBox",
+      "resultDataId": 131482595022,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0108",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lambda may not be necessary",
+      "filePath": "tests/test_sequence_engine.py",
+      "lineNumber": 136,
+      "lineText": "        engine.output.connect(lambda s: received.append(s))",
+      "resultDataId": 131471064002,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotPointsCommand._build_y_series_section is too complex (35) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/command/plot_points.py",
+      "lineNumber": 507,
+      "lineText": "    def _build_y_series_section(  # pylint: disable=too-many-arguments,too-many-positional-arguments",
+      "resultDataId": 131480674477,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "Keithley6221_2182APlugin.execute is too complex (16) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/trace/k6221_2182a.py",
+      "lineNumber": 706,
+      "lineText": "    def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:",
+      "resultDataId": 131497709866,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "_StateScanPage._build_data_collection_section is too complex (18) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/state_scan/base.py",
+      "lineNumber": 154,
+      "lineText": "    def _build_data_collection_section(self, plugin: StateScanPlugin, layout: QVBoxLayout) -> None:",
+      "resultDataId": 131493343007,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Semgrep_codacy.python.i18n.no-hardcoded-strftime",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "Avoid hardcoded date format strings in strftime.",
+      "filePath": "src/stoner_measurement/ui/console_widget.py",
+      "lineNumber": 99,
+      "lineText": "        timestamp = datetime.now().strftime(\"%H:%M:%S\")",
+      "resultDataId": 131471064021,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "markdownlint_MD032",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lists should be surrounded by blank lines",
+      "filePath": ".github/copilot-instructions.md",
+      "lineNumber": 92,
+      "lineText": "- Include a brief overview of the module contents and their common themes.",
+      "resultDataId": 131506586052,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "Keithley6221_MultiSR830Plugin._validate_configuration is too complex (24) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/trace/k6221_multi_sr830.py",
+      "lineNumber": 1078,
+      "lineText": "    def _validate_configuration(self) -> None:",
+      "resultDataId": 131503815002,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Bandit_B102",
+        "severityLevel": "Warning",
+        "category": "Security",
+        "subCategory": "CommandInjection"
+      },
+      "message": "Use of exec detected.",
+      "filePath": "src/stoner_measurement/plugins/transform/curve_fit.py",
+      "lineNumber": 1328,
+      "lineText": "        exec(compile(self.fit_code, \"<fit_code>\", \"exec\"), ns)  # noqa: S102  # pylint: disable=exec-used",
+      "resultDataId": 131495461917,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "markdownlint_MD032",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lists should be surrounded by blank lines",
+      "filePath": ".github/copilot-instructions.md",
+      "lineNumber": 87,
+      "lineText": "- If used outside the immediate scope (e.g. by subclasses or other modules),",
+      "resultDataId": 131506586048,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Semgrep_codacy.python.i18n.no-hardcoded-strftime",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "Avoid hardcoded date format strings in strftime.",
+      "filePath": "src/stoner_measurement/magnet_control/config.py",
+      "lineNumber": 56,
+      "lineText": "        timestamp = datetime.now(tz=UTC).strftime(\"%Y%m%d-%H%M%S\")",
+      "resultDataId": 131506119206,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "_make_fake_tc is too complex (21) (MC0001)",
+      "filePath": "tests/test_temperature_control.py",
+      "lineNumber": 1005,
+      "lineText": "def _make_fake_tc():",
+      "resultDataId": 131481484610,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0612",
+        "severityLevel": "Info",
+        "category": "UnusedCode"
+      },
+      "message": "Unused variable 'code'",
+      "filePath": "tests/test_sequence_engine.py",
+      "lineNumber": 323,
+      "lineText": "        code, line_map = engine.generate_sequence_code(",
+      "resultDataId": 131471064001,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport 'LockInLineFilter' (imported line 12)",
+      "filePath": "tests/test_k6221_multi_sr830_plugin.py",
+      "lineNumber": 292,
+      "lineText": "        from stoner_measurement.instruments.lockin_amplifier import LockInLineFilter",
+      "resultDataId": 131503826968,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "TestEnginePublisher.test_status_changed_signal_emitted is too complex (18) (MC0001)",
+      "filePath": "tests/test_temperature_control.py",
+      "lineNumber": 627,
+      "lineText": "    def test_status_changed_signal_emitted(self, qapp):",
+      "resultDataId": 131479107316,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0108",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lambda may not be necessary",
+      "filePath": "tests/test_sequence_engine.py",
+      "lineNumber": 206,
+      "lineText": "        engine.status_changed.connect(lambda s: statuses.append(s))",
+      "resultDataId": 131471064014,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport 'DummyPlugin' (imported line 8)",
+      "filePath": "tests/test_sequence_engine.py",
+      "lineNumber": 118,
+      "lineText": "        from stoner_measurement.plugins.trace import DummyPlugin as _DP",
+      "resultDataId": 131471064012,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport 'DummyPlugin' (imported line 8)",
+      "filePath": "tests/test_sequence_engine.py",
+      "lineNumber": 170,
+      "lineText": "        from stoner_measurement.plugins.trace import DummyPlugin",
+      "resultDataId": 131471064009,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "markdownlint_MD032",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lists should be surrounded by blank lines",
+      "filePath": ".github/copilot-instructions.md",
+      "lineNumber": 71,
+      "lineText": "- Use ``Args:`` for positional arguments.",
+      "resultDataId": 131506586051,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0108",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lambda may not be necessary",
+      "filePath": "tests/test_sequence_engine.py",
+      "lineNumber": 150,
+      "lineText": "        engine.error_output.connect(lambda s: errors.append(s))",
+      "resultDataId": 131471064000,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Agentlinter_completeness_has-boundaries",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
+      },
+      "message": "No boundaries or constraints defined. The agent needs to know what NOT to do.",
+      "filePath": "AGENTS.md",
+      "lineNumber": 1,
+      "lineText": "﻿# Codex Instructions",
+      "resultDataId": 131507788321,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "line too long (201 > 159 characters) (E501)",
+      "filePath": "src/stoner_measurement/ui/plot_widget.py",
+      "lineNumber": 1098,
+      "lineText": "                    \"side\": self._axis_sides.get(name, \"bottom\" if axis_kind == \"x\" and name == \"bottom\" else \"left\" if axis_kind == \"y\" and name == \"left\" else \"top\" if axis_kind == \"x\" else \"right\"),",
+      "resultDataId": 131507121301,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Bandit_B102",
+        "severityLevel": "Warning",
+        "category": "Security",
+        "subCategory": "CommandInjection"
+      },
+      "message": "Use of exec detected.",
+      "filePath": "src/stoner_measurement/scan/arbitrary_function_generator.py",
+      "lineNumber": 175,
+      "lineText": "        exec(",
+      "resultDataId": 131475720871,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "Keithley2400SweepPlugin.execute is too complex (16) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/trace/keithley_2400.py",
+      "lineNumber": 478,
+      "lineText": "    def execute(",
+      "resultDataId": 131506946694,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0108",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Lambda may not be necessary",
+      "filePath": "tests/unit/ui/panels/test_dock_panel.py",
+      "lineNumber": 177,
+      "lineText": "        panel.plugin_selected.connect(lambda p: received.append(p))",
+      "resultDataId": 131507831512,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0612",
+        "severityLevel": "Info",
+        "category": "UnusedCode"
+      },
+      "message": "Unused variable 'ix'",
+      "filePath": "tests/test_state_sweep_plugin.py",
+      "lineNumber": 393,
+      "lineText": "        ix, value, _stage, _measure = next(gen)",
+      "resultDataId": 131494058793,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_C0200",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Consider using enumerate instead of iterating with range and len",
+      "filePath": "src/stoner_measurement/ui/widgets/round_dial.py",
+      "lineNumber": 1053,
+      "lineText": "        for left in range(len(rects)):",
+      "resultDataId": 131507271525,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Reimport '_QtLogHandler' (imported line 9)",
+      "filePath": "tests/test_logging_support.py",
+      "lineNumber": 101,
+      "lineText": "        from stoner_measurement.core.sequence_engine import _QtLogHandler",
+      "resultDataId": 131471063999,
+      "falsePositiveThreshold": 80
+    }
+  ]
+}

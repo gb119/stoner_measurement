@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from itertools import cycle
-from typing import Callable, Literal, TypedDict
+from typing import Literal, TypedDict
 
 import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import QPoint, Qt
-from stoner_measurement.qt_compat import pyqtSlot
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -37,6 +36,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.theme import (
     apply_pyqtgraph_dark_theme,
     button_swatch_stylesheet,
@@ -140,7 +141,7 @@ class _AxisDialogChanges(TypedDict):
 class _CoupledViewBox(pg.ViewBox):
     """ViewBox that notifies its owning PlotWidget about drag lifecycle."""
 
-    def __init__(self, owner: "PlotWidget", *args, **kwargs) -> None:
+    def __init__(self, owner: PlotWidget, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._owner = owner
 
@@ -1095,7 +1096,18 @@ class PlotWidget(QWidget):
                     "name": name,
                     "label": axis.labelText or name,
                     "log_scale": self._axis_log_scale.get(name, False),
-                    "side": self._axis_sides.get(name, "bottom" if axis_kind == "x" and name == "bottom" else "left" if axis_kind == "y" and name == "left" else "top" if axis_kind == "x" else "right"),
+                    "side": self._axis_sides.get(
+                        name,
+                        (
+                            "bottom"
+                            if axis_kind == "x" and name == "bottom"
+                            else "left"
+                            if axis_kind == "y" and name == "left"
+                            else "top"
+                            if axis_kind == "x"
+                            else "right"
+                        ),
+                    ),
                     "visible": self._axis_visible.get(name, name in {"bottom", "left"}),
                     "minimum": self._axis_range_display_values(name)[0],
                     "maximum": self._axis_range_display_values(name)[1],

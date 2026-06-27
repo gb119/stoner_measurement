@@ -13,6 +13,7 @@ from stoner_measurement.ui.plot_widget import (
     PlotWidget,
 )
 
+
 class TestPlotWidget:
     def test_creates_widget(self, qapp):
         widget = PlotWidget()
@@ -150,7 +151,17 @@ class TestPlotWidget:
                 }
             ],
             y_axes=[
-                {"name": "left", "label": "Value", "log_scale": False, "grid": True, "side": "left", "visible": True, "minimum": None, "maximum": None, "removable": False}
+                {
+                    "name": "left",
+                    "label": "Value",
+                    "log_scale": False,
+                    "grid": True,
+                    "side": "left",
+                    "visible": True,
+                    "minimum": None,
+                    "maximum": None,
+                    "removable": False,
+                }
             ],
         )
         dialog._add_name_inputs["x"].setText("left")

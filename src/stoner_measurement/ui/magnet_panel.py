@@ -24,12 +24,11 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from qtpy.QtCore import Qt, QSettings
-from stoner_measurement.qt_compat import pyqtSlot
+from qtpy.QtCore import QSettings, Qt
 from qtpy.QtGui import QColor, QIcon, QPixmap
 from qtpy.QtWidgets import (
-    QComboBox,
     QColorDialog,
+    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -60,6 +59,7 @@ from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
 )
+from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.icons import make_magnet_icon
 from stoner_measurement.ui.plot_widget import PlotWidget
 from stoner_measurement.ui.theme import (
@@ -1341,7 +1341,10 @@ class MagnetControlPanel(QWidget):
             self._btn_heater_on.setToolTip(
                 "Enable the persistent switch heater."
                 if can_turn_on
-                else "Heater On is disabled because the heater is already on, or the persistent current is unknown, or the persistent current does not match the target within 1% or 10 mA."
+                else (
+                    "Heater On is disabled because the heater is already on, or the persistent current is "
+                    "unknown, or the persistent current does not match the target within 1% or 10 mA."
+                )
             )
             self._btn_heater_off.setToolTip(
                 "Disable the persistent switch heater."

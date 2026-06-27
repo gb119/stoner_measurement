@@ -22,7 +22,11 @@ from stoner_measurement.plugins.trace import (
     TraceStatus,
     WaveformScanMode,
 )
-from stoner_measurement.plugins.trace.k6221_multi_sr830 import LockInEntry, LockInReading, _ROW_OUTPUTS
+from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
+    _ROW_OUTPUTS,
+    LockInEntry,
+    LockInReading,
+)
 
 
 def _make_plugin() -> Keithley6221_MultiSR830Plugin:
@@ -289,7 +293,6 @@ class TestConfiguration:
         plugin._k6221.set_fixed_range.assert_called_once_with(pytest.approx(2.0e-3))
 
     def test_configure_sets_line_filter(self, qapp):
-        from stoner_measurement.instruments.lockin_amplifier import LockInLineFilter
         plugin = _make_plugin()
         plugin._line_filter = LockInLineFilter.LINE
         plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))

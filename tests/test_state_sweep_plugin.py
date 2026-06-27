@@ -390,7 +390,7 @@ class TestSweepGenerators:
             state_sweep=plugin,
         )
         widget = gen.config_widget()
-        ix, value, _stage, _measure = next(gen)
+        _ix, value, _stage, _measure = next(gen)
         x, y = widget._current_marker.getData()  # noqa: SLF001
         assert x is not None and y is not None
         assert widget._current_marker in widget._preview.getPlotItem().items  # noqa: SLF001

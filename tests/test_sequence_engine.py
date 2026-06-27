@@ -115,8 +115,7 @@ class TestPluginNamespace:
         assert plugin.engine_namespace.get("_test_var") == 99
 
     def test_engine_namespace_detached_returns_empty(self):
-        from stoner_measurement.plugins.trace import DummyPlugin as _DP
-        plugin = _DP()
+        plugin = DummyPlugin()
         assert plugin.engine_namespace == {}
 
 
@@ -133,21 +132,21 @@ class TestReplExecution:
 
     def test_execute_command_emits_output(self, engine, qapp):
         received: list[str] = []
-        engine.output.connect(lambda s: received.append(s))
+        engine.output.connect(received.append)
         engine.execute_command("print('hello')")
         _wait_for_idle(engine, qapp)
         assert any("hello" in s for s in received)
 
     def test_execute_command_emits_expression_result(self, engine, qapp):
         received: list[str] = []
-        engine.output.connect(lambda s: received.append(s))
+        engine.output.connect(received.append)
         engine.execute_command("1 + 1")
         _wait_for_idle(engine, qapp)
         assert any("2" in s for s in received)
 
     def test_execute_command_error_emits_error_output(self, engine, qapp):
         errors: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
+        engine.error_output.connect(errors.append)
         engine.execute_command("1 / 0")
         _wait_for_idle(engine, qapp)
         assert errors
@@ -180,7 +179,7 @@ class TestReplExecution:
         # After the generated script, print() via execute_command must still be
         # captured by the engine's output signal.
         received: list[str] = []
-        engine.output.connect(lambda s: received.append(s))
+        engine.output.connect(received.append)
         engine.execute_command("print('hello_after_eval')")
         _wait_for_idle(engine, qapp)
 
@@ -203,14 +202,14 @@ class TestScriptExecution:
 
     def test_run_script_emits_status_running(self, engine, qapp):
         statuses: list[str] = []
-        engine.status_changed.connect(lambda s: statuses.append(s))
+        engine.status_changed.connect(statuses.append)
         engine.run_script("import time; time.sleep(0.01)")
         _wait_for_script_finished(engine, qapp)
         assert "Running" in statuses
 
     def test_run_script_emits_status_idle_on_completion(self, engine, qapp):
         statuses: list[str] = []
-        engine.status_changed.connect(lambda s: statuses.append(s))
+        engine.status_changed.connect(statuses.append)
         engine.run_script("pass")
         _wait_for_script_finished(engine, qapp)
         assert "Idle" in statuses
@@ -224,7 +223,7 @@ class TestScriptExecution:
 
     def test_run_script_captures_stdout(self, engine, qapp):
         received: list[str] = []
-        engine.output.connect(lambda s: received.append(s))
+        engine.output.connect(received.append)
         engine.run_script("print('from script')")
         _wait_for_script_finished(engine, qapp)
         assert any("from script" in s for s in received)
@@ -232,22 +231,22 @@ class TestScriptExecution:
     def test_run_script_syntax_error_emits_error(self, engine, qapp):
         errors: list[str] = []
         statuses: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
-        engine.status_changed.connect(lambda s: statuses.append(s))
+        engine.error_output.connect(errors.append)
+        engine.status_changed.connect(statuses.append)
         engine.run_script("def (broken:")
         _wait_for_status(engine, qapp, {"Error", "Idle"})
         assert errors or "Error" in statuses
 
     def test_run_script_runtime_error_emits_error(self, engine, qapp):
         errors: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
+        engine.error_output.connect(errors.append)
         engine.run_script("raise ValueError('oops')")
         _wait_for_status(engine, qapp, {"Error"})
         assert errors
 
     def test_stop_interrupts_long_script(self, engine, qapp):
         statuses: list[str] = []
-        engine.status_changed.connect(lambda s: statuses.append(s))
+        engine.status_changed.connect(statuses.append)
         engine.run_script("import time\nfor _ in range(1000):\n    time.sleep(0.001)\n")
         time.sleep(0.02)  # let it start
         engine.stop()
@@ -320,7 +319,7 @@ class TestCodeGeneration:
     def test_line_map_covers_action_lines(self, engine):
         plugin = DummyPlugin()
         plugins = {"dummy": plugin}
-        code, line_map = engine.generate_sequence_code(
+        _, line_map = engine.generate_sequence_code(
             ["dummy"], plugins, return_line_map=True
         )
         assert line_map, "line_map should not be empty for a non-empty sequence"
@@ -443,7 +442,7 @@ class TestExceptionReporting:
     def test_customised_script_error_shows_sequence_traceback(self, engine, qapp):
         """Customised-script exceptions should show a filtered traceback header."""
         errors: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
+        engine.error_output.connect(errors.append)
         engine.run_script("raise ValueError('test error')", customised=True)
         _wait_for_status(engine, qapp, {"Error"})
         assert errors, "error_output should have been emitted"
@@ -455,7 +454,7 @@ class TestExceptionReporting:
     def test_customised_script_error_contains_source_line(self, engine, qapp):
         """Customised-script traceback should include the errant source line."""
         errors: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
+        engine.error_output.connect(errors.append)
         script = "x = 1\nraise RuntimeError('boom')\ny = 2\n"
         engine.run_script(script, customised=True)
         _wait_for_status(engine, qapp, {"Error"})
@@ -467,7 +466,7 @@ class TestExceptionReporting:
     def test_customised_script_no_internal_engine_frames(self, engine, qapp):
         """Customised-script tracebacks should not include engine module frames."""
         errors: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
+        engine.error_output.connect(errors.append)
         engine.run_script("raise ValueError('oops')", customised=True)
         _wait_for_status(engine, qapp, {"Error"})
         combined = "\n".join(errors)
@@ -492,7 +491,7 @@ class TestExceptionReporting:
         bad_script = "\n".join(source_lines)
 
         errors: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
+        engine.error_output.connect(errors.append)
         engine.run_script(bad_script, customised=False, line_map=line_map)
         _wait_for_status(engine, qapp, {"Error"})
         combined = "\n".join(errors)
@@ -503,7 +502,7 @@ class TestExceptionReporting:
     def test_non_customised_script_no_line_map_falls_back(self, engine, qapp):
         """Without a line_map, auto-generated errors emit a regular traceback."""
         errors: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
+        engine.error_output.connect(errors.append)
         engine.run_script("raise ValueError('fallback')", customised=False, line_map=None)
         _wait_for_status(engine, qapp, {"Error"})
         combined = "\n".join(errors)
@@ -522,7 +521,7 @@ class TestExceptionReporting:
         bad_script = "\n".join(source_lines)
 
         errors: list[str] = []
-        engine.error_output.connect(lambda s: errors.append(s))
+        engine.error_output.connect(errors.append)
         engine.run_script(bad_script, customised=False, line_map=line_map)
         _wait_for_status(engine, qapp, {"Error"})
         combined = "\n".join(errors)
@@ -832,6 +831,7 @@ class TestDataCatalogs:
                 return True
 
         engine.plot_widget = _BusyPlotWidget()
+
         def _request_stop() -> None:
             time.sleep(0.02)
             engine.stop()
@@ -840,8 +840,6 @@ class TestDataCatalogs:
         stop_thread.start()
         assert engine.wait_for_plot_ready(timeout=None, poll_interval=0.001) is False
         stop_thread.join(timeout=1.0)
-
-
 
 
 _TIMEOUT = 5.0  # seconds
@@ -890,7 +888,7 @@ def _wait_for_status(
 ) -> None:
     """Wait until the engine emits one of the *target_statuses*."""
     received: list[str] = []
-    engine.status_changed.connect(lambda s: received.append(s))
+    engine.status_changed.connect(received.append)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         qapp.processEvents()
