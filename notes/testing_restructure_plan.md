@@ -1,5 +1,8 @@
 # Testing Restructure Plan
 
+This is the historical migration log for the test-suite restructure. Durable
+test layout and philosophy guidance lives in `notes/testing_guidelines.md`.
+
 This document records the test-suite restructure so future Codex sessions can
 continue without rediscovering the same coverage map.
 

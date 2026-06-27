@@ -6,7 +6,7 @@ Run project commands through the conda environment:
 conda run -n stoner_measurement <command>
 ```
 
-## Examples:
+## Examples
 
 ```powershell
 conda run -n stoner_measurement pytest
@@ -83,4 +83,8 @@ global `codacy` command exists.
 - Do not assume globally installed Python tooling; prefer the conda environment.
 - If a command fails outside the environment, retry it through
   `conda run -n stoner_measurement`.
-
+- Before adding, moving, or rewriting tests, read
+  `notes/testing_guidelines.md`. Keep migration progress in
+  `notes/testing_restructure_plan.md`.
+- Developer-facing notes belong in `notes/`; keep `docs/` for user-facing
+  Sphinx documentation.

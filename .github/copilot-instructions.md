@@ -7,6 +7,8 @@
   ``instruments`` sub-package.
 - Generate instrument-specific commands only in driver code, not in UI code or
   sequence plugins.
+- Before adding, moving, or rewriting tests, read
+  ``notes/testing_guidelines.md``.
 - Use Google-style docstrings in British English.
 - Class docstrings on concrete classes in the plugins hierarchy are used as end user
   documentation.
@@ -124,6 +126,16 @@ Within each group, do the following:
 - Remove trailing whitespace at the end of lines.
 - Ensure blank lines only contain an end of line character and not any other
   whitespace.
+
+## Test guidance
+
+Developer-facing testing guidance lives in ``notes/testing_guidelines.md``.
+Follow that file for test layout, migration rules, test philosophy, and
+``if __name__ == "__main__"`` direct-run blocks in test files.
+
+When splitting AI-generated monolithic tests, move one behaviour-focused tranche
+at a time, preserve coverage before simplifying, run focused tests plus a full
+collection check, and update the test migration plan in ``notes/``.
 
 ## Issues and bugs discovered during Copilot and other LLM operations
 
