@@ -198,6 +198,7 @@ class MagnetControlPanel(QWidget):
 
         # Cached magnet constant for current ↔ field conversion in UI.
         self._magnet_constant: float = 1.0
+        self._allow_exit_close = False
 
         self._load_chart_settings()
         self._build_ui()
@@ -233,6 +234,10 @@ class MagnetControlPanel(QWidget):
 
         The engine continues running when the panel is closed.
         """
+        if self._allow_exit_close:
+            logger.info("Closing magnet control panel during application shutdown.")
+            super().closeEvent(event)
+            return
         event.ignore()
         self.hide()
 

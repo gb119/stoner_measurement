@@ -117,7 +117,7 @@ class TemperatureControllerPluginMixin:
         engine.set_setpoint(self.control_loop, float(value))
 
     def set_rate(self, value: float) -> None:
-        self.ramp_rate = max(0.0, float(value)) * 60.0
+        self.ramp_rate = max(0.0, float(value))
         engine = self._engine()
         if engine.connected_driver is not None:
             engine.set_ramp(self.control_loop, self.ramp_rate, True)
@@ -148,7 +148,7 @@ class TemperatureControllerPluginMixin:
         return float(getattr(self, "value", 0.0))
 
     def is_at_target(self) -> bool:
-        state = self._engine_state()
+        state = self._engine_state(refresh=True)
         loop = self._state_control_loop(state)
         return bool(state.at_setpoint.get(loop, False))
 

@@ -205,6 +205,9 @@ class MeasurementApp(QMainWindow):
             lambda _: self._update_window_title()
         )
 
+        self._shutdown_in_progress = False
+        QApplication.instance().aboutToQuit.connect(self.shutdown)  # type: ignore[union-attr]
+
         self._restore_settings()
 
         # Discover plugins (emits plugins_changed → _on_plugins_changed) ------
@@ -1302,12 +1305,49 @@ class MeasurementApp(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
 
-    def closeEvent(self, event) -> None:  # type: ignore[override]
-        """Save window geometry and cleanly shut down engines on close."""
+    def shutdown(self) -> None:
+        """Close auxiliary windows and stop all engines exactly once."""
+        if self._shutdown_in_progress:
+            logger.debug("Application shutdown already in progress; skipping duplicate request.")
+            return
+        self._shutdown_in_progress = True
+        logger.info("Application shutdown starting.")
+
         settings = QSettings()
         settings.setValue("mainWindow/geometry", self.saveGeometry())
-        self._engine.shutdown()
-        self._temp_panel._engine.shutdown()  # noqa: SLF001
-        self._magnet_panel._engine.shutdown()  # noqa: SLF001
-        self._motor_panel._engine.shutdown()  # noqa: SLF001
+
+        for widget in (
+            self._value_watch,
+            self._log_viewer,
+            self._temp_panel,
+            self._magnet_panel,
+            self._motor_panel,
+        ):
+            widget_name = f"{type(widget).__name__}"
+            try:
+                if hasattr(widget, "_allow_exit_close"):
+                    widget._allow_exit_close = True  # noqa: SLF001
+                logger.debug("Closing auxiliary window: %s", widget_name)
+                widget.close()
+            except Exception:
+                logger.exception("Failed while closing auxiliary window: %s", widget_name)
+
+        for engine in (
+            self._engine,
+            self._temp_panel._engine,  # noqa: SLF001
+            self._magnet_panel._engine,  # noqa: SLF001
+            self._motor_panel._engine,  # noqa: SLF001
+        ):
+            engine_name = f"{type(engine).__name__}"
+            try:
+                logger.debug("Shutting down engine: %s", engine_name)
+                engine.shutdown()
+            except Exception:
+                logger.exception("Failed while shutting down engine: %s", engine_name)
+
+        logger.info("Application shutdown complete.")
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        """Save window geometry and cleanly shut down engines on close."""
+        self.shutdown()
         super().closeEvent(event)

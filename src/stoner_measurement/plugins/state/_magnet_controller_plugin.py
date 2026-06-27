@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QCheckBox, QFormLayout, QHBoxLayout, QVBoxLayout, QWidget
+
 from stoner_measurement.magnet_control.engine import MagnetControllerEngine
 from stoner_measurement.ui.widgets import SISpinBox
 
@@ -39,6 +40,7 @@ class MagnetControllerPluginMixin:
 
     def _init_magnet_controller_plugin(self) -> None:
         self.ramp_rate: float = 0.1
+        self.use_plugin_ramp_rate: bool = True
         self.report_outputs: list[str] | None = None
 
     def _refresh_catalogs(self) -> None:
@@ -82,7 +84,8 @@ class MagnetControllerPluginMixin:
 
     def configure(self) -> None:
         self._raise_if_quenched(self._engine_state())
-        self._engine().set_ramp_rate_field(self.ramp_rate)
+        if self.use_plugin_ramp_rate:
+            self._engine().set_ramp_rate_field(self.ramp_rate)
 
     def disconnect(self) -> None:
         """Leave the shared engine running."""
@@ -90,7 +93,8 @@ class MagnetControllerPluginMixin:
     def set_state(self, value: float) -> None:
         engine = self._ensure_connected()
         self._raise_if_quenched(self._engine_state(refresh=True))
-        engine.set_ramp_rate_field(self.ramp_rate)
+        if self.use_plugin_ramp_rate:
+            engine.set_ramp_rate_field(self.ramp_rate)
         engine.ramp_to_field(float(value))
 
     def set_target(self, value: float) -> None:
@@ -100,7 +104,9 @@ class MagnetControllerPluginMixin:
         engine.ramp_to_target()
 
     def set_rate(self, value: float) -> None:
-        self.ramp_rate = max(0.0, float(value)) * 60.0
+        self.ramp_rate = max(0.0, float(value))
+        if not self.use_plugin_ramp_rate:
+            return
         self._raise_if_quenched(self._engine_state())
         engine = self._engine()
         if engine.connected_driver is not None:
@@ -118,9 +124,9 @@ class MagnetControllerPluginMixin:
         return float(getattr(self, "value", 0.0))
 
     def is_at_target(self) -> bool:
-        state = self._engine_state()
+        state = self._engine_state(refresh=True)
         self._raise_if_quenched(state)
-        return bool(state.reading is not None and state.reading.at_target)
+        return bool(state.at_target)
 
     @property
     def field(self) -> float:

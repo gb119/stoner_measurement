@@ -175,6 +175,7 @@ class SimulatedMagnetController(MagnetController):
         )
         self._last_update = time.monotonic()
         self._current = 0.0
+        self._io_delay_s = 0.05
         self._target_current = 0.0
         self._ramp_rate_aps = 1.0
         self._heater = True
@@ -187,6 +188,10 @@ class SimulatedMagnetController(MagnetController):
         self._coil_inductance = 3.0
         self._paused = False
         self._ramping = False
+
+    def _simulate_io_delay(self) -> None:
+        """Simulate finite hardware communication latency."""
+        time.sleep(self._io_delay_s)
 
     def identify(self) -> str:
         return "OpenAI,Simulated Magnet Controller,SIMMAG001,1.0"
@@ -215,15 +220,18 @@ class SimulatedMagnetController(MagnetController):
 
     @property
     def current(self) -> float:
+        self._simulate_io_delay()
         self._update()
         return self._current
 
     @property
     def field(self) -> float:
+        self._simulate_io_delay()
         return self.current * self._magnet_constant
 
     @property
     def voltage(self) -> float:
+        self._simulate_io_delay()
         current = self.current
         didt = 0.0
         if self._ramping:
@@ -234,6 +242,7 @@ class SimulatedMagnetController(MagnetController):
 
     @property
     def status(self) -> MagnetStatus:
+        self._simulate_io_delay()
         current = self.current
         at_target = abs(self._target_current - current) < 1e-6
 
@@ -272,30 +281,38 @@ class SimulatedMagnetController(MagnetController):
         return self._heater_state is HeaterState.ON
 
     def set_target_current(self, current: float) -> None:
+        self._simulate_io_delay()
         self._target_current = current
 
     def set_target_field(self, field: float) -> None:
+        self._simulate_io_delay()
         self._target_current = field / self._magnet_constant
 
     def set_ramp_rate_current(self, rate: float) -> None:
+        self._simulate_io_delay()
         self._ramp_rate_aps = rate / 60.0
 
     def set_ramp_rate_field(self, rate: float) -> None:
+        self._simulate_io_delay()
         self._ramp_rate_aps = rate / 60.0 / self._magnet_constant
 
     def set_magnet_constant(self, tesla_per_amp: float) -> None:
+        self._simulate_io_delay()
         self._magnet_constant = tesla_per_amp
 
     def set_limits(self, limits: MagnetLimits) -> None:
+        self._simulate_io_delay()
         self._limits = limits
 
     def ramp_to_target(self) -> None:
+        self._simulate_io_delay()
         if self._heater_state in {HeaterState.WARMING, HeaterState.COOLING}:
             raise RuntimeError("Cannot ramp while the switch heater is in transition.")
         self._paused = False
         self._ramping = abs(self._target_current - self._current) > 1e-6
 
     def ramp_to_current(self, current: float, *, wait: bool = False) -> None:
+        self._simulate_io_delay()
         self.set_target_current(current)
         if self._heater_state in {HeaterState.WARMING, HeaterState.COOLING}:
             raise RuntimeError("Cannot ramp while the switch heater is in transition.")
@@ -303,6 +320,7 @@ class SimulatedMagnetController(MagnetController):
         self._ramping = True
 
     def ramp_to_field(self, field: float, *, wait: bool = False) -> None:
+        self._simulate_io_delay()
         self.set_target_field(field)
         if self._heater_state in {HeaterState.WARMING, HeaterState.COOLING}:
             raise RuntimeError("Cannot ramp while the switch heater is in transition.")
@@ -310,25 +328,30 @@ class SimulatedMagnetController(MagnetController):
         self._ramping = True
 
     def pause_ramp(self) -> None:
+        self._simulate_io_delay()
         self._paused = True
         self._ramping = False
 
     def hold(self) -> None:
         """Hold the present output without changing field."""
+        self._simulate_io_delay()
         self.pause_ramp()
 
     def go_to_zero(self) -> None:
         """Ramp the simulated supply output to zero."""
+        self._simulate_io_delay()
         self._target_current = 0.0
         self._paused = False
         self._ramping = abs(self._current) > 1e-6
 
     def abort_ramp(self) -> None:
+        self._simulate_io_delay()
         self._target_current = self.current
         self._paused = True
         self._ramping = False
 
     def heater_on(self) -> None:
+        self._simulate_io_delay()
         persistent_entry_current = self._supply_current_at_persistent_entry or 0.0
         if self._persistent_field is not None and abs(self._current - persistent_entry_current) > 1e-6:
             raise RuntimeError(
@@ -339,6 +362,7 @@ class SimulatedMagnetController(MagnetController):
         self._heater = True
 
     def heater_off(self) -> None:
+        self._simulate_io_delay()
         self._persistent_field = self.field
         self._supply_current_at_persistent_entry = self.current
         self._heater_state = HeaterState.COOLING
@@ -347,6 +371,7 @@ class SimulatedMagnetController(MagnetController):
 
     def return_to_local(self) -> None:
         """No-op for the simulated controller, which has no front panel."""
+        self._simulate_io_delay()
         return
 
 

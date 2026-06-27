@@ -19,11 +19,21 @@ class _ABCQObjectMeta(type(QObject), ABCMeta):
 
 
 class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
-    """Abstract base class for generators used by state-sweep plugins."""
+    """Abstract base class for generators used by state-sweep plugins.
+
+    Iteration yields ``(index, value, stage, measure_flag)`` tuples.
+    On each yielded point:
+
+    - :attr:`current_value_changed` emits the current value
+    - :attr:`current_point_changed` emits ``(index, value, stage)``
+
+    The additional *stage* field lets preview widgets disambiguate repeated
+    values that may occur in different sweep segments.
+    """
 
     values_changed = pyqtSignal()
     current_value_changed = pyqtSignal(float)
-    current_point_changed = pyqtSignal(int, float)
+    current_point_changed = pyqtSignal(int, float, int)
 
     def __init__(self, *, state_sweep: StateSweepPlugin | None = None, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -53,7 +63,7 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
             self._iterator = iter(self.iter_points())
         ix, value, stage, measure_flag = next(self._iterator)
         self.current_value_changed.emit(float(value))
-        self.current_point_changed.emit(int(ix), float(value))
+        self.current_point_changed.emit(int(ix), float(value), int(stage))
         return int(ix), float(value), int(stage), bool(measure_flag)
 
     @abstractmethod

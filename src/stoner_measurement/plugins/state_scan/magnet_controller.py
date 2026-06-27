@@ -54,6 +54,7 @@ class MagnetControllerScanPlugin(MagnetControllerPluginMixin, StateScanPlugin):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._init_magnet_controller_plugin()
+        self.use_plugin_ramp_rate = False
 
     @property
     def name(self) -> str:

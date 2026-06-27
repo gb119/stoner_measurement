@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pyqtgraph as pg
+from qtpy import QtGui
 from qtpy.QtCore import QObject
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -17,6 +18,7 @@ from qtpy.QtWidgets import (
     QPushButton,
     QTableWidget,
     QVBoxLayout,
+    QTabWidget,
     QWidget,
 )
 
@@ -202,6 +204,11 @@ class MultiSegmentRampSweepWidget(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
+        tabs = QTabWidget(self)
+        root.addWidget(tabs)
+
+        config_widget = QWidget(self)
+        config_layout = QVBoxLayout(config_widget)
 
         form = QFormLayout()
         self._start_spin = SISpinBox()
@@ -218,14 +225,14 @@ class MultiSegmentRampSweepWidget(QWidget):
         self._start_timeout_spin.setOpts(bounds=(0.0, _SPINBOX_MAX_ABS), decimals=6, suffix="s")
         self._start_timeout_spin.valueChanged.connect(self._on_start_timeout_changed)
         form.addRow("Start wait timeout:", self._start_timeout_spin)
-        root.addLayout(form)
+        config_layout.addLayout(form)
 
         self._table = QTableWidget(0, 3, self)
         self._table.setHorizontalHeaderLabels(["Target", "Rate", "Measure"])
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        root.addWidget(self._table)
+        config_layout.addWidget(self._table)
 
         controls = QHBoxLayout()
         add_btn = QPushButton("Add Segment", self)
@@ -235,11 +242,28 @@ class MultiSegmentRampSweepWidget(QWidget):
         controls.addWidget(add_btn)
         controls.addWidget(remove_btn)
         controls.addStretch(1)
-        root.addLayout(controls)
+        config_layout.addLayout(controls)
+        tabs.addTab(config_widget, "Segments")
 
+        preview_widget = QWidget(self)
+        preview_layout = QVBoxLayout(preview_widget)
         self._preview = pg.PlotWidget(self)
-        self._preview.setLabel("bottom", "Time")
-        self._preview.setLabel("left", "Value")
+
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        font.setBold(True)
+        font.setFamily("Arial")
+
+        axis_pen = pg.mkPen(color="white", width=2)
+        for axis_name, label in zip(["left", "bottom"], ["Value", "Time"]):
+            axis = self._preview.getAxis(axis_name)
+            axis.setTextPen(pg.mkPen("white"))
+            axis.setTickFont(font)
+            axis.setLabel(
+                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+            )
+            axis.setPen(axis_pen)
+
         self._current_marker = pg.ScatterPlotItem(
             pen=pg.mkPen(color=(255, 220, 0), width=2),
             brush=pg.mkBrush(0, 0, 0, 0),
@@ -247,8 +271,10 @@ class MultiSegmentRampSweepWidget(QWidget):
             size=12,
         )
         self._preview.addItem(self._current_marker)
-        root.addWidget(self._preview)
-        root.addWidget(QLabel("Preview uses green/red segment lines for measure true/false.", self))
+        preview_layout.addWidget(self._preview)
+        preview_layout.addWidget(QLabel("Preview uses green/red segment lines for measure true/false.", self))
+        tabs.addTab(preview_widget, "Preview")
+
         self._generator.values_changed.connect(self._clear_current_marker)
         self._generator.current_point_changed.connect(self._on_current_point_changed)
 
@@ -325,7 +351,7 @@ class MultiSegmentRampSweepWidget(QWidget):
             duration = abs(float(target) - current) / rate_magnitude if rate_magnitude > 0.0 else 0.0
             x_vals = [current_time, current_time + duration]
             y_vals = [current, float(target)]
-            pen = pg.mkPen(color=(0, 200, 0) if measure else (200, 0, 0), width=2)
+            pen = pg.mkPen(color=(0, 200, 0, 200) if measure else (200, 0, 0, 200), width=2)
             self._preview.plot(x_vals, y_vals, pen=pen)
             current = float(target)
             current_time += duration
@@ -335,34 +361,39 @@ class MultiSegmentRampSweepWidget(QWidget):
         """Clear the current-point marker from the preview."""
         self._current_marker.setData(x=[], y=[])
 
-    def _elapsed_time_for_value(self, value: float) -> float:
-        """Estimate elapsed sweep time for *value* in the current segment plan."""
+    def _elapsed_time_for_segment_value(self, stage_index: int, value: float) -> float:
+        """Estimate elapsed sweep time for *value* within the given segment."""
+        if stage_index < 0:
+            return 0.0
         current = float(self._generator.start)
         elapsed = 0.0
         target_value = float(value)
-        for target, rate, _measure in self._generator.segments:
+        for current_stage, (target, rate, _measure) in enumerate(self._generator.segments):
             target_value_for_segment = float(target)
             rate_magnitude = abs(float(rate))
             segment_distance = abs(target_value_for_segment - current)
             duration = segment_distance / rate_magnitude if rate_magnitude > 0.0 else 0.0
-            if segment_distance > 0.0:
-                low = min(current, target_value_for_segment)
-                high = max(current, target_value_for_segment)
-                if low <= target_value <= high:
+
+            if current_stage == stage_index:
+                if segment_distance > 0.0:
                     fraction = abs(target_value - current) / segment_distance
+                    fraction = max(0.0, min(1.0, fraction))
                     return elapsed + (fraction * duration)
-            elif abs(target_value - target_value_for_segment) < _FLOAT_TOLERANCE:
                 return elapsed
+
             elapsed += duration
             current = target_value_for_segment
+
+        if not self._generator.segments:
+            return 0.0
         return elapsed
 
-    def _on_current_point_changed(self, index: int, value: float) -> None:
+    def _on_current_point_changed(self, index: int, value: float, stage_index: int) -> None:
         """Move the current-point marker to *(elapsed_time, value)*."""
-        if index < 0:
+        if index < 0 or stage_index < 0:
             self._clear_current_marker()
             return
-        elapsed_time = self._elapsed_time_for_value(float(value))
+        elapsed_time = self._elapsed_time_for_segment_value(stage_index, float(value))
         self._current_marker.setData(x=[elapsed_time], y=[float(value)])
 
     def _on_start_changed(self, value: float) -> None:

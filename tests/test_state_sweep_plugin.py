@@ -230,13 +230,13 @@ class TestStateSweepPlugin:
         plugin.sweep_generator = _FiniteSweepGenerator(
             points=[(0, 1.0, 0, True), (1, 2.5, 0, True)], state_sweep=plugin, parent=plugin
         )
-        emitted: list[tuple[int, float]] = []
-        plugin.sweep_generator.current_point_changed.connect(lambda index, value: emitted.append((index, value)))
+        emitted: list[tuple[int, float, int]] = []
+        plugin.sweep_generator.current_point_changed.connect(lambda index, value, stage: emitted.append((index, value, stage)))
         plugin._begin_sweep()
         next(plugin)
         next(plugin)
         next(plugin)  # exhausted
-        assert emitted == [(0, 1.0), (1, 2.5)]
+        assert emitted == [(0, 1.0, 0), (1, 2.5, 0)]
 
     def test_state_error_emitted_on_timeout(self, qapp):
         class _SlowGenerator(BaseSweepGenerator):

@@ -561,8 +561,9 @@ class StateScanPlugin(StatePlugin):
         try:
             for self.ix, self.value, self.meas_flag, self.stage in self.scan_generator:
                 self.ramp_to(float(self.value))
-                for sub_step in sub_steps:
-                    sub_step()
+                if self.meas_flag:
+                    for sub_step in sub_steps:
+                        sub_step()
         finally:
             self.disconnect()
 
@@ -726,8 +727,10 @@ class StateScanPlugin(StatePlugin):
             f"{loop_prefix}{var_name}.ramp_to(float({var_name}.value))",
             f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.get_state():.4g}} {self.units}")',
         ]
-        for sub_step in sub_steps:
-            lines.extend(render_sub_step(sub_step, indent + 1))
+        if sub_steps:
+            lines.append(f"{loop_prefix}if {var_name}.meas_flag:")
+            for sub_step in sub_steps:
+                lines.extend(render_sub_step(sub_step, indent + 2))
         if self.collect_data:
             lines.append(f"{loop_prefix}{var_name}.collect()")
         lines.append("")

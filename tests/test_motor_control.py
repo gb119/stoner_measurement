@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.instruments.simulated import SimulatedMotorController
 from stoner_measurement.motor_control import MotorControllerEngine
-from stoner_measurement.motor_control.types import MotorEngineStatus
+from stoner_measurement.motor_control.types import MotorEngineStatus, MotorEngineState, MotorReading
 
 
 def _repo_qapp(qapp):
@@ -93,6 +95,38 @@ class TestSimulatedMotorControllerIntegration:
         assert state.displayed_angle == pytest.approx(100.0)
         assert state.move_direction == "clockwise"
 
+        engine.shutdown()
+
+    def test_move_to_angle_invalidates_cached_target_state(self, qapp):
+        _repo_qapp(qapp)
+
+        engine = MotorControllerEngine()
+        driver = SimulatedMotorController()
+        engine.connect_instrument(driver)
+        engine._is_at_target = True
+        engine._stable = True
+        engine._latest_state = MotorEngineState(
+            reading=MotorReading(
+                timestamp=datetime.now(tz=UTC),
+                angle=0.0,
+                target_angle=0.0,
+                moving=False,
+                at_target=True,
+            ),
+            target_angle=0.0,
+            at_target=True,
+            stable=True,
+            engine_status=MotorEngineStatus.POLLING,
+        )
+
+        engine.move_to_angle(45.0, direction=MotorMoveDirection.CLOCKWISE)
+        state = engine.get_engine_state()
+
+        assert state.target_angle == pytest.approx(45.0)
+        assert state.at_target is False
+        assert state.stable is False
+        assert state.reading is not None
+        assert state.reading.at_target is False
         engine.shutdown()
 
     def test_engine_force_allows_soft_limit_override(self, qapp):
@@ -254,6 +288,43 @@ class TestMotorControlPanel:
         qapp.processEvents()
         assert not panel.isVisible()
 
+    def test_target_angle_accepts_negative_values_within_soft_limit(self, qapp):
+        _repo_qapp(qapp)
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+        panel._engine._soft_limit = 190.0  # pylint: disable=protected-access
+        panel._refresh_target_angle_bounds()  # pylint: disable=protected-access
+
+        panel._target_angle_spin.setValue(-180.0)  # pylint: disable=protected-access
+
+        assert panel._target_angle_spin.value() == pytest.approx(-180.0)  # pylint: disable=protected-access
+        assert panel._target_angle_spin.opts["bounds"] == pytest.approx((-190.0, 190.0))  # pylint: disable=protected-access
+
+    def test_target_angle_clamps_to_soft_limit(self, qapp):
+        _repo_qapp(qapp)
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+        panel._engine._soft_limit = 190.0  # pylint: disable=protected-access
+        panel._refresh_target_angle_bounds()  # pylint: disable=protected-access
+
+        panel._target_angle_spin.setValue(205.0)  # pylint: disable=protected-access
+
+        assert panel._target_angle_spin.value() == pytest.approx(190.0)  # pylint: disable=protected-access
+
+    def test_dial_uses_signed_bidirectional_mode(self, qapp):
+        _repo_qapp(qapp)
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+
+        assert panel._dial.minimumValue() == pytest.approx(-180.0)  # pylint: disable=protected-access
+        assert panel._dial.maximumValue() == pytest.approx(180.0)  # pylint: disable=protected-access
+        assert panel._dial.minimumAngle() == pytest.approx(-180.0)  # pylint: disable=protected-access
+        assert panel._dial.maximumAngle() == pytest.approx(180.0)  # pylint: disable=protected-access
+        assert panel._dial.wrap() is False  # pylint: disable=protected-access
+
     def test_soft_limit_prompt_retries_confirmed_forced_move(self, qapp, monkeypatch):
         _repo_qapp(qapp)
         from qtpy.QtWidgets import QMessageBox
@@ -282,7 +353,7 @@ class TestMotorControlPanel:
         engine = _PromptingEngine()
         panel = MotorControlPanel()
         panel._engine = engine  # pylint: disable=protected-access
-        panel._target_angle_spin.setValue(205.0)  # pylint: disable=protected-access
+        panel._target_angle_spin.setValue(-160.0)  # pylint: disable=protected-access
         panel._direction_combo.setCurrentIndex(0)  # pylint: disable=protected-access
 
         monkeypatch.setattr(
@@ -294,8 +365,8 @@ class TestMotorControlPanel:
         panel._on_apply_and_move()  # pylint: disable=protected-access
 
         assert engine.calls == [
-            (205.0, MotorMoveDirection.CLOCKWISE, False),
-            (205.0, MotorMoveDirection.CLOCKWISE, True),
+            (-160.0, MotorMoveDirection.CLOCKWISE, False),
+            (-160.0, MotorMoveDirection.CLOCKWISE, True),
         ]
 
 

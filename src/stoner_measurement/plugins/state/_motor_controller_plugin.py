@@ -106,7 +106,7 @@ class MotorControllerPluginMixin:
 
     def is_at_target(self) -> bool:
         """Return ``True`` when the engine reports the motor at its target."""
-        state = self._engine_state()
+        state = self._engine_state(refresh=True)
         return bool(state.at_target)
 
     @property

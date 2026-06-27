@@ -617,6 +617,31 @@ class TestEngineStabilityEvaluation:
         assert stable2[1] is False, "Should lose stability when outside tolerance"
         engine.shutdown()
 
+    def test_set_setpoint_invalidates_cached_loop_target_state(self, qapp):
+        class _Driver:
+            def set_setpoint(self, loop, value):
+                self.last_setpoint = (loop, value)
+
+        engine = TemperatureControllerEngine()
+        engine._driver = _Driver()
+        engine._at_setpoint_since[1] = datetime.now(tz=UTC)
+        engine._stable[1] = True
+        engine._latest_state = TemperatureEngineState(
+            setpoints={1: 300.0},
+            at_setpoint={1: True},
+            stable={1: True},
+            engine_status=EngineStatus.POLLING,
+        )
+
+        engine.set_setpoint(1, 325.0)
+        state = engine.get_engine_state()
+
+        assert engine._driver.last_setpoint == (1, 325.0)
+        assert state.at_setpoint[1] is False
+        assert state.stable[1] is False
+        assert engine._at_setpoint_since[1] is None
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # Engine publisher signals

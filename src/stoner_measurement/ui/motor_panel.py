@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import UTC, datetime
 
 from qtpy.QtCore import Qt
@@ -29,7 +30,6 @@ from stoner_measurement.instruments.driver_manager import InstrumentDriverManage
 from stoner_measurement.instruments.motor_controller import (
     MotorController,
     MotorMoveDirection,
-    wrap_angle_360,
 )
 from stoner_measurement.motor_control.engine import MotorControllerEngine
 from stoner_measurement.motor_control.types import (
@@ -79,6 +79,14 @@ def _line_edit(placeholder: str = "") -> QWidget:
     return w
 
 
+def _signed_display_angle(angle: float) -> float:
+    """Return *angle* folded into the signed display interval [-180, 180]."""
+    wrapped = ((float(angle) + 180.0) % 360.0) - 180.0
+    if math.isclose(wrapped, -180.0, abs_tol=1e-9) and angle > 0.0:
+        return 180.0
+    return wrapped
+
+
 class MotorControlPanel(QWidget):
     """Non-blocking window for motor controller configuration and monitoring."""
 
@@ -91,6 +99,7 @@ class MotorControlPanel(QWidget):
         self._engine = MotorControllerEngine.instance()
         self._driver_manager = InstrumentDriverManager()
         self._driver_manager.discover()
+        self._allow_exit_close = False
 
         self._build_ui()
         self._load_connection_preferences()
@@ -104,6 +113,10 @@ class MotorControlPanel(QWidget):
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Hide the panel instead of destroying it when the user closes it."""
+        if self._allow_exit_close:
+            logger.info("Closing motor control panel during application shutdown.")
+            super().closeEvent(event)
+            return
         event.ignore()
         self.hide()
 
@@ -242,7 +255,12 @@ class MotorControlPanel(QWidget):
         motion_form = QFormLayout(motion_group)
 
         self._target_angle_spin = SISpinBox()
-        self._target_angle_spin.setOpts(bounds=(0.0, 360.0), decimals=3, suffix="°", step=1.0)
+        self._target_angle_spin.setOpts(
+            bounds=self._target_angle_bounds(),
+            decimals=3,
+            suffix="°",
+            step=1.0,
+        )
         motion_form.addRow("Target angle:", self._target_angle_spin)
 
         self._velocity_spin = SISpinBox()
@@ -296,13 +314,10 @@ class MotorControlPanel(QWidget):
 
         self._dial = RoundDialWidget(right_column)
         self._dial.setTitle("Motor Angle")
-        self._dial.setAngleValueMode()
-        self._dial.setRange(0.0, 360.0)
-        self._dial.setScaleAngles(0.0, 360.0)
+        self._dial.setBidirectionalAngleMode()
         self._dial.setMajorTickStep(30.0)
         self._dial.setShowValueText(True)
         self._dial.setValueTextSuffix("°")
-        self._dial.setWrap(True)
         right_layout.addWidget(self._dial, stretch=1)
 
         self._angle_label = QLabel("Angle: —")
@@ -355,6 +370,15 @@ class MotorControlPanel(QWidget):
         pub.engine_status_changed.connect(self._on_engine_status_changed)
         self._on_engine_status_changed(self._engine.status)
 
+    def _target_angle_bounds(self) -> tuple[float, float]:
+        """Return the target-angle bounds derived from the configured soft limit."""
+        soft_limit = abs(float(getattr(self._engine, "_soft_limit", 180.0)))
+        return -soft_limit, soft_limit
+
+    def _refresh_target_angle_bounds(self) -> None:
+        """Keep the target control validation aligned with the engine soft limit."""
+        self._target_angle_spin.setOpts(bounds=self._target_angle_bounds())
+
     @pyqtSlot(MotorEngineStatus)
     def _on_engine_status_changed(self, status: MotorEngineStatus) -> None:
         colour = _STATUS_COLOURS.get(status, "#888888")
@@ -363,6 +387,7 @@ class MotorControlPanel(QWidget):
         connected = status in (MotorEngineStatus.CONNECTED, MotorEngineStatus.POLLING)
         self._btn_connect.setEnabled(not connected)
         self._btn_disconnect.setEnabled(connected)
+        self._refresh_target_angle_bounds()
 
     @pyqtSlot(MotorEngineState)
     def _on_state_updated(self, state: MotorEngineState) -> None:
@@ -384,11 +409,13 @@ class MotorControlPanel(QWidget):
         if reading is None:
             return
 
-        dial_angle = reading.displayed_angle if reading.displayed_angle is not None else wrap_angle_360(reading.angle)
+        dial_angle = _signed_display_angle(reading.angle)
         self._dial.setValue(dial_angle)
         self._angle_label.setText(f"Angle: {dial_angle:.3f}°")
         self._target_label.setText(
-            "Target: —" if reading.target_angle is None else f"Target: {reading.target_angle:.3f}°"
+            "Target: —"
+            if reading.target_angle is None
+            else f"Target: {_signed_display_angle(reading.target_angle):.3f}°"
         )
         self._revolutions_label.setText(f"Revolutions: {reading.revolutions:d} ({reading.move_direction or '—'})")
 
@@ -448,6 +475,7 @@ class MotorControlPanel(QWidget):
                 transport_name=transport_name,
                 address=address,
             )
+            self._refresh_target_angle_bounds()
         except Exception:
             logger.exception("Failed to connect motor driver")
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
@@ -500,7 +528,7 @@ class MotorControlPanel(QWidget):
         if state is None:
             return
         if state.target_angle is not None:
-            self._target_angle_spin.setValue(wrap_angle_360(state.target_angle))
+            self._target_angle_spin.setValue(state.target_angle)
         if state.move_direction is not None:
             try:
                 direction = MotorMoveDirection(state.move_direction)
@@ -533,6 +561,7 @@ class MotorControlPanel(QWidget):
             self._engine._acceleration = self._acceleration_spin.value()  # pylint: disable=protected-access
             self._engine._move_direction = self._direction_combo.currentData()  # pylint: disable=protected-access
             path = self._engine.save_configuration()
+            self._refresh_target_angle_bounds()
         except Exception as exc:
             QMessageBox.critical(
                 self,

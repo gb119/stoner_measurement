@@ -521,6 +521,7 @@ class TemperatureControllerEngine(QObject):
                 return
             try:
                 self._driver.set_setpoint(loop, value)
+                self._mark_setpoint_pending(loop)
             except Exception:
                 logger.exception("Failed to set setpoint for loop %d", loop)
 
@@ -1321,6 +1322,21 @@ class TemperatureControllerEngine(QObject):
         holdoff_elapsed = (now - self._unstable_since[loop]).total_seconds() >= cfg.unstable_holdoff_s
         if holdoff_elapsed:
             self._stable[loop] = False
+
+    def _mark_setpoint_pending(self, loop: int) -> None:
+        """Invalidate cached loop stability after commanding a new setpoint."""
+        self._at_setpoint_since[loop] = None
+        self._unstable_since[loop] = None
+        self._stable[loop] = False
+        at_setpoint = dict(self._latest_state.at_setpoint)
+        stable = dict(self._latest_state.stable)
+        at_setpoint[loop] = False
+        stable[loop] = False
+        self._latest_state = replace(
+            self._latest_state,
+            at_setpoint=at_setpoint,
+            stable=stable,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers

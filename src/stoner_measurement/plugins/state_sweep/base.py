@@ -520,11 +520,16 @@ class StateSweepPlugin(StatePlugin):
     # ------------------------------------------------------------------
 
     def execute_sequence(self, sub_steps: list) -> None:
-        """Connect, configure, run the sweep loop with *sub_steps*, then disconnect.
+        """Connect, configure, and run *sub_steps* once per sweep point.
+
+        The sweep generator supplies ``(ix, value, stage, meas_flag)`` tuples.
+        ``sub_steps`` are executed for every yielded point. ``meas_flag`` is
+        retained on the plugin as point metadata for sub-steps and collection
+        logic; it does not gate whether sub-steps run.
 
         Args:
             sub_steps (list):
-                Ordered list of zero-argument callables.
+                Ordered list of zero-argument callables to run at each sweep point.
         """
         self.ix = -1
         self.value = 0.0
@@ -637,8 +642,10 @@ class StateSweepPlugin(StatePlugin):
             f"{loop_prefix}wait_for_plot_ready()",
             f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.value:.4g}} {self.units}")',
         ]
-        for sub_step in sub_steps:
-            lines.extend(render_sub_step(sub_step, indent + 1))
+        if sub_steps:
+            lines.append(f"{loop_prefix}if {var_name}.meas_flag:")
+            for sub_step in sub_steps:
+                lines.extend(render_sub_step(sub_step, indent + 2))
         if self.collect_data:
             lines.append(f"{loop_prefix}{var_name}.collect()")
         lines.append("")

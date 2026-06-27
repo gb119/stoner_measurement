@@ -120,6 +120,7 @@ class ValueSelectionWidget(QtWidgets.QWidget):
         self._checkboxes: dict[str, QtWidgets.QCheckBox] = {}
         self._expressions: dict[str, str] = {}
 
+        self._rebuilding_catalog = False
         self._btn_select_all = QtWidgets.QPushButton("Select All", self)
         self._btn_select_all.clicked.connect(self.select_all)
         self._btn_deselect_all = QtWidgets.QPushButton("Deselect All", self)
@@ -173,28 +174,36 @@ class ValueSelectionWidget(QtWidgets.QWidget):
         if selected_keys is None:
             selected_keys = self.selected_keys
 
+        self._rebuilding_catalog = True
         self._expressions = dict(sorted(catalog.items(), key=lambda item: item[0].lower()))
-
-        while self._list_layout.count() > 2:
-            item = self._list_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-
-        self._checkboxes.clear()
-        self.blockSignals(True)
         try:
-            for key in self._expressions:
-                checkbox = QtWidgets.QCheckBox(key, self._list_container)
-                checkbox.setChecked(key in selected_keys)
-                checkbox.toggled.connect(self.selection_changed)
-                self._list_layout.insertWidget(self._list_layout.count() - 1, checkbox)
-                self._checkboxes[key] = checkbox
-        finally:
-            self.blockSignals(False)
+            while self._list_layout.count() > 2:
+                item = self._list_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    try:
+                        widget.setParent(None)
+                    except RuntimeError:
+                        pass
+                    widget.deleteLater()
 
-        self._update_empty_state()
-        self._apply_filter(self._filter_edit.text())
+            self._checkboxes.clear()
+            self.blockSignals(True)
+            try:
+                for key in self._expressions:
+                    checkbox = QtWidgets.QCheckBox(key, self._list_container)
+                    checkbox.setChecked(key in selected_keys)
+                    checkbox.toggled.connect(self.selection_changed)
+                    self._list_layout.insertWidget(self._list_layout.count() - 1, checkbox)
+                    self._checkboxes[key] = checkbox
+            finally:
+                self.blockSignals(False)
+
+            self._update_empty_state()
+            self._apply_filter(self._filter_edit.text())
+        finally:
+            self._rebuilding_catalog = False
+
         self.selection_changed.emit()
 
     @pyqtSlot()
@@ -227,6 +236,8 @@ class ValueSelectionWidget(QtWidgets.QWidget):
             text (str):
                 Filter text.
         """
+        if self._rebuilding_catalog:
+            return
         needle = text.strip().lower()
         any_visible = False
         for key, checkbox in self._checkboxes.items():
@@ -242,6 +253,8 @@ class ValueSelectionWidget(QtWidgets.QWidget):
 
     def _update_empty_state(self) -> None:
         """Show a helpful message when no values are available."""
+        if self._rebuilding_catalog:
+            return
         has_values = bool(self._checkboxes)
         self._btn_select_all.setEnabled(has_values)
         self._btn_deselect_all.setEnabled(has_values)
@@ -470,6 +483,10 @@ class ValueWatchWindow(QtWidgets.QWidget):
             Optional parent widget.
     """
 
+    _request_apply_catalog = pyqtSignal()
+    _request_refresh = pyqtSignal()
+    _request_relayout = pyqtSignal()
+
     def __init__(
         self,
         engine: SequenceEngine,
@@ -499,6 +516,13 @@ class ValueWatchWindow(QtWidgets.QWidget):
         self._restored_formats: dict[str, tuple[str, int]] = {}
         self._watch_entries: dict[str, WatchEntry] = {}
         self._displays: dict[str, _WatchDisplay] = {}
+        self._closing = False
+        self._catalog_update_pending = False
+        self._refresh_pending = False
+        self._pending_catalog: dict[str, str] | None = None
+        self._rebuilding_displays = False
+        self._relayout_pending = False
+        self._engine_signals_connected = False
         self._normal_geometry = QtCore.QRect(self.geometry())  # type: ignore[attr-defined]  # pylint: disable=no-member
         self._snap_mode: str | None = None
         self._suspend_snap_handling = False
@@ -520,6 +544,7 @@ class ValueWatchWindow(QtWidgets.QWidget):
 
         self._selector = ValueSelectionWidget(self)
         self._selector.selection_changed.connect(self._on_selection_changed)
+        self._selector.empty_state_requested.connect(self._queue_relayout)
 
         self._config_panel = QtWidgets.QWidget(self)
         self._config_panel.setVisible(False)
@@ -553,25 +578,29 @@ class ValueWatchWindow(QtWidgets.QWidget):
         layout.addWidget(self._display_scroll)
         self.setLayout(layout)
 
-        self._engine.values_catalog_changed.connect(self._on_values_catalog_changed)
-        self._engine.namespace_updated.connect(self.refresh_values)
+        self._engine.values_catalog_changed.connect(self._handle_values_catalog_changed)
+        self._engine.namespace_updated.connect(self._handle_namespace_updated)
+        self._engine_signals_connected = True
+        self._request_apply_catalog.connect(self._apply_pending_catalog, Qt.QueuedConnection)
+        self._request_refresh.connect(self._apply_refresh_values, Qt.QueuedConnection)
+        self._request_relayout.connect(self._apply_relayout, Qt.QueuedConnection)
 
         self._refresh_timer = QtCore.QTimer(self)  # type: ignore[attr-defined]  # pylint: disable=no-member
+        self._allow_exit_close = False
         self._refresh_timer.setInterval(_REFRESH_INTERVAL_MS)
-        self._refresh_timer.timeout.connect(self.refresh_values)
+        self._refresh_timer.timeout.connect(self._queue_refresh_values)
         self._snap_timer.setSingleShot(True)
         self._snap_timer.setInterval(150)
         self._snap_timer.timeout.connect(self._apply_pending_edge_snap)
 
         self._restore_settings()
-        self._on_values_catalog_changed(self._engine.values_catalog)
-        self.refresh_values()
+        self._apply_values_catalog(dict(self._engine.values_catalog))
 
     def show_and_raise(self) -> None:
         """Show the window and bring it to the front."""
         self.show()
         self._refresh_timer.start()
-        self.refresh_values()
+        self._queue_refresh_values()
         self.raise_()
         self.activateWindow()
 
@@ -579,7 +608,10 @@ class ValueWatchWindow(QtWidgets.QWidget):
         """Start periodic refresh when the window is shown."""
         super().showEvent(event)
         self._refresh_timer.start()
-        self.refresh_values()
+        self._apply_values_catalog(dict(self._engine.values_catalog))
+        self._queue_refresh_values()
+        if self._pending_catalog is not None:
+            self._queue_catalog_apply()
 
     def moveEvent(self, event) -> None:  # type: ignore[override]
         """Handle move events and debounce edge snapping."""
@@ -593,7 +625,8 @@ class ValueWatchWindow(QtWidgets.QWidget):
     def hideEvent(self, event) -> None:  # type: ignore[override]
         """Stop periodic refresh when the window is hidden."""
         self._snap_timer.stop()
-        self._snap_preview.hide()
+        if self._preview_mode is not None:
+            self._snap_preview.hide()
         self._refresh_timer.stop()
         super().hideEvent(event)
 
@@ -604,19 +637,119 @@ class ValueWatchWindow(QtWidgets.QWidget):
             event (QCloseEvent):
                 Close event from Qt.
         """
+        self._closing = True
+        self._disconnect_engine_signals()
+        self._snap_timer.stop()
         self._refresh_timer.stop()
+        self._snap_preview.hide()
+        self._watch_entries.clear()
+        self._displays.clear()
+        self._empty_state_label = None
+        self._selector.blockSignals(True)
         self._save_settings()
         super().closeEvent(event)
 
+    def _disconnect_engine_signals(self) -> None:
+        """Disconnect sequence-engine signals once during shutdown/close."""
+        if not self._engine_signals_connected:
+            return
+        try:
+            self._engine.values_catalog_changed.disconnect(self._handle_values_catalog_changed)
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            self._engine.namespace_updated.disconnect(self._handle_namespace_updated)
+        except (TypeError, RuntimeError):
+            pass
+        self._engine_signals_connected = False
+
     @pyqtSlot(dict)
-    def _on_values_catalog_changed(self, catalog: dict[str, str]) -> None:
+    def _handle_values_catalog_changed(self, catalog: dict[str, str]) -> None:
+        """Queue catalogue application onto the GUI thread."""
+        if self._closing:
+            return
+        self._pending_catalog = dict(catalog)
+        if not self.isVisible():
+            return
+        self._queue_catalog_apply()
+
+    @pyqtSlot()
+    def _handle_namespace_updated(self) -> None:
+        """Queue namespace refresh onto the GUI thread."""
+        if not self.isVisible():
+            return
+        self._queue_refresh_values()
+
+    @pyqtSlot()
+    def _queue_catalog_apply(self) -> None:
+        """Coalesce catalogue updates and apply only the latest one on the GUI thread."""
+        if self._closing:
+            return
+        if self._catalog_update_pending:
+            return
+        self._catalog_update_pending = True
+        self._request_apply_catalog.emit()
+
+    @pyqtSlot()
+    def _apply_pending_catalog(self) -> None:
+        """Apply the latest queued catalogue snapshot, if any."""
+        self._catalog_update_pending = False
+        if self._closing:
+            return
+        catalog = self._pending_catalog
+        self._pending_catalog = None
+        if catalog is None:
+            return
+        self._apply_values_catalog(catalog)
+
+    @pyqtSlot()
+    def _queue_refresh_values(self) -> None:
+        """Debounce refresh requests and run them on the GUI thread."""
+        if self._closing:
+            return
+        if self._refresh_pending:
+            return
+        self._refresh_pending = True
+        self._request_refresh.emit()
+
+    @pyqtSlot()
+    def _queue_relayout(self) -> None:
+        """Debounce relayout requests and run them on the GUI thread."""
+        if self._closing:
+            return
+        if self._relayout_pending:
+            return
+        self._relayout_pending = True
+        self._request_relayout.emit()
+
+    @pyqtSlot()
+    def _apply_relayout(self) -> None:
+        """Apply any pending relayout request."""
+        self._relayout_pending = False
+        if self._closing:
+            return
+        self._relayout_displays()
+
+    @pyqtSlot()
+    def _apply_refresh_values(self) -> None:
+        """Apply any pending value refresh."""
+        self._refresh_pending = False
+        if not self.isVisible():
+            return
+        self.refresh_values()
+
+    @pyqtSlot(dict)
+    def _apply_values_catalog(self, catalog: dict[str, str]) -> None:
         """Refresh the selectable watch list from *catalog*.
 
         Args:
             catalog (dict[str, str]):
                 Current engine value catalogue.
         """
-        if self._restoring_settings:
+        if self._closing:
+            return
+        self._catalog_update_pending = False
+        if self._restoring_settings and not self._watch_entries:
             enabled_keys = set(self._restored_selected_keys)
         else:
             enabled_keys = {key for key, entry in self._watch_entries.items() if entry.enabled}
@@ -636,20 +769,23 @@ class ValueWatchWindow(QtWidgets.QWidget):
                 significant_figures=significant_figures,
             )
         self._watch_entries = new_entries
-        self._selector.set_catalog(catalog, enabled_keys)
-        self._rebuild_displays()
-        self.refresh_values()
-        if not self._restoring_settings:
+        if self.isVisible():
+            self._selector.set_catalog(catalog, enabled_keys)
+            self._rebuild_displays()
+            self._queue_refresh_values()
+        if self.isVisible() and not self._restoring_settings:
             self._save_settings()
 
     @pyqtSlot()
     def _on_selection_changed(self) -> None:
         """Update watched values from the selection widget."""
+        if self._closing or self._selector._rebuilding_catalog:
+            return
         selected = self._selector.selected_keys
         for key, entry in self._watch_entries.items():
             entry.enabled = key in selected
         self._rebuild_displays()
-        self.refresh_values()
+        self._queue_refresh_values()
         if not self._restoring_settings:
             self._save_settings()
 
@@ -661,9 +797,11 @@ class ValueWatchWindow(QtWidgets.QWidget):
             checked (bool):
                 ``True`` when the panel should be shown.
         """
+        self._config_panel.setVisible(checked)
         if checked:
             self._refresh_catalog_from_engine()
-        self._config_panel.setVisible(checked)
+            self._apply_values_catalog(dict(self._engine.values_catalog))
+            self._queue_refresh_values()
         self._btn_config.setText(f"{_CONFIG_BUTTON_TEXT} {'▾' if checked else '▸'}")
         if not self._restoring_settings:
             self._save_settings()
@@ -671,6 +809,11 @@ class ValueWatchWindow(QtWidgets.QWidget):
     @pyqtSlot()
     def refresh_values(self) -> None:
         """Re-evaluate all watched expressions and refresh their displays."""
+        if QtCore.QThread.currentThread() is not self.thread():
+            self._queue_refresh_values()
+            return
+        if self._closing:
+            return
         for key, entry in self._watch_entries.items():
             if not entry.enabled or key not in self._displays:
                 continue
@@ -685,52 +828,70 @@ class ValueWatchWindow(QtWidgets.QWidget):
 
     def _rebuild_displays(self) -> None:
         """Recreate the display grid from the current watch selection."""
-        while self._display_layout.count():
-            item = self._display_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-        self._displays.clear()
-        self._empty_state_label = None
-
-        enabled_entries = [entry for entry in self._watch_entries.values() if entry.enabled]
-        if not enabled_entries:
-            empty = QtWidgets.QLabel("No watched values selected.", self._display_widget)
-            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet(f"QLabel {{ color: {colour('muted_text')}; padding: 24px; }}")
-            self._display_layout.addWidget(empty, 0, 0)
-            self._empty_state_label = empty
+        if self._closing or self._rebuilding_displays:
             return
+        self._rebuilding_displays = True
+        try:
+            while self._display_layout.count():
+                item = self._display_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    try:
+                        widget.setParent(None)
+                    except RuntimeError:
+                        pass
+                    widget.deleteLater()
+            self._displays.clear()
+            self._empty_state_label = None
 
-        for entry in enabled_entries:
-            display = _WatchDisplay(
-                entry.key,
-                entry.format_style,
-                entry.significant_figures,
-                self._display_widget,
-            )
-            display.format_changed.connect(
-                lambda format_style, significant_figures, key=entry.key: self._on_display_format_changed(
-                    key,
-                    format_style,
-                    significant_figures,
+            enabled_entries = [entry for entry in self._watch_entries.values() if entry.enabled]
+            if not enabled_entries:
+                empty = QtWidgets.QLabel("No watched values selected.", self._display_widget)
+                empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                empty.setStyleSheet(f"QLabel {{ color: {colour('muted_text')}; padding: 24px; }}")
+                self._display_layout.addWidget(empty, 0, 0)
+                self._empty_state_label = empty
+                return
+
+            for entry in enabled_entries:
+                display = _WatchDisplay(
+                    entry.key,
+                    entry.format_style,
+                    entry.significant_figures,
+                    self._display_widget,
                 )
-            )
-            self._displays[entry.key] = display
+                display.format_changed.connect(
+                    lambda format_style, significant_figures, key=entry.key: self._on_display_format_changed(
+                        key,
+                        format_style,
+                        significant_figures,
+                    )
+                )
+                self._displays[entry.key] = display
 
-        self._relayout_displays()
+            self._relayout_displays()
+        finally:
+            self._rebuilding_displays = False
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         """Reflow the watch tiles when the window is resized."""
         super().resizeEvent(event)
-        self._relayout_displays()
+        self._queue_relayout()
 
     def _relayout_displays(self) -> None:
         """Lay out the current displays according to available width."""
+        if self._closing or self._rebuilding_displays:
+            return
         if self._empty_state_label is not None:
             return
         while self._display_layout.count():
-            self._display_layout.takeAt(0)
+            item = self._display_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                try:
+                    self._display_layout.removeWidget(widget)
+                except RuntimeError:
+                    pass
 
         displays = list(self._displays.values())
         if not displays:
@@ -980,4 +1141,4 @@ class ValueWatchWindow(QtWidgets.QWidget):
         if callable(refresh_catalog):
             refresh_catalog()
             return
-        self._on_values_catalog_changed(self._engine.values_catalog)
+        self._apply_values_catalog(dict(self._engine.values_catalog))

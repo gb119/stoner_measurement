@@ -858,6 +858,41 @@ class TestEnginePublisher:
         assert state.reading.current == pytest.approx(12.0)
         engine.shutdown()
 
+    def test_set_target_field_invalidates_cached_target_state(self, qapp):
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
+
+        engine = MagnetControllerEngine()
+        driver = _make_fake_driver(field=1.0, current=10.0)
+        engine.connect_instrument(driver)
+        engine._is_at_target = True
+        engine._stable = True
+        engine._latest_state = MagnetEngineState(
+            reading=MagnetReading(
+                timestamp=datetime.now(tz=UTC),
+                field=1.0,
+                current=10.0,
+                voltage=0.05,
+                heater_on=True,
+                heater_state=HeaterState.ON,
+                state=MagnetState.AT_TARGET,
+                at_target=True,
+            ),
+            target_field=1.0,
+            at_target=True,
+            stable=True,
+            engine_status=MagnetEngineStatus.POLLING,
+        )
+
+        engine.set_target_field(2.0)
+        state = engine.get_engine_state()
+
+        assert state.target_field == pytest.approx(2.0)
+        assert state.at_target is False
+        assert state.stable is False
+        assert state.reading is not None
+        assert state.reading.at_target is False
+        engine.shutdown()
+
     def test_get_limits_returns_driver_limits(self, qapp):
         engine = MagnetControllerEngine()
         driver = _make_fake_driver()

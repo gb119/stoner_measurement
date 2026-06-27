@@ -308,6 +308,7 @@ class LogViewerWindow(QWidget):
         self._records: list[logging.LogRecord] = []
         self._filter_state = LogFilterState()
         self._file_log_state = FileLogState()
+        self._allow_exit_close = False
         self._file_handler: logging.FileHandler | None = None
         self._restoring_settings = False
 

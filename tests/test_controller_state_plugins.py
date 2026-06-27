@@ -1,8 +1,8 @@
 """Tests for engine-backed temperature and magnet state plugins."""
 
 from __future__ import annotations
-import math
 
+import math
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -19,10 +19,14 @@ from stoner_measurement.plugins.state import (
     _magnet_controller_plugin as magnet_module,
 )
 from stoner_measurement.plugins.state import (
+    _motor_controller_plugin as motor_module,
+)
+from stoner_measurement.plugins.state import (
     _temperature_controller_plugin as temperature_module,
 )
 from stoner_measurement.plugins.state_scan import (
     MagnetControllerScanPlugin,
+    MotorControllerScanPlugin,
     TemperatureControllerScanPlugin,
 )
 from stoner_measurement.plugins.state_sweep import (
@@ -62,6 +66,7 @@ class _FakeMagnetEngine:
         self.ramp_to_field_calls: list[float] = []
         self.target_field_calls: list[float] = []
         self.ramp_to_target_calls = 0
+        self.read_calls = 0
         self._limits = SimpleNamespace(max_field=2.5)
         self._state = MagnetEngineState(
             reading=MagnetReading(
@@ -75,6 +80,7 @@ class _FakeMagnetEngine:
             ),
             target_field=1.0,
             ramp_rate_field=0.2,
+            at_target=True,
             engine_status=MagnetEngineStatus.POLLING,
         )
 
@@ -86,6 +92,7 @@ class _FakeMagnetEngine:
         self.connected_driver = type(driver_name, (), {})()
 
     def read_controller_state(self):
+        self.read_calls += 1
         return self._state
 
     def get_engine_state(self):
@@ -127,6 +134,7 @@ class _FakeTemperatureEngine:
         self.ramp_calls: list[tuple[int, float, bool]] = []
         self.setpoint_calls: list[tuple[int, float]] = []
         self.loop_settings_calls: list[int] = []
+        self.read_calls = 0
         self._state = TemperatureEngineState(
             readings={
                 "A": TemperatureChannelReading(
@@ -149,6 +157,7 @@ class _FakeTemperatureEngine:
         )
 
     def read_controller_state(self):
+        self.read_calls += 1
         return self._state
 
     def get_engine_state(self):
@@ -222,13 +231,15 @@ def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
     plugin = MagnetControllerScanPlugin()
     plugin.report_outputs = ["current", "voltage"]
     plugin.connect()
+    plugin.configure()
     plugin.set_state(1.25)
 
     assert engine.connect_calls == []
-    assert engine.ramp_rate_calls[-1] == plugin.ramp_rate
+    assert engine.ramp_rate_calls == []
     assert engine.ramp_to_field_calls == [1.25]
     assert plugin.get_state() == 0.75
     assert plugin.is_at_target() is True
+    assert engine.read_calls >= 1
     assert plugin.limits == (float("-inf"), 2.5)
     assert plugin.reported_values() == {
         "magnet_controller:Setpoint": "magnet_controller.value",
@@ -236,6 +247,55 @@ def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
         "magnet_controller:Current": "magnet_controller.current",
         "magnet_controller:Voltage": "magnet_controller.voltage",
     }
+
+
+def test_magnet_controller_is_at_target_ignores_stale_reading_flag(monkeypatch, qapp):
+    engine = _FakeMagnetEngine()
+    engine.connected_driver = object()
+    engine._state = MagnetEngineState(
+        reading=MagnetReading(
+            timestamp=datetime.now(tz=UTC),
+            field=0.75,
+            current=12.0,
+            voltage=0.4,
+            heater_on=True,
+            state=MagnetState.RAMPING,
+            at_target=True,
+        ),
+        target_field=1.25,
+        at_target=False,
+        engine_status=MagnetEngineStatus.POLLING,
+    )
+    monkeypatch.setattr(
+        magnet_module,
+        "MagnetControllerEngine",
+        type("FakeMagnetControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MagnetControllerScanPlugin()
+
+    assert plugin.is_at_target() is False
+    assert engine.read_calls == 1
+
+
+def test_magnet_controller_scan_plugin_does_not_apply_plugin_ramp_rate(monkeypatch, qapp):
+    engine = _FakeMagnetEngine()
+    engine.connected_driver = object()
+    monkeypatch.setattr(
+        magnet_module,
+        "MagnetControllerEngine",
+        type("FakeMagnetControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MagnetControllerScanPlugin()
+    plugin.ramp_rate = 12.0
+
+    plugin.configure()
+    plugin.set_rate(0.5)
+    plugin.set_state(1.5)
+
+    assert engine.ramp_rate_calls == []
+    assert engine.ramp_to_field_calls == [1.5]
 
 
 def test_magnet_controller_sweep_plugin_serialises(monkeypatch, qapp):
@@ -257,9 +317,9 @@ def test_magnet_controller_sweep_plugin_serialises(monkeypatch, qapp):
 
     assert engine.target_field_calls == [1.1]
     assert engine.ramp_to_target_calls == 1
-    assert engine.ramp_rate_calls[-1] == 30.0
+    assert engine.ramp_rate_calls[-1] == 0.5
     assert isinstance(restored, MagnetControllerSweepPlugin)
-    assert restored.ramp_rate == 30.0
+    assert restored.ramp_rate == 0.5
     assert restored.report_outputs is None
     assert restored.reported_values()["magnet_controller:Control Value"] == "magnet_controller.value"
 
@@ -284,6 +344,7 @@ def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monke
     assert engine.setpoint_calls[-1] == (2, 20.0)
     assert plugin.get_state() == 7.5
     assert plugin.is_at_target() is True
+    assert engine.read_calls >= 1
     assert plugin.limits == (1.5, 400.0)
     assert plugin.reported_values() == {
         "temperature_controller:Setpoint": "temperature_controller.value",
@@ -291,6 +352,35 @@ def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monke
         "temperature_controller:Loop Setpoint": "temperature_controller.control_setpoint",
         "temperature_controller:Sensor A": "temperature_controller.sensor_value('A')",
     }
+
+
+def test_temperature_controller_is_at_target_forces_poll(monkeypatch, qapp):
+    engine = _FakeTemperatureEngine()
+    monkeypatch.setattr(
+        temperature_module,
+        "TemperatureControllerEngine",
+        type("FakeTemperatureControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = TemperatureControllerScanPlugin()
+    plugin.control_loop = 2
+
+    assert plugin.is_at_target() is True
+    assert engine.read_calls == 1
+
+
+def test_motor_controller_is_at_target_forces_poll(monkeypatch, qapp):
+    engine = _FakeMotorEngine()
+    monkeypatch.setattr(
+        motor_module,
+        "MotorControllerEngine",
+        type("FakeMotorControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MotorControllerScanPlugin()
+
+    assert plugin.is_at_target() is True
+    assert engine.read_calls == 1
 
 
 def test_temperature_controller_sweep_plugin_round_trips(monkeypatch, qapp):
@@ -385,7 +475,7 @@ def test_magnet_controller_sweep_advances_targets_from_multisegment_generator(mo
 
     assert next(plugin) is True
     assert engine.target_field_calls[-1] == 1.0
-    assert math.isclose(engine.ramp_rate_calls[-1], 12.0)
+    assert math.isclose(engine.ramp_rate_calls[-1], 0.2)
 
 
 def test_temperature_controller_sweep_advances_targets_from_multisegment_generator(monkeypatch, qapp):
@@ -412,7 +502,7 @@ def test_temperature_controller_sweep_advances_targets_from_multisegment_generat
 
     assert next(plugin) is True
     assert engine.setpoint_calls[-1] == (1, 10.0)
-    assert engine.ramp_calls[-1] == (1, 120.0, True)
+    assert engine.ramp_calls[-1] == (1, 2.0, True)
 
 
 def test_motor_angle_monitor_plugin_reports_engine_values(monkeypatch, qapp):

@@ -513,6 +513,7 @@ class MagnetControllerEngine(QObject):
             try:
                 self._driver.set_target_field(field)
                 self._target_field = field
+                self._mark_target_pending()
             except Exception:
                 logger.exception("Failed to set target field to %s T", field)
 
@@ -529,6 +530,7 @@ class MagnetControllerEngine(QObject):
             try:
                 self._driver.set_target_current(current)
                 self._target_current = current
+                self._mark_target_pending()
             except Exception:
                 logger.exception("Failed to set target current to %s A", current)
 
@@ -601,6 +603,7 @@ class MagnetControllerEngine(QObject):
                 return
             try:
                 self._validate_ramp_allowed()
+                self._mark_target_pending()
                 self._driver.ramp_to_target()
             except Exception:
                 logger.exception("Failed to start ramp to target")
@@ -619,6 +622,7 @@ class MagnetControllerEngine(QObject):
                 self._validate_ramp_allowed()
                 self._driver.set_target_field(field)
                 self._target_field = field
+                self._mark_target_pending()
                 self._driver.ramp_to_target()
             except Exception:
                 logger.exception("Failed to ramp to field %s T", field)
@@ -973,6 +977,22 @@ class MagnetControllerEngine(QObject):
             raise RuntimeError(
                 "Cannot turn the switch heater on in persistent mode until the power-supply field matches the trapped persistent field."
             )
+
+    def _mark_target_pending(self) -> None:
+        """Invalidate cached target/stability flags after a new target command."""
+        self._is_at_target = False
+        self._at_target_since = None
+        self._unstable_since = None
+        self._stable = False
+        reading = self._latest_state.reading
+        if reading is not None:
+            reading = replace(reading, at_target=False)
+        self._latest_state = replace(
+            self._latest_state,
+            reading=reading,
+            at_target=False,
+            stable=False,
+        )
 
     def _try_clear_stable(self, now: datetime, cfg: MagnetStabilityConfig) -> None:
         """Clear the stable flag after the holdoff period has elapsed.

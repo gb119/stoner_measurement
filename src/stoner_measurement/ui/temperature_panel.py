@@ -209,6 +209,7 @@ class TemperatureControlPanel(QWidget):
 
         # Current capabilities (populated after connection).
         self._capabilities = None
+        self._allow_exit_close = False
 
         self._build_ui()
         self._load_connection_preferences()
@@ -244,6 +245,10 @@ class TemperatureControlPanel(QWidget):
 
         The engine continues running when the panel is closed.
         """
+        if self._allow_exit_close:
+            logger.info("Closing temperature control panel during application shutdown.")
+            super().closeEvent(event)
+            return
         event.ignore()
         self.hide()
 

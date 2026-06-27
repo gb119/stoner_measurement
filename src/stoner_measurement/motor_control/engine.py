@@ -399,6 +399,7 @@ class MotorControllerEngine(QObject):
                 self._target_angle = plan.target_angle
                 self._display_target_angle = wrap_angle_360(plan.target_angle)
                 self._move_direction = plan.direction
+                self._mark_target_pending()
             except Exception:
                 logger.exception("Failed to move motor to %s deg with direction %s", angle, direction.value)
                 raise
@@ -421,6 +422,8 @@ class MotorControllerEngine(QObject):
             try:
                 self._driver.move_home()
                 self._target_angle = 0.0
+                self._display_target_angle = 0.0
+                self._mark_target_pending()
             except Exception:
                 logger.exception("Failed to move motor home")
 
@@ -594,6 +597,24 @@ class MotorControllerEngine(QObject):
         holdoff_elapsed = (now - self._unstable_since).total_seconds() >= cfg.unstable_holdoff_s
         if holdoff_elapsed:
             self._stable = False
+
+    def _mark_target_pending(self) -> None:
+        """Invalidate cached target/stability flags after a move command."""
+        self._is_at_target = False
+        self._at_target_since = None
+        self._unstable_since = None
+        self._stable = False
+        reading = self._latest_state.reading
+        if reading is not None:
+            reading = replace(reading, at_target=False)
+        self._latest_state = replace(
+            self._latest_state,
+            reading=reading,
+            target_angle=self._target_angle,
+            displayed_angle=wrap_angle_360(self._target_angle) if self._target_angle is not None else None,
+            at_target=False,
+            stable=False,
+        )
 
     def _set_status(self, status: MotorEngineStatus) -> None:
         if status != self._status:
