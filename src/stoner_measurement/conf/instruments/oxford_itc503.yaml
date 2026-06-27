@@ -1,0 +1,26 @@
+# Optional ITC503 temperature calibration.
+#
+# User overrides live at:
+#   <user-config-root>/instruments/oxford_itc503.yaml
+#
+# Rows map true temperature to the nominal temperature reported by or sent to
+# the ITC503. With four or more rows the driver uses cubic interpolation; with
+# two or three rows it uses linear interpolation. Values outside the table range
+# are left unchanged.
+
+temperature_calibration:
+  lookup_table:
+    - true_temperature: 1.2
+      itc503_temperature: 1.2
+    - true_temperature: 4.2
+      itc503_temperature: 4.2
+    - true_temperature: 10.0
+      itc503_temperature: 10.0
+    - true_temperature: 50.0
+      itc503_temperature: 50.0
+    - true_temperature: 100.0
+      itc503_temperature: 100.0
+    - true_temperature: 200.0
+      itc503_temperature: 200.0
+    - true_temperature: 350.0
+      itc503_temperature: 350.0

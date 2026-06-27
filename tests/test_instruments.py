@@ -94,6 +94,9 @@ from stoner_measurement.instruments.oxford import (
     OxfordMercuryIPS,
     OxfordMercuryTemperatureController,
 )
+from stoner_measurement.instruments.oxford import (
+    temperature_controllers as oxford_temperature_controllers,
+)
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
@@ -2432,6 +2435,128 @@ class TestOxfordTemperatureControllers:
             b"I4.0\r",
             b"D0.0\r",
             b"S1\r",
+        ]
+
+    def test_itc503_temperature_calibration_applies_to_reads_and_writes(self, monkeypatch):
+        monkeypatch.setattr(
+            oxford_temperature_controllers,
+            "_load_itc503_temperature_calibration_config",
+            lambda: {
+                "temperature_calibration": {
+                    "lookup_table": [
+                        {"true_temperature": 0.0, "itc503_temperature": 0.0},
+                        {"true_temperature": 10.0, "itc503_temperature": 11.0},
+                        {"true_temperature": 20.0, "itc503_temperature": 22.0},
+                        {"true_temperature": 30.0, "itc503_temperature": 33.0},
+                    ]
+                }
+            },
+        )
+        t = _null(responses=[b"R11.0\r", b"R22.0\r"])
+        tc = OxfordITC503(transport=t)
+
+        assert tc.get_temperature("A") == pytest.approx(10.0)
+        assert tc.get_setpoint(1) == pytest.approx(20.0)
+        tc.set_setpoint(1, 30.0)
+        tc.set_setpoint(1, 40.0)
+
+        assert t.write_log == [
+            b"R1\r",
+            b"R0\r",
+            b"T33.0\r",
+            b"T40.0\r",
+        ]
+
+    def test_itc503_temperature_calibration_applies_to_zone_upper_bound(self, monkeypatch):
+        monkeypatch.setattr(
+            oxford_temperature_controllers,
+            "_load_itc503_temperature_calibration_config",
+            lambda: {
+                "temperature_calibration": {
+                    "lookup_table": [
+                        [0.0, 0.0],
+                        [10.0, 11.0],
+                        [20.0, 22.0],
+                        [30.0, 33.0],
+                    ]
+                }
+            },
+        )
+        t = _null(responses=[b"Q22.0\r", b"Q30.0\r", b"Q4.0\r", b"Q0.5\r"])
+        tc = OxfordITC503(transport=t)
+
+        zone = tc.get_zone(1, 2)
+        tc.set_zone(1, 3, ZoneEntry(10.0, 40.0, 5.0, 1.0, 0.0, 0, 0.0))
+
+        assert zone.upper_bound == pytest.approx(20.0)
+        assert t.write_log == [
+            b"x2\r",
+            b"y1\r",
+            b"q\r",
+            b"x2\r",
+            b"y2\r",
+            b"q\r",
+            b"x2\r",
+            b"y3\r",
+            b"q\r",
+            b"x2\r",
+            b"y4\r",
+            b"q\r",
+            b"x3\r",
+            b"y1\r",
+            b"p11.0\r",
+            b"x3\r",
+            b"y2\r",
+            b"p40.0\r",
+            b"x3\r",
+            b"y3\r",
+            b"p5.0\r",
+            b"x3\r",
+            b"y4\r",
+            b"p1.0\r",
+        ]
+
+    def test_itc503_temperature_calibration_ignores_short_or_out_of_range_values(self, monkeypatch):
+        monkeypatch.setattr(
+            oxford_temperature_controllers,
+            "_load_itc503_temperature_calibration_config",
+            lambda: {"temperature_calibration": {"lookup_table": [[0.0, 0.0], [10.0, 11.0]]}},
+        )
+        t = _null(responses=[b"R5.5\r"])
+        tc = OxfordITC503(transport=t)
+
+        assert tc.get_temperature("A") == pytest.approx(5.0)
+        tc.set_setpoint(1, 20.0)
+
+        assert t.write_log == [
+            b"R1\r",
+            b"T20.0\r",
+        ]
+
+    def test_itc503_temperature_values_are_limited_to_millikelvin_resolution(self, monkeypatch):
+        monkeypatch.setattr(
+            oxford_temperature_controllers,
+            "_load_itc503_temperature_calibration_config",
+            lambda: {
+                "temperature_calibration": {
+                    "lookup_table": [
+                        [0.0, 0.0],
+                        [10.0, 10.001],
+                        [20.0, 20.002],
+                        [30.0, 30.003],
+                    ]
+                }
+            },
+        )
+        t = _null(responses=[b"R10.0015\r"])
+        tc = OxfordITC503(transport=t)
+
+        assert tc.get_temperature("A") == pytest.approx(10.0)
+        tc.set_setpoint(1, 12.34567)
+
+        assert t.write_log == [
+            b"R1\r",
+            b"T12.347\r",
         ]
 
     def test_itc503_get_heater_range_reads_x_status_h_token(self):

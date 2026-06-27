@@ -12,7 +12,7 @@
 8. Hints on templating of Save Path in Save plugin - may be a dialog box riggered from context menu like the
    LabVIEW code had.
 9. Implement K24x0 trace and scan plugins. - DONE
-10. ITC503 driver temperature conversion table.
+10. ITC503 driver temperature conversion table. - DONE NEEDS HARDWARE TESTING
 11. Tmperayrter control panel should not pick up private driver classes. - DONE
 12. Implement temperature stability as a table (Below T, tolerance, toleramce_sensor, time, stability_rate,
     stability_sensor, hold_off_time)

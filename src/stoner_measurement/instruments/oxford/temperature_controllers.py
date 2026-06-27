@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import re
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import ClassVar
 
+import numpy as np
+from scipy.interpolate import interp1d
+
+from stoner_measurement.config_utils import deep_merge, load_yaml_mapping
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
@@ -17,6 +24,9 @@ from stoner_measurement.instruments.temperature_controller import (
     ZoneEntry,
 )
 from stoner_measurement.instruments.transport.base import BaseTransport
+from stoner_measurement.resources import bundled_resource_path, user_resource_file
+
+logger = logging.getLogger(__name__)
 
 _MODE_TO_CODE = {
     ControlMode.OFF: 0,
@@ -26,6 +36,110 @@ _MODE_TO_CODE = {
 }
 _CODE_TO_MODE = {value: key for key, value in _MODE_TO_CODE.items()}
 _STATUS_TOKEN_REGEX = re.compile(r"([A-Za-z])(\d+)")
+_ITC503_TEMPERATURE_RESOLUTION_K = 0.001
+
+
+class _BoundedTemperatureMap:
+    """Temperature map that falls back to identity outside its input range."""
+
+    def __init__(self, x_values: Sequence[float], y_values: Sequence[float], *, kind: str) -> None:
+        """Initialise a bounded interpolation from *x_values* to *y_values*."""
+        x_array = np.asarray(x_values, dtype=float)
+        y_array = np.asarray(y_values, dtype=float)
+        order = np.argsort(x_array)
+        self._x = x_array[order]
+        self._interpolator = interp1d(self._x, y_array[order], kind=kind, assume_sorted=True)
+
+    def __call__(self, value: float) -> float:
+        """Return the interpolated value, or *value* outside the interpolation range."""
+        candidate = float(value)
+        if candidate < self._x[0] or candidate > self._x[-1]:
+            return _round_itc503_temperature(candidate)
+        mapped = float(self._interpolator(candidate))
+        if np.isclose(mapped, candidate, rtol=1e-12, atol=1e-12):
+            return _round_itc503_temperature(candidate)
+        return _round_itc503_temperature(mapped)
+
+
+def _identity_temperature_map(value: float) -> float:
+    """Return *value* unchanged."""
+    return _round_itc503_temperature(value)
+
+
+def _round_itc503_temperature(value: float) -> float:
+    """Round *value* to the ITC503's practical 1 mK temperature resolution."""
+    return round(float(value), 3)
+
+
+def _load_itc503_temperature_calibration_config() -> dict[str, object]:
+    """Load merged bundled and user ITC503 instrument configuration."""
+    bundled = load_yaml_mapping(
+        bundled_resource_path("instruments", "oxford_itc503.yaml") or Path("__missing__")
+    )
+    machine = load_yaml_mapping(user_resource_file("instruments", "oxford_itc503.yaml"))
+    return deep_merge(bundled, machine)
+
+
+def _parse_temperature_lookup_table(config: Mapping[str, object]) -> tuple[list[float], list[float]]:
+    """Return ``(true_temperatures, itc503_temperatures)`` from *config*."""
+    calibration = config.get("temperature_calibration")
+    if not isinstance(calibration, Mapping):
+        return [], []
+    raw_table = calibration.get("lookup_table")
+    if not isinstance(raw_table, Sequence) or isinstance(raw_table, (str, bytes)):
+        return [], []
+
+    true_temperatures: list[float] = []
+    itc503_temperatures: list[float] = []
+    for row in raw_table:
+        try:
+            pair = _parse_temperature_lookup_row(row)
+        except (TypeError, ValueError):
+            pair = None
+        if pair is None:
+            logger.warning("Ignoring invalid ITC503 temperature calibration row: %r", row)
+            return [], []
+        true_temperature, itc503_temperature = pair
+        true_temperatures.append(true_temperature)
+        itc503_temperatures.append(itc503_temperature)
+    return true_temperatures, itc503_temperatures
+
+
+def _parse_temperature_lookup_row(row: object) -> tuple[float, float] | None:
+    """Parse one lookup-table row as ``(true_temperature, itc503_temperature)``."""
+    if isinstance(row, Mapping):
+        true_value = row.get("true_temperature", row.get("true"))
+        itc503_value = row.get("itc503_temperature", row.get("itc503", row.get("nominal")))
+        if true_value is None or itc503_value is None:
+            return None
+        return float(true_value), float(itc503_value)
+    if isinstance(row, Sequence) and not isinstance(row, (str, bytes)) and len(row) == 2:
+        return float(row[0]), float(row[1])
+    return None
+
+
+def _build_temperature_maps(
+    true_temperatures: Sequence[float],
+    itc503_temperatures: Sequence[float],
+) -> tuple[Callable[[float], float], Callable[[float], float]]:
+    """Build ``(forward, reverse)`` maps for ITC503 temperature calibration."""
+    if len(true_temperatures) < 2:
+        return _identity_temperature_map, _identity_temperature_map
+    true_array = np.asarray(true_temperatures, dtype=float)
+    itc503_array = np.asarray(itc503_temperatures, dtype=float)
+    if not _has_unique_values(true_array) or not _has_unique_values(itc503_array):
+        logger.warning("Ignoring ITC503 temperature calibration because lookup temperatures are not unique.")
+        return _identity_temperature_map, _identity_temperature_map
+    interpolation_kind = "cubic" if len(true_temperatures) >= 4 else "linear"
+    return (
+        _BoundedTemperatureMap(itc503_array, true_array, kind=interpolation_kind),
+        _BoundedTemperatureMap(true_array, itc503_array, kind=interpolation_kind),
+    )
+
+
+def _has_unique_values(values: np.ndarray) -> bool:
+    """Return ``True`` when *values* are finite and unique."""
+    return bool(np.isfinite(values).all() and np.unique(values).size == values.size)
 
 
 class _OxfordTemperatureControllerBase(TemperatureController):
@@ -236,6 +350,12 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the ITC503 driver."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else OxfordProtocol())
+        config = _load_itc503_temperature_calibration_config()
+        true_temperatures, itc503_temperatures = _parse_temperature_lookup_table(config)
+        self._itc503_to_true_temperature, self._true_to_itc503_temperature = _build_temperature_maps(
+            true_temperatures,
+            itc503_temperatures,
+        )
         # The ITC503 does not expose a Chapter 9 register for a continuous
         # temperature ramp rate, so a software-side value is maintained for
         # API compatibility.
@@ -244,6 +364,19 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def identify(self) -> str:
         """Return identity string."""
         return self.query("V")
+
+    def get_temperature(self, channel: str) -> float:
+        """Return calibrated channel temperature in Kelvin."""
+        return self._itc503_to_true_temperature(super().get_temperature(channel))
+
+    def get_setpoint(self, loop: int) -> float:
+        """Return calibrated setpoint in Kelvin."""
+        return self._itc503_to_true_temperature(super().get_setpoint(loop))
+
+    def set_setpoint(self, loop: int, value: float) -> None:
+        """Set true setpoint in Kelvin, applying ITC503 calibration when available."""
+        itc503_value = self._true_to_itc503_temperature(value)
+        super().set_setpoint(loop, itc503_value)
 
     def get_heater_range(self, loop: int) -> int:
         """Return the current heater range index from the ``X`` status ``H`` token for *loop*.
@@ -456,7 +589,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self._normalise_loop(loop)
         row = self._normalise_pid_table_row(zone_index)
         return ZoneEntry(
-            upper_bound=self._query_pid_table_value(row, 1),
+            upper_bound=self._itc503_to_true_temperature(self._query_pid_table_value(row, 1)),
             p=self._query_pid_table_value(row, 2),
             i=self._query_pid_table_value(row, 3),
             d=self._query_pid_table_value(row, 4),
@@ -482,7 +615,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         """
         self._normalise_loop(loop)
         row = self._normalise_pid_table_row(zone_index)
-        self._write_pid_table_value(row, 1, entry.upper_bound)
+        self._write_pid_table_value(row, 1, self._true_to_itc503_temperature(entry.upper_bound))
         self._write_pid_table_value(row, 2, entry.p)
         self._write_pid_table_value(row, 3, entry.i)
         self._write_pid_table_value(row, 4, entry.d)

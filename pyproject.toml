@@ -102,7 +102,7 @@ motor_angle_monitor = "stoner_measurement.plugins.monitor.motor_controller:Motor
 where = ["src"]
 
 [tool.setuptools.package-data]
-"stoner_measurement.conf" = ["*.yaml", "resources/*.png", "sequences/*.json"]
+"stoner_measurement.conf" = ["*.yaml", "instruments/*.yaml", "resources/*.png", "sequences/*.json"]
 "stoner_measurement.conf.plugins" = ["*.yaml"]
 "stoner_measurement.ui" = ["*.png", "resources/*.png"]
 
