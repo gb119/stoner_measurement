@@ -394,7 +394,7 @@ class TestSweepGenerators:
         x, y = widget._current_marker.getData()  # noqa: SLF001
         assert x is not None and y is not None
         assert widget._current_marker in widget._preview.getPlotItem().items  # noqa: SLF001
-        assert x.tolist() == [abs(value - gen.start) / abs(gen.segments[0][1])]
+        assert x.tolist() == [abs(value - gen.start) / abs(gen.segments[0][1]) * 60.0]
         assert y[0] == value
 
     def test_multisegment_estimated_duration_simple(self, qapp):
@@ -402,8 +402,11 @@ class TestSweepGenerators:
             start=0.0,
             segments=[(2.0, 1.0, True), (0.0, 0.5, False)],
         )
-        # |2.0 - 0.0| / 1.0  +  |0.0 - 2.0| / 0.5  =  2.0 + 4.0  =  6.0
-        assert gen.estimated_duration() == 6.0
+        # Conservative estimate includes:
+        # start timeout (60.0)
+        # + travel time: (|2.0 - 0.0| / 1.0 + |0.0 - 2.0| / 0.5) * 60 = 360.0
+        # + polling overhead: 0.05 * (2 segments + 1 startup phase) = 0.15
+        assert gen.estimated_duration() == 420.15
 
     def test_multisegment_estimated_duration_zero_rate_returns_inf(self, qapp):
         import math
@@ -436,7 +439,10 @@ class TestSweepGenerators:
         )
         plugin.sweep_generator = gen
         plugin.sweep_timeout_factor = 3.0
-        assert plugin.sweep_timeout == 6.0
+        # Conservative estimate includes:
+        # start timeout (60.0) + travel time (2.0 * 60 = 120.0) + polling overhead
+        # 0.05 * (1 segment + 1 startup phase) = 0.1, then scaled by 3.0.
+        assert plugin.sweep_timeout == 540.3
 
 
 if __name__ == "__main__":

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import math
 import time
 from abc import abstractmethod
 from collections.abc import Callable
+import logging
+import numpy as np
 from typing import Any, ClassVar
 
 from qtpy.QtCore import QObject
@@ -34,6 +35,7 @@ from stoner_measurement.ui.widgets import SISpinBox
 _TIMEOUT_FACTOR_DEFAULT = 2.0
 _SPINBOX_MAX_ABS = 1e9
 
+logger = logging.getLogger(__name__)
 
 class _StateSweepTabContainer(QWidget):
     """Container for the active sweep generator widget."""
@@ -362,7 +364,7 @@ class StateSweepPlugin(StatePlugin):
             ... )
             >>> p.sweep_timeout_factor = 3.0
             >>> p.sweep_timeout
-            6.0
+            540.3
         """
         return self.sweep_generator.estimated_duration() * self.sweep_timeout_factor
 
@@ -469,6 +471,7 @@ class StateSweepPlugin(StatePlugin):
         self._sweep_start_time = time.monotonic()
         self._sweep_deadline = self._sweep_start_time + timeout
         self.sweep_generator.reset()
+        logger.debug(f"Begin sweep for {self.__class__} with {timeout=}")
 
     def __iter__(self) -> StateSweepPlugin:
         self._begin_sweep()
@@ -493,22 +496,32 @@ class StateSweepPlugin(StatePlugin):
                 f"Sweep timeout exceeded after {elapsed:.1f}s "
                 f"(expected ≤{self._sweep_deadline - self._sweep_start_time:.1f}s)"
             )
+            logger.error(
+                f"Sweep timeout exceeded after {elapsed:.1f}s "
+                f"(expected ≤{self._sweep_deadline - self._sweep_start_time:.1f}s)"
+                )
             self.meas_flag = False
             return False
 
         try:
             self.ix, self.value, self.stage, self.meas_flag = next(self.sweep_generator)
+            logger.debug(f"Iterated sweep: {self.ix}:{self.value}@{self.stage}")
         except StopIteration:
             self.state_reached.emit(float(self.value))
             self.meas_flag = False
+            logger.debug(f"Finished sweep at {self.value}")
             return False
 
         lo, hi = self.limits
-        if (math.isfinite(lo) and self.value < lo) or (math.isfinite(hi) and self.value > hi):
+        if (not np.isinf(lo) and self.value < lo) or (not np.isinf(hi) and self.value > hi):
             self.state_error.emit(
                 f"{self.state_name} value {self.value:.4g} {self.units} "
                 f"is outside limits [{lo}, {hi}]"
             )
+            logger.error(
+                f"{self.state_name} value {self.value:.4g} {self.units} "
+                f"is outside limits [{lo}, {hi}]"
+                )
             self.meas_flag = False
             return False
 
@@ -538,15 +551,18 @@ class StateSweepPlugin(StatePlugin):
         self.connect()
         self.configure()
         try:
+            logger.debug("Sweep starting")
             if self.clear_on_start:
                 self.clear_data()
             self._begin_sweep()
             while next(self):
+                logger.debug("Iterated: running sub-sequence")
                 for sub_step in sub_steps:
                     sub_step()
                 if self.collect_data:
                     self.collect()
         finally:
+            logger.debug("Disconnecting")
             self.disconnect()
 
     # ------------------------------------------------------------------

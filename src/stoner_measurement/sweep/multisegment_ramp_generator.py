@@ -1,4 +1,9 @@
-"""Multi-segment ramp sweep generator."""
+"""Multi-segment ramp sweep generator.
+
+Provides a sweep generator that moves a controlled state through a sequence of
+target/rate segments, yielding the live state value while the owning plugin
+ramps towards each configured target in turn.
+"""
 
 from __future__ import annotations
 
@@ -27,11 +32,39 @@ from stoner_measurement.ui.widgets import SISpinBox
 
 _DEFAULT_POLL_SECONDS = 0.05
 _SPINBOX_MAX_ABS = 1e9
+_SECONDS_PER_MINUTE = 60.0
 _FLOAT_TOLERANCE = 1e-12
 
 
 class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
-    """Sweep generator that ramps through target/rate segments."""
+    """Ramp through a sequence of target/rate sweep segments.
+
+    The generator first moves the owning state-sweep plugin to the configured
+    start value, waits until that initial target is reached, then applies each
+    configured ``(target, rate, measure)`` segment in sequence. The current
+    live state is yielded repeatedly while each segment is in progress.
+
+    Args:
+        start (float):
+            Initial state value set before the first segment begins.
+        segments (list[tuple[float, float, bool]] | None):
+            Sweep segments as ``(target, rate, measure)`` tuples.
+        poll_seconds (float):
+            Delay in seconds between state polls while waiting/ramping.
+        start_timeout_seconds (float):
+            Maximum time to wait for the initial start value to be reached
+            before the sweep terminates early.
+        state_sweep:
+            Owning state-sweep plugin used to drive and read the controlled
+            state.
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Notes:
+        The yielded stage index corresponds to the current segment index. This
+        lets preview widgets distinguish repeated values occurring in different
+        segments.
+    """
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -51,23 +84,43 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
 
     @property
     def start(self) -> float:
-        """Return the initial state value set before segment processing starts."""
+        """Return the configured start value.
+
+        Returns:
+            (float):
+                Initial state value set before segment processing starts.
+        """
         return self._start
 
     @start.setter
     def start(self, value: float) -> None:
-        """Set the initial state value set before segment processing starts."""
+        """Set the configured start value.
+
+        Args:
+            value (float):
+                Initial state value set before segment processing starts.
+        """
         self._start = float(value)
         self._invalidate()
 
     @property
     def segments(self) -> list[tuple[float, float, bool]]:
-        """Return a copy of configured ``(target, rate, measure)`` segments."""
+        """Return configured sweep segments.
+
+        Returns:
+            (list[tuple[float, float, bool]]):
+                Copy of configured ``(target, rate, measure)`` segments.
+        """
         return list(self._segments)
 
     @segments.setter
     def segments(self, value: list[tuple[float, float, bool]]) -> None:
-        """Set configured ``(target, rate, measure)`` segments."""
+        """Set configured sweep segments.
+
+        Args:
+            value (list[tuple[float, float, bool]]):
+                Segments as ``(target, rate, measure)`` tuples.
+        """
         cleaned: list[tuple[float, float, bool]] = []
         for target, rate, measure in value:
             cleaned.append((float(target), float(rate), bool(measure)))
@@ -76,27 +129,62 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
 
     @property
     def poll_seconds(self) -> float:
-        """Return the polling interval between state checks in seconds."""
+        """Return the polling interval.
+
+        Returns:
+            (float):
+                Delay between state checks, in seconds.
+        """
         return self._poll_seconds
 
     @poll_seconds.setter
     def poll_seconds(self, value: float) -> None:
-        """Set the polling interval between state checks in seconds."""
+        """Set the polling interval.
+
+        Args:
+            value (float):
+                Delay between state checks, in seconds.
+        """
         self._poll_seconds = max(0.0, float(value))
         self._invalidate()
 
     @property
     def start_timeout_seconds(self) -> float:
-        """Return timeout used while waiting for the initial state to be reached."""
+        """Return the initial-start wait timeout.
+
+        Returns:
+            (float):
+                Timeout in seconds used while waiting for the initial state to
+                be reached.
+        """
         return self._start_timeout_seconds
 
     @start_timeout_seconds.setter
     def start_timeout_seconds(self, value: float) -> None:
-        """Set timeout used while waiting for the initial state to be reached."""
+        """Set the initial-start wait timeout.
+
+        Args:
+            value (float):
+                Timeout in seconds used while waiting for the initial state to
+                be reached.
+        """
         self._start_timeout_seconds = max(0.0, float(value))
         self._invalidate()
 
     def iter_points(self) -> Iterator[tuple[int, float, int, bool]]:
+        """Yield live sweep points while ramping through configured segments.
+
+        Yields:
+            (tuple[int, float, int, bool]):
+                Tuples of ``(index, value, stage, measure_flag)`` where
+                ``index`` counts yielded points, ``value`` is the live state,
+                ``stage`` is the active segment index, and ``measure_flag`` is
+                taken from the active segment configuration.
+
+        Notes:
+            If the start value is not reached within
+            :attr:`start_timeout_seconds`, iteration stops early.
+        """
         plugin = self.state_sweep
         if plugin is None:
             return
@@ -137,12 +225,32 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
                 time.sleep(self._poll_seconds)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
+        """Return the configuration widget for this generator.
+
+        Args:
+            parent (QWidget | None):
+                Optional parent widget.
+
+        Returns:
+            (QWidget):
+                Widget bound to this generator instance.
+        """
         return MultiSegmentRampSweepWidget(generator=self, parent=parent)
 
     def estimated_duration(self) -> float:
         """Return the estimated total sweep duration in seconds.
 
-        Computes the sum of travel-time for each segment: ``|target - prev| / rate``.
+        Computes a conservative estimate of the full sweep runtime.
+
+        The estimate includes:
+
+        - the configured initial wait allowance for reaching :attr:`start`
+        - the travel time for each configured segment, converting configured
+          rates from units/minute to units/second,
+          ``|target - previous_target| / rate``
+        - one polling interval for each segment transition to account for
+          control-loop and target-detection latency
+
         Returns ``float("inf")`` if any segment has a zero or negative rate.
         Returns ``0.0`` if there are no segments.
 
@@ -151,22 +259,32 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
                 Total estimated sweep time in seconds.
 
         Examples:
+            The estimate intentionally includes startup and polling overhead,
+            so it is conservative rather than exact.
+
             >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.sweep import MultiSegmentRampSweepGenerator
-            >>> gen = MultiSegmentRampSweepGenerator(start=0.0, segments=[(2.0, 1.0, True), (0.0, 0.5, False)])
+            >>> gen = MultiSegmentRampSweepGenerator(
+            ...     start=0.0, segments=[(2.0, 1.0, True), (0.0, 0.5, False)]
+            ... )
             >>> gen.estimated_duration()
-            6.0
+            420.15
         """
         if not self._segments:
             return 0.0
-        total = 0.0
+
+        total = self._start_timeout_seconds
         prev = self._start
         for target, rate, _ in self._segments:
             if rate <= 0.0:
                 return float("inf")
-            total += abs(target - prev) / rate
+            total += abs(target - prev) / rate * _SECONDS_PER_MINUTE
             prev = target
+
+        if self._poll_seconds > 0.0:
+            total += self._poll_seconds * (len(self._segments) + 1)
+
         return total
 
     def to_json(self) -> dict[str, Any]:
@@ -180,6 +298,20 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
 
     @classmethod
     def _from_json_data(cls, data: dict[str, Any], *, state_sweep=None, parent: QObject | None = None):
+        """Reconstruct a generator instance from serialised data.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised generator configuration.
+            state_sweep:
+                Owning state-sweep plugin for the reconstructed generator.
+            parent (QObject | None):
+                Optional Qt parent object.
+
+        Returns:
+            (MultiSegmentRampSweepGenerator):
+                Reconstructed generator instance.
+        """
         segments = [(float(target), float(rate), bool(measure)) for target, rate, measure in data.get("segments", [])]
         return cls(
             start=float(data.get("start", 0.0)),
@@ -348,7 +480,7 @@ class MultiSegmentRampSweepWidget(QWidget):
         current_time = 0.0
         for target, rate, measure in self._generator.segments:
             rate_magnitude = abs(float(rate))
-            duration = abs(float(target) - current) / rate_magnitude if rate_magnitude > 0.0 else 0.0
+            duration = abs(float(target) - current) / rate_magnitude * _SECONDS_PER_MINUTE if rate_magnitude > 0.0 else 0.0
             x_vals = [current_time, current_time + duration]
             y_vals = [current, float(target)]
             pen = pg.mkPen(color=(0, 200, 0, 200) if measure else (200, 0, 0, 200), width=2)
@@ -372,7 +504,7 @@ class MultiSegmentRampSweepWidget(QWidget):
             target_value_for_segment = float(target)
             rate_magnitude = abs(float(rate))
             segment_distance = abs(target_value_for_segment - current)
-            duration = segment_distance / rate_magnitude if rate_magnitude > 0.0 else 0.0
+            duration = segment_distance / rate_magnitude * _SECONDS_PER_MINUTE if rate_magnitude > 0.0 else 0.0
 
             if current_stage == stage_index:
                 if segment_distance > 0.0:

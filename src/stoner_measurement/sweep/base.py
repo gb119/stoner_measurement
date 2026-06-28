@@ -1,4 +1,9 @@
-"""Base classes for state-sweep generators."""
+"""Base classes for state-sweep generators.
+
+Provides the abstract :class:`BaseSweepGenerator` API used by state-sweep
+plugins, including iteration/signalling behaviour and JSON serialisation hooks
+for concrete sweep-generator implementations.
+"""
 
 from __future__ import annotations
 
@@ -21,14 +26,36 @@ class _ABCQObjectMeta(type(QObject), ABCMeta):
 class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
     """Abstract base class for generators used by state-sweep plugins.
 
-    Iteration yields ``(index, value, stage, measure_flag)`` tuples.
-    On each yielded point:
+    Iteration yields ``(index, value, stage, measure_flag)`` tuples. On each
+    yielded point:
 
     - :attr:`current_value_changed` emits the current value
     - :attr:`current_point_changed` emits ``(index, value, stage)``
 
     The additional *stage* field lets preview widgets disambiguate repeated
     values that may occur in different sweep segments.
+
+    Args:
+        state_sweep (StateSweepPlugin | None):
+            Owning state-sweep plugin used by the generator to query and/or
+            drive the controlled state.
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Attributes:
+        values_changed:
+            Qt signal emitted when the configured sweep values change and any
+            dependent preview or cached iteration state should be refreshed.
+        current_value_changed:
+            Qt signal emitted with the current numeric value after each yielded
+            point.
+        current_point_changed:
+            Qt signal emitted with ``(index, value, stage)`` after each yielded
+            point.
+
+    Notes:
+        Concrete subclasses must implement :meth:`iter_points`,
+        :meth:`config_widget`, and :meth:`_from_json_data`.
     """
 
     values_changed = pyqtSignal()
@@ -42,23 +69,52 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
 
     @property
     def state_sweep(self) -> StateSweepPlugin | None:
-        """Owning state-sweep plugin."""
+        """Return the owning state-sweep plugin.
+
+        Returns:
+            (StateSweepPlugin | None):
+                The owning state-sweep plugin, or ``None`` if this generator is
+                not currently attached to one.
+        """
         return self._state_sweep
 
     @state_sweep.setter
     def state_sweep(self, plugin: StateSweepPlugin | None) -> None:
+        """Attach the generator to a state-sweep plugin.
+
+        Args:
+            plugin (StateSweepPlugin | None):
+                Owning state-sweep plugin, or ``None`` to detach the generator.
+        """
         self._state_sweep = plugin
         self.reset()
 
     def reset(self) -> None:
-        """Reset iteration state."""
+        """Reset cached iteration state."""
         self._iterator = None
 
     def __iter__(self) -> BaseSweepGenerator:
+        """Return an iterator over sweep points.
+
+        Returns:
+            (BaseSweepGenerator):
+                ``self``, reset to the beginning of the configured sweep.
+        """
         self.reset()
         return self
 
     def __next__(self) -> tuple[int, float, int, bool]:
+        """Return the next sweep point and emit the corresponding signals.
+
+        Returns:
+            (tuple[int, float, int, bool]):
+                The next ``(index, value, stage, measure_flag)`` tuple from the
+                concrete generator implementation.
+
+        Raises:
+            StopIteration:
+                If the underlying point iterator is exhausted.
+        """
         if self._iterator is None:
             self._iterator = iter(self.iter_points())
         ix, value, stage, measure_flag = next(self._iterator)
@@ -68,11 +124,25 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
 
     @abstractmethod
     def iter_points(self) -> Iterator[tuple[int, float, int, bool]]:
-        """Yield ``(index, value, stage, measure_flag)`` tuples."""
+        """Yield configured sweep points.
+
+        Yields:
+            (tuple[int, float, int, bool]):
+                Successive ``(index, value, stage, measure_flag)`` tuples.
+        """
 
     @abstractmethod
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
-        """Return a Qt widget for configuring this generator."""
+        """Return a Qt widget for configuring this generator.
+
+        Args:
+            parent (QWidget | None):
+                Optional parent widget.
+
+        Returns:
+            (QWidget):
+                Configuration widget bound to this generator instance.
+        """
 
     def _invalidate(self) -> None:
         """Reset cached iteration state and notify observers."""
@@ -104,7 +174,12 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         return float("inf")
 
     def to_json(self) -> dict[str, Any]:
-        """Serialise this generator configuration."""
+        """Serialise this generator configuration.
+
+        Returns:
+            (dict[str, Any]):
+                JSON-serialisable configuration mapping.
+        """
         return {"type": type(self).__name__}
 
     @classmethod
@@ -115,7 +190,24 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         state_sweep: StateSweepPlugin | None = None,
         parent: QObject | None = None,
     ) -> BaseSweepGenerator:
-        """Reconstruct a sweep generator from serialised data."""
+        """Reconstruct a sweep generator from serialised data.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised generator configuration.
+            state_sweep (StateSweepPlugin | None):
+                Owning state-sweep plugin for the reconstructed generator.
+            parent (QObject | None):
+                Optional Qt parent object.
+
+        Returns:
+            (BaseSweepGenerator):
+                Reconstructed concrete sweep-generator instance.
+
+        Raises:
+            ValueError:
+                If ``data`` names an unknown generator type.
+        """
         from stoner_measurement.sweep.monitor_and_filter_generator import (
             MonitorAndFilterSweepGenerator,
         )
@@ -141,5 +233,18 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         state_sweep: StateSweepPlugin | None = None,
         parent: QObject | None = None,
     ) -> BaseSweepGenerator:
-        """Reconstruct an instance of this generator class from serialised data."""
+        """Reconstruct an instance of this generator class from serialised data.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised generator configuration.
+            state_sweep (StateSweepPlugin | None):
+                Owning state-sweep plugin for the reconstructed generator.
+            parent (QObject | None):
+                Optional Qt parent object.
+
+        Raises:
+            NotImplementedError:
+                Always, unless overridden by a concrete subclass.
+        """
         raise NotImplementedError(f"{cls.__name__} must implement _from_json_data().")

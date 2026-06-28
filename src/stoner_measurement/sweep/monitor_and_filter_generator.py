@@ -1,4 +1,9 @@
-"""Monitor-and-filter sweep generator."""
+"""Monitor-and-filter sweep generator.
+
+Provides a sweep generator that repeatedly samples the current state and
+related monitored expressions, marking points for measurement only when a
+configured change threshold or timeout condition is met.
+"""
 
 from __future__ import annotations
 
@@ -30,7 +35,34 @@ _SPINBOX_MAX_ABS = 1e9
 
 
 class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
-    """Set measure flags when monitored outputs change beyond configured thresholds."""
+    """Trigger measurements when monitored outputs change sufficiently.
+
+    This generator does not drive the controlled state itself. Instead, it
+    repeatedly samples the current state from the owning state-sweep plugin and
+    evaluates a set of monitored expressions. A yielded point is marked for
+    measurement when one of the configured change thresholds is exceeded, or
+    when the timeout between forced measurements elapses.
+
+    Args:
+        rows (list[tuple[str, bool, float]] | None):
+            Monitor rows as ``(expression, percent, limit)`` tuples.
+        timeout (float):
+            Maximum time in seconds between forced measurement points.
+        termination_condition (str):
+            Expression evaluated in the sequence namespace; iteration stops when
+            it becomes truthy.
+        poll_seconds (float):
+            Delay in seconds between successive state evaluations.
+        state_sweep:
+            Owning state-sweep plugin used to evaluate expressions and query the
+            current state.
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Notes:
+        The yielded stage index is always ``0`` because this generator does not
+        have multiple sweep segments.
+    """
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -50,12 +82,22 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
 
     @property
     def rows(self) -> list[tuple[str, bool, float]]:
-        """Return configured monitor rows as ``(expression, percent, limit)`` tuples."""
+        """Return configured monitor rows.
+
+        Returns:
+            (list[tuple[str, bool, float]]):
+                Monitor rows as ``(expression, percent, limit)`` tuples.
+        """
         return list(self._rows)
 
     @rows.setter
     def rows(self, value: list[tuple[str, bool, float]]) -> None:
-        """Set configured monitor rows as ``(expression, percent, limit)`` tuples."""
+        """Set configured monitor rows.
+
+        Args:
+            value (list[tuple[str, bool, float]]):
+                Monitor rows as ``(expression, percent, limit)`` tuples.
+        """
         cleaned: list[tuple[str, bool, float]] = []
         for expr, as_percent, limit in value:
             cleaned.append((str(expr), bool(as_percent), float(limit)))
@@ -64,34 +106,65 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
 
     @property
     def timeout(self) -> float:
-        """Return timeout between forced measurements in seconds."""
+        """Return timeout between forced measurements.
+
+        Returns:
+            (float):
+                Timeout in seconds.
+        """
         return self._timeout
 
     @timeout.setter
     def timeout(self, value: float) -> None:
-        """Set timeout between forced measurements in seconds."""
+        """Set timeout between forced measurements.
+
+        Args:
+            value (float):
+                Timeout in seconds.
+        """
         self._timeout = max(0.0, float(value))
         self._invalidate()
 
     @property
     def termination_condition(self) -> str:
-        """Return the expression used to terminate iteration when truthy."""
+        """Return the termination condition expression.
+
+        Returns:
+            (str):
+                Expression evaluated in the sequence namespace; a truthy result
+                stops iteration.
+        """
         return self._termination_condition
 
     @termination_condition.setter
     def termination_condition(self, value: str) -> None:
-        """Set the expression used to terminate iteration when truthy."""
+        """Set the termination condition expression.
+
+        Args:
+            value (str):
+                Expression evaluated in the sequence namespace.
+        """
         self._termination_condition = str(value)
         self._invalidate()
 
     @property
     def poll_seconds(self) -> float:
-        """Return polling interval between state evaluations in seconds."""
+        """Return the polling interval.
+
+        Returns:
+            (float):
+                Delay between state evaluations, in seconds.
+        """
         return self._poll_seconds
 
     @poll_seconds.setter
     def poll_seconds(self, value: float) -> None:
-        """Set polling interval between state evaluations in seconds."""
+        """Set the polling interval.
+
+        Args:
+            value (float):
+                Delay between state evaluations, in seconds.
+        """
         self._poll_seconds = max(0.0, float(value))
         self._invalidate()
 
@@ -136,6 +209,16 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
         return delta >= limit
 
     def iter_points(self) -> Iterator[tuple[int, float, int, bool]]:
+        """Yield monitor-driven sweep points.
+
+        Yields:
+            (tuple[int, float, int, bool]):
+                Tuples of ``(index, value, stage, measure_flag)`` where
+                ``index`` is the triggered monitor-row index or ``-1`` for a
+                timeout/no-row trigger, ``value`` is the current state,
+                ``stage`` is always ``0``, and ``measure_flag`` indicates
+                whether the point should be measured.
+        """
         plugin = self.state_sweep
         if plugin is None:
             return
@@ -176,6 +259,16 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
                 time.sleep(self._poll_seconds)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
+        """Return the configuration widget for this generator.
+
+        Args:
+            parent (QWidget | None):
+                Optional parent widget.
+
+        Returns:
+            (QWidget):
+                Widget bound to this generator instance.
+        """
         return MonitorAndFilterSweepWidget(generator=self, parent=parent)
 
     def to_json(self) -> dict[str, Any]:
@@ -189,6 +282,20 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
 
     @classmethod
     def _from_json_data(cls, data: dict[str, Any], *, state_sweep=None, parent: QObject | None = None):
+        """Reconstruct a generator instance from serialised data.
+
+        Args:
+            data (dict[str, Any]):
+                Serialised generator configuration.
+            state_sweep:
+                Owning state-sweep plugin for the reconstructed generator.
+            parent (QObject | None):
+                Optional Qt parent object.
+
+        Returns:
+            (MonitorAndFilterSweepGenerator):
+                Reconstructed generator instance.
+        """
         rows = [(str(expr), bool(use_percent), float(limit)) for expr, use_percent, limit in data.get("rows", [])]
         return cls(
             rows=rows,
