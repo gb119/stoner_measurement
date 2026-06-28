@@ -6,6 +6,7 @@ from qtpy.QtWidgets import QLabel, QLineEdit, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
+from stoner_measurement.plugins.command import IfCommand
 from stoner_measurement.plugins.state_control import StateControlPlugin
 from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.ui.dock_panel import DockPanel
@@ -361,6 +362,8 @@ class TestDockPanel:
         state_item = panel._sequence_tree.topLevelItem(0)
         trace_item = panel._sequence_tree.topLevelItem(1)
         panel._sequence_tree.takeTopLevelItem(1)
+        while state_item.childCount():
+            state_item.takeChild(0)
         state_item.addChild(trace_item)
         state_item.setExpanded(True)
 
@@ -386,6 +389,8 @@ class TestDockPanel:
         state_item = panel._sequence_tree.topLevelItem(0)
         trace_item = panel._sequence_tree.topLevelItem(1)
         panel._sequence_tree.takeTopLevelItem(1)
+        while state_item.childCount():
+            state_item.takeChild(0)
         state_item.addChild(trace_item)
 
         # Select and remove the sub-step
@@ -398,6 +403,119 @@ class TestDockPanel:
         steps = panel.sequence_steps
         assert len(steps) == 1
         assert isinstance(steps[0], _FakeStatePlugin)
+
+    def test_add_state_scan_inserts_default_measure_if_child(self, qapp):
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+
+        pm = PluginManager()
+        pm.register("state_scan", _FakeStatePlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._plugin_list.select_plugin("state_scan")
+        panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        assert state_item.childCount() == 1
+        child_plugin = state_item.child(0).data(0, _PLUGIN_INSTANCE_ROLE)
+        assert isinstance(child_plugin, IfCommand)
+        assert child_plugin.condition == "fakestate.meas_flag"
+
+    def test_default_measure_if_condition_follows_parent_rename(self, qapp):
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+
+        pm = PluginManager()
+        pm.register("state_scan", _FakeStatePlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._plugin_list.select_plugin("state_scan")
+        panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        state_plugin = state_item.data(0, _PLUGIN_INSTANCE_ROLE)
+        child_plugin = state_item.child(0).data(0, _PLUGIN_INSTANCE_ROLE)
+        state_plugin.instance_name = "renamed_state"
+        assert child_plugin.condition == "renamed_state.meas_flag"
+
+    def test_custom_measure_if_condition_survives_parent_rename(self, qapp):
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+
+        pm = PluginManager()
+        pm.register("state_scan", _FakeStatePlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._plugin_list.select_plugin("state_scan")
+        panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        state_plugin = state_item.data(0, _PLUGIN_INSTANCE_ROLE)
+        child_plugin = state_item.child(0).data(0, _PLUGIN_INSTANCE_ROLE)
+        child_plugin.condition = "manual_condition"
+        state_plugin.instance_name = "renamed_state"
+        assert child_plugin.condition == "manual_condition"
+
+    def test_rename_rewrites_cross_references_with_strict_matching(self, qapp):
+        from stoner_measurement.plugins.command import IfCommand
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+
+        pm = PluginManager()
+        pm.register("state_scan", _FakeStatePlugin())
+        pm.register("if_command", IfCommand())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._plugin_list.select_plugin("state_scan")
+        panel._add_step()
+        panel._plugin_list.select_plugin("if_command")
+        panel._add_step()
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        while state_item.childCount():
+            state_item.takeChild(0)
+
+        if_item = panel._sequence_tree.topLevelItem(1)
+        if_plugin = if_item.data(0, _PLUGIN_INSTANCE_ROLE)
+        if_plugin.condition = "fakestate.value and fakestate and fakestate_2.value and b_fakestate and FakeState"
+
+        state_plugin = state_item.data(0, _PLUGIN_INSTANCE_ROLE)
+        state_plugin.instance_name = "temp"
+
+        steps = panel.sequence_steps
+        assert len(steps) == 2
+        rebuilt_if = steps[1]
+        assert isinstance(rebuilt_if, IfCommand)
+        assert rebuilt_if.condition == "temp.value and temp and fakestate_2.value and b_fakestate and FakeState"
+
+    def test_rename_rebuild_falls_back_to_current_sequence_when_reparse_fails(self, qapp, monkeypatch):
+        from stoner_measurement.core import serializer
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+
+        pm = PluginManager()
+        pm.register("state_scan", _FakeStatePlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._plugin_list.select_plugin("state_scan")
+        panel._add_step()
+
+        original_load_sequence = DockPanel.load_sequence
+
+        def _boom(_data):
+            raise RuntimeError("boom")
+
+        load_calls: list[list] = []
+
+        def _tracked_load(self, steps):
+            load_calls.append(steps)
+            return original_load_sequence(self, steps)
+
+        monkeypatch.setattr(serializer, "sequence_from_json", _boom)
+        monkeypatch.setattr(DockPanel, "load_sequence", _tracked_load)
+
+        state_item = panel._sequence_tree.topLevelItem(0)
+        state_plugin = state_item.data(0, _PLUGIN_INSTANCE_ROLE)
+        state_plugin.instance_name = "temp"
+
+        assert len(load_calls) == 1
+        restored_state, _restored_substeps = panel.sequence_steps[0]
+        assert restored_state.instance_name == "temp"
 
     def test_state_control_item_is_bold(self, qapp):
         """StateControlPlugin items are rendered with a bold font in the tree."""
@@ -458,6 +576,10 @@ class TestDockPanel:
         outer_item = self._find_item(panel, "outer")
         inner_item = self._find_item(panel, "inner")
         trace_item = self._find_item(panel, "trace")
+        while outer_item.childCount():
+            outer_item.takeChild(0)
+        while inner_item.childCount():
+            inner_item.takeChild(0)
 
         # Nest inner state under outer state
         inner_idx = panel._sequence_tree.indexOfTopLevelItem(inner_item)
@@ -496,6 +618,10 @@ class TestDockPanel:
         outer_item = self._find_item(panel, "outer")
         inner_item = self._find_item(panel, "inner")
         trace_item = self._find_item(panel, "trace")
+        while outer_item.childCount():
+            outer_item.takeChild(0)
+        while inner_item.childCount():
+            inner_item.takeChild(0)
 
         inner_idx = panel._sequence_tree.indexOfTopLevelItem(inner_item)
         panel._sequence_tree.takeTopLevelItem(inner_idx)
@@ -955,8 +1081,8 @@ class TestDockPanel:
 
         # dummy should now be a child of state.
         assert panel._sequence_tree.topLevelItemCount() == 1
-        assert state_item.childCount() == 1
-        assert state_item.child(0) is dummy_item
+        assert state_item.childCount() == 2
+        assert state_item.child(1) is dummy_item
 
     def test_ctrl_right_noop_if_above_is_not_sequence(self, qapp):
         """Ctrl+Right does nothing when the item above is not a SequencePlugin."""
@@ -989,7 +1115,10 @@ class TestDockPanel:
         self._send_key(panel._sequence_tree, Qt.Key.Key_Right)
 
         assert panel._sequence_tree.topLevelItemCount() == 1
-        assert state_item.childCount() == 0
+        assert state_item.childCount() == 1
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+
+        assert isinstance(state_item.child(0).data(0, _PLUGIN_INSTANCE_ROLE), IfCommand)
 
     def test_ctrl_left_promotes_step_out_of_subsequence(self, qapp):
         """Ctrl+Left moves selected step from a sub-sequence to the parent, after the container."""
@@ -1009,6 +1138,8 @@ class TestDockPanel:
         dummy_item = panel._sequence_tree.topLevelItem(1)
         # Nest dummy under state.
         panel._sequence_tree.takeTopLevelItem(1)
+        while state_item.childCount():
+            state_item.takeChild(0)
         state_item.addChild(dummy_item)
 
         # Promote dummy out of state.
@@ -1137,7 +1268,7 @@ class TestDockPanel:
         self._send_key(panel._sequence_tree, Qt.Key.Key_Right)
 
         assert panel._sequence_tree.topLevelItemCount() == 1
-        assert state_item.childCount() == 2
+        assert state_item.childCount() == 3
 
     def test_ctrl_left_multiple_steps_out_of_sequence(self, qapp):
         """Ctrl+Left promotes multiple sub-steps to the parent level after the container."""
@@ -1157,6 +1288,8 @@ class TestDockPanel:
         state_item = panel._sequence_tree.topLevelItem(0)
         dummy0 = panel._sequence_tree.topLevelItem(1)
         dummy1 = panel._sequence_tree.topLevelItem(2)
+        while state_item.childCount():
+            state_item.takeChild(0)
 
         panel._sequence_tree.takeTopLevelItem(2)
         panel._sequence_tree.takeTopLevelItem(1)

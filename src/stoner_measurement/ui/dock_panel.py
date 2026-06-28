@@ -19,7 +19,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import QMimeData, QPoint, Qt
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtGui import (
     QBrush,
     QDragEnterEvent,
@@ -42,6 +41,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.core.plugin_manager import PluginManager
+from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -1244,7 +1244,23 @@ class DockPanel(QWidget):
         self._step_plugins.append(new_plugin)
 
         text = f"{new_plugin.instance_name} ({new_plugin.name})"
-        return self._sequence_tree.make_item(new_plugin, text, ep_name=ep_name)
+        item = self._sequence_tree.make_item(new_plugin, text, ep_name=ep_name)
+        self._add_default_measure_condition_child(new_plugin, item)
+        return item
+
+    def _add_default_measure_condition_child(self, plugin: BasePlugin, item: QTreeWidgetItem) -> None:
+        """Insert a default measure-flag ``If`` child for scan/sweep plugins."""
+        factory = getattr(plugin, "default_measure_condition_step", None)
+        if not callable(factory):
+            return
+        child_plugin = factory()
+        child_plugin.instance_name = self._unique_step_name(child_plugin.instance_name)
+        if hasattr(child_plugin, "instance_name_changed"):
+            child_plugin.instance_name_changed.connect(self._on_plugin_renamed)
+        self._step_plugins.append(child_plugin)
+        child_text = f"{child_plugin.instance_name} ({child_plugin.name})"
+        item.addChild(self._sequence_tree.make_item(child_plugin, child_text))
+        item.setExpanded(True)
 
     def _remove_step(self) -> None:
         """Remove all currently selected sequence steps (and sub-steps)."""
@@ -1337,6 +1353,49 @@ class DockPanel(QWidget):
 
         for i in range(self._sequence_tree.topLevelItemCount()):
             _update_subtree(self._sequence_tree.topLevelItem(i))
+
+        self._rebuild_sequence_after_rename(old_name, new_name)
+
+    def _rebuild_sequence_after_rename(self, old_name: str, new_name: str) -> None:
+        """Rebuild the sequence after a rename so cross-references follow the new name."""
+        from stoner_measurement.core.serializer import (
+            rename_identifier_references,
+            sequence_from_json,
+            sequence_to_json,
+        )
+
+        current_steps = self.sequence_steps
+        try:
+            data = sequence_to_json(current_steps)
+            renamed_data = rename_identifier_references(data, old_name, new_name)
+            rebuilt_steps = sequence_from_json(renamed_data)
+            self.load_sequence(rebuilt_steps)
+            restored_item = self._find_sequence_item_by_instance_name(new_name)
+            if restored_item is not None:
+                self._sequence_tree.setCurrentItem(restored_item)
+        except Exception:
+            self.load_sequence(current_steps)
+            restored_item = self._find_sequence_item_by_instance_name(new_name)
+            if restored_item is not None:
+                self._sequence_tree.setCurrentItem(restored_item)
+
+    def _find_sequence_item_by_instance_name(self, instance_name: str) -> QTreeWidgetItem | None:
+        """Return the first sequence-tree item whose plugin has *instance_name*."""
+        def _walk(item: QTreeWidgetItem) -> QTreeWidgetItem | None:
+            plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+            if plugin is not None and plugin.instance_name == instance_name:
+                return item
+            for i in range(item.childCount()):
+                found = _walk(item.child(i))
+                if found is not None:
+                    return found
+            return None
+
+        for i in range(self._sequence_tree.topLevelItemCount()):
+            found = _walk(self._sequence_tree.topLevelItem(i))
+            if found is not None:
+                return found
+        return None
 
     # ------------------------------------------------------------------
     # Instance-name uniqueness helpers
@@ -1553,6 +1612,8 @@ class DockPanel(QWidget):
 
         if sub_steps:
             item.setExpanded(True)
+        else:
+            self._add_default_measure_condition_child(plugin, item)
 
         return item
 

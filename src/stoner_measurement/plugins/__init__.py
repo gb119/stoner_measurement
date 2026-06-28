@@ -51,6 +51,7 @@ from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command import (
     CommandPlugin,
     DetailsCommand,
+    IfCommand,
     PlotTraceCommand,
     SaveCommand,
 )
@@ -85,6 +86,7 @@ __all__ = [
     "CommandPlugin",
     "CounterPlugin",
     "DetailsCommand",
+    "IfCommand",
     "MonitorPlugin",
     "MagneticFieldMonitorPlugin",
     "MotorAngleMonitorPlugin",

@@ -19,6 +19,19 @@ def qapp():
     return app
 
 
+@pytest.fixture(autouse=True)
+def suppress_modal_message_boxes(monkeypatch):
+    """Prevent modal QMessageBox displays from blocking headless tests."""
+
+    def _noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.warning", _noop)
+    monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.critical", _noop)
+    monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.information", _noop)
+    monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.about", _noop)
+
+
 @pytest.fixture
 def plugin_manager(qapp):
     """Return a PluginManager pre-loaded with the DummyPlugin."""

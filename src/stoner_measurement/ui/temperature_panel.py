@@ -72,6 +72,7 @@ from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
+    StabilityBand,
     StabilityConfig,
     TemperatureEngineState,
 )
@@ -351,8 +352,11 @@ class TemperatureControlPanel(QWidget):
         self._btn_disconnect = QPushButton("Disconnect")
         self._btn_disconnect.setEnabled(False)
         self._btn_disconnect.clicked.connect(self._on_disconnect)
+        self._btn_save_configuration = QPushButton("Save Settings to YAML")
+        self._btn_save_configuration.clicked.connect(self._on_save_configuration)
         btn_row.addWidget(self._btn_connect)
         btn_row.addWidget(self._btn_disconnect)
+        btn_row.addWidget(self._btn_save_configuration)
         btn_row.addStretch()
         layout.addLayout(btn_row)
         layout.addStretch()
@@ -449,8 +453,8 @@ class TemperatureControlPanel(QWidget):
         self._needle_read_btn.clicked.connect(self._on_read_needle)
         needle_row = QHBoxLayout()
         needle_row.addWidget(self._needle_spin)
-        needle_row.addWidget(self._needle_apply_btn)
         needle_row.addWidget(self._needle_read_btn)
+        needle_row.addWidget(self._needle_apply_btn)
         needle_form.addRow("Position:", needle_row)
         # Gas auto mode toggle (shown only for drivers with has_gas_auto_mode).
         self._gas_auto_check = QCheckBox("Automatic gas flow")
@@ -477,36 +481,44 @@ class TemperatureControlPanel(QWidget):
                 The assembled stability tab.
         """
         widget = QWidget()
-        form = QFormLayout(widget)
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(6)
 
-        self._stab_tolerance_spin = SISpinBox()
-        self._stab_tolerance_spin.setOpts(bounds=(0.001, 10.0), decimals=3, suffix="K", siPrefix=True)
-        self._stab_tolerance_spin.setValue(0.1)
-        form.addRow("Tolerance:", self._stab_tolerance_spin)
-
-        self._stab_window_spin = SISpinBox()
-        self._stab_window_spin.setOpts(bounds=(1.0, 3600.0), suffix="s", siPrefix=True)
-        self._stab_window_spin.setValue(60.0)
-        form.addRow("Stability window:", self._stab_window_spin)
-
-        self._stab_min_rate_spin = SISpinBox()
-        self._stab_min_rate_spin.setOpts(bounds=(0.0001, 1.0), decimals=4, suffix="K/min", siPrefix=True)
-        self._stab_min_rate_spin.setValue(0.005)
-        form.addRow("Max rate of change:", self._stab_min_rate_spin)
+        self._stab_table = QTableWidget(0, 6)
+        self._stab_table.setHorizontalHeaderLabels(
+            [
+                "Max temp (K)",
+                "Tolerance sensor",
+                "Tolerance (K)",
+                "Rate sensor",
+                "Max rate (K/min)",
+                "Window (s)",
+            ]
+        )
+        self._stab_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self._stab_table)
 
         self._stab_holdoff_spin = SISpinBox()
         self._stab_holdoff_spin.setOpts(bounds=(0.0, 120.0), suffix="s", siPrefix=True)
-        self._stab_holdoff_spin.setValue(5.0)
-        form.addRow("Unstable holdoff:", self._stab_holdoff_spin)
+        self._stab_holdoff_spin.setValue(self._engine.stability_config.unstable_holdoff_s)
+        holdoff_form = QFormLayout()
+        holdoff_form.addRow("Unstable holdoff:", self._stab_holdoff_spin)
+        layout.addLayout(holdoff_form)
 
-        apply_btn = QPushButton("Apply Stability Settings")
+        table_row = QHBoxLayout()
+        add_btn = QPushButton("Add Band")
+        add_btn.clicked.connect(self._on_add_stability_band)
+        remove_btn = QPushButton("Remove Band")
+        remove_btn.clicked.connect(self._on_remove_stability_band)
+        apply_btn = QPushButton("Apply Stability Table")
         apply_btn.clicked.connect(self._on_apply_stability)
-        form.addRow("", apply_btn)
+        table_row.addWidget(add_btn)
+        table_row.addWidget(remove_btn)
+        table_row.addStretch()
+        table_row.addWidget(apply_btn)
+        layout.addLayout(table_row)
 
-        save_btn = QPushButton("Save Settings to YAML")
-        save_btn.clicked.connect(self._on_save_configuration)
-        form.addRow("", save_btn)
+        self._populate_stability_table(self._engine.stability_config)
 
         return widget
 
@@ -953,6 +965,7 @@ class TemperatureControlPanel(QWidget):
                 self._gas_auto_check.hide()
             self._configure_zone_tab(caps)
             self._configure_input_settings_tab(caps)
+            self._refresh_stability_channel_selectors()
         except Exception:
             logger.exception("Failed to read capabilities after connection")
 
@@ -1390,23 +1403,131 @@ class TemperatureControlPanel(QWidget):
     # Stability tab slot
     # ------------------------------------------------------------------
 
+    def _stability_channels(self) -> tuple[str, ...]:
+        """Return known input channels for stability sensor selectors."""
+        if self._capabilities is None:
+            return ()
+        return tuple(self._capabilities.input_channels)
+
+    def _make_stability_channel_combo(self, selected: str) -> QComboBox:
+        """Build a sensor selector for a stability-table cell."""
+        combo = QComboBox()
+        channels = self._stability_channels()
+        if not channels:
+            combo.addItem("First available", "")
+        else:
+            for channel in channels:
+                combo.addItem(channel, channel)
+            if selected and selected not in channels:
+                combo.addItem(selected, selected)
+        index = combo.findData(selected)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        return combo
+
+    def _set_stability_row(self, row: int, band: StabilityBand) -> None:
+        """Populate one row of the stability table from *band*."""
+        self._stab_table.setItem(row, 0, QTableWidgetItem(f"{band.max_temperature_k:g}"))
+        self._stab_table.setCellWidget(row, 1, self._make_stability_channel_combo(band.tolerance_channel))
+        self._stab_table.setItem(row, 2, QTableWidgetItem(f"{band.tolerance_k:g}"))
+        self._stab_table.setCellWidget(row, 3, self._make_stability_channel_combo(band.rate_channel))
+        self._stab_table.setItem(row, 4, QTableWidgetItem(f"{band.min_rate:g}"))
+        self._stab_table.setItem(row, 5, QTableWidgetItem(f"{band.window_s:g}"))
+
+    def _populate_stability_table(self, config: StabilityConfig) -> None:
+        """Replace the table contents with *config*."""
+        self._stab_table.setRowCount(0)
+        for band in config.bands:
+            row = self._stab_table.rowCount()
+            self._stab_table.insertRow(row)
+            self._set_stability_row(row, band)
+        self._stab_holdoff_spin.setValue(config.unstable_holdoff_s)
+
+    def _stability_cell_float(self, row: int, column: int, fallback: float) -> float:
+        """Return a float from a stability-table cell."""
+        item = self._stab_table.item(row, column)
+        if item is None:
+            return fallback
+        text = item.text().strip()
+        if not text:
+            return fallback
+        return float(text)
+
+    def _stability_cell_channel(self, row: int, column: int) -> str:
+        """Return the selected channel from a stability-table cell."""
+        widget = self._stab_table.cellWidget(row, column)
+        if isinstance(widget, QComboBox):
+            data = widget.currentData()
+            return str(data) if data is not None else ""
+        item = self._stab_table.item(row, column)
+        return item.text().strip() if item is not None else ""
+
+    def _collect_stability_config(self) -> StabilityConfig:
+        """Build a stability configuration from the table."""
+        bands: list[StabilityBand] = []
+        for row in range(self._stab_table.rowCount()):
+            bands.append(
+                StabilityBand(
+                    max_temperature_k=self._stability_cell_float(row, 0, 1000.0),
+                    tolerance_channel=self._stability_cell_channel(row, 1),
+                    tolerance_k=self._stability_cell_float(row, 2, 0.1),
+                    rate_channel=self._stability_cell_channel(row, 3),
+                    min_rate=self._stability_cell_float(row, 4, 0.005),
+                    window_s=self._stability_cell_float(row, 5, 60.0),
+                )
+            )
+        return StabilityConfig(
+            unstable_holdoff_s=self._stab_holdoff_spin.value(),
+            bands=bands,
+        )
+
+    def _refresh_stability_channel_selectors(self) -> None:
+        """Rebuild channel selectors after connecting to a controller."""
+        config = self._collect_stability_config()
+        self._populate_stability_table(config)
+
+    @pyqtSlot()
+    def _on_add_stability_band(self) -> None:
+        """Append a new stability-table band."""
+        bands = self._collect_stability_config().bands
+        previous = bands[-1] if bands else StabilityBand()
+        band = StabilityBand(
+            max_temperature_k=previous.max_temperature_k + 100.0,
+            tolerance_channel=previous.tolerance_channel,
+            tolerance_k=previous.tolerance_k,
+            rate_channel=previous.rate_channel,
+            min_rate=previous.min_rate,
+            window_s=previous.window_s,
+        )
+        row = self._stab_table.rowCount()
+        self._stab_table.insertRow(row)
+        self._set_stability_row(row, band)
+
+    @pyqtSlot()
+    def _on_remove_stability_band(self) -> None:
+        """Remove the selected stability-table band."""
+        if self._stab_table.rowCount() <= 1:
+            return
+        row = self._stab_table.currentRow()
+        self._stab_table.removeRow(row if row >= 0 else self._stab_table.rowCount() - 1)
+
     @pyqtSlot()
     def _on_apply_stability(self) -> None:
         """Apply the stability settings to the engine."""
-        cfg = StabilityConfig(
-            tolerance_k=self._stab_tolerance_spin.value(),
-            window_s=self._stab_window_spin.value(),
-            min_rate=self._stab_min_rate_spin.value(),
-            unstable_holdoff_s=self._stab_holdoff_spin.value(),
-        )
+        try:
+            cfg = self._collect_stability_config()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Stability Table", f"Invalid stability table value:\n{exc}")
+            return
         self._engine.set_stability_config(cfg)
+        self._populate_stability_table(cfg)
 
     @pyqtSlot()
     def _on_save_configuration(self) -> None:
         """Save the current engine configuration to the machine YAML file."""
         try:
+            self._engine.set_stability_config(self._collect_stability_config())
             path = self._engine.save_configuration()
-        except Exception as exc:
+        except (Exception, ValueError) as exc:
             QMessageBox.critical(
                 self,
                 "Save Configuration",
@@ -2131,14 +2252,14 @@ class _LoopControlGroup(QGroupBox):
     def _build_button_row(self, form: QFormLayout) -> None:
         """Add Apply/Read button row to *form*."""
         btn_row = QHBoxLayout()
-        apply_btn = QPushButton("Apply")
-        apply_btn.setToolTip("Send all loop settings to the instrument")
-        apply_btn.clicked.connect(self._on_apply_all)
         read_btn = QPushButton("Read")
         read_btn.setToolTip("Read all loop settings from the instrument and update this panel")
         read_btn.clicked.connect(self._on_read)
-        btn_row.addWidget(apply_btn)
+        apply_btn = QPushButton("Apply")
+        apply_btn.setToolTip("Send all loop settings to the instrument")
+        apply_btn.clicked.connect(self._on_apply_all)
         btn_row.addWidget(read_btn)
+        btn_row.addWidget(apply_btn)
         btn_row.addStretch()
         form.addRow("", btn_row)
 

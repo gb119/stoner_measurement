@@ -183,6 +183,12 @@ class TestStateSweepPlugin:
         lines = plugin.generate_action_code(1, [], lambda s, i: [])
         assert any("while next(" in line for line in lines)
 
+    def test_generate_action_code_does_not_wrap_substeps_in_measure_flag_if(self, qapp):
+        plugin = _TestSweepPlugin()
+        lines = plugin.generate_action_code(1, ["dummy_step"], lambda s, i: ["        sub_step_line()"])
+        assert not any("if testsweep.meas_flag:" in line for line in lines)
+        assert "        sub_step_line()" in lines
+
     def test_to_json_round_trip(self, qapp):
         plugin = SweepTimePlugin()
         d = plugin.to_json()

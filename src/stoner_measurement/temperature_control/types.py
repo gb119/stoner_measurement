@@ -147,13 +147,32 @@ class TemperatureEngineState:
 
 
 @dataclass
+class StabilityBand:
+    """One temperature band for stability evaluation.
+
+    The first band whose :attr:`max_temperature_k` is greater than or equal to
+    the active setpoint is used.
+    """
+
+    max_temperature_k: float = 1000.0
+    tolerance_k: float = 0.1
+    tolerance_channel: str = ""
+    min_rate: float = 0.005
+    rate_channel: str = ""
+    window_s: float = 60.0
+
+
+@dataclass
 class StabilityConfig:
     """Configuration parameters defining what "stable at setpoint" means.
 
     Attributes:
+        bands (list[StabilityBand]):
+            Temperature-band table used to choose sensor channels, tolerance,
+            rate limit, and stability window from the active setpoint.
         tolerance_k (float):
-            Maximum permissible deviation from the setpoint in Kelvin for the
-            temperature to be considered *at setpoint*.  Defaults to ``0.1``.
+            Legacy single-band tolerance in Kelvin.  Used to build the default
+            band when *bands* is omitted.
         window_s (float):
             Minimum time in seconds that the temperature must be continuously
             *at setpoint* before *stable* is declared.  Defaults to ``60.0``.
@@ -180,6 +199,24 @@ class StabilityConfig:
     window_s: float = 60.0
     min_rate: float = 0.005
     unstable_holdoff_s: float = 5.0
+    bands: list[StabilityBand] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Ensure the configuration always has at least one ordered band."""
+        if not self.bands:
+            self.bands = [
+                StabilityBand(
+                    max_temperature_k=1000.0,
+                    tolerance_k=self.tolerance_k,
+                    min_rate=self.min_rate,
+                    window_s=self.window_s,
+                )
+            ]
+        self.bands = sorted(self.bands, key=lambda band: band.max_temperature_k)
+        first = self.bands[0]
+        self.tolerance_k = first.tolerance_k
+        self.min_rate = first.min_rate
+        self.window_s = first.window_s
 
 
 @dataclass

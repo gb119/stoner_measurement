@@ -6,7 +6,11 @@ connection:
   address: ""
 
 stability:
-  tolerance_k: 0.1
-  window_s: 60.0
-  min_rate: 0.005
   unstable_holdoff_s: 5.0
+  bands:
+    - max_temperature_k: 1000.0
+      tolerance_channel: ""
+      tolerance_k: 0.1
+      rate_channel: ""
+      min_rate: 0.005
+      window_s: 60.0

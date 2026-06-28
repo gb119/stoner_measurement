@@ -29,8 +29,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.qt_compat import pyqtSignal
 
 
 def _get_data_root() -> Path:
@@ -168,43 +168,18 @@ class DetailsCommand(CommandPlugin):
         """
         return "Details"
 
-    def execute(self) -> None:
-        """Apply the stored metadata to the plugin instance.
+    def configure(self) -> None:
+        """Validate the configured details fields used by generated scripts."""
+        self.user = self.user.strip()
+        self.sample = self.sample.strip()
+        self.project = self.project.strip()
 
-        Validates that the required metadata fields :attr:`user`,
-        :attr:`sample`, and :attr:`project` are non-blank.  If any are missing,
-        an alert dialog is shown identifying the missing field names and a
-        :class:`ValueError` is raised to stop sequence execution.
-
-        Sets :attr:`user`, :attr:`sample`, :attr:`project`, and :attr:`notes`
-        on *self*.  This method is present to satisfy the abstract-method
-        contract of :class:`~stoner_measurement.plugins.command.base.CommandPlugin`;
-        the sequence engine generates attribute-assignment code rather than an
-        ``execute()`` call, so this method is not invoked during normal
-        sequence execution.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.command.details import DetailsCommand
-            >>> cmd = DetailsCommand()
-            >>> cmd.user = "Alice"
-            >>> cmd.sample = "Nb_001"
-            >>> cmd.project = "NbSC"
-            >>> cmd.execute()
-            >>> cmd.user
-            'Alice'
-
-        Raises:
-            ValueError:
-                If any of ``user``, ``sample``, or ``project`` are blank.
-        """
         missing_fields = []
-        if not self.user.strip():
+        if not self.user:
             missing_fields.append("User")
-        if not self.sample.strip():
+        if not self.sample:
             missing_fields.append("Sample")
-        if not self.project.strip():
+        if not self.project:
             missing_fields.append("Project")
 
         if missing_fields:
@@ -212,6 +187,10 @@ class DetailsCommand(CommandPlugin):
             message = f"The following Details fields must be filled in before continuing: {field_text}."
             self.show_validation_error.emit(message)
             raise ValueError(message)
+
+    def execute(self) -> None:
+        """Validate the stored metadata when the command is invoked directly."""
+        self.configure()
 
     def generate_action_code(
         self,
@@ -223,7 +202,8 @@ class DetailsCommand(CommandPlugin):
 
         Instead of a ``{instance_name}()`` call, emits four assignment
         statements that set the metadata attributes on the plugin instance in
-        the engine namespace, followed by a blank separator line.
+        the engine namespace, followed by a ``configure()`` call and a blank
+        separator line.
 
         Args:
             indent (int):
@@ -235,7 +215,8 @@ class DetailsCommand(CommandPlugin):
 
         Returns:
             (list[str]):
-                Four assignment lines plus a trailing blank line.
+                Four assignment lines, one ``configure()`` call, and a
+                trailing blank line.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -256,6 +237,8 @@ class DetailsCommand(CommandPlugin):
             >>> lines[3]
             'details.notes = "Test run"'
             >>> lines[4]
+            'details.configure()'
+            >>> lines[5]
             ''
         """
         prefix = "    " * indent
@@ -281,6 +264,7 @@ class DetailsCommand(CommandPlugin):
             f"{prefix}{inst}.sample = {_quoted(self.sample)}",
             f"{prefix}{inst}.project = {_quoted(self.project)}",
             f"{prefix}{inst}.notes = {_quoted(self.notes)}",
+            f"{prefix}{inst}.configure()",
             "",
         ]
         return lines

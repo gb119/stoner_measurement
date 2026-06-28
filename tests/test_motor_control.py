@@ -9,7 +9,11 @@ import pytest
 from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.instruments.simulated import SimulatedMotorController
 from stoner_measurement.motor_control import MotorControllerEngine
-from stoner_measurement.motor_control.types import MotorEngineStatus, MotorEngineState, MotorReading
+from stoner_measurement.motor_control.types import (
+    MotorEngineState,
+    MotorEngineStatus,
+    MotorReading,
+)
 
 
 def _repo_qapp(qapp):
@@ -287,6 +291,22 @@ class TestMotorControlPanel:
         panel._btn_hide.click()
         qapp.processEvents()
         assert not panel.isVisible()
+
+    def test_save_button_is_on_connection_tab(self, qapp):
+        _repo_qapp(qapp)
+        from qtpy.QtWidgets import QPushButton
+
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+        connection_tab = panel._tabs.widget(0)  # pylint: disable=protected-access
+        control_tab = panel._tabs.widget(1)  # pylint: disable=protected-access
+
+        connection_labels = [btn.text() for btn in connection_tab.findChildren(QPushButton)]
+        control_labels = [btn.text() for btn in control_tab.findChildren(QPushButton)]
+
+        assert "Save Settings to YAML" in connection_labels
+        assert "Save Settings to YAML" not in control_labels
 
     def test_target_angle_accepts_negative_values_within_soft_limit(self, qapp):
         _repo_qapp(qapp)

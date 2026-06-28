@@ -422,6 +422,15 @@ class TestStateControlPlugin:
         expected = [0.0, 1.2566370614359172, 2.5132741228718345, 3.7699111843077517, 5.026548245743669]
         assert visited == pytest.approx(expected)
 
+    def test_execute_sequence_runs_substeps_when_measure_flag_false(self, qapp):
+        from stoner_measurement.scan import ListScanGenerator
+
+        p = _InstantState()
+        p.scan_generator = ListScanGenerator(stages=[(0.0, False), (1.0, True)], parent=p)
+        visited: list[tuple[float, bool]] = []
+        p.execute_sequence([lambda: visited.append((float(p.value), bool(p.meas_flag)))])
+        assert visited == [(0.0, False), (1.0, True)]
+
     def test_index_property_aliases_ix(self, qapp):
         p = _InstantState()
         p.ix = 3
@@ -1077,6 +1086,12 @@ class TestStateControlDataCollection:
         collect_idx = next(i for i, line in enumerate(lines) if "collect()" in line)
         sub_idx = next(i for i, line in enumerate(lines) if "sub_step_line()" in line)
         assert collect_idx > sub_idx
+
+    def test_generate_action_code_does_not_wrap_substeps_in_measure_flag_if(self, qapp):
+        p = _InstantState()
+        lines = p.generate_action_code(1, ["dummy_step"], lambda s, i: ["        sub_step_line()"])
+        assert not any("if instantstate.meas_flag:" in line for line in lines)
+        assert "        sub_step_line()" in lines
 
     def test_generate_action_code_waits_for_plot_ready_before_ramp(self, qapp):
         p = _InstantState()

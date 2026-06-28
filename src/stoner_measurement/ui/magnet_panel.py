@@ -329,8 +329,11 @@ class MagnetControlPanel(QWidget):
         self._btn_disconnect = QPushButton("Disconnect")
         self._btn_disconnect.setEnabled(False)
         self._btn_disconnect.clicked.connect(self._on_disconnect)
+        self._btn_save_configuration = QPushButton("Save Settings to YAML")
+        self._btn_save_configuration.clicked.connect(self._on_save_configuration)
         btn_row.addWidget(self._btn_connect)
         btn_row.addWidget(self._btn_disconnect)
+        btn_row.addWidget(self._btn_save_configuration)
         btn_row.addStretch()
         layout.addLayout(btn_row)
         layout.addStretch()
@@ -429,14 +432,14 @@ class MagnetControlPanel(QWidget):
         target_form.addRow("Target current:", target_current_widget)
 
         go_btn_row = QHBoxLayout()
-        self._btn_go = QPushButton("Go To Field")
-        self._btn_go.setToolTip("Set the target and begin ramping")
-        self._btn_go.clicked.connect(self._on_go_to_field)
         self._btn_read_target = QPushButton("Read")
         self._btn_read_target.setToolTip("Read the current target field from the controller state")
         self._btn_read_target.clicked.connect(self._on_read_target)
-        go_btn_row.addWidget(self._btn_go)
+        self._btn_go = QPushButton("Go To Field")
+        self._btn_go.setToolTip("Set the target and begin ramping")
+        self._btn_go.clicked.connect(self._on_go_to_field)
         go_btn_row.addWidget(self._btn_read_target)
+        go_btn_row.addWidget(self._btn_go)
         go_btn_row.addStretch()
         target_form.addRow("", go_btn_row)
         layout.addWidget(target_group)
@@ -458,13 +461,13 @@ class MagnetControlPanel(QWidget):
         ramp_form.addRow("Current ramp rate:", self._ramp_current_spin)
 
         ramp_btn_row = QHBoxLayout()
-        self._btn_apply_ramp = QPushButton("Apply Ramp Rates")
-        self._btn_apply_ramp.clicked.connect(self._on_apply_ramp)
         self._btn_read_ramp = QPushButton("Read")
         self._btn_read_ramp.setToolTip("Read current ramp rates from the controller state")
         self._btn_read_ramp.clicked.connect(self._on_read_ramp)
-        ramp_btn_row.addWidget(self._btn_apply_ramp)
+        self._btn_apply_ramp = QPushButton("Apply Ramp Rates")
+        self._btn_apply_ramp.clicked.connect(self._on_apply_ramp)
         ramp_btn_row.addWidget(self._btn_read_ramp)
+        ramp_btn_row.addWidget(self._btn_apply_ramp)
         ramp_btn_row.addStretch()
         ramp_form.addRow("", ramp_btn_row)
         layout.addWidget(ramp_group)
@@ -494,16 +497,16 @@ class MagnetControlPanel(QWidget):
         heater_group = QGroupBox("Persistent Switch Heater")
         heater_form = QFormLayout(heater_group)
         heater_btn_row = QHBoxLayout()
+        self._btn_read_heater = QPushButton("Read")
+        self._btn_read_heater.setToolTip("Read the current heater state from the controller")
+        self._btn_read_heater.clicked.connect(self._on_read_heater)
         self._btn_heater_on = QPushButton("Heater On")
         self._btn_heater_on.clicked.connect(self._on_heater_on)
         self._btn_heater_off = QPushButton("Heater Off")
         self._btn_heater_off.clicked.connect(self._on_heater_off)
-        self._btn_read_heater = QPushButton("Read")
-        self._btn_read_heater.setToolTip("Read the current heater state from the controller")
-        self._btn_read_heater.clicked.connect(self._on_read_heater)
+        heater_btn_row.addWidget(self._btn_read_heater)
         heater_btn_row.addWidget(self._btn_heater_on)
         heater_btn_row.addWidget(self._btn_heater_off)
-        heater_btn_row.addWidget(self._btn_read_heater)
         heater_btn_row.addStretch()
         self._heater_state_label = QLabel("—")
         self._heater_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -536,13 +539,13 @@ class MagnetControlPanel(QWidget):
         const_form.addRow("Max ramp rate:", self._max_ramp_spin)
 
         limits_btn_row = QHBoxLayout()
-        self._btn_apply_limits = QPushButton("Apply Constants && Limits")
-        self._btn_apply_limits.clicked.connect(self._on_apply_limits)
         self._btn_read_limits = QPushButton("Read")
         self._btn_read_limits.setToolTip("Read magnet constant and limits from the controller")
         self._btn_read_limits.clicked.connect(self._on_read_limits)
-        limits_btn_row.addWidget(self._btn_apply_limits)
+        self._btn_apply_limits = QPushButton("Apply Constants && Limits")
+        self._btn_apply_limits.clicked.connect(self._on_apply_limits)
         limits_btn_row.addWidget(self._btn_read_limits)
+        limits_btn_row.addWidget(self._btn_apply_limits)
         limits_btn_row.addStretch()
         const_form.addRow("", limits_btn_row)
         layout.addWidget(const_group)
@@ -991,6 +994,24 @@ class MagnetControlPanel(QWidget):
             self._on_apply_limits()
         except Exception:
             logger.exception("Failed to apply initial magnet limits after connection")
+
+    @pyqtSlot()
+    def _on_save_configuration(self) -> None:
+        """Persist the current panel and engine settings to the YAML config."""
+        try:
+            transport_name, address = selected_transport(self, self._transport_combo.currentIndex())
+            self._engine.preferred_driver_name = self._driver_combo.currentText()
+            self._engine.preferred_transport_name = transport_name
+            self._engine.preferred_address = address
+            self._engine.save_configuration()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Save Configuration",
+                f"Failed to save configuration:\n{exc}",
+            )
+            return
+        QMessageBox.information(self, "Save Configuration", "Configuration saved.")
 
     def _set_address_widget_status(self, transport_index: int, status: VisaResourceStatus) -> None:
         set_address_widget_status(self, transport_index, status)

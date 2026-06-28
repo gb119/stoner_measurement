@@ -958,6 +958,21 @@ class TestMagnetControlPanel:
         assert "Configuration" in tab_titles
         assert "Chart" in tab_titles
 
+    def test_save_button_is_on_connection_tab(self, qapp):
+        from qtpy.QtWidgets import QPushButton
+
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        connection_tab = panel._tabs.widget(0)
+        config_tab = panel._tabs.widget(1)
+
+        connection_labels = [btn.text() for btn in connection_tab.findChildren(QPushButton)]
+        config_labels = [btn.text() for btn in config_tab.findChildren(QPushButton)]
+
+        assert "Save Settings to YAML" in connection_labels
+        assert "Save Settings to YAML" not in config_labels
+
     def test_target_field_spin_updates_current_label(self, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 

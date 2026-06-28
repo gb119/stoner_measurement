@@ -524,6 +524,37 @@ class TestSequenceEqualityRoundTrip:
         self._assert_step_equal(original[0], restored[0])
 
 
+class TestRenameIdentifierReferences:
+    def test_renames_exact_identifier_tokens_only(self, qapp):
+        from stoner_measurement.core.serializer import rename_identifier_references
+
+        data = {
+            "plugin": {
+                "instance_name": "temp",
+                "condition": "field.value and field and field_2.value and b_field and Field",
+                "labels": ["field", "field:value", "field_2:value", "b_field"],
+                "class": "stoner_measurement.plugins.command.if_command:IfCommand",
+            }
+        }
+
+        renamed = rename_identifier_references(data, "field", "temp")
+
+        assert renamed["plugin"]["instance_name"] == "temp"
+        assert renamed["plugin"]["condition"] == "temp.value and temp and field_2.value and b_field and Field"
+        assert renamed["plugin"]["labels"] == ["temp", "temp:value", "field_2:value", "b_field"]
+        assert renamed["plugin"]["class"] == "stoner_measurement.plugins.command.if_command:IfCommand"
+
+    def test_returns_deep_copy_when_names_match(self, qapp):
+        from stoner_measurement.core.serializer import rename_identifier_references
+
+        data = {"plugin": {"condition": "field.value"}}
+        renamed = rename_identifier_references(data, "field", "field")
+
+        assert renamed == data
+        assert renamed is not data
+        assert renamed["plugin"] is not data["plugin"]
+
+
 if __name__ == "__main__":
 
     raise SystemExit(pytest.main([__file__, "--pdb"]))

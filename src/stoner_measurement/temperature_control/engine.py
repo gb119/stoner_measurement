@@ -44,6 +44,7 @@ from stoner_measurement.temperature_control.pubsub import TemperaturePublisher
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     LoopSettings,
+    StabilityBand,
     StabilityConfig,
     TemperatureChannelReading,
     TemperatureEngineState,
@@ -155,25 +156,7 @@ class TemperatureControllerEngine(QObject):
 
         stability = config.get("stability")
         if isinstance(stability, dict):
-            self.set_stability_config(
-                StabilityConfig(
-                    tolerance_k=float(
-                        stability.get("tolerance_k", self._stability_config.tolerance_k)
-                    ),
-                    window_s=float(
-                        stability.get("window_s", self._stability_config.window_s)
-                    ),
-                    min_rate=float(
-                        stability.get("min_rate", self._stability_config.min_rate)
-                    ),
-                    unstable_holdoff_s=float(
-                        stability.get(
-                            "unstable_holdoff_s",
-                            self._stability_config.unstable_holdoff_s,
-                        )
-                    ),
-                )
-            )
+            self.set_stability_config(_stability_config_from_mapping(stability, self._stability_config))
 
     # ------------------------------------------------------------------
     # Singleton access
@@ -496,10 +479,18 @@ class TemperatureControllerEngine(QObject):
                 "address": self._preferred_address,
             },
             "stability": {
-                "tolerance_k": self._stability_config.tolerance_k,
-                "window_s": self._stability_config.window_s,
-                "min_rate": self._stability_config.min_rate,
                 "unstable_holdoff_s": self._stability_config.unstable_holdoff_s,
+                "bands": [
+                    {
+                        "max_temperature_k": band.max_temperature_k,
+                        "tolerance_channel": band.tolerance_channel,
+                        "tolerance_k": band.tolerance_k,
+                        "rate_channel": band.rate_channel,
+                        "min_rate": band.min_rate,
+                        "window_s": band.window_s,
+                    }
+                    for band in self._stability_config.bands
+                ],
             },
         }
 
@@ -1055,6 +1046,11 @@ class TemperatureControllerEngine(QObject):
         self._unstable_since.clear()
         self._stable.clear()
 
+    @property
+    def stability_config(self) -> StabilityConfig:
+        """Return the active stability-evaluation configuration."""
+        return self._stability_config
+
     def set_poll_interval(self, ms: int) -> None:
         """Set the polling interval.
 
@@ -1272,15 +1268,16 @@ class TemperatureControllerEngine(QObject):
             (tuple[dict[int, bool], dict[int, bool]]):
                 ``(at_setpoint, stable)`` mappings keyed by loop number.
         """
-        cfg = self._stability_config
         at_setpoint: dict[int, bool] = {}
         stable: dict[int, bool] = {}
 
         for lp in loop_numbers:
             sp = setpoints.get(lp, 0.0)
-            # Use the first available channel reading as the process variable.
-            pv = next(iter(readings.values())).value if readings else sp
-            rate = next(iter(readings.values())).rate_of_change if readings else 0.0
+            cfg = _select_stability_band(self._stability_config, sp)
+            tolerance_reading = _reading_for_channel(readings, cfg.tolerance_channel)
+            rate_reading = _reading_for_channel(readings, cfg.rate_channel)
+            pv = tolerance_reading.value if tolerance_reading is not None else sp
+            rate = rate_reading.rate_of_change if rate_reading is not None else 0.0
 
             currently_at = abs(pv - sp) < cfg.tolerance_k
             at_setpoint[lp] = currently_at
@@ -1304,7 +1301,7 @@ class TemperatureControllerEngine(QObject):
 
         return at_setpoint, stable
 
-    def _try_clear_stable(self, loop: int, now: datetime, cfg: StabilityConfig) -> None:
+    def _try_clear_stable(self, loop: int, now: datetime, cfg: StabilityBand) -> None:
         """Clear the stable flag for *loop* after the holdoff period has elapsed.
 
         Args:
@@ -1312,14 +1309,16 @@ class TemperatureControllerEngine(QObject):
                 Loop number to evaluate.
             now (datetime):
                 Current UTC timestamp.
-            cfg (StabilityConfig):
+            cfg (StabilityBand):
                 Active stability configuration.
         """
         if not self._stable.get(loop, False):
             return
         if self._unstable_since.get(loop) is None:
             self._unstable_since[loop] = now
-        holdoff_elapsed = (now - self._unstable_since[loop]).total_seconds() >= cfg.unstable_holdoff_s
+        holdoff_elapsed = (
+            now - self._unstable_since[loop]
+        ).total_seconds() >= self._stability_config.unstable_holdoff_s
         if holdoff_elapsed:
             self._stable[loop] = False
 
@@ -1368,6 +1367,54 @@ def _qapp():
         return QApplication.instance()
     except (ImportError, RuntimeError):
         return None
+
+
+def _stability_config_from_mapping(mapping: dict, fallback: StabilityConfig) -> StabilityConfig:
+    """Build a :class:`StabilityConfig` from new table or legacy single-band YAML."""
+    holdoff = float(mapping.get("unstable_holdoff_s", fallback.unstable_holdoff_s))
+    bands = mapping.get("bands")
+    if isinstance(bands, list) and bands:
+        parsed_bands = []
+        for entry in bands:
+            if not isinstance(entry, dict):
+                continue
+            parsed_bands.append(
+                StabilityBand(
+                    max_temperature_k=float(entry.get("max_temperature_k", 1000.0)),
+                    tolerance_channel=str(entry.get("tolerance_channel", "")),
+                    tolerance_k=float(entry.get("tolerance_k", fallback.tolerance_k)),
+                    rate_channel=str(entry.get("rate_channel", "")),
+                    min_rate=float(entry.get("min_rate", fallback.min_rate)),
+                    window_s=float(entry.get("window_s", fallback.window_s)),
+                )
+            )
+        if parsed_bands:
+            return StabilityConfig(unstable_holdoff_s=holdoff, bands=parsed_bands)
+
+    return StabilityConfig(
+        tolerance_k=float(mapping.get("tolerance_k", fallback.tolerance_k)),
+        window_s=float(mapping.get("window_s", fallback.window_s)),
+        min_rate=float(mapping.get("min_rate", fallback.min_rate)),
+        unstable_holdoff_s=holdoff,
+    )
+
+
+def _select_stability_band(config: StabilityConfig, setpoint: float) -> StabilityBand:
+    """Return the band that applies to *setpoint*."""
+    for band in config.bands:
+        if setpoint <= band.max_temperature_k:
+            return band
+    return config.bands[-1]
+
+
+def _reading_for_channel(
+    readings: dict[str, TemperatureChannelReading],
+    channel: str,
+) -> TemperatureChannelReading | None:
+    """Return the requested reading, falling back to the first available channel."""
+    if channel and channel in readings:
+        return readings[channel]
+    return next(iter(readings.values()), None)
 
 
 def _compute_rate(history: deque[tuple[datetime, float]]) -> float:

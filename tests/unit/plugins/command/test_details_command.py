@@ -38,7 +38,8 @@ class TestDetailsCommand:
         assert lines[1] == 'details.sample = "Nb_001"'
         assert lines[2] == 'details.project = "NbSC"'
         assert lines[3] == 'details.notes = "Cooled overnight"'
-        assert lines[4] == ""
+        assert lines[4] == "details.configure()"
+        assert lines[5] == ""
 
     def test_generate_action_code_indentation(self, qapp):
         command = DetailsCommand()
@@ -49,7 +50,8 @@ class TestDetailsCommand:
     def test_generate_action_code_no_execute_call(self, qapp):
         command = DetailsCommand()
         lines = command.generate_action_code(0, [], lambda source, indent: [])
-        assert not any("()" in line for line in lines)
+        assert "details.configure()" in lines
+        assert not any(line.strip() == "details()" for line in lines)
 
     def test_generate_action_code_escapes_special_chars(self, qapp):
         command = DetailsCommand()
@@ -90,6 +92,10 @@ class TestDetailsCommand:
         command = DetailsCommand()
         warnings: list[str] = []
 
+        monkeypatch.setattr(
+            "stoner_measurement.plugins.command.details.QMessageBox.warning",
+            lambda *args, **kwargs: None,
+        )
         command.show_validation_error.disconnect(command._display_validation_error)
         command.show_validation_error.connect(warnings.append)
 
@@ -107,6 +113,34 @@ class TestDetailsCommand:
         command.sample = "S1"
         command.project = "P1"
         command.execute()
+
+    def test_configure_raises_and_shows_warning_for_missing_required_fields(self, qapp, monkeypatch):
+        command = DetailsCommand()
+        warnings: list[str] = []
+
+        monkeypatch.setattr(
+            "stoner_measurement.plugins.command.details.QMessageBox.warning",
+            lambda *args, **kwargs: None,
+        )
+        command.show_validation_error.disconnect(command._display_validation_error)
+        command.show_validation_error.connect(warnings.append)
+
+        with pytest.raises(ValueError, match="User.*Sample.*Project"):
+            command.configure()
+
+        assert warnings
+
+    def test_configure_strips_required_fields(self, qapp):
+        command = DetailsCommand()
+        command.user = " Alice "
+        command.sample = " S1 "
+        command.project = " P1 "
+
+        command.configure()
+
+        assert command.user == "Alice"
+        assert command.sample == "S1"
+        assert command.project == "P1"
 
     def test_config_widget_user_field(self, qapp):
         command = DetailsCommand()

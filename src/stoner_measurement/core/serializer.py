@@ -13,6 +13,8 @@ the same recursive structure.
 
 from __future__ import annotations
 
+import copy
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -20,6 +22,8 @@ if TYPE_CHECKING:
 
 # Recursive type alias matching dock_panel._SequenceStep.
 type _SequenceStep = BasePlugin | tuple[BasePlugin, list[_SequenceStep]]
+
+_RENAME_SKIP_KEYS = frozenset({"class", "type", "version"})
 
 
 def sequence_to_json(steps: list[_SequenceStep]) -> dict[str, Any]:
@@ -121,6 +125,36 @@ def sequence_from_json(data: dict[str, Any]) -> list[_SequenceStep]:
     """
     steps_data: list[dict[str, Any]] = data.get("steps", [])
     return [_step_from_json(s) for s in steps_data]
+
+
+def rename_identifier_references(
+    data: dict[str, Any],
+    old_name: str,
+    new_name: str,
+) -> dict[str, Any]:
+    """Return a deep-copied sequence JSON mapping with strict identifier rewrites.
+
+    Only exact identifier-token matches are replaced, so renaming ``field`` to
+    ``temp`` updates strings such as ``field.value`` or ``field`` but leaves
+    ``field_2``, ``b_field``, and ``Field`` untouched.
+    """
+    if old_name == new_name:
+        return copy.deepcopy(data)
+
+    pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(old_name)}(?![A-Za-z0-9_])")
+
+    def _rewrite(value: Any, *, key: str | None = None) -> Any:
+        if isinstance(value, dict):
+            return {child_key: _rewrite(child_value, key=child_key) for child_key, child_value in value.items()}
+        if isinstance(value, list):
+            return [_rewrite(item, key=key) for item in value]
+        if isinstance(value, str):
+            if key in _RENAME_SKIP_KEYS:
+                return value
+            return pattern.sub(new_name, value)
+        return value
+
+    return _rewrite(copy.deepcopy(data))
 
 
 def _step_from_json(step_data: dict[str, Any]) -> _SequenceStep:

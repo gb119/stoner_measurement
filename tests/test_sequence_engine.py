@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from stoner_measurement.core.sequence_engine import SequenceEngine, _to_var_name
+from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.trace import DummyPlugin
 
 # ---------------------------------------------------------------------------
@@ -286,6 +287,16 @@ class TestCodeGeneration:
         plugins = {"dummy": plugin}
         code = engine.generate_sequence_code(["dummy"], plugins)
         assert "dummy" in code
+
+    def test_command_only_sequence_emits_finally_pass(self, engine):
+        plugin = DetailsCommand()
+        plugin.user = "Alice"
+        plugin.sample = "S1"
+        plugin.project = "P1"
+        code = engine.generate_sequence_code(["details"], {"details": plugin})
+
+        assert "details.configure()" in code
+        assert "finally:\n    pass" in code
 
     def test_unknown_ep_name_produces_no_steps_comment(self, engine):
         code = engine.generate_sequence_code(["nonexistent"], {})

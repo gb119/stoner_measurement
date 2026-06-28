@@ -13,6 +13,7 @@ Exports :class:`CommandPlugin` (abstract base) from
 :class:`WaitCommand` from :mod:`stoner_measurement.plugins.command.wait`,
 :class:`StatusCommand` from :mod:`stoner_measurement.plugins.command.status`,
 :class:`AlertCommand` from :mod:`stoner_measurement.plugins.command.alert`,
+:class:`IfCommand` from :mod:`stoner_measurement.plugins.command.if_command`,
 and :class:`DetailsCommand` from
 :mod:`stoner_measurement.plugins.command.details`.
 """
@@ -20,6 +21,7 @@ and :class:`DetailsCommand` from
 from stoner_measurement.plugins.command.alert import AlertCommand
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.command.details import DetailsCommand
+from stoner_measurement.plugins.command.if_command import IfCommand
 from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
 from stoner_measurement.plugins.command.plot_points import PlotPointsCommand
 from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
@@ -31,6 +33,7 @@ __all__ = [
     "AlertCommand",
     "CommandPlugin",
     "DetailsCommand",
+    "IfCommand",
     "PlotClearCommand",
     "PlotPointsCommand",
     "PlotTraceCommand",

@@ -18,7 +18,6 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from qtpy.QtCore import QObject
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -33,6 +32,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.plugins.state.base import StatePlugin
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan import (
     ArbitraryFunctionScanGenerator,
     BaseScanGenerator,
@@ -369,6 +369,22 @@ class StateScanPlugin(StatePlugin):
         super().__init__(parent)
         self.scan_generator: BaseScanGenerator = self._scan_generator_class(parent=self)
 
+    def default_measure_condition_step(self):
+        """Return an ``If`` command configured for this scan's measure flag."""
+        from stoner_measurement.plugins.command import IfCommand
+
+        command = IfCommand(condition=f"{self.instance_name}.meas_flag")
+
+        def _sync_condition(old_name: str, new_name: str) -> None:
+            old_condition = f"{old_name}.meas_flag"
+            if command.condition == old_condition:
+                command.condition = f"{new_name}.meas_flag"
+
+        if hasattr(self, "instance_name_changed"):
+            self.instance_name_changed.connect(_sync_condition)
+            command._measure_condition_parent_sync = _sync_condition
+        return command
+
     @property
     def plugin_type(self) -> str:
         """Short tag identifying this plugin as a state-scan controller.
@@ -561,9 +577,8 @@ class StateScanPlugin(StatePlugin):
         try:
             for self.ix, self.value, self.meas_flag, self.stage in self.scan_generator:
                 self.ramp_to(float(self.value))
-                if self.meas_flag:
-                    for sub_step in sub_steps:
-                        sub_step()
+                for sub_step in sub_steps:
+                    sub_step()
         finally:
             self.disconnect()
 
@@ -728,9 +743,8 @@ class StateScanPlugin(StatePlugin):
             f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.get_state():.4g}} {self.units}")',
         ]
         if sub_steps:
-            lines.append(f"{loop_prefix}if {var_name}.meas_flag:")
             for sub_step in sub_steps:
-                lines.extend(render_sub_step(sub_step, indent + 2))
+                lines.extend(render_sub_step(sub_step, indent + 1))
         if self.collect_data:
             lines.append(f"{loop_prefix}{var_name}.collect()")
         lines.append("")

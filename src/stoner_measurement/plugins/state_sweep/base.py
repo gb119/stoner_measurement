@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from abc import abstractmethod
 from collections.abc import Callable
-import logging
-import numpy as np
 from typing import Any, ClassVar
 
+import numpy as np
 from qtpy.QtCore import QObject
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -25,6 +24,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.plugins.state.base import StatePlugin
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.sweep import (
     BaseSweepGenerator,
     MonitorAndFilterSweepGenerator,
@@ -338,6 +338,22 @@ class StateSweepPlugin(StatePlugin):
         self._sweep_start_time: float = 0.0
         self._sweep_deadline: float = float("inf")
         self.ix = -1
+
+    def default_measure_condition_step(self):
+        """Return an ``If`` command configured for this sweep's measure flag."""
+        from stoner_measurement.plugins.command import IfCommand
+
+        command = IfCommand(condition=f"{self.instance_name}.meas_flag")
+
+        def _sync_condition(old_name: str, new_name: str) -> None:
+            old_condition = f"{old_name}.meas_flag"
+            if command.condition == old_condition:
+                command.condition = f"{new_name}.meas_flag"
+
+        if hasattr(self, "instance_name_changed"):
+            self.instance_name_changed.connect(_sync_condition)
+            command._measure_condition_parent_sync = _sync_condition
+        return command
 
     @property
     def default_sweep_timeout_factor(self) -> float:
@@ -692,9 +708,8 @@ class StateSweepPlugin(StatePlugin):
             f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.value:.4g}} {self.units}")',
         ]
         if sub_steps:
-            lines.append(f"{loop_prefix}if {var_name}.meas_flag:")
             for sub_step in sub_steps:
-                lines.extend(render_sub_step(sub_step, indent + 2))
+                lines.extend(render_sub_step(sub_step, indent + 1))
         if self.collect_data:
             lines.append(f"{loop_prefix}{var_name}.collect()")
         lines.append("")

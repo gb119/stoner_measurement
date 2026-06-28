@@ -22,6 +22,7 @@ from stoner_measurement.temperature_control.engine import (
 )
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
+    StabilityBand,
     StabilityConfig,
     TemperatureChannelReading,
     TemperatureEngineState,
@@ -133,6 +134,7 @@ class TestStabilityConfig:
     def test_custom(self):
         cfg = StabilityConfig(tolerance_k=0.5, window_s=120.0, min_rate=0.01)
         assert cfg.tolerance_k == pytest.approx(0.5)
+        assert cfg.bands[0].tolerance_k == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -195,10 +197,17 @@ class TestEngineLifecycle:
                 },
                 "poll_interval_ms": 1234,
                 "stability": {
-                    "tolerance_k": 0.25,
-                    "window_s": 12.0,
-                    "min_rate": 0.02,
                     "unstable_holdoff_s": 3.0,
+                    "bands": [
+                        {
+                            "max_temperature_k": 50.0,
+                            "tolerance_channel": "A",
+                            "tolerance_k": 0.25,
+                            "rate_channel": "B",
+                            "min_rate": 0.02,
+                            "window_s": 12.0,
+                        }
+                    ],
                 },
             },
         )
@@ -210,6 +219,30 @@ class TestEngineLifecycle:
         assert engine._stability_config.tolerance_k == pytest.approx(0.25)  # noqa: SLF001
         assert engine._stability_config.window_s == pytest.approx(12.0)  # noqa: SLF001
         assert engine._stability_config.min_rate == pytest.approx(0.02)  # noqa: SLF001
+        assert engine._stability_config.unstable_holdoff_s == pytest.approx(3.0)  # noqa: SLF001
+        assert engine._stability_config.bands[0].tolerance_channel == "A"  # noqa: SLF001
+        assert engine._stability_config.bands[0].rate_channel == "B"  # noqa: SLF001
+        engine.shutdown()
+
+    def test_constructor_loads_legacy_stability_config(self, monkeypatch, qapp):
+        monkeypatch.setattr(
+            engine_module,
+            "load_temperature_controller_config",
+            lambda: {
+                "stability": {
+                    "tolerance_k": 0.25,
+                    "window_s": 12.0,
+                    "min_rate": 0.02,
+                    "unstable_holdoff_s": 3.0,
+                },
+            },
+        )
+        engine = TemperatureControllerEngine()
+        band = engine._stability_config.bands[0]  # noqa: SLF001
+        assert band.max_temperature_k == pytest.approx(1000.0)
+        assert band.tolerance_k == pytest.approx(0.25)
+        assert band.window_s == pytest.approx(12.0)
+        assert band.min_rate == pytest.approx(0.02)
         assert engine._stability_config.unstable_holdoff_s == pytest.approx(3.0)  # noqa: SLF001
         engine.shutdown()
 
@@ -235,10 +268,17 @@ class TestEngineLifecycle:
         engine.set_poll_interval(1500)
         engine.set_stability_config(
             StabilityConfig(
-                tolerance_k=0.2,
-                window_s=30.0,
-                min_rate=0.01,
                 unstable_holdoff_s=2.0,
+                bands=[
+                    StabilityBand(
+                        max_temperature_k=75.0,
+                        tolerance_channel="A",
+                        tolerance_k=0.2,
+                        rate_channel="B",
+                        min_rate=0.01,
+                        window_s=30.0,
+                    )
+                ],
             )
         )
 
@@ -250,10 +290,17 @@ class TestEngineLifecycle:
             "transport": "Ethernet",
             "address": "host:1234",
         }
-        assert config["stability"]["tolerance_k"] == pytest.approx(0.2)
-        assert config["stability"]["window_s"] == pytest.approx(30.0)
-        assert config["stability"]["min_rate"] == pytest.approx(0.01)
         assert config["stability"]["unstable_holdoff_s"] == pytest.approx(2.0)
+        assert config["stability"]["bands"] == [
+            {
+                "max_temperature_k": 75.0,
+                "tolerance_channel": "A",
+                "tolerance_k": 0.2,
+                "rate_channel": "B",
+                "min_rate": 0.01,
+                "window_s": 30.0,
+            }
+        ]
 
         engine.shutdown()
 
@@ -421,6 +468,7 @@ class TestEngineLifecycle:
         cfg = StabilityConfig(tolerance_k=0.5, window_s=30.0)
         engine.set_stability_config(cfg)
         assert engine._stability_config.tolerance_k == pytest.approx(0.5)
+        assert engine.stability_config.bands[0].window_s == pytest.approx(30.0)
         engine.shutdown()
 
     def test_reconnect_disconnects_previous_driver(self, qapp):
@@ -596,6 +644,42 @@ class TestEngineStabilityEvaluation:
         t1 = t0 + timedelta(seconds=15)
         _, stable = engine._evaluate_stability(readings, setpoints, (1,), t1)
         assert stable[1] is False
+        engine.shutdown()
+
+    def test_stability_uses_configured_sensors_and_temperature_band(self, qapp):
+        engine = TemperatureControllerEngine()
+        engine._stability_config = StabilityConfig(
+            unstable_holdoff_s=0.0,
+            bands=[
+                StabilityBand(
+                    max_temperature_k=100.0,
+                    tolerance_channel="A",
+                    tolerance_k=0.1,
+                    rate_channel="A",
+                    min_rate=0.01,
+                    window_s=1.0,
+                ),
+                StabilityBand(
+                    max_temperature_k=500.0,
+                    tolerance_channel="B",
+                    tolerance_k=1.0,
+                    rate_channel="C",
+                    min_rate=0.05,
+                    window_s=1.0,
+                ),
+            ],
+        )
+        readings = {
+            "A": self._make_reading("A", 250.0, rate=0.0),
+            "B": self._make_reading("B", 300.5, rate=0.0),
+            "C": self._make_reading("C", 10.0, rate=0.01),
+        }
+        t0 = datetime.now(tz=UTC)
+        at_sp, _ = engine._evaluate_stability(readings, {1: 300.0}, (1,), t0)
+        _, stable = engine._evaluate_stability(readings, {1: 300.0}, (1,), t0 + timedelta(seconds=2))
+
+        assert at_sp[1] is True
+        assert stable[1] is True
         engine.shutdown()
 
     def test_stable_cleared_after_leaving_setpoint(self, qapp):
@@ -784,16 +868,52 @@ class TestTemperatureControlPanel:
         assert "Zone Table" in tab_titles
         assert "Chart" in tab_titles
 
+    def test_save_button_is_on_connection_tab(self, qapp):
+        from qtpy.QtWidgets import QPushButton
+
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        connection_tab = panel._tabs.widget(0)
+        stability_tab = panel._tabs.widget(2)
+
+        connection_labels = [btn.text() for btn in connection_tab.findChildren(QPushButton)]
+        stability_labels = [btn.text() for btn in stability_tab.findChildren(QPushButton)]
+
+        assert "Save Settings to YAML" in connection_labels
+        assert "Save Settings to YAML" not in stability_labels
+
     def test_stability_apply(self, qapp):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
         panel = TemperatureControlPanel()
-        panel._stab_tolerance_spin.setValue(0.5)
-        panel._stab_window_spin.setValue(30.0)
+        panel._stab_table.item(0, 2).setText("0.5")
+        panel._stab_table.item(0, 5).setText("30.0")
         panel._on_apply_stability()
         engine = TemperatureControllerEngine.instance()
         assert engine._stability_config.tolerance_k == pytest.approx(0.5)
         assert engine._stability_config.window_s == pytest.approx(30.0)
+
+    def test_stability_table_channel_selectors_populated_after_connection(self, qapp):
+        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        panel._capabilities = ControllerCapabilities(
+            num_inputs=2,
+            num_loops=1,
+            input_channels=("A", "B"),
+            loop_numbers=(1,),
+        )
+
+        panel._refresh_stability_channel_selectors()
+
+        tolerance_combo = panel._stab_table.cellWidget(0, 1)
+        rate_combo = panel._stab_table.cellWidget(0, 3)
+        assert tolerance_combo.itemData(0) == "A"
+        assert tolerance_combo.itemData(1) == "B"
+        assert rate_combo.itemData(0) == "A"
+        assert rate_combo.itemData(1) == "B"
 
     def test_driver_combo_contains_temperature_controllers(self, qapp):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel

@@ -54,6 +54,7 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
 from qtpy.QtCore import QObject, QThread
+
 from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
@@ -1694,9 +1695,15 @@ class SequenceEngine(QObject):
 
         lines.extend(action_lines)
         lines.append("finally:")
-        for plugin in reversed(ordered_plugins):
-            if plugin.has_lifecycle:
-                lines.append(f"    {plugin.instance_name}.disconnect()")
+        disconnect_lines = [
+            f"    {plugin.instance_name}.disconnect()"
+            for plugin in reversed(ordered_plugins)
+            if plugin.has_lifecycle
+        ]
+        if disconnect_lines:
+            lines.extend(disconnect_lines)
+        else:
+            lines.append("    pass")
         lines.append("")
 
         code = "\n".join(lines)
