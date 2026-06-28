@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 from unittest.mock import MagicMock, call, patch
 
@@ -420,10 +421,11 @@ class TestRateLimitAndAutoSensitivity:
         plugin._time_constant = 2.0
         plugin._read_rate_multiple = 2.0
         plugin._last_read_at = {"GPIB0::8::INSTR": 9.0}
+        monotonic_values = itertools.chain([10.0, 11.0, 12.0, 13.0], itertools.repeat(13.0))
 
         with patch(
             "stoner_measurement.plugins.trace.k6221_multi_sr830.time.monotonic",
-            side_effect=[10.0, 11.0, 12.0, 13.0],
+            side_effect=monotonic_values,
         ), patch("stoner_measurement.plugins.trace.k6221_multi_sr830.time.sleep") as sleep_mock:
             list(plugin.execute({}))
             list(plugin.execute({}))

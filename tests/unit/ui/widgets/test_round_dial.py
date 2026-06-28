@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from qtpy.QtCore import QEvent
 from qtpy.QtGui import QColor
 
 from stoner_measurement.ui.theme import apply_theme, colour
@@ -87,7 +88,7 @@ class TestRoundDialWidget:
         custom = QColor("#123456")
         widget.setPointerColor(custom)
         apply_theme(qapp, "light")
-        widget.resetThemeColors()
+        widget.changeEvent(QEvent(QEvent.PaletteChange))
         assert widget._pointer_color == custom  # noqa: SLF001
 
     def test_show_flags_toggle(self, qapp):
