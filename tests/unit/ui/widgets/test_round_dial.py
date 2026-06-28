@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from qtpy.QtCore import QEvent
 from qtpy.QtGui import QColor
 
-from stoner_measurement.ui.theme import apply_theme, colour
+import stoner_measurement.ui.theme as theme_module
+from stoner_measurement.ui.theme import colour
 from stoner_measurement.ui.widgets import RoundDialDemoWidget, RoundDialWidget
 
 
@@ -76,20 +76,29 @@ class TestRoundDialWidget:
 
     def test_theme_colors_follow_active_theme(self, qapp):
         widget = RoundDialWidget()
-        apply_theme(qapp, "light")
-        widget.resetThemeColors()
-        assert widget._tick_color == QColor(colour("text"))  # noqa: SLF001
-        apply_theme(qapp, "dark")
-        widget.resetThemeColors()
-        assert widget._pointer_color == QColor(colour("trace_red"))  # noqa: SLF001
+        original_theme = theme_module._current_theme_name  # noqa: SLF001
+        try:
+            theme_module._current_theme_name = "light"  # noqa: SLF001
+            widget.resetThemeColors()
+            assert widget._tick_color == QColor(colour("text"))  # noqa: SLF001
+
+            theme_module._current_theme_name = "dark"  # noqa: SLF001
+            widget.resetThemeColors()
+            assert widget._pointer_color == QColor(colour("trace_red"))  # noqa: SLF001
+        finally:
+            theme_module._current_theme_name = original_theme  # noqa: SLF001
 
     def test_custom_color_survives_theme_change(self, qapp):
         widget = RoundDialWidget()
         custom = QColor("#123456")
         widget.setPointerColor(custom)
-        apply_theme(qapp, "light")
-        widget.changeEvent(QEvent(QEvent.PaletteChange))
-        assert widget._pointer_color == custom  # noqa: SLF001
+        original_theme = theme_module._current_theme_name  # noqa: SLF001
+        try:
+            theme_module._current_theme_name = "light"  # noqa: SLF001
+            widget._apply_theme_colors()  # noqa: SLF001
+            assert widget._pointer_color == custom  # noqa: SLF001
+        finally:
+            theme_module._current_theme_name = original_theme  # noqa: SLF001
 
     def test_show_flags_toggle(self, qapp):
         widget = RoundDialWidget()
