@@ -31,6 +31,7 @@ from stoner_measurement.plugins.state_scan import (
 )
 from stoner_measurement.plugins.state_sweep import (
     MagnetControllerSweepPlugin,
+    MotorControllerSweepPlugin,
     TemperatureControllerSweepPlugin,
 )
 from stoner_measurement.temperature_control.types import (
@@ -503,6 +504,34 @@ def test_temperature_controller_sweep_advances_targets_from_multisegment_generat
     assert next(plugin) is True
     assert engine.setpoint_calls[-1] == (1, 10.0)
     assert engine.ramp_calls[-1] == (1, 2.0, True)
+
+
+def test_magnet_controller_sweep_defaults_to_per_minute_rate_timing(monkeypatch, qapp):
+    monkeypatch.setattr(
+        magnet_module,
+        "MagnetControllerEngine",
+        type("FakeMagnetControllerEngine", (), {"instance": staticmethod(lambda: _FakeMagnetEngine())}),
+    )
+    plugin = MagnetControllerSweepPlugin()
+    assert plugin.sweep_rate_time_scale_seconds == 60.0
+    assert plugin.sweep_timeout_factor == 2.0
+
+
+def test_temperature_controller_sweep_defaults_to_generous_timeout_and_per_minute_timing(monkeypatch, qapp):
+    monkeypatch.setattr(
+        temperature_module,
+        "TemperatureControllerEngine",
+        type("FakeTemperatureControllerEngine", (), {"instance": staticmethod(lambda: _FakeTemperatureEngine())}),
+    )
+    plugin = TemperatureControllerSweepPlugin()
+    assert plugin.sweep_rate_time_scale_seconds == 60.0
+    assert plugin.sweep_timeout_factor == 4.0
+
+
+def test_motor_controller_sweep_defaults_to_per_second_rate_timing(qapp):
+    plugin = MotorControllerSweepPlugin()
+    assert plugin.sweep_rate_time_scale_seconds == 1.0
+    assert plugin.sweep_timeout_factor == 2.0
 
 
 def test_motor_angle_monitor_plugin_reports_engine_values(monkeypatch, qapp):

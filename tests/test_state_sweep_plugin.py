@@ -66,6 +66,9 @@ class _TestSweepPlugin(StateSweepPlugin):
 class _TrackingRampSweep(_TestSweepPlugin):
     """Test plugin that tracks ramp hook calls."""
 
+    _default_sweep_timeout_factor = 3.0
+    _sweep_rate_time_scale_seconds = 60.0
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._state_value = 0.0
@@ -404,9 +407,9 @@ class TestSweepGenerators:
         )
         # Conservative estimate includes:
         # start timeout (60.0)
-        # + travel time: (|2.0 - 0.0| / 1.0 + |0.0 - 2.0| / 0.5) * 60 = 360.0
+        # + travel time: |2.0 - 0.0| / 1.0 + |0.0 - 2.0| / 0.5 = 6.0
         # + polling overhead: 0.05 * (2 segments + 1 startup phase) = 0.15
-        assert gen.estimated_duration() == 420.15
+        assert gen.estimated_duration() == 66.15
 
     def test_multisegment_estimated_duration_zero_rate_returns_inf(self, qapp):
         import math
@@ -438,11 +441,31 @@ class TestSweepGenerators:
             state_sweep=plugin,
         )
         plugin.sweep_generator = gen
-        plugin.sweep_timeout_factor = 3.0
         # Conservative estimate includes:
         # start timeout (60.0) + travel time (2.0 * 60 = 120.0) + polling overhead
         # 0.05 * (1 segment + 1 startup phase) = 0.1, then scaled by 3.0.
         assert plugin.sweep_timeout == 540.3
+
+    def test_state_sweep_plugin_uses_configurable_timeout_default(self, qapp):
+        plugin = _TrackingRampSweep()
+        assert plugin.default_sweep_timeout_factor == 3.0
+        assert plugin.sweep_timeout_factor == 3.0
+
+    def test_multisegment_estimated_duration_uses_plugin_rate_time_scale(self, qapp):
+        plugin = _TrackingRampSweep()
+        gen = MultiSegmentRampSweepGenerator(
+            start=0.0,
+            segments=[(2.0, 1.0, True)],
+            state_sweep=plugin,
+        )
+        assert gen.estimated_duration() == 180.1
+
+    def test_multisegment_estimated_duration_defaults_to_rate_per_second_without_plugin(self, qapp):
+        gen = MultiSegmentRampSweepGenerator(
+            start=0.0,
+            segments=[(2.0, 1.0, True)],
+        )
+        assert gen.estimated_duration() == 62.1
 
 
 if __name__ == "__main__":

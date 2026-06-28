@@ -292,8 +292,13 @@ class StateSweepPlugin(StatePlugin):
             Active sweep generator instance.
         sweep_timeout_factor (float):
             Multiplier applied to the sweep generator's estimated duration to
-            compute the sweep deadline.  Defaults to ``2.0``.  Has no effect
-            when the generator returns ``inf`` for its estimated duration.
+            compute the sweep deadline. Defaults to
+            :attr:`default_sweep_timeout_factor`, which concrete plugins may
+            override. Has no effect when the generator returns ``inf`` for its
+            estimated duration.
+        default_sweep_timeout_factor (float):
+            Plugin-type-specific default used to initialise
+            :attr:`sweep_timeout_factor`.
         sweep_generator_changed (pyqtSignal):
             Emitted after :attr:`sweep_generator` is replaced.
 
@@ -323,13 +328,41 @@ class StateSweepPlugin(StatePlugin):
 
     sweep_generator_changed = pyqtSignal()
 
+    _default_sweep_timeout_factor: ClassVar[float] = _TIMEOUT_FACTOR_DEFAULT
+    _sweep_rate_time_scale_seconds: ClassVar[float] = 1.0
+
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.sweep_generator: BaseSweepGenerator = self._sweep_generator_class(state_sweep=self, parent=self)
-        self.sweep_timeout_factor: float = _TIMEOUT_FACTOR_DEFAULT
+        self.sweep_timeout_factor: float = self.default_sweep_timeout_factor
         self._sweep_start_time: float = 0.0
         self._sweep_deadline: float = float("inf")
         self.ix = -1
+
+    @property
+    def default_sweep_timeout_factor(self) -> float:
+        """Return the default timeout factor for this plugin type.
+
+        Returns:
+            (float):
+                Initial timeout multiplier applied to estimated sweep duration.
+        """
+        return max(0.1, float(self._default_sweep_timeout_factor))
+
+    @property
+    def sweep_rate_time_scale_seconds(self) -> float:
+        """Return the time-scale factor used to convert rate-based durations.
+
+        Returns:
+            (float):
+                Multiplicative factor converting ``distance / rate`` into
+                seconds for this plugin's rate units.
+
+        Notes:
+            Typical values are ``60.0`` for rate units expressed per minute
+            and ``1.0`` for rate units expressed per second.
+        """
+        return max(0.0, float(self._sweep_rate_time_scale_seconds))
 
     @property
     def plugin_type(self) -> str:

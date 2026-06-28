@@ -32,7 +32,6 @@ from stoner_measurement.ui.widgets import SISpinBox
 
 _DEFAULT_POLL_SECONDS = 0.05
 _SPINBOX_MAX_ABS = 1e9
-_SECONDS_PER_MINUTE = 60.0
 _FLOAT_TOLERANCE = 1e-12
 
 
@@ -245,9 +244,9 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         The estimate includes:
 
         - the configured initial wait allowance for reaching :attr:`start`
-        - the travel time for each configured segment, converting configured
-          rates from units/minute to units/second,
-          ``|target - previous_target| / rate``
+        - the travel time for each configured segment,
+          ``|target - previous_target| / rate``, converted using the owning
+          plugin's configured rate time scale
         - one polling interval for each segment transition to account for
           control-loop and target-detection latency
 
@@ -263,10 +262,12 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
             so it is conservative rather than exact.
 
             >>> from qtpy.QtWidgets import QApplication
+            >>> from stoner_measurement.plugins.state_sweep import MagnetControllerSweepPlugin
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.sweep import MultiSegmentRampSweepGenerator
+            >>> plugin = MagnetControllerSweepPlugin()
             >>> gen = MultiSegmentRampSweepGenerator(
-            ...     start=0.0, segments=[(2.0, 1.0, True), (0.0, 0.5, False)]
+            ...     start=0.0, segments=[(2.0, 1.0, True), (0.0, 0.5, False)], state_sweep=plugin
             ... )
             >>> gen.estimated_duration()
             420.15
@@ -279,7 +280,7 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         for target, rate, _ in self._segments:
             if rate <= 0.0:
                 return float("inf")
-            total += abs(target - prev) / rate * _SECONDS_PER_MINUTE
+            total += self.duration_seconds_for_distance_rate(abs(target - prev), rate)
             prev = target
 
         if self._poll_seconds > 0.0:
@@ -480,7 +481,7 @@ class MultiSegmentRampSweepWidget(QWidget):
         current_time = 0.0
         for target, rate, measure in self._generator.segments:
             rate_magnitude = abs(float(rate))
-            duration = abs(float(target) - current) / rate_magnitude * _SECONDS_PER_MINUTE if rate_magnitude > 0.0 else 0.0
+            duration = self._generator.duration_seconds_for_distance_rate(abs(float(target) - current), rate_magnitude) if rate_magnitude > 0.0 else 0.0
             x_vals = [current_time, current_time + duration]
             y_vals = [current, float(target)]
             pen = pg.mkPen(color=(0, 200, 0, 200) if measure else (200, 0, 0, 200), width=2)
@@ -504,7 +505,7 @@ class MultiSegmentRampSweepWidget(QWidget):
             target_value_for_segment = float(target)
             rate_magnitude = abs(float(rate))
             segment_distance = abs(target_value_for_segment - current)
-            duration = segment_distance / rate_magnitude * _SECONDS_PER_MINUTE if rate_magnitude > 0.0 else 0.0
+            duration = self._generator.duration_seconds_for_distance_rate(segment_distance, rate_magnitude) if rate_magnitude > 0.0 else 0.0
 
             if current_stage == stage_index:
                 if segment_distance > 0.0:

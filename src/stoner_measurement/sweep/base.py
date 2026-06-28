@@ -149,6 +149,44 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         self.reset()
         self.values_changed.emit()
 
+    @property
+    def rate_time_scale_seconds(self) -> float:
+        """Return seconds represented by one unit of configured rate time.
+
+        This hook lets generator timing remain generic while concrete
+        state-sweep plugins define the time basis used by their rate values.
+        For example, a plugin using ``T/min`` or ``K/min`` rates can return
+        ``60.0``, while a plugin using ``deg/s`` rates can return ``1.0``.
+
+        Returns:
+            (float):
+                Multiplicative factor converting ``distance / rate`` into
+                seconds.
+        """
+        plugin = self.state_sweep
+        if plugin is None:
+            return 1.0
+        return max(0.0, float(getattr(plugin, "sweep_rate_time_scale_seconds", 1.0)))
+
+    def duration_seconds_for_distance_rate(self, distance: float, rate: float) -> float:
+        """Return the duration in seconds for *distance* travelled at *rate*.
+
+        Args:
+            distance (float):
+                Absolute or signed travel distance in the controlled quantity's
+                native units.
+            rate (float):
+                Travel rate expressed in the owning plugin's configured rate
+                units, such as ``T/min``, ``K/min``, or ``deg/s``.
+
+        Returns:
+            (float): Travel duration in seconds, or ``inf`` for zero rate.
+        """
+        rate_magnitude = abs(float(rate))
+        if rate_magnitude <= 0.0:
+            return float("inf")
+        return abs(float(distance)) / rate_magnitude * self.rate_time_scale_seconds
+
     def estimated_duration(self) -> float:
         """Return an estimate of how long the sweep will take, in seconds.
 
