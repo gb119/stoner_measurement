@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from qtpy.QtCore import Qt
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
 
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget
 
@@ -228,6 +228,11 @@ class ScriptTab(QWidget):
 
         # Start with one empty untitled tab
         self.new_tab()
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        """Release console resources before Qt destroys the tab's children."""
+        self.console.shutdown()
+        super().closeEvent(event)
 
     # ------------------------------------------------------------------
     # Tab management

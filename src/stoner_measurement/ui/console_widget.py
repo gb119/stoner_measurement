@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html as _html_lib
 import logging
+import weakref
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -302,6 +303,15 @@ QToolTip {{
         layout.addWidget(self._console)
         self.setLayout(layout)
 
+        self_ref = weakref.ref(self)
+
+        def _shutdown_on_destroyed(*_args) -> None:
+            widget = self_ref()
+            if widget is not None:
+                widget._shutdown_kernel()
+
+        self.destroyed.connect(_shutdown_on_destroyed)
+
     @pyqtSlot(str)
     def write(self, text: str) -> None:
         """Append *text* with a timestamp prefix.
@@ -406,12 +416,16 @@ QToolTip {{
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Stop in-process kernel channels when this widget closes."""
-        self._shutdown_kernel()
+        self.shutdown()
         super().closeEvent(event)
 
     def get_output_text(self) -> str:
         """Return the full visible output text."""
         return self._console._control.toPlainText()
+
+    def shutdown(self) -> None:
+        """Stop the embedded kernel before Qt child widgets are destroyed."""
+        self._shutdown_kernel()
 
     def _shutdown_kernel(self) -> None:
         """Stop kernel channels safely once."""
@@ -516,3 +530,21 @@ class ConsoleWidget(QWidget):
     def get_output_text(self) -> str:
         """Return the full visible output text from the active backend."""
         return self._impl.get_output_text()  # type: ignore[attr-defined]
+
+    def shutdown(self) -> None:
+        """Release resources owned by the active console backend."""
+        shutdown = getattr(self._impl, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        """Release backend resources before Qt destroys child widgets."""
+        self.shutdown()
+        super().closeEvent(event)
+
+    def __del__(self) -> None:
+        """Best-effort backend shutdown for tests that drop widgets without closing them."""
+        try:
+            self.shutdown()
+        except Exception:
+            logger.debug("Failed to shut down console backend during finalization", exc_info=True)
