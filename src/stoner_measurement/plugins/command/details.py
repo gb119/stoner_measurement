@@ -19,7 +19,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -142,10 +141,7 @@ class DetailsCommand(CommandPlugin):
         self.sample: str = ""
         self.project: str = ""
         self.notes: str = ""
-        self.show_validation_error.connect(
-            self._display_validation_error,
-            type=Qt.ConnectionType.BlockingQueuedConnection,
-        )
+        self.show_validation_error.connect(self._display_validation_error)
 
     def _display_validation_error(self, message: str) -> None:
         """Display a blocking validation warning dialog."""
