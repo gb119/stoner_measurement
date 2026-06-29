@@ -58,10 +58,23 @@ jobs:
 
       - name: Run tests
         shell: bash -el {0}
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           echo "Testing backend: ${{ matrix.qt-backend }}"
           echo "Testing Python: ${{ matrix.python-version }}"
-          python -c "from qtpy.QtCore import QLibraryInfo; print('Qt API:', __import__('qtpy').API_NAME); print('Qt plugins:', QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))"
+          python - <<'PY'
+          import qtpy
+          from qtpy.QtCore import QLibraryInfo
+
+          if hasattr(QLibraryInfo, "LibraryPath"):
+              plugins_path = QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)
+          else:
+              plugins_path = QLibraryInfo.location(QLibraryInfo.PluginsPath)
+
+          print("Qt API:", qtpy.API_NAME)
+          print("Qt plugins:", plugins_path)
+          PY
           pytest --cov --cov-report=xml --cov-report=term-missing
           mv .coverage coverage-${{ matrix.qt-backend }}-${{ matrix.python-version }}
 
