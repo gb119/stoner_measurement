@@ -57,7 +57,12 @@ class GpibTransport(BaseTransport):
     """
 
     def __init__(
-        self, address: int, board: int = 0, timeout: float = 2.0, use_mav: bool = True, poll_time: float = 0.01
+        self,
+        address: int,
+        board: int = 0,
+        timeout: float = 2.0,
+        use_mav: bool = True,
+        poll_time: float = 0.01,
     ) -> None:
         """Initialise the GPIB transport.
 
@@ -82,7 +87,9 @@ class GpibTransport(BaseTransport):
         try:
             import pyvisa as _pyvisa  # noqa: F401
         except ImportError as exc:
-            raise ImportError("pyvisa is required for GpibTransport. Install it with: pip install pyvisa") from exc
+            raise ImportError(
+                "pyvisa is required for GpibTransport. Install it with: pip install pyvisa"
+            ) from exc
 
         super().__init__(timeout=timeout)
         self.address = address
@@ -94,7 +101,13 @@ class GpibTransport(BaseTransport):
         self._use_mav = use_mav
 
     @classmethod
-    def from_resource_string(cls, resource_string: str, timeout: float = 2.0, use_mav: bool = True, poll_time: float = 0.01) -> GpibTransport:
+    def from_resource_string(
+        cls,
+        resource_string: str,
+        timeout: float = 2.0,
+        use_mav: bool = True,
+        poll_time: float = 0.01,
+    ) -> GpibTransport:
         """Construct a :class:`GpibTransport` from a VISA resource string.
 
         Parses the *board* and *address* components from a resource string of
@@ -137,7 +150,9 @@ class GpibTransport(BaseTransport):
             )
         board = int(m.group(1))
         address = int(m.group(2))
-        return cls(address=address, board=board, timeout=timeout, use_mav = use_mav, poll_time = poll_time)
+        return cls(
+            address=address, board=board, timeout=timeout, use_mav=use_mav, poll_time=poll_time
+        )
 
     @property
     def resource_string(self) -> str:
@@ -172,7 +187,9 @@ class GpibTransport(BaseTransport):
             self._is_open = True
             self._log_comms_traffic("IEEE", "Connection opened.")
         except pyvisa.VisaIOError as exc:
-            raise ConnectionError(f"Cannot open GPIB resource {self.resource_string!r}: {exc}") from exc
+            raise ConnectionError(
+                f"Cannot open GPIB resource {self.resource_string!r}: {exc}"
+            ) from exc
 
     def close(self) -> None:
         """Close the GPIB resource."""
@@ -238,11 +255,15 @@ class GpibTransport(BaseTransport):
         frame_limit = self._resolve_max_frame_size(num_bytes)
         try:
             response = b""
-            while self._use_mav and not self.read_status_byte() & 16:  # Loop until we see MAV bytes.
+            while (
+                self._use_mav and not self.read_status_byte() & 16
+            ):  # Loop until we see MAV bytes.
                 sleep(self._poll_time)
-            while (self._use_mav and self.read_status_byte() & 16) or not response:  # Loop until we don;'t have a message available.
+            while (
+                self._use_mav and self.read_status_byte() & 16
+            ) or not response:  # Loop until we don;'t have a message available.
                 frame = self._resource.read_raw(frame_limit)
-                response+=frame
+                response += frame
                 if self._use_mav:
                     sleep(self._poll_time)
             self._log_comms_traffic("RX", response)
@@ -285,7 +306,9 @@ class GpibTransport(BaseTransport):
                 Protocol instance supplied by the owning instrument.
         """
         terminator = getattr(
-            protocol, "gpib_terminator", getattr(protocol, "terminator", _DEFAULT_GPIB_READ_TERMINATOR)
+            protocol,
+            "gpib_terminator",
+            getattr(protocol, "terminator", _DEFAULT_GPIB_READ_TERMINATOR),
         )
         if isinstance(terminator, bytes):
             self._read_termination = terminator.decode("latin-1")
@@ -293,7 +316,9 @@ class GpibTransport(BaseTransport):
             self._read_termination = str(terminator)
         if self._resource is not None:
             self._resource.read_termination = self._read_termination
-        logger.info(f"Termination sort for {self._resource} {self._read_termination=} {terminator=}")
+        logger.info(
+            f"Termination sort for {self._resource} {self._read_termination=} {terminator=}"
+        )
 
     def read_status_byte(self) -> int | None:
         """Return the IEEE 488.2 status byte via a GPIB serial poll.
@@ -381,7 +406,15 @@ class PassThroughGpibTransport(GpibTransport):
         'GPIB0::22::INSTR'
     """
 
-    def __init__(self, address: int, board: int = 0, timeout: float = 2.0, max_read_chunks: int = 64) -> None:
+    def __init__(
+        self,
+        address: int,
+        board: int = 0,
+        timeout: float = 2.0,
+        use_mav: bool = True,
+        poll_time: float = 0.01,
+        max_read_chunks: int = 64,
+    ) -> None:
         """Initialise the GPIB transport.
 
         Args:
@@ -404,7 +437,9 @@ class PassThroughGpibTransport(GpibTransport):
         try:
             import pyvisa as _pyvisa  # noqa: F401
         except ImportError as exc:
-            raise ImportError("pyvisa is required for GpibTransport. Install it with: pip install pyvisa") from exc
+            raise ImportError(
+                "pyvisa is required for GpibTransport. Install it with: pip install pyvisa"
+            ) from exc
 
         super().__init__(address=address, board=board, timeout=timeout)
         self._max_read_chunks = max_read_chunks
@@ -472,7 +507,9 @@ class PassThroughGpibTransport(GpibTransport):
         self._log_comms_traffic("RX", response)
         self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
         if self.last_stb & 4:
-            raise InstrumentError(f"Bad return status byte from {data.decode()}: STB={self.last_stb}")
+            raise InstrumentError(
+                f"Bad return status byte from {data.decode()}: STB={self.last_stb}"
+            )
         return self.last_stb
 
     def query(self, data: bytes, num_bytes: int | None = None, slow: bool = False) -> bytes:
@@ -525,7 +562,9 @@ class PassThroughGpibTransport(GpibTransport):
         self._log_comms_traffic("RX", response)
         self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
         if self.last_stb & 4:
-            raise InstrumentError(f"Bad return status byte from {data.decode()}: STB={self.last_stb}")
+            raise InstrumentError(
+                f"Bad return status byte from {data.decode()}: STB={self.last_stb}"
+            )
         return response
 
     def _read_serial_entry_chunk(self, num_bytes: int | None = None) -> str:

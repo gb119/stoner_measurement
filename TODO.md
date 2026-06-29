@@ -36,3 +36,13 @@ on status bbar right hand side.
 1. Make sure instance names are not reserved python names or builtins.
 2. Add a comment field to base plugin and then have the sequence list show this if not empty after the plugin name
    and instance.
+
+## Bugs
+
+1. Magnet control panel - not persisting all settings to yaml?
+2. Lakeshore 625 - not applying the correct magnet rate?
+3. 625 is sending RDGST? = not a command...
+4. 625 doesn't seem to check STB after reads
+5. 6221-2182 IV should calculate resistance as an output channel on the trace as V/I and report average of V/I when selected.
+6. When selected the lockins in 6221-multiSR830 colour the background of checkbox fields in the highlight colour.'
+7. Temperature controller engine should not run poll if the connection has gone bad.
