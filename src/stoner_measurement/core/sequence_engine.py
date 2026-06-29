@@ -85,6 +85,29 @@ _DEFAULT_PLOT_READY_POLL_SECONDS = 0.01
 _INTERPRETER_INTERNALS = frozenset({"__builtins__", "__name__", "__doc__", "__package__", "__spec__", "__loader__"})
 
 
+def _format_syntax_error_message(
+    exc: SyntaxError,
+    *,
+    customised: bool,
+    line_map: dict[int, BasePlugin] | None = None,
+) -> str:
+    """Format a syntax error for custom or auto-generated sequence scripts."""
+    detail = "".join(traceback.format_exception_only(type(exc), exc)).rstrip()
+    if customised:
+        return f"Syntax error in sequence script:\n{detail}"
+
+    responsible_plugin = None
+    if line_map and exc.lineno is not None:
+        responsible_plugin = line_map.get(exc.lineno)
+
+    if responsible_plugin is not None:
+        return (
+            f"Syntax error in sequence step: {responsible_plugin.instance_name}"
+            f" ({responsible_plugin.name})\n{detail}"
+        )
+    return f"Syntax error in generated sequence script:\n{detail}"
+
+
 class _QtLogEmitter(QObject):
     """Qt signal emitter owned by :class:`_QtLogHandler`."""
 
@@ -438,7 +461,9 @@ class _EngineThread(QThread):
             self.parent().notify_namespace_updated()  # type: ignore[union-attr]
             self.status_changed.emit("Stopped")
         except SyntaxError as exc:
-            self.error_output.emit(f"Syntax error: {exc}")
+            self.error_output.emit(
+                _format_syntax_error_message(exc, customised=customised, line_map=line_map)
+            )
             self.status_changed.emit("Error")
         except Exception:  # pylint: disable=broad-exception-caught
             exc_type, exc_value, exc_tb = sys.exc_info()
@@ -1405,6 +1430,41 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         self._thread.submit_script(code_str, customised=customised, line_map=line_map)
+
+    def validate_script_syntax(
+        self,
+        code_str: str,
+        *,
+        customised: bool = True,
+        line_map: dict[int, BasePlugin] | None = None,
+    ) -> str | None:
+        """Compile *code_str* synchronously and emit a formatted syntax error on failure.
+
+        Args:
+            code_str (str):
+                Python source code to validate.
+
+        Keyword Parameters:
+            customised (bool):
+                Whether the script has been user-edited. Auto-generated scripts
+                use *line_map* to attribute syntax errors to sequence steps.
+            line_map (dict[int, BasePlugin] | None):
+                Optional generated-code line map from
+                :meth:`generate_sequence_code`.
+
+        Returns:
+            (str | None):
+                ``None`` when the script is syntactically valid, otherwise the
+                user-facing error message that was emitted via
+                :attr:`error_output`.
+        """
+        try:
+            compile(code_str, "<sequence>", "exec")
+        except SyntaxError as exc:
+            message = _format_syntax_error_message(exc, customised=customised, line_map=line_map)
+            self.error_output.emit(message)
+            return message
+        return None
 
     def execute_command(self, source: str) -> None:
         """Submit a single REPL *source* line for execution.

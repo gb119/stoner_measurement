@@ -13,6 +13,16 @@ on status bbar right hand side.
 8. 6221-2182 IV calculates power (V*I) and resistance (V/I) as output channels in the trace and reports
    averages for voltage, resistance, and power when config panel options are selected. DONE
 9. K24x0 trace plugin reports averages for all buffered trace columns, including non-primary channels. DONE
+10. Magnet control panel now persists and restores config-tab values (targets, ramp rates, magnet constant, and limits)
+    through YAML-backed engine configuration. DONE
+11. In KJeithley65221-multilockin trace plugin, selected lockins no longer colour checkbox backgrounds with the
+    highlight colour. DONE
+12. Plot colour picker dialogs now use the non-native picker path to avoid colouring unrelated dialog elements. DONE
+13. Sequence step instance names now avoid Python reserved words and builtins, reusing the existing collision
+    detection path so generated code does not emit invalid syntax. DONE
+14. Base plugins now support an optional comment field, and the sequence list shows it after the instance/plugin
+    label when present. Auto-inserted `If` children for state scan/sweep steps use the comment `meas_flag is set`
+    to explain why they were added. DONE
 
 ## Done, but needs testing
 
@@ -34,23 +44,15 @@ on status bbar right hand side.
 2. Restore docstring discussion of attributes for plugins - Partially DONE
 3. Hints on templating of Save Path in Save plugin - may be a dialog box riggered from context menu like the
    LabVIEW code had.
-
-
-## New IDeas
-
-1. Make sure instance names are not reserved python names or builtins.
-2. Add a comment field to base plugin and then have the sequence list show this if not empty after the plugin name
-   and instance.
-
+   
+ ## New Ideas
+ 
+ 1. The engines should attempt to auto-connect with persisted settings when a plugin requests that they do something that requires a connection. This should be logged as an info warning.
+ 2. The engines should log reasons for disconnecting as info level or error level if not the result of user request. In the latter case they should atempt to auto-reconnect. If reconnection fails 5 times without a successful connection then engine should enter a failed state and require the user to reconnect via the panel. The failed state needs to be logged as an error.
+ 3. The log window could do with a regexp filter as well that would allow finer-grained filtering of log entries of interest (e.g. comms traffic from a sepcific address or even a specific command). The failed state should be reflected in the statys bar indicators.
+ 4. Right clicking on the status indicators for the engines in the status bar that would allow the engines to be stopped, (re)started, re/dis-connected.
+ 
 ## Bugs
 
-1. Magnet control panel - not persisting all settings from the config tab to yaml file - or else not restoring
-   settings when panel opened.
-2. Magnet controller panel should show the actual and target rates.
-3. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.
-4. In KJeithley65221-multilockin trace plugin, when selected the lockins colour the background of checkbox fields in
-   the highlight colour.
-5. The colour picker dialog for plotting is colouring some lements with the selected colour (.e.g buttons, title bar
-   amongst others.
-6. Temperature controller engine should not run poll if the connection has gone bad. If the connection disconnects for
-   any reason other than shutdown or user pressing disconnect, this shopuld get logged as an error.
+1. Magnet controller panel should show the actual and target rates.
+2. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.

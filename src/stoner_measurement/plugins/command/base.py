@@ -81,6 +81,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     """
 
     instance_name_changed = pyqtSignal(str, str)
+    comment_changed = pyqtSignal(str, str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the Qt object hierarchy."""
@@ -89,6 +90,10 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
         self.instance_name_changed.emit(old_name, new_name)
+
+    def _on_comment_changed(self, old_comment: str, new_comment: str) -> None:
+        """Emit :attr:`comment_changed` when the comment changes."""
+        self.comment_changed.emit(old_comment, new_comment)
 
     @property
     def plugin_type(self) -> str:

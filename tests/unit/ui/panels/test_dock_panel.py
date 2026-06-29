@@ -216,6 +216,22 @@ class TestDockPanel:
         step_plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
         assert item.text(0) == f"{step_plugin.instance_name} ({step_plugin.name})"
 
+    def test_step_display_includes_comment_when_present(self, qapp):
+        """Sequence step display appends the comment when one is set."""
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._plugin_list.select_plugin("Dummy")
+        panel._add_step()
+
+        item = panel._sequence_tree.topLevelItem(0)
+        from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
+        step_plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+        step_plugin.comment = "baseline trace"
+
+        assert item.text(0) == f"{step_plugin.instance_name} ({step_plugin.name}): baseline trace"
+
     def test_step_label_updates_on_rename(self, qapp):
         """Renaming a step plugin's instance_name updates the step label."""
         pm = PluginManager()
@@ -272,6 +288,27 @@ class TestDockPanel:
 
         # The name must be reverted to the original value.
         assert steps[0].instance_name == name_before
+
+    def test_rename_to_builtin_name_reverted(self, qapp, monkeypatch):
+        """Renaming a step to a builtin name is rejected and reverted."""
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        panel._plugin_list.select_plugin("Dummy")
+        panel._add_step()
+
+        step_plugin = panel.sequence_steps[0]
+        name_before = step_plugin.instance_name
+
+        monkeypatch.setattr(
+            "stoner_measurement.ui.dock_panel.QMessageBox.warning",
+            lambda *args, **kwargs: None,
+        )
+
+        step_plugin.instance_name = "list"
+
+        assert step_plugin.instance_name == name_before
 
     def test_name_edit_reverts_in_general_config_widget(self, qapp, monkeypatch):
         """The config-tab QLineEdit reflects the reverted name after a collision.
@@ -419,6 +456,8 @@ class TestDockPanel:
         child_plugin = state_item.child(0).data(0, _PLUGIN_INSTANCE_ROLE)
         assert isinstance(child_plugin, IfCommand)
         assert child_plugin.condition == "fakestate.meas_flag"
+        assert child_plugin.comment == "meas_flag is set"
+        assert state_item.child(0).text(0).endswith(": meas_flag is set")
 
     def test_default_measure_if_condition_follows_parent_rename(self, qapp):
         from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
@@ -695,6 +734,14 @@ class TestDockPanel:
 
         # The next unique name should be "dummy_4".
         assert panel._unique_step_name("dummy") == "dummy_4"
+
+    def test_unique_step_name_avoids_builtin_names(self, qapp):
+        """_unique_step_name treats builtin names as unavailable."""
+        pm = PluginManager()
+        pm.register("Dummy", DummyPlugin())
+        panel = DockPanel(plugin_manager=pm)
+
+        assert panel._unique_step_name("list") == "list_2"
 
     def test_config_tab_isolation_between_multiple_instances(self, qapp):
         """Config tabs for two steps of the same type are independent widgets."""

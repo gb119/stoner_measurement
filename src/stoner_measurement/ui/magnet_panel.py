@@ -52,6 +52,7 @@ from stoner_measurement.instruments.driver_manager import InstrumentDriverManage
 from stoner_measurement.instruments.magnet_controller import (
     HeaterState,
     MagnetController,
+    MagnetLimits,
     MagnetState,
 )
 from stoner_measurement.magnet_control.engine import MagnetControllerEngine
@@ -95,6 +96,12 @@ _HEATER_COLOUR = QColor(colour("trace_red"))
 
 #: Colour for the target-field horizontal marker.
 _TARGET_COLOUR = QColor(colour("trace_target"))
+
+#: Colour for the measured field-rate trace.
+_FIELD_RATE_COLOUR = QColor(colour("trace_teal"))
+
+#: Colour for the target field-rate trace.
+_TARGET_RATE_COLOUR = QColor(colour("trace_purple"))
 
 #: Available chart duration options (minutes, label).
 _CHART_DURATIONS: list[tuple[int, str]] = [
@@ -193,6 +200,8 @@ class MagnetControlPanel(QWidget):
         self._chart_current: list[float] = []
         self._chart_voltage: list[float] = []
         self._chart_heater: list[float] = []
+        self._chart_field_rate: list[float] = []
+        self._chart_target_rate: list[float] = []
         self._legend_items: dict[str, QTreeWidgetItem] = {}
         self._chart_duration_min: int = _CHART_DURATIONS[0][0]
 
@@ -202,6 +211,7 @@ class MagnetControlPanel(QWidget):
 
         self._load_chart_settings()
         self._build_ui()
+        self._load_config_preferences()
         self._load_connection_preferences()
         self._connect_engine_signals()
 
@@ -460,6 +470,14 @@ class MagnetControlPanel(QWidget):
         self._ramp_current_spin.valueChanged.connect(self._on_ramp_current_changed)
         ramp_form.addRow("Current ramp rate:", self._ramp_current_spin)
 
+        self._ramp_target_rate_label = QLabel("—")
+        self._ramp_target_rate_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        ramp_form.addRow("Controller target rate:", self._ramp_target_rate_label)
+
+        self._ramp_actual_rate_label = QLabel("—")
+        self._ramp_actual_rate_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        ramp_form.addRow("Measured field rate:", self._ramp_actual_rate_label)
+
         ramp_btn_row = QHBoxLayout()
         self._btn_read_ramp = QPushButton("Read")
         self._btn_read_ramp.setToolTip("Read current ramp rates from the controller state")
@@ -587,6 +605,7 @@ class MagnetControlPanel(QWidget):
         self._chart_widget.set_default_axis_labels("Time (s ago)", "Field (T)")
         self._chart_widget.add_y_axis("electrical", "Current / Voltage")
         self._chart_widget.add_y_axis("heater", "Heater")
+        self._chart_widget.add_y_axis("rate", "Ramp Rate (T/min)")
         content.addWidget(self._chart_widget, stretch=4)
 
         self._legend_tree = QTreeWidget()
@@ -677,6 +696,7 @@ class MagnetControlPanel(QWidget):
         self._update_heater_controls(state)
         self._set_ramp_action_label(state)
         self._update_ramp_controls(state)
+        self._update_ramp_rate_labels(state)
         self._update_chart(state, now_ts)
 
         self._updated_label.setText(
@@ -722,6 +742,10 @@ class MagnetControlPanel(QWidget):
         self._chart_current.append(reading.current)
         self._chart_voltage.append(reading.voltage if reading.voltage is not None else 0.0)
         self._chart_heater.append(1.0 if reading.heater_on else 0.0)
+        self._chart_field_rate.append(reading.field_rate)
+        self._chart_target_rate.append(
+            state.ramp_rate_field if state.ramp_rate_field is not None else 0.0
+        )
 
         while self._chart_times and now_ts - self._chart_times[0] > duration_s:
             self._chart_times.pop(0)
@@ -729,6 +753,8 @@ class MagnetControlPanel(QWidget):
             self._chart_current.pop(0)
             self._chart_voltage.pop(0)
             self._chart_heater.pop(0)
+            self._chart_field_rate.pop(0)
+            self._chart_target_rate.pop(0)
 
         xs = [t - now_ts for t in self._chart_times]
 
@@ -773,6 +799,21 @@ class MagnetControlPanel(QWidget):
             "Heater",
             "On" if reading.heater_on else "Off",
         )
+
+        self._chart_widget.set_trace("Field Rate", xs, self._chart_field_rate)
+        self._chart_widget.assign_trace_axes("Field Rate", y_axis="rate")
+        self._chart_widget.set_trace_style("Field Rate", colour=_FIELD_RATE_COLOUR.name())
+        self._update_legend_value("Field Rate", f"{reading.field_rate:.4f} T/min")
+
+        if xs and state.ramp_rate_field is not None:
+            self._chart_widget.set_trace("Target Rate", xs, self._chart_target_rate)
+            self._chart_widget.assign_trace_axes("Target Rate", y_axis="rate")
+            self._chart_widget.set_trace_style(
+                "Target Rate",
+                colour=_TARGET_RATE_COLOUR.name(),
+                line_style="dash",
+            )
+            self._update_legend_value("Target Rate", f"{state.ramp_rate_field:.4f} T/min")
 
     def _update_legend_value(self, trace: str, value: str) -> None:
         """Create or update a live-value legend entry."""
@@ -842,7 +883,12 @@ class MagnetControlPanel(QWidget):
 
         if action == colour_action:
             current = self._chart_widget.trace_style(trace).get("colour", "#808080")
-            selected = QColorDialog.getColor(QColor(current), self)
+            selected = QColorDialog.getColor(
+                QColor(current),
+                self,
+                f"Select colour for {trace}",
+                QColorDialog.ColorDialogOption.DontUseNativeDialog,
+            )
             if selected.isValid():
                 self._chart_widget.set_trace_style(trace, colour=selected.name())
                 pixmap = QPixmap(12, 12)
@@ -949,6 +995,34 @@ class MagnetControlPanel(QWidget):
     def _load_connection_preferences(self) -> None:
         load_connection_preferences(self)
 
+    def _load_config_preferences(self) -> None:
+        """Restore cached configuration values from the engine into the UI."""
+        if self._engine._magnet_constant is not None and self._engine._magnet_constant > 0:  # pylint: disable=protected-access
+            self._magnet_constant = self._engine._magnet_constant  # pylint: disable=protected-access
+            self._magnet_const_spin.setValue(self._engine._magnet_constant)  # pylint: disable=protected-access
+
+        limits = self._engine.get_limits()
+        if limits is not None:
+            self._max_current_spin.setValue(limits.max_current)
+            if limits.max_field is not None:
+                self._max_field_spin.setValue(limits.max_field)
+            if limits.max_ramp_rate is not None:
+                self._max_ramp_spin.setValue(limits.max_ramp_rate)
+
+        if self._engine._target_field is not None:  # pylint: disable=protected-access
+            self._target_field_spin.setValue(self._engine._target_field)  # pylint: disable=protected-access
+            self._on_target_field_changed(self._target_field_spin.value())
+        elif self._engine._target_current is not None:  # pylint: disable=protected-access
+            self._target_current_spin.setValue(self._engine._target_current)  # pylint: disable=protected-access
+            self._on_target_current_changed(self._target_current_spin.value())
+
+        if self._engine._ramp_rate_field is not None:  # pylint: disable=protected-access
+            self._ramp_field_spin.setValue(self._engine._ramp_rate_field)  # pylint: disable=protected-access
+            self._on_ramp_field_changed(self._ramp_field_spin.value())
+        elif self._engine._ramp_rate_current is not None:  # pylint: disable=protected-access
+            self._ramp_current_spin.setValue(self._engine._ramp_rate_current)  # pylint: disable=protected-access
+            self._on_ramp_current_changed(self._ramp_current_spin.value())
+
     def _restore_preferred_address(self) -> None:
         restore_preferred_address(self)
 
@@ -1003,7 +1077,21 @@ class MagnetControlPanel(QWidget):
             self._engine.preferred_driver_name = self._driver_combo.currentText()
             self._engine.preferred_transport_name = transport_name
             self._engine.preferred_address = address
-            self._engine.save_configuration()
+            self._engine._magnet_constant = self._magnet_const_spin.value()  # pylint: disable=protected-access
+            self._on_target_field_changed(self._target_field_spin.value())
+            self._on_ramp_field_changed(self._ramp_field_spin.value())
+            self._engine._target_field = self._target_field_spin.value()  # pylint: disable=protected-access
+            self._engine._target_current = self._target_current_spin.value()  # pylint: disable=protected-access
+            self._engine._ramp_rate_field = self._ramp_field_spin.value()  # pylint: disable=protected-access
+            self._engine._ramp_rate_current = self._ramp_current_spin.value()  # pylint: disable=protected-access
+            self._engine.set_limits(
+                MagnetLimits(
+                    max_current=self._max_current_spin.value(),
+                    max_field=self._max_field_spin.value(),
+                    max_ramp_rate=self._max_ramp_spin.value(),
+                )
+            )
+            path = self._engine.save_configuration()
         except Exception as exc:
             QMessageBox.critical(
                 self,
@@ -1011,7 +1099,7 @@ class MagnetControlPanel(QWidget):
                 f"Failed to save configuration:\n{exc}",
             )
             return
-        QMessageBox.information(self, "Save Configuration", "Configuration saved.")
+        QMessageBox.information(self, "Save Configuration", f"Configuration saved to:\n{path}")
 
     def _set_address_widget_status(self, transport_index: int, status: VisaResourceStatus) -> None:
         set_address_widget_status(self, transport_index, status)
@@ -1329,6 +1417,23 @@ class MagnetControlPanel(QWidget):
         self._btn_zero.setToolTip("Ramp the supply output to zero." if not in_transition else "Go To Zero is disabled while the heater is transitioning.")
         self._btn_abort_ramp.setToolTip("Abort the active ramp immediately.")
 
+    def _update_ramp_rate_labels(self, state: MagnetEngineState) -> None:
+        """Refresh the read-only target/actual ramp-rate labels."""
+        if state.ramp_rate_field is None:
+            self._ramp_target_rate_label.setText("—")
+        elif state.ramp_rate_current is None:
+            self._ramp_target_rate_label.setText(f"{state.ramp_rate_field:.4f} T/min")
+        else:
+            self._ramp_target_rate_label.setText(
+                f"{state.ramp_rate_field:.4f} T/min ({state.ramp_rate_current:.3f} A/min)"
+            )
+
+        reading = state.reading
+        if reading is None:
+            self._ramp_actual_rate_label.setText("—")
+        else:
+            self._ramp_actual_rate_label.setText(f"{reading.field_rate:.4f} T/min")
+
     def _update_heater_controls(self, state: MagnetEngineState) -> None:
         """Update heater button enabled states from the latest polled state.
 
@@ -1428,6 +1533,8 @@ class MagnetControlPanel(QWidget):
         self._chart_current.clear()
         self._chart_voltage.clear()
         self._chart_heater.clear()
+        self._chart_field_rate.clear()
+        self._chart_target_rate.clear()
         self._legend_items.clear()
         if hasattr(self, "_legend_tree"):
             self._legend_tree.clear()

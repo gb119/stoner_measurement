@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -30,10 +32,12 @@ class TestIfCommand:
         assert lines[0] == "    if scan.meas_flag:"
         assert "        child()" in lines
 
-    def test_generate_action_code_empty_body_uses_pass(self, qapp):
+    def test_generate_action_code_empty_body_is_skipped_with_warning(self, qapp, caplog):
         command = IfCommand(condition="")
-        lines = command.generate_action_code(1, [], lambda step, indent: [])
-        assert lines == ["    if True:", "        pass", ""]
+        with caplog.at_level(logging.WARNING):
+            lines = command.generate_action_code(1, [], lambda step, indent: [])
+        assert lines == []
+        assert "has no sub-steps; skipping generated code emission" in caplog.text
 
     def test_execute_sequence_runs_when_condition_truthy(self, qapp, engine):
         command = IfCommand(condition="flag")

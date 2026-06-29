@@ -224,6 +224,26 @@ class TestUi:
 
         assert plugin._lockin_entries[0].outputs == (LockInOutput.X,)
 
+    def test_checkbox_cells_use_transparent_backgrounds(self, qapp):
+        plugin = _make_plugin()
+        tabs = plugin.config_tabs()
+        settings_widget = tabs[1][1]
+        table = settings_widget.findChildren(QTableWidget)[0]
+
+        output_widget = table.cellWidget(_ROW_OUTPUTS, 0)
+        auto_sens_check = table.cellWidget(4, 0)
+        auto_phase_check = table.cellWidget(7, 0)
+
+        assert output_widget.styleSheet() == "background: transparent;"
+        assert auto_sens_check.styleSheet() == "background: transparent;"
+        assert auto_phase_check.styleSheet() == "background: transparent;"
+
+        output_checks = [
+            cb for cb in output_widget.findChildren(QCheckBox) if cb.text() in {"X", "Y", "R", "THETA"}
+        ]
+        assert output_checks
+        assert all(cb.styleSheet() == "background: transparent;" for cb in output_checks)
+
 
 class TestConfiguration:
     def test_configure_maps_common_and_per_lockin_settings(self, qapp):

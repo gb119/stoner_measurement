@@ -27,7 +27,7 @@ from stoner_measurement.instruments.addressing import (
     parse_serial_address,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.magnet_controller import MagnetState
+from stoner_measurement.instruments.magnet_controller import MagnetLimits, MagnetState
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
@@ -135,6 +135,8 @@ class MagnetControllerEngine(QObject):
         self._target_current: float | None = None
         self._ramp_rate_field: float | None = None
         self._ramp_rate_current: float | None = None
+        self._magnet_constant: float | None = None
+        self._limits: MagnetLimits | None = None
         self._quench_active: bool = False
         self._latest_state: MagnetEngineState = MagnetEngineState(engine_status=self._status)
 
@@ -176,6 +178,34 @@ class MagnetControllerEngine(QObject):
                     ),
                 )
             )
+
+        targets = config.get("targets")
+        if isinstance(targets, dict):
+            target_field = targets.get("field")
+            target_current = targets.get("current")
+            self._target_field = None if target_field is None else float(target_field)
+            self._target_current = None if target_current is None else float(target_current)
+
+        ramp = config.get("ramp")
+        if isinstance(ramp, dict):
+            ramp_rate_field = ramp.get("field_rate")
+            ramp_rate_current = ramp.get("current_rate")
+            self._ramp_rate_field = None if ramp_rate_field is None else float(ramp_rate_field)
+            self._ramp_rate_current = None if ramp_rate_current is None else float(ramp_rate_current)
+
+        limits = config.get("limits")
+        if isinstance(limits, dict):
+            magnet_constant = limits.get("magnet_constant")
+            self._magnet_constant = None if magnet_constant is None else float(magnet_constant)
+            max_current = limits.get("max_current")
+            if max_current is not None:
+                max_field = limits.get("max_field")
+                max_ramp_rate = limits.get("max_ramp_rate")
+                self._limits = MagnetLimits(
+                    max_current=float(max_current),
+                    max_field=None if max_field is None else float(max_field),
+                    max_ramp_rate=None if max_ramp_rate is None else float(max_ramp_rate),
+                )
 
     # ------------------------------------------------------------------
     # Singleton access
@@ -489,6 +519,20 @@ class MagnetControllerEngine(QObject):
                 "transport": self._preferred_transport_name,
                 "address": self._preferred_address,
             },
+            "targets": {
+                "field": self._target_field,
+                "current": self._target_current,
+            },
+            "ramp": {
+                "field_rate": self._ramp_rate_field,
+                "current_rate": self._ramp_rate_current,
+            },
+            "limits": {
+                "magnet_constant": self._magnet_constant,
+                "max_current": None if self._limits is None else self._limits.max_current,
+                "max_field": None if self._limits is None else self._limits.max_field,
+                "max_ramp_rate": None if self._limits is None else self._limits.max_ramp_rate,
+            },
             "stability": {
                 "tolerance_t": self._stability_config.tolerance_t,
                 "window_s": self._stability_config.window_s,
@@ -508,11 +552,11 @@ class MagnetControllerEngine(QObject):
                 Desired target field in tesla.
         """
         with self._engine_lock:
+            self._target_field = field
             if self._driver is None:
                 return
             try:
                 self._driver.set_target_field(field)
-                self._target_field = field
                 self._mark_target_pending()
             except Exception:
                 logger.exception("Failed to set target field to %s T", field)
@@ -525,11 +569,11 @@ class MagnetControllerEngine(QObject):
                 Desired target current in amps.
         """
         with self._engine_lock:
+            self._target_current = current
             if self._driver is None:
                 return
             try:
                 self._driver.set_target_current(current)
-                self._target_current = current
                 self._mark_target_pending()
             except Exception:
                 logger.exception("Failed to set target current to %s A", current)
@@ -542,11 +586,11 @@ class MagnetControllerEngine(QObject):
                 Ramp rate in tesla per minute.
         """
         with self._engine_lock:
+            self._ramp_rate_field = rate
             if self._driver is None:
                 return
             try:
                 self._driver.set_ramp_rate_field(rate)
-                self._ramp_rate_field = rate
             except Exception:
                 logger.exception("Failed to set field ramp rate to %s T/min", rate)
 
@@ -558,11 +602,11 @@ class MagnetControllerEngine(QObject):
                 Ramp rate in amps per minute.
         """
         with self._engine_lock:
+            self._ramp_rate_current = rate
             if self._driver is None:
                 return
             try:
                 self._driver.set_ramp_rate_current(rate)
-                self._ramp_rate_current = rate
             except Exception:
                 logger.exception("Failed to set current ramp rate to %s A/min", rate)
 
@@ -574,6 +618,7 @@ class MagnetControllerEngine(QObject):
                 Magnet constant in tesla per amp.
         """
         with self._engine_lock:
+            self._magnet_constant = tesla_per_amp
             if self._driver is None:
                 return
             try:
@@ -589,6 +634,7 @@ class MagnetControllerEngine(QObject):
                 Maximum current, field, and ramp rate limits.
         """
         with self._engine_lock:
+            self._limits = limits
             if self._driver is None:
                 return
             try:
@@ -751,12 +797,14 @@ class MagnetControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return None
+                return self._limits
             try:
-                return self._driver.limits
+                limits = self._driver.limits
+                self._limits = limits
+                return limits
             except Exception:
                 logger.exception("MagnetControllerEngine: failed to read limits")
-                return None
+                return self._limits
 
     def get_engine_state(self) -> MagnetEngineState:
         """Return a snapshot of the current engine state without polling.
@@ -871,6 +919,16 @@ class MagnetControllerEngine(QObject):
         status = driver.status
         now = datetime.now(tz=UTC)
 
+        target_field = self._read_driver_float_attr("target_field", self._target_field)
+        target_current = self._read_driver_float_attr("target_current", self._target_current)
+        ramp_rate_field = self._read_driver_float_attr("ramp_rate_field", self._ramp_rate_field)
+        ramp_rate_current = self._read_driver_float_attr("ramp_rate_current", self._ramp_rate_current)
+
+        self._target_field = target_field
+        self._target_current = target_current
+        self._ramp_rate_field = ramp_rate_field
+        self._ramp_rate_current = ramp_rate_current
+
         field_val: float | None = status.field
         if field_val is not None:
             self._history.append((now, field_val))
@@ -882,9 +940,10 @@ class MagnetControllerEngine(QObject):
 
         try:
             magnet_constant: float | None = driver.magnet_constant
+            self._magnet_constant = magnet_constant
         except Exception:
             logger.debug("Failed to read magnet constant while updating magnet state", exc_info=True)
-            magnet_constant = None
+            magnet_constant = self._magnet_constant
 
         persistent_current: float | None = None
         if status.persistent_field is not None and magnet_constant not in {None, 0.0}:
@@ -907,15 +966,29 @@ class MagnetControllerEngine(QObject):
 
         return MagnetEngineState(
             reading=reading,
-            target_field=self._target_field,
-            target_current=self._target_current,
-            ramp_rate_field=self._ramp_rate_field,
-            ramp_rate_current=self._ramp_rate_current,
+            target_field=target_field,
+            target_current=target_current,
+            ramp_rate_field=ramp_rate_field,
+            ramp_rate_current=ramp_rate_current,
             magnet_constant=magnet_constant,
             at_target=self._is_at_target,
             stable=self._stable,
             engine_status=MagnetEngineStatus.POLLING,
         )
+
+    def _read_driver_float_attr(self, attr_name: str, fallback: float | None) -> float | None:
+        """Read a float-like driver attribute, falling back quietly on errors."""
+        driver = self._driver
+        if driver is None:
+            return fallback
+        try:
+            value = getattr(driver, attr_name)
+        except Exception:
+            logger.debug("Failed to read magnet driver attribute %s", attr_name, exc_info=True)
+            return fallback
+        if value is None:
+            return fallback
+        return float(value)
 
     def _evaluate_stability(self, field: float | None, now: datetime) -> None:
         """Update the stability flag based on the current field reading.

@@ -560,6 +560,34 @@ class TestMeasurementApp:
         assert len(text) > 0
         app._engine.shutdown()
 
+    def test_run_from_measurement_shows_dialog_and_skips_invalid_generated_code(self, qapp, monkeypatch):
+        app = MeasurementApp()
+        warnings: list[tuple[str, str]] = []
+        run_calls: list[tuple[str, bool, object]] = []
+
+        monkeypatch.setattr(
+            "stoner_measurement.app.QMessageBox.warning",
+            lambda _parent, title, text: warnings.append((title, text)),
+        )
+        monkeypatch.setattr(
+            app._engine,
+            "validate_script_syntax",
+            lambda code, *, customised, line_map: "Generated syntax problem",
+        )
+        monkeypatch.setattr(
+            app._engine,
+            "run_script",
+            lambda code, customised=True, line_map=None: run_calls.append((code, customised, line_map)),
+        )
+
+        app._main_window.tabs.setCurrentIndex(app._TAB_MEASUREMENT)
+        app._act_run.trigger()
+
+        assert warnings == [("Generated Script Syntax Error", "Generated syntax problem")]
+        assert run_calls == []
+        assert app._main_window.tabs.currentIndex() == app._TAB_EDITOR
+        app._engine.shutdown()
+
     def test_sync_sequence_steps_dummy_traces_visible_to_plot_trace(self, qapp):
         """PlotTraceCommand config widget should see traces from a preceding DummyPlugin step.
 

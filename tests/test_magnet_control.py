@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from stoner_measurement.instruments.magnet_controller import MagnetLimits
 from stoner_measurement.magnet_control import engine as engine_module
 from stoner_measurement.magnet_control.engine import (
     MagnetControllerEngine,
@@ -65,6 +66,8 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
             self._field_val = init_field
             self._current_val = init_current
             self._magnet_constant_val = 0.1
+            self._target_current_val = init_current
+            self._ramp_rate_current_val = 5.0
 
         def get_model(self):
             return "FakeMagnet"
@@ -110,17 +113,34 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
         def heater(self):
             return True
 
+        @property
+        def target_current(self):
+            return self._target_current_val
+
+        @property
+        def target_field(self):
+            return self._target_current_val * self._magnet_constant_val
+
+        @property
+        def ramp_rate_current(self):
+            return self._ramp_rate_current_val
+
+        @property
+        def ramp_rate_field(self):
+            return self._ramp_rate_current_val * self._magnet_constant_val
+
         def set_target_current(self, current_):
-            pass
+            self._target_current_val = current_
 
         def set_target_field(self, field_):
             self._field_val = field_
+            self._target_current_val = field_ / self._magnet_constant_val
 
         def set_ramp_rate_current(self, rate):
-            pass
+            self._ramp_rate_current_val = rate
 
         def set_ramp_rate_field(self, rate):
-            pass
+            self._ramp_rate_current_val = rate / self._magnet_constant_val
 
         def set_magnet_constant(self, tesla_per_amp):
             self._magnet_constant_val = tesla_per_amp
@@ -333,6 +353,20 @@ class TestEngineLifecycle:
                     "min_rate": 0.02,
                     "unstable_holdoff_s": 3.0,
                 },
+                "targets": {
+                    "field": 1.5,
+                    "current": 15.0,
+                },
+                "ramp": {
+                    "field_rate": 0.4,
+                    "current_rate": 4.0,
+                },
+                "limits": {
+                    "magnet_constant": 0.1,
+                    "max_current": 60.0,
+                    "max_field": 6.0,
+                    "max_ramp_rate": 0.8,
+                },
             },
         )
         engine = MagnetControllerEngine()
@@ -344,6 +378,15 @@ class TestEngineLifecycle:
         assert engine._stability_config.window_s == pytest.approx(12.0)  # noqa: SLF001
         assert engine._stability_config.min_rate == pytest.approx(0.02)  # noqa: SLF001
         assert engine._stability_config.unstable_holdoff_s == pytest.approx(3.0)  # noqa: SLF001
+        assert engine._target_field == pytest.approx(1.5)  # noqa: SLF001
+        assert engine._target_current == pytest.approx(15.0)  # noqa: SLF001
+        assert engine._ramp_rate_field == pytest.approx(0.4)  # noqa: SLF001
+        assert engine._ramp_rate_current == pytest.approx(4.0)  # noqa: SLF001
+        assert engine._magnet_constant == pytest.approx(0.1)  # noqa: SLF001
+        assert engine._limits is not None  # noqa: SLF001
+        assert engine._limits.max_current == pytest.approx(60.0)  # noqa: SLF001
+        assert engine._limits.max_field == pytest.approx(6.0)  # noqa: SLF001
+        assert engine._limits.max_ramp_rate == pytest.approx(0.8)  # noqa: SLF001
         engine.shutdown()
 
     def test_preferred_connection_properties_are_mutable(self, qapp):
@@ -366,6 +409,12 @@ class TestEngineLifecycle:
         engine.preferred_transport_name = "Ethernet"
         engine.preferred_address = "host:1234"
         engine.set_poll_interval(1500)
+        engine.set_target_field(2.5)
+        engine.set_target_current(25.0)
+        engine.set_ramp_rate_field(0.75)
+        engine.set_ramp_rate_current(7.5)
+        engine.set_magnet_constant(0.1)
+        engine.set_limits(MagnetLimits(max_current=80.0, max_field=8.0, max_ramp_rate=0.9))
         engine.set_stability_config(
             MagnetStabilityConfig(
                 tolerance_t=0.2,
@@ -382,6 +431,17 @@ class TestEngineLifecycle:
             "driver": "DriverA",
             "transport": "Ethernet",
             "address": "host:1234",
+        }
+        assert config["targets"] == {"field": pytest.approx(2.5), "current": pytest.approx(25.0)}
+        assert config["ramp"] == {
+            "field_rate": pytest.approx(0.75),
+            "current_rate": pytest.approx(7.5),
+        }
+        assert config["limits"] == {
+            "magnet_constant": pytest.approx(0.1),
+            "max_current": pytest.approx(80.0),
+            "max_field": pytest.approx(8.0),
+            "max_ramp_rate": pytest.approx(0.9),
         }
         assert config["stability"]["tolerance_t"] == pytest.approx(0.2)
         assert config["stability"]["window_s"] == pytest.approx(30.0)
@@ -856,6 +916,10 @@ class TestEnginePublisher:
         assert state.reading is not None
         assert state.reading.field == pytest.approx(1.5)
         assert state.reading.current == pytest.approx(12.0)
+        assert state.target_field == pytest.approx(1.2)
+        assert state.target_current == pytest.approx(12.0)
+        assert state.ramp_rate_field == pytest.approx(0.5)
+        assert state.ramp_rate_current == pytest.approx(5.0)
         engine.shutdown()
 
     def test_set_target_field_invalidates_cached_target_state(self, qapp):
@@ -1056,6 +1120,42 @@ class TestMagnetControlPanel:
         assert panel._ramp_field_spin.value() == pytest.approx(0.8)
         assert panel._ramp_current_spin.value() == pytest.approx(12.5)
 
+    def test_state_update_shows_ramp_rate_labels_and_chart_traces(self, qapp):
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        state = MagnetEngineState(
+            reading=MagnetReading(
+                timestamp=datetime.now(tz=UTC),
+                field=1.0,
+                current=10.0,
+                voltage=0.2,
+                heater_on=True,
+                heater_state=HeaterState.ON,
+                state=MagnetState.RAMPING,
+                at_target=False,
+                field_rate=0.35,
+            ),
+            target_field=1.5,
+            target_current=15.0,
+            ramp_rate_field=0.8,
+            ramp_rate_current=8.0,
+            magnet_constant=0.1,
+            at_target=False,
+            stable=False,
+            engine_status=MagnetEngineStatus.POLLING,
+        )
+
+        panel._on_state_updated(state)
+
+        assert panel._ramp_target_rate_label.text() == "0.8000 T/min (8.000 A/min)"
+        assert panel._ramp_actual_rate_label.text() == "0.3500 T/min"
+        assert "Field Rate" in panel._legend_items
+        assert "Target Rate" in panel._legend_items
+        assert panel._legend_items["Field Rate"].text(1) == "0.3500 T/min"
+        assert panel._legend_items["Target Rate"].text(1) == "0.8000 T/min"
+
     def test_read_target_updates_target_field_spin_box(self, monkeypatch, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
@@ -1144,6 +1244,65 @@ class TestMagnetControlPanel:
         assert panel._max_current_spin.value() == pytest.approx(88.0)
         assert panel._max_field_spin.value() == pytest.approx(7.5)
         assert panel._max_ramp_spin.value() == pytest.approx(0.9)
+
+    def test_panel_restores_cached_config_settings_from_engine(self, qapp):
+        from stoner_measurement.instruments.magnet_controller import MagnetLimits
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        engine = MagnetControllerEngine.instance()
+        engine._target_field = 1.8  # noqa: SLF001
+        engine._target_current = 18.0  # noqa: SLF001
+        engine._ramp_rate_field = 0.6  # noqa: SLF001
+        engine._ramp_rate_current = 6.0  # noqa: SLF001
+        engine._magnet_constant = 0.1  # noqa: SLF001
+        engine._limits = MagnetLimits(max_current=70.0, max_field=7.0, max_ramp_rate=0.7)  # noqa: SLF001
+
+        panel = MagnetControlPanel()
+
+        assert panel._target_field_spin.value() == pytest.approx(1.8)
+        assert panel._target_current_spin.value() == pytest.approx(18.0)
+        assert panel._ramp_field_spin.value() == pytest.approx(0.6)
+        assert panel._ramp_current_spin.value() == pytest.approx(6.0)
+        assert panel._magnet_const_spin.value() == pytest.approx(0.1)
+        assert panel._max_current_spin.value() == pytest.approx(70.0)
+        assert panel._max_field_spin.value() == pytest.approx(7.0)
+        assert panel._max_ramp_spin.value() == pytest.approx(0.7)
+        engine.shutdown()
+
+    def test_save_configuration_persists_config_tab_values(self, monkeypatch, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        engine = MagnetControllerEngine.instance()
+        panel = MagnetControlPanel()
+        panel._target_field_spin.setValue(2.2)
+        panel._ramp_field_spin.setValue(0.9)
+        panel._magnet_constant = 0.11  # noqa: SLF001
+        panel._magnet_const_spin.setValue(0.11)
+        panel._max_current_spin.setValue(55.0)
+        panel._max_field_spin.setValue(5.5)
+        panel._max_ramp_spin.setValue(0.95)
+
+        monkeypatch.setattr(
+            "stoner_measurement.ui.magnet_panel.selected_transport",
+            lambda *_args, **_kwargs: ("Ethernet", "host:1234"),
+        )
+        monkeypatch.setattr(
+            "stoner_measurement.ui.magnet_panel.QMessageBox.information",
+            lambda *_args, **_kwargs: 0,
+        )
+
+        panel._on_save_configuration()
+
+        assert engine._target_field == pytest.approx(2.2)  # noqa: SLF001
+        assert engine._target_current == pytest.approx(20.0)  # noqa: SLF001
+        assert engine._ramp_rate_field == pytest.approx(0.9)  # noqa: SLF001
+        assert engine._ramp_rate_current == pytest.approx(8.1818181818)  # noqa: SLF001
+        assert engine._magnet_constant == pytest.approx(0.11)  # noqa: SLF001
+        assert engine._limits is not None  # noqa: SLF001
+        assert engine._limits.max_current == pytest.approx(55.0)  # noqa: SLF001
+        assert engine._limits.max_field == pytest.approx(5.5)  # noqa: SLF001
+        assert engine._limits.max_ramp_rate == pytest.approx(0.95)  # noqa: SLF001
+        engine.shutdown()
 
 
 class TestSimulatedMagnetControllerIntegration:

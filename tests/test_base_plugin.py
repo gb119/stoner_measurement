@@ -282,6 +282,18 @@ class TestBasePluginDefaults:
         plugin = _MinimalPlugin()
         assert plugin.sequence_engine is None
 
+    def test_comment_defaults_empty(self):
+        plugin = _MinimalPlugin()
+        assert plugin.comment == ""
+
+    def test_comment_round_trip_in_json(self):
+        plugin = _MinimalPlugin()
+        plugin.comment = "collect baseline first"
+
+        restored = BasePlugin.from_json(plugin.to_json())
+
+        assert restored.comment == "collect baseline first"
+
     def test_engine_namespace_detached_returns_empty_dict(self):
         plugin = _MinimalPlugin()
         assert plugin.engine_namespace == {}

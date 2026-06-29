@@ -5,6 +5,20 @@ connection:
   transport: "Null (test)"
   address: ""
 
+targets:
+  field:
+  current:
+
+ramp:
+  field_rate:
+  current_rate:
+
+limits:
+  magnet_constant:
+  max_current:
+  max_field:
+  max_ramp_rate:
+
 stability:
   tolerance_t: 0.001
   window_s: 10.0

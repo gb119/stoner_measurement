@@ -108,6 +108,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     """
 
     instance_name_changed = pyqtSignal(str, str)
+    comment_changed = pyqtSignal(str, str)
     state_changed = pyqtSignal(float)
     state_reached = pyqtSignal(float)
     state_error = pyqtSignal(str)
@@ -153,6 +154,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         if self.collect_filter == default_filter:
             self.collect_filter = f"{new_name}.meas_flag"
         self.instance_name_changed.emit(old_name, new_name)
+
+    def _on_comment_changed(self, old_comment: str, new_comment: str) -> None:
+        """Emit :attr:`comment_changed` when the comment changes."""
+        self.comment_changed.emit(old_comment, new_comment)
 
     # ------------------------------------------------------------------
     # Abstract interface

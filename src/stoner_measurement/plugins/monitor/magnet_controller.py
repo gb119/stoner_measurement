@@ -43,6 +43,7 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
     * **Current**
     * **Voltage**
     * **Field rate**
+    * **Target field rate**
     * **Heater**
     * **At target**
     * **Stable**
@@ -71,6 +72,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
         report_field_rate (bool):
             When ``True``, the field rate of change is included in every
             reading.
+        report_target_field_rate (bool):
+            When ``True``, the controller's target field ramp rate is
+            included in every reading.
         report_heater (bool):
             When ``True``, the heater state is included in every reading.
         report_at_target (bool):
@@ -102,6 +106,7 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
         self.report_current: bool = True
         self.report_voltage: bool = True
         self.report_field_rate: bool = True
+        self.report_target_field_rate: bool = True
         self.report_heater: bool = True
         self.report_at_target: bool = True
         self.report_stability: bool = True
@@ -199,6 +204,8 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             names.append("voltage")
         if self.report_field_rate:
             names.append("field_rate")
+        if self.report_target_field_rate:
+            names.append("target_field_rate")
         if self.report_heater:
             names.append("heater")
         if self.report_at_target:
@@ -236,6 +243,8 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             units["voltage"] = "V"
         if self.report_field_rate:
             units["field_rate"] = "T/min"
+        if self.report_target_field_rate:
+            units["target_field_rate"] = "T/min"
         if self.report_heater:
             units["heater"] = ""
         if self.report_at_target:
@@ -298,6 +307,10 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             )
         if self.report_field_rate:
             result["field_rate"] = math.nan if reading is None else float(reading.field_rate)
+        if self.report_target_field_rate:
+            result["target_field_rate"] = (
+                math.nan if state.ramp_rate_field is None else float(state.ramp_rate_field)
+            )
         if self.report_heater:
             result["heater"] = (
                 math.nan
@@ -388,6 +401,13 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             return math.nan
         return 1.0 if reading.heater_on else 0.0
 
+    def target_field_rate(self) -> float:
+        """Return the programmed field ramp rate in tesla per minute."""
+        state = self._current_state()
+        self._raise_if_quenched(state)
+        value = state.ramp_rate_field
+        return math.nan if value is None else float(value)
+
     def at_target(self) -> float:
         """Return whether the magnet is at its target field.
 
@@ -447,6 +467,8 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             values[f"{var}:Voltage"] = f"{var}.voltage()"
         if self.report_field_rate:
             values[f"{var}:Field Rate"] = f"{var}.field_rate()"
+        if self.report_target_field_rate:
+            values[f"{var}:Target Field Rate"] = f"{var}.target_field_rate()"
         if self.report_heater:
             values[f"{var}:Heater"] = f"{var}.heater()"
         if self.report_at_target:
@@ -480,6 +502,7 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
                 "report_current": self.report_current,
                 "report_voltage": self.report_voltage,
                 "report_field_rate": self.report_field_rate,
+                "report_target_field_rate": self.report_target_field_rate,
                 "report_heater": self.report_heater,
                 "report_at_target": self.report_at_target,
                 "report_stability": self.report_stability,
@@ -496,6 +519,7 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             "report_current",
             "report_voltage",
             "report_field_rate",
+            "report_target_field_rate",
             "report_heater",
             "report_at_target",
             "report_stability",
@@ -568,6 +592,11 @@ class _MagneticFieldMonitorSettingsWidget(QWidget):
         self._cb_field_rate.toggled.connect(self._on_field_rate_toggled)
         form.addRow("Field rate:", self._cb_field_rate)
 
+        self._cb_target_field_rate = QCheckBox(group)
+        self._cb_target_field_rate.setChecked(self._plugin.report_target_field_rate)
+        self._cb_target_field_rate.toggled.connect(self._on_target_field_rate_toggled)
+        form.addRow("Target field rate:", self._cb_target_field_rate)
+
         self._cb_heater = QCheckBox(group)
         self._cb_heater.setChecked(self._plugin.report_heater)
         self._cb_heater.toggled.connect(self._on_heater_toggled)
@@ -609,6 +638,10 @@ class _MagneticFieldMonitorSettingsWidget(QWidget):
 
     def _on_field_rate_toggled(self, checked: bool) -> None:
         self._plugin.report_field_rate = checked
+        self._plugin._refresh_catalogs()
+
+    def _on_target_field_rate_toggled(self, checked: bool) -> None:
+        self._plugin.report_target_field_rate = checked
         self._plugin._refresh_catalogs()
 
     def _on_heater_toggled(self, checked: bool) -> None:

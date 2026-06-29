@@ -215,6 +215,26 @@ class Lakeshore625(MagnetController, MagnetSupply):
         """
         return self._read_heater_state() is HeaterState.ON
 
+    @property
+    def target_current(self) -> float | None:
+        """Return the programmed current target in amps."""
+        return self._query_float("SETI?")
+
+    @property
+    def target_field(self) -> float | None:
+        """Return the programmed field target in tesla."""
+        return self._query_float("SETF?")
+
+    @property
+    def ramp_rate_current(self) -> float | None:
+        """Return the programmed current ramp rate in amps per minute."""
+        return self._query_float("RATEI?")
+
+    @property
+    def ramp_rate_field(self) -> float | None:
+        """Return the programmed field ramp rate in tesla per minute."""
+        return self._query_float("RATEF?")
+
     def set_target_current(self, current: float) -> None:
         """Set the target current in amps.
 

@@ -322,6 +322,9 @@ class BasePlugin(ABC):
             Plugin lifecycle methods (``connect``, ``configure``, ``measure``,
             etc.) can read values set by other parts of the measurement sequence
             via :attr:`engine_namespace`.
+        comment (str):
+            Optional short note shown in the sequence list after the plugin
+            label when non-empty.
     """
 
     #: Reference to the owning SequenceEngine; set by add_plugin / remove_plugin.
@@ -539,6 +542,24 @@ class BasePlugin(ABC):
         self._instance_name = value
         self._on_instance_name_changed(old, value)
 
+    @property
+    def comment(self) -> str:
+        """Optional short note associated with this plugin instance."""
+        try:
+            return self._comment
+        except AttributeError:
+            return ""
+
+    @comment.setter
+    def comment(self, value: str) -> None:
+        """Set the optional short note, notifying listeners if it changed."""
+        new_value = str(value).strip()
+        old = self.comment
+        if new_value == old:
+            return
+        self._comment = new_value
+        self._on_comment_changed(old, new_value)
+
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Hook called after :attr:`instance_name` changes.
 
@@ -551,6 +572,9 @@ class BasePlugin(ABC):
             new_name (str):
                 New instance name.
         """
+
+    def _on_comment_changed(self, old_comment: str, new_comment: str) -> None:
+        """Hook called after :attr:`comment` changes."""
 
     def _load_config(self) -> dict[str, Any]:
         """Load the merged YAML configuration for this plugin.
@@ -622,6 +646,8 @@ class BasePlugin(ABC):
             "class": f"{cls.__module__}:{cls.__qualname__}",
             "instance_name": self.instance_name,
         }
+        if self.comment:
+            d["comment"] = self.comment
         if self.disabled:
             d["disabled"] = True
         return d
@@ -678,6 +704,8 @@ class BasePlugin(ABC):
             instance = plugin_cls()
         if "instance_name" in data:
             instance.instance_name = data["instance_name"]
+        if "comment" in data:
+            instance.comment = str(data["comment"])
         instance.disabled = bool(data.get("disabled", False))
         instance._apply_config_data(data)  # noqa: SLF001
         instance._apply_config_data(  # noqa: SLF001
@@ -724,6 +752,8 @@ class BasePlugin(ABC):
 
         name_edit = QLineEdit(self.instance_name, widget)
         name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
+        comment_edit = QLineEdit(self.comment, widget)
+        comment_edit.setToolTip("Optional short note shown in the sequence list")
 
         def _apply() -> None:
             new_name = name_edit.text().strip()
@@ -741,6 +771,12 @@ class BasePlugin(ABC):
                 name_edit.setText(self.instance_name)
 
         name_edit.editingFinished.connect(_apply)
+
+        def _apply_comment() -> None:
+            self.comment = comment_edit.text().strip()
+            comment_edit.setText(self.comment)
+
+        comment_edit.editingFinished.connect(_apply_comment)
 
         # Keep the name field in sync with the authoritative instance_name
         # so that an external revert (e.g. collision detected by the dock
@@ -780,7 +816,30 @@ class BasePlugin(ABC):
             name_changed_signal.connect(_sync_name_edit)
             self._name_edit_sync = _sync_name_edit  # type: ignore[attr-defined]
 
+        comment_changed_signal = getattr(self, "comment_changed", None)
+        if comment_changed_signal is not None:
+            prev_sync = getattr(self, "_comment_edit_sync", None)
+            if prev_sync is not None:
+                try:
+                    comment_changed_signal.disconnect(prev_sync)
+                except (TypeError, RuntimeError):
+                    pass
+
+            def _sync_comment_edit(_old: str, _new: str) -> None:  # noqa: ARG001
+                current = self.comment
+                try:
+                    comment_edit.setText(current)
+                except RuntimeError:
+                    try:
+                        comment_changed_signal.disconnect(_sync_comment_edit)
+                    except (TypeError, RuntimeError):
+                        pass
+
+            comment_changed_signal.connect(_sync_comment_edit)
+            self._comment_edit_sync = _sync_comment_edit  # type: ignore[attr-defined]
+
         layout.addRow("Instance name:", name_edit)
+        layout.addRow("Comment:", comment_edit)
         layout.addRow("Plugin type:", QLabel(self.plugin_type, widget))
         widget.setLayout(layout)
         return widget

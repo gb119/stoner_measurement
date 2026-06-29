@@ -307,6 +307,32 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         """
         return self._read_heater_state() is HeaterState.ON
 
+    @property
+    def target_field(self) -> float | None:
+        """Return the programmed field target in tesla."""
+        return self._read_sig_float("FSET")
+
+    @property
+    def target_current(self) -> float | None:
+        """Return the programmed current target in amps."""
+        field = self.target_field
+        if field is None or self._magnet_constant == 0.0:
+            return None
+        return field / self._magnet_constant
+
+    @property
+    def ramp_rate_field(self) -> float | None:
+        """Return the programmed field ramp rate in tesla per minute."""
+        return self._read_sig_float("RSET")
+
+    @property
+    def ramp_rate_current(self) -> float | None:
+        """Return the programmed current ramp rate in amps per minute."""
+        rate = self.ramp_rate_field
+        if rate is None or self._magnet_constant == 0.0:
+            return None
+        return rate / self._magnet_constant
+
     def set_target_current(self, current: float) -> None:
         """Set the target output current.
 

@@ -49,15 +49,22 @@ class IfCommand(CommandPlugin, SequencePlugin):
         sub_steps: list,
         render_sub_step: Callable,
     ) -> list[str]:
-        """Return an ``if`` block containing the rendered sub-steps."""
+        """Return an ``if`` block containing the rendered sub-steps.
+
+        An empty ``If`` container is treated as a no-op to avoid emitting a
+        branch with no executable body into generated scripts.
+        """
         prefix = "    " * indent
         condition = self.condition.strip() or "True"
+        if not sub_steps:
+            self.log.warning(
+                "IfCommand %r has no sub-steps; skipping generated code emission.",
+                self.instance_name,
+            )
+            return []
         lines = [f"{prefix}if {condition}:"]
-        if sub_steps:
-            for sub_step in sub_steps:
-                lines.extend(render_sub_step(sub_step, indent + 1))
-        else:
-            lines.append(f"{prefix}    pass")
+        for sub_step in sub_steps:
+            lines.extend(render_sub_step(sub_step, indent + 1))
         lines.append("")
         return lines
 

@@ -219,6 +219,28 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         tokens = {letter.upper(): int(value) for letter, value in _STATUS_TOKEN_RE.findall(status_reply)}
         return self._decode_heater_state(tokens.get("H", 0)) is HeaterState.ON
 
+    @property
+    def target_current(self) -> float | None:
+        """Return the programmed current target in amps."""
+        return self._query_float("R5")
+
+    @property
+    def target_field(self) -> float | None:
+        """Return the programmed field target in tesla."""
+        current = self.target_current
+        return None if current is None else current * self._magnet_constant
+
+    @property
+    def ramp_rate_current(self) -> float | None:
+        """Return the programmed current ramp rate in amps per minute."""
+        return self._query_float("R6")
+
+    @property
+    def ramp_rate_field(self) -> float | None:
+        """Return the programmed field ramp rate in tesla per minute."""
+        rate = self.ramp_rate_current
+        return None if rate is None else rate * self._magnet_constant
+
     def set_target_current(self, current: float) -> None:
         """Set the target current in amps.
 

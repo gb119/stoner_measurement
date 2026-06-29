@@ -1107,11 +1107,18 @@ class MeasurementApp(QMainWindow):
             plugins = self._plugin_manager.plugins
             _, line_map = self._engine.generate_sequence_code(steps, plugins, return_line_map=True)
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
+        error_message = self._engine.validate_script_syntax(script, customised=customised, line_map=line_map)
+        if error_message is not None:
+            QMessageBox.warning(self, "Script Syntax Error", error_message)
+            return
         self._engine.run_script(script, customised=customised, line_map=line_map)
 
     def _on_run_from_measurement(self) -> None:
         """Convert the sequence to a script and execute it without switching tabs."""
-        code, line_map = self._generate_to_script_tab(switch_to_editor=False)
+        generated = self._generate_to_script_tab(switch_to_editor=False)
+        if generated is None:
+            return
+        code, line_map = generated
         self._engine.run_script(code, customised=False, line_map=line_map)
 
     def _on_pause(self) -> None:
@@ -1147,7 +1154,7 @@ class MeasurementApp(QMainWindow):
         on_measurement = self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT
         self._generate_to_script_tab(switch_to_editor=not on_measurement)
 
-    def _generate_to_script_tab(self, *, switch_to_editor: bool) -> tuple[str, dict]:
+    def _generate_to_script_tab(self, *, switch_to_editor: bool) -> tuple[str, dict] | None:
         """Generate sequence code and place it in a script pane.
 
         Injects per-step plugin instances into the engine namespace, generates
@@ -1208,6 +1215,11 @@ class MeasurementApp(QMainWindow):
         else:
             # Current tab is unmodified generated (or fresh): replace its content.
             pane.set_text(code)
+        error_message = self._engine.validate_script_syntax(code, customised=False, line_map=line_map)
+        if error_message is not None:
+            self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
+            QMessageBox.warning(self, "Generated Script Syntax Error", error_message)
+            return None
         if switch_to_editor:
             self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
         return code, line_map

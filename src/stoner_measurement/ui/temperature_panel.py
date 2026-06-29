@@ -1189,7 +1189,12 @@ class TemperatureControlPanel(QWidget):
 
         if action == colour_action:
             current = self._chart_widget.trace_style(trace).get("colour", "#808080")
-            selected = QColorDialog.getColor(QColor(current), self, f"Select colour for {trace}")
+            selected = QColorDialog.getColor(
+                QColor(current),
+                self,
+                f"Select colour for {trace}",
+                QColorDialog.ColorDialogOption.DontUseNativeDialog,
+            )
             if selected.isValid():
                 self._chart_widget.set_trace_style(trace, colour=selected.name())
                 pixmap = QPixmap(12, 12)

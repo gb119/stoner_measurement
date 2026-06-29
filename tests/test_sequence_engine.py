@@ -261,6 +261,22 @@ class TestScriptExecution:
         _wait_for_script_finished(engine, qapp)
         assert finished
 
+    def test_validate_script_syntax_emits_step_attributed_error_for_generated_code(self, engine):
+        plugin = DummyPlugin()
+        plugin.instance_name = "dummy"
+        errors: list[str] = []
+        engine.error_output.connect(errors.append)
+
+        message = engine.validate_script_syntax(
+            "if True print('broken')\n",
+            customised=False,
+            line_map={1: plugin},
+        )
+
+        assert message is not None
+        assert "Syntax error in sequence step: dummy (Dummy)" in message
+        assert errors == [message]
+
 
 # ---------------------------------------------------------------------------
 # Code generation

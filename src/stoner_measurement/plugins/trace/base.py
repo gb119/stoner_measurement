@@ -743,6 +743,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
     scan_generator_changed = pyqtSignal()
     instance_name_changed = pyqtSignal(str, str)
+    comment_changed = pyqtSignal(str, str)
     status_changed = pyqtSignal(object)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -758,6 +759,10 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
         self.instance_name_changed.emit(old_name, new_name)
+
+    def _on_comment_changed(self, old_comment: str, new_comment: str) -> None:
+        """Emit :attr:`comment_changed` when the comment changes."""
+        self.comment_changed.emit(old_comment, new_comment)
 
     # ------------------------------------------------------------------
     # Scan generator management

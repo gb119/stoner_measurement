@@ -140,8 +140,6 @@ class MagnetStatus:
     heater_state: HeaterState = HeaterState.UNKNOWN
     persistent_field: float | None = None
     message: str | None = None
-    persistent_field: float | None = None
-    message: str | None = None
 
 
 class MagnetSupply(Protocol):
@@ -218,6 +216,26 @@ class MagnetSupply(Protocol):
     @property
     def heater(self) -> bool:
         """Return the current state of the persistent switch heater."""
+        ...
+
+    @property
+    def target_current(self) -> float | None:
+        """Return the programmed current target in amps when available."""
+        ...
+
+    @property
+    def target_field(self) -> float | None:
+        """Return the programmed field target in tesla when available."""
+        ...
+
+    @property
+    def ramp_rate_current(self) -> float | None:
+        """Return the programmed current ramp rate in amps per minute when available."""
+        ...
+
+    @property
+    def ramp_rate_field(self) -> float | None:
+        """Return the programmed field ramp rate in tesla per minute when available."""
         ...
 
     # --- configuration as methods ---
@@ -500,6 +518,38 @@ class MagnetController(BaseInstrument):
             ConnectionError:
                 If the transport is not open.
         """
+
+    @property
+    def target_current(self) -> float | None:
+        """Return the programmed current target in amps when available.
+
+        Drivers that do not support direct setpoint readback return ``None``.
+        """
+        return None
+
+    @property
+    def target_field(self) -> float | None:
+        """Return the programmed field target in tesla when available.
+
+        Drivers that do not support direct setpoint readback return ``None``.
+        """
+        return None
+
+    @property
+    def ramp_rate_current(self) -> float | None:
+        """Return the programmed current ramp rate in amps per minute when available.
+
+        Drivers that do not support direct ramp-rate readback return ``None``.
+        """
+        return None
+
+    @property
+    def ramp_rate_field(self) -> float | None:
+        """Return the programmed field ramp rate in tesla per minute when available.
+
+        Drivers that do not support direct ramp-rate readback return ``None``.
+        """
+        return None
 
     @abstractmethod
     def set_target_current(self, current: float) -> None:

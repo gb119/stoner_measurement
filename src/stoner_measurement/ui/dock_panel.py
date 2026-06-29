@@ -13,7 +13,9 @@ insert new steps at any position or into a sub-sequence.
 
 from __future__ import annotations
 
+import builtins
 import json
+import keyword
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -100,6 +102,8 @@ QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {
     border-bottom: 1px solid gray;
 }
 """
+
+_RESERVED_INSTANCE_NAMES: frozenset[str] = frozenset(keyword.kwlist) | frozenset(dir(builtins))
 
 
 def _apply_disabled_appearance(item: QTreeWidgetItem, disabled: bool) -> None:
@@ -1238,12 +1242,14 @@ class DockPanel(QWidget):
         # Wire instance_name_changed so the label in the tree stays in sync.
         if hasattr(new_plugin, "instance_name_changed"):
             new_plugin.instance_name_changed.connect(self._on_plugin_renamed)
+        if hasattr(new_plugin, "comment_changed"):
+            new_plugin.comment_changed.connect(self._on_plugin_comment_changed)
 
         # Keep a strong Python reference so the instance is not garbage-collected
         # while it is stored only via QTreeWidgetItem.setData().
         self._step_plugins.append(new_plugin)
 
-        text = f"{new_plugin.instance_name} ({new_plugin.name})"
+        text = self._step_label(new_plugin)
         item = self._sequence_tree.make_item(new_plugin, text, ep_name=ep_name)
         self._add_default_measure_condition_child(new_plugin, item)
         return item
@@ -1255,10 +1261,13 @@ class DockPanel(QWidget):
             return
         child_plugin = factory()
         child_plugin.instance_name = self._unique_step_name(child_plugin.instance_name)
+        child_plugin.comment = "meas_flag is set"
         if hasattr(child_plugin, "instance_name_changed"):
             child_plugin.instance_name_changed.connect(self._on_plugin_renamed)
+        if hasattr(child_plugin, "comment_changed"):
+            child_plugin.comment_changed.connect(self._on_plugin_comment_changed)
         self._step_plugins.append(child_plugin)
-        child_text = f"{child_plugin.instance_name} ({child_plugin.name})"
+        child_text = self._step_label(child_plugin)
         item.addChild(self._sequence_tree.make_item(child_plugin, child_text))
         item.setExpanded(True)
 
@@ -1342,12 +1351,21 @@ class DockPanel(QWidget):
                 f"The name has been reverted to {old_name!r}.",
             )
             return
+        if self._is_reserved_instance_name(new_name):
+            renamed_plugin.instance_name = old_name  # type: ignore[union-attr]
+            QMessageBox.warning(
+                self,
+                "Reserved Instance Name",
+                f"The name {new_name!r} is reserved by Python or a builtin.\n"
+                f"Please choose a different name. The name has been reverted to {old_name!r}.",
+            )
+            return
 
         def _update_subtree(item: QTreeWidgetItem) -> None:
             """Recursively update text for the item whose plugin was renamed."""
             plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
             if plugin is renamed_plugin:
-                item.setText(0, f"{new_name} ({plugin.name})")
+                item.setText(0, self._step_label(plugin))
             for i in range(item.childCount()):
                 _update_subtree(item.child(i))
 
@@ -1355,6 +1373,20 @@ class DockPanel(QWidget):
             _update_subtree(self._sequence_tree.topLevelItem(i))
 
         self._rebuild_sequence_after_rename(old_name, new_name)
+
+    def _on_plugin_comment_changed(self, _old_comment: str, _new_comment: str) -> None:
+        """Update the matching tree item label when a plugin comment changes."""
+        changed_plugin = self.sender()
+
+        def _update_subtree(item: QTreeWidgetItem) -> None:
+            plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+            if plugin is changed_plugin:
+                item.setText(0, self._step_label(plugin))
+            for i in range(item.childCount()):
+                _update_subtree(item.child(i))
+
+        for i in range(self._sequence_tree.topLevelItemCount()):
+            _update_subtree(self._sequence_tree.topLevelItem(i))
 
     def _rebuild_sequence_after_rename(self, old_name: str, new_name: str) -> None:
         """Rebuild the sequence after a rename so cross-references follow the new name."""
@@ -1428,6 +1460,20 @@ class DockPanel(QWidget):
             _collect(self._sequence_tree.topLevelItem(i))
         return names
 
+    @staticmethod
+    def _is_reserved_instance_name(name: str) -> bool:
+        """Return ``True`` when *name* is a Python keyword or builtin name."""
+        return name in _RESERVED_INSTANCE_NAMES
+
+    @staticmethod
+    def _step_label(plugin: BasePlugin) -> str:
+        """Return the display label for one sequence-step plugin."""
+        base = f"{plugin.instance_name} ({plugin.name})"
+        comment = getattr(plugin, "comment", "").strip()
+        if not comment:
+            return base
+        return f"{base}: {comment}"
+
     def _unique_step_name(self, base_name: str) -> str:
         """Return a name derived from *base_name* that is unique in the current sequence.
 
@@ -1461,10 +1507,13 @@ class DockPanel(QWidget):
             'dummy_2'
         """
         existing = self._current_instance_names()
-        if base_name not in existing:
+        if base_name not in existing and not self._is_reserved_instance_name(base_name):
             return base_name
         count = 2
-        while f"{base_name}_{count}" in existing:
+        while (
+            f"{base_name}_{count}" in existing
+            or self._is_reserved_instance_name(f"{base_name}_{count}")
+        ):
             count += 1
         return f"{base_name}_{count}"
 
@@ -1592,9 +1641,11 @@ class DockPanel(QWidget):
 
         if hasattr(plugin, "instance_name_changed"):
             plugin.instance_name_changed.connect(self._on_plugin_renamed)
+        if hasattr(plugin, "comment_changed"):
+            plugin.comment_changed.connect(self._on_plugin_comment_changed)
         self._step_plugins.append(plugin)
 
-        text = f"{plugin.instance_name} ({plugin.name})"
+        text = self._step_label(plugin)
         item = self._sequence_tree.make_item(plugin, text)
         if parent_item is None:
             if insert_index is not None:

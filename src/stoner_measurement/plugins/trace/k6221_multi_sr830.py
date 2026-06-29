@@ -875,6 +875,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             for col, entry in enumerate(self._lockin_entries):
                 label_edit = QLineEdit(entry.label)
                 outputs_widget = QWidget()
+                outputs_widget.setStyleSheet("background: transparent;")
                 outputs_layout = QVBoxLayout(outputs_widget)
                 outputs_layout.setContentsMargins(4, 2, 4, 2)
                 outputs_layout.setSpacing(2)
@@ -900,6 +901,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 lockins_table.setCellWidget(_ROW_SENSITIVITY, col, sensitivity_combo)
 
                 auto_sens_check = QCheckBox()
+                auto_sens_check.setStyleSheet("background: transparent;")
                 auto_sens_check.setChecked(entry.auto_sensitivity)
                 auto_sens_check.toggled.connect(
                     lambda checked, *, idx=col: setattr(self._lockin_entries[idx], "auto_sensitivity", bool(checked))
@@ -924,6 +926,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 lockins_table.setCellWidget(_ROW_PHASE, col, phase_spin)
 
                 auto_phase_check = QCheckBox()
+                auto_phase_check.setStyleSheet("background: transparent;")
                 auto_phase_check.setChecked(entry.auto_phase)
                 auto_phase_check.toggled.connect(
                     lambda checked, *, idx=col: setattr(self._lockin_entries[idx], "auto_phase", bool(checked))
@@ -983,6 +986,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
                 for output in LockInOutput:
                     checkbox = QCheckBox(output.value)
+                    checkbox.setStyleSheet("background: transparent;")
                     checkbox.setChecked(output in entry.outputs)
                     checkbox.toggled.connect(_make_output_toggled_handler())
                     output_checks.append((output, checkbox))

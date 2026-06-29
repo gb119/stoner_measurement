@@ -104,6 +104,7 @@ def test_quantity_names_with_all_parameters(monkeypatch):
     assert "current" in names
     assert "voltage" in names
     assert "field_rate" in names
+    assert "target_field_rate" in names
     assert "heater" in names
     assert "at_target" in names
     assert "stable" in names
@@ -136,6 +137,7 @@ def test_units_map(monkeypatch):
     assert units["current"] == "A"
     assert units["voltage"] == "V"
     assert units["field_rate"] == "T/min"
+    assert units["target_field_rate"] == "T/min"
     assert units["heater"] == ""
     assert units["at_target"] == ""
     assert units["stable"] == ""
@@ -152,6 +154,7 @@ def test_read_returns_all_parameters(monkeypatch):
     assert reading["current"] == pytest.approx(10.0)
     assert reading["voltage"] == pytest.approx(2.5)
     assert reading["field_rate"] == pytest.approx(0.125)
+    assert reading["target_field_rate"] == pytest.approx(0.2)
     assert reading["heater"] == 1.0
     assert reading["at_target"] == 1.0
     assert reading["stable"] == 0.0
@@ -250,6 +253,7 @@ def test_accessor_methods(monkeypatch):
     assert plugin.current() == pytest.approx(10.0)
     assert plugin.voltage() == pytest.approx(2.5)
     assert plugin.field_rate() == pytest.approx(0.125)
+    assert plugin.target_field_rate() == pytest.approx(0.2)
     assert plugin.heater() == 1.0
     assert plugin.at_target() == 1.0
     assert plugin.stable() == 0.0
@@ -314,6 +318,7 @@ def test_reported_values_all_parameters(monkeypatch):
     assert values[f"{var}:Current"] == f"{var}.current()"
     assert values[f"{var}:Voltage"] == f"{var}.voltage()"
     assert values[f"{var}:Field Rate"] == f"{var}.field_rate()"
+    assert values[f"{var}:Target Field Rate"] == f"{var}.target_field_rate()"
     assert values[f"{var}:Heater"] == f"{var}.heater()"
     assert values[f"{var}:At Target"] == f"{var}.at_target()"
     assert values[f"{var}:Stable"] == f"{var}.stable()"
@@ -324,11 +329,13 @@ def test_reported_values_honours_flags(monkeypatch):
     engine = _FakeEngine(_make_state())
     plugin = _make_plugin(engine, monkeypatch)
     plugin.report_voltage = False
+    plugin.report_target_field_rate = False
     plugin.report_heater = False
     var = plugin.instance_name
 
     values = plugin.reported_values()
     assert f"{var}:Voltage" not in values
+    assert f"{var}:Target Field Rate" not in values
     assert f"{var}:Heater" not in values
     assert f"{var}:Field" in values
 
@@ -342,6 +349,7 @@ def test_json_round_trip(monkeypatch):
     plugin.report_current = True
     plugin.report_voltage = False
     plugin.report_field_rate = True
+    plugin.report_target_field_rate = True
     plugin.report_heater = False
     plugin.report_at_target = True
     plugin.report_stability = False
@@ -350,6 +358,7 @@ def test_json_round_trip(monkeypatch):
     data = plugin.to_json()
     assert data["report_target_field"] is False
     assert data["report_voltage"] is False
+    assert data["report_target_field_rate"] is True
     assert data["report_heater"] is False
     assert data["report_stability"] is False
     assert data["force_fresh_poll"] is True
@@ -361,6 +370,7 @@ def test_json_round_trip(monkeypatch):
     assert restored.report_current is True
     assert restored.report_voltage is False
     assert restored.report_field_rate is True
+    assert restored.report_target_field_rate is True
     assert restored.report_heater is False
     assert restored.report_at_target is True
     assert restored.report_stability is False
@@ -399,12 +409,13 @@ def test_widget_rebuilds_catalogs_on_output_settings_change(monkeypatch):
     widget._on_current_toggled(False)  # noqa: SLF001
     widget._on_voltage_toggled(False)  # noqa: SLF001
     widget._on_field_rate_toggled(False)  # noqa: SLF001
+    widget._on_target_field_rate_toggled(False)  # noqa: SLF001
     widget._on_heater_toggled(False)  # noqa: SLF001
     widget._on_at_target_toggled(False)  # noqa: SLF001
     widget._on_stability_toggled(False)  # noqa: SLF001
     widget._on_force_poll_toggled(True)  # noqa: SLF001
 
-    assert plugin.sequence_engine.rebuild_calls == 9
+    assert plugin.sequence_engine.rebuild_calls == 10
 
 
 if __name__ == "__main__":
