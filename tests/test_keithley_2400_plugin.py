@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 from qtpy.QtWidgets import QCheckBox, QComboBox, QGroupBox, QSpinBox, QTabWidget
 
-from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.instruments.keithley.k2400 import FilterType
+from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import Keithley2400SweepPlugin, SweepSourceMode
 from stoner_measurement.plugins.trace.keithley_2400 import (
     ComplianceMode,
@@ -76,6 +76,46 @@ class TestDefaults:
         assert plugin._terminal_mode is TerminalMode.FRONT
         assert plugin._connection_mode is ConnectionMode.FOUR_WIRE
         assert plugin._connection_mode is ConnectionMode.FOUR_WIRE
+
+
+class TestReportedValues:
+    """Reported value catalogue entries for buffered 2400 traces."""
+
+    def test_reported_values_include_all_buffered_columns_when_enabled(self):
+        plugin = _make_plugin()
+        plugin._set_report_channel_statistics(True)
+
+        values = plugin.reported_values()
+
+        prefix = plugin.instance_name
+        for column in ("Current", "Voltage", "Resistance", "Power", "Timestamp"):
+            assert f"{prefix}:IV {column} mean" in values
+            assert f"{prefix}:IV {column} std" in values
+
+    def test_measure_updates_all_column_statistics_when_enabled(self):
+        from stoner_measurement.instruments.keithley.k2400 import BufferReading
+
+        plugin = _make_plugin()
+        plugin._set_report_channel_statistics(True)
+        plugin._sweep_values = (0.001, 0.002)
+        buffer_records = (
+            BufferReading(voltage=0.1, current=0.001, resistance=100.0, time=1.0, status=0),
+            BufferReading(voltage=0.4, current=0.002, resistance=200.0, time=2.0, status=0),
+        )
+
+        def _execute(_parameters):
+            plugin._last_buffer_raw = buffer_records
+            return iter([(0.001, 0.1), (0.002, 0.4)])
+
+        plugin.execute = MagicMock(side_effect=_execute)
+
+        plugin.measure({})
+
+        assert plugin.channel_statistics["IV Current"]["mean"] == pytest.approx(0.0015)
+        assert plugin.channel_statistics["IV Voltage"]["mean"] == pytest.approx(0.25)
+        assert plugin.channel_statistics["IV Resistance"]["mean"] == pytest.approx(150.0)
+        assert plugin.channel_statistics["IV Power"]["mean"] == pytest.approx(0.00045)
+        assert plugin.channel_statistics["IV Timestamp"]["mean"] == pytest.approx(1.5)
 
 
 class TestConfigureComplianceModes:

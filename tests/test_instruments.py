@@ -1906,7 +1906,7 @@ class TestLakeshore625:
             assert status.heater_on is False
 
     def test_status_maps_state(self):
-        # RDGST? returns numeric bit-coded status: bit 1 (0x02) = AT_TARGET
+        # OPST? returns numeric bit-coded status: bit 1 (0x02) = AT_TARGET
         t = _null(
             responses=[
                 b"2\r\n",
@@ -1924,13 +1924,13 @@ class TestLakeshore625:
         assert status.field == pytest.approx(0.3)
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
-        assert t.write_log == [b"RDGST?\r\n", b"PSH?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n"]
+        assert t.write_log == [b"OPST?\r\n", b"PSH?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n"]
 
     def test_status_maps_ramping_state(self):
-        # RDGST? bit 0 (0x01) = RAMPING
+        # OPST? with ramp-done bit clear means the output is still ramping.
         t = _null(
             responses=[
-                b"1\r\n",
+                b"0\r\n",
                 b"0.5\r\n",
                 b"0.1\r\n",
                 b"0.1\r\n",
@@ -1942,11 +1942,11 @@ class TestLakeshore625:
         assert status.state.value == "ramping"
         assert status.at_target is False
 
-    def test_status_maps_fault_state(self):
-        # RDGST? bit 2 (0x04) = FAULT
+    def test_status_maps_compliance_as_fault_state(self):
+        # OPST? bit 0 (0x01) = compliance limit.
         t = _null(
             responses=[
-                b"4\r\n",
+                b"1\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
@@ -1957,11 +1957,11 @@ class TestLakeshore625:
         status = m.status
         assert status.state.value == "fault"
 
-    def test_status_maps_quench_state(self):
-        # RDGST? bit 3 (0x08) = QUENCH
+    def test_status_ignores_psh_stable_bit_for_magnet_state(self):
+        # OPST? bit 2 (0x04) = persistent-switch heater stable.
         t = _null(
             responses=[
-                b"8\r\n",
+                b"6\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
@@ -1970,22 +1970,7 @@ class TestLakeshore625:
         )
         m = Lakeshore625(transport=t)
         status = m.status
-        assert status.state.value == "quench"
-
-    def test_status_standby_when_no_bits_set(self):
-        # RDGST? returns 0 = STANDBY
-        t = _null(
-            responses=[
-                b"0\r\n",
-                b"0.0\r\n",
-                b"0.0\r\n",
-                b"0.0\r\n",
-                b"0\r\n",
-            ]
-        )
-        m = Lakeshore625(transport=t)
-        status = m.status
-        assert status.state.value == "standby"
+        assert status.state.value == "at_target"
 
     def test_status_unknown_for_unparseable_rdgst_response(self, caplog):
         t = _null(
@@ -2002,7 +1987,7 @@ class TestLakeshore625:
             status = m.status
         assert status.state is MagnetState.UNKNOWN
         assert status.at_target is False
-        assert any("marking status UNKNOWN" in record.getMessage() for record in caplog.records)
+        assert any("OPST? returned unexpected response" in record.getMessage() for record in caplog.records)
 
     def test_status_unknown_for_unhandled_rdgst_bits(self, caplog):
         t = _null(
@@ -2019,7 +2004,7 @@ class TestLakeshore625:
             status = m.status
         assert status.state is MagnetState.UNKNOWN
         assert status.at_target is False
-        assert any("unhandled status bits 0x10" in record.getMessage() for record in caplog.records)
+        assert any("OPST? returned unhandled status bits 0x10" in record.getMessage() for record in caplog.records)
 
     def test_set_magnet_constant_validation(self):
         m = Lakeshore625(transport=_null())
@@ -2027,6 +2012,45 @@ class TestLakeshore625:
             m.set_magnet_constant(0.0)
         with pytest.raises(ValueError, match="positive"):
             m.set_magnet_constant(-1.0)
+
+    def test_magnet_constant_reads_flds_query_in_t_per_amp(self):
+        t = _null(responses=[b"0,+0.0750\r\n"])
+        m = Lakeshore625(transport=t)
+        assert m.magnet_constant == pytest.approx(0.075)
+        assert t.write_log == [b"FLDS?\r\n"]
+
+    def test_magnet_constant_converts_flds_query_from_kg_per_amp(self):
+        t = _null(responses=[b"1,+0.7500\r\n"])
+        m = Lakeshore625(transport=t)
+        assert m.magnet_constant == pytest.approx(0.075)
+
+    def test_set_magnet_constant_writes_flds_command(self):
+        t = _null()
+        m = Lakeshore625(transport=t)
+        m.set_magnet_constant(0.075)
+        assert t.write_log == [b"FLDS 0,0.075\r\n"]
+
+    def test_limits_reads_limit_and_field_constant_from_instrument(self):
+        t = _null(responses=[b"+60.1000,+5.0000,+2.0000\r\n", b"0,+0.1000\r\n"])
+        m = Lakeshore625(transport=t)
+        limits = m.limits
+        assert limits.max_current == pytest.approx(60.1)
+        assert limits.max_field == pytest.approx(6.01)
+        assert limits.max_ramp_rate == pytest.approx(12.0)
+        assert t.write_log == [b"LIMIT?\r\n", b"FLDS?\r\n"]
+
+    def test_set_limits_writes_limit_command_with_current_ramp_rate(self):
+        from stoner_measurement.instruments.magnet_controller import MagnetLimits
+
+        t = _null(responses=[b"+5.0000\r\n"])
+        m = Lakeshore625(transport=t)
+        m.set_magnet_constant(0.1)
+        m.set_limits(MagnetLimits(max_current=50.0, max_field=5.0, max_ramp_rate=12.0))
+        assert t.write_log == [
+            b"FLDS 0,0.1\r\n",
+            b"SETV?\r\n",
+            b"LIMIT 50.0,5.0,2.0\r\n",
+        ]
 
     def test_query_float_raises_for_unparseable_numeric_response(self):
         t = _null(responses=[b"not-a-float\r\n"])

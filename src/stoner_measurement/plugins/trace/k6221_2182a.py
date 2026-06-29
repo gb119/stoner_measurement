@@ -445,6 +445,23 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         """
         return ["IV"]
 
+    def reported_values(self) -> dict[str, str]:
+        """Return mean/std outputs for each derived IV trace column."""
+        if not self._report_channel_statistics:
+            return {}
+
+        var = self.instance_name
+        values: dict[str, str] = {}
+        for column in ("V", "R", "P"):
+            key = f"IV {column}"
+            values[f"{var}:{key} mean"] = (
+                f"{var}.get_channel_statistic({key!r}, 'mean')"
+            )
+            values[f"{var}:{key} std"] = (
+                f"{var}.get_channel_statistic({key!r}, 'std')"
+            )
+        return values
+
     def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         """Acquire the sweep and return a single multicolumn ``"IV"`` trace.
 

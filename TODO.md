@@ -1,4 +1,4 @@
-# Notes of features/bugs to work on
+﻿# Notes of features/bugs to work on
 
 ## Complete
 
@@ -10,6 +10,9 @@
 on status bbar right hand side.
 6. Re work motor controller shortest distance algorithm. DONE
 7. For all engines, add engine status (polling, not polling) DONE
+8. 6221-2182 IV calculates power (V*I) and resistance (V/I) as output channels in the trace and reports
+   averages for voltage, resistance, and power when config panel options are selected. DONE
+9. K24x0 trace plugin reports averages for all buffered trace columns, including non-primary channels. DONE
 
 ## Done, but needs testing
 
@@ -22,6 +25,8 @@ on status bbar right hand side.
 6. Implement temperature stability as a table (Below T, tolerance, toleramce_sensor, time, stability_rate,
     stability_sensor, hold_off_time) - DONE NEEDS TESTING
 7. Related, make stability critiera use specific sensors. DONE NEEDS TESTING
+8. Lakeshore 625 - driver reads FLDS?/LIMIT? values from instrument for field-current constant and limits. DONE NEEDS HARDWARE TESTING
+9. Lakeshore 625 driver uses OPST? instead of invalid RDGST? and maps the documented operation-status bits. DONE NEEDS HARDWARE TESTING
 
 ## Partially done, needs more work
 
@@ -39,10 +44,13 @@ on status bbar right hand side.
 
 ## Bugs
 
-1. Magnet control panel - not persisting all settings to yaml?
-2. Lakeshore 625 - not applying the correct magnet rate?
-3. 625 is sending RDGST? = not a command...
-4. 625 doesn't seem to check STB after reads
-5. 6221-2182 IV should calculate resistance as an output channel on the trace as V/I and report average of V/I when selected.
-6. When selected the lockins in 6221-multiSR830 colour the background of checkbox fields in the highlight colour.'
-7. Temperature controller engine should not run poll if the connection has gone bad.
+1. Magnet control panel - not persisting all settings from the config tab to yaml file - or else not restoring
+   settings when panel opened.
+2. Magnet controller panel should show the actual and target rates.
+3. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.
+4. In KJeithley65221-multilockin trace plugin, when selected the lockins colour the background of checkbox fields in
+   the highlight colour.
+5. The colour picker dialog for plotting is colouring some lements with the selected colour (.e.g buttons, title bar
+   amongst others.
+6. Temperature controller engine should not run poll if the connection has gone bad. If the connection disconnects for
+   any reason other than shutdown or user pressing disconnect, this shopuld get logged as an error.

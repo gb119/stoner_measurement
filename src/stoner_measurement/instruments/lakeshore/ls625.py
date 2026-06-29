@@ -16,11 +16,12 @@ from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
 from stoner_measurement.instruments.transport.base import BaseTransport
 
-# RDGST? returns a numeric bit-coded operating status (Chapter 5, Lake Shore 625 manual).
-_RDGST_RAMPING_BIT = 0x01   # Bit 0: output is actively sweeping
-_RDGST_AT_TARGET_BIT = 0x02  # Bit 1: output has reached programmed setpoint
-_RDGST_FAULT_BIT = 0x04     # Bit 2: power supply fault condition
-_RDGST_QUENCH_BIT = 0x08    # Bit 3: quench protection active
+# OPST? returns the Operation Condition register: bit 0 = compliance,
+# bit 1 = ramp done, bit 2 = persistent-switch heater stable.
+_OPST_COMPLIANCE_BIT = 0x01
+_OPST_RAMP_DONE_BIT = 0x02
+_OPST_PSH_STABLE_BIT = 0x04
+_OPST_KNOWN_BITS = _OPST_COMPLIANCE_BIT | _OPST_RAMP_DONE_BIT | _OPST_PSH_STABLE_BIT
 
 _ACTIVE_RAMP_STATES = {MagnetState.RAMPING}
 _TERMINAL_RAMP_STATES = {
@@ -128,33 +129,28 @@ class Lakeshore625(MagnetController, MagnetSupply):
     def status(self) -> MagnetStatus:
         """Return consolidated magnet status.
 
-        Queries ``RDGST?`` which returns a numeric bit-coded operating status
-        (Chapter 5, Lake Shore 625 manual).
+        Queries ``OPST?`` which returns a numeric bit-coded operating status.
 
         Returns:
             (MagnetStatus):
                 Snapshot of controller state and key readings.
         """
-        raw = self.query("RDGST?").strip()
+        raw = self.query("OPST?").strip()
         try:
             bits = int(raw)
         except ValueError:
-            self._comms_logger.warning("RDGST? returned unexpected response %r; marking status UNKNOWN", raw)
+            self._comms_logger.warning("OPST? returned unexpected response %r; marking status UNKNOWN", raw)
             state = MagnetState.UNKNOWN
         else:
-            if bits & _RDGST_QUENCH_BIT:
-                state = MagnetState.QUENCH
-            elif bits & _RDGST_FAULT_BIT:
-                state = MagnetState.FAULT
-            elif bits & _RDGST_RAMPING_BIT:
-                state = MagnetState.RAMPING
-            elif bits & _RDGST_AT_TARGET_BIT:
-                state = MagnetState.AT_TARGET
-            elif bits == 0:
-                state = MagnetState.STANDBY
-            else:
-                self._comms_logger.warning("RDGST? returned unhandled status bits 0x%X; marking status UNKNOWN", bits)
+            if bits & ~_OPST_KNOWN_BITS:
+                self._comms_logger.warning("OPST? returned unhandled status bits 0x%X; marking status UNKNOWN", bits)
                 state = MagnetState.UNKNOWN
+            elif bits & _OPST_COMPLIANCE_BIT:
+                state = MagnetState.FAULT
+            elif bits & _OPST_RAMP_DONE_BIT:
+                state = MagnetState.AT_TARGET
+            else:
+                state = MagnetState.RAMPING
         at_target = state in _TERMINAL_RAMP_STATES
         heater_state = self._read_heater_state()
         return MagnetStatus(
@@ -171,22 +167,42 @@ class Lakeshore625(MagnetController, MagnetSupply):
 
     @property
     def magnet_constant(self) -> float:
-        """Return the magnet constant in tesla per amp.
+        """Return the instrument field constant in tesla per amp.
 
         Returns:
             (float):
                 Magnet constant in tesla per amp.
         """
+        try:
+            units, constant = _parse_csv(self.query("FLDS?"), expected=2)
+            value = float(constant)
+            # Manual: FLDS units 0 = T/A, 1 = kG/A.
+            self._magnet_constant = value if int(float(units)) == 0 else value * 0.1
+        except Exception:
+            self._comms_logger.warning("FLDS? returned unexpected response; using cached magnet constant", exc_info=True)
         return self._magnet_constant
 
     @property
     def limits(self) -> MagnetLimits:
-        """Return configured software limits for this driver instance.
+        """Return output limits read from the instrument.
 
         Returns:
             (MagnetLimits):
-                Cached configured current/field/ramp limits.
+                Current, derived field, and current-ramp limits. The Model 625
+                reports ramp-rate limits in A/s, which are converted to T/min.
         """
+        try:
+            current, _voltage, rate = _parse_csv(self.query("LIMIT?"), expected=3)
+            max_current = float(current)
+            ramp_rate_current_s = float(rate)
+            constant = self.magnet_constant
+            self._limits = MagnetLimits(
+                max_current=max_current,
+                max_field=max_current * constant,
+                max_ramp_rate=ramp_rate_current_s * constant * 60.0,
+            )
+        except Exception:
+            self._comms_logger.warning("LIMIT? returned unexpected response; using cached limits", exc_info=True)
         return self._limits
 
     @property
@@ -244,6 +260,7 @@ class Lakeshore625(MagnetController, MagnetSupply):
         """
         if tesla_per_amp <= 0.0:
             raise ValueError(f"Magnet constant must be positive, got {tesla_per_amp}.")
+        self.write(f"FLDS 0,{tesla_per_amp}")
         self._magnet_constant = tesla_per_amp
 
     def set_limits(self, limits: MagnetLimits) -> None:
@@ -253,6 +270,15 @@ class Lakeshore625(MagnetController, MagnetSupply):
             limits (MagnetLimits):
                 Limit configuration to cache for runtime checks.
         """
+        max_ramp_rate_field = limits.max_ramp_rate
+        if max_ramp_rate_field is None:
+            max_ramp_rate_current_s = 99.999
+        else:
+            if self._magnet_constant <= 0.0:
+                raise ValueError("Magnet constant must be positive to convert field ramp limits.")
+            max_ramp_rate_current_s = max_ramp_rate_field / self._magnet_constant / 60.0
+        compliance_voltage = self._query_float("SETV?")
+        self.write(f"LIMIT {limits.max_current},{compliance_voltage},{max_ramp_rate_current_s}")
         self._limits = limits
 
     def ramp_to_target(self) -> None:
@@ -380,3 +406,11 @@ class Lakeshore625(MagnetController, MagnetSupply):
             2: HeaterState.COOLING,
             3: HeaterState.WARMING,
         }.get(value, HeaterState.UNKNOWN)
+
+
+def _parse_csv(response: str, *, expected: int) -> list[str]:
+    """Split a comma-separated 625 response and validate field count."""
+    parts = [part.strip() for part in response.split(",")]
+    if len(parts) != expected:
+        raise ValueError(f"Expected {expected} comma-separated fields, got {len(parts)}: {response!r}")
+    return parts

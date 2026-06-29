@@ -45,9 +45,9 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from stoner_measurement.qt_compat import pyqtSignal
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan import (
     ArbitraryFunctionScanGenerator,
     BaseScanGenerator,
@@ -1457,6 +1457,19 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 mean_val = float(np.mean(y_values))
                 std_val = float(np.std(y_values))
             stats[channel] = {"mean": mean_val, "std": std_val}
+
+            for column in trace_data.df.columns:
+                values = np.asarray(trace_data.df[column], dtype=float)
+                if values.size == 0:
+                    column_mean = float("nan")
+                    column_std = float("nan")
+                else:
+                    column_mean = float(np.nanmean(values))
+                    column_std = float(np.nanstd(values))
+                stats[f"{channel} {column}"] = {
+                    "mean": column_mean,
+                    "std": column_std,
+                }
         self.channel_statistics = stats
 
     def get_channel_statistic(self, channel: str, statistic: str) -> float:

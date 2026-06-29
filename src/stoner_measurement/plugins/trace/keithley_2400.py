@@ -23,13 +23,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from qtpy.QtWidgets import (
-    QTabWidget,
     QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
     QLabel,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -41,6 +41,8 @@ from stoner_measurement.instruments.keithley.k2400 import (
 )
 from stoner_measurement.instruments.source_meter import (
     SourceMode,
+    SourceSweepConfiguration,
+    SweepSpacing,
     TriggerModelConfiguration,
     TriggerSource,
 )
@@ -52,7 +54,6 @@ from stoner_measurement.plugins.trace.base import (
     TracePlugin,
     TraceStatus,
 )
-from stoner_measurement.instruments.source_meter import SourceSweepConfiguration, SweepSpacing
 from stoner_measurement.scan import FunctionScanGenerator
 from stoner_measurement.ui.widgets import FILTER_GPIB, SISpinBox, VisaResourceComboBox
 
@@ -329,6 +330,23 @@ class Keithley2400SweepPlugin(TracePlugin):
                 ``"Current"`` in voltage-source mode, otherwise ``"Voltage"``.
         """
         return "Current" if self._source_mode is SweepSourceMode.VOLTAGE else "Voltage"
+
+    def reported_values(self) -> dict[str, str]:
+        """Return mean/std outputs for each buffered trace column."""
+        if not self._report_channel_statistics:
+            return {}
+
+        var = self.instance_name
+        values: dict[str, str] = {}
+        for column in ("Current", "Voltage", "Resistance", "Power", "Timestamp"):
+            key = f"IV {column}"
+            values[f"{var}:{key} mean"] = (
+                f"{var}.get_channel_statistic({key!r}, 'mean')"
+            )
+            values[f"{var}:{key} std"] = (
+                f"{var}.get_channel_statistic({key!r}, 'std')"
+            )
+        return values
 
     def connect(self) -> None:
         """Open the SMU connection and verify its identity.

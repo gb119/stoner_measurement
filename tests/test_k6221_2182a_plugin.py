@@ -62,8 +62,12 @@ class TestIdentity:
         plugin = _make_plugin()
         plugin._set_report_channel_statistics(True)
         vals = plugin.reported_values()
-        assert "k6221_dc_iv:IV mean" in vals
-        assert "k6221_dc_iv:IV std" in vals
+        assert "k6221_dc_iv:IV V mean" in vals
+        assert "k6221_dc_iv:IV V std" in vals
+        assert "k6221_dc_iv:IV R mean" in vals
+        assert "k6221_dc_iv:IV R std" in vals
+        assert "k6221_dc_iv:IV P mean" in vals
+        assert "k6221_dc_iv:IV P std" in vals
 
     def test_num_traces_matches_channel_names_length(self, qapp):
         """num_traces must always equal len(channel_names) for consistency."""
@@ -758,6 +762,25 @@ class TestMeasure:
             result = plugin.measure({})
 
         assert plugin.data is result
+
+    def test_measure_updates_all_column_statistics_when_enabled(self, qapp):
+        """Channel statistics include voltage, resistance, and power averages."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+        plugin._set_report_channel_statistics(True)
+
+        fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
+        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+            plugin.measure({})
+
+        assert plugin.channel_statistics["IV V"]["mean"] == pytest.approx(0.25)
+        assert plugin.channel_statistics["IV R"]["mean"] == pytest.approx(150.0)
+        assert plugin.channel_statistics["IV P"]["mean"] == pytest.approx(0.00045)
 
     def test_measure_empty_sweep(self, qapp):
         """measure() must handle an empty sweep without raising."""
