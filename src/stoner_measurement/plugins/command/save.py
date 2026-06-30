@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -36,6 +37,224 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 
 #: Regex matching the start of a Python string literal (with optional prefix).
 _STRING_EXPR_RE = re.compile(r'^[fFrRbBuU]*["\']')
+
+
+@dataclass(frozen=True)
+class SavePayload:
+    """Neutral data package passed from :class:`SaveCommand` to file writers."""
+
+    metadata: list[str]
+    columns: list[tuple[str, np.ndarray]]
+    save_mode: str
+
+
+class BaseSaveWriter:
+    """Base class for concrete save-file writers."""
+
+    format_id = "base"
+    label = "Base"
+    file_filter = "All Files (*)"
+    supports_incremental = False
+    aligns_metadata_with_data_rows = False
+
+    @classmethod
+    def available(cls) -> bool:
+        """Return whether this writer can be used in the current environment."""
+        return True
+
+    @classmethod
+    def unavailable_reason(cls) -> str:
+        """Return a short explanation when :meth:`available` is false."""
+        return ""
+
+    def write(self, *, dest: pathlib.Path, payload: SavePayload) -> None:
+        """Write *payload* to *dest*."""
+        raise NotImplementedError
+
+    def append_data_rows(
+        self,
+        *,
+        dest: pathlib.Path,
+        payload: SavePayload,
+        start: int,
+        stop: int,
+    ) -> None:
+        """Append data rows for incremental writers."""
+        raise NotImplementedError(f"{self.label} does not support incremental appends")
+
+
+class TdiSaveWriter(BaseSaveWriter):
+    """Write the existing TDI Format 2.0 tab-delimited text layout."""
+
+    format_id = "tdi"
+    label = "TDI Format 2.0"
+    file_filter = "TDI Text Files (*.txt);;All Files (*)"
+    supports_incremental = True
+    aligns_metadata_with_data_rows = True
+
+    def write(self, *, dest: pathlib.Path, payload: SavePayload) -> None:
+        rows = self.build_rows(payload=payload)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        content = "\n".join("\t".join(row) for row in rows) + "\n"
+        dest.write_text(content, encoding="utf-8")
+
+    def append_data_rows(
+        self,
+        *,
+        dest: pathlib.Path,
+        payload: SavePayload,
+        start: int,
+        stop: int,
+    ) -> None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        lines = []
+        for i in range(start, stop):
+            data_cells = [str(col[1][i]) if i < len(col[1]) else "" for col in payload.columns]
+            lines.append("\t".join([""] + data_cells))
+        if not lines:
+            return
+        with dest.open("a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+
+    def build_rows(self, *, payload: SavePayload) -> list[list[str]]:
+        """Build row-wise TDI table data from metadata and numeric columns."""
+        header_row = ["TDI Format 2.0"] + [col[0] for col in payload.columns]
+        max_data_len = max((len(col[1]) for col in payload.columns), default=0)
+        n_rows = max(len(payload.metadata), max_data_len)
+        rows: list[list[str]] = [header_row]
+        for i in range(n_rows):
+            meta_cell = payload.metadata[i] if i < len(payload.metadata) else ""
+            data_cells = [str(col[1][i]) if i < len(col[1]) else "" for col in payload.columns]
+            rows.append([meta_cell] + data_cells)
+        return rows
+
+
+class NexusSaveWriter(BaseSaveWriter):
+    """Write a NeXus-style HDF5 file with NXentry and NXdata groups."""
+
+    format_id = "nexus"
+    label = "NeXus/HDF5"
+    file_filter = "NeXus Files (*.nxs *.h5 *.hdf5);;All Files (*)"
+    supports_incremental = True
+
+    @classmethod
+    def available(cls) -> bool:
+        try:
+            import h5py  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
+    @classmethod
+    def unavailable_reason(cls) -> str:
+        return "NeXus export requires the optional 'h5py' package."
+
+    def write(self, *, dest: pathlib.Path, payload: SavePayload) -> None:
+        try:
+            import h5py
+        except ImportError as exc:
+            raise RuntimeError(self.unavailable_reason()) from exc
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with h5py.File(dest, "w") as handle:
+            handle.attrs["default"] = "entry"
+            handle.attrs["file_format"] = "NeXus"
+            handle.attrs["creator"] = "stoner_measurement"
+            handle.attrs["stoner_measurement_format"] = "nexus-1"
+
+            entry = handle.create_group("entry")
+            entry.attrs["NX_class"] = "NXentry"
+            entry.attrs["default"] = "data"
+            entry.attrs["measurement_save_mode"] = payload.save_mode
+
+            data_group = entry.create_group("data")
+            data_group.attrs["NX_class"] = "NXdata"
+            if payload.columns:
+                signal_name = self._dataset_name(payload.columns[1][0] if len(payload.columns) > 1 else payload.columns[0][0])
+                data_group.attrs["signal"] = signal_name
+                if len(payload.columns) > 1:
+                    data_group.attrs["axes"] = [self._dataset_name(payload.columns[0][0])]
+
+            used_names: set[str] = set()
+            for header, values in payload.columns:
+                name = self._unique_dataset_name(header, used_names)
+                dataset = data_group.create_dataset(
+                    name,
+                    data=np.asarray(values, dtype=float),
+                    maxshape=(None,),
+                    chunks=True,
+                )
+                label, units = self._split_header(header)
+                dataset.attrs["long_name"] = label
+                dataset.attrs["original_name"] = header
+                if units:
+                    dataset.attrs["units"] = units
+
+            metadata_group = entry.create_group("metadata")
+            metadata_group.attrs["NX_class"] = "NXcollection"
+            string_dtype = h5py.string_dtype(encoding="utf-8")
+            metadata_group.create_dataset(
+                "flattened",
+                data=np.asarray(payload.metadata, dtype=object),
+                dtype=string_dtype,
+            )
+
+    def append_data_rows(
+        self,
+        *,
+        dest: pathlib.Path,
+        payload: SavePayload,
+        start: int,
+        stop: int,
+    ) -> None:
+        try:
+            import h5py
+        except ImportError as exc:
+            raise RuntimeError(self.unavailable_reason()) from exc
+
+        if stop <= start:
+            return
+
+        with h5py.File(dest, "a") as handle:
+            data_group = handle["entry"]["data"]
+            used_names: set[str] = set()
+            for header, values in payload.columns:
+                name = self._unique_dataset_name(header, used_names)
+                dataset = data_group[name]
+                new_values = np.asarray(values[start:stop], dtype=float)
+                old_size = dataset.shape[0]
+                dataset.resize((old_size + len(new_values),))
+                dataset[old_size:] = new_values
+
+    def _unique_dataset_name(self, header: str, used_names: set[str]) -> str:
+        base = self._dataset_name(header)
+        name = base
+        counter = 1
+        while name in used_names:
+            name = f"{base}_{counter}"
+            counter += 1
+        used_names.add(name)
+        return name
+
+    def _dataset_name(self, header: str) -> str:
+        label, _units = self._split_header(header)
+        name = re.sub(r"\W+", "_", label).strip("_").lower()
+        return name or "data"
+
+    def _split_header(self, header: str) -> tuple[str, str]:
+        match = re.match(r"^(?P<label>.*)\s+\((?P<units>.*)\)$", header)
+        if match:
+            return match.group("label"), match.group("units")
+        return header, ""
+
+
+SAVE_WRITERS: dict[str, type[BaseSaveWriter]] = {
+    writer.format_id: writer
+    for writer in (
+        TdiSaveWriter,
+        NexusSaveWriter,
+    )
+}
 
 
 def _ensure_string_expr(text: str) -> str:
@@ -196,6 +415,10 @@ class SaveCommand(CommandPlugin):
             When ``True`` (the default) an existing file is never overwritten;
             instead a numeric suffix is appended to the stem until a free
             filename is found.
+        save_format (str):
+            Registered writer identifier for the output file format. Defaults
+            to ``"tdi"``. ``"nexus"`` writes a NeXus/HDF5 file when ``h5py`` is
+            available.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -226,6 +449,7 @@ class SaveCommand(CommandPlugin):
         self.trace_selection: dict[str, bool] = {}
         self.data_source: str = ""
         self.no_overwrite: bool = True
+        self.save_format: str = TdiSaveWriter.format_id
         self.incremental_save: bool = False
         self._incremental_files: dict[str, dict[str, str | int]] = {}
 
@@ -363,26 +587,35 @@ class SaveCommand(CommandPlugin):
         )
         if _save_mode == "data" and not columns:
             return
-        rows = self._build_rows(metadata=metadata, columns=columns)
+        payload = SavePayload(metadata=metadata, columns=columns, save_mode=_save_mode)
+        writer = self._writer()
 
-        if _save_mode == "data" and self.incremental_save:
+        if _save_mode == "data" and self.incremental_save and writer.supports_incremental:
             dest = self._write_incremental_data_rows(
-                metadata=metadata,
-                columns=columns,
-                rows=rows,
+                payload=payload,
+                writer=writer,
                 no_overwrite=_no_overwrite,
             )
         else:
             original = self._resolve_original_destination()
             dest = self._next_available_destination(original) if _no_overwrite else original
-            self._write_rows(dest=dest, rows=rows)
+            writer.write(dest=dest, payload=payload)
             if _save_mode == "data":
                 self._record_saved_file(
                     original=original,
                     dest=dest,
-                    data_rows=self._data_row_count(columns),
+                    data_rows=self._data_row_count(payload.columns),
                 )
         self.log.info("Data saved to %s", dest)
+
+    def _writer(self) -> BaseSaveWriter:
+        """Return the configured save writer instance."""
+        writer_cls = SAVE_WRITERS.get(self.save_format)
+        if writer_cls is None:
+            raise ValueError(f"Unknown save format {self.save_format!r}")
+        if not writer_cls.available():
+            raise RuntimeError(writer_cls.unavailable_reason())
+        return writer_cls()
 
     def _resolve_effective_options(
         self,
@@ -550,41 +783,18 @@ class SaveCommand(CommandPlugin):
                 self.log.debug("Failed to evaluate trace %r: %s", trace_key, exc)
         return columns
 
-    def _build_rows(
-        self,
-        *,
-        metadata: list[str],
-        columns: list[tuple[str, np.ndarray]],
-    ) -> list[list[str]]:
-        """Build row-wise TDI table data from metadata and numeric columns."""
-        header_row = ["TDI Format 2.0"] + [col[0] for col in columns]
-        max_data_len = max((len(col[1]) for col in columns), default=0)
-        n_rows = max(len(metadata), max_data_len)
-        rows: list[list[str]] = [header_row]
-        for i in range(n_rows):
-            meta_cell = metadata[i] if i < len(metadata) else ""
-            data_cells = [str(col[1][i]) if i < len(col[1]) else "" for col in columns]
-            rows.append([meta_cell] + data_cells)
-        return rows
-
-    def _write_rows(self, *, dest: pathlib.Path, rows: list[list[str]]) -> None:
-        """Write the tab-delimited TDI rows to *dest*."""
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        content = "\n".join("\t".join(row) for row in rows) + "\n"
-        dest.write_text(content, encoding="utf-8")
-
     def _write_incremental_data_rows(
         self,
         *,
-        metadata: list[str],
-        columns: list[tuple[str, np.ndarray]],
-        rows: list[list[str]],
+        payload: SavePayload,
+        writer: BaseSaveWriter,
         no_overwrite: bool,
     ) -> pathlib.Path:
         """Write or append data-mode rows according to the incremental save state."""
         original = self._resolve_original_destination()
         original_key = str(original)
         entry = self._incremental_files.get(original_key)
+        is_new_file = entry is None
         if entry is None:
             actual = self._next_available_destination(original) if no_overwrite else original
             entry = {"actual_filename": str(actual), "rows_saved": 0}
@@ -592,35 +802,16 @@ class SaveCommand(CommandPlugin):
 
         dest = pathlib.Path(str(entry["actual_filename"]))
         rows_saved = int(entry["rows_saved"])
-        meta_rows = len(metadata)
-        data_rows = self._data_row_count(columns)
+        meta_rows = len(payload.metadata)
+        data_rows = self._data_row_count(payload.columns)
 
-        if rows_saved < meta_rows:
-            self._write_rows(dest=dest, rows=rows)
+        if is_new_file or (writer.aligns_metadata_with_data_rows and rows_saved < meta_rows):
+            writer.write(dest=dest, payload=payload)
         elif data_rows > rows_saved:
-            self._append_data_rows(dest=dest, columns=columns, start=rows_saved, stop=data_rows)
+            writer.append_data_rows(dest=dest, payload=payload, start=rows_saved, stop=data_rows)
 
         entry["rows_saved"] = data_rows
         return dest
-
-    def _append_data_rows(
-        self,
-        *,
-        dest: pathlib.Path,
-        columns: list[tuple[str, np.ndarray]],
-        start: int,
-        stop: int,
-    ) -> None:
-        """Append data rows without metadata to an existing TDI file."""
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        lines = []
-        for i in range(start, stop):
-            data_cells = [str(col[1][i]) if i < len(col[1]) else "" for col in columns]
-            lines.append("\t".join([""] + data_cells))
-        if not lines:
-            return
-        with dest.open("a", encoding="utf-8") as handle:
-            handle.write("\n".join(lines) + "\n")
 
     def _record_saved_file(
         self,
@@ -691,8 +882,8 @@ class SaveCommand(CommandPlugin):
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a settings widget for the save command.
 
-        Displays controls for the output path expression, save mode
-        (``"traces"`` or ``"data"``), the no-overwrite flag, and
+        Displays controls for the output path expression, output file format,
+        save mode (``"traces"`` or ``"data"``), the no-overwrite flag, and
         mode-specific settings:
 
         * **Traces mode** — a scrollable list of per-trace checkboxes built
@@ -728,6 +919,7 @@ class SaveCommand(CommandPlugin):
         form = QFormLayout()
         self._build_path_form_row(widget, form)
         self._build_no_overwrite_row(widget, form)
+        self._build_format_selector(widget, form)
         mode_combo = self._build_mode_selector(widget, form)
         outer_layout.addLayout(form)
 
@@ -779,7 +971,7 @@ class SaveCommand(CommandPlugin):
                 widget,
                 "Save Data File",
                 start_dir,
-                "Text Files (*.txt);;All Files (*)",
+                self._writer_filter_string(),
             )
             if path:
                 p = pathlib.Path(path)
@@ -805,6 +997,11 @@ class SaveCommand(CommandPlugin):
         path_row.addWidget(browse_btn)
         form.addRow("Path expression:", path_row)
 
+    def _writer_filter_string(self) -> str:
+        """Return the QFileDialog filter string for registered save writers."""
+        filters = [writer.file_filter for writer in SAVE_WRITERS.values()]
+        return ";;".join(dict.fromkeys(filters))
+
     def _build_no_overwrite_row(self, widget: QWidget, form: QFormLayout) -> None:
         no_overwrite_check = QCheckBox(widget)
         no_overwrite_check.setChecked(self.no_overwrite)
@@ -818,6 +1015,32 @@ class SaveCommand(CommandPlugin):
 
         no_overwrite_check.stateChanged.connect(_apply_no_overwrite)
         form.addRow("Never overwrite:", no_overwrite_check)
+
+    def _build_format_selector(self, widget: QWidget, form: QFormLayout) -> QComboBox:
+        format_combo = QComboBox(widget)
+        for writer_id, writer_cls in SAVE_WRITERS.items():
+            label = writer_cls.label
+            if not writer_cls.available():
+                label = f"{label} (unavailable)"
+            format_combo.addItem(label, writer_id)
+            item_idx = format_combo.count() - 1
+            if not writer_cls.available():
+                format_combo.model().item(item_idx).setEnabled(False)
+                format_combo.setItemData(item_idx, writer_cls.unavailable_reason(), role=3)
+
+        current_idx = format_combo.findData(self.save_format)
+        if current_idx >= 0:
+            format_combo.setCurrentIndex(current_idx)
+        format_combo.setToolTip("Select the file format used for saved measurement data.")
+
+        def _apply_format(index: int) -> None:
+            writer_id = format_combo.itemData(index)
+            if writer_id:
+                self.save_format = writer_id
+
+        format_combo.currentIndexChanged.connect(_apply_format)
+        form.addRow("File format:", format_combo)
+        return format_combo
 
     def _build_mode_selector(self, widget: QWidget, form: QFormLayout) -> QComboBox:
         mode_combo = QComboBox(widget)
@@ -920,8 +1143,8 @@ class SaveCommand(CommandPlugin):
             (dict[str, Any]):
                 Base dict from :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
                 extended with ``"path_expr"``, ``"save_mode"``,
-                ``"trace_selection"``, ``"data_source"``, and
-                ``"no_overwrite"``.
+                ``"trace_selection"``, ``"data_source"``, ``"no_overwrite"``,
+                and ``"save_format"``.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -943,6 +1166,7 @@ class SaveCommand(CommandPlugin):
         d["trace_selection"] = self.trace_selection
         d["data_source"] = self.data_source
         d["no_overwrite"] = self.no_overwrite
+        d["save_format"] = self.save_format
         d["incremental_save"] = self.incremental_save
         return d
 
@@ -963,6 +1187,8 @@ class SaveCommand(CommandPlugin):
             self.data_source = data["data_source"]
         if "no_overwrite" in data:
             self.no_overwrite = bool(data["no_overwrite"])
+        if "save_format" in data:
+            self.save_format = str(data["save_format"])
         if "incremental_save" in data:
             self.incremental_save = bool(data["incremental_save"])
         self._incremental_files = {}

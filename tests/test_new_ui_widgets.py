@@ -281,6 +281,32 @@ class TestConsoleWidget:
         console = console_widget_module.ConsoleWidget()
         assert console.using_ipython_console is False
 
+    def test_ipython_shutdown_ignores_already_deleted_qt_wrappers(self, qapp):
+        from stoner_measurement.ui.console_widget import _IPythonConsoleWidget
+
+        deleted_message = "wrapped C/C++ object of type QtInProcessKernelClient has been deleted"
+
+        class _DeletedClient:
+            def stop_channels(self):
+                raise RuntimeError(deleted_message)
+
+        class _DeletedManager:
+            def shutdown_kernel(self):
+                raise RuntimeError(
+                    "wrapped C/C++ object of type QtInProcessKernelManager has been deleted"
+                )
+
+        console = _IPythonConsoleWidget.__new__(_IPythonConsoleWidget)
+        console._kernel_active = True
+        console._kernel_client = _DeletedClient()
+        console._kernel_manager = _DeletedManager()
+
+        console._shutdown_kernel()
+
+        assert console._kernel_active is False
+        assert console._kernel_client is None
+        assert console._kernel_manager is None
+
 
 class TestScriptTab:
     def test_creates_widget(self, qapp):

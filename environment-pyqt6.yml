@@ -13,6 +13,7 @@ dependencies:
   - platformdirs>=4.9
   - pyyaml>=6.0
   - pandas>=2.0
+  - h5py>=3.10
   - pyqt6>=6.7
   - pyqt6-sip
   - qtpy>=2.4

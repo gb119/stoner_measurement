@@ -40,6 +40,11 @@ except ImportError:
     _IPYTHON_CONSOLE_AVAILABLE = False
 
 
+def _is_deleted_qt_wrapper_error(exc: RuntimeError) -> bool:
+    """Return True for Qt wrapper errors caused by already-deleted C++ objects."""
+    return "wrapped C/C++ object" in str(exc) and "has been deleted" in str(exc)
+
+
 class _LegacyConsoleWidget(QWidget):
     """Read-only output area combined with a command-input line.
 
@@ -308,7 +313,10 @@ QToolTip {{
         def _shutdown_on_destroyed(*_args) -> None:
             widget = self_ref()
             if widget is not None:
-                widget._shutdown_kernel()
+                try:
+                    widget._shutdown_kernel()
+                except Exception:
+                    logger.debug("Failed to shut down in-process console kernel on destroy", exc_info=True)
 
         self.destroyed.connect(_shutdown_on_destroyed)
 
@@ -432,10 +440,23 @@ QToolTip {{
         if not self._kernel_active:
             return
         self._kernel_active = False
+        kernel_client = self._kernel_client
+        kernel_manager = self._kernel_manager
         try:
-            self._kernel_client.stop_channels()
+            kernel_client.stop_channels()
+        except RuntimeError as exc:
+            if not _is_deleted_qt_wrapper_error(exc):
+                raise
+            logger.debug("QtConsole kernel client was already deleted during shutdown")
+        try:
+            kernel_manager.shutdown_kernel()
+        except RuntimeError as exc:
+            if not _is_deleted_qt_wrapper_error(exc):
+                raise
+            logger.debug("QtConsole kernel manager was already deleted during shutdown")
         finally:
-            self._kernel_manager.shutdown_kernel()
+            self._kernel_client = None
+            self._kernel_manager = None
 
     def __del__(self) -> None:
         """Ensure in-process kernel channels are stopped on garbage collection."""

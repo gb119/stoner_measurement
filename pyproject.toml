@@ -27,6 +27,7 @@ dependencies = [
     "ipykernel>=6.0",
     "jupyter_client>=8.0",
     "pandas>=2.0",
+    "h5py>=3.10",
     "platformdirs>=4.9",
     "PyYAML>=6.0",
     "qtpy>=2.4",

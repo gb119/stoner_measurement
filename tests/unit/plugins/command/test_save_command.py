@@ -238,17 +238,22 @@ class TestSaveCommand:
     def test_default_incremental_save_false(self, qapp):
         assert SaveCommand().incremental_save is False
 
+    def test_default_save_format_tdi(self, qapp):
+        assert SaveCommand().save_format == "tdi"
+
     def test_to_json_includes_new_fields(self, qapp):
         cmd = SaveCommand()
         cmd.save_mode = "data"
         cmd.data_source = "my_state"
         cmd.no_overwrite = False
         cmd.incremental_save = True
+        cmd.save_format = "nexus"
         d = cmd.to_json()
         assert d["save_mode"] == "data"
         assert d["data_source"] == "my_state"
         assert d["no_overwrite"] is False
         assert d["incremental_save"] is True
+        assert d["save_format"] == "nexus"
         assert "trace_selection" in d
 
     def test_restore_from_json_new_fields(self, qapp):
@@ -259,6 +264,7 @@ class TestSaveCommand:
         cmd.data_source = "ctrl"
         cmd.no_overwrite = False
         cmd.incremental_save = True
+        cmd.save_format = "nexus"
         cmd.trace_selection = {"dummy:Dummy": False}
         restored = BasePlugin.from_json(cmd.to_json())
         assert isinstance(restored, SaveCommand)
@@ -266,7 +272,13 @@ class TestSaveCommand:
         assert restored.data_source == "ctrl"
         assert restored.no_overwrite is False
         assert restored.incremental_save is True
+        assert restored.save_format == "nexus"
         assert restored.trace_selection == {"dummy:Dummy": False}
+
+    def test_registered_save_writers_include_tdi_and_nexus(self, qapp):
+        from stoner_measurement.plugins.command.save import SAVE_WRITERS
+
+        assert set(SAVE_WRITERS) >= {"tdi", "nexus"}
 
     # ------------------------------------------------------------------
     # No-overwrite behaviour
@@ -303,6 +315,213 @@ class TestSaveCommand:
         text = out_file.read_text(encoding="utf-8")
         assert "TDI Format 2.0" in text
         assert "sentinel" not in text
+
+    def test_execute_nexus_without_h5py_raises_clear_error(self, qapp, engine, tmp_path):
+        from stoner_measurement.plugins.command.save import NexusSaveWriter
+
+        if NexusSaveWriter.available():
+            pytest.skip("h5py is installed; missing dependency path is not active")
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.save_format = "nexus"
+        cmd.path_expr = repr(str(tmp_path / "out.nxs"))
+
+        with pytest.raises(RuntimeError, match="h5py"):
+            cmd.execute()
+
+    def test_execute_nexus_writes_nexus_layout_with_h5py(self, qapp, engine, tmp_path, monkeypatch):
+        import sys
+        import types
+
+        written_roots = []
+        files = {}
+
+        class _FakeDataset:
+            def __init__(self, data, **kwargs):
+                self.data = list(data)
+                self.attrs = {}
+                self.kwargs = kwargs
+
+            @property
+            def shape(self):
+                return (len(self.data),)
+
+            def resize(self, shape):
+                new_size = shape[0]
+                if new_size < len(self.data):
+                    self.data = self.data[:new_size]
+                else:
+                    self.data.extend([0.0] * (new_size - len(self.data)))
+
+            def __setitem__(self, key, values):
+                if isinstance(key, slice):
+                    start = key.start or 0
+                    for offset, value in enumerate(values):
+                        self.data[start + offset] = value
+                else:
+                    self.data[key] = values
+
+        class _FakeGroup:
+            def __init__(self):
+                self.attrs = {}
+                self.groups = {}
+                self.datasets = {}
+
+            def __getitem__(self, key):
+                if key in self.groups:
+                    return self.groups[key]
+                return self.datasets[key]
+
+            def create_group(self, name):
+                group = _FakeGroup()
+                self.groups[name] = group
+                return group
+
+            def create_dataset(self, name, data, **kwargs):
+                dataset = _FakeDataset(data, **kwargs)
+                self.datasets[name] = dataset
+                return dataset
+
+        class _FakeFile(_FakeGroup):
+            def __init__(self, path, mode):
+                root = files.get(path)
+                if mode == "w" or root is None:
+                    root = _FakeGroup()
+                    files[path] = root
+                self.__dict__ = root.__dict__
+                self.path = path
+                self.mode = mode
+
+            def __enter__(self):
+                written_roots.append(self)
+                return self
+
+            def __exit__(self, *_exc_info):
+                return False
+
+        fake_h5py = types.SimpleNamespace(
+            File=_FakeFile,
+            string_dtype=lambda *, encoding: str,
+        )
+        monkeypatch.setitem(sys.modules, "h5py", fake_h5py)
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.save_format = "nexus"
+        cmd.path_expr = repr(str(tmp_path / "out.nxs"))
+
+        cmd.execute()
+
+        root = written_roots[0]
+        entry = root.groups["entry"]
+        data = entry.groups["data"]
+        metadata = entry.groups["metadata"]
+        assert root.attrs["file_format"] == "NeXus"
+        assert entry.attrs["NX_class"] == "NXentry"
+        assert data.attrs["NX_class"] == "NXdata"
+        assert metadata.attrs["NX_class"] == "NXcollection"
+        assert "flattened" in metadata.datasets
+        assert all(dataset.kwargs["maxshape"] == (None,) for dataset in data.datasets.values())
+        assert all(dataset.kwargs["chunks"] is True for dataset in data.datasets.values())
+
+    def test_incremental_nexus_appends_resizable_datasets(self, qapp, engine, tmp_path, monkeypatch):
+        import sys
+        import types
+
+        import pandas as pd
+
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        files = {}
+
+        class _FakeDataset:
+            def __init__(self, data, **kwargs):
+                self.data = list(data)
+                self.attrs = {}
+                self.kwargs = kwargs
+                self.resize_calls = []
+
+            @property
+            def shape(self):
+                return (len(self.data),)
+
+            def resize(self, shape):
+                self.resize_calls.append(shape)
+                new_size = shape[0]
+                self.data.extend([0.0] * (new_size - len(self.data)))
+
+            def __setitem__(self, key, values):
+                start = key.start or 0
+                for offset, value in enumerate(values):
+                    self.data[start + offset] = float(value)
+
+        class _FakeGroup:
+            def __init__(self):
+                self.attrs = {}
+                self.groups = {}
+                self.datasets = {}
+
+            def __getitem__(self, key):
+                if key in self.groups:
+                    return self.groups[key]
+                return self.datasets[key]
+
+            def create_group(self, name):
+                group = _FakeGroup()
+                self.groups[name] = group
+                return group
+
+            def create_dataset(self, name, data, **kwargs):
+                dataset = _FakeDataset(data, **kwargs)
+                self.datasets[name] = dataset
+                return dataset
+
+        class _FakeFile(_FakeGroup):
+            def __init__(self, path, mode):
+                root = files.get(path)
+                if mode == "w" or root is None:
+                    root = _FakeGroup()
+                    files[path] = root
+                self.__dict__ = root.__dict__
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc_info):
+                return False
+
+        fake_h5py = types.SimpleNamespace(
+            File=_FakeFile,
+            string_dtype=lambda *, encoding: str,
+        )
+        monkeypatch.setitem(sys.modules, "h5py", fake_h5py)
+
+        counter = CounterPlugin()
+        engine.add_plugin("counter", counter)
+        counter._data = pd.DataFrame([{"value": 1.0}, {"value": 2.0}])  # noqa: SLF001
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.save_format = "nexus"
+        cmd.save_mode = "data"
+        cmd.data_source = "counter"
+        cmd.incremental_save = True
+        out_file = tmp_path / "out.nxs"
+        cmd.path_expr = repr(str(out_file))
+
+        cmd.execute()
+        counter._data = pd.DataFrame(  # noqa: SLF001
+            [{"value": 1.0}, {"value": 2.0}, {"value": 3.0}, {"value": 4.0}]
+        )
+        cmd.execute()
+
+        root = files[out_file]
+        data = root.groups["entry"].groups["data"]
+        assert data.datasets["index"].data == [0.0, 1.0, 2.0, 3.0]
+        assert data.datasets["value"].data == [1.0, 2.0, 3.0, 4.0]
+        assert data.datasets["index"].resize_calls == [(4,)]
+        assert data.datasets["value"].resize_calls == [(4,)]
 
     # ------------------------------------------------------------------
     # Trace selection
