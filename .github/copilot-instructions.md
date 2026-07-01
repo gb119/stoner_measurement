@@ -60,6 +60,7 @@ modules:
 
 For end-user documentation docstrings on concrete classes in the plugins hierarchy, do the
 following:
+
 - Start with a description of the purpose of the plugin aimed at the end user doing
   measurements.
 - Describe the configuration tabs and options for the end-user audience.
@@ -68,6 +69,7 @@ following:
 - Give examples of interacting with the plugin via the console.
 
 For public classes, methods, and functions, do the following:
+
 - Use ``Args:`` for positional arguments.
 - Use ``Keyword Parameters:`` for keyword arguments.
 - Format parameters as ``name (type):`` followed by an indented description.
@@ -84,11 +86,13 @@ For public classes, methods, and functions, do the following:
   ``__init__`` docstring.
 
 For private methods and functions:
+
 - If used outside the immediate scope (e.g. by subclasses or other modules),
   document them like public APIs.
 - Otherwise, only the summary is required; other sections are optional.
 
 For module docstrings:
+
 - Include a brief overview of the module contents and their common themes.
 
 ## Code formatting
@@ -113,6 +117,7 @@ Group imports in this order:
 - imports from within this package, including relative imports
 
 Within each group, do the following:
+
 - sort imports alphabetically.
 - combine imports from the same module where practical
 

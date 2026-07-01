@@ -1,27 +1,29 @@
-﻿              Yes. I went through the computer interface sections of the manual (Chapter 5) and extracted the structure of the remote programming interface.
+# Lake Shore Model 625 Remote Programming Notes
 
 ## Overview
 
-The Lake Shore Model 625 uses a proprietary ASCII command language rather than SCPI, although it adopts many IEEE-488.2 common commands (e.g. `*IDN?`, `*RST`, `*CLS`, `*STB?`). The same command set is available over both:
+The Lake Shore Model 625 uses a proprietary ASCII command language rather than SCPI, although it adopts many
+IEEE-488.2 common commands (e.g. `*IDN?`, `*RST`, `*CLS`, `*STB?`). The same command set is available over both:
 
 * IEEE-488 (GPIB)
 * RS-232 serial
 
-Consequently, software written for one interface generally works unchanged on the other apart from the communications layer.
+Consequently, software written for one interface generally works unchanged on the other apart from the communications
+layer.
 
 ---
 
-# Communication
+## Communication
 
-## Interfaces
+### Interfaces
 
-**GPIB**
+#### GPIB
 
 * IEEE-488.2 compliant
 * Supports remote/local operation
 * Supports SRQ (Service Request)
 
-**Serial**
+#### Serial
 
 * RS-232C
 * 9600, 19200, 38400 or 57600 baud
@@ -30,7 +32,7 @@ Consequently, software written for one interface generally works unchanged on th
 
 ---
 
-# Command syntax
+## Command syntax
 
 Commands are simple ASCII keywords.
 
@@ -56,11 +58,13 @@ Multiple commands may be sent in one message using semicolons:
 RATE 0.5;RATE?
 ```
 
-Responses are terminated by the interface terminator (CR/LF depending on interface configuration). Commands are case-insensitive. Correct spelling and spacing are important—invalid commands are simply ignored rather than generating syntax errors.
+Responses are terminated by the interface terminator (CR/LF depending on interface configuration). Commands are
+case-insensitive. Correct spelling and spacing are important; invalid commands are simply ignored rather than
+generating syntax errors.
 
 ---
 
-# IEEE-488.2 Common Commands
+## IEEE-488.2 Common Commands
 
 The instrument supports the standard IEEE-488.2 commands expected by VISA software.
 
@@ -82,11 +86,11 @@ These make the instrument straightforward to integrate with PyVISA or LabVIEW.
 
 ---
 
-# Instrument-specific commands
+## Instrument-specific commands
 
 The proprietary commands fall into several logical groups.
 
-## Configuration
+### Configuration
 
 * `BAUD`
 * `IEEE`
@@ -99,7 +103,7 @@ These configure communications, display behaviour and keypad locking.
 
 ---
 
-## Output programming
+### Output programming
 
 Commands controlling the magnet current include:
 
@@ -123,7 +127,7 @@ RSEGS
 
 ---
 
-## Persistent switch heater
+### Persistent switch heater
 
 Dedicated commands control the persistent switch heater independently of the magnet current.
 
@@ -146,7 +150,7 @@ These configure:
 
 ---
 
-## Quench protection
+### Quench protection
 
 Commands configure internal quench detection:
 
@@ -159,7 +163,7 @@ These include enabling/disabling detection and configuring the current-step thre
 
 ---
 
-## Field conversion
+### Field conversion
 
 The instrument can display and report magnetic field rather than current using a stored calibration constant.
 
@@ -172,7 +176,7 @@ FLDS?
 
 ---
 
-## Measurement queries
+### Measurement queries
 
 The instrument provides readback commands for all important outputs.
 
@@ -187,7 +191,7 @@ These are the commands most commonly used during automated experiments.
 
 ---
 
-# Status system
+## Status system
 
 The Model 625 implements a structured status model similar to other IEEE-488 instruments.
 
@@ -214,11 +218,12 @@ OPSTR?
 OPSTE
 ```
 
-This allows software to poll or receive asynchronous notification of faults instead of repeatedly querying instrument state.
+This allows software to poll or receive asynchronous notification of faults instead of repeatedly querying instrument
+state.
 
 ---
 
-# Typical remote control workflow
+## Typical remote control workflow
 
 A typical automation sequence would be:
 
@@ -251,9 +256,9 @@ Return output to zero
 
 ---
 
-# Programming model
+## Programming model
 
-Unlike many laboratory instruments, the Model 625 does **not** use a hierarchical SCPI syntax such as
+Unlike many laboratory instruments, the Model 625 does **not** use a hierarchical SCPI syntax such as:
 
 ```text
 :SOUR:CURR
@@ -274,7 +279,7 @@ This makes the interface compact and easy to parse, but requires software to kno
 
 ---
 
-## Suitability for Python
+### Suitability for Python
 
 The interface is well suited to `pyvisa`:
 
@@ -288,6 +293,9 @@ current = float(ps.query("RDGI?"))
 voltage = float(ps.query("RDGV?"))
 ```
 
-The combination of IEEE-488.2 common commands, simple ASCII syntax, and dedicated readback commands makes the Model 625 relatively straightforward to automate despite its non-SCPI command set.
+The combination of IEEE-488.2 common commands, simple ASCII syntax, and dedicated readback commands makes the Model
+625 relatively straightforward to automate despite its non-SCPI command set.
 
-If your goal is similar to the Keithley document we created previously, I can also produce a **comprehensive LLM-oriented Markdown programming guide** for the Model 625, covering every command, the status architecture, safe operating sequences (including persistent switch handling), and Python programming patterns.
+If your goal is similar to the Keithley document we created previously, I can also produce a **comprehensive
+LLM-oriented Markdown programming guide** for the Model 625, covering every command, the status architecture, safe
+operating sequences (including persistent switch handling), and Python programming patterns.

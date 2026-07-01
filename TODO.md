@@ -35,8 +35,10 @@ on status bbar right hand side.
 6. Implement temperature stability as a table (Below T, tolerance, toleramce_sensor, time, stability_rate,
     stability_sensor, hold_off_time) - DONE NEEDS TESTING
 7. Related, make stability critiera use specific sensors. DONE NEEDS TESTING
-8. Lakeshore 625 - driver reads FLDS?/LIMIT? values from instrument for field-current constant and limits. DONE NEEDS HARDWARE TESTING
-9. Lakeshore 625 driver uses OPST? instead of invalid RDGST? and maps the documented operation-status bits. DONE NEEDS HARDWARE TESTING
+8. Lakeshore 625 - driver reads FLDS?/LIMIT? values from instrument for field-current constant and limits. DONE
+   NEEDS HARDWARE TESTING
+9. Lakeshore 625 driver uses OPST? instead of invalid RDGST? and maps the documented operation-status bits. DONE
+   NEEDS HARDWARE TESTING
 
 ## Partially done, needs more work
 
@@ -44,14 +46,21 @@ on status bbar right hand side.
 2. Restore docstring discussion of attributes for plugins - Partially DONE
 3. Hints on templating of Save Path in Save plugin - may be a dialog box riggered from context menu like the
    LabVIEW code had.
-   
- ## New Ideas
- 
- 1. The engines should attempt to auto-connect with persisted settings when a plugin requests that they do something that requires a connection. This should be logged as an info warning.
- 2. The engines should log reasons for disconnecting as info level or error level if not the result of user request. In the latter case they should atempt to auto-reconnect. If reconnection fails 5 times without a successful connection then engine should enter a failed state and require the user to reconnect via the panel. The failed state needs to be logged as an error.
- 3. The log window could do with a regexp filter as well that would allow finer-grained filtering of log entries of interest (e.g. comms traffic from a sepcific address or even a specific command). The failed state should be reflected in the statys bar indicators.
- 4. Right clicking on the status indicators for the engines in the status bar that would allow the engines to be stopped, (re)started, re/dis-connected.
- 
+
+## New Ideas
+
+1. The engines should attempt to auto-connect with persisted settings when a plugin requests something that requires
+   a connection. This should be logged as an info warning.
+2. The engines should log reasons for disconnecting as info level, or error level if not the result of user request.
+   In the latter case they should atempt to auto-reconnect. If reconnection fails 5 times without a successful
+   connection then engine should enter a failed state and require the user to reconnect via the panel. The failed
+   state needs to be logged as an error.
+3. The log window could do with a regexp filter as well that would allow finer-grained filtering of log entries of
+   interest, such as comms traffic from a sepcific address or even a specific command. The failed state should be
+   reflected in the statys bar indicators.
+4. Right clicking on the status indicators for the engines in the status bar should allow the engines to be stopped,
+   restarted, disconnected, or reconnected.
+
 ## Bugs
 
 1. Magnet controller panel should show the actual and target rates.

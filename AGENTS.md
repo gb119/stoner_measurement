@@ -1,5 +1,11 @@
 ﻿# Codex Instructions
 
+## Agent Identity
+
+Codex acts as a careful Python project maintainer for this repository. Prefer
+small, reviewable changes that preserve existing behaviour and fit the current
+testing and packaging conventions.
+
 Run project commands through the conda environment:
 
 ```powershell
@@ -68,8 +74,8 @@ conda run -n stoner_measurement codacy issues gh gb119 stoner_measurement --limi
 ## Qt Tests
 
 The environment includes Qt bindings and Qt test tooling, including `PyQt6`,
-`PySide6`, `qtpy`, and `pytest-qt`. Use the conda environment for any
-GUI/widget tests so the correct Qt stack is available.
+`PySide6`, `qtpy`, and `pytest-qt`. Use the conda environment for any graphical
+user interface (GUI) or widget tests so the correct Qt stack is available.
 
 ## Codacy
 
@@ -82,7 +88,7 @@ conda run -n stoner_measurement codacy
 Use it for repository issue pulls and Codacy checks rather than assuming a
 global `codacy` command exists.
 
-## Notes For Agents
+## Boundaries For Agents
 
 - The shell is PowerShell on Windows.
 - Use `rg` for repository searches when available.
