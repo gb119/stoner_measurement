@@ -410,7 +410,49 @@ Result:
 - Ruff checks passed for the command test area.
 - `tests/test_command_plugin.py` no longer exists.
 
+## Completed In Thirteenth Migration Pass
+
+- Split `tests/test_plugin_subtypes.py` into focused plugin-family files:
+  - `tests/unit/plugins/trace/test_trace_plugin.py`
+  - `tests/unit/plugins/state/test_state_control_plugin.py`
+  - `tests/unit/plugins/state/test_state_control_data_collection.py`
+  - `tests/unit/plugins/monitor/test_monitor_plugin.py`
+  - `tests/unit/plugins/transform/test_transform_plugin.py`
+  - `tests/unit/plugins/test_reported_outputs.py`
+- Preserved the small local test doubles inside the split files so the new
+  modules remain independently runnable from an IDE.
+- Removed the top-level `tests/test_plugin_subtypes.py` monolith after the
+  overlap run confirmed the moved coverage still passed.
+- Verified the tranche:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement python -m pytest tests\test_plugin_subtypes.py --tb=short
+conda run -n stoner_measurement python -m pytest tests\unit\plugins\trace\test_trace_plugin.py tests\unit\plugins\state\test_state_control_plugin.py tests\unit\plugins\state\test_state_control_data_collection.py tests\unit\plugins\monitor\test_monitor_plugin.py tests\unit\plugins\transform\test_transform_plugin.py tests\unit\plugins\test_reported_outputs.py tests\test_plugin_subtypes.py --tb=short
+conda run -n stoner_measurement python -m pytest --collect-only -q
+conda run -n stoner_measurement python -m ruff check tests\unit\plugins
+```
+
+Result:
+
+- Overlap run before deletion: 246 passed.
+- Split plugin test area after deletion: 123 passed.
+- Direct-file smoke test: `test_state_control_plugin.py` passed when run as a script.
+- Full collection: 2490 tests collected.
+- Ruff checks passed for the split plugin test area.
+
 ## Next Recommended Migration Batch
 
-1. Begin splitting `tests/test_instruments.py` into
-   `tests/unit/instruments/drivers/` once transport contracts are in place.
+1. Return to `tests/test_instruments.py`, starting with the SCPI driver
+   families under `tests/unit/instruments/drivers/`.
+2. Take one driver family at a time rather than all remaining instrument
+   classes together. The best first slice is:
+   - `TestKeithley2400`
+   - `TestKeithley24xxVariants`
+   - `TestKeithley2000`
+   - `TestKeithley2000Variants`
+   - `TestKeithley2182A`
+   - `TestKeithley2182Variants`
+3. Those groups already share the `_null(...)` transport helper and mostly test
+   self-contained SCPI command/query behavior, so they should move with less
+   fixture churn than the later Lakeshore/Oxford temperature-controller blocks.
