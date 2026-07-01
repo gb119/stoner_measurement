@@ -584,8 +584,6 @@ Result:
 - Full collection: 2490 tests collected.
 - Ruff checks passed for the split driver area and remaining monolith.
 
-## Next Recommended Migration Batch
-
 ## Completed In Eighteenth Migration Pass
 
 - Split the next adjacent instrument-core error-handling tranche out of
@@ -627,13 +625,86 @@ Result:
 - Full collection: 2490 tests collected.
 - Ruff checks passed for the contract area and remaining monolith.
 
+## Completed In Nineteenth Migration Pass
+
+- Split the next adjacent instrument-core tranche out of
+  `tests/test_instruments.py` into:
+  - `tests/unit/instruments/contracts/test_base_instrument_identity.py`
+  - `tests/unit/instruments/contracts/test_instrument_locking.py`
+- Moved the following legacy groups:
+  - `TestIdentityAndQueueClearing`
+  - `TestInstrumentLocking`
+- Kept the small local `_null(...)` and `_NullTransportWithEsb` helpers inside
+  the new identity-focused contract file so the modules remain directly
+  runnable from an IDE without test-package imports.
+- Trimmed the moved classes and now-unused imports out of
+  `tests/test_instruments.py`.
+- Verified the tranche:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts\test_base_instrument_identity.py tests\unit\instruments\contracts\test_instrument_locking.py tests\test_instruments.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\contracts tests\test_instruments.py
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts\test_base_instrument_identity.py tests\unit\instruments\contracts\test_instrument_locking.py --tb=short
+conda run -n stoner_measurement python tests\unit\instruments\contracts\test_base_instrument_identity.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Overlap run before trimming: 152 passed.
+- Split contract area after trimming: 15 passed.
+- Direct-file smoke test: `test_base_instrument_identity.py` passed when run
+  as a script.
+- Full collection: 2490 tests collected.
+- Ruff checks passed for the contract area and remaining monolith.
+
+## Completed In Twentieth Migration Pass
+
+- Split the adjacent temperature-controller contract tranche out of
+  `tests/test_instruments.py` into:
+  - `tests/unit/instruments/contracts/test_temperature_controller_contracts.py`
+- Moved the following legacy groups into that dedicated contract module:
+  - `TestTemperatureControllerCore`
+  - `TestTemperatureControllerEnums`
+  - `TestTemperatureControllerDataClasses`
+  - `TestTemperatureControllerComposite`
+  - `TestTemperatureControllerOptional`
+  - `TestTemperatureControllerExports`
+  - `TestZoneEntry`
+  - `TestZoneEntryOptionalAPI`
+- Folded the `ramp_to_setpoint` composite-method assertions into the same
+  temperature-controller contract module so the `_make_tc(...)` helper could
+  leave the top-level monolith entirely.
+- Trimmed the moved helper, classes, and now-unused temperature-controller
+  imports out of `tests/test_instruments.py`.
+- Verified the tranche:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts\test_temperature_controller_contracts.py tests\test_instruments.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\contracts tests\test_instruments.py
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts\test_temperature_controller_contracts.py --tb=short
+conda run -n stoner_measurement python tests\unit\instruments\contracts\test_temperature_controller_contracts.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Overlap run before/after trimming: 137 passed.
+- Split temperature-controller contract module: 70 passed.
+- Direct-file smoke test:
+  `test_temperature_controller_contracts.py` passed when run as a script.
+- Full collection: 2490 tests collected.
+- Ruff checks passed for the contract area and remaining monolith.
+
 ## Next Recommended Migration Batch
 
-1. Continue `tests/test_instruments.py` with the next adjacent
-   instrument-core tranche:
-   - `TestIdentityAndQueueClearing`
-   - `TestInstrumentLocking`
-2. This keeps the monolith shrinking in file order, and both groups still fit
-   naturally beside the base-instrument contract tests because they exercise
-   identity validation, shared lock keys, and queue-clearing behavior rather
-   than concrete drivers.
+1. Continue `tests/test_instruments.py` with the final adjacent tail:
+   - `TestLockInAmplifierExports`
+   - `TestOxfordMercuryIPS`
+2. That would leave the top-level file focused almost entirely on the abstract
+   instrument/protocol foundations, with the remaining concrete Oxford driver
+   tests moved into `tests/unit/instruments/drivers/` and the lock-in export
+   check either folded into an existing lock-in contract file or a tiny new
+   contract module.

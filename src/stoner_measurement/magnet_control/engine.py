@@ -51,7 +51,6 @@ from stoner_measurement.qt_compat import pyqtSlot
 if TYPE_CHECKING:
     from stoner_measurement.instruments.magnet_controller import (
         MagnetController,
-        MagnetLimits,
     )
     from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.transport.base import BaseTransport

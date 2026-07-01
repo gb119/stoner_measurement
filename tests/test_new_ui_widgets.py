@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 from stoner_measurement.app import (
     _STATUS_BACKGROUND_DEFAULT_COLOR,
@@ -296,7 +297,7 @@ class TestConsoleWidget:
                     "wrapped C/C++ object of type QtInProcessKernelManager has been deleted"
                 )
 
-        console = _IPythonConsoleWidget.__new__(_IPythonConsoleWidget)
+        console = cast(Any, _IPythonConsoleWidget).__new__(_IPythonConsoleWidget)
         console._kernel_active = True
         console._kernel_client = _DeletedClient()
         console._kernel_manager = _DeletedManager()
@@ -512,11 +513,11 @@ class TestMeasurementApp:
                 ("Idle", _STATUS_BACKGROUND_DEFAULT_COLOR),
                 ("Stopped", _STATUS_BACKGROUND_DEFAULT_COLOR),
             ]
-            for status, colour in expected:
+            for status, expected_colour in expected:
                 app._engine.status_changed.emit(status)
                 qapp.processEvents()
                 assert app.statusBar().currentMessage() == status
-                assert f"background-color: {colour};" in app.statusBar().styleSheet()
+                assert f"background-color: {expected_colour};" in app.statusBar().styleSheet()
         finally:
             app._engine.shutdown()
 

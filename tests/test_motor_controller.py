@@ -18,8 +18,14 @@ from stoner_measurement.instruments.transport import NullTransport
 
 
 def test_motor_controller_is_abstract():
+    abstract_init = MotorController.__dict__["__init__"]
+
     with pytest.raises(TypeError):
-        MotorController(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+        type(
+            "IncompleteMotorController",
+            (MotorController,),
+            {"__init__": abstract_init},
+        )(NullTransport(), ScpiProtocol())
 
 
 def test_resolve_relative_motor_move_uses_documented_soft_limit_algorithm():
