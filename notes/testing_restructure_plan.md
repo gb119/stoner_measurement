@@ -1,4 +1,4 @@
-# Testing Restructure Plan
+﻿# Testing Restructure Plan
 
 This is the historical migration log for the test-suite restructure. Durable
 test layout and philosophy guidance lives in `notes/testing_guidelines.md`.
@@ -441,18 +441,87 @@ Result:
 - Full collection: 2490 tests collected.
 - Ruff checks passed for the split plugin test area.
 
+## Completed In Fourteenth Migration Pass
+
+- Split the first SCPI driver tranche out of `tests/test_instruments.py` into:
+  - `tests/unit/instruments/drivers/test_keithley_2400.py`
+  - `tests/unit/instruments/drivers/test_keithley_2000.py`
+  - `tests/unit/instruments/drivers/test_keithley_2182a.py`
+- Moved the following legacy groups:
+  - `TestKeithley2400`
+  - `TestKeithley24xxVariants`
+  - `TestKeithley2000`
+  - `TestKeithley2000Variants`
+  - `TestKeithley2182A`
+  - `TestKeithley2182Variants`
+- Kept the small `_null(...)` helper local to each split file so the modules
+  remain directly runnable from an IDE without depending on package-style test
+  imports.
+- Trimmed the moved imports and classes out of `tests/test_instruments.py`.
+- Verified the tranche:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\drivers\test_keithley_2400.py tests\unit\instruments\drivers\test_keithley_2000.py tests\unit\instruments\drivers\test_keithley_2182a.py tests\test_instruments.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\drivers tests\test_instruments.py
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\drivers\test_keithley_2400.py tests\unit\instruments\drivers\test_keithley_2000.py tests\unit\instruments\drivers\test_keithley_2182a.py --tb=short
+conda run -n stoner_measurement python tests\unit\instruments\drivers\test_keithley_2000.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Overlap run before trimming: 473 passed.
+- Split driver area after trimming: 63 passed.
+- Direct-file smoke test: `test_keithley_2000.py` passed when run as a script.
+- Full collection: 2490 tests collected.
+- Ruff checks passed for the split driver area and remaining monolith.
+
+## Completed In Fifteenth Migration Pass
+
+- Split the next focused instrument tranche out of `tests/test_instruments.py`
+  into:
+  - `tests/unit/instruments/drivers/test_srs830.py`
+  - `tests/unit/instruments/drivers/test_lakeshore_m81_lockin.py`
+  - `tests/unit/instruments/drivers/test_keithley_6221.py`
+- Moved the following legacy groups:
+  - `TestSRS830`
+  - `TestLakeshoreM81LockIn`
+  - `TestKeithley6221`
+- Kept the small `_null(...)` helper local to each split file so the modules
+  remain directly runnable from an IDE without depending on package-style test
+  imports.
+- Treated `TestSRS830` as its own focused lock-in slice because the SR830 is
+  not SCPI-based in the same sense as the other two moved classes, while
+  `LakeshoreM81LockIn` and `Keithley6221` remain straightforward SCPI driver
+  migrations.
+- Trimmed the moved imports and classes out of `tests/test_instruments.py`.
+- Verified the tranche:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\drivers\test_srs830.py tests\unit\instruments\drivers\test_lakeshore_m81_lockin.py tests\unit\instruments\drivers\test_keithley_6221.py tests\test_instruments.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\drivers tests\test_instruments.py
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\drivers\test_srs830.py tests\unit\instruments\drivers\test_lakeshore_m81_lockin.py tests\unit\instruments\drivers\test_keithley_6221.py --tb=short
+conda run -n stoner_measurement python tests\unit\instruments\drivers\test_srs830.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Overlap run before trimming: 406 passed.
+- Split driver area after trimming: 59 passed.
+- Direct-file smoke test: `test_srs830.py` passed when run as a script.
+- Full collection: 2490 tests collected.
+- Ruff checks passed for the split driver area and remaining monolith.
+
 ## Next Recommended Migration Batch
 
-1. Return to `tests/test_instruments.py`, starting with the SCPI driver
-   families under `tests/unit/instruments/drivers/`.
-2. Take one driver family at a time rather than all remaining instrument
-   classes together. The best first slice is:
-   - `TestKeithley2400`
-   - `TestKeithley24xxVariants`
-   - `TestKeithley2000`
-   - `TestKeithley2000Variants`
-   - `TestKeithley2182A`
-   - `TestKeithley2182Variants`
-3. Those groups already share the `_null(...)` transport helper and mostly test
-   self-contained SCPI command/query behavior, so they should move with less
-   fixture churn than the later Lakeshore/Oxford temperature-controller blocks.
+1. Continue `tests/test_instruments.py` with the next adjacent self-contained
+   driver tranche:
+   - `TestKeithleyElectrometers`
+   - `TestLakeshoreM81CurrentSource`
+   - `TestLakeshore625`
+2. This keeps momentum in the remaining driver-heavy section of the monolith
+   before moving on to the larger temperature, magnet, and higher-behaviour
+   integration-style blocks.
