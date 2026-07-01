@@ -3,3 +3,12 @@ engines:
   bandit:
     exclude_paths:
       - tests/
+  prospector:
+    exclude_paths:
+      - tests/
+  pylint:
+    exclude_paths:
+      - tests/
+  semgrep:
+    exclude_paths:
+      - tests/
