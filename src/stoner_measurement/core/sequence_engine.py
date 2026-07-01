@@ -44,6 +44,7 @@ import linecache
 import logging
 import queue
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -71,12 +72,11 @@ ROOT_LOGGER_NAME = "stoner_measurement"
 #: the name of the ``log`` object injected into the sequence namespace.
 SEQUENCE_LOGGER_NAME = "stoner_measurement.sequence"
 
-#: Regex that matches (and removes) the ``# __SM_{n}__`` line-map marker comments
-#: embedded in generated sequence code before Black formatting.
-_SM_MARKER_STRIP_RE = re.compile(r"\s*#\s*__SM_\d+__")
+#: Regex that captures a standalone ``# __SM_{n}__`` line-map marker.
+_SM_MARKER_LINE_RE = re.compile(r"^\s*#\s*__SM_(\d+)__\s*$")
 
-#: Regex that captures the marker index from a ``# __SM_{n}__`` comment.
-_SM_MARKER_FIND_RE = re.compile(r"#\s*__SM_(\d+)__")
+#: Regex that captures the standalone marker ending generated action ownership.
+_SM_MARKER_END_RE = re.compile(r"^\s*#\s*__SM_END__\s*$")
 _DEFAULT_PLOT_READY_TIMEOUT_SECONDS = 5.0
 _DEFAULT_PLOT_READY_POLL_SECONDS = 0.01
 
@@ -1743,17 +1743,15 @@ class SequenceEngine(QObject):
         lines.append("try:")
 
         if return_line_map:
-            # Embed unique markers in action lines so the line_map can be
-            # rebuilt after black reformatting.  Markers are inline comments of
-            # the form ``# __SM_{idx}__`` appended to the relevant line.  We
-            # strip them from the final output after reconstructing the map.
-            # The bounds check guards against trailing blank lines that were
-            # trimmed from action_lines after action_line_owner was built.
-            for idx in action_line_owner:
-                if idx < len(action_lines) and action_lines[idx].strip():
-                    action_lines[idx] = action_lines[idx] + f"  # __SM_{idx}__"
+            # Add standalone ownership markers before each contiguous run of
+            # action lines owned by the same plugin.  These survive Black, but
+            # unlike inline markers they cannot invalidate valid continuation
+            # syntax such as backslash-continued expressions.
+            action_lines = self._add_line_map_markers(action_lines, action_line_owner)
 
         lines.extend(action_lines)
+        if return_line_map:
+            lines.append("    # __SM_END__")
         lines.append("finally:")
         disconnect_lines = [
             f"    {plugin.instance_name}.disconnect()"
@@ -1774,6 +1772,36 @@ class SequenceEngine(QObject):
 
         code, line_map = self._rebuild_line_map(code, action_line_owner)
         return code, line_map
+
+    def _add_line_map_markers(
+        self,
+        action_lines: list[str],
+        action_line_owner: dict[int, BasePlugin],
+    ) -> list[str]:
+        """Insert standalone line-map markers before contiguous owner runs.
+
+        Args:
+            action_lines (list[str]):
+                Generated action-phase source lines.
+            action_line_owner (dict[int, BasePlugin]):
+                Maps original action-line index to the responsible plugin.
+
+        Returns:
+            (list[str]):
+                Action lines with standalone ``__SM_`` marker comments added.
+        """
+        marked_lines: list[str] = []
+        current_owner: BasePlugin | None = None
+        for idx, line in enumerate(action_lines):
+            owner = action_line_owner.get(idx)
+            if owner is None:
+                current_owner = None
+            elif owner is not current_owner:
+                indent = line[: len(line) - len(line.lstrip())]
+                marked_lines.append(f"{indent}# __SM_{idx}__")
+                current_owner = owner
+            marked_lines.append(line)
+        return marked_lines
 
     def _collect_plugins_from_steps(
         self,
@@ -1952,7 +1980,7 @@ class SequenceEngine(QObject):
         return action_lines, action_line_owner
 
     def _format_with_black(self, code: str) -> str:
-        """Format *code* with black if available, returning the original on failure.
+        """Format *code* with Black, falling back to Ruff if Black fails.
 
         Args:
             code (str):
@@ -1960,20 +1988,103 @@ class SequenceEngine(QObject):
 
         Returns:
             (str):
-                Black-formatted source, or the original *code* if black is not
+                Formatted source, or the original *code* if formatters are not
                 installed or formatting fails.
         """
+        code_to_format = self._normalise_backslash_continuations(code)
         try:
             import black
 
-            return black.format_str(code, mode=black.Mode(line_length=199))
-        except ImportError:
-            pass
-        except ValueError:
+            return black.format_str(code_to_format, mode=black.Mode(line_length=199))
+        except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             logging.getLogger(SEQUENCE_LOGGER_NAME).warning(
-                "black formatting failed; using unformatted code", exc_info=True
+                "black formatting failed; trying ruff format fallback", exc_info=True
             )
+        ruff_formatted = self._format_with_ruff(code_to_format)
+        if ruff_formatted is not None:
+            return ruff_formatted
+        logging.getLogger(SEQUENCE_LOGGER_NAME).warning("generated code formatting failed; using unformatted code")
         return code
+
+    def _format_with_ruff(self, code: str) -> str | None:
+        """Format *code* with ``ruff format`` via the current Python environment.
+
+        Args:
+            code (str):
+                Python source code to format.
+
+        Returns:
+            (str | None):
+                Ruff-formatted source, or ``None`` if Ruff is unavailable or
+                reports a formatting error.
+        """
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "ruff",
+                    "format",
+                    "--stdin-filename",
+                    "generated_sequence.py",
+                    "-",
+                ],
+                input=code,
+                capture_output=True,
+                check=False,
+                encoding="utf-8",
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            logging.getLogger(SEQUENCE_LOGGER_NAME).warning("ruff format fallback failed", exc_info=True)
+            return None
+        if result.returncode != 0:
+            logging.getLogger(SEQUENCE_LOGGER_NAME).warning(
+                "ruff format fallback failed: %s", result.stderr.strip()
+            )
+            return None
+        return result.stdout
+
+    def _normalise_backslash_continuations(self, code: str) -> str:
+        """Convert simple explicit line continuations to parentheses for Black.
+
+        Black refuses some syntactically valid explicit-backslash continuations.
+        Generated plugin snippets occasionally contain them, so this fallback
+        wraps the continued expression in parentheses and lets Black handle the
+        final layout.
+
+        Args:
+            code (str):
+                Python source code to normalise.
+
+        Returns:
+            (str):
+                Source code with simple explicit continuations parenthesised.
+        """
+        lines = code.splitlines()
+        normalised: list[str] = []
+        continuation_indent: str | None = None
+
+        for line in lines:
+            stripped_right = line.rstrip()
+            if stripped_right.endswith("\\"):
+                base = stripped_right[:-1].rstrip()
+                if continuation_indent is None:
+                    continuation_indent = base[: len(base) - len(base.lstrip())]
+                    normalised.append(f"{base} (")
+                else:
+                    normalised.append(base)
+                continue
+
+            normalised.append(line)
+            if continuation_indent is not None:
+                normalised.append(f"{continuation_indent})")
+                continuation_indent = None
+
+        if continuation_indent is not None:
+            normalised.append(f"{continuation_indent})")
+
+        return "\n".join(normalised) + ("\n" if code.endswith("\n") else "")
 
     def _rebuild_line_map(
         self,
@@ -1982,8 +2093,8 @@ class SequenceEngine(QObject):
     ) -> tuple[str, dict[int, BasePlugin]]:
         """Rebuild a line-number → plugin map from embedded ``__SM_`` markers.
 
-        Black preserves inline comments, so markers survive formatting even if
-        line numbers shift.  After the map is built the markers are stripped
+        Black preserves standalone comments, so markers survive formatting even
+        if line numbers shift.  After the map is built the markers are stripped
         from the returned code string.
 
         Args:
@@ -1999,11 +2110,18 @@ class SequenceEngine(QObject):
                 Mapping of 1-based line numbers to plugin instances.
         """
         line_map: dict[int, BasePlugin] = {}
-        for lineno_0, line_content in enumerate(code.splitlines()):
-            m = _SM_MARKER_FIND_RE.search(line_content)
-            if m:
-                orig_idx = int(m.group(1))
-                if orig_idx in action_line_owner:
-                    line_map[lineno_0 + 1] = action_line_owner[orig_idx]
-        code = _SM_MARKER_STRIP_RE.sub("", code)
-        return code, line_map
+        output_lines: list[str] = []
+        current_owner: BasePlugin | None = None
+        for line_content in code.splitlines():
+            marker = _SM_MARKER_LINE_RE.match(line_content)
+            if marker:
+                current_owner = action_line_owner.get(int(marker.group(1)))
+                continue
+            if _SM_MARKER_END_RE.match(line_content):
+                current_owner = None
+                continue
+
+            output_lines.append(line_content)
+            if current_owner is not None and line_content.strip():
+                line_map[len(output_lines)] = current_owner
+        return "\n".join(output_lines) + ("\n" if code.endswith("\n") else ""), line_map

@@ -32,6 +32,7 @@ requirements:
     - pyqtgraph >=0.13
     - numpy >=2.0
     -  qtconsole >=5.5
+    - pathspec >=1.1.1
     - scipy >=1.17.1
     - pylablib>=1.4
     - pyserial>=3.5

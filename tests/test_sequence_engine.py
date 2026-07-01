@@ -401,6 +401,30 @@ class TestCodeGeneration:
         assert plugin_a in attributed_plugins
         assert plugin_b in attributed_plugins
 
+    def test_return_line_map_formats_backslash_continuation_code(self, engine):
+        class BackslashContinuationPlugin(DummyPlugin):
+            def generate_action_code(self, indent, sub_steps, render_sub_step):
+                prefix = "    " * indent
+                continuation = prefix + "total = values[0] + \\"
+                return [
+                    prefix + "values=[1,2,3]",
+                    continuation,
+                    prefix + "    values[1] + values[2]",
+                    prefix + "result   =   total",
+                ]
+
+        plugin = BackslashContinuationPlugin()
+        code, line_map = engine.generate_sequence_code(
+            [plugin], {"dummy": plugin}, return_line_map=True
+        )
+
+        assert "values = [1, 2, 3]" in code
+        assert "result = total" in code
+        assert "result   =   total" not in code
+        assert "__SM_" not in code
+        assert line_map
+        compile(code, "<test>", "exec")
+
     def test_phase0_instantiation_imports_emitted(self, engine):
         """Phase 0 should include the BasePlugin import."""
         plugin = DummyPlugin()
