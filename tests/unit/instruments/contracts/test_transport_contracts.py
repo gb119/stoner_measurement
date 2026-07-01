@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 from stoner_measurement.instruments.transport import BaseTransport, NullTransport
 
-
 TransportFactory = Callable[[list[bytes] | None], BaseTransport]
 
 

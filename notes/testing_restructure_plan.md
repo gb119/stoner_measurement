@@ -515,13 +515,125 @@ Result:
 - Full collection: 2490 tests collected.
 - Ruff checks passed for the split driver area and remaining monolith.
 
+## Completed In Sixteenth Migration Pass
+
+- Split the next adjacent driver tranche out of `tests/test_instruments.py`
+  into:
+  - `tests/unit/instruments/drivers/test_keithley_electrometers.py`
+  - `tests/unit/instruments/drivers/test_lakeshore_m81_current_source.py`
+  - `tests/unit/instruments/drivers/test_lakeshore_625.py`
+- Moved the following legacy groups:
+  - `TestKeithleyElectrometers`
+  - `TestLakeshoreM81CurrentSource`
+  - `TestLakeshore625`
+- Kept the small local `_null(...)` helper in each split file so the new
+  modules remain directly runnable from an IDE without depending on test
+  package imports.
+- Trimmed the moved imports and classes out of `tests/test_instruments.py`.
+- Verified the tranche:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\drivers\test_keithley_electrometers.py tests\unit\instruments\drivers\test_lakeshore_m81_current_source.py tests\unit\instruments\drivers\test_lakeshore_625.py tests\test_instruments.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\drivers tests\test_instruments.py
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\drivers\test_keithley_electrometers.py tests\unit\instruments\drivers\test_lakeshore_m81_current_source.py tests\unit\instruments\drivers\test_lakeshore_625.py --tb=short
+conda run -n stoner_measurement python tests\unit\instruments\drivers\test_keithley_electrometers.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Overlap run before trimming: 288 passed.
+- Split driver area after trimming: 48 passed.
+- Direct-file smoke test: `test_keithley_electrometers.py` passed when run as
+  a script.
+- Full collection: 2490 tests collected.
+- Ruff checks passed for the split driver area and remaining monolith.
+
+## Completed In Seventeenth Migration Pass
+
+- Split the next adjacent controller tranche out of `tests/test_instruments.py`
+  into:
+  - `tests/unit/instruments/drivers/test_oxford_ips120.py`
+  - `tests/unit/instruments/drivers/test_lakeshore_temperature_controllers.py`
+  - `tests/unit/instruments/drivers/test_oxford_temperature_controllers.py`
+- Moved the following legacy groups:
+  - `TestOxfordIPS120`
+  - `TestLakeshoreTemperatureControllers`
+  - `TestOxfordTemperatureControllers`
+- Kept the small local `_null(...)` helper in each split file so the new
+  modules remain directly runnable from an IDE without depending on test
+  package imports.
+- Trimmed the moved imports and classes out of `tests/test_instruments.py`.
+- Verified the tranche:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\drivers\test_oxford_ips120.py tests\unit\instruments\drivers\test_lakeshore_temperature_controllers.py tests\unit\instruments\drivers\test_oxford_temperature_controllers.py tests\test_instruments.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\drivers tests\test_instruments.py
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\drivers\test_oxford_ips120.py tests\unit\instruments\drivers\test_lakeshore_temperature_controllers.py tests\unit\instruments\drivers\test_oxford_temperature_controllers.py --tb=short
+conda run -n stoner_measurement python tests\unit\instruments\drivers\test_oxford_ips120.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Overlap run before trimming: 240 passed.
+- Split driver area after trimming: 53 passed.
+- Direct-file smoke test: `test_oxford_ips120.py` passed when run as a script.
+- Full collection: 2490 tests collected.
+- Ruff checks passed for the split driver area and remaining monolith.
+
 ## Next Recommended Migration Batch
 
-1. Continue `tests/test_instruments.py` with the next adjacent self-contained
-   driver tranche:
-   - `TestKeithleyElectrometers`
-   - `TestLakeshoreM81CurrentSource`
-   - `TestLakeshore625`
-2. This keeps momentum in the remaining driver-heavy section of the monolith
-   before moving on to the larger temperature, magnet, and higher-behaviour
-   integration-style blocks.
+## Completed In Eighteenth Migration Pass
+
+- Split the next adjacent instrument-core error-handling tranche out of
+  `tests/test_instruments.py` into:
+  - `tests/unit/instruments/contracts/test_instrument_error.py`
+  - `tests/unit/instruments/contracts/test_protocol_error_handling.py`
+  - `tests/unit/instruments/contracts/test_base_instrument_error_handling.py`
+- Moved the following legacy groups:
+  - `TestInstrumentError`
+  - `TestScpiErrorHandling`
+  - `TestOxfordErrorHandling`
+  - `TestLakeshoreErrorHandling`
+  - `TestCheckForErrors`
+  - `TestAutoCheckErrors`
+- Kept the small local `_null(...)` and `_NullTransportWithEsb` helpers inside
+  the new base-instrument error file so the contract modules remain directly
+  runnable from an IDE without test-package imports.
+- Trimmed the moved classes out of `tests/test_instruments.py`.
+- Normalized the existing import block in
+  `tests/unit/instruments/contracts/test_transport_contracts.py` so the
+  contract-area Ruff check stays green.
+- Verified the tranche:
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts\test_instrument_error.py tests\unit\instruments\contracts\test_protocol_error_handling.py tests\unit\instruments\contracts\test_base_instrument_error_handling.py tests\test_instruments.py --tb=short
+conda run -n stoner_measurement python -m ruff check tests\unit\instruments\contracts tests\test_instruments.py
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts\test_instrument_error.py tests\unit\instruments\contracts\test_protocol_error_handling.py tests\unit\instruments\contracts\test_base_instrument_error_handling.py --tb=short
+conda run -n stoner_measurement python tests\unit\instruments\contracts\test_instrument_error.py
+conda run -n stoner_measurement python -m pytest --collect-only -q
+```
+
+Result:
+
+- Overlap run before trimming: 187 passed.
+- Split contract area after trimming: 35 passed.
+- Direct-file smoke test: `test_instrument_error.py` passed when run as a
+  script.
+- Full collection: 2490 tests collected.
+- Ruff checks passed for the contract area and remaining monolith.
+
+## Next Recommended Migration Batch
+
+1. Continue `tests/test_instruments.py` with the next adjacent
+   instrument-core tranche:
+   - `TestIdentityAndQueueClearing`
+   - `TestInstrumentLocking`
+2. This keeps the monolith shrinking in file order, and both groups still fit
+   naturally beside the base-instrument contract tests because they exercise
+   identity validation, shared lock keys, and queue-clearing behavior rather
+   than concrete drivers.
