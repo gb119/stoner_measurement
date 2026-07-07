@@ -278,6 +278,7 @@ class TemperatureControllerEngine(QObject):
         self._connected_driver_name = driver_name
         self._connected_transport_name = transport_name
         self._connected_address = address
+        self.publisher.connection_changed.emit()
 
     def connect_preferred_driver(self) -> None:
         """Connect using the persisted preferred driver and transport settings.
@@ -432,6 +433,7 @@ class TemperatureControllerEngine(QObject):
             self._stable.clear()
             self._set_status(EngineStatus.DISCONNECTED)
             self._latest_state = TemperatureEngineState(engine_status=self._status)
+        self.publisher.connection_changed.emit()
         logger.info("TemperatureControllerEngine: disconnected.")
 
     @property

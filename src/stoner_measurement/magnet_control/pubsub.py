@@ -39,6 +39,9 @@ class MagnetPublisher(QObject):
             Emitted whenever the engine's
             :class:`~stoner_measurement.magnet_control.types.MagnetEngineStatus`
             changes.  Carries the new status value.
+        connection_changed (pyqtSignal):
+            Emitted after a controller connection is established or torn down,
+            once the engine's live connection metadata is up to date.
         poll_activity (pyqtSignal):
             Emitted after each successful hardware poll.
 
@@ -58,4 +61,5 @@ class MagnetPublisher(QObject):
     reading_updated: pyqtSignal = pyqtSignal(MagnetReading)
     state_updated: pyqtSignal = pyqtSignal(MagnetEngineState)
     engine_status_changed: pyqtSignal = pyqtSignal(MagnetEngineStatus)
+    connection_changed: pyqtSignal = pyqtSignal()
     poll_activity: pyqtSignal = pyqtSignal()

@@ -46,6 +46,7 @@ from stoner_measurement.ui.widgets import (
     VisaResourceComboBox,
     VisaResourceStatus,
     load_connection_preferences,
+    restore_connection_address,
     restore_preferred_address,
     selected_transport,
     set_address_widget_status,
@@ -119,6 +120,11 @@ class MotorControlPanel(QWidget):
             return
         event.ignore()
         self.hide()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        """Refresh the UI from any existing engine connection when shown."""
+        super().showEvent(event)
+        self._sync_existing_connection_state()
 
     def _build_ui(self) -> None:
         self._tabs = QTabWidget(self)
@@ -368,6 +374,7 @@ class MotorControlPanel(QWidget):
         pub = self._engine.publisher
         pub.state_updated.connect(self._on_state_updated)
         pub.engine_status_changed.connect(self._on_engine_status_changed)
+        pub.connection_changed.connect(self._on_connection_changed)
         self._on_engine_status_changed(self._engine.status)
 
     def _target_angle_bounds(self) -> tuple[float, float]:
@@ -424,6 +431,11 @@ class MotorControlPanel(QWidget):
         bg = "#1e88e5" if reading.moving else "#2e7d32"
         self._motion_state_label.setText(label)
         self._motion_state_label.setStyleSheet(indicator_label_stylesheet(bg, fg))
+
+    @pyqtSlot()
+    def _on_connection_changed(self) -> None:
+        """Refresh the panel when the engine connection changes externally."""
+        self._sync_existing_connection_state()
 
     def _populate_driver_combo(self) -> None:
         self._driver_combo.clear()
@@ -489,8 +501,7 @@ class MotorControlPanel(QWidget):
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 
-        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
-        self._on_read_state()
+        self._sync_existing_connection_state()
 
     def _set_address_widget_status(self, transport_index: int, status: VisaResourceStatus) -> None:
         set_address_widget_status(self, transport_index, status)
@@ -498,10 +509,52 @@ class MotorControlPanel(QWidget):
     @pyqtSlot()
     def _on_disconnect(self) -> None:
         self._engine.disconnect_instrument()
+        self._apply_disconnected_ui_state()
+
+    def _apply_disconnected_ui_state(self) -> None:
+        """Clear connected-only UI state without issuing engine commands."""
         self._set_address_widget_status(2, VisaResourceStatus.DISCONNECTED)
         self._set_address_widget_status(3, VisaResourceStatus.DISCONNECTED)
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
+
+    def _sync_existing_connection_state(self) -> None:
+        """Mirror an already-open engine connection into the panel widgets."""
+        transport_name = self._engine.connected_transport_name
+        address = self._engine.connected_address
+        if self._engine.connected_driver is None:
+            self._apply_disconnected_ui_state()
+            self._on_engine_status_changed(self._engine.status)
+            return
+        if transport_name:
+            self._sync_live_connection_widgets(transport_name, address or "")
+        state = self._engine.read_controller_state()
+        if state is not None:
+            self._on_state_updated(state)
+            if state.target_angle is not None:
+                self._target_angle_spin.setValue(state.target_angle)
+            if state.move_direction is not None:
+                try:
+                    direction = MotorMoveDirection(state.move_direction)
+                except ValueError:
+                    direction = MotorMoveDirection.CLOCKWISE
+                index = self._direction_combo.findData(direction)
+                if index >= 0:
+                    self._direction_combo.setCurrentIndex(index)
+            if state.velocity is not None:
+                self._velocity_spin.setValue(state.velocity)
+            if state.acceleration is not None:
+                self._acceleration_spin.setValue(state.acceleration)
+
+    def _sync_live_connection_widgets(self, transport_name: str, address: str) -> None:
+        """Select and colour the widgets for the active engine connection."""
+        transport_index = self._transport_combo.findText(transport_name)
+        if transport_index < 0:
+            return
+        self._transport_combo.setCurrentIndex(transport_index)
+        restore_connection_address(self, transport_name, address)
+        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
+        self._on_engine_status_changed(self._engine.status)
 
     @pyqtSlot()
     def _on_apply_and_move(self) -> None:

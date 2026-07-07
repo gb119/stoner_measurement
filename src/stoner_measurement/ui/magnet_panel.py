@@ -74,6 +74,7 @@ from stoner_measurement.ui.widgets import (
     VisaResourceComboBox,
     VisaResourceStatus,
     load_connection_preferences,
+    restore_connection_address,
     restore_preferred_address,
     selected_transport,
     set_address_widget_status,
@@ -250,6 +251,11 @@ class MagnetControlPanel(QWidget):
             return
         event.ignore()
         self.hide()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        """Refresh the UI from any existing engine connection when shown."""
+        super().showEvent(event)
+        self._sync_existing_connection_state()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -658,6 +664,7 @@ class MagnetControlPanel(QWidget):
         pub = self._engine.publisher
         pub.state_updated.connect(self._on_state_updated)
         pub.engine_status_changed.connect(self._on_engine_status_changed)
+        pub.connection_changed.connect(self._on_connection_changed)
         self._on_engine_status_changed(self._engine.status)
 
     # ------------------------------------------------------------------
@@ -716,6 +723,11 @@ class MagnetControlPanel(QWidget):
             self._at_target_label.setText(f"{_colour_dot('#c62828')} At target: no")
             if hasattr(self, "_stable_label"):
                 self._stable_label.setText(f"{_colour_dot('#c62828')} Stable: no")
+
+    @pyqtSlot()
+    def _on_connection_changed(self) -> None:
+        """Refresh the panel when the engine connection changes externally."""
+        self._sync_existing_connection_state()
 
     # ------------------------------------------------------------------
     # Chart helpers
@@ -1069,13 +1081,7 @@ class MagnetControlPanel(QWidget):
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 
-        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
-
-        # Seed the engine with the UI-configured magnet constant and limits.
-        try:
-            self._on_apply_limits()
-        except Exception:
-            logger.exception("Failed to apply initial magnet limits after connection")
+        self._sync_existing_connection_state(apply_limits=True)
 
     @pyqtSlot()
     def _on_save_configuration(self) -> None:
@@ -1129,10 +1135,43 @@ class MagnetControlPanel(QWidget):
     def _on_disconnect(self) -> None:
         """Tell the engine to disconnect."""
         self._engine.disconnect_instrument()
+        self._apply_disconnected_ui_state()
+
+    def _apply_disconnected_ui_state(self) -> None:
+        """Clear connected-only UI state without issuing engine commands."""
         self._set_address_widget_status(2, VisaResourceStatus.DISCONNECTED)
         self._set_address_widget_status(3, VisaResourceStatus.DISCONNECTED)
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
+
+    def _sync_existing_connection_state(self, *, apply_limits: bool = False) -> None:
+        """Mirror an already-open engine connection into the panel widgets."""
+        transport_name = self._engine.connected_transport_name
+        address = self._engine.connected_address
+        if self._engine.connected_driver is None:
+            self._apply_disconnected_ui_state()
+            self._on_engine_status_changed(self._engine.status)
+            return
+        if transport_name:
+            self._sync_live_connection_widgets(transport_name, address or "")
+        try:
+            if apply_limits:
+                self._on_apply_limits()
+            state = self._engine.read_controller_state()
+            if state is not None:
+                self._on_state_updated(state)
+        except Exception:
+            logger.exception("Failed to refresh magnet panel from existing connection")
+
+    def _sync_live_connection_widgets(self, transport_name: str, address: str) -> None:
+        """Select and colour the widgets for the active engine connection."""
+        transport_index = self._transport_combo.findText(transport_name)
+        if transport_index < 0:
+            return
+        self._transport_combo.setCurrentIndex(transport_index)
+        restore_connection_address(self, transport_name, address)
+        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
+        self._on_engine_status_changed(self._engine.status)
 
     # ------------------------------------------------------------------
     # Configuration tab slots

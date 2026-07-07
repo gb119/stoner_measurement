@@ -90,6 +90,7 @@ from stoner_measurement.ui.widgets import (
     VisaResourceComboBox,
     VisaResourceStatus,
     load_connection_preferences,
+    restore_connection_address,
     restore_preferred_address,
     selected_transport,
     set_address_widget_status,
@@ -252,6 +253,11 @@ class TemperatureControlPanel(QWidget):
             return
         event.ignore()
         self.hide()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        """Refresh the UI from any existing engine connection when shown."""
+        super().showEvent(event)
+        self._sync_existing_connection_state()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -679,6 +685,7 @@ class TemperatureControlPanel(QWidget):
         pub = self._engine.publisher
         pub.state_updated.connect(self._on_state_updated)
         pub.engine_status_changed.connect(self._on_engine_status_changed)
+        pub.connection_changed.connect(self._on_connection_changed)
         # Reflect current status immediately.
         self._on_engine_status_changed(self._engine.status)
 
@@ -750,6 +757,11 @@ class TemperatureControlPanel(QWidget):
         self._stable_label.setText(
             f"{_colour_dot(st_colour)} Stable: {'yes' if all_stable else 'no' if all_stable is False else '—'}"
         )
+
+    @pyqtSlot()
+    def _on_connection_changed(self) -> None:
+        """Refresh the panel when the engine connection changes externally."""
+        self._sync_existing_connection_state()
 
     # ------------------------------------------------------------------
     # Chart helpers
@@ -948,34 +960,7 @@ class TemperatureControlPanel(QWidget):
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 
-        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
-
-        # Populate control tab with loop groups.
-        try:
-            driver = self._engine.connected_driver
-            if driver is None:
-                raise RuntimeError(
-                    "Driver connection failed: temperature engine returned None "
-                    "after connect_driver() call."
-                )
-            caps = driver.get_capabilities()
-            self._capabilities = caps
-            self._rebuild_loop_groups(caps)
-            if caps.has_cryogen_control:
-                self._needle_group.show()
-            else:
-                self._needle_group.hide()
-            if caps.has_gas_auto_mode:
-                self._gas_auto_row_label.show()
-                self._gas_auto_check.show()
-            else:
-                self._gas_auto_row_label.hide()
-                self._gas_auto_check.hide()
-            self._configure_zone_tab(caps)
-            self._configure_input_settings_tab(caps)
-            self._refresh_stability_channel_selectors()
-        except Exception:
-            logger.exception("Failed to read capabilities after connection")
+        self._sync_existing_connection_state()
 
     def _set_address_widget_status(self, transport_index: int, status: VisaResourceStatus) -> None:
         """Update the connection-status colour on the active address widget.
@@ -1008,6 +993,10 @@ class TemperatureControlPanel(QWidget):
     def _on_disconnect(self) -> None:
         """Tell the engine to disconnect."""
         self._engine.disconnect_instrument()
+        self._apply_disconnected_ui_state()
+
+    def _apply_disconnected_ui_state(self) -> None:
+        """Clear connected-only UI state without issuing engine commands."""
         self._capabilities = None
         self._clear_loop_groups()
         self._needle_group.hide()
@@ -1036,6 +1025,49 @@ class TemperatureControlPanel(QWidget):
         self._set_address_widget_status(3, VisaResourceStatus.DISCONNECTED)
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
+
+    def _sync_existing_connection_state(self) -> None:
+        """Mirror an already-open engine connection into the panel widgets."""
+        transport_name = self._engine.connected_transport_name
+        address = self._engine.connected_address
+        if self._engine.connected_driver is None:
+            self._apply_disconnected_ui_state()
+            self._on_engine_status_changed(self._engine.status)
+            return
+        if transport_name:
+            self._sync_live_connection_widgets(transport_name, address or "")
+        try:
+            self._sync_connected_driver_ui()
+        except Exception:
+            logger.exception("Failed to refresh temperature panel from existing connection")
+
+    def _sync_live_connection_widgets(self, transport_name: str, address: str) -> None:
+        """Select and colour the widgets for the active engine connection."""
+        transport_index = self._transport_combo.findText(transport_name)
+        if transport_index < 0:
+            return
+        self._transport_combo.setCurrentIndex(transport_index)
+        restore_connection_address(self, transport_name, address)
+        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
+        self._on_engine_status_changed(self._engine.status)
+
+    def _sync_connected_driver_ui(self) -> None:
+        """Populate capabilities and live state from the connected driver."""
+        driver = self._engine.connected_driver
+        if driver is None:
+            return
+        caps = driver.get_capabilities()
+        self._capabilities = caps
+        self._rebuild_loop_groups(caps)
+        self._needle_group.setVisible(caps.has_cryogen_control)
+        self._gas_auto_row_label.setVisible(caps.has_gas_auto_mode)
+        self._gas_auto_check.setVisible(caps.has_gas_auto_mode)
+        self._configure_zone_tab(caps)
+        self._configure_input_settings_tab(caps)
+        self._refresh_stability_channel_selectors()
+        state = self._engine.read_controller_state()
+        if state is not None:
+            self._on_state_updated(state)
 
     # ------------------------------------------------------------------
     # Control tab slots

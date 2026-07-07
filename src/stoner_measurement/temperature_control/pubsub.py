@@ -38,6 +38,9 @@ class TemperaturePublisher(QObject):
         engine_status_changed (pyqtSignal):
             Emitted whenever the engine's :class:`~stoner_measurement.temperature_control.types.EngineStatus`
             changes.  Carries the new :class:`~stoner_measurement.temperature_control.types.EngineStatus` value.
+        connection_changed (pyqtSignal):
+            Emitted after a controller connection is established or torn down,
+            once the engine's live connection metadata is up to date.
         poll_activity (pyqtSignal):
             Emitted after each successful hardware poll.
 
@@ -57,4 +60,5 @@ class TemperaturePublisher(QObject):
     channel_reading: pyqtSignal = pyqtSignal(TemperatureChannelReading)
     state_updated: pyqtSignal = pyqtSignal(TemperatureEngineState)
     engine_status_changed: pyqtSignal = pyqtSignal(EngineStatus)
+    connection_changed: pyqtSignal = pyqtSignal()
     poll_activity: pyqtSignal = pyqtSignal()

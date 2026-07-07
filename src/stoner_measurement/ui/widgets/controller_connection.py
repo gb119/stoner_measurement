@@ -84,11 +84,9 @@ def load_connection_preferences(panel) -> None:
     restore_preferred_address(panel)
 
 
-def restore_preferred_address(panel) -> None:
-    """Restore transport-specific address widgets from engine preferences."""
-    transport = _normalise_transport_name(panel._engine.preferred_transport_name)
-    address = panel._engine.preferred_address
-
+def _restore_address(panel, transport: str, address: str) -> None:
+    """Restore transport-specific address widgets for the supplied address."""
+    transport = _normalise_transport_name(transport)
     if not address:
         return
 
@@ -110,6 +108,20 @@ def restore_preferred_address(panel) -> None:
             return
         panel._eth_host_edit.setText(host)
         panel._eth_port_spin.setValue(port)
+
+
+def restore_preferred_address(panel) -> None:
+    """Restore transport-specific address widgets from engine preferences."""
+    _restore_address(
+        panel,
+        panel._engine.preferred_transport_name,
+        panel._engine.preferred_address,
+    )
+
+
+def restore_connection_address(panel, transport: str, address: str) -> None:
+    """Restore transport-specific address widgets from a live connection."""
+    _restore_address(panel, transport, address)
 
 
 def show_transport_widget(panel, index: int) -> None:

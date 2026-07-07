@@ -18,4 +18,5 @@ class MotorPublisher(QObject):
     reading_updated: pyqtSignal = pyqtSignal(MotorReading)
     state_updated: pyqtSignal = pyqtSignal(MotorEngineState)
     engine_status_changed: pyqtSignal = pyqtSignal(MotorEngineStatus)
+    connection_changed: pyqtSignal = pyqtSignal()
     poll_activity: pyqtSignal = pyqtSignal()

@@ -5,12 +5,14 @@
 Use Modbus RTU over the optional EIA485/RS485 2-wire port.
 
 Default serial settings:
+
 - Baud: 9600
 - Parity: none
 - Address: 1
 - Valid instrument addresses: 1–254
 
 32h8 RS485 terminals:
+
 - HD = common
 - HE = A(+)
 - HF = B(-)
@@ -24,16 +26,19 @@ Important: digital communications and remote analogue setpoint are mutually excl
 Use 16-bit signed Modbus registers.
 
 Eurotherm decimal/scaled values are transmitted as scaled integers:
+
 - actual value = register_value / 10^decimal_places
 - decimal places are determined by the instrument resolution/configuration.
 - Example: if resolution is 0.1 °C, 123.4 °C is sent as 1234.
 
 Use function codes:
+
 - Read Holding Registers: normal parameter reads.
 - Write Single Register / Write Multiple Registers: parameter writes.
 - Broadcast function 6 may be used only for broadcast retransmission use cases.
 
 Driver should expose both:
+
 - raw register read/write
 - typed/scaled high-level methods
 
@@ -42,11 +47,13 @@ Driver should expose both:
 Do not repeatedly write retained parameters. The manual warns of a limited non-volatile memory write life.
 
 For frequent/ramped setpoint updates:
+
 1. Enable remote/comms setpoint selection: write `L-R` at address `276`.
 2. Write the running setpoint to `Rm.SP` at address `26`.
 3. Refresh `Rm.SP` at least every ~5 s or the controller falls back to local SP and raises remote SP fail.
 
 Avoid high-frequency writes to:
+
 - `TG.SP` address 2
 - `SP1` address 24
 - `SP2` address 25
@@ -56,7 +63,7 @@ Avoid high-frequency writes to:
 ## 4. Core process variables
 
 | Function | Mnemonic | Address | R/W | Notes |
-|---|---:|---:|---|---|
+| --- | ---: | ---: | --- | --- |
 | Process value | `PV.IN` | 1 | R | measured temperature/process value |
 | Target setpoint | `TG.SP` | 2 | R/W | do not ramp by repeated writes |
 | Manual output value | `MAN.OP` | 3 | R/W | used in manual mode |
@@ -72,7 +79,7 @@ Avoid high-frequency writes to:
 Use these for control-mode handling:
 
 | Function | Mnemonic | Address | Values |
-|---|---:|---:|---|
+| --- | ---: | ---: | --- |
 | Instrument mode | `IM` | 199 | `0` operating, `1` standby/control outputs off, `2` config/all outputs inactive |
 | Auto/manual loop mode | `A-M` | 273 | `0` auto closed-loop, `1` manual open-loop |
 | Manual output value | `MAN.OP` | 3 | output demand in % |
@@ -81,6 +88,7 @@ Use these for control-mode handling:
 | Standby type | `STBY.T` | 530 | `0` absolute alarm outputs active, others off; `1` all outputs inactive |
 
 High-level driver API:
+
 ```python
 set_auto()        # write A-M = 0
 set_manual(pct)   # write MAN.OP, then A-M = 1
@@ -186,30 +194,30 @@ If `IN.TYP = 10`, write the process variable to `PV.CM` at least every ~5 s if s
 
 Alarm configuration:
 
-* `A1.TYP` etc. define alarm type.
-* `A1.LAT`–`A4.LAT` at 540–543 define latching: `0` none, `1` automatic reset, `2` manual reset.
-* `A1.BLK`–`A4.BLK` at 544–547 enable blocking: `0` off, `1` block.
+- `A1.TYP` etc. define alarm type.
+- `A1.LAT`–`A4.LAT` at 540–543 define latching: `0` none, `1` automatic reset, `2` manual reset.
+- `A1.BLK`–`A4.BLK` at 544–547 enable blocking: `0` off, `1` block.
 
 ## 10. Status bitmap: address 75
 
 `StAt` bits:
 
-* B0 alarm 1
-* B1 alarm 2
-* B2 alarm 3
-* B3 alarm 4
-* B4 manual mode active
-* B5 sensor break
-* B6 loop break
-* B7 CT low load current alarm
-* B8 CT high leakage current alarm
-* B9 program end
-* B10 PV over-range by >5% span
-* B11 CT overcurrent
-* B12 new alarm
-* B13 timer/ramp running
-* B14 remote/comms SP fail
-* B15 auto-tune active
+- B0 alarm 1
+- B1 alarm 2
+- B2 alarm 3
+- B3 alarm 4
+- B4 manual mode active
+- B5 sensor break
+- B6 loop break
+- B7 CT low load current alarm
+- B8 CT high leakage current alarm
+- B9 program end
+- B10 PV over-range by >5% span
+- B11 CT overcurrent
+- B12 new alarm
+- B13 timer/ramp running
+- B14 remote/comms SP fail
+- B15 auto-tune active
 
 Address 76 is the inverted status word.
 
@@ -242,71 +250,71 @@ For a 32h8, outputs can include I/O1, OP2, OP3, and AA relay OP4 depending on or
 
 Function values:
 
-* `0` none/telemetry
-* `1` digital output
-* `2` heat/up
-* `3` cool/down
-* `10` DC output no function
-* `11` DC heat
-* `12` DC cool
-* `13` DC WSP retransmission
-* `14` DC PV retransmission
-* `15` DC OP retransmission
+- `0` none/telemetry
+- `1` digital output
+- `2` heat/up
+- `3` cool/down
+- `10` DC output no function
+- `11` DC heat
+- `12` DC cool
+- `13` DC WSP retransmission
+- `14` DC PV retransmission
+- `15` DC OP retransmission
 
 Key addresses:
 
-* I/O1: type `12672`, function `12675`, DC range `12676`, sources `12678–12681`, polarity `12682`, min pulse `12706`
-* OP2: type `12736`, function `12739`, DC range `12740`, sources `12742–12745`, polarity `12746`, min pulse `12770`
-* OP3: type `12800`, function `12803`, DC range `12804`, sources `12806–12809`, polarity `12810`, min pulse `12834`
-* OP4/AA: type `13056`, function `13059`, sources `13062–13065`, polarity `13066`, min pulse `13090`
+- I/O1: type `12672`, function `12675`, DC range `12676`, sources `12678–12681`, polarity `12682`, min pulse `12706`
+- OP2: type `12736`, function `12739`, DC range `12740`, sources `12742–12745`, polarity `12746`, min pulse `12770`
+- OP3: type `12800`, function `12803`, DC range `12804`, sources `12806–12809`, polarity `12810`, min pulse `12834`
+- OP4/AA: type `13056`, function `13059`, sources `13062–13065`, polarity `13066`, min pulse `13090`
 
 Output source values:
 
-* `0` none
-* `1` alarm 1
-* `2` alarm 2
-* `3` alarm 3
-* `4` alarm 4
-* `5` all alarms
-* `6` new alarm
-* `7` CT alarm
-* `8` loop break
-* `9` sensor break
-* `10` timer end / not ramping
-* `11` timer run / ramping
-* `12` auto/manual
-* `13` remote fail
-* `14` power fail
-* `15` programmer event
+- `0` none
+- `1` alarm 1
+- `2` alarm 2
+- `3` alarm 3
+- `4` alarm 4
+- `5` all alarms
+- `6` new alarm
+- `7` CT alarm
+- `8` loop break
+- `9` sensor break
+- `10` timer end / not ramping
+- `11` timer run / ramping
+- `12` auto/manual
+- `13` remote fail
+- `14` power fail
+- `15` programmer event
 
 ## 13. Digital inputs
 
 Input function values:
 
-* `40` none
-* `41` acknowledge all alarms
-* `42` select SP1/SP2
-* `43` lock all keys
-* `44` timer reset
-* `45` timer run
-* `46` timer run/reset
-* `47` timer hold
-* `48` auto/manual select
-* `49` standby select
-* `50` remote setpoint
-* `51` recipe select through IO1
-* `52` remote key up
-* `53` remote key down
+- `40` none
+- `41` acknowledge all alarms
+- `42` select SP1/SP2
+- `43` lock all keys
+- `44` timer reset
+- `45` timer run
+- `46` timer run/reset
+- `47` timer hold
+- `48` auto/manual select
+- `49` standby select
+- `50` remote setpoint
+- `51` recipe select through IO1
+- `52` remote key up
+- `53` remote key down
 
 Addresses:
 
-* Logic input A type: `12352`
-* Logic input A function: `12353`
-* Logic input A polarity: `12361`
-* Logic input B type: `12368`
-* Logic input B function: `12369`
-* Logic input B polarity: `12377`
-* I/O1 digital input function: `12673`
+- Logic input A type: `12352`
+- Logic input A function: `12353`
+- Logic input A polarity: `12361`
+- Logic input B type: `12368`
+- Logic input B function: `12369`
+- Logic input B polarity: `12377`
+- I/O1 digital input function: `12673`
 
 ## 14. Current transformer / heater diagnostics
 
@@ -327,10 +335,10 @@ Addresses:
 
 CT source:
 
-* `0` none
-* `1` IO1
-* `2` OP2
-* `8` AA/OP4
+- `0` none
+- `1` IO1
+- `2` OP2
+- `8` AA/OP4
 
 ## 15. Recipes
 
@@ -392,7 +400,6 @@ class Eurotherm32h8:
 6. For open-loop/manual control, set `MAN.OP`, then `A-M = 1`.
 7. For frequent setpoint updates, use `L-R` + `Rm.SP`, not `SP1`, `SP2`, or `TG.SP`.
 
-
 # Eurotherm 2000 Series Modbus / EI-Bisynch Driver Guide
 
 Applies mainly to Eurotherm 2200 and 2400 series instruments.
@@ -402,7 +409,7 @@ Applies mainly to Eurotherm 2200 and 2400 series instruments.
 The 2000 and 3200 series share many core Modbus addresses:
 
 | Function | 2000 address | 3200 address | Notes |
-|---|---:|---:|---|
+| --- | ---: | ---: | --- |
 | Process value | 1 | 1 | same |
 | Target setpoint | 2 | 2 | same, but avoid repeated writes |
 | Output power / manual output | 3 | 3 | same |
@@ -426,7 +433,9 @@ This means a large part of a 3200-series driver can be reused for 2000-series in
 ## 2. Important differences from 3200 series
 
 ### Protocols
+
 2000 series supports:
+
 - Modbus RTU
 - JBUS, identical addressing to Modbus in this manual
 - EI-Bisynch, Eurotherm’s older ASCII protocol
@@ -434,17 +443,22 @@ This means a large part of a 3200-series driver can be reused for 2000-series in
 3200 series guide should normally use Modbus RTU only.
 
 ### Register resolution
+
 2000-series Modbus uses 16-bit signed words:
+
 - integer mode: values rounded to integers
 - full-resolution mode: decimal place is implied by the instrument display configuration
 
 2000 series also supports a special Modbus full-resolution floating-point area, unlike the simpler normal 3200 mapping.
 
 ### Remote setpoint difference
+
 3200 series:
+
 - frequent setpoint writes should use `REM.SP / AltSP` at address `26`.
 
 2000 series:
+
 - 2200 remote setpoint is address `26`
 - 2400 remote setpoint comms-access parameter is address `26`
 - 2400 remote setpoint in the SP list is address `485`
@@ -452,11 +466,13 @@ This means a large part of a 3200-series driver can be reused for 2000-series in
 So a driver must identify whether it is controlling a 2200 or 2400 before assuming the remote-SP register.
 
 ### EEPROM risk
+
 The manual explicitly warns that 2200 and 3200 instruments use EEPROM with a typical 100,000-change limit. For 2200 instruments, retained parameters are written to EEPROM whenever changed over comms, so avoid repeated writes to setpoints, alarm levels, hysteresis, mode, timer, or programmer state.
 
 ## 3. Physical layer
 
 Supported hardware:
+
 - EIA232 / RS232
 - EIA422 / 4-wire RS485
 - EIA485 / 2-wire RS485
@@ -464,11 +480,13 @@ Supported hardware:
 Use EIA485 for new multidrop installations where possible.
 
 Typical 2-wire RS485 controller terminals:
+
 - `HE` = A / A+ / receive
 - `HF` = B / B+ / transmit
 - `HD` = common
 
 Network rules:
+
 - daisy-chain instruments
 - do not use star wiring
 - use screened twisted pair
@@ -482,12 +500,14 @@ Network rules:
 Series 2000 supports RTU mode only, not Modbus ASCII.
 
 Character format:
+
 - 1 start bit
 - 8 data bits
 - parity: none, odd, or even
 - 1 stop bit
 
 Supported function codes:
+
 - `01` / `02`: read bits
 - `03` / `04`: read words
 - `05`: write bit
@@ -497,13 +517,14 @@ Supported function codes:
 - `16`: write multiple words
 
 Recommended:
+
 - use function `03` for reads
 - use function `16` for writes, including Boolean/enumerated data
 
 ## 5. Core operating registers
 
 | Function | Mnemonic | Modbus | Values |
-|---|---:|---:|---|
+| --- | ---: | ---: | --- |
 | Process value | `PV` | 1 | read |
 | Target setpoint | `SL` | 2 | read/write |
 | Output power | `OP` | 3 | read/write in manual |
@@ -517,6 +538,7 @@ Recommended:
 | Communications address | `Ad` | 131 | read/write |
 
 Recommended API:
+
 ```python
 get_pv()
 get_target_setpoint()
@@ -549,8 +571,8 @@ read_instrument_id()
 
 `L-r = 276`:
 
-* `0`: local
-* `1`: remote
+- `0`: local
+- `1`: remote
 
 ## 7. PID and tuning
 
@@ -637,42 +659,42 @@ Use status words rather than Modbus coils where possible.
 
 Important bits:
 
-* bit 0: alarm 1
-* bit 1: alarm 2
-* bit 2: alarm 3
-* bit 3: alarm 4
-* bit 4: manual mode
-* bit 5: sensor break
-* bit 6: loop break
-* bit 7: heater/load fault
-* bit 8: tune active or load fail, model-dependent
-* bit 9: ramp/program complete
-* bit 10: PV out of range
-* bit 13: remote input sensor break
+- bit 0: alarm 1
+- bit 1: alarm 2
+- bit 2: alarm 3
+- bit 3: alarm 4
+- bit 4: manual mode
+- bit 5: sensor break
+- bit 6: loop break
+- bit 7: heater/load fault
+- bit 8: tune active or load fail, model-dependent
+- bit 9: ramp/program complete
+- bit 10: PV out of range
+- bit 13: remote input sensor break
 
 ### Control status word: address `76`
 
 Important bits:
 
-* bit 0: control algorithm freeze
-* bit 1: PV input sensor broken
-* bit 2: PV out of sensor range
-* bit 3: self-tune failed
-* bit 6: loop break
-* bit 7: integral accumulator frozen
-* bit 8: tune completed successfully
-* bit 9: direct/reverse action
-* bit 11: PID demand limited
-* bit 15: manual/auto mode switch
+- bit 0: control algorithm freeze
+- bit 1: PV input sensor broken
+- bit 2: PV out of sensor range
+- bit 3: self-tune failed
+- bit 6: loop break
+- bit 7: integral accumulator frozen
+- bit 8: tune completed successfully
+- bit 9: direct/reverse action
+- bit 11: PID demand limited
+- bit 15: manual/auto mode switch
 
 ### Instrument status word: address `77`
 
 2400 only:
 
-* bit 0: configuration/operation mode
-* bit 2: setpoint-rate-limit ramp running
-* bit 3: remote setpoint active
-* bit 4: alarm acknowledge switch
+- bit 0: configuration/operation mode
+- bit 2: setpoint-rate-limit ramp running
+- bit 3: remote setpoint active
+- bit 4: alarm acknowledge switch
 
 ## 11. Input configuration
 
@@ -717,20 +739,20 @@ Input type values differ from the 3200 series. Do not reuse 3200 enumerations bl
 
 Program status values:
 
-* `1`: reset
-* `2`: run
-* `4`: hold
-* `8`: holdback
-* `16`: complete
+- `1`: reset
+- `2`: run
+- `4`: hold
+- `8`: holdback
+- `16`: complete
 
 Segment type:
 
-* `0`: end
-* `1`: ramp rate
-* `2`: ramp time-to-target
-* `3`: dwell
-* `4`: step
-* `5`: call
+- `0`: end
+- `1`: ramp rate
+- `2`: ramp time-to-target
+- `3`: dwell
+- `4`: step
+- `5`: call
 
 ## 13. Configuration mode
 
@@ -742,12 +764,12 @@ write(199, 2)  # enter configuration mode
 
 Effects:
 
-* normal control is disabled
-* outputs go to a safe state
-* no password is required
-* with EI-Bisynch, address changes to `00`
-* to exit, write `199 = 0`
-* controller resets and is unavailable for about 5 seconds
+- normal control is disabled
+- outputs go to a safe state
+- no password is required
+- with EI-Bisynch, address changes to `00`
+- to exit, write `199 = 0`
+- controller resets and is unavailable for about 5 seconds
 
 Driver should guard configuration writes behind an explicit `allow_configuration=True` flag.
 
@@ -757,12 +779,12 @@ EI-Bisynch is optional for a driver unless legacy support is needed.
 
 Key points:
 
-* ASCII protocol
-* 7 data bits, even parity, 1 stop bit
-* addresses `01–99`; `00` reserved for configuration mode
-* parameters addressed by mnemonics, e.g. `PV`, `OP`, `SL`, `mA`
-* values returned in free text format, as displayed on the front panel
-* hex format used for some status words
+- ASCII protocol
+- 7 data bits, even parity, 1 stop bit
+- addresses `01–99`; `00` reserved for configuration mode
+- parameters addressed by mnemonics, e.g. `PV`, `OP`, `SL`, `mA`
+- values returned in free text format, as displayed on the front panel
+- hex format used for some status words
 
 Recommended: implement Modbus first; add EI-Bisynch only for old installations.
 
@@ -818,22 +840,22 @@ class Eurotherm2000:
 
 Can usually reuse:
 
-* Modbus RTU transport
-* signed 16-bit register handling
-* PV/SP/output/mode register access
-* PID register access
-* alarm setpoint access
-* auto/manual logic
-* status-word decoding pattern
+- Modbus RTU transport
+- signed 16-bit register handling
+- PV/SP/output/mode register access
+- PID register access
+- alarm setpoint access
+- auto/manual logic
+- status-word decoding pattern
 
 Must change or check:
 
-* input type enumerations
-* remote setpoint address, especially 2200 vs 2400
-* programmer data layout
-* configuration-mode behaviour
-* EI-Bisynch support if needed
-* EEPROM-write policy, especially for 2200
+- input type enumerations
+- remote setpoint address, especially 2200 vs 2400
+- programmer data layout
+- configuration-mode behaviour
+- EI-Bisynch support if needed
+- EEPROM-write policy, especially for 2200
 
 ```
 
