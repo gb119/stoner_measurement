@@ -375,6 +375,29 @@ class TestMotorControlPanel:
         assert panel._dial.maximumAngle() == pytest.approx(180.0)  # pylint: disable=protected-access
         assert panel._dial.wrap() is False  # pylint: disable=protected-access
 
+    def test_live_status_block_uses_two_column_grid(self, qapp):
+        _repo_qapp(qapp)
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+        status_layout = panel._angle_label.parentWidget().layout()  # pylint: disable=protected-access
+
+        assert status_layout.indexOf(panel._angle_label) >= 0  # pylint: disable=protected-access
+        assert status_layout.indexOf(panel._target_label) >= 0  # pylint: disable=protected-access
+        assert status_layout.indexOf(panel._velocity_label) >= 0  # pylint: disable=protected-access
+        assert status_layout.indexOf(panel._acceleration_label) >= 0  # pylint: disable=protected-access
+        assert status_layout.indexOf(panel._direction_label) >= 0  # pylint: disable=protected-access
+        assert status_layout.indexOf(panel._revolutions_label) >= 0  # pylint: disable=protected-access
+        assert status_layout.indexOf(panel._motion_state_label) >= 0  # pylint: disable=protected-access
+
+        assert status_layout.getItemPosition(status_layout.indexOf(panel._angle_label)) == (0, 0, 1, 1)  # pylint: disable=protected-access
+        assert status_layout.getItemPosition(status_layout.indexOf(panel._target_label)) == (0, 1, 1, 1)  # pylint: disable=protected-access
+        assert status_layout.getItemPosition(status_layout.indexOf(panel._velocity_label)) == (1, 0, 1, 1)  # pylint: disable=protected-access
+        assert status_layout.getItemPosition(status_layout.indexOf(panel._acceleration_label)) == (1, 1, 1, 1)  # pylint: disable=protected-access
+        assert status_layout.getItemPosition(status_layout.indexOf(panel._direction_label)) == (2, 0, 1, 1)  # pylint: disable=protected-access
+        assert status_layout.getItemPosition(status_layout.indexOf(panel._revolutions_label)) == (2, 1, 1, 1)  # pylint: disable=protected-access
+        assert status_layout.getItemPosition(status_layout.indexOf(panel._motion_state_label)) == (3, 0, 1, 2)  # pylint: disable=protected-access
+
     def test_soft_limit_prompt_retries_confirmed_forced_move(self, qapp, monkeypatch):
         _repo_qapp(qapp)
         from qtpy.QtWidgets import QMessageBox
@@ -418,6 +441,34 @@ class TestMotorControlPanel:
             (-160.0, MotorMoveDirection.CLOCKWISE, False),
             (-160.0, MotorMoveDirection.CLOCKWISE, True),
         ]
+
+    def test_state_update_reports_direction_velocity_and_acceleration(self, qapp):
+        _repo_qapp(qapp)
+        from stoner_measurement.ui.motor_panel import MotorControlPanel
+
+        panel = MotorControlPanel()
+        state = MotorEngineState(
+            reading=MotorReading(
+                timestamp=datetime.now(tz=UTC),
+                angle=12.5,
+                target_angle=15.0,
+                moving=True,
+                angular_rate=2.5,
+                move_direction="counterclockwise",
+            ),
+            target_angle=15.0,
+            velocity=5.0,
+            acceleration=10.0,
+            at_target=True,
+            stable=False,
+            move_direction="counterclockwise",
+        )
+
+        panel._on_state_updated(state)  # pylint: disable=protected-access
+
+        assert panel._direction_label.text() == "Direction: Counterclockwise"  # pylint: disable=protected-access
+        assert panel._velocity_label.text() == "Velocity: 5.000°/s"  # pylint: disable=protected-access
+        assert panel._acceleration_label.text() == "Acceleration: 10.000°/s²"  # pylint: disable=protected-access
 
 
 def test_top_level_public_motor_exports():

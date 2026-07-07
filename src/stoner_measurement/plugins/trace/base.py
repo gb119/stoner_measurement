@@ -573,6 +573,8 @@ class _ScanPage(QWidget):
 
         name_edit = QLineEdit(plugin.instance_name)
         name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
+        comment_edit = QLineEdit(plugin.comment)
+        comment_edit.setToolTip("Optional short note shown in the sequence list")
 
         def _apply_name() -> None:
             new_name = name_edit.text().strip()
@@ -589,13 +591,65 @@ class _ScanPage(QWidget):
                 name_edit.setText(plugin.instance_name)
 
         name_edit.editingFinished.connect(_apply_name)
+        def _apply_comment() -> None:
+            plugin.comment = comment_edit.text().strip()
+            comment_edit.setText(plugin.comment)
+
+        comment_edit.editingFinished.connect(_apply_comment)
+
+        name_changed_signal = getattr(plugin, "instance_name_changed", None)
+        if name_changed_signal is not None:
+            prev_sync = getattr(plugin, "_name_edit_sync", None)
+            if prev_sync is not None:
+                try:
+                    name_changed_signal.disconnect(prev_sync)
+                except (TypeError, RuntimeError):
+                    pass
+
+            def _sync_name_edit(_old: str, _new: str) -> None:  # noqa: ARG001
+                current = plugin.instance_name
+                try:
+                    name_edit.setText(current)
+                    name_edit.setStyleSheet("")
+                except RuntimeError:
+                    try:
+                        name_changed_signal.disconnect(_sync_name_edit)
+                    except (TypeError, RuntimeError):
+                        pass
+
+            name_changed_signal.connect(_sync_name_edit)
+            plugin._name_edit_sync = _sync_name_edit  # type: ignore[attr-defined]
+
+        comment_changed_signal = getattr(plugin, "comment_changed", None)
+        if comment_changed_signal is not None:
+            prev_sync = getattr(plugin, "_comment_edit_sync", None)
+            if prev_sync is not None:
+                try:
+                    comment_changed_signal.disconnect(prev_sync)
+                except (TypeError, RuntimeError):
+                    pass
+
+            def _sync_comment_edit(_old: str, _new: str) -> None:  # noqa: ARG001
+                current = plugin.comment
+                try:
+                    comment_edit.setText(current)
+                except RuntimeError:
+                    try:
+                        comment_changed_signal.disconnect(_sync_comment_edit)
+                    except (TypeError, RuntimeError):
+                        pass
+
+            comment_changed_signal.connect(_sync_comment_edit)
+            plugin._comment_edit_sync = _sync_comment_edit  # type: ignore[attr-defined]
+
         header_form.addRow("Instance name:", name_edit)
+        header_form.addRow("Comment:", comment_edit)
         header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
 
         if len(plugin._scan_generator_classes) > 1:
             combo = QComboBox()
             for cls in plugin._scan_generator_classes:
-                combo.addItem(cls.__name__, cls)
+                combo.addItem(cls.display_name(), cls)
             current_idx = combo.findData(type(plugin.scan_generator))
             if current_idx >= 0:
                 combo.setCurrentIndex(current_idx)
@@ -1162,8 +1216,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return a fixed set of configuration tabs for this plugin.
 
-        Returns a *Scan* tab (instance name, optional generator selector, and
-        the generator's own config widget), a *Settings* tab populated by
+        Returns a *Scan* tab (instance name, comment, optional generator
+        selector, and the generator's own config widget), a *Settings* tab populated by
         :meth:`_plugin_config_tabs`, and an optional *About* tab whose HTML
         content is provided by :meth:`_about_html`.
 
@@ -1180,8 +1234,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
         Returns:
             (list[tuple[str, QWidget]]):
-                List of ``(tab_title, widget)`` pairs; the *Scan* tab is always
-                first.
+                List of ``(tab_title, widget)`` pairs; the *Scan* tab is
+                always first.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication

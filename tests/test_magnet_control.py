@@ -1185,20 +1185,25 @@ class TestMagnetControlPanel:
         from stoner_measurement.instruments.magnet_controller import MagnetController
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
+        class _VisibleMagnetDriver:
+            @classmethod
+            def display_name(cls):
+                return "Visible Magnet Driver"
+
         panel = MagnetControlPanel()
         monkeypatch.setattr(
             panel._driver_manager,
             "drivers_by_type",
             lambda _cls: {
                 "_HiddenMagnetDriver": MagnetController,
-                "VisibleMagnetDriver": MagnetController,
+                "VisibleMagnetDriver": _VisibleMagnetDriver,
             },
         )
 
         panel._populate_driver_combo()
 
         items = [panel._driver_combo.itemText(i) for i in range(panel._driver_combo.count())]
-        assert "VisibleMagnetDriver" in items
+        assert "Visible Magnet Driver" in items
         assert "_HiddenMagnetDriver" not in items
 
     def test_null_transport_connect_sets_address_status_connected(self, qapp):

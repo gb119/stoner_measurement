@@ -9,15 +9,15 @@ from types import SimpleNamespace
 import pytest
 
 from stoner_measurement.instruments.magnet_controller import MagnetState
-from stoner_measurement.plugins.base_plugin import BasePlugin
-from stoner_measurement.plugins.monitor import magnet_controller as mc_module
-from stoner_measurement.plugins.monitor.magnet_controller import (
-    MagneticFieldMonitorPlugin,
-)
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
     MagnetReading,
+)
+from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.monitor import magnet_controller as mc_module
+from stoner_measurement.plugins.monitor.magnet_controller import (
+    MagneticFieldMonitorPlugin,
 )
 
 
@@ -400,6 +400,8 @@ def test_config_tabs_has_general_tab(monkeypatch):
 
     tabs = plugin.config_tabs()
     tab_titles = [title for title, _ in tabs]
+    assert tab_titles[0] == "General"
+    assert tab_titles[1] == "Magnetic Field Monitor"
     assert "General" in tab_titles
     assert "Magnetic Field Monitor" in tab_titles
 

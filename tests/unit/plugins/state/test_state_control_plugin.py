@@ -71,6 +71,19 @@ class TestStateControlPlugin:
         assert RampScanGenerator in p._scan_generator_classes
         assert ArbitraryFunctionScanGenerator in p._scan_generator_classes
 
+    def test_scan_config_uses_humanised_generator_names(self, qapp):
+        from qtpy.QtWidgets import QComboBox
+
+        p = _InstantState()
+        scan_page = p.config_tabs()[0][1]
+        combo = next(iter(scan_page.findChildren(QComboBox)), None)
+
+        assert combo is not None
+        labels = [combo.itemText(i) for i in range(combo.count())]
+        assert "Function Scan Generator" in labels
+        assert "Ramp Scan Generator" in labels
+        assert "Arbitrary Function Scan Generator" in labels
+
     def test_is_at_target(self, qapp):
         assert _InstantState().is_at_target() is True
 

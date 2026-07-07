@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from qtpy.QtWidgets import QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.state_scan import CounterPlugin
 from stoner_measurement.plugins.state_sweep import StateSweepPlugin, SweepTimePlugin
 from stoner_measurement.sweep import (
     BaseSweepGenerator,
@@ -107,8 +108,17 @@ class TestStateSweepPlugin:
         assert next(plugin) is True
         assert plugin.ix == 0
         assert plugin.index == 0
+        assert plugin.segment == 0
         assert plugin.value == 1.0
         assert next(plugin) is False
+
+    def test_reported_values_include_segment_output(self, qapp):
+        plugin = _TestSweepPlugin()
+        assert plugin.reported_values() == {
+            "testsweep:X": "testsweep.value",
+            "testsweep:Index": "testsweep.index",
+            "testsweep:Segment": "testsweep.segment",
+        }
 
     def test_execute_sequence_runs_substeps_once_per_sweep_point(self, qapp):
         plugin = _TestSweepPlugin()
@@ -178,10 +188,54 @@ class TestStateSweepPlugin:
         assert plugin.collect_outputs is None
         engine.shutdown()
 
+    def test_sweep_config_uses_humanised_generator_names(self, qapp):
+        from qtpy.QtWidgets import QComboBox
+
+        plugin = SweepTimePlugin()
+        sweep_page = plugin.config_tabs()[0][1]
+        combo = next(iter(sweep_page.findChildren(QComboBox)), None)
+
+        assert combo is not None
+        labels = [combo.itemText(i) for i in range(combo.count())]
+        assert "Monitor And Filter Sweep Generator" in labels
+        assert "Multi Segment Ramp Sweep Generator" in labels
+
     def test_generate_action_code_uses_while_next(self, qapp):
         plugin = _TestSweepPlugin()
         lines = plugin.generate_action_code(1, [], lambda s, i: [])
         assert any("while next(" in line for line in lines)
+
+    def test_sweep_config_exposes_comment_field(self, qapp):
+        from qtpy.QtWidgets import QLineEdit
+
+        plugin = _TestSweepPlugin()
+        tabs = plugin.config_tabs()
+        sweep_page = tabs[0][1]
+        edits = sweep_page.findChildren(QLineEdit)
+
+        assert any(edit.text() == plugin.comment for edit in edits)
+
+        comment_edit = edits[1]
+        comment_edit.setText("collect during motion")
+        comment_edit.editingFinished.emit()
+
+        assert plugin.comment == "collect during motion"
+
+    def test_scan_config_exposes_comment_field(self, qapp):
+        from qtpy.QtWidgets import QLineEdit
+
+        plugin = CounterPlugin()
+        tabs = plugin.config_tabs()
+        scan_page = tabs[0][1]
+        edits = scan_page.findChildren(QLineEdit)
+
+        assert any(edit.text() == plugin.comment for edit in edits)
+
+        comment_edit = edits[1]
+        comment_edit.setText("discrete scan")
+        comment_edit.editingFinished.emit()
+
+        assert plugin.comment == "discrete scan"
 
     def test_generate_action_code_does_not_wrap_substeps_in_measure_flag_if(self, qapp):
         plugin = _TestSweepPlugin()

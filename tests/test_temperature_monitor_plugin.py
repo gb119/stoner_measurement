@@ -532,6 +532,8 @@ def test_config_tabs_has_general_tab(monkeypatch, qapp):
     plugin = _make_plugin(engine, monkeypatch)
     tabs = plugin.config_tabs()
     tab_titles = [title for title, _ in tabs]
+    assert tab_titles[0] == "General"
+    assert tab_titles[1] == "Temperature Monitor"
     assert "General" in tab_titles
     assert "Temperature Monitor" in tab_titles
 

@@ -1000,7 +1000,13 @@ class MagnetControlPanel(QWidget):
         for name in sorted(mc_drivers):
             if not name.startswith("_"):
                 driver_cls = mc_drivers[name]
-                self._driver_combo.addItem(name, driver_cls)
+                display_name = name
+                if hasattr(driver_cls, "display_name"):
+                    try:
+                        display_name = str(driver_cls.display_name())
+                    except Exception:
+                        display_name = name
+                self._driver_combo.addItem(display_name, driver_cls)
                 self._driver_combo.setItemData(
                     self._driver_combo.count() - 1,
                     name,

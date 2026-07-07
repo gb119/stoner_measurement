@@ -98,6 +98,29 @@ class TestTracePlugin:
         combos = scan_page.findChildren(QComboBox)
         assert len(combos) >= 1
 
+    def test_scan_page_uses_humanised_generator_names(self, qapp):
+        from qtpy.QtWidgets import QComboBox
+
+        p = _SimpleTrace()
+        scan_page = p.config_tabs()[0][1]
+        combo = next(iter(scan_page.findChildren(QComboBox)), None)
+
+        assert combo is not None
+        labels = [combo.itemText(i) for i in range(combo.count())]
+        assert "Function Scan Generator" in labels
+        assert "Ramp Scan Generator" in labels
+        assert "Arbitrary Function Scan Generator" in labels
+
+    def test_scan_page_contains_comment_editor(self, qapp):
+        from qtpy.QtWidgets import QLabel, QLineEdit
+
+        p = _SimpleTrace()
+        scan_page = p.config_tabs()[0][1]
+        comment_label = next(label for label in scan_page.findChildren(QLabel) if label.text() == "Comment:")
+        assert comment_label is not None
+        edits = scan_page.findChildren(QLineEdit)
+        assert len(edits) >= 2
+
     def test_config_tabs_scan_widget_is_qwidget(self, qapp):
         from qtpy.QtWidgets import QWidget
 

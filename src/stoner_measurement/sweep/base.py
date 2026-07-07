@@ -12,8 +12,9 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from qtpy.QtCore import QObject
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QWidget
+from stoner_measurement.display_names import class_display_name
+from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.state_sweep.base import StateSweepPlugin
@@ -66,6 +67,11 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         super().__init__(parent)
         self._state_sweep = state_sweep
         self._iterator: Iterator[tuple[int, float, int, bool]] | None = None
+
+    @classmethod
+    def display_name(cls) -> str:
+        """Return a human-friendly label for generator picker widgets."""
+        return class_display_name(cls)
 
     @property
     def state_sweep(self) -> StateSweepPlugin | None:

@@ -364,6 +364,8 @@ def test_config_tabs_has_general_tab(monkeypatch):
 
     tabs = plugin.config_tabs()
     tab_titles = [title for title, _ in tabs]
+    assert tab_titles[0] == "General"
+    assert tab_titles[1] == "Motor Angle Monitor"
     assert "General" in tab_titles
     assert "Motor Angle Monitor" in tab_titles
 

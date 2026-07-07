@@ -12,9 +12,10 @@ from abc import abstractmethod
 from collections.abc import Callable
 
 from qtpy.QtCore import QObject, QTimer
-from stoner_measurement.qt_compat import pyqtSignal
+from qtpy.QtWidgets import QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
+from stoner_measurement.qt_compat import pyqtSignal
 
 
 class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
@@ -91,6 +92,21 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     def _on_comment_changed(self, old_comment: str, new_comment: str) -> None:
         """Emit :attr:`comment_changed` when the comment changes."""
         self.comment_changed.emit(old_comment, new_comment)
+
+    def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
+        """Return monitor configuration tabs with *General* first."""
+
+        def _build_tabs() -> list[tuple[str, QWidget]]:
+            tabs = [
+                ("General", self._general_config_widget(parent=parent)),
+                (self.name, self.config_widget(parent=parent)),
+            ]
+            about_tab = self._make_about_tab()
+            if about_tab is not None:
+                tabs.append(about_tab)
+            return tabs
+
+        return self._get_cached_config_tabs(_build_tabs)
 
     @property
     def plugin_type(self) -> str:

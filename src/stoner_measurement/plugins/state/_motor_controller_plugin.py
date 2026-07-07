@@ -6,8 +6,16 @@ import math
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
-from qtpy.QtWidgets import QCheckBox, QFormLayout, QHBoxLayout, QVBoxLayout, QWidget
+from qtpy.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
+    QHBoxLayout,
+    QVBoxLayout,
+    QWidget,
+)
 
+from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.motor_control.engine import MotorControllerEngine
 from stoner_measurement.ui.widgets import SISpinBox
 
@@ -30,13 +38,29 @@ def _normalise_outputs(values: Iterable[str] | None) -> list[str] | None:
     return None if len(selected) == len(_OUTPUT_OPTIONS) else selected
 
 
+def _normalise_direction(value: object) -> MotorMoveDirection:
+    """Return the canonical persisted direction mode."""
+    try:
+        direction = value if isinstance(value, MotorMoveDirection) else MotorMoveDirection(str(value))
+    except ValueError:
+        return MotorMoveDirection.SHORTEST
+    if direction is MotorMoveDirection.TOWARDS_ZERO:
+        return MotorMoveDirection.SHORTEST
+    return direction
+
+
 class MotorControllerPluginMixin:
     """Shared engine-backed behaviour for motor state scan/sweep plugins."""
 
     def _init_motor_controller_plugin(self) -> None:
         self.velocity: float = 10.0
         self.acceleration: float = 10.0
+        self.direction: MotorMoveDirection = MotorMoveDirection.SHORTEST
         self.report_outputs: list[str] | None = None
+
+    def _uses_velocity_setting(self) -> bool:
+        """Return whether this plugin exposes a fixed velocity setting."""
+        return getattr(self, "plugin_type", "") != "state_sweep"
 
     def _refresh_catalogs(self) -> None:
         if self.sequence_engine is not None:
@@ -70,7 +94,8 @@ class MotorControllerPluginMixin:
     def configure(self) -> None:
         """Push the configured velocity and acceleration into the engine."""
         engine = self._ensure_connected()
-        engine.set_velocity(self.velocity)
+        if self._uses_velocity_setting():
+            engine.set_velocity(self.velocity)
         engine.set_acceleration(self.acceleration)
 
     def disconnect(self) -> None:
@@ -79,9 +104,10 @@ class MotorControllerPluginMixin:
     def set_state(self, value: float) -> None:
         """Move the controller to the requested absolute angular set-point."""
         engine = self._ensure_connected()
-        engine.set_velocity(self.velocity)
+        if self._uses_velocity_setting():
+            engine.set_velocity(self.velocity)
         engine.set_acceleration(self.acceleration)
-        engine.move_to_angle(float(value))
+        engine.move_to_angle(float(value), direction=self.direction)
 
     def set_target(self, value: float) -> None:
         """Compatibility alias that forwards to :meth:`set_state`."""
@@ -151,6 +177,7 @@ class MotorControllerPluginMixin:
         return {
             "velocity": self.velocity,
             "acceleration": self.acceleration,
+            "direction": self.direction.value,
             "report_outputs": None if self.report_outputs is None else list(self.report_outputs),
         }
 
@@ -159,6 +186,8 @@ class MotorControllerPluginMixin:
             self.velocity = max(0.0, float(data["velocity"]))
         if "acceleration" in data:
             self.acceleration = max(0.0, float(data["acceleration"]))
+        if "direction" in data:
+            self.direction = _normalise_direction(data["direction"])
         if "report_outputs" in data:
             raw = data["report_outputs"]
             self.report_outputs = _normalise_outputs(raw if isinstance(raw, list) else None)
@@ -180,13 +209,14 @@ class _MotorControllerSettingsWidget(QWidget):
         root = QVBoxLayout(self)
         form = QFormLayout()
 
-        self._velocity_spin = SISpinBox()
-        self._velocity_spin.setOpts(bounds=(0.001, 10000.0), decimals=3, suffix="°/s", step=1.0)
-        self._velocity_spin.setValue(self._plugin.velocity)
-        self._velocity_spin.sigValueChanged.connect(
-            lambda sb: setattr(self._plugin, "velocity", max(0.0, float(sb.value())))
-        )
-        form.addRow("Velocity:", self._velocity_spin)
+        if self._plugin._uses_velocity_setting():
+            self._velocity_spin = SISpinBox()
+            self._velocity_spin.setOpts(bounds=(0.001, 10000.0), decimals=3, suffix="°/s", step=1.0)
+            self._velocity_spin.setValue(self._plugin.velocity)
+            self._velocity_spin.sigValueChanged.connect(
+                lambda sb: setattr(self._plugin, "velocity", max(0.0, float(sb.value())))
+            )
+            form.addRow("Velocity:", self._velocity_spin)
 
         self._acceleration_spin = SISpinBox()
         self._acceleration_spin.setOpts(bounds=(0.001, 10000.0), decimals=3, suffix="°/s²", step=1.0)
@@ -195,6 +225,22 @@ class _MotorControllerSettingsWidget(QWidget):
             lambda sb: setattr(self._plugin, "acceleration", max(0.0, float(sb.value())))
         )
         form.addRow("Acceleration:", self._acceleration_spin)
+
+        self._direction_combo = QComboBox(self)
+        self._direction_combo.addItem("Clockwise", MotorMoveDirection.CLOCKWISE)
+        self._direction_combo.addItem("Counter-clockwise", MotorMoveDirection.COUNTERCLOCKWISE)
+        self._direction_combo.addItem("Shortest", MotorMoveDirection.SHORTEST)
+        current_index = self._direction_combo.findData(self._plugin.direction)
+        if current_index >= 0:
+            self._direction_combo.setCurrentIndex(current_index)
+        self._direction_combo.currentIndexChanged.connect(
+            lambda index: setattr(
+                self._plugin,
+                "direction",
+                _normalise_direction(self._direction_combo.itemData(index)),
+            )
+        )
+        form.addRow("Direction:", self._direction_combo)
 
         outputs_row = QHBoxLayout()
         selected = set(_OUTPUT_OPTIONS if self._plugin.report_outputs is None else self._plugin.report_outputs)

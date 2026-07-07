@@ -88,6 +88,13 @@ def _signed_display_angle(angle: float) -> float:
     return wrapped
 
 
+def _format_direction_mode(direction: str | None) -> str:
+    """Return a human-readable direction label."""
+    if not direction:
+        return "—"
+    return str(direction).replace("_", "-").title()
+
+
 class MotorControlPanel(QWidget):
     """Non-blocking window for motor controller configuration and monitoring."""
 
@@ -326,21 +333,43 @@ class MotorControlPanel(QWidget):
         self._dial.setValueTextSuffix("°")
         right_layout.addWidget(self._dial, stretch=1)
 
+        status_widget = QWidget(right_column)
+        status_layout = QGridLayout(status_widget)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setHorizontalSpacing(12)
+        status_layout.setVerticalSpacing(4)
+
         self._angle_label = QLabel("Angle: —")
-        self._angle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(self._angle_label)
+        self._angle_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        status_layout.addWidget(self._angle_label, 0, 0)
 
         self._target_label = QLabel("Target: —")
-        self._target_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(self._target_label)
+        self._target_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        status_layout.addWidget(self._target_label, 0, 1)
+
+        self._velocity_label = QLabel("Velocity: —")
+        self._velocity_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        status_layout.addWidget(self._velocity_label, 1, 0)
+
+        self._acceleration_label = QLabel("Acceleration: —")
+        self._acceleration_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        status_layout.addWidget(self._acceleration_label, 1, 1)
+
+        self._direction_label = QLabel("Direction: —")
+        self._direction_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        status_layout.addWidget(self._direction_label, 2, 0)
+
+        self._revolutions_label = QLabel("Revolutions: —")
+        self._revolutions_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        status_layout.addWidget(self._revolutions_label, 2, 1)
 
         self._motion_state_label = QLabel("State: —")
         self._motion_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(self._motion_state_label)
+        status_layout.addWidget(self._motion_state_label, 3, 0, 1, 2)
 
-        self._revolutions_label = QLabel("Revolutions: —")
-        self._revolutions_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(self._revolutions_label)
+        status_layout.setColumnStretch(0, 1)
+        status_layout.setColumnStretch(1, 1)
+        right_layout.addWidget(status_widget)
 
         layout.addWidget(left_column, 0, 0)
         layout.addWidget(right_column, 0, 1)
@@ -423,6 +452,19 @@ class MotorControlPanel(QWidget):
             "Target: —"
             if reading.target_angle is None
             else f"Target: {_signed_display_angle(reading.target_angle):.3f}°"
+        )
+        self._direction_label.setText(
+            f"Direction: {_format_direction_mode(state.move_direction or reading.move_direction)}"
+        )
+        self._velocity_label.setText(
+            "Velocity: —"
+            if state.velocity is None
+            else f"Velocity: {state.velocity:.3f}°/s"
+        )
+        self._acceleration_label.setText(
+            "Acceleration: —"
+            if state.acceleration is None
+            else f"Acceleration: {state.acceleration:.3f}°/s²"
         )
         self._revolutions_label.setText(f"Revolutions: {reading.revolutions:d} ({reading.move_direction or '—'})")
 

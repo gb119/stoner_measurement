@@ -10,10 +10,10 @@ instrument by holding references to a :class:`BaseTransport` and a
 from __future__ import annotations
 
 import logging
-import re
 from abc import ABC
 from typing import TYPE_CHECKING
 
+from stoner_measurement.display_names import class_display_name
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.lock_registry import get_instrument_lock
 
@@ -22,10 +22,6 @@ if TYPE_CHECKING:
     from stoner_measurement.instruments.transport.base import BaseTransport
 
 _COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
-_DISPLAY_NAME_FIRST_PASS = re.compile(r"(?<=[a-z])(?=[A-Z0-9])|(?<=[A-Z])(?=[A-Z][a-z])")
-_DISPLAY_NAME_SECOND_PASS = re.compile(r"(?<=[A-Za-z])(?=[0-9])|(?<=[0-9])(?=[A-Za-z])")
-
-
 def _coerce_to_bytes(data: str | bytes) -> bytes:
     """Return *data* as bytes, encoding only string inputs."""
     if isinstance(data, bytes):
@@ -121,12 +117,7 @@ class BaseInstrument(ABC):
     @classmethod
     def display_name(cls) -> str:
         """Return a human-friendly label for UI driver pickers."""
-        explicit = getattr(cls, "DRIVER_DISPLAY_NAME", None)
-        if isinstance(explicit, str) and explicit.strip():
-            return explicit.strip()
-        label = _DISPLAY_NAME_FIRST_PASS.sub(" ", cls.__name__).strip()
-        label = _DISPLAY_NAME_SECOND_PASS.sub(" ", label)
-        return " ".join(label.split())
+        return class_display_name(cls, explicit_attr_names=("DISPLAY_NAME", "DRIVER_DISPLAY_NAME"))
 
     @property
     def is_connected(self) -> bool:

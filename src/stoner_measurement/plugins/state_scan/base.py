@@ -99,6 +99,8 @@ class _StateScanPage(QWidget):
 
         name_edit = QLineEdit(plugin.instance_name)
         name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
+        comment_edit = QLineEdit(plugin.comment)
+        comment_edit.setToolTip("Optional short note shown alongside this step in the sequence.")
 
         def _apply_name() -> None:
             new_name = name_edit.text().strip()
@@ -115,8 +117,21 @@ class _StateScanPage(QWidget):
                 name_edit.setText(plugin.instance_name)
 
         name_edit.editingFinished.connect(_apply_name)
+        comment_edit.editingFinished.connect(
+            lambda: (
+                setattr(plugin, "comment", comment_edit.text().strip()),
+                comment_edit.setText(plugin.comment),
+            )
+        )
         header_form.addRow("Instance name:", name_edit)
+        header_form.addRow("Comment:", comment_edit)
         header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
+
+        comment_changed_signal = getattr(plugin, "comment_changed", None)
+        if comment_changed_signal is not None:
+            comment_changed_signal.connect(
+                lambda _old, _new: comment_edit.setText(plugin.comment)
+            )
 
         if len(type(plugin)._scan_generator_classes) > 1:
             self._add_generator_combo(plugin, header_form)
@@ -129,7 +144,7 @@ class _StateScanPage(QWidget):
         """Add combo box for selecting generator type when multiple classes exist."""
         combo = QComboBox()
         for cls in type(plugin)._scan_generator_classes:
-            combo.addItem(cls.__name__, cls)
+            combo.addItem(cls.display_name(), cls)
         current_idx = combo.findData(type(plugin.scan_generator))
         if current_idx >= 0:
             combo.setCurrentIndex(current_idx)

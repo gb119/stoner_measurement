@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from stoner_measurement.instruments.magnet_controller import MagnetState
+from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.instruments.temperature_controller import SensorStatus
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
@@ -210,7 +211,7 @@ class _FakeMotorEngine:
         self.connect_calls: list[tuple[str, str, str]] = []
         self.velocity_calls: list[float] = []
         self.acceleration_calls: list[float] = []
-        self.move_calls: list[float] = []
+        self.move_calls: list[tuple[float, MotorMoveDirection]] = []
         self.read_calls = 0
         self._state = SimpleNamespace(
             reading=SimpleNamespace(
@@ -218,12 +219,14 @@ class _FakeMotorEngine:
                 target_angle=15.0,
                 moving=True,
                 angular_rate=2.5,
+                move_direction="shortest",
             ),
             target_angle=15.0,
             velocity=5.0,
             acceleration=10.0,
             at_target=True,
             stable=False,
+            move_direction="shortest",
         )
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
@@ -252,8 +255,8 @@ class _FakeMotorEngine:
     def set_acceleration(self, value: float) -> None:
         self.acceleration_calls.append(float(value))
 
-    def move_to_angle(self, value: float) -> None:
-        self.move_calls.append(float(value))
+    def move_to_angle(self, value: float, *, direction: MotorMoveDirection) -> None:
+        self.move_calls.append((float(value), direction))
 
 
 def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
@@ -420,6 +423,58 @@ def test_motor_controller_is_at_target_forces_poll(monkeypatch, qapp):
     assert engine.read_calls == 1
 
 
+def test_motor_controller_scan_plugin_uses_direction_and_fixed_velocity(monkeypatch, qapp):
+    engine = _FakeMotorEngine()
+    monkeypatch.setattr(
+        motor_module,
+        "MotorControllerEngine",
+        type("FakeMotorControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MotorControllerScanPlugin()
+    plugin.velocity = 7.5
+    plugin.acceleration = 12.0
+    plugin.direction = MotorMoveDirection.COUNTERCLOCKWISE
+
+    plugin.configure()
+    plugin.set_state(33.0)
+
+    assert engine.velocity_calls == [7.5, 7.5]
+    assert engine.acceleration_calls == [12.0, 12.0]
+    assert engine.move_calls == [(33.0, MotorMoveDirection.COUNTERCLOCKWISE)]
+
+
+def test_motor_controller_sweep_plugin_uses_rate_instead_of_fixed_velocity(monkeypatch, qapp):
+    engine = _FakeMotorEngine()
+    monkeypatch.setattr(
+        motor_module,
+        "MotorControllerEngine",
+        type("FakeMotorControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MotorControllerSweepPlugin()
+    plugin.velocity = 9.0
+    plugin.acceleration = 14.0
+    plugin.direction = MotorMoveDirection.CLOCKWISE
+
+    plugin.configure()
+    plugin.set_rate(0.5)
+    plugin.set_target(22.0)
+
+    assert engine.velocity_calls == [0.5]
+    assert engine.acceleration_calls == [14.0, 14.0]
+    assert engine.move_calls == [(22.0, MotorMoveDirection.CLOCKWISE)]
+
+
+def test_motor_controller_sweep_settings_hide_fixed_velocity_control(qapp):
+    plugin = MotorControllerSweepPlugin()
+
+    widget = plugin._plugin_config_tabs()  # noqa: SLF001
+
+    assert widget._direction_combo.currentData() is MotorMoveDirection.SHORTEST  # noqa: SLF001
+    assert not hasattr(widget, "_velocity_spin")  # noqa: SLF001
+
+
 def test_temperature_controller_sweep_plugin_round_trips(monkeypatch, qapp):
     engine = _FakeTemperatureEngine()
     monkeypatch.setattr(
@@ -442,6 +497,7 @@ def test_temperature_controller_sweep_plugin_round_trips(monkeypatch, qapp):
     assert restored.reported_values() == {
         "temperature_controller:Control Value": "temperature_controller.value",
         "temperature_controller:Index": "temperature_controller.index",
+        "temperature_controller:Segment": "temperature_controller.segment",
         "temperature_controller:Loop Setpoint": "temperature_controller.control_setpoint",
         "temperature_controller:Sensor A": "temperature_controller.sensor_value('A')",
         "temperature_controller:Sensor B": "temperature_controller.sensor_value('B')",

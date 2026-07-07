@@ -965,20 +965,25 @@ class TestTemperatureControlPanel:
         from stoner_measurement.instruments.temperature_controller import TemperatureController
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
+        class _VisibleTemperatureDriver:
+            @classmethod
+            def display_name(cls):
+                return "Visible Temperature Driver"
+
         panel = TemperatureControlPanel()
         monkeypatch.setattr(
             panel._driver_manager,
             "drivers_by_type",
             lambda _cls: {
                 "_HiddenTemperatureDriver": TemperatureController,
-                "VisibleTemperatureDriver": TemperatureController,
+                "VisibleTemperatureDriver": _VisibleTemperatureDriver,
             },
         )
 
         panel._populate_driver_combo()
 
         items = [panel._driver_combo.itemText(i) for i in range(panel._driver_combo.count())]
-        assert "VisibleTemperatureDriver" in items
+        assert "Visible Temperature Driver" in items
         assert "_HiddenTemperatureDriver" not in items
 
     def test_null_transport_connect_sets_address_status_connected(self, qapp):

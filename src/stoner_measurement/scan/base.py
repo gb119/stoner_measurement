@@ -12,8 +12,9 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from qtpy.QtCore import QObject
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QWidget
+from stoner_measurement.display_names import class_display_name
+from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
     pass
@@ -93,6 +94,11 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         self._stage_indices_cache: np.ndarray | None = None
         self._index: int = 0
         self._units: str = ""
+
+    @classmethod
+    def display_name(cls) -> str:
+        """Return a human-friendly label for generator picker widgets."""
+        return class_display_name(cls)
 
     # ------------------------------------------------------------------
     # Units property
