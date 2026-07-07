@@ -48,10 +48,17 @@ def _make_state() -> MagnetEngineState:
 class _FakeEngine:
     def __init__(self, state: MagnetEngineState | None = None) -> None:
         self.connected_driver = SimpleNamespace()
+        self.connect_calls = 0
         self.poll_calls = 0
         self._state = state or MagnetEngineState(
             engine_status=MagnetEngineStatus.DISCONNECTED
         )
+
+    def connect_preferred_driver(self) -> None:
+        """Simulate reconnecting via persisted settings."""
+        self.connect_calls += 1
+        if self.connected_driver is None:
+            raise RuntimeError("No magnet controller is connected.")
 
     def get_engine_state(self) -> MagnetEngineState:
         """Return the cached engine state."""

@@ -10,6 +10,7 @@ instrument by holding references to a :class:`BaseTransport` and a
 from __future__ import annotations
 
 import logging
+import re
 from abc import ABC
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,8 @@ if TYPE_CHECKING:
     from stoner_measurement.instruments.transport.base import BaseTransport
 
 _COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
+_DISPLAY_NAME_FIRST_PASS = re.compile(r"(?<=[a-z])(?=[A-Z0-9])|(?<=[A-Z])(?=[A-Z][a-z])")
+_DISPLAY_NAME_SECOND_PASS = re.compile(r"(?<=[A-Za-z])(?=[0-9])|(?<=[0-9])(?=[A-Za-z])")
 
 
 def _coerce_to_bytes(data: str | bytes) -> bytes:
@@ -114,6 +117,16 @@ class BaseInstrument(ABC):
             f"{_COMMS_LOGGER_NAMESPACE}.{self.__class__.__name__}"
         )
         self._lock = get_instrument_lock(self.transport.lock_key)
+
+    @classmethod
+    def display_name(cls) -> str:
+        """Return a human-friendly label for UI driver pickers."""
+        explicit = getattr(cls, "DRIVER_DISPLAY_NAME", None)
+        if isinstance(explicit, str) and explicit.strip():
+            return explicit.strip()
+        label = _DISPLAY_NAME_FIRST_PASS.sub(" ", cls.__name__).strip()
+        label = _DISPLAY_NAME_SECOND_PASS.sub(" ", label)
+        return " ".join(label.split())
 
     @property
     def is_connected(self) -> bool:

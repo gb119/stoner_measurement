@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QCheckBox, QFormLayout, QHBoxLayout, QVBoxLayout, QWidget
+
 from stoner_measurement.motor_control.engine import MotorControllerEngine
 from stoner_measurement.ui.widgets import SISpinBox
 
@@ -47,7 +48,7 @@ class MotorControllerPluginMixin:
     def _ensure_connected(self) -> MotorControllerEngine:
         engine = self._engine()
         if engine.connected_driver is None:
-            raise RuntimeError("No motor controller is connected.")
+            engine.connect_preferred_driver()
         return engine
 
     def _engine_state(self, *, refresh: bool = False) -> MotorEngineState:

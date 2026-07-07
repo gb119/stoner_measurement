@@ -328,6 +328,29 @@ class MagnetControllerEngine(QObject):
         self._connected_transport_name = transport_name
         self._connected_address = address
 
+    def connect_preferred_driver(self) -> None:
+        """Connect using the persisted preferred driver and transport settings.
+
+        Returns immediately when a controller is already connected.
+
+        Raises:
+            RuntimeError:
+                If no preferred driver has been configured.
+            Exception:
+                Any exception raised while constructing or connecting the
+                preferred driver.
+        """
+        if self.connected_driver is not None:
+            return
+        driver_name = self.preferred_driver_name.strip()
+        if not driver_name:
+            raise RuntimeError("No persisted magnet-controller driver is configured.")
+        self.connect_driver(
+            driver_name,
+            self.preferred_transport_name,
+            self.preferred_address,
+        )
+
     def _resolve_driver_class(self, driver_name: str) -> type[MagnetController]:
         """Resolve a magnet-controller driver class by name.
 

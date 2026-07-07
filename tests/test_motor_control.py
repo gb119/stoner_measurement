@@ -260,6 +260,36 @@ class TestSimulatedMotorControllerIntegration:
 
         engine.shutdown()
 
+    def test_engine_connect_preferred_driver_uses_persisted_connection_settings(self, qapp):
+        _repo_qapp(qapp)
+
+        engine = MotorControllerEngine()
+        engine.preferred_driver_name = "SimulatedMotorController"
+        engine.preferred_transport_name = "Null (test)"
+        engine.preferred_address = ""
+
+        engine.connect_preferred_driver()
+
+        assert engine.connected_driver is not None
+        assert isinstance(engine.connected_driver, SimulatedMotorController)
+        assert engine.connected_driver_name == "SimulatedMotorController"
+        assert engine.connected_transport_name == "Null (test)"
+        assert engine.connected_address == ""
+        engine.shutdown()
+
+    def test_engine_connect_preferred_driver_requires_persisted_driver_name(self, qapp):
+        _repo_qapp(qapp)
+
+        engine = MotorControllerEngine()
+        engine.preferred_driver_name = ""
+        engine.preferred_transport_name = "Null (test)"
+        engine.preferred_address = ""
+
+        with pytest.raises(RuntimeError, match="No persisted motor-controller driver"):
+            engine.connect_preferred_driver()
+
+        engine.shutdown()
+
 
 class TestMotorControlPanel:
     def test_creates_widget(self, qapp):

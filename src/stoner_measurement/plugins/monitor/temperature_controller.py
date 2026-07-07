@@ -179,7 +179,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         """
         engine = self._engine()
         if engine.connected_driver is None:
-            raise RuntimeError("No temperature controller is connected.")
+            engine.connect_preferred_driver()
         return engine
 
     def _current_state(self) -> TemperatureEngineState:
@@ -377,7 +377,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             True
         """
         if force_poll or self.force_fresh_poll:
-            polled = self._engine().read_controller_state()
+            polled = self._ensure_connected().read_controller_state()
             state = polled if polled is not None else self._current_state()
         else:
             state = self._current_state()

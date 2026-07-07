@@ -440,6 +440,23 @@ class TestEngineActivityStatusWidget:
         assert dot is not None
         assert colour("highlight") in dot.styleSheet()
 
+    def test_indicator_accepts_context_menu_builder(self, qapp):
+        from qtpy.QtWidgets import QMenu
+
+        widget = EngineActivityStatusWidget()
+        calls: list[str] = []
+
+        def _build_menu() -> QMenu:
+            calls.append("built")
+            return QMenu()
+
+        widget.temperature_indicator.set_context_menu_builder(_build_menu)
+
+        menu = widget.temperature_indicator._menu_builder()  # noqa: SLF001
+
+        assert calls == ["built"]
+        assert isinstance(menu, QMenu)
+
 
 class TestMeasurementApp:
     def test_has_menu_bar(self, qapp):
@@ -491,6 +508,110 @@ class TestMeasurementApp:
             assert widget.temperature_indicator.status_text == "connected"
             assert widget.magnet_indicator.status_text == "error"
             assert widget.motor_indicator.status_text == "polling"
+        finally:
+            app._engine.shutdown()
+
+    def test_engine_indicator_menu_enables_connect_when_disconnected(self, qapp):
+        app = MeasurementApp()
+        try:
+            menu = app._build_engine_indicator_menu(
+                "Temperature controller",
+                app._temp_panel._engine,  # noqa: SLF001
+                "disconnected",
+            )
+            actions = menu.actions()
+            assert [action.text() for action in actions] == ["Connect", "Disconnect"]
+            assert actions[0].isEnabled() is True
+            assert actions[1].isEnabled() is False
+        finally:
+            app._engine.shutdown()
+
+    def test_engine_indicator_menu_enables_disconnect_when_connected(self, qapp):
+        app = MeasurementApp()
+        try:
+            menu = app._build_engine_indicator_menu(
+                "Magnet controller",
+                app._magnet_panel._engine,  # noqa: SLF001
+                "connected",
+            )
+            actions = menu.actions()
+            assert actions[0].isEnabled() is False
+            assert actions[1].isEnabled() is True
+        finally:
+            app._engine.shutdown()
+
+    def test_engine_indicator_connect_action_calls_connect_preferred_driver(self, qapp, monkeypatch):
+        app = MeasurementApp()
+        calls: list[str] = []
+        try:
+            monkeypatch.setattr(
+                app._temp_panel._engine,  # noqa: SLF001
+                "connect_preferred_driver",
+                lambda: calls.append("connect"),
+            )
+            menu = app._build_engine_indicator_menu(
+                "Temperature controller",
+                app._temp_panel._engine,  # noqa: SLF001
+                "disconnected",
+            )
+
+            menu.actions()[0].trigger()
+
+            assert calls == ["connect"]
+        finally:
+            app._engine.shutdown()
+
+    def test_engine_indicator_disconnect_action_calls_disconnect_instrument(self, qapp, monkeypatch):
+        app = MeasurementApp()
+        calls: list[str] = []
+        try:
+            monkeypatch.setattr(
+                app._motor_panel._engine,  # noqa: SLF001
+                "disconnect_instrument",
+                lambda: calls.append("disconnect"),
+            )
+            menu = app._build_engine_indicator_menu(
+                "Motor controller",
+                app._motor_panel._engine,  # noqa: SLF001
+                "polling",
+            )
+
+            menu.actions()[1].trigger()
+
+            assert calls == ["disconnect"]
+        finally:
+            app._engine.shutdown()
+
+    def test_engine_indicator_connect_failure_shows_warning(self, qapp, monkeypatch):
+        app = MeasurementApp()
+        warnings: list[tuple[str, str]] = []
+        try:
+            def _raise_error() -> None:
+                raise ConnectionError("not responding")
+
+            monkeypatch.setattr(
+                app._magnet_panel._engine,  # noqa: SLF001
+                "connect_preferred_driver",
+                _raise_error,
+            )
+            monkeypatch.setattr(
+                "stoner_measurement.app.QMessageBox.warning",
+                lambda _parent, title, text: warnings.append((title, text)),
+            )
+
+            menu = app._build_engine_indicator_menu(
+                "Magnet controller",
+                app._magnet_panel._engine,  # noqa: SLF001
+                "disconnected",
+            )
+            menu.actions()[0].trigger()
+
+            assert warnings == [
+                (
+                    "Magnet controller Connect",
+                    "Could not connect magnet controller.\n\nnot responding",
+                )
+            ]
         finally:
             app._engine.shutdown()
 

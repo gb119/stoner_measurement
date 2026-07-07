@@ -64,6 +64,12 @@ class _FakeEngine:
     def get_engine_state(self) -> TemperatureEngineState:
         return self._state
 
+    def connect_preferred_driver(self) -> None:
+        """Record reconnect attempts and mirror engine failure semantics."""
+        self.connect_calls.append(("preferred", "", ""))
+        if self.connected_driver is None:
+            raise RuntimeError("No temperature controller is connected.")
+
     def read_controller_state(self) -> TemperatureEngineState:
         """Simulate a controller state read and increment the poll counter."""
         self.poll_calls += 1

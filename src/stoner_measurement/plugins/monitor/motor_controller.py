@@ -44,7 +44,7 @@ class MotorAngleMonitorPlugin(MonitorPlugin):
     def _ensure_connected(self) -> MotorControllerEngine:
         engine = self._engine()
         if engine.connected_driver is None:
-            raise RuntimeError("No motor controller is connected.")
+            engine.connect_preferred_driver()
         return engine
 
     def _current_state(self):
@@ -98,7 +98,7 @@ class MotorAngleMonitorPlugin(MonitorPlugin):
 
     def read(self, *, force_poll: bool = False) -> dict[str, float]:
         if force_poll or self.force_fresh_poll:
-            state = self._engine().read_controller_state() or self._current_state()
+            state = self._ensure_connected().read_controller_state() or self._current_state()
         else:
             state = self._current_state()
 

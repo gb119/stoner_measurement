@@ -62,7 +62,7 @@ class TemperatureControllerPluginMixin:
     def _ensure_connected(self) -> TemperatureControllerEngine:
         engine = self._engine()
         if engine.connected_driver is None:
-            raise RuntimeError("No temperature controller is connected.")
+            engine.connect_preferred_driver()
         return engine
 
     def _engine_state(self, *, refresh: bool = False) -> TemperatureEngineState:

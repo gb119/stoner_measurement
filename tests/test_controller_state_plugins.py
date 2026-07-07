@@ -62,6 +62,9 @@ class _FakeMagnetEngine:
         self.connected_driver_name = None
         self.connected_transport_name = None
         self.connected_address = None
+        self.preferred_driver_name = "PersistedMagnetDriver"
+        self.preferred_transport_name = "Serial"
+        self.preferred_address = "port=COM7;baud=9600"
         self.connect_calls: list[tuple[str, str, str]] = []
         self.ramp_rate_calls: list[float] = []
         self.ramp_to_field_calls: list[float] = []
@@ -91,6 +94,13 @@ class _FakeMagnetEngine:
         self.connected_transport_name = transport_name
         self.connected_address = address
         self.connected_driver = type(driver_name, (), {})()
+
+    def connect_preferred_driver(self) -> None:
+        self.connect_driver(
+            self.preferred_driver_name,
+            self.preferred_transport_name,
+            self.preferred_address,
+        )
 
     def read_controller_state(self):
         self.read_calls += 1
@@ -131,6 +141,9 @@ class _FakeTemperatureEngine:
     def __init__(self) -> None:
         self._driver = _FakeTemperatureDriver()
         self.connected_driver = self._driver
+        self.preferred_driver_name = "PersistedTemperatureDriver"
+        self.preferred_transport_name = "Ethernet"
+        self.preferred_address = "temp-host:7020"
         self.connect_calls: list[tuple[str, str, str]] = []
         self.ramp_calls: list[tuple[int, float, bool]] = []
         self.setpoint_calls: list[tuple[int, float]] = []
@@ -164,6 +177,16 @@ class _FakeTemperatureEngine:
     def get_engine_state(self):
         return self._state
 
+    def connect_preferred_driver(self) -> None:
+        self.connect_calls.append(
+            (
+                self.preferred_driver_name,
+                self.preferred_transport_name,
+                self.preferred_address,
+            )
+        )
+        self.connected_driver = self._driver
+
     def set_ramp(self, loop: int, rate: float, enabled: bool) -> None:
         self.ramp_calls.append((int(loop), float(rate), bool(enabled)))
 
@@ -181,6 +204,9 @@ class _FakeMotorEngine:
         self.connected_driver_name = "SimulatedMotorController"
         self.connected_transport_name = "Null (test)"
         self.connected_address = ""
+        self.preferred_driver_name = "PersistedMotorDriver"
+        self.preferred_transport_name = "GPIB"
+        self.preferred_address = "GPIB0::5::INSTR"
         self.connect_calls: list[tuple[str, str, str]] = []
         self.velocity_calls: list[float] = []
         self.acceleration_calls: list[float] = []
@@ -202,6 +228,16 @@ class _FakeMotorEngine:
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
         self.connect_calls.append((driver_name, transport_name, address))
+
+    def connect_preferred_driver(self) -> None:
+        self.connect_calls.append(
+            (
+                self.preferred_driver_name,
+                self.preferred_transport_name,
+                self.preferred_address,
+            )
+        )
+        self.connected_driver = object()
 
     def read_controller_state(self):
         self.read_calls += 1
@@ -412,7 +448,7 @@ def test_temperature_controller_sweep_plugin_round_trips(monkeypatch, qapp):
     }
 
 
-def test_magnet_controller_plugin_requires_existing_engine_connection(monkeypatch, qapp):
+def test_magnet_controller_plugin_connects_with_persisted_engine_settings(monkeypatch, qapp):
     engine = _FakeMagnetEngine()
     engine.connected_driver = None
     monkeypatch.setattr(
@@ -422,14 +458,13 @@ def test_magnet_controller_plugin_requires_existing_engine_connection(monkeypatc
     )
 
     plugin = MagnetControllerScanPlugin()
+    plugin.connect()
 
-    import pytest
-
-    with pytest.raises(RuntimeError, match="No magnet controller is connected"):
-        plugin.connect()
+    assert engine.connect_calls == [("PersistedMagnetDriver", "Serial", "port=COM7;baud=9600")]
+    assert engine.connected_driver is not None
 
 
-def test_temperature_controller_plugin_requires_existing_engine_connection(monkeypatch, qapp):
+def test_temperature_controller_plugin_connects_with_persisted_engine_settings(monkeypatch, qapp):
     engine = _FakeTemperatureEngine()
     engine.connected_driver = None
     monkeypatch.setattr(
@@ -439,9 +474,47 @@ def test_temperature_controller_plugin_requires_existing_engine_connection(monke
     )
 
     plugin = TemperatureControllerScanPlugin()
+    plugin.connect()
+
+    assert engine.connect_calls == [("PersistedTemperatureDriver", "Ethernet", "temp-host:7020")]
+    assert engine.connected_driver is not None
+
+
+def test_motor_controller_plugin_connects_with_persisted_engine_settings(monkeypatch, qapp):
+    engine = _FakeMotorEngine()
+    engine.connected_driver = None
+    monkeypatch.setattr(
+        motor_module,
+        "MotorControllerEngine",
+        type("FakeMotorControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MotorControllerScanPlugin()
+    plugin.connect()
+
+    assert engine.connect_calls == [("PersistedMotorDriver", "GPIB", "GPIB0::5::INSTR")]
+    assert engine.connected_driver is not None
+
+
+def test_temperature_controller_plugin_surfaces_persisted_connection_failure(monkeypatch, qapp):
+    engine = _FakeTemperatureEngine()
+    engine.connected_driver = None
+
+    def _raise_connect_failure() -> None:
+        raise ConnectionError("controller not responding")
+
+    engine.connect_preferred_driver = _raise_connect_failure
+    monkeypatch.setattr(
+        temperature_module,
+        "TemperatureControllerEngine",
+        type("FakeTemperatureControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = TemperatureControllerScanPlugin()
+
     import pytest
 
-    with pytest.raises(RuntimeError, match="No temperature controller is connected"):
+    with pytest.raises(ConnectionError, match="controller not responding"):
         plugin.connect()
 
 

@@ -498,6 +498,35 @@ class TestEngineLifecycle:
         assert engine.connected_driver is None
         engine.shutdown()
 
+    def test_connect_preferred_driver_uses_persisted_connection_settings(self, qapp):
+        from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
+        from stoner_measurement.instruments.transport import NullTransport
+
+        engine = TemperatureControllerEngine()
+        driver_cls = _make_fake_tc().__class__
+        engine._resolve_driver_class = lambda _name: driver_cls
+        engine._build_transport = lambda _transport, _address: NullTransport()
+        engine._build_protocol = lambda _driver: LakeshoreProtocol()
+        engine.preferred_driver_name = "PersistedDriver"
+        engine.preferred_transport_name = "Ethernet"
+        engine.preferred_address = "temp-host:7000"
+
+        engine.connect_preferred_driver()
+
+        assert isinstance(engine.connected_driver, driver_cls)
+        assert engine.connected_driver_name == "PersistedDriver"
+        assert engine.connected_transport_name == "Ethernet"
+        assert engine.connected_address == "temp-host:7000"
+        engine.shutdown()
+
+    def test_connect_preferred_driver_requires_persisted_driver_name(self, qapp):
+        engine = TemperatureControllerEngine()
+
+        with pytest.raises(RuntimeError, match="No persisted temperature-controller driver"):
+            engine.connect_preferred_driver()
+
+        engine.shutdown()
+
     def test_connect_driver_propagates_construction_errors(self, qapp):
         class _BrokenDriver:
             def __init__(self, transport, protocol):

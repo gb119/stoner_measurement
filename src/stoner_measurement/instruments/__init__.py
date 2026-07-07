@@ -30,6 +30,8 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.dmm.DigitalMultimeter` — abstract type
 * :class:`~stoner_measurement.instruments.electrometer.Electrometer` — abstract type
 * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
+* :class:`~stoner_measurement.instruments.eurotherm.Eurotherm2000Series` — concrete temperature controller
+* :class:`~stoner_measurement.instruments.eurotherm.Eurotherm3200Series` — concrete temperature controller
 * :class:`~stoner_measurement.instruments.keithley.Keithley2000` — concrete DMM driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley2700` — concrete DMM driver
 * :class:`~stoner_measurement.instruments.keithley.Keithley2182A` — concrete nanovoltmeter driver
@@ -80,6 +82,11 @@ from stoner_measurement.instruments.electrometer import (
     ElectrometerTriggerSource,
 )
 from stoner_measurement.instruments.errors import InstrumentError
+from stoner_measurement.instruments.eurotherm import (
+    Eurotherm32h8,
+    Eurotherm2000Series,
+    Eurotherm3200Series,
+)
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInAmplifier,
     LockInAmplifierCapabilities,
@@ -160,6 +167,9 @@ __all__ = [
     "ElectrometerFunction",
     "ElectrometerTriggerConfiguration",
     "ElectrometerTriggerSource",
+    "Eurotherm2000Series",
+    "Eurotherm3200Series",
+    "Eurotherm32h8",
     "InstrumentDriverManager",
     "InstrumentError",
     "LockInAmplifier",

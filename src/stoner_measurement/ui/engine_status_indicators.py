@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from enum import Enum
 
 from qtpy.QtCore import QTimer
-from qtpy.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QWidget
+from qtpy.QtGui import QContextMenuEvent
+from qtpy.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QSizePolicy, QWidget
 
 from stoner_measurement.ui.theme import colour
 
@@ -20,6 +22,7 @@ class EngineActivityIndicator(QWidget):
         self._label_text = label
         self._status_text = "disconnected"
         self._base_colour = colour("status_default")
+        self._menu_builder: Callable[[], QMenu | None] | None = None
 
         self._dot = QFrame(self)
         self._dot.setObjectName(f"{label.lower()}EngineActivityDot")
@@ -58,6 +61,23 @@ class EngineActivityIndicator(QWidget):
         """Briefly pulse the dot to show that a poll completed."""
         self._set_dot_colour(colour("highlight"))
         self._blink_timer.start(_BLINK_MS)
+
+    def set_context_menu_builder(
+        self, builder: Callable[[], QMenu | None] | None
+    ) -> None:
+        """Set the callable used to build a context menu for this indicator."""
+        self._menu_builder = builder
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # type: ignore[override]
+        """Show the indicator context menu, if one has been configured."""
+        if self._menu_builder is None:
+            super().contextMenuEvent(event)
+            return
+        menu = self._menu_builder()
+        if menu is None:
+            event.ignore()
+            return
+        menu.exec(event.globalPos())
 
     def _restore_dot_colour(self) -> None:
         self._set_dot_colour(self._base_colour)

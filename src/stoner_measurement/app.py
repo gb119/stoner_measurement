@@ -12,6 +12,7 @@ from qtpy.QtWidgets import (
     QApplication,
     QFileDialog,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QStatusBar,
     QStyle,
@@ -239,6 +240,72 @@ class MeasurementApp(QMainWindow):
         motor_engine.publisher.engine_status_changed.connect(status.set_motor_status)
         motor_engine.publisher.poll_activity.connect(status.blink_motor)
         status.set_motor_status(motor_engine.status)
+
+        status.temperature_indicator.set_context_menu_builder(
+            lambda: self._build_engine_indicator_menu(
+                "Temperature controller",
+                temp_engine,
+                status.temperature_indicator.status_text,
+            )
+        )
+        status.magnet_indicator.set_context_menu_builder(
+            lambda: self._build_engine_indicator_menu(
+                "Magnet controller",
+                magnet_engine,
+                status.magnet_indicator.status_text,
+            )
+        )
+        status.motor_indicator.set_context_menu_builder(
+            lambda: self._build_engine_indicator_menu(
+                "Motor controller",
+                motor_engine,
+                status.motor_indicator.status_text,
+            )
+        )
+
+    def _build_engine_indicator_menu(
+        self,
+        engine_label: str,
+        engine: object,
+        status_text: str,
+    ) -> QMenu:
+        """Return the context menu used by a status-bar engine indicator."""
+        menu = QMenu(self)
+
+        connect_action = menu.addAction("Connect")
+        connect_action.setEnabled(status_text in {"disconnected", "error"})
+        connect_action.triggered.connect(
+            lambda: self._connect_engine_from_indicator(engine_label, engine)
+        )
+
+        disconnect_action = menu.addAction("Disconnect")
+        disconnect_action.setEnabled(status_text not in {"disconnected", "stopped"})
+        disconnect_action.triggered.connect(
+            lambda: self._disconnect_engine_from_indicator(engine_label, engine)
+        )
+        return menu
+
+    def _connect_engine_from_indicator(self, engine_label: str, engine: object) -> None:
+        """Connect an engine from its persisted preferred settings."""
+        try:
+            engine.connect_preferred_driver()
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                f"{engine_label} Connect",
+                f"Could not connect {engine_label.lower()}.\n\n{exc}",
+            )
+
+    def _disconnect_engine_from_indicator(self, engine_label: str, engine: object) -> None:
+        """Disconnect an engine so it stops polling hardware."""
+        try:
+            engine.disconnect_instrument()
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                f"{engine_label} Disconnect",
+                f"Could not disconnect {engine_label.lower()}.\n\n{exc}",
+            )
 
     def _on_plugin_selected_for_config(self, plugin: object) -> None:
         """Sync sequence-step plugins into the engine namespace, then show config.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QWidget
 
 from stoner_measurement.instruments.addressing import (
@@ -69,7 +70,9 @@ def load_connection_preferences(panel) -> None:
     """Initialise connection widgets from engine preferences."""
     driver = panel._engine.preferred_driver_name
     if driver:
-        index = panel._driver_combo.findText(driver)
+        index = panel._driver_combo.findData(driver, role=Qt.ItemDataRole.UserRole + 1)
+        if index < 0:
+            index = panel._driver_combo.findText(driver)
         if index >= 0:
             panel._driver_combo.setCurrentIndex(index)
 

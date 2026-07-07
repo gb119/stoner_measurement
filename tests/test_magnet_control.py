@@ -567,6 +567,131 @@ class TestEngineLifecycle:
         assert second.is_connected
         engine.shutdown()
 
+    def test_connect_preferred_driver_uses_persisted_connection_settings(self, qapp):
+        from stoner_measurement.instruments.magnet_controller import MagnetController
+        from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
+        from stoner_measurement.instruments.transport import NullTransport
+
+        class _PreferredMagnetDriver(MagnetController):
+            def get_model(self):
+                return "PreferredMagnet"
+
+            def get_firmware_version(self):
+                return "0.0"
+
+            @property
+            def current(self):
+                return 10.0
+
+            @property
+            def field(self):
+                return 1.0
+
+            @property
+            def voltage(self):
+                return 0.05
+
+            @property
+            def status(self):
+                return _make_fake_driver().status
+
+            @property
+            def magnet_constant(self):
+                return 0.1
+
+            @property
+            def limits(self):
+                return MagnetLimits(max_current=100.0, max_field=10.0, max_ramp_rate=1.0)
+
+            @property
+            def heater(self):
+                return True
+
+            @property
+            def target_current(self):
+                return 10.0
+
+            @property
+            def target_field(self):
+                return 1.0
+
+            @property
+            def ramp_rate_current(self):
+                return 5.0
+
+            @property
+            def ramp_rate_field(self):
+                return 0.5
+
+            def set_target_current(self, current_):
+                pass
+
+            def set_target_field(self, field_):
+                pass
+
+            def set_ramp_rate_current(self, rate):
+                pass
+
+            def set_ramp_rate_field(self, rate):
+                pass
+
+            def set_magnet_constant(self, tesla_per_amp):
+                pass
+
+            def set_limits(self, limits):
+                pass
+
+            def ramp_to_target(self):
+                pass
+
+            def ramp_to_current(self, current_, *, wait=False):
+                pass
+
+            def ramp_to_field(self, field_, *, wait=False):
+                pass
+
+            def pause_ramp(self):
+                pass
+
+            def abort_ramp(self):
+                pass
+
+            def heater_on(self):
+                pass
+
+            def heater_off(self):
+                pass
+
+            def return_to_local(self):
+                pass
+
+        engine = MagnetControllerEngine()
+        engine._resolve_driver_class = lambda _name: _PreferredMagnetDriver
+        engine._build_transport = lambda _transport, _address: NullTransport()
+        engine._build_protocol = lambda _driver: OxfordProtocol()
+        engine.preferred_driver_name = "PersistedMagnet"
+        engine.preferred_transport_name = "Ethernet"
+        engine.preferred_address = "magnet-host:7020"
+
+        engine.connect_preferred_driver()
+
+        assert isinstance(engine.connected_driver, _PreferredMagnetDriver)
+        assert engine.connected_driver_name == "PersistedMagnet"
+        assert engine.connected_transport_name == "Ethernet"
+        assert engine.connected_address == "magnet-host:7020"
+        engine.shutdown()
+
+    def test_connect_preferred_driver_requires_persisted_driver_name(self, qapp):
+        engine = MagnetControllerEngine()
+        engine.preferred_driver_name = ""
+        engine.preferred_transport_name = "Null (test)"
+        engine.preferred_address = ""
+
+        with pytest.raises(RuntimeError, match="No persisted magnet-controller driver"):
+            engine.connect_preferred_driver()
+
+        engine.shutdown()
+
     def test_reconnect_failure_clears_engine_state(self, qapp):
         engine = MagnetControllerEngine()
         first = _make_fake_driver()

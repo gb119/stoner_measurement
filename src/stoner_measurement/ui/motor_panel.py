@@ -431,7 +431,13 @@ class MotorControlPanel(QWidget):
         added = 0
         for name in sorted(mc_drivers):
             if not name.startswith("_"):
-                self._driver_combo.addItem(name, mc_drivers[name])
+                driver_cls = mc_drivers[name]
+                self._driver_combo.addItem(driver_cls.display_name(), driver_cls)
+                self._driver_combo.setItemData(
+                    self._driver_combo.count() - 1,
+                    name,
+                    Qt.ItemDataRole.UserRole + 1,
+                )
                 added += 1
         if added == 0:
             self._driver_combo.addItem("(no drivers found)", None)
@@ -466,12 +472,14 @@ class MotorControlPanel(QWidget):
 
         try:
             transport_name, address = selected_transport(self, transport_index)
-            self._engine.preferred_driver_name = self._driver_combo.currentText()
+            driver_name = self._driver_combo.currentData(Qt.ItemDataRole.UserRole + 1)
+            resolved_driver_name = str(driver_name or self._driver_combo.currentText())
+            self._engine.preferred_driver_name = resolved_driver_name
             self._engine.preferred_transport_name = transport_name
             self._engine.preferred_address = address
             self._engine.save_configuration()
             self._engine.connect_driver(
-                driver_name=self._driver_combo.currentText(),
+                driver_name=resolved_driver_name,
                 transport_name=transport_name,
                 address=address,
             )
@@ -497,7 +505,8 @@ class MotorControlPanel(QWidget):
 
     @pyqtSlot()
     def _on_apply_and_move(self) -> None:
-        self._engine.preferred_driver_name = self._driver_combo.currentText()
+        driver_name = self._driver_combo.currentData(Qt.ItemDataRole.UserRole + 1)
+        self._engine.preferred_driver_name = str(driver_name or self._driver_combo.currentText())
         transport_name, address = selected_transport(self, self._transport_combo.currentIndex())
         self._engine.preferred_transport_name = transport_name
         self._engine.preferred_address = address
@@ -553,7 +562,8 @@ class MotorControlPanel(QWidget):
     @pyqtSlot()
     def _on_save_configuration(self) -> None:
         try:
-            self._engine.preferred_driver_name = self._driver_combo.currentText()
+            driver_name = self._driver_combo.currentData(Qt.ItemDataRole.UserRole + 1)
+            self._engine.preferred_driver_name = str(driver_name or self._driver_combo.currentText())
             transport_name, address = selected_transport(self, self._transport_combo.currentIndex())
             self._engine.preferred_transport_name = transport_name
             self._engine.preferred_address = address
