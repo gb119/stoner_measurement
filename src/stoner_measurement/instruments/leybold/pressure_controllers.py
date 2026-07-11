@@ -75,15 +75,21 @@ class LeyboldCenterThree(PressureGaugeController):
         self._validate_channel(channel)
         return self._parse_pressure(channel, self._split(self._transaction(f"PR{channel}")))
 
-    def read_all_pressures(self) -> dict[int, PressureReading]:
+def read_all_pressures(self) -> dict[int, PressureReading]:
         """Read all pressure channels using ``PRX``."""
         values = self._split(self._transaction("PRX"))
         if len(values) != 6:
             raise InstrumentError(f"Expected 6 PRX fields, received {len(values)}")
-        return {
-            channel: self._parse_pressure(channel, values[(channel - 1) * 2 : channel * 2])
-            for channel in range(1, 4)
-        }
+
+        unit = self.get_unit()
+        readings: dict[int, PressureReading] = {}
+        for channel in range(1, 4):
+            raw_status = int(values[(channel - 1) * 2])
+            status = _STATUS_MAP.get(raw_status, PressureStatus.UNKNOWN)
+            raw_value = values[(channel - 1) * 2 + 1]
+            value = float(raw_value) if status is PressureStatus.OK else None
+            readings[channel] = PressureReading(channel, value, unit, status, raw_status)
+        return readings
 
     def get_unit(self) -> PressureUnit:
         """Return the currently selected display pressure unit."""
