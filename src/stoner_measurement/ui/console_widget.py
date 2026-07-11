@@ -45,6 +45,11 @@ def _is_deleted_qt_wrapper_error(exc: RuntimeError) -> bool:
     return "wrapped C/C++ object" in str(exc) and "has been deleted" in str(exc)
 
 
+def _is_uninitialised_qt_wrapper_error(exc: RuntimeError) -> bool:
+    """Return True when a Qt wrapper exists but its Qt base was never initialised."""
+    return "super-class __init__()" in str(exc) and "was never called" in str(exc)
+
+
 class _LegacyConsoleWidget(QWidget):
     """Read-only output area combined with a command-input line.
 
@@ -449,7 +454,14 @@ QToolTip {{
         #   RuntimeError: wrapped C/C++ object of type QTextEdit has been deleted
         # Setting kernel_client to None on the widget disconnects _dispatch and
         # all other channel slots so queued events are silently discarded.
-        console = getattr(self, "_console", None)
+        try:
+            console = self._console
+        except AttributeError:
+            console = None
+        except RuntimeError as exc:
+            if not _is_uninitialised_qt_wrapper_error(exc):
+                raise
+            console = None
         if console is not None:
             try:
                 console.kernel_client = None
