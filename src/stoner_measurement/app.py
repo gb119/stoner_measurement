@@ -34,6 +34,7 @@ from stoner_measurement.ui.icons import (
     make_magnet_icon,
     make_motor_icon,
     make_pause_icon,
+    make_pressure_icon,
     make_run_icon,
     make_stop_icon,
     make_temperature_icon,
@@ -174,6 +175,11 @@ class MeasurementApp(QMainWindow):
 
         self._motor_panel = MotorControlPanel(parent=None)
 
+        # Pressure control panel (hidden initially) ----------------------------
+        from stoner_measurement.ui.pressure_panel import PressureControlPanel
+
+        self._pressure_panel = PressureControlPanel(parent=None)
+
         # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
@@ -226,6 +232,7 @@ class MeasurementApp(QMainWindow):
         temp_engine = self._temp_panel._engine  # noqa: SLF001
         magnet_engine = self._magnet_panel._engine  # noqa: SLF001
         motor_engine = self._motor_panel._engine  # noqa: SLF001
+        pressure_engine = self._pressure_panel._engine  # noqa: SLF001
 
         status = self._engine_activity_status
 
@@ -240,6 +247,10 @@ class MeasurementApp(QMainWindow):
         motor_engine.publisher.engine_status_changed.connect(status.set_motor_status)
         motor_engine.publisher.poll_activity.connect(status.blink_motor)
         status.set_motor_status(motor_engine.status)
+
+        pressure_engine.publisher.engine_status_changed.connect(status.set_pressure_status)
+        pressure_engine.publisher.poll_activity.connect(status.blink_pressure)
+        status.set_pressure_status(pressure_engine.status)
 
         status.temperature_indicator.set_context_menu_builder(
             lambda: self._build_engine_indicator_menu(
@@ -260,6 +271,13 @@ class MeasurementApp(QMainWindow):
                 "Motor controller",
                 motor_engine,
                 status.motor_indicator.status_text,
+            )
+        )
+        status.pressure_indicator.set_context_menu_builder(
+            lambda: self._build_engine_indicator_menu(
+                "Pressure controller",
+                pressure_engine,
+                status.pressure_indicator.status_text,
             )
         )
 
@@ -632,6 +650,14 @@ class MeasurementApp(QMainWindow):
         self._act_stop_motor_engine.setStatusTip("Stop the motor controller engine and disconnect hardware")
         self._act_stop_motor_engine.triggered.connect(self._on_stop_motor_engine)
 
+        self._act_show_pressure_panel = QAction(make_pressure_icon(), "Show &Pressure Control", self)
+        self._act_show_pressure_panel.setStatusTip("Open the pressure controller panel")
+        self._act_show_pressure_panel.triggered.connect(self._on_show_pressure_panel)
+
+        self._act_stop_pressure_engine = QAction("Stop Pressure &Engine", self)
+        self._act_stop_pressure_engine.setStatusTip("Stop the pressure controller engine and disconnect hardware")
+        self._act_stop_pressure_engine.triggered.connect(self._on_stop_pressure_engine)
+
         self._act_about = QAction("&About", self)
         self._act_about.setStatusTip("Show information about this application")
         self._act_about.triggered.connect(self._on_about)
@@ -691,10 +717,15 @@ class MeasurementApp(QMainWindow):
         magnet_menu.addSeparator()
         magnet_menu.addAction(self._act_stop_magnet_engine)
 
-        motor_menu = engines_menu.addMenu("&Motor")
+        motor_menu = engines_menu.addMenu(make_motor_icon(), "&Motor")
         motor_menu.addAction(self._act_show_motor_panel)
         motor_menu.addSeparator()
         motor_menu.addAction(self._act_stop_motor_engine)
+
+        pressure_menu = engines_menu.addMenu(make_pressure_icon(), "&Pressure")
+        pressure_menu.addAction(self._act_show_pressure_panel)
+        pressure_menu.addSeparator()
+        pressure_menu.addAction(self._act_stop_pressure_engine)
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._act_about)
@@ -727,6 +758,7 @@ class MeasurementApp(QMainWindow):
         toolbar.addAction(self._act_show_temp_panel)
         toolbar.addAction(self._act_show_magnet_panel)
         toolbar.addAction(self._act_show_motor_panel)
+        toolbar.addAction(self._act_show_pressure_panel)
         self._toolbar = toolbar
         self._configured_toolbar_items = []
         self._add_configured_toolbar_buttons()
@@ -1323,6 +1355,16 @@ class MeasurementApp(QMainWindow):
 
         MotorControllerEngine.instance().shutdown()
 
+    def _on_show_pressure_panel(self) -> None:
+        """Show the pressure control panel, raising it if already open."""
+        self._pressure_panel.show_and_raise()
+
+    def _on_stop_pressure_engine(self) -> None:
+        """Stop the pressure controller engine and disconnect the instrument."""
+        from stoner_measurement.pressure_control.engine import PressureControllerEngine
+
+        PressureControllerEngine.instance().shutdown()
+
     def _on_about(self) -> None:
         """Display the About dialogue."""
         QMessageBox.about(
@@ -1401,6 +1443,7 @@ class MeasurementApp(QMainWindow):
             self._temp_panel,
             self._magnet_panel,
             self._motor_panel,
+            self._pressure_panel,
         ):
             widget_name = f"{type(widget).__name__}"
             try:
@@ -1416,6 +1459,7 @@ class MeasurementApp(QMainWindow):
             self._temp_panel._engine,  # noqa: SLF001
             self._magnet_panel._engine,  # noqa: SLF001
             self._motor_panel._engine,  # noqa: SLF001
+            self._pressure_panel._engine,  # noqa: SLF001
         ):
             engine_name = f"{type(engine).__name__}"
             try:

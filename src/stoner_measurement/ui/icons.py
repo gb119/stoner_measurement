@@ -509,6 +509,113 @@ def make_motor_icon(size: int = 32) -> QIcon:
     return QIcon(QPixmap.fromImage(img))
 
 
+def make_pressure_icon(size: int = 32) -> QIcon:
+    """Create a round analogue pressure-gauge icon for pressure control.
+
+    The icon is drawn programmatically so it remains available without bundled
+    image resources.  It uses a circular dial, tick marks, a vacuum-blue needle,
+    and a small ``P`` label to distinguish it from the motor-position dial.
+
+    Keyword Parameters:
+        size (int):
+            Side length in pixels of the square icon.  Defaults to ``32``.
+
+    Returns:
+        (QIcon):
+            The rendered pressure-control icon.
+
+    Examples:
+        >>> icon = make_pressure_icon()
+        >>> icon.isNull()
+        False
+    """
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    centre = QPointF(size * 0.50, size * 0.52)
+    radius = size * 0.38
+    outline_colour = QColor(38, 45, 56)
+    face_colour = QColor(245, 248, 252)
+    ring_colour = QColor("#607d8b")
+    needle_colour = QColor("#0288d1")
+    warning_colour = QColor("#ef5350")
+
+    outline_pen = painter.pen()
+    outline_pen.setColor(outline_colour)
+    outline_pen.setWidth(max(1, size // 15))
+
+    painter.setPen(outline_pen)
+    painter.setBrush(face_colour)
+    painter.drawEllipse(centre, radius, radius)
+
+    tick_pen = painter.pen()
+    tick_pen.setColor(ring_colour)
+    tick_pen.setWidth(max(1, size // 24))
+    painter.setPen(tick_pen)
+    for index, angle_deg in enumerate(range(210, -31, -30)):
+        angle_rad = math.radians(angle_deg)
+        tick_length = 0.24 if index % 2 == 0 else 0.16
+        outer = QPointF(
+            centre.x() + math.cos(angle_rad) * radius * 0.82,
+            centre.y() - math.sin(angle_rad) * radius * 0.82,
+        )
+        inner = QPointF(
+            centre.x() + math.cos(angle_rad) * radius * (0.82 - tick_length),
+            centre.y() - math.sin(angle_rad) * radius * (0.82 - tick_length),
+        )
+        painter.drawLine(inner, outer)
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(warning_colour)
+    painter.drawPie(
+        QRectF(centre.x() - radius * 0.74, centre.y() - radius * 0.74, radius * 1.48, radius * 1.48),
+        25 * 16,
+        35 * 16,
+    )
+
+    painter.setBrush(face_colour)
+    painter.drawEllipse(centre, radius * 0.57, radius * 0.57)
+
+    needle_angle = math.radians(48)
+    needle_tip = QPointF(
+        centre.x() + math.cos(needle_angle) * radius * 0.58,
+        centre.y() - math.sin(needle_angle) * radius * 0.58,
+    )
+    needle_left = QPointF(
+        centre.x() + math.cos(needle_angle + 2.5) * radius * 0.13,
+        centre.y() - math.sin(needle_angle + 2.5) * radius * 0.13,
+    )
+    needle_right = QPointF(
+        centre.x() + math.cos(needle_angle - 2.5) * radius * 0.13,
+        centre.y() - math.sin(needle_angle - 2.5) * radius * 0.13,
+    )
+    painter.setBrush(needle_colour)
+    painter.drawPolygon(QPolygonF([needle_tip, needle_left, needle_right]))
+    painter.setBrush(outline_colour)
+    painter.drawEllipse(centre, size * 0.055, size * 0.055)
+
+    label_font = painter.font()
+    label_font.setPixelSize(max(6, int(size * 0.20)))
+    label_font.setBold(True)
+    painter.setFont(label_font)
+    painter.setPen(QColor("#455a64"))
+    painter.drawText(
+        QRectF(size * 0.33, size * 0.60, size * 0.34, size * 0.20),
+        Qt.AlignmentFlag.AlignCenter,
+        "P",
+    )
+
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(outline_pen)
+    painter.drawEllipse(centre, radius, radius)
+
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
 def make_magnet_icon(size: int = 32) -> QIcon:
     """Create a horseshoe-magnet icon for the *Magnet Control* action.
 

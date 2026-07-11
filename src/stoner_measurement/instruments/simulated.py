@@ -1,8 +1,9 @@
 """Simulated instrument drivers for development and testing.
 
-Provides concrete temperature-controller and magnet-controller drivers that
-simulate realistic behaviour without requiring physical hardware.  The drivers
-are ordinary instrument drivers and are therefore discovered automatically by
+Provides concrete temperature-controller, magnet-controller, motor-controller,
+and pressure-controller drivers that simulate realistic behaviour without
+requiring physical hardware.  The drivers are ordinary instrument drivers and
+are therefore discovered automatically by
 :class:`stoner_measurement.instruments.driver_manager.InstrumentDriverManager`.
 """
 
@@ -22,6 +23,15 @@ from stoner_measurement.instruments.motor_controller import (
     MotorController,
     MotorMoveDirection,
     MotorStatus,
+)
+from stoner_measurement.instruments.pressure_controller import (
+    PressureControllerCapabilities,
+    PressureGaugeController,
+    PressureReading,
+    PressureRelayState,
+    PressureSetpoint,
+    PressureStatus,
+    PressureUnit,
 )
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.temperature_controller import (
@@ -499,3 +509,74 @@ class SimulatedMotorController(MotorController):
             homed=self._homed,
             revolutions=int(self.get_position() // 360.0),
         )
+
+
+class SimulatedPressureGaugeController(PressureGaugeController):
+    """Simple simulated pressure-gauge controller."""
+
+    _CAPABILITIES: PressureControllerCapabilities = PressureControllerCapabilities(
+        serial=True,
+        pressure_query=True,
+        remote_setpoints=True,
+        remote_gauge_control=False,
+        pump_control=False,
+        analogue_only=False,
+        max_channels=3,
+        max_relays=2,
+    )
+
+    def __init__(self, transport=None, protocol=None) -> None:
+        super().__init__(
+            transport=transport if transport is not None else NullTransport(),
+            protocol=protocol if protocol is not None else ScpiProtocol(),
+        )
+        self._pressures: dict[int, float] = {1: 1.0e-3, 2: 5.0e-4, 3: 2.0e-5}
+        self._setpoints: dict[int, PressureSetpoint] = {
+            1: PressureSetpoint(source_channel=1, lower=1.0e-4, upper=1.0e-2, unit=PressureUnit.MBAR),
+            2: PressureSetpoint(source_channel=2, lower=1.0e-5, upper=1.0e-3, unit=PressureUnit.MBAR),
+        }
+
+    def identify(self) -> str:
+        """Return a simulated instrument identity string."""
+        return "Simulated,Pressure Gauge Controller,SIMPGC001,1.0"
+
+    def read_pressure(self, channel: int) -> PressureReading:
+        """Return a simulated pressure reading for *channel*."""
+        value = self._pressures.get(channel, 1.0e-3)
+        return PressureReading(channel=channel, value=value, unit=PressureUnit.MBAR, status=PressureStatus.OK)
+
+    def read_all_pressures(self) -> dict[int, PressureReading]:
+        """Return simulated pressure readings for all channels."""
+        return {ch: self.read_pressure(ch) for ch in self._pressures}
+
+    def get_gauge_type(self, channel: int) -> str | None:
+        """Return a fixed simulated gauge type."""
+        return "Pirani"
+
+    def set_gauge_on(self, channel: int, enabled: bool) -> None:
+        """No-op: gauge switching is not simulated."""
+
+    def zero_gauge(self, channel: int) -> None:
+        """No-op: gauge zeroing is not simulated."""
+
+    def degas_gauge(self, channel: int, enabled: bool) -> None:
+        """No-op: degas is not simulated."""
+
+    def get_setpoint(self, index: int) -> PressureSetpoint:
+        """Return the simulated setpoint for *index*."""
+        return self._setpoints[index]
+
+    def set_setpoint(self, index: int, setpoint: PressureSetpoint) -> None:
+        """Store *setpoint* for *index*."""
+        self._setpoints[index] = setpoint
+
+    def read_relay(self, index: int) -> PressureRelayState:
+        """Return a simulated relay state for *index*."""
+        return PressureRelayState(index=index, state=False, raw_state=0)
+
+    def set_relay(self, index: int, enabled: bool) -> None:
+        """No-op: relay control is not simulated."""
+
+    def get_capabilities(self) -> PressureControllerCapabilities:
+        """Return the static capability descriptor."""
+        return self._CAPABILITIES

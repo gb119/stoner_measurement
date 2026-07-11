@@ -94,7 +94,7 @@ class EngineActivityIndicator(QWidget):
 
 
 class EngineActivityStatusWidget(QWidget):
-    """Container for the temperature, magnet, and motor engine indicators."""
+    """Container for background controller engine indicators."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -102,6 +102,7 @@ class EngineActivityStatusWidget(QWidget):
         self.temperature_indicator = EngineActivityIndicator("Temp", self)
         self.magnet_indicator = EngineActivityIndicator("Magnet", self)
         self.motor_indicator = EngineActivityIndicator("Motor", self)
+        self.pressure_indicator = EngineActivityIndicator("Pressure", self)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 0, 2, 0)
@@ -109,6 +110,7 @@ class EngineActivityStatusWidget(QWidget):
         layout.addWidget(self.temperature_indicator)
         layout.addWidget(self.magnet_indicator)
         layout.addWidget(self.motor_indicator)
+        layout.addWidget(self.pressure_indicator)
 
     def set_temperature_status(self, status: object) -> None:
         """Update the temperature engine indicator."""
@@ -122,6 +124,10 @@ class EngineActivityStatusWidget(QWidget):
         """Update the motor engine indicator."""
         self.motor_indicator.set_status(status)
 
+    def set_pressure_status(self, status: object) -> None:
+        """Update the pressure engine indicator."""
+        self.pressure_indicator.set_status(status)
+
     def blink_temperature(self) -> None:
         """Pulse the temperature engine indicator."""
         self.temperature_indicator.blink()
@@ -133,6 +139,10 @@ class EngineActivityStatusWidget(QWidget):
     def blink_motor(self) -> None:
         """Pulse the motor engine indicator."""
         self.motor_indicator.blink()
+
+    def blink_pressure(self) -> None:
+        """Pulse the pressure engine indicator."""
+        self.pressure_indicator.blink()
 
 
 def _normalise_status(status: object) -> str:

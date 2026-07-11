@@ -1,5 +1,10 @@
 """stoner_measurement — A Qt (PyQt5/PyQt6 via qtpy) application for running scientific measurements."""
 
+from stoner_measurement.instruments import (
+    SimulatedMagnetController,
+    SimulatedMotorController,
+    SimulatedTemperatureController,
+)
 from stoner_measurement.magnet_control import (
     MagnetControllerEngine,
     MagnetEngineState,
@@ -8,11 +13,6 @@ from stoner_measurement.magnet_control import (
     MagnetReading,
     MagnetStabilityConfig,
 )
-from stoner_measurement.instruments import (
-    SimulatedMagnetController,
-    SimulatedMotorController,
-    SimulatedTemperatureController,
-)
 from stoner_measurement.motor_control import (
     MotorControllerEngine,
     MotorEngineState,
@@ -20,6 +20,13 @@ from stoner_measurement.motor_control import (
     MotorPublisher,
     MotorReading,
     MotorStabilityConfig,
+)
+from stoner_measurement.pressure_control import (
+    PressureControllerEngine,
+    PressureEngineReading,
+    PressureEngineState,
+    PressureEngineStatus,
+    PressurePublisher,
 )
 from stoner_measurement.temperature_control import (
     EngineStatus,
@@ -54,6 +61,11 @@ __all__ = [
     "MotorPublisher",
     "MotorReading",
     "MotorStabilityConfig",
+    "PressureEngineStatus",
+    "PressurePublisher",
+    "PressureEngineState",
+    "PressureEngineReading",
+    "PressureControllerEngine",
     "StabilityConfig",
     "TemperatureChannelReading",
     "TemperatureControllerEngine",
