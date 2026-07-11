@@ -442,6 +442,23 @@ QToolTip {{
         self._kernel_active = False
         kernel_client = self._kernel_client
         kernel_manager = self._kernel_manager
+        # Disconnect the RichJupyterWidget from the kernel client before stopping
+        # channels.  Any kernel_info_reply or similar message that is already
+        # queued in the Qt event loop would otherwise dispatch into the console's
+        # _control (QTextEdit) after Qt has destroyed it, raising:
+        #   RuntimeError: wrapped C/C++ object of type QTextEdit has been deleted
+        # Setting kernel_client to None on the widget disconnects _dispatch and
+        # all other channel slots so queued events are silently discarded.
+        console = getattr(self, "_console", None)
+        if console is not None:
+            try:
+                console.kernel_client = None
+            except RuntimeError as exc:
+                if not _is_deleted_qt_wrapper_error(exc):
+                    raise
+                logger.debug("Console widget was already deleted when disconnecting kernel client during shutdown")
+            except Exception:
+                logger.debug("Failed to detach kernel client from console widget during shutdown", exc_info=True)
         try:
             kernel_client.stop_channels()
         except RuntimeError as exc:
