@@ -698,7 +698,7 @@ Result:
 - Full collection: 2490 tests collected.
 - Ruff checks passed for the contract area and remaining monolith.
 
-## Next Recommended Migration Batch
+## Recommended After Twentieth Migration Pass
 
 1. Continue `tests/test_instruments.py` with the final adjacent tail:
    - `TestLockInAmplifierExports`
@@ -708,3 +708,45 @@ Result:
    tests moved into `tests/unit/instruments/drivers/` and the lock-in export
    check either folded into an existing lock-in contract file or a tiny new
    contract module.
+
+## Completed In Twenty-First Migration Pass
+
+- Split the final adjacent tail out of `tests/test_instruments.py` into:
+  - `tests/unit/instruments/contracts/test_lockin_amplifier_exports.py`
+  - `tests/unit/instruments/drivers/test_oxford_mercury_ips.py`
+- Moved the following legacy groups:
+  - `TestLockInAmplifierExports`
+  - `TestOxfordMercuryIPS`
+- Kept the small local `_null(...)` helper in the new Oxford Mercury iPS driver
+  module so it remains directly runnable from an IDE without package-style test
+  helper imports.
+- Trimmed the moved classes and now-unused Oxford Mercury iPS / magnet-status
+  imports out of `tests/test_instruments.py`.
+- Verification notes:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts\test_lockin_amplifier_exports.py tests\unit\instruments\drivers\test_oxford_mercury_ips.py tests\test_instruments.py --tb=short
+python -m pytest tests/unit/instruments/contracts/test_lockin_amplifier_exports.py tests/unit/instruments/drivers/test_oxford_mercury_ips.py tests/test_instruments.py --tb=short
+python -m ruff check tests/unit/instruments/contracts/test_lockin_amplifier_exports.py tests/unit/instruments/drivers/test_oxford_mercury_ips.py tests/test_instruments.py
+```
+
+Result:
+
+- The requested conda-environment pytest command could not run in this Linux
+  container because `conda` is not on `PATH`.
+- The fallback plain-Python pytest command could not collect tests because the
+  ambient Python environment has `qtpy` but no Qt binding installed.
+- Ruff checks passed for the new focused modules and the remaining monolith.
+
+## Next Recommended Migration Batch
+
+1. Continue reducing `tests/test_instruments.py` by moving the remaining
+   abstract hierarchy, base instrument, and protocol contract groups into
+   focused modules under `tests/unit/instruments/contracts/`:
+   - `TestAbstractEnforcement`
+   - `TestBaseInstrument`
+   - `TestScpiProtocol`
+   - `TestOxfordProtocol`
+   - `TestLakeshoreProtocol`
+2. Once those groups move, `tests/test_instruments.py` can be removed or left
+   only as a temporary compatibility shim while collection counts are compared.
