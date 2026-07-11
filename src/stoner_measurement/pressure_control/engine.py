@@ -289,7 +289,7 @@ class PressureControllerEngine(QObject):
             return LeyboldCenterProtocol()
         return ScpiProtocol()
 
-def _disconnect_driver(self, driver: PressureGaugeController, *, log_context: str) -> None:
+    def _disconnect_driver(self, driver: PressureGaugeController, *, log_context: str) -> None:
         try:
             if driver.is_connected:
                 driver.disconnect()
@@ -297,6 +297,7 @@ def _disconnect_driver(self, driver: PressureGaugeController, *, log_context: st
             logger.exception(
                 "Error while disconnecting pressure controller %s", log_context
             )
+
     @pyqtSlot()
     def _poll(self) -> None:
         self.read_controller_state()
