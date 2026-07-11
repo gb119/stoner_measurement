@@ -264,6 +264,7 @@ class TestOxfordMercuryIPS:
 
         monkeypatch.setattr(OxfordMercuryIPS, "status", property(_always_ramping))
         with pytest.raises(TimeoutError):
+            # Keep the test fast without turning the timeout loop into a busy-wait.
             m._wait_for_ramp_complete(timeout=0.05, poll_period=0.001)
 
     def test_custom_uid_in_commands(self):
