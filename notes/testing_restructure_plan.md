@@ -67,14 +67,14 @@ tests/
 These files carry too much unrelated behavior and should be split by module or
 contract as they are touched:
 
-| File | Tests | Lines | Suggested split |
-| --- | ---: | ---: | --- |
-| `tests/test_instruments.py` | 452 | 4692 | `unit/instruments/drivers/` plus shared driver contracts |
-| `tests/test_command_plugin.py` | 256 | 3244 | `unit/plugins/command/test_<command>.py` |
-| `tests/test_ui.py` | 139 | 1876 | `unit/ui/widgets/`, `unit/ui/panels/`, `integration/app/` |
-| `tests/test_plugin_subtypes.py` | 121 | 1092 | plugin contracts plus subtype-specific unit files |
-| `tests/test_curve_fit_plugin.py` | 109 | 1241 | keep focused, but split UI/config from fit execution |
-| `tests/test_sequence_engine.py` | 100 | 906 | `unit/core/` and `integration/sequence/` |
+| File | Tests | Lines | Suggested split | Status |
+| --- | ---: | ---: | --- | --- |
+| `tests/test_ui.py` | 139 | 1876 | `unit/ui/widgets/`, `unit/ui/panels/`, `integration/app/` | Open |
+| `tests/test_curve_fit_plugin.py` | 109 | 1241 | keep focused, but split UI/config from fit execution | Open |
+| `tests/test_sequence_engine.py` | 100 | 906 | `unit/core/` and `integration/sequence/` | Open |
+| `tests/test_instruments.py` | 452 | 4692 | `unit/instruments/drivers/` plus shared driver contracts | Complete; removed in pass 22 |
+| `tests/test_command_plugin.py` | 256 | 3244 | `unit/plugins/command/test_<command>.py` | Complete; removed in command-plugin migration |
+| `tests/test_plugin_subtypes.py` | 121 | 1092 | plugin contracts plus subtype-specific unit files | Complete; removed in plugin-subtype migration |
 
 ## Cold Coverage Spots
 
@@ -738,7 +738,7 @@ Result:
   ambient Python environment has `qtpy` but no Qt binding installed.
 - Ruff checks passed for the new focused modules and the remaining monolith.
 
-## Next Recommended Migration Batch
+## Recommended After Twenty-First Migration Pass
 
 1. Continue reducing `tests/test_instruments.py` by moving the remaining
    abstract hierarchy, base instrument, and protocol contract groups into
@@ -750,3 +750,48 @@ Result:
    - `TestLakeshoreProtocol`
 2. Once those groups move, `tests/test_instruments.py` can be removed or left
    only as a temporary compatibility shim while collection counts are compared.
+
+## Completed In Twenty-Second Migration Pass
+
+- Split the remaining instrument monolith contract groups out of
+  `tests/test_instruments.py` into:
+  - `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py`
+  - `tests/unit/instruments/contracts/test_base_instrument_core.py`
+  - `tests/unit/instruments/contracts/test_protocol_formatting.py`
+- Moved the following legacy groups:
+  - `TestAbstractEnforcement`
+  - `TestBaseInstrument`
+  - `TestScpiProtocol`
+  - `TestOxfordProtocol`
+  - `TestLakeshoreProtocol`
+- Kept the small local `_null(...)` helper in the new base-instrument core
+  module so it remains directly runnable from an IDE without package-style test
+  helper imports.
+- Removed `tests/test_instruments.py` now that its remaining coverage has been
+  split into focused contract and driver modules.
+- Verification notes:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\instruments\contracts\test_abstract_instrument_contracts.py tests\unit\instruments\contracts\test_base_instrument_core.py tests\unit\instruments\contracts\test_protocol_formatting.py --tb=short
+python -m pytest tests/unit/instruments/contracts/test_abstract_instrument_contracts.py tests/unit/instruments/contracts/test_base_instrument_core.py tests/unit/instruments/contracts/test_protocol_formatting.py --tb=short
+python -m ruff check tests/unit/instruments/contracts
+```
+
+Result:
+
+- The requested conda-environment pytest command could not run in this Linux
+  container because `conda` is not on `PATH`.
+- The fallback plain-Python pytest command could not collect tests because the
+  ambient Python environment has `qtpy` but no Qt binding installed.
+- Ruff checks passed for the full instrument contract test area.
+
+## Next Recommended Migration Batch
+
+1. Pick the next top-level plugin or UI test monolith listed in the test suite
+   and split one cohesive behaviour group into the corresponding `tests/unit/`
+   or `tests/integration/` area.
+2. For instrument tests specifically, keep future driver-specific additions in
+   `tests/unit/instruments/drivers/`, transport additions in
+   `tests/unit/instruments/transport/`, and abstract/protocol contract additions
+   in `tests/unit/instruments/contracts/` rather than recreating
+   `tests/test_instruments.py`.
