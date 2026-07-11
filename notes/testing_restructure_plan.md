@@ -69,7 +69,7 @@ contract as they are touched:
 
 | File | Tests | Lines | Suggested split | Status |
 | --- | ---: | ---: | --- | --- |
-| `tests/test_ui.py` | 139 | 1876 | `unit/ui/widgets/`, `unit/ui/panels/`, `integration/app/` | Open |
+| `tests/test_new_ui_widgets.py` | 139 | 1876 | `unit/ui/widgets/`, `unit/ui/panels/`, `integration/app/` | In progress; SI spin box moved in pass 23 |
 | `tests/test_curve_fit_plugin.py` | 109 | 1241 | keep focused, but split UI/config from fit execution | Open |
 | `tests/test_sequence_engine.py` | 100 | 906 | `unit/core/` and `integration/sequence/` | Open |
 | `tests/test_instruments.py` | 452 | 4692 | `unit/instruments/drivers/` plus shared driver contracts | Complete; removed in pass 22 |
@@ -785,7 +785,7 @@ Result:
   ambient Python environment has `qtpy` but no Qt binding installed.
 - Ruff checks passed for the full instrument contract test area.
 
-## Next Recommended Migration Batch
+## Recommended After Twenty-Second Migration Pass
 
 1. Pick the next top-level plugin or UI test monolith listed in the test suite
    and split one cohesive behaviour group into the corresponding `tests/unit/`
@@ -795,3 +795,36 @@ Result:
    `tests/unit/instruments/transport/`, and abstract/protocol contract additions
    in `tests/unit/instruments/contracts/` rather than recreating
    `tests/test_instruments.py`.
+
+## Completed In Twenty-Third Migration Pass
+
+- Split the SI spin-box widget tranche out of `tests/test_new_ui_widgets.py` into:
+  - `tests/unit/ui/widgets/test_si_spin_box.py`
+- Moved the `TestSISpinBox` legacy group, including the widget export checks and
+  theme stylesheet regression check that depended on the same widget import
+  context.
+- Trimmed the moved class and now-unused imports from `tests/test_new_ui_widgets.py`.
+- Verification notes:
+
+```powershell
+conda run -n stoner_measurement python -m pytest tests\unit\ui\widgets\test_si_spin_box.py tests\test_new_ui_widgets.py --tb=short
+python -m pytest tests/unit/ui/widgets/test_si_spin_box.py tests/test_new_ui_widgets.py --tb=short
+python -m ruff check tests/test_new_ui_widgets.py tests/unit/ui/widgets/test_si_spin_box.py
+```
+
+Result:
+
+- The requested conda-environment pytest command could not run in this Linux
+  container because `conda` is not on `PATH`.
+- The fallback plain-Python pytest command could not collect tests because the
+  ambient Python environment has `qtpy` but no Qt binding installed.
+- Ruff checks passed for the new SI spin-box module and the remaining UI widget
+  monolith.
+
+## Next Recommended Migration Batch
+
+1. Continue reducing `tests/test_new_ui_widgets.py` with another focused widget
+   tranche, for example `TestEditorWidget` and `TestPythonHighlighter` into a
+   dedicated editor-widget module under `tests/unit/ui/widgets/`.
+2. Keep application-wide `MeasurementApp` workflow tests for a later pass under
+   `tests/integration/app/` rather than mixing them into widget unit modules.
