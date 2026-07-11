@@ -456,7 +456,7 @@ QToolTip {{
             except RuntimeError as exc:
                 if not _is_deleted_qt_wrapper_error(exc):
                     raise
-                logger.debug("Console widget was already deleted when disconnecting kernel client during shutdown", exc_info=True)
+                logger.debug("Console widget was already deleted when disconnecting kernel client during shutdown.", exc_info=True)
         try:
             kernel_client.stop_channels()
         except RuntimeError as exc:
