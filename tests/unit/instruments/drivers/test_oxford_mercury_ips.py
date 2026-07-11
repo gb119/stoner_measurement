@@ -174,7 +174,7 @@ class TestOxfordMercuryIPS:
                 b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+1.00000A\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.05000V\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
-                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",                
+                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
             ]
         )
         m = OxfordMercuryIPS(transport=t)
