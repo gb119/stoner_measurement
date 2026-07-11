@@ -75,7 +75,7 @@ class LeyboldCenterThree(PressureGaugeController):
         self._validate_channel(channel)
         return self._parse_pressure(channel, self._split(self._transaction(f"PR{channel}")))
 
-def read_all_pressures(self) -> dict[int, PressureReading]:
+    def read_all_pressures(self) -> dict[int, PressureReading]:
         """Read all pressure channels using ``PRX``."""
         values = self._split(self._transaction("PRX"))
         if len(values) != 6:
