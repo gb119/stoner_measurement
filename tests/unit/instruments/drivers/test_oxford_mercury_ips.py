@@ -197,7 +197,7 @@ class TestOxfordMercuryIPS:
                 b"STAT:DEV:PSU.M1:PSU:SIG:CURR:+2.00000A\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00001V\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
-                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",                
+                b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:ON\n",
             ]
         )
         m = OxfordMercuryIPS(transport=t)
@@ -264,7 +264,8 @@ class TestOxfordMercuryIPS:
 
         monkeypatch.setattr(OxfordMercuryIPS, "status", property(_always_ramping))
         with pytest.raises(TimeoutError):
-            m._wait_for_ramp_complete(timeout=0.01, poll_period=0.0)
+            # Keep the test fast without turning the timeout loop into a busy-wait.
+            m._wait_for_ramp_complete(timeout=0.05, poll_period=0.001)
 
     def test_custom_uid_in_commands(self):
         t = _null()
