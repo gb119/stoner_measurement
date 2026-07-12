@@ -2,8 +2,13 @@
 
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://gb119.github.io/stoner_measurement/)
 [![PyPI](https://img.shields.io/pypi/v/stoner_measurement)](https://pypi.org/project/stoner_measurement/)
-[![Run Tests](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml/badge.svg)](https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e)](https://app.codacy.com/gh/gb119/stoner_measurement/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![Run Tests][tests-badge]][tests-workflow]
+[![Codacy Badge][codacy-badge]][codacy-dashboard]
+
+[tests-badge]: https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml/badge.svg
+[tests-workflow]: https://github.com/gb119/stoner_measurement/actions/workflows/tests.yml
+[codacy-badge]: https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e
+[codacy-dashboard]: https://app.codacy.com/gh/gb119/stoner_measurement/dashboard
 
 Stoner Measurement is a desktop application for building, running, and saving
 automated laboratory measurements.
