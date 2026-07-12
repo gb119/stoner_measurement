@@ -2,15 +2,25 @@
 
 <!-- markdownlint-disable MD013 -->
 
-This document is intended to be pasted into an LLM prompt as technical context for generating Python code that controls Keithley 2400-series SourceMeter instruments over GPIB, RS-232, USB-GPIB, or LAN-to-GPIB adapters. It is based on the Keithley **Series 2400 SourceMeter User’s Manual, document 2400S-900-01 Rev. K, September 2011**. The manual covers models in the 2400 family, including the 2400, 2400-LV, 2401, 2410, 2420, 2425, 2430, and 2440. Always check the exact model limits before generating source levels, ranges, pulse commands, or compliance values.
+This document is intended to be pasted into an LLM prompt as technical context for generating Python code that controls
+Keithley 2400-series SourceMeter instruments over GPIB, RS-232, USB-GPIB, or LAN-to-GPIB adapters. It is based on the
+Keithley **Series 2400 SourceMeter User’s Manual, document 2400S-900-01 Rev. K, September 2011**. The manual covers
+models in the 2400 family, including the 2400, 2400-LV, 2401, 2410, 2420, 2425, 2430, and 2440. Always check the exact
+model limits before generating source levels, ranges, pulse commands, or compliance values.
 
-> Safety: the 2400 family can source hazardous voltage and current. Generated code must default the output OFF, set conservative compliance limits before enabling output, and turn output OFF in `finally` blocks. The manual warns that shock hazards may exist above 30 V RMS, 42.4 V peak, or 60 VDC, and the terminals are for Category I/II style measurement/control connections rather than arbitrary mains connections.
+> Safety: the 2400 family can source hazardous voltage and current. Generated code must default the output OFF, set
+> conservative compliance limits before enabling output, and turn output OFF in `finally` blocks. The manual warns that
+> shock hazards may exist above 30 V RMS, 42.4 V peak, or 60 VDC, and the terminals are for Category I/II style
+> measurement/control connections rather than arbitrary mains connections.
 
 ---
 
 ## 1. Instrument model and programming assumptions
 
-The Keithley 2400 is a SourceMeter: it can source voltage while measuring current, source current while measuring voltage, measure resistance, and optionally measure multiple quantities in one reading. Its SCPI interface is hierarchical and uses commands such as `:SOURce:VOLTage:LEVel`, `:SENSe:CURRent:PROTection`, `:READ?`, `:TRACe:DATA?`, and `:STATus:OPERation:CONDition?`.
+The Keithley 2400 is a SourceMeter: it can source voltage while measuring current, source current while measuring
+voltage, measure resistance, and optionally measure multiple quantities in one reading. Its SCPI interface is
+hierarchical and uses commands such as `:SOURce:VOLTage:LEVel`, `:SENSe:CURRent:PROTection`, `:READ?`, `:TRACe:DATA?`,
+and `:STATus:OPERation:CONDition?`.
 
 Recommended Python stack:
 
@@ -25,20 +35,24 @@ smu.read_termination = "\n"
 print(smu.query("*IDN?"))
 ```
 
-Use `write()` for SCPI commands, `query()` for commands ending in `?`, and avoid `query()` after non-query commands. Most code should issue `*RST`, `*CLS`, configure source, configure sense, configure format, then either use direct `:READ?`/`:FETCh?` or buffered `:INIT`/`:TRACe:DATA?` acquisition.
+Use `write()` for SCPI commands, `query()` for commands ending in `?`, and avoid `query()` after non-query commands.
+Most code should issue `*RST`, `*CLS`, configure source, configure sense, configure format, then either use direct
+`:READ?`/`:FETCh?` or buffered `:INIT`/`:TRACe:DATA?` acquisition.
 
 ---
 
 ## 2. Command conventions
 
-Keithley SCPI commands are case-insensitive. Uppercase letters indicate the short form; lowercase letters are optional. For example:
+Keithley SCPI commands are case-insensitive. Uppercase letters indicate the short form; lowercase letters are optional.
+For example:
 
 ```text
 :SOURce:VOLTage:LEVel 1.0
 :SOUR:VOLT:LEV 1.0
 ```
 
-Both forms are equivalent. Prefer short forms in generated Python for compactness, but prefer long forms in explanations.
+Both forms are equivalent. Prefer short forms in generated Python for compactness, but prefer long forms in
+explanations.
 
 Important common commands:
 
@@ -71,7 +85,8 @@ def initialize_2400(smu):
     smu.write(":TRAC:CLE")              # clear buffer
 ```
 
-Always set a compliance limit before turning output on. Example: when sourcing voltage, set current compliance with `:SENS:CURR:PROT <amps>`. When sourcing current, set voltage compliance with `:SENS:VOLT:PROT <volts>`.
+Always set a compliance limit before turning output on. Example: when sourcing voltage, set current compliance with
+`:SENS:CURR:PROT <amps>`. When sourcing current, set voltage compliance with `:SENS:VOLT:PROT <volts>`.
 
 ---
 
@@ -131,7 +146,8 @@ When generating code, prefer this safer idiom:
 :SOUR:CLE:AUTO ON|OFF            # source auto-clear after each SDM cycle
 ```
 
-A robust Python driver should have a `safe_output_off()` method that catches communication errors but attempts `:OUTP OFF`.
+A robust Python driver should have a `safe_output_off()` method that catches communication errors but attempts `:OUTP
+OFF`.
 
 ---
 
@@ -168,7 +184,8 @@ Notes:
 :SENS:RES:RANG:AUTO ON|OFF
 ```
 
-For speed and determinism, generated code should use fixed ranges. For convenience and unknown DUTs, use autorange with conservative compliance.
+For speed and determinism, generated code should use fixed ranges. For convenience and unknown DUTs, use autorange with
+conservative compliance.
 
 ### 5.3 Compliance/protection
 
@@ -179,7 +196,8 @@ For speed and determinism, generated code should use fixed ranges. For convenien
 :SENS:VOLT:PROT?         # query voltage compliance
 ```
 
-Compliance is not an error; it is a limiting state. Code should parse the status field returned by `:READ?`/`:FETCh?` or query status registers when compliance matters.
+Compliance is not an error; it is a limiting state. Code should parse the status field returned by `:READ?`/`:FETCh?`
+or query status registers when compliance matters.
 
 ### 5.4 Integration time, filtering, and autozero
 
@@ -226,7 +244,8 @@ Use ASCII format unless speed requires binary transfer:
 :FORM:DATA ASC
 ```
 
-A typical response after `:READ?` or `:TRAC:DATA?` is a comma-separated flat list. If five elements are selected and N readings are returned, reshape into rows of five:
+A typical response after `:READ?` or `:TRAC:DATA?` is a comma-separated flat list. If five elements are selected and N
+readings are returned, reshape into rows of five:
 
 ```python
 def parse_readings(csv_text, elements=("VOLT", "CURR", "RES", "TIME", "STAT")):
@@ -258,13 +277,16 @@ Important distinction:
 - `:FETC?` retrieves completed data.
 - `:TRAC:DATA?` retrieves data stored in the reading buffer.
 
-For one reading, generate simple code using `:READ?`. For sweeps, external triggering, high count acquisition, statistics, or repeatable timing, use `:TRACe` and trigger/arm configuration.
+For one reading, generate simple code using `:READ?`. For sweeps, external triggering, high count acquisition,
+statistics, or repeatable timing, use `:TRACe` and trigger/arm configuration.
 
 ---
 
 ## 8. Reading buffer / TRACe subsystem
 
-The 2400 has a data store controlled by `:TRACe` or synonym `:DATA`. The manual states that this subsystem configures and controls storage of readings into the buffer, `:TRACe:DATA?` returns all readings in the data store, and returned format is controlled by `:FORMat`.
+The 2400 has a data store controlled by `:TRACe` or synonym `:DATA`. The manual states that this subsystem configures
+and controls storage of readings into the buffer, `:TRACe:DATA?` returns all readings in the data store, and returned
+format is controlled by `:FORMat`.
 
 ### 8.1 Essential buffer commands
 
@@ -282,7 +304,8 @@ The 2400 has a data store controlled by `:TRACe` or synonym `:DATA`. The manual 
 :TRAC:DATA?                # read stored data
 ```
 
-Buffer size is 1 to 2500 readings. `:TRACe:FEED` selects whether raw sense readings or calculated values are stored. `:TRACe:FEED` cannot be changed while buffer storage is active.
+Buffer size is 1 to 2500 readings. `:TRACe:FEED` selects whether raw sense readings or calculated values are stored.
+`:TRACe:FEED` cannot be changed while buffer storage is active.
 
 ### 8.2 Buffered acquisition template
 
@@ -305,13 +328,17 @@ def acquire_buffered(smu, n):
 
 ### 8.3 Buffer statistics
 
-The buffer can be used with `CALCulate3` statistics for minimum, maximum, peak-to-peak, mean, and standard deviation. Use this when the instrument should compute aggregate statistics rather than transferring all readings. Configure the buffer feed first, acquire readings, then query the relevant calculation/statistic command.
+The buffer can be used with `CALCulate3` statistics for minimum, maximum, peak-to-peak, mean, and standard deviation.
+Use this when the instrument should compute aggregate statistics rather than transferring all readings. Configure the
+buffer feed first, acquire readings, then query the relevant calculation/statistic command.
 
 ---
 
 ## 9. Trigger and arm model
 
-The 2400 trigger model has an idle layer, an arm layer, and a trigger layer. The trigger layer performs the Source-Delay-Measure cycle. The manual describes trigger delay as a user-programmable delay after a trigger event and before device action; the SDM cycle can produce output trigger events after source, delay, or measurement.
+The 2400 trigger model has an idle layer, an arm layer, and a trigger layer. The trigger layer performs the
+Source-Delay-Measure cycle. The manual describes trigger delay as a user-programmable delay after a trigger event and
+before device action; the SDM cycle can produce output trigger events after source, delay, or measurement.
 
 ### 9.1 Counts
 
@@ -328,7 +355,8 @@ Typical settings:
 :TRIG:COUN 100     # 100 readings in one arm pass
 ```
 
-Use `ARM:COUN INF` only for advanced continuous tests where an external condition, abort, output-enable line, or controller logic will stop acquisition.
+Use `ARM:COUN INF` only for advanced continuous tests where an external condition, abort, output-enable line, or
+controller logic will stop acquisition.
 
 ### 9.2 Trigger and arm event sources
 
@@ -346,7 +374,8 @@ Use `ARM:COUN INF` only for advanced continuous tests where an external conditio
 :TRIG:SOUR TLIN     # Trigger Link trigger event
 ```
 
-Only `IMMediate` and `TLINk` are available as trigger-layer control sources on the 2400. Other event sources apply to the arm layer.
+Only `IMMediate` and `TLINk` are available as trigger-layer control sources on the 2400. Other event sources apply to
+the arm layer.
 
 ### 9.3 Trigger delay and arm timer
 
@@ -355,7 +384,8 @@ Only `IMMediate` and `TLINk` are available as trigger-layer control sources on t
 :ARM:TIM <seconds>        # timer interval for arm layer when ARM:SOUR TIM
 ```
 
-`TRIG:DEL` delays trigger-layer operation after the programmed trigger event occurs. For Model 2430 pulse mode, trigger delay is not used; pulse width and pulse delay control pulse timing.
+`TRIG:DEL` delays trigger-layer operation after the programmed trigger event occurs. For Model 2430 pulse mode, trigger
+delay is not used; pulse width and pulse delay control pulse timing.
 
 ### 9.4 Bypass direction
 
@@ -364,7 +394,8 @@ Only `IMMediate` and `TLINk` are available as trigger-layer control sources on t
 :TRIG:TCON:DIR SOUR|ACC
 ```
 
-`SOURce` enables control-source bypass on the first pass through the layer. `ACCeptor` disables bypass and waits for the selected event even on the first pass.
+`SOURce` enables control-source bypass on the first pass through the layer. `ACCeptor` disables bypass and waits for
+the selected event even on the first pass.
 
 ### 9.5 Trigger Link input/output lines
 
@@ -377,7 +408,8 @@ Only `IMMediate` and `TLINk` are available as trigger-layer control sources on t
 :TRIG:TCON:OUTP SOUR,DEL,SENS|NONE
 ```
 
-Trigger-layer output events can be generated after source level is set, after the delay period, or after measurement. This is useful for synchronizing multiple SMUs, counters, switching systems, or handlers.
+Trigger-layer output events can be generated after source level is set, after the delay period, or after measurement.
+This is useful for synchronizing multiple SMUs, counters, switching systems, or handlers.
 
 ---
 
@@ -513,28 +545,37 @@ For 4-wire/remote sense, enable remote sensing before measurement:
 
 ## 11. Pulse mode caveat for Model 2430
 
-The Model 2430 has pulse-mode-specific behavior. In pulse mode, several normal DC-mode commands are ignored or invalid. The manual notes that concurrent measurements are always disabled in 2430 pulse mode, and trigger delay is not used; pulse timing uses pulse width and pulse delay. Generated code must check `*IDN?` and avoid using generic DC sweep assumptions for 2430 pulse measurements.
+The Model 2430 has pulse-mode-specific behavior. In pulse mode, several normal DC-mode commands are ignored or invalid.
+The manual notes that concurrent measurements are always disabled in 2430 pulse mode, and trigger delay is not used;
+pulse timing uses pulse width and pulse delay. Generated code must check `*IDN?` and avoid using generic DC sweep
+assumptions for 2430 pulse measurements.
 
 ---
 
 ## 12. Digital I/O, limit tests, and handlers
 
-The digital I/O port supports handler-style testing and simple digital output control. Digital output lines can be controlled with:
+The digital I/O port supports handler-style testing and simple digital output control. Digital output lines can be
+controlled with:
 
 ```text
 :SOUR2:TTL <decimal_pattern>
 :SOUR2:TTL?
 ```
 
-The 4-bit output value maps to OUT1–OUT4; values 0–15 represent low/high patterns. With the optional Model 2499-DIGIO adapter, the digital I/O port can expand to 16 bits. Output lines can be used for handlers, external relays, or indicators, but current limits and external protection must be respected.
+The 4-bit output value maps to OUT1–OUT4; values 0–15 represent low/high patterns. With the optional Model 2499-DIGIO
+adapter, the digital I/O port can expand to 16 bits. Output lines can be used for handlers, external relays, or
+indicators, but current limits and external protection must be respected.
 
-Limit testing uses the `CALCulate` subsystem and can report pass/fail states. To know which specific upper/lower limit failed, read the Measurement Event Register rather than relying only on a simple pass/fail query.
+Limit testing uses the `CALCulate` subsystem and can report pass/fail states. To know which specific upper/lower limit
+failed, read the Measurement Event Register rather than relying only on a simple pass/fail query.
 
 ---
 
 ## 13. Status structure and error handling
 
-The status subsystem controls and reads the SourceMeter status registers. The manual identifies Measurement, Questionable, and Operation event/condition registers. Event queries report latched events and generally clear the queried event register; condition queries report current live condition bits.
+The status subsystem controls and reads the SourceMeter status registers. The manual identifies Measurement,
+Questionable, and Operation event/condition registers. Event queries report latched events and generally clear the
+queried event register; condition queries report current live condition bits.
 
 ### 13.1 Essential status commands
 
@@ -561,7 +602,8 @@ The status subsystem controls and reads the SourceMeter status registers. The ma
 :STAT:QUE:CLE          # clear error queue
 ```
 
-The error queue is FIFO and can hold up to 10 messages. A robust Python wrapper should call `:SYST:ERR?` after configuration blocks and repeatedly drain until `0,"No error"` or equivalent.
+The error queue is FIFO and can hold up to 10 messages. A robust Python wrapper should call `:SYST:ERR?` after
+configuration blocks and repeatedly drain until `0,"No error"` or equivalent.
 
 ```python
 def drain_errors(smu, max_reads=20):
@@ -576,7 +618,8 @@ def drain_errors(smu, max_reads=20):
 
 ### 13.3 Service request pattern
 
-For advanced code, configure status enable registers and SRQ so the controller can wait for completion or error instead of polling. Simpler Python code should use `*OPC?`, adequate timeouts, and explicit error-queue reads.
+For advanced code, configure status enable registers and SRQ so the controller can wait for completion or error instead
+of polling. Simpler Python code should use `*OPC?`, adequate timeouts, and explicit error-queue reads.
 
 ---
 
@@ -603,7 +646,9 @@ Useful timing-related commands:
 :SYST:RCM SING|MULT
 ```
 
-The manual distinguishes source delay, trigger delay, source configuration time, A/D conversion time, and firmware overhead. For deterministic sweeps, use fixed ranges, fixed NPLC, autozero off if acceptable, filter off, and the trace buffer.
+The manual distinguishes source delay, trigger delay, source configuration time, A/D conversion time, and firmware
+overhead. For deterministic sweeps, use fixed ranges, fixed NPLC, autozero off if acceptable, filter off, and the trace
+buffer.
 
 ---
 
@@ -830,7 +875,10 @@ When this document is used as prompt context, generated code must:
 
 Key manual facts used here:
 
-- The SourceMeter family supports source-measure operations across model-dependent voltage/current ranges and compliance limits.
-- The `TRACe` subsystem controls data storage into the reading buffer, with buffer sizes from 1 to 2500 readings and feed sources such as raw `SENSe` or calculated readings.
+- The SourceMeter family supports source-measure operations across model-dependent voltage/current ranges and
+  compliance limits.
+- The `TRACe` subsystem controls data storage into the reading buffer, with buffer sizes from 1 to 2500 readings and
+  feed sources such as raw `SENSe` or calculated readings.
 - The `STATus` subsystem exposes Measurement, Questionable, and Operation event/condition registers and an error queue.
-- The trigger/arm model uses arm count, trigger count, event sources, delays, bypass direction, and trigger-link input/output events; the trigger-layer device action is the Source-Delay-Measure cycle.
+- The trigger/arm model uses arm count, trigger count, event sources, delays, bypass direction, and trigger-link
+  input/output events; the trigger-layer device action is the Source-Delay-Measure cycle.

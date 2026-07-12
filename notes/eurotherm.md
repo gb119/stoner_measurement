@@ -17,7 +17,8 @@ Default serial settings:
 - HE = A(+)
 - HF = B(-)
 
-Use screened twisted pair plus common where possible. Daisy-chain devices; avoid star wiring. Terminate the final controller with ~220 Ω if required.
+Use screened twisted pair plus common where possible. Daisy-chain devices; avoid star wiring. Terminate the final
+controller with ~220 Ω if required.
 
 Important: digital communications and remote analogue setpoint are mutually exclusive options.
 
@@ -347,7 +348,8 @@ CT source:
 | Recall recipe |     313 |
 | Save recipe   |     314 |
 
-Recipes store common control parameters including PID terms, cutbacks, SP1/SP2, output limits, alarm thresholds/hysteresis, timer parameters, units/resolution, and related configuration.
+Recipes store common control parameters including PID terms, cutbacks, SP1/SP2, output limits, alarm
+thresholds/hysteresis, timer parameters, units/resolution, and related configuration.
 
 ## 16. Minimal driver class interface
 
@@ -395,7 +397,8 @@ class Eurotherm32h8:
 1. Connect RS485 and verify serial settings.
 2. Read instrument type/version/address.
 3. Read PV, WKG.SP, WRK.OP, StAt.
-4. Decode status and refuse control if sensor break, loop break, over-range, or remote SP fail is active unless explicitly overridden.
+4. Decode status and refuse control if sensor break, loop break, over-range, or remote SP fail is active unless
+   explicitly overridden.
 5. For closed-loop temperature control, set `A-M = 0`.
 6. For open-loop/manual control, set `MAN.OP`, then `A-M = 1`.
 7. For frequent setpoint updates, use `L-R` + `Rm.SP`, not `SP1`, `SP2`, or `TG.SP`.
@@ -467,7 +470,9 @@ So a driver must identify whether it is controlling a 2200 or 2400 before assumi
 
 ### EEPROM risk
 
-The manual explicitly warns that 2200 and 3200 instruments use EEPROM with a typical 100,000-change limit. For 2200 instruments, retained parameters are written to EEPROM whenever changed over comms, so avoid repeated writes to setpoints, alarm levels, hysteresis, mode, timer, or programmer state.
+The manual explicitly warns that 2200 and 3200 instruments use EEPROM with a typical 100,000-change limit. For 2200
+instruments, retained parameters are written to EEPROM whenever changed over comms, so avoid repeated writes to
+setpoints, alarm levels, hysteresis, mode, timer, or programmer state.
 
 ## 3. Physical layer
 
