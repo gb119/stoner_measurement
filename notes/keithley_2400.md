@@ -1,4 +1,4 @@
-﻿# Keithley 2400 Series SourceMeter Python/SCPI Programming Context for LLMs
+# Keithley 2400 Series SourceMeter Python/SCPI Programming Context for LLMs
 
 <!-- markdownlint-disable MD013 -->
 
