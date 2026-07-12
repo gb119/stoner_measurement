@@ -39,17 +39,11 @@ from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
 )
 from stoner_measurement.plugins.trace.keithley_2400 import (
     ConnectionMode as K2400ConnectionMode,
-)
-from stoner_measurement.plugins.trace.keithley_2400 import (
     Keithley2400SweepPlugin,
-    SweepSourceMode,
-    TriggerRouting,
-)
-from stoner_measurement.plugins.trace.keithley_2400 import (
     RangeMode as K2400RangeMode,
-)
-from stoner_measurement.plugins.trace.keithley_2400 import (
+    SweepSourceMode,
     TerminalMode as K2400TerminalMode,
+    TriggerRouting,
 )
 
 __all__ = [
