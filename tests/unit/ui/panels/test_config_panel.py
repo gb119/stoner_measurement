@@ -6,6 +6,7 @@ from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.ui.config_panel import ConfigPanel
 
+
 class TestConfigPanel:
     def test_creates_widget(self, plugin_manager):
         panel = ConfigPanel(plugin_manager=plugin_manager)

@@ -11,7 +11,7 @@ import logging
 import re
 import urllib.parse
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import StrEnum
 
 from stoner_measurement.instruments.lock_registry import canonical_resource_key
 from stoner_measurement.instruments.protocol.base import DEFAULT_MAX_FRAME_SIZE
@@ -24,7 +24,7 @@ _VISA_RE = re.compile(r"^(GPIB|TCPIP|ASRL)[^:]*::", re.IGNORECASE)
 _COMMS_LOGGER_NAMESPACE = "stoner_measurement.sequence.comms"
 
 
-class CommsMode(str, Enum):
+class CommsMode(StrEnum):
     """Enum class representing possible transport comms logging modes."""
 
     RX = "RX"

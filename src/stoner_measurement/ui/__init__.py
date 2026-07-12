@@ -6,11 +6,11 @@ from stoner_measurement.ui.script_tab import ScriptTab
 from stoner_measurement.ui.widgets import (
     FILTER_ALL,
     FILTER_GPIB,
+    FILTER_SERIAL,
+    PercentSliderWidget,
     RoundDialDemoWidget,
     RoundDialPanel,
     RoundDialWidget,
-    FILTER_SERIAL,
-    PercentSliderWidget,
     SIComboBox,
     SISpinBox,
     VisaInterfaceType,

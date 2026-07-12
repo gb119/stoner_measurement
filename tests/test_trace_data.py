@@ -39,6 +39,8 @@ class TestRoleConstants:
     def test_constants_exported_from_trace_package(self):
         from stoner_measurement.plugins.trace import (  # noqa: PLC0415
             COLUMN_ROLE_D as D,
+        )
+        from stoner_measurement.plugins.trace import (
             COLUMN_ROLE_Y as Y,
         )
 

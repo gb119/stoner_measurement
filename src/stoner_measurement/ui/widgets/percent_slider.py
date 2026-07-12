@@ -8,13 +8,14 @@ dragging the slider or by typing a precise percentage.
 from __future__ import annotations
 
 from qtpy.QtCore import Qt
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QSlider,
     QWidget,
 )
+
+from stoner_measurement.qt_compat import pyqtSignal
 
 #: Number of discrete slider steps across the full 0–100 % range.
 _SLIDER_STEPS = 1000

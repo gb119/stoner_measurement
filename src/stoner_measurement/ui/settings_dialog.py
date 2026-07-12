@@ -19,15 +19,16 @@ from qtpy.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QLabel,
     QVBoxLayout,
     QWidget,
 )
+
 from stoner_measurement.resources import (
     load_toolbar_config,
     save_toolbar_config,

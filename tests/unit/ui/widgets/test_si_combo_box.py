@@ -6,7 +6,6 @@ import pytest
 
 from stoner_measurement.ui.widgets import SIComboBox
 
-
 # ---------------------------------------------------------------------------
 # format_si static method
 # ---------------------------------------------------------------------------

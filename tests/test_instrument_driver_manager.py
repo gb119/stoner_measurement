@@ -217,8 +217,8 @@ class TestSimulatedDrivers:
         assert status.voltage == pytest.approx(0.0)
 
     def test_simulated_motor_controller_moves_towards_target(self):
-        from stoner_measurement.instruments.simulated import SimulatedMotorController
         from stoner_measurement.instruments.motor_controller import MotorMoveDirection
+        from stoner_measurement.instruments.simulated import SimulatedMotorController
 
         controller = SimulatedMotorController()
         controller.connect()
@@ -236,8 +236,8 @@ class TestSimulatedDrivers:
         assert status.homed is True
 
     def test_simulated_motor_controller_reaches_target(self):
-        from stoner_measurement.instruments.simulated import SimulatedMotorController
         from stoner_measurement.instruments.motor_controller import MotorMoveDirection
+        from stoner_measurement.instruments.simulated import SimulatedMotorController
 
         controller = SimulatedMotorController()
         controller.connect()
@@ -254,8 +254,8 @@ class TestSimulatedDrivers:
         assert status.moving is False
 
     def test_simulated_motor_controller_accepts_absolute_targets_as_given(self):
-        from stoner_measurement.instruments.simulated import SimulatedMotorController
         from stoner_measurement.instruments.motor_controller import MotorMoveDirection
+        from stoner_measurement.instruments.simulated import SimulatedMotorController
 
         controller = SimulatedMotorController()
         controller.connect()
