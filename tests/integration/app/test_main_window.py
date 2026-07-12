@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from stoner_measurement.ui.main_window import MainWindow
 
+
 class TestMainWindow:
     def test_creates_window(self, plugin_manager):
         window = MainWindow(plugin_manager=plugin_manager)

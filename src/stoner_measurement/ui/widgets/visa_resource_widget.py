@@ -11,7 +11,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from enum import Enum, IntEnum
 
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -19,6 +18,8 @@ from qtpy.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+
+from stoner_measurement.qt_compat import pyqtSignal
 
 #: Stylesheet templates for each connection status.  ``{bg}`` is replaced
 #: with the actual background colour token.

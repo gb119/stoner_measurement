@@ -6,8 +6,8 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInAmplifier,
     LockInAmplifierCapabilities,
     LockInInputCoupling,
-    LockInReferenceSource,
     LockinRefenceEdge,
+    LockInReferenceSource,
 )
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
