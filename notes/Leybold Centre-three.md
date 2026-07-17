@@ -679,14 +679,13 @@ run_keyboard_test()
 run_relay_test(confirm=True)
 ```
 
-
 The crucial difference is that the **DISPLAY THREE manual does not describe a serial/remote programming interface**.
 Unlike the CENTER THREE, which has an RS232C ACK/NAK command interface, the DISPLAY THREE is essentially a
 front-panel-configured gauge display with analogue outputs, relay outputs, and external HV-control inputs. A “fully
 featured driver” therefore cannot be command-based unless using external hardware to read analogue voltages and drive
 digital inputs.
 
-# Leybold DISPLAY THREE LLM Driver Guide
+## Leybold DISPLAY THREE LLM Driver Guide
 
 ## 1. Instrument scope
 
@@ -1012,7 +1011,7 @@ treating the CENTER THREE as a **true programmable controller**.
 Yes. The Edwards TIC is closer to the **Leybold CENTER THREE** than the **DISPLAY THREE**, because it has a documented
 serial protocol. It is more object-oriented than Leybold’s three-letter mnemonic interface.
 
-# Edwards TIC LLM Coding-Agent Guide
+## Edwards TIC LLM Coding-Agent Guide
 
 ## 1. Instrument family
 
@@ -1346,7 +1345,7 @@ lock_front_panel()
 unlock_front_panel()
 ```
 
-# Shared API design across the three instruments
+## Shared API design across the three instruments
 
 ## Common high-level abstraction
 

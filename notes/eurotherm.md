@@ -403,7 +403,7 @@ class Eurotherm32h8:
 6. For open-loop/manual control, set `MAN.OP`, then `A-M = 1`.
 7. For frequent setpoint updates, use `L-R` + `Rm.SP`, not `SP1`, `SP2`, or `TG.SP`.
 
-# Eurotherm 2000 Series Modbus / EI-Bisynch Driver Guide
+## Eurotherm 2000 Series Modbus / EI-Bisynch Driver Guide
 
 Applies mainly to Eurotherm 2200 and 2400 series instruments.
 
@@ -639,7 +639,7 @@ write(273, 0)  # auto
 write(2, target_setpoint)
 ```
 
-## 9. Alarms
+## 9. Alarms and status-related registers
 
 | Function               | 2400 |            2200 |
 | ---------------------- | ---: | --------------: |
@@ -839,7 +839,7 @@ class Eurotherm2000:
 
     def enter_configuration(self) -> None: ...
     def exit_configuration(self) -> None: ...
-```
+```text
 
 ## 17. 3200-to-2000 porting notes
 
