@@ -1,61 +1,102 @@
 # Codacy Issues Summary
 
 Repository: `gh/gb119/stoner_measurement`
-Downloaded: 2026-07-01
-Total issues downloaded: **108**
+Downloaded: 2026-07-17
 
-## Issue Split
+## Refresh Status
 
-- Markdown files: 54
-- Python files: 54
+- Codacy auth probe succeeded on 2026-07-17.
+- Fresh issue download completed with `--limit 1000`.
+- Local raw snapshot: `codacy-reports/issues.json`
 
-## Markdown Findings
+## Snapshot Totals
 
-- `markdownlint_MD013`: 26 line-length findings.
-- `markdownlint_MD032`: 9 list blank-line findings.
-- `markdownlint_MD022`: 5 heading blank-line findings.
-- `markdownlint_MD046`: 2 fenced-code style findings.
-- `markdownlint_MD040`: 2 fenced-code language findings.
-- `markdownlint_MD036`: 2 emphasis-used-as-heading findings.
-- `markdownlint_MD012`, `MD023`, `MD041`, and `MD009`: 1 finding each.
-- Agentlinter completeness/clarity checks: 4 findings.
+- Total issues downloaded: **85**
+- Severity split:
+  - `Error`: 1
+  - `High`: 9
+  - `Warning`: 41
+  - `Info`: 34
 
-Markdown files with findings:
+## Category Split
 
-- `codacy-reports/issues-summary.md`: 13
-- `notes/incremental_save.md`: 12
-- `notes/Lakeshore 625.md`: 9
-- `TODO.md`: 8
-- `.github/copilot-instructions.md`: 5
-- `AGENTS.md`: 4
-- `notes/motor-control.md`: 3
+- `Complexity`: 25
+- `CodeStyle`: 25
+- `BestPractice`: 16
+- `ErrorProne`: 10
+- `UnusedCode`: 4
+- `Security`: 4
+- `Documentation`: 1
 
-## Python Findings
+## Highest-Severity Findings
 
-- `Prospector_mccabe`: 21 complexity findings.
-- `Semgrep_codacy.python.i18n.no-hardcoded-strftime`: 8 hardcoded date-format findings.
-- `Prospector_pycodestyle`: 7 style findings.
-- `PyLintPython3_W0404`: 6 re-import findings.
-- `Prospector_pyflakes`: 2 findings.
-- `PyLintPython3_C0200`: 2 `range(len(...))` findings.
-- `Bandit_B102`: 2 `exec` findings.
-- `PyLintPython3_W0108`: 2 unnecessary-lambda findings.
-- `PyLintPython3_E0110`, `E1120`, `W0611`, and `W0612`: 1 finding each.
+### Error
 
-Top Python files with findings:
+- `tests/test_new_ui_widgets.py:299`
+  - `PyLintPython3_E1120`
+  - `No value for argument 'cls' in classmethod call`
 
-- `tests/test_magnet_control.py`: 3
-- `tests/test_temperature_control.py`: 3
+### High
+
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py:39`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'TemperatureController' with abstract methods instantiated`
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py:43`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'MagnetController' with abstract methods instantiated`
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py:47`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'SourceMeter' with abstract methods instantiated`
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py:51`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'CurrentSource' with abstract methods instantiated`
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py:55`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'DigitalMultimeter' with abstract methods instantiated`
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py:59`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'Nanovoltmeter' with abstract methods instantiated`
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py:63`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'Electrometer' with abstract methods instantiated`
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py:67`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'LockInAmplifier' with abstract methods instantiated`
+- `tests/test_motor_controller.py:24`
+  - `PyLintPython3_E0110`
+  - `Abstract class 'IncompleteMotorController' with abstract methods instantiated`
+
+## Largest Warning Buckets
+
+- `Prospector_mccabe`: 25 complexity findings
+- `Semgrep_codacy.python.i18n.no-hardcoded-strftime`: 10 findings
+- `Bandit`: 3 findings
+- `Agentlinter_structure_modular-files`: 1 finding
+- `markdownlint_MD024`: 1 finding
+
+## Top Files By Issue Count
+
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py`: 9
+- `notes/Leybold Centre-three.md`: 4
+- `tests/test_magnet_control.py`: 4
 - `src/stoner_measurement/ui/widgets/round_dial.py`: 3
-- `tests/test_new_ui_widgets.py`: 2
-- `src/stoner_measurement/ui/plot_widget.py`: 2
-- `src/stoner_measurement/ui/temperature_panel.py`: 2
-- `tests/test_controller_state_plugins.py`: 2
-- `src/stoner_measurement/plugins/trace/k6221_2182a.py`: 2
-- `src/stoner_measurement/plugins/trace/k6221_multi_sr830.py`: 2
-- `src/stoner_measurement/plugins/command/plot_points.py`: 2
+- `tests/test_temperature_control.py`: 3
+- `notes/eurotherm.md`: 3
 
-## Fix Pass
+## Immediate Plan
 
-The Markdown fixes in this pass targeted the files above. The Python issues were summarized only and left for
-separate review because many are complexity, security, or behaviour-sensitive findings.
+1. Fix the 10 `Error` and `High` findings first.
+2. Clear the 34 `Info` findings in small mechanical batches.
+3. Review the 10 `strftime` findings for shared-helper cleanup.
+4. Classify the 3 Bandit findings before changing behavior-sensitive code.
+5. Chip away at the 25 complexity findings one module at a time.
+
+## Best First Pass
+
+The highest-leverage next tranche is:
+
+- `tests/test_new_ui_widgets.py`
+- `tests/unit/instruments/contracts/test_abstract_instrument_contracts.py`
+- `tests/test_motor_controller.py`
+
+That single pass can remove all `Error` and `High` issues in the current snapshot.

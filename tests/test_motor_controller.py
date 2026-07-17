@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 import pytest
 
@@ -19,13 +20,14 @@ from stoner_measurement.instruments.transport import NullTransport
 
 def test_motor_controller_is_abstract():
     abstract_init = MotorController.__dict__["__init__"]
+    incomplete_motor_controller = type(
+        "IncompleteMotorController",
+        (MotorController,),
+        {"__init__": abstract_init},
+    )
 
     with pytest.raises(TypeError):
-        type(
-            "IncompleteMotorController",
-            (MotorController,),
-            {"__init__": abstract_init},
-        )(NullTransport(), ScpiProtocol())
+        cast(Any, incomplete_motor_controller)(NullTransport(), ScpiProtocol())
 
 
 def test_resolve_relative_motor_move_uses_documented_soft_limit_algorithm():

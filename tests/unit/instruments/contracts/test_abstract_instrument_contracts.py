@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
@@ -34,37 +36,67 @@ class TestAbstractEnforcement:
 
         assert isinstance(BaseInstrument, ABCMeta)
 
-    def test_temperature_controller_is_abstract(self):
+    @staticmethod
+    def _assert_abstract_constructor_raises(cls: type[object], *args: object) -> None:
         with pytest.raises(TypeError):
-            TemperatureController(NullTransport(), LakeshoreProtocol())  # type: ignore[abstract]
+            cast(Any, cls)(*args)
+
+    def test_temperature_controller_is_abstract(self):
+        self._assert_abstract_constructor_raises(
+            TemperatureController,
+            NullTransport(),
+            LakeshoreProtocol(),
+        )
 
     def test_magnet_controller_is_abstract(self):
-        with pytest.raises(TypeError):
-            MagnetController(NullTransport(), OxfordProtocol())  # type: ignore[abstract]
+        self._assert_abstract_constructor_raises(
+            MagnetController,
+            NullTransport(),
+            OxfordProtocol(),
+        )
 
     def test_source_meter_is_abstract(self):
-        with pytest.raises(TypeError):
-            SourceMeter(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+        self._assert_abstract_constructor_raises(
+            SourceMeter,
+            NullTransport(),
+            ScpiProtocol(),
+        )
 
     def test_current_source_is_abstract(self):
-        with pytest.raises(TypeError):
-            CurrentSource(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+        self._assert_abstract_constructor_raises(
+            CurrentSource,
+            NullTransport(),
+            ScpiProtocol(),
+        )
 
     def test_digital_multimeter_is_abstract(self):
-        with pytest.raises(TypeError):
-            DigitalMultimeter(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+        self._assert_abstract_constructor_raises(
+            DigitalMultimeter,
+            NullTransport(),
+            ScpiProtocol(),
+        )
 
     def test_nanovoltmeter_is_abstract(self):
-        with pytest.raises(TypeError):
-            Nanovoltmeter(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+        self._assert_abstract_constructor_raises(
+            Nanovoltmeter,
+            NullTransport(),
+            ScpiProtocol(),
+        )
 
     def test_electrometer_is_abstract(self):
-        with pytest.raises(TypeError):
-            Electrometer(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+        self._assert_abstract_constructor_raises(
+            Electrometer,
+            NullTransport(),
+            ScpiProtocol(),
+        )
 
     def test_lock_in_amplifier_is_abstract(self):
-        with pytest.raises(TypeError):
-            LockInAmplifier(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+        self._assert_abstract_constructor_raises(
+            LockInAmplifier,
+            NullTransport(),
+            ScpiProtocol(),
+        )
+
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

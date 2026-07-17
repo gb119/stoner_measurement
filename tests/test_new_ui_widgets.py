@@ -296,7 +296,8 @@ class TestConsoleWidget:
                     "wrapped C/C++ object of type QtInProcessKernelManager has been deleted"
                 )
 
-        console = cast(Any, _IPythonConsoleWidget).__new__(_IPythonConsoleWidget)
+        console_new = cast(Any, _IPythonConsoleWidget.__new__)
+        console = console_new(_IPythonConsoleWidget)
         console._kernel_active = True
         console._kernel_client = _DeletedClient()
         console._kernel_manager = _DeletedManager()
