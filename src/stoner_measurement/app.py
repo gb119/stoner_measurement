@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QToolBar,
 )
 
+from stoner_measurement.app_config import default_data_directory, load_app_config, theme_setting
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.resources import (
@@ -42,12 +43,7 @@ from stoner_measurement.ui.icons import (
 )
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
-from stoner_measurement.ui.settings_dialog import (
-    KEY_DEFAULT_DATA_DIR,
-    KEY_THEME,
-    SettingsDialog,
-    make_app_settings,
-)
+from stoner_measurement.ui.settings_dialog import SettingsDialog
 from stoner_measurement.ui.theme import colour, status_bar_stylesheet, theme_name
 from stoner_measurement.ui.value_watch import ValueWatchWindow
 
@@ -134,6 +130,7 @@ class MeasurementApp(QMainWindow):
         # Core objects ---------------------------------------------------------
         self._plugin_manager = PluginManager()
         self._engine = SequenceEngine(parent=self)
+        self._app_config = load_app_config()
 
         # Tracks which plugins have been wired to the engine / plot so they can
         # be cleanly removed when the plugin list changes.
@@ -206,6 +203,8 @@ class MeasurementApp(QMainWindow):
         self._build_actions()
         self._build_menu_bar()
         self._build_toolbar()
+        self._initialise_feature_registry()
+        self._apply_app_config()
 
         # Update window title when the active script tab changes --------------
         self._main_window.script_tab._script_tabs.currentChanged.connect(  # noqa: SLF001
@@ -222,6 +221,61 @@ class MeasurementApp(QMainWindow):
 
         # Load the template sequence (or empty sequence if none configured) ----
         self._load_template_sequence()
+
+    def _initialise_feature_registry(self) -> None:
+        """Collect per-feature UI objects so visibility is driven from one registry."""
+        self._feature_ui = {
+            "temperature": {
+                "action": self._act_show_temp_panel,
+                "stop_action": self._act_stop_temp_engine,
+                "menu_action": self._temperature_menu.menuAction(),
+                "indicator": self._engine_activity_status.temperature_indicator,
+                "panel": self._temp_panel,
+            },
+            "magnetic_field": {
+                "action": self._act_show_magnet_panel,
+                "stop_action": self._act_stop_magnet_engine,
+                "menu_action": self._magnet_menu.menuAction(),
+                "indicator": self._engine_activity_status.magnet_indicator,
+                "panel": self._magnet_panel,
+            },
+            "motor_position": {
+                "action": self._act_show_motor_panel,
+                "stop_action": self._act_stop_motor_engine,
+                "menu_action": self._motor_menu.menuAction(),
+                "indicator": self._engine_activity_status.motor_indicator,
+                "panel": self._motor_panel,
+            },
+            "pressure": {
+                "action": self._act_show_pressure_panel,
+                "stop_action": self._act_stop_pressure_engine,
+                "menu_action": self._pressure_menu.menuAction(),
+                "indicator": self._engine_activity_status.pressure_indicator,
+                "panel": self._pressure_panel,
+            },
+        }
+
+    def _feature_enabled(self, feature: str) -> bool:
+        return bool(self._app_config.get("features", {}).get(feature, True))
+
+    def _plugin_is_visible(self, _ep_name: str, plugin: object) -> bool:
+        required = getattr(plugin, "controller_features", frozenset())
+        return all(self._feature_enabled(feature) for feature in required)
+
+    def _apply_app_config(self) -> None:
+        """Apply the current application config to plugin visibility and UI affordances."""
+        self._plugin_manager.set_plugin_filter(self._plugin_is_visible)
+        any_engine_visible = False
+        for feature, entry in self._feature_ui.items():
+            enabled = self._feature_enabled(feature)
+            any_engine_visible = any_engine_visible or enabled
+            entry["action"].setVisible(enabled)
+            entry["stop_action"].setVisible(enabled)
+            entry["menu_action"].setVisible(enabled)
+            entry["indicator"].setVisible(enabled)
+            if not enabled:
+                entry["panel"].close()
+        self._engines_menu.menuAction().setVisible(any_engine_visible)
 
     # ------------------------------------------------------------------
     # Plugin synchronisation
@@ -705,27 +759,27 @@ class MeasurementApp(QMainWindow):
         view_menu.addAction(self._act_show_value_watch)
 
         # Engines menu (contains per-engine submenus)
-        engines_menu = menu_bar.addMenu("&Engines")
+        self._engines_menu = menu_bar.addMenu("&Engines")
 
-        temp_menu = engines_menu.addMenu(make_temperature_icon(), "&Temperature")
-        temp_menu.addAction(self._act_show_temp_panel)
-        temp_menu.addSeparator()
-        temp_menu.addAction(self._act_stop_temp_engine)
+        self._temperature_menu = self._engines_menu.addMenu(make_temperature_icon(), "&Temperature")
+        self._temperature_menu.addAction(self._act_show_temp_panel)
+        self._temperature_menu.addSeparator()
+        self._temperature_menu.addAction(self._act_stop_temp_engine)
 
-        magnet_menu = engines_menu.addMenu(make_magnet_icon(), "&Magnet")
-        magnet_menu.addAction(self._act_show_magnet_panel)
-        magnet_menu.addSeparator()
-        magnet_menu.addAction(self._act_stop_magnet_engine)
+        self._magnet_menu = self._engines_menu.addMenu(make_magnet_icon(), "&Magnet")
+        self._magnet_menu.addAction(self._act_show_magnet_panel)
+        self._magnet_menu.addSeparator()
+        self._magnet_menu.addAction(self._act_stop_magnet_engine)
 
-        motor_menu = engines_menu.addMenu(make_motor_icon(), "&Motor")
-        motor_menu.addAction(self._act_show_motor_panel)
-        motor_menu.addSeparator()
-        motor_menu.addAction(self._act_stop_motor_engine)
+        self._motor_menu = self._engines_menu.addMenu(make_motor_icon(), "&Motor")
+        self._motor_menu.addAction(self._act_show_motor_panel)
+        self._motor_menu.addSeparator()
+        self._motor_menu.addAction(self._act_stop_motor_engine)
 
-        pressure_menu = engines_menu.addMenu(make_pressure_icon(), "&Pressure")
-        pressure_menu.addAction(self._act_show_pressure_panel)
-        pressure_menu.addSeparator()
-        pressure_menu.addAction(self._act_stop_pressure_engine)
+        self._pressure_menu = self._engines_menu.addMenu(make_pressure_icon(), "&Pressure")
+        self._pressure_menu.addAction(self._act_show_pressure_panel)
+        self._pressure_menu.addSeparator()
+        self._pressure_menu.addAction(self._act_stop_pressure_engine)
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._act_about)
@@ -1014,7 +1068,7 @@ class MeasurementApp(QMainWindow):
         start_dir = (
             str(self._current_measurement_path.parent)
             if self._current_measurement_path
-            else make_app_settings().value(KEY_DEFAULT_DATA_DIR, "", type=str)
+            else default_data_directory(config=self._app_config)
         )
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1061,7 +1115,7 @@ class MeasurementApp(QMainWindow):
         start_dir = (
             str(self._current_measurement_path.parent)
             if self._current_measurement_path
-            else make_app_settings().value(KEY_DEFAULT_DATA_DIR, "", type=str)
+            else default_data_directory(config=self._app_config)
         )
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -1121,7 +1175,7 @@ class MeasurementApp(QMainWindow):
         start_dir = (
             str(pane.path.parent)
             if pane and pane.path
-            else make_app_settings().value(KEY_DEFAULT_DATA_DIR, "", type=str)
+            else default_data_directory(config=self._app_config)
         )
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1148,7 +1202,7 @@ class MeasurementApp(QMainWindow):
     def _on_save_as_script(self) -> None:
         """Prompt the user for a save path and write the active tab's editor contents."""
         pane = self._main_window.script_tab.current_pane()
-        default_dir = make_app_settings().value(KEY_DEFAULT_DATA_DIR, "", type=str)
+        default_dir = default_data_directory(config=self._app_config)
         if pane and pane.path:
             start = str(pane.path)
         elif default_dir:
@@ -1383,7 +1437,9 @@ class MeasurementApp(QMainWindow):
         if dlg.exec():
             if dlg.toolbar_saved:
                 self._refresh_configured_toolbar_buttons()
-            new_theme = make_app_settings().value(KEY_THEME, previous_theme, type=str)
+            self._app_config = load_app_config()
+            self._apply_app_config()
+            new_theme = theme_setting(config=self._app_config)
             if new_theme != previous_theme:
                 QMessageBox.information(
                     self,

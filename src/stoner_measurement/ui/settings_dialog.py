@@ -1,9 +1,4 @@
-"""Settings dialogue for the Stoner Measurement application.
-
-Provides :class:`SettingsDialog` for editing persistent application preferences,
-and :func:`make_app_settings` for obtaining the shared :class:`~PyQt6.QtCore.QSettings`
-instance backed by an INI file.
-"""
+"""Settings dialogue for the Stoner Measurement application."""
 
 from __future__ import annotations
 
@@ -12,6 +7,7 @@ from pathlib import Path
 from qtpy.QtCore import QSettings
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -25,10 +21,21 @@ from qtpy.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from stoner_measurement.app_config import (
+    FEATURE_DEFINITIONS,
+    KEY_DEFAULT_DATA_DIR,
+    KEY_THEME,
+    default_data_directory,
+    load_app_config,
+    save_app_config,
+    set_app_config_value,
+    theme_setting,
+)
 from stoner_measurement.resources import (
     load_toolbar_config,
     save_toolbar_config,
@@ -37,32 +44,10 @@ from stoner_measurement.resources import (
 from stoner_measurement.ui.theme import DEFAULT_THEME, available_themes
 
 _ROW_TYPE_SEPARATOR = "__separator__"
-#: Settings key for the default data directory.
-KEY_DEFAULT_DATA_DIR = "app/default_data_directory"
-#: Settings key for the application theme.
-KEY_THEME = "app/theme"
 
 
 def make_app_settings() -> QSettings:
-    """Return a :class:`~PyQt6.QtCore.QSettings` instance backed by an INI file.
-
-    The file is placed in the platform-appropriate user-configuration directory:
-
-    * **Windows** — ``%APPDATA%\\University of Leeds\\Stoner Measurement.ini``
-    * **Linux / Unix** — ``~/.config/University of Leeds/Stoner Measurement.ini``
-    * **macOS** — ``~/Library/Preferences/University of Leeds/Stoner Measurement.ini``
-
-    Returns:
-        (QSettings):
-            The application-settings object.
-
-    Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> s = make_app_settings()
-        >>> isinstance(s, QSettings)
-        True
-    """
+    """Return the QSettings store used for non-YAML UI state such as geometry."""
     return QSettings(
         QSettings.Format.IniFormat,
         QSettings.Scope.UserScope,
@@ -72,51 +57,47 @@ def make_app_settings() -> QSettings:
 
 
 class SettingsDialog(QDialog):
-    """Modal preferences dialogue for editing persistent application settings.
-
-    Presents a form with two fields:
-
-    * **Default data directory** — the directory used as the starting point for
-      file-open and file-save dialogues (sequences, scripts, and data files).
-    * **Theme** — choose between the available application themes. The selected
-      theme is saved in the application settings file and restored on startup.
-    * **Toolbar buttons** — editable list of user toolbar button definitions
-      saved to the user ``toolbar.yaml`` configuration file.
-
-    Changes are written to the INI-format settings file returned by
-    :func:`make_app_settings` when the user clicks *OK*.
-
-    Args:
-        parent (QWidget | None):
-            Optional parent widget.
-
-    Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> dlg = SettingsDialog()
-        >>> dlg.windowTitle()
-        'Preferences'
-    """
+    """Modal preferences dialogue for editing persistent application settings."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferences")
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(620)
 
-        settings = make_app_settings()
         self.toolbar_saved = False
         self._toolbar_cfg = load_toolbar_config()
+        self._feature_checkboxes: dict[str, QCheckBox] = {}
+        app_config = load_app_config()
 
-        # ── Form ──────────────────────────────────────────────────────────
-        form = QFormLayout()
+        tabs = QTabWidget(self)
+        tabs.addTab(self._build_general_tab(app_config), "General")
+        tabs.addTab(self._build_features_tab(app_config), "Features")
+        tabs.addTab(self._build_toolbar_tab(), "Toolbar")
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            self,
+        )
+        button_box.accepted.connect(self._on_accept)
+        button_box.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
+        layout.addWidget(tabs)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
+    def _build_general_tab(self, app_config: dict) -> QWidget:
+        tab = QWidget(self)
+        form = QFormLayout(tab)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        # Default data directory row
-        self._data_dir_edit = QLineEdit(self)
-        self._data_dir_edit.setPlaceholderText("(none — use current working directory)")
-        self._data_dir_edit.setText(settings.value(KEY_DEFAULT_DATA_DIR, "", type=str))
+        self._data_dir_edit = QLineEdit(tab)
+        self._data_dir_edit.setPlaceholderText("(none - use current working directory)")
+        self._data_dir_edit.setText(default_data_directory(config=app_config))
 
-        data_dir_browse = QPushButton("Browse…", self)
+        data_dir_browse = QPushButton("Browse...", tab)
         data_dir_browse.setFixedWidth(80)
         data_dir_browse.clicked.connect(self._browse_data_dir)
 
@@ -126,16 +107,44 @@ class SettingsDialog(QDialog):
         data_dir_row.addWidget(data_dir_browse)
         form.addRow("Default data directory:", data_dir_row)
 
-        # Theme row
-        self._theme_combo = QComboBox(self)
+        self._theme_combo = QComboBox(tab)
         self._theme_combo.addItems([name.capitalize() for name in available_themes()])
-        saved_theme = settings.value(KEY_THEME, DEFAULT_THEME, type=str).strip().lower() or DEFAULT_THEME
+        saved_theme = theme_setting(config=app_config) or DEFAULT_THEME
         index = max(0, available_themes().index(saved_theme) if saved_theme in available_themes() else 0)
         self._theme_combo.setCurrentIndex(index)
         form.addRow("Theme:", self._theme_combo)
+        return tab
 
-        # Toolbar editor
-        self._toolbar_table = QTableWidget(0, 4, self)
+    def _build_features_tab(self, app_config: dict) -> QWidget:
+        tab = QWidget(self)
+        layout = QVBoxLayout(tab)
+        form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        help_label = QLabel(
+            "Disable a controller feature to hide its menu, toolbar, panel, status "
+            "indicator, and any plugins that declare they depend on that controller.",
+            tab,
+        )
+        help_label.setWordWrap(True)
+        layout.addWidget(help_label)
+
+        for entry in FEATURE_DEFINITIONS:
+            checkbox = QCheckBox(f"Enable {entry['label']}", tab)
+            checkbox.setChecked(bool(app_config.get("features", {}).get(entry["key"], True)))
+            self._feature_checkboxes[entry["key"]] = checkbox
+            form.addRow(f"{entry['label']}:", checkbox)
+
+        layout.addLayout(form)
+        layout.addStretch(1)
+        return tab
+
+    def _build_toolbar_tab(self) -> QWidget:
+        tab = QWidget(self)
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self._toolbar_table = QTableWidget(0, 4, tab)
         self._toolbar_table.setHorizontalHeaderLabels(["Button name / separator", "Sequence", "Icon", "Tooltip"])
         self._toolbar_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._toolbar_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -147,56 +156,34 @@ class SettingsDialog(QDialog):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self._toolbar_table.setMinimumHeight(220)
         self._load_toolbar_rows()
+        layout.addWidget(self._toolbar_table)
+
+        toolbar_help = QLabel(
+            "Sequences are looked up by filename in the user and bundled sequences "
+            "folders. Icons are looked up by filename in the user and bundled "
+            "resources folders. Saving always writes a user toolbar.yaml override.",
+            tab,
+        )
+        toolbar_help.setWordWrap(True)
+        layout.addWidget(toolbar_help)
 
         toolbar_buttons_row = QHBoxLayout()
         toolbar_buttons_row.setContentsMargins(0, 0, 0, 0)
-        add_toolbar_button = QPushButton("Add Button", self)
+        add_toolbar_button = QPushButton("Add Button", tab)
         add_toolbar_button.clicked.connect(self._add_toolbar_row)
-        add_separator_button = QPushButton("Add Separator", self)
+        add_separator_button = QPushButton("Add Separator", tab)
         add_separator_button.clicked.connect(self._add_separator_row)
-        remove_toolbar_button = QPushButton("Remove Selected", self)
+        remove_toolbar_button = QPushButton("Remove Selected", tab)
         remove_toolbar_button.clicked.connect(self._remove_selected_toolbar_row)
-        save_toolbar_button = QPushButton("Save Toolbar", self)
+        save_toolbar_button = QPushButton("Save Toolbar", tab)
         save_toolbar_button.clicked.connect(self._save_toolbar_from_ui)
         toolbar_buttons_row.addWidget(add_toolbar_button)
         toolbar_buttons_row.addWidget(add_separator_button)
         toolbar_buttons_row.addWidget(remove_toolbar_button)
         toolbar_buttons_row.addStretch(1)
         toolbar_buttons_row.addWidget(save_toolbar_button)
-
-        toolbar_layout = QVBoxLayout()
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.addWidget(self._toolbar_table)
-        toolbar_help = QLabel(
-            "Sequences are looked up by filename in the user and bundled "
-            "sequences folders. Icons are looked up by filename in the user "
-            "and bundled resources folders. Saving always writes a user "
-            "toolbar.yaml override.",
-            self,
-        )
-        toolbar_help.setWordWrap(True)
-        toolbar_layout.addWidget(toolbar_help)
-        toolbar_layout.addLayout(toolbar_buttons_row)
-        form.addRow("Toolbar buttons:", toolbar_layout)
-
-        # ── Button box ────────────────────────────────────────────────────
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            self,
-        )
-        button_box.accepted.connect(self._on_accept)
-        button_box.rejected.connect(self.reject)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
-        layout.addLayout(form)
-        layout.addWidget(button_box)
-        self.setLayout(layout)
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
+        layout.addLayout(toolbar_buttons_row)
+        return tab
 
     def _load_toolbar_rows(self) -> None:
         """Populate the toolbar table from the effective toolbar configuration."""
@@ -226,7 +213,7 @@ class SettingsDialog(QDialog):
         if placeholder:
             edit.setPlaceholderText(placeholder)
         edit.setEnabled(enabled)
-        browse = QPushButton("…", cell)
+        browse = QPushButton("...", cell)
         browse.setFixedWidth(32)
         browse.setEnabled(enabled)
         browse.clicked.connect(lambda: browse_callback(edit))
@@ -243,7 +230,6 @@ class SettingsDialog(QDialog):
         if is_separator:
             name_item.setText("--- separator ---")
             name_item.setData(0x0100, _ROW_TYPE_SEPARATOR)
-            name_item.setFlags(name_item.flags())
             for col in (1, 2, 3):
                 item = self._toolbar_table.item(row, col)
                 if item is not None:
@@ -316,7 +302,10 @@ class SettingsDialog(QDialog):
     def _browse_icon_for_row(self, line_edit: QLineEdit) -> None:
         """Choose an icon file and store its basename in the row editor."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Toolbar Icon", "", "Image Files (*.png *.svg *.ico *.jpg *.jpeg);;All Files (*)"
+            self,
+            "Select Toolbar Icon",
+            "",
+            "Image Files (*.png *.svg *.ico *.jpg *.jpeg);;All Files (*)",
         )
         if path:
             line_edit.setText(Path(path).name)
@@ -334,7 +323,7 @@ class SettingsDialog(QDialog):
             line_edit.setText(Path(path).name)
 
     def _browse_data_dir(self) -> None:
-        """Open a directory-chooser and populate the data-directory field."""
+        """Open a directory chooser and populate the data-directory field."""
         current = self._data_dir_edit.text().strip()
         start = current if Path(current).is_dir() else ""
         path = QFileDialog.getExistingDirectory(self, "Select Default Data Directory", start)
@@ -422,9 +411,15 @@ class SettingsDialog(QDialog):
         self.toolbar_saved = True
 
     def _on_accept(self) -> None:
-        """Write the current field values to the INI settings file."""
-        settings = make_app_settings()
-        settings.setValue(KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
-        settings.setValue(KEY_THEME, self._theme_combo.currentText().strip().lower())
-        settings.sync()
+        """Write the current field values to the user application config."""
+        config = load_app_config()
+        set_app_config_value(config, KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
+        set_app_config_value(config, KEY_THEME, self._theme_combo.currentText().strip().lower())
+        for entry in FEATURE_DEFINITIONS:
+            set_app_config_value(
+                config,
+                entry["config_key"],
+                self._feature_checkboxes[entry["key"]].isChecked(),
+            )
+        save_app_config(config)
         self.accept()

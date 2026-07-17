@@ -335,6 +335,11 @@ class BasePlugin(ABC):
     disabled: bool = False
 
     @property
+    def controller_features(self) -> frozenset[str]:
+        """Return controller feature flags required by this plugin."""
+        return frozenset()
+
+    @property
     def engine_namespace(self) -> dict:
         """Live view of the sequence engine's interpreter namespace.
 

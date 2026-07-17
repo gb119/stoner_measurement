@@ -840,23 +840,14 @@ class TestSaveCommand:
     def test_execute_resolves_relative_path_against_data_directory(
         self, qapp, engine, tmp_path
     ):
-        """Relative path_expr should be resolved against KEY_DEFAULT_DATA_DIR."""
+        """Relative path_expr should be resolved against the configured default data directory."""
         from unittest.mock import patch
 
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
         cmd.path_expr = "'subdir/out.txt'"
 
-        data_dir = str(tmp_path)
-
-        class _MockSettings:
-            def value(self, key, default="", **_kwargs):
-                return data_dir
-
-        with patch(
-            "stoner_measurement.ui.settings_dialog.make_app_settings",
-            return_value=_MockSettings(),
-        ):
+        with patch("stoner_measurement.app_config.default_data_directory", return_value=str(tmp_path)):
             cmd.execute()
 
         expected = tmp_path / "subdir" / "out.txt"
@@ -871,15 +862,7 @@ class TestSaveCommand:
         out_file = tmp_path / "absolute_out.txt"
         cmd.path_expr = repr(str(out_file))
 
-        # Even if data_dir is set, the absolute path should be used as-is.
-        class _MockSettings:
-            def value(self, key, default="", **_kwargs):
-                return "/some/other/dir"
-
-        with patch(
-            "stoner_measurement.ui.settings_dialog.make_app_settings",
-            return_value=_MockSettings(),
-        ):
+        with patch("stoner_measurement.app_config.default_data_directory", return_value="/some/other/dir"):
             cmd.execute()
 
         assert out_file.exists()

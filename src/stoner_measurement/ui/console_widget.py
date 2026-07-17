@@ -271,9 +271,27 @@ class _IPythonConsoleWidget(QWidget):
         self._engine: SequenceEngine | None = None
         assert QtInProcessKernelManager is not None
         assert RichJupyterWidget is not None
+        self_ref = weakref.ref(self)
+
+        def _shutdown_on_destroyed(*_args) -> None:
+            widget = self_ref()
+            if widget is not None:
+                try:
+                    widget._shutdown_kernel()
+                except Exception:
+                    logger.debug("Failed to shut down in-process console kernel on destroy", exc_info=True)
+
+        self.destroyed.connect(_shutdown_on_destroyed)
 
         self._kernel_manager = QtInProcessKernelManager()
         self._kernel_manager.start_kernel(show_banner=False)
+        history_manager = getattr(getattr(self._kernel_manager.kernel, "shell", None), "history_manager", None)
+        if history_manager is not None:
+            try:
+                history_manager.enabled = False
+                history_manager.end_session = lambda *args, **kwargs: None
+            except Exception:
+                logger.debug("Failed to disable IPython history for embedded console", exc_info=True)
         self._kernel_client = self._kernel_manager.client()
         self._kernel_client.start_channels()
         self._kernel_active = True
@@ -312,18 +330,6 @@ QToolTip {{
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._console)
         self.setLayout(layout)
-
-        self_ref = weakref.ref(self)
-
-        def _shutdown_on_destroyed(*_args) -> None:
-            widget = self_ref()
-            if widget is not None:
-                try:
-                    widget._shutdown_kernel()
-                except Exception:
-                    logger.debug("Failed to shut down in-process console kernel on destroy", exc_info=True)
-
-        self.destroyed.connect(_shutdown_on_destroyed)
 
     @pyqtSlot(str)
     def write(self, text: str) -> None:

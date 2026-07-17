@@ -35,6 +35,10 @@ def _normalise_channels(values: Iterable[str] | None) -> list[str] | None:
 class TemperatureControllerPluginMixin:
     """Shared engine-backed behaviour for temperature state scan/sweep plugins."""
 
+    @property
+    def controller_features(self) -> frozenset[str]:
+        return frozenset({"temperature"})
+
     def _init_temperature_controller_plugin(self) -> None:
         self.control_loop: int = 1
         self.ramp_rate: float = 1.0

@@ -154,6 +154,10 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         """
         return "Temperature Monitor"
 
+    @property
+    def controller_features(self) -> frozenset[str]:
+        return frozenset({"temperature"})
+
     # ------------------------------------------------------------------
     # Engine helpers
     # ------------------------------------------------------------------

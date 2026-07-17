@@ -660,13 +660,9 @@ class SaveCommand(CommandPlugin):
 
         dest = pathlib.Path(path_val)
         if not dest.is_absolute():
-            from stoner_measurement.ui.settings_dialog import (
-                KEY_DEFAULT_DATA_DIR,
-                make_app_settings,
-            )
+            from stoner_measurement.app_config import default_data_directory
 
-            settings = make_app_settings()
-            data_dir = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
+            data_dir = default_data_directory()
             if data_dir:
                 dest = pathlib.Path(data_dir) / dest
 
@@ -959,13 +955,9 @@ class SaveCommand(CommandPlugin):
         path_edit.editingFinished.connect(_apply_path)
 
         def _browse_path() -> None:
-            from stoner_measurement.ui.settings_dialog import (
-                KEY_DEFAULT_DATA_DIR,
-                make_app_settings,
-            )
+            from stoner_measurement.app_config import default_data_directory
 
-            settings = make_app_settings()
-            data_dir = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
+            data_dir = default_data_directory()
             start_dir = data_dir if data_dir else ""
             path, _ = QFileDialog.getSaveFileName(
                 widget,

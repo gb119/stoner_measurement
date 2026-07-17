@@ -52,6 +52,10 @@ def _normalise_direction(value: object) -> MotorMoveDirection:
 class MotorControllerPluginMixin:
     """Shared engine-backed behaviour for motor state scan/sweep plugins."""
 
+    @property
+    def controller_features(self) -> frozenset[str]:
+        return frozenset({"motor_position"})
+
     def _init_motor_controller_plugin(self) -> None:
         self.velocity: float = 10.0
         self.acceleration: float = 10.0
