@@ -101,6 +101,11 @@ magnetic_field_monitor = "stoner_measurement.plugins.monitor.magnet_controller:M
 temperature_monitor = "stoner_measurement.plugins.monitor.temperature_controller:TemperatureMonitorPlugin"
 motor_angle_monitor = "stoner_measurement.plugins.monitor.motor_controller:MotorAngleMonitorPlugin"
 
+[project.entry-points."stoner_measurement.instruments"]
+mks_pr4000b_s = "stoner_measurement.instruments.mks:MKSPR4000BS"
+mks_psr1a = "stoner_measurement.instruments.mks:MKSPSR1A"
+mks_psr4a = "stoner_measurement.instruments.mks:MKSPSR4A"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

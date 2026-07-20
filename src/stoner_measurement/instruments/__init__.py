@@ -105,6 +105,11 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
 )
+from stoner_measurement.instruments.mass_flow_controller import (
+    MassFlowController,
+    MassFlowControllerCapabilities,
+)
+from stoner_measurement.instruments.mks import MKSPR4000BS, MKSPSR1A, MKSPSR4A
 from stoner_measurement.instruments.motor_controller import (
     Motor,
     MotorController,
@@ -182,11 +187,16 @@ __all__ = [
     "LockInOutputChannel",
     "LockInReferenceSource",
     "LockInReserveMode",
+    "MassFlowController",
+    "MassFlowControllerCapabilities",
     "LoopStatus",
     "MagnetController",
     "MagnetLimits",
     "MagnetState",
     "MagnetStatus",
+    "MKSPR4000BS",
+    "MKSPSR1A",
+    "MKSPSR4A",
     "Motor",
     "MotorController",
     "MotorStatus",
