@@ -133,7 +133,9 @@ from stoner_measurement.instruments.pressure_controller import (
 )
 from stoner_measurement.instruments.simulated import (
     SimulatedMagnetController,
+    SimulatedMassFlowController,
     SimulatedMotorController,
+    SimulatedPressureGaugeController,
     SimulatedTemperatureController,
 )
 from stoner_measurement.instruments.source_meter import (
@@ -231,7 +233,9 @@ __all__ = [
     "SensorStatus",
     "SourceMeter",
     "SimulatedMagnetController",
+    "SimulatedMassFlowController",
     "SimulatedMotorController",
+    "SimulatedPressureGaugeController",
     "SimulatedTemperatureController",
     "SourceMeterCapabilities",
     "SourceMode",

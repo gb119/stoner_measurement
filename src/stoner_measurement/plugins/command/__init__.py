@@ -23,8 +23,12 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.command.if_command import IfCommand
 from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
+from stoner_measurement.plugins.command.pressure_gauge_channel import (
+    PressureGaugeChannelCommand,
+)
 from stoner_measurement.plugins.command.plot_points import PlotPointsCommand
 from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
+from stoner_measurement.plugins.command.pressure_set_flow import PressureSetFlowCommand
 from stoner_measurement.plugins.command.save import SaveCommand
 from stoner_measurement.plugins.command.status import StatusCommand
 from stoner_measurement.plugins.command.wait import WaitCommand
@@ -37,6 +41,8 @@ __all__ = [
     "PlotClearCommand",
     "PlotPointsCommand",
     "PlotTraceCommand",
+    "PressureGaugeChannelCommand",
+    "PressureSetFlowCommand",
     "SaveCommand",
     "StatusCommand",
     "WaitCommand",

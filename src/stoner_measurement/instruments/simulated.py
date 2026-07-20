@@ -19,6 +19,10 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
 )
+from stoner_measurement.instruments.mass_flow_controller import (
+    MassFlowController,
+    MassFlowControllerCapabilities,
+)
 from stoner_measurement.instruments.motor_controller import (
     MotorController,
     MotorMoveDirection,
@@ -531,6 +535,7 @@ class SimulatedPressureGaugeController(PressureGaugeController):
             protocol=protocol if protocol is not None else ScpiProtocol(),
         )
         self._pressures: dict[int, float] = {1: 1.0e-3, 2: 5.0e-4, 3: 2.0e-5}
+        self._gauge_enabled: dict[int, bool] = {1: True, 2: True, 3: True}
         self._setpoints: dict[int, PressureSetpoint] = {
             1: PressureSetpoint(source_channel=1, lower=1.0e-4, upper=1.0e-2, unit=PressureUnit.MBAR),
             2: PressureSetpoint(source_channel=2, lower=1.0e-5, upper=1.0e-3, unit=PressureUnit.MBAR),
@@ -542,6 +547,13 @@ class SimulatedPressureGaugeController(PressureGaugeController):
 
     def read_pressure(self, channel: int) -> PressureReading:
         """Return a simulated pressure reading for *channel*."""
+        if not self._gauge_enabled.get(channel, True):
+            return PressureReading(
+                channel=channel,
+                value=None,
+                unit=PressureUnit.MBAR,
+                status=PressureStatus.SWITCHED_OFF,
+            )
         value = self._pressures.get(channel, 1.0e-3)
         return PressureReading(channel=channel, value=value, unit=PressureUnit.MBAR, status=PressureStatus.OK)
 
@@ -554,7 +566,8 @@ class SimulatedPressureGaugeController(PressureGaugeController):
         return "Pirani"
 
     def set_gauge_on(self, channel: int, enabled: bool) -> None:
-        """No-op: gauge switching is not simulated."""
+        """Record the requested simulated gauge on/off state."""
+        self._gauge_enabled[channel] = bool(enabled)
 
     def zero_gauge(self, channel: int) -> None:
         """No-op: gauge zeroing is not simulated."""
@@ -580,3 +593,60 @@ class SimulatedPressureGaugeController(PressureGaugeController):
     def get_capabilities(self) -> PressureControllerCapabilities:
         """Return the static capability descriptor."""
         return self._CAPABILITIES
+
+
+class SimulatedMassFlowController(MassFlowController):
+    """Simple simulated mass-flow controller."""
+
+    def __init__(self, transport=None, protocol=None) -> None:
+        super().__init__(
+            transport=transport if transport is not None else NullTransport(),
+            protocol=protocol if protocol is not None else ScpiProtocol(),
+        )
+        self._actual_values: dict[int, float] = {1: 0.5, 2: 0.25}
+        self._setpoints: dict[int, float] = {1: 0.5, 2: 0.25}
+        self._ranges: dict[int, float] = {1: 10.0, 2: 10.0}
+        self._units: dict[int, str] = {1: "sccm", 2: "sccm"}
+
+    def identify(self) -> str:
+        return "OpenAI,Simulated Mass Flow Controller,SIMMFC001,1.0"
+
+    def read_actual_value(self, channel: int = 1) -> float:
+        self.validate_channel(channel)
+        target = self._setpoints.get(channel, 0.0)
+        actual = self._actual_values.get(channel, target)
+        actual += (target - actual) * 0.5
+        self._actual_values[channel] = actual
+        return actual
+
+    def read_setpoint(self, channel: int = 1) -> float:
+        self.validate_channel(channel)
+        return self._setpoints.get(channel, 0.0)
+
+    def set_setpoint(self, value: float, channel: int = 1) -> None:
+        self.validate_channel(channel)
+        self._setpoints[channel] = float(value)
+
+    def read_unit(self, channel: int = 1) -> int | str:
+        self.validate_channel(channel)
+        return self._units.get(channel, "sccm")
+
+    def set_unit(self, unit_code: int | str, channel: int = 1) -> None:
+        self.validate_channel(channel)
+        self._units[channel] = str(unit_code)
+
+    def read_range(self, channel: int = 1) -> float:
+        self.validate_channel(channel)
+        return self._ranges.get(channel, 0.0)
+
+    def set_range(self, full_scale: float, channel: int = 1) -> None:
+        self.validate_channel(channel)
+        self._ranges[channel] = float(full_scale)
+
+    def get_capabilities(self) -> MassFlowControllerCapabilities:
+        return MassFlowControllerCapabilities(
+            channel_count=2,
+            supports_unit_control=True,
+            supports_range_control=True,
+            supports_pressure_control=True,
+        )

@@ -2,7 +2,9 @@
 
 from stoner_measurement.instruments import (
     SimulatedMagnetController,
+    SimulatedMassFlowController,
     SimulatedMotorController,
+    SimulatedPressureGaugeController,
     SimulatedTemperatureController,
 )
 from stoner_measurement.magnet_control import (
@@ -48,7 +50,9 @@ __all__ = [
     "LoopSettings",
     "MagnetControllerEngine",
     "SimulatedMagnetController",
+    "SimulatedMassFlowController",
     "SimulatedMotorController",
+    "SimulatedPressureGaugeController",
     "SimulatedTemperatureController",
     "MagnetEngineState",
     "MagnetEngineStatus",

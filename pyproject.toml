@@ -100,6 +100,9 @@ details = "stoner_measurement.plugins.command.details:DetailsCommand"
 magnetic_field_monitor = "stoner_measurement.plugins.monitor.magnet_controller:MagneticFieldMonitorPlugin"
 temperature_monitor = "stoner_measurement.plugins.monitor.temperature_controller:TemperatureMonitorPlugin"
 motor_angle_monitor = "stoner_measurement.plugins.monitor.motor_controller:MotorAngleMonitorPlugin"
+pressure_monitor = "stoner_measurement.plugins.monitor.pressure_controller:PressureMonitorPlugin"
+pressure_set_flow = "stoner_measurement.plugins.command.pressure_set_flow:PressureSetFlowCommand"
+pressure_gauge_channel = "stoner_measurement.plugins.command.pressure_gauge_channel:PressureGaugeChannelCommand"
 
 [project.entry-points."stoner_measurement.instruments"]
 mks_pr4000b_s = "stoner_measurement.instruments.mks:MKSPR4000BS"

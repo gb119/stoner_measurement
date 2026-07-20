@@ -11,6 +11,9 @@ from stoner_measurement.plugins.monitor.magnet_controller import (
 from stoner_measurement.plugins.monitor.motor_controller import (
     MotorAngleMonitorPlugin,
 )
+from stoner_measurement.plugins.monitor.pressure_controller import (
+    PressureMonitorPlugin,
+)
 from stoner_measurement.plugins.monitor.temperature_controller import (
     TemperatureMonitorPlugin,
 )
@@ -19,5 +22,6 @@ __all__ = [
     "MonitorPlugin",
     "MagneticFieldMonitorPlugin",
     "MotorAngleMonitorPlugin",
+    "PressureMonitorPlugin",
     "TemperatureMonitorPlugin",
 ]

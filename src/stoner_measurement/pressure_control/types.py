@@ -25,7 +25,11 @@ class PressureEngineReading:
 
     timestamp: datetime
     readings: dict[int, PressureReading]
+    flow_actual: dict[int, float] = field(default_factory=dict)
+    flow_setpoints: dict[int, float] = field(default_factory=dict)
+    target_pressures: dict[int, float] = field(default_factory=dict)
     unit: PressureUnit | str | None = None
+    flow_unit: int | str | None = None
 
 
 @dataclass
@@ -34,6 +38,12 @@ class PressureEngineState:
 
     reading: PressureEngineReading | None = None
     readings: dict[int, PressureReading] = field(default_factory=dict)
+    flow_actual: dict[int, float] = field(default_factory=dict)
+    flow_setpoints: dict[int, float] = field(default_factory=dict)
+    target_pressures: dict[int, float] = field(default_factory=dict)
+    gauge_channel_enabled: dict[int, bool | None] = field(default_factory=dict)
     engine_status: PressureEngineStatus = field(default=PressureEngineStatus.DISCONNECTED)
     driver_name: str | None = None
+    mfc_driver_name: str | None = None
     unit: PressureUnit | str | None = None
+    flow_unit: int | str | None = None
