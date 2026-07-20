@@ -916,13 +916,14 @@ class TestPlotTraceCommand:
         assert widget.y_data("sig") == [2.0, 3.0]
         assert "sig" not in widget._error_bar_items
 
-    def test_error_bar_item_survives_qt_teardown_race(self, qapp, monkeypatch):
+    def test_error_bar_handles_qt_teardown(self, qapp, monkeypatch):
         """Error-bar items should survive deleted-wrapper callbacks during teardown."""
         from stoner_measurement.ui.plot_widget import PlotWidget
 
         widget = PlotWidget()
         widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
         error_bar_item = widget._error_bar_items["sig"]
+        # Force boundingRect() to rebuild the path, which exercises the CI crash path.
         error_bar_item.path = None
 
         def _raise_deleted_wrapper(*_args, **_kwargs):

@@ -109,20 +109,20 @@ _COLOUR_COLUMN_WIDTH = 90
 _AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
-# PyQt reports the QGraphicsItem teardown race seen in CI with this text.
-_DELETED_QT_WRAPPER_MARKER = "has been deleted"
+# PyQt reports the QGraphicsItem teardown race seen in CI with this exact text.
+_DELETED_ERROR_BAR_WRAPPER_MESSAGE = "wrapped C/C++ object of type ErrorBarItem has been deleted"
 
 
-def _is_deleted_qt_wrapper_error(exc: RuntimeError) -> bool:
+def _is_deleted_error_bar_wrapper_error(exc: RuntimeError) -> bool:
     """Return whether *exc* reports a deleted Qt wrapper during teardown."""
-    return _DELETED_QT_WRAPPER_MARKER in str(exc)
+    return str(exc) == _DELETED_ERROR_BAR_WRAPPER_MESSAGE
 
 
 class _SafeErrorBarItem(pg.ErrorBarItem):
     """Error-bar item that tolerates deleted-wrapper callbacks during teardown."""
 
     def _clear_path(self) -> None:
-        """Reset the cached painter path to an empty path."""
+        """Reset the cached painter path after a deleted-wrapper teardown race."""
         self.path = QPainterPath()
 
     def setData(self, **opts) -> None:  # noqa: N802 - inherited Qt-style API
@@ -130,7 +130,7 @@ class _SafeErrorBarItem(pg.ErrorBarItem):
         try:
             super().setData(**opts)
         except RuntimeError as exc:
-            if not _is_deleted_qt_wrapper_error(exc):
+            if not _is_deleted_error_bar_wrapper_error(exc):
                 raise
             self._clear_path()
 
@@ -139,7 +139,7 @@ class _SafeErrorBarItem(pg.ErrorBarItem):
         try:
             super().drawPath()
         except RuntimeError as exc:
-            if not _is_deleted_qt_wrapper_error(exc):
+            if not _is_deleted_error_bar_wrapper_error(exc):
                 raise
             self._clear_path()
 
@@ -148,7 +148,7 @@ class _SafeErrorBarItem(pg.ErrorBarItem):
         try:
             super().paint(painter, *args)
         except RuntimeError as exc:
-            if not _is_deleted_qt_wrapper_error(exc):
+            if not _is_deleted_error_bar_wrapper_error(exc):
                 raise
 
     def boundingRect(self) -> QRectF:  # noqa: N802 - inherited Qt-style API
@@ -156,7 +156,7 @@ class _SafeErrorBarItem(pg.ErrorBarItem):
         try:
             return super().boundingRect()
         except RuntimeError as exc:
-            if not _is_deleted_qt_wrapper_error(exc):
+            if not _is_deleted_error_bar_wrapper_error(exc):
                 raise
             self._clear_path()
             return QRectF()
