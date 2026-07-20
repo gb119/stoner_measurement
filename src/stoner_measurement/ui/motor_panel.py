@@ -38,6 +38,7 @@ from stoner_measurement.motor_control.types import (
 )
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.theme import indicator_label_stylesheet
+from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
@@ -430,7 +431,7 @@ class MotorControlPanel(QWidget):
         reading = state.reading
         now_ts = datetime.now(tz=UTC).timestamp()
         self._updated_label.setText(
-            f"Last updated: {datetime.fromtimestamp(now_ts).strftime('%H:%M:%S')}"
+            f"Last updated: {format_local_time(datetime.fromtimestamp(now_ts).astimezone())}"
         )
 
         at_colour = "#44aa44" if state.at_target else "#cc4444"

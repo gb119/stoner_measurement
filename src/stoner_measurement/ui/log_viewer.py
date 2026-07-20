@@ -35,6 +35,7 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.qt_compat import pyqtSignal, pyqtSlot
 from stoner_measurement.ui.theme import colour, validation_error_lineedit_stylesheet
+from stoner_measurement.ui.time_utils import format_local_time
 
 #: Colour map from logging level to display colour.
 _LEVEL_COLOURS: dict[int, QColor] = {
@@ -673,7 +674,7 @@ class LogViewerWindow(QWidget):
 
     def _format_record_text(self, record: logging.LogRecord) -> str:
         """Return the on-screen text representation for *record*."""
-        timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
+        timestamp = format_local_time(datetime.fromtimestamp(record.created).astimezone())
         level_name = record.levelname
         try:
             message = record.getMessage()

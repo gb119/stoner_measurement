@@ -33,5 +33,6 @@ class TestLockInAmplifierExports:
         assert LockInReferenceSource is not None
         assert LockInReserveMode is not None
 
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

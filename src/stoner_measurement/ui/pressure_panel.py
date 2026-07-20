@@ -35,6 +35,7 @@ from stoner_measurement.pressure_control.engine import PressureControllerEngine
 from stoner_measurement.pressure_control.types import PressureEngineState, PressureEngineStatus
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
@@ -437,7 +438,7 @@ class PressureControlPanel(QWidget):
     def _on_state_updated(self, state: PressureEngineState) -> None:
         self._driver_label.setText(f"Gauge: {state.driver_name or '—'}")
         self._mfc_driver_label.setText(f"MFC: {state.mfc_driver_name or '—'}")
-        self._updated_label.setText(f"Last updated: {datetime.now(tz=UTC).strftime('%H:%M:%S')}")
+        self._updated_label.setText(f"Last updated: {format_local_time(datetime.now(tz=UTC).astimezone())}")
         for channel, (_, pressure_label, status_label) in self._channel_rows.items():
             reading = state.readings.get(channel)
             if reading is None:

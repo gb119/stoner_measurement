@@ -67,6 +67,7 @@ from stoner_measurement.ui.theme import (
     colour,
     indicator_label_stylesheet,
 )
+from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
@@ -707,7 +708,7 @@ class MagnetControlPanel(QWidget):
         self._update_chart(state, now_ts)
 
         self._updated_label.setText(
-            f"Last updated: {datetime.fromtimestamp(now_ts).strftime('%H:%M:%S')}"
+            f"Last updated: {format_local_time(datetime.fromtimestamp(now_ts).astimezone())}"
         )
         at_colour = "#44aa44" if state.at_target else "#cc4444"
         self._at_target_label.setText(

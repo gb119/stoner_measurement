@@ -591,6 +591,7 @@ class _ScanPage(QWidget):
                 name_edit.setText(plugin.instance_name)
 
         name_edit.editingFinished.connect(_apply_name)
+
         def _apply_comment() -> None:
             plugin.comment = comment_edit.text().strip()
             comment_edit.setText(plugin.comment)

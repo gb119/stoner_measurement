@@ -73,7 +73,7 @@ class SIComboBox(QComboBox):
         0.01
     """
 
-    valueChanged = pyqtSignal(float)
+    valueChanged = pyqtSignal(float)  # noqa: N815 - preserve Qt signal naming convention
 
     def __init__(self, *, unit: str = "", precision: int = 3, parent=None) -> None:
         """Initialise the combo box with the given unit and precision."""

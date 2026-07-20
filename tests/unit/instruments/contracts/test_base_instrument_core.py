@@ -114,5 +114,6 @@ class TestBaseInstrument:
         assert transcript_records[1].getMessage() == "RX answer"
         assert transcript_records[1].sm_transport_address == ""
 
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

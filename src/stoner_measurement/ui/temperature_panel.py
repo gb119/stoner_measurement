@@ -82,6 +82,7 @@ from stoner_measurement.ui.theme import (
     colour,
     disabled_tab_stylesheet,
 )
+from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
@@ -745,7 +746,7 @@ class TemperatureControlPanel(QWidget):
 
         # Status bar
         self._updated_label.setText(
-            f"Last updated: {datetime.fromtimestamp(now_ts).strftime('%H:%M:%S')}"
+            f"Last updated: {format_local_time(datetime.fromtimestamp(now_ts).astimezone())}"
         )
         all_at = all(state.at_setpoint.values()) if state.at_setpoint else None
         all_stable = all(state.stable.values()) if state.stable else None

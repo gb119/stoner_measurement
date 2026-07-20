@@ -23,6 +23,7 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.theme import colour
+from stoner_measurement.ui.time_utils import format_local_time
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -107,13 +108,13 @@ class _LegacyConsoleWidget(QWidget):
     @pyqtSlot(str)
     def write(self, text: str) -> None:
         """Append *text* to the output area with a timestamp prefix."""
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = format_local_time(datetime.now().astimezone())
         self._append_text(f"[{timestamp}] {text}", color=None)
 
     @pyqtSlot(str)
     def write_error(self, text: str) -> None:
         """Append *text* in red to signal an error condition."""
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = format_local_time(datetime.now().astimezone())
         self._append_text(f"[{timestamp}] ERROR: {text}", color=QColor("#cc0000"))
 
     @pyqtSlot(str)
@@ -339,7 +340,7 @@ QToolTip {{
             text (str):
                 Message to append.
         """
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = format_local_time(datetime.now().astimezone())
         self._append_stdout_stream(f"[{timestamp}] {text}\n")
 
     @pyqtSlot(str)
@@ -350,7 +351,7 @@ QToolTip {{
             text (str):
                 Error text to append.
         """
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = format_local_time(datetime.now().astimezone())
         self._append_stderr_stream(f"[{timestamp}] ERROR: {text}\n")
 
     @pyqtSlot(str)

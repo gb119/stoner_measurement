@@ -34,7 +34,7 @@ def save_pressure_controller_config(config: dict[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if path.exists():
-        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")  # nosemgrep: semgrep_codacy.python.i18n.no-hardcoded-strftime - stable UTC backup filename
         backup = path.with_name(f"{path.stem}.{timestamp}{path.suffix}")
         path.replace(backup)
 

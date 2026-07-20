@@ -1037,8 +1037,8 @@ class Keithley2400SweepPlugin(TracePlugin):
             "buffer and expanded into Current, Voltage, Resistance, Power, and "
             "Timestamp columns.</p>"
             "<p>Trigger source options include immediate, bus, external, trigger-link, "
-             "and timer modes. Optional trigger output routing can be enabled for "
+            "and timer modes. Optional trigger output routing can be enabled for "
             "experiments that need the 2400 to signal downstream hardware.</p>"
-             "<p>Compliance can be specified as a fixed current/voltage limit or "
-             "derived from a resistance threshold.</p>"
+            "<p>Compliance can be specified as a fixed current/voltage limit or "
+            "derived from a resistance threshold.</p>"
         )

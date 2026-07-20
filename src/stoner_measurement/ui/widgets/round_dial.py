@@ -74,7 +74,7 @@ class RoundDialWidget(QWidget):
         45.0
     """
 
-    valueChanged = Signal(float)
+    valueChanged = Signal(float)  # noqa: N815 - preserve Qt signal naming convention
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

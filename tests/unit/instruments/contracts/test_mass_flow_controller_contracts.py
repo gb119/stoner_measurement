@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
 from stoner_measurement.instruments.mass_flow_controller import MassFlowController
@@ -10,9 +12,17 @@ from stoner_measurement.instruments.transport import NullTransport
 
 
 class TestMassFlowControllerContract:
-    def test_mass_flow_controller_is_abstract(self):
+    @staticmethod
+    def _assert_abstract_constructor_raises(cls: type[object], *args: object) -> None:
         with pytest.raises(TypeError):
-            MassFlowController(NullTransport(), ScpiProtocol())  # type: ignore[abstract]
+            cast(Any, cls)(*args)
+
+    def test_mass_flow_controller_is_abstract(self):
+        self._assert_abstract_constructor_raises(
+            MassFlowController,
+            NullTransport(),
+            ScpiProtocol(),
+        )
 
 
 if __name__ == "__main__":

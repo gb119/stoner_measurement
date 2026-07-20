@@ -233,7 +233,7 @@ class VisaResourceComboBox(QWidget):
     """
 
     resource_changed: pyqtSignal = pyqtSignal(str)
-    currentTextChanged: pyqtSignal = pyqtSignal(str)
+    currentTextChanged: pyqtSignal = pyqtSignal(str)  # noqa: N815 - preserve Qt signal naming convention
     refresh_requested: pyqtSignal = pyqtSignal()
 
     def __init__(

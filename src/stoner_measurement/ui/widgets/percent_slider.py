@@ -45,7 +45,7 @@ class PercentSliderWidget(QWidget):
         42.5
     """
 
-    valueChanged = pyqtSignal(float)
+    valueChanged = pyqtSignal(float)  # noqa: N815 - preserve Qt signal naming convention
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialise the widget with default range 0–100 %."""
