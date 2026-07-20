@@ -1,4 +1,4 @@
-"""Shared fixtures for command-plugin tests."""
+"""Shared fixtures for UI widget tests."""
 
 from __future__ import annotations
 
@@ -9,17 +9,8 @@ from qtpy.QtWidgets import QApplication
 
 
 @pytest.fixture(autouse=True)
-def suppress_message_box_warnings(monkeypatch):
-    """Prevent modal warning dialogs from blocking headless command-plugin tests."""
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.warning",
-        lambda *args, **kwargs: None,
-    )
-
-
-@pytest.fixture(autouse=True)
 def _flush_qt_after_test(qapp):
-    """Force GC and flush Qt events after every command test.
+    """Force GC and flush Qt events after every widget test.
 
     Python-subclassed QGraphicsItems (e.g. _SafeErrorBarItem) can leave
     deferred scene-paint events in the Qt queue when their parent widget is

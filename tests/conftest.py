@@ -62,3 +62,14 @@ def engine(qapp):
     eng = SequenceEngine()
     yield eng
     eng.shutdown()
+    # Schedule the plot widget for Qt deletion then flush the event queue
+    # so every deferred scene-paint event is processed while the C++ side
+    # is still valid.  Without this, Python-subclassed QGraphicsItems
+    # (e.g. _SafeErrorBarItem) leave pending events that land in a later
+    # test's _process_events loop and cause a fatal abort on Python 3.14.
+    pw = eng.plot_widget
+    if pw is not None:
+        eng.plot_widget = None
+        pw.deleteLater()
+        del pw
+        QApplication.processEvents()
