@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pyqtgraph as pg
 import pytest
 
 from stoner_measurement.plugins.command import (
@@ -915,12 +916,8 @@ class TestPlotTraceCommand:
         assert widget.y_data("sig") == [2.0, 3.0]
         assert "sig" not in widget._error_bar_items
 
-    def test_error_bar_item_ignores_deleted_wrapper_bounding_rect_callbacks(
-        self, qapp, monkeypatch
-    ):
+    def test_error_bar_item_survives_qt_teardown_race(self, qapp, monkeypatch):
         """Error-bar items should survive deleted-wrapper callbacks during teardown."""
-        import pyqtgraph as pg
-
         from stoner_measurement.ui.plot_widget import PlotWidget
 
         widget = PlotWidget()

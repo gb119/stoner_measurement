@@ -109,6 +109,7 @@ _COLOUR_COLUMN_WIDTH = 90
 _AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
+# PyQt reports the QGraphicsItem teardown race seen in CI with this text.
 _DELETED_QT_WRAPPER_MARKER = "has been deleted"
 
 
