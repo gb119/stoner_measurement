@@ -925,15 +925,24 @@ class TestPlotTraceCommand:
         error_bar_item = widget._error_bar_items["sig"]
         # Force boundingRect() to rebuild the path, which exercises the CI crash path.
         error_bar_item.path = None
+        cleared_path: list[bool] = []
 
         def _raise_deleted_wrapper(*_args, **_kwargs):
             raise RuntimeError(
                 "wrapped C/C++ object of type ErrorBarItem has been deleted"
             )
 
+        original_clear_path = error_bar_item._clear_path
+
+        def _tracked_clear_path() -> None:
+            cleared_path.append(True)
+            original_clear_path()
+
         monkeypatch.setattr(pg.ErrorBarItem, "drawPath", _raise_deleted_wrapper)
+        monkeypatch.setattr(error_bar_item, "_clear_path", _tracked_clear_path)
 
         assert error_bar_item.boundingRect().isNull()
+        assert cleared_path == [True]
 
     def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qapp, monkeypatch):
         """Pending update must stay busy until error-bar update completes."""

@@ -144,7 +144,14 @@ class _SafeErrorBarItem(pg.ErrorBarItem):
             self._clear_path()
 
     def paint(self, painter, *args) -> None:
-        """Paint the item unless teardown has already deleted the Qt object."""
+        """Paint the item unless teardown has already deleted the Qt object.
+
+        Args:
+            painter (QPainter):
+                Painter supplied by Qt for drawing the error bars.
+            *args (object):
+                Additional paint arguments forwarded by Qt/pyqtgraph.
+        """
         try:
             super().paint(painter, *args)
         except RuntimeError as exc:
