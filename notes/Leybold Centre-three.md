@@ -91,7 +91,8 @@ Example:
 
 Input may be either exponential or fixed point, for example `1.25E-1` or `0.125`.
 
-Logarithmic gauges normally return only meaningful first mantissa digits; CTR linear gauges use full mantissa precision.
+Logarithmic gauges normally return only meaningful first mantissa digits; CTR linear gauges use full mantissa
+precision.
 
 ## 4. Channel and status conventions
 
@@ -120,7 +121,8 @@ Driver should expose both raw status and parsed state; do not return pressure as
 
 ## 5. Continuous pressure streaming
 
-After power-on, the unit continuously sends pressure measurements, by default once per second. This stream stops when the host sends any character. Resume it with `COM`.
+After power-on, the unit continuously sends pressure measurements, by default once per second. This stream stops when
+the host sends any character. Resume it with `COM`.
 
 ```text
 COM,a
@@ -140,7 +142,8 @@ Response stream:
 s1,p1,s2,p2,s3,p3<CR><LF>
 ```
 
-Recommended driver behaviour: disable or flush continuous mode during command transactions unless deliberately using streaming acquisition.
+Recommended driver behaviour: disable or flush continuous mode during command transactions unless deliberately using
+streaming acquisition.
 
 ## 6. Core driver API mapping
 
@@ -217,7 +220,8 @@ BAU[,a]
 2 = 38400
 ```
 
-Important: the acknowledgement to `BAU` is sent at the **new** baud rate. Driver should change the local serial port immediately after sending the command, before waiting for ACK.
+Important: the acknowledgement to `BAU` is sent at the **new** baud rate. Driver should change the local serial port
+immediately after sending the command, before waiting for ACK.
 
 ### Saving settings
 
@@ -471,7 +475,8 @@ Each state:
 1 = on
 ```
 
-Driver should validate that lower/upper thresholds are physically sensible and compatible with the selected gauge range.
+Driver should validate that lower/upper thresholds are physically sensible and compatible with the selected gauge
+range.
 
 ## 9. Recorder / analogue output
 
@@ -542,7 +547,8 @@ Values:
 ITR
 ```
 
-Returns raw 8-byte hexadecimal data strings for ITR/CTR100/CTR101 transmitters, separated by spaces between transmitters. Implement as a low-level raw method unless also implementing the referenced transmitter protocol.
+Returns raw 8-byte hexadecimal data strings for ITR/CTR100/CTR101 transmitters, separated by spaces between
+transmitters. Implement as a low-level raw method unless also implementing the referenced transmitter protocol.
 
 ## 12. Diagnostics and tests
 
@@ -673,10 +679,13 @@ run_keyboard_test()
 run_relay_test(confirm=True)
 ```
 
+The crucial difference is that the **DISPLAY THREE manual does not describe a serial/remote programming interface**.
+Unlike the CENTER THREE, which has an RS232C ACK/NAK command interface, the DISPLAY THREE is essentially a
+front-panel-configured gauge display with analogue outputs, relay outputs, and external HV-control inputs. A “fully
+featured driver” therefore cannot be command-based unless using external hardware to read analogue voltages and drive
+digital inputs.
 
-The crucial difference is that the **DISPLAY THREE manual does not describe a serial/remote programming interface**. Unlike the CENTER THREE, which has an RS232C ACK/NAK command interface, the DISPLAY THREE is essentially a front-panel-configured gauge display with analogue outputs, relay outputs, and external HV-control inputs. A “fully featured driver” therefore cannot be command-based unless using external hardware to read analogue voltages and drive digital inputs.
-
-# Leybold DISPLAY THREE LLM Driver Guide
+## Leybold DISPLAY THREE LLM Driver Guide
 
 ## 1. Instrument scope
 
@@ -688,7 +697,8 @@ DISPLAY THREE  230025    3 channels
 Firmware/manual version: 2.1f
 ```
 
-The DISPLAY THREE supports three measurement channels and six relay functions: two per channel. It is intended for THERMOVAC, PENNINGVAC and DU sensors.
+The DISPLAY THREE supports three measurement channels and six relay functions: two per channel. It is intended for
+THERMOVAC, PENNINGVAC and DU sensors.
 
 ## 2. Major difference from CENTER THREE
 
@@ -757,7 +767,8 @@ Connector:
 6 CH3 ground
 ```
 
-Driver implication: pressure conversion must use the transmitter’s own voltage-to-pressure law, not a DISPLAY THREE command.
+Driver implication: pressure conversion must use the transmitter’s own voltage-to-pressure law, not a DISPLAY THREE
+command.
 
 ### HV-control inputs
 
@@ -779,11 +790,13 @@ Connector:
 6 CH3 +12…24 V
 ```
 
-Use this for external high-vacuum circuit control when the transmitter switch-on/off mode is configured for external control.
+Use this for external high-vacuum circuit control when the transmitter switch-on/off mode is configured for external
+control.
 
 ### Relay outputs
 
-DISPLAY THREE has six relays: two per channel. Normally, relay 1 is a setpoint relay and relay 2 can be either a ready relay or a second setpoint relay. Relays are floating changeover contacts rated around 30 V AC/DC, 1 A.
+DISPLAY THREE has six relays: two per channel. Normally, relay 1 is a setpoint relay and relay 2 can be either a ready
+relay or a second setpoint relay. Relays are floating changeover contacts rated around 30 V AC/DC, 1 A.
 
 ## 4. Driver architecture
 
@@ -806,7 +819,8 @@ DisplayThreeDriver
         stores manually configured DISPLAY THREE parameters
 ```
 
-The driver should not pretend to read internal settings from the instrument. Store configuration in software only after the operator has set matching values on the front panel.
+The driver should not pretend to read internal settings from the instrument. Store configuration in software only after
+the operator has set matching values on the front panel.
 
 ## 5. Supported transmitters
 
@@ -825,7 +839,8 @@ DU sensors:
   DU200, DU201, DU2000, DU2001
 ```
 
-Compared with CENTER THREE, DISPLAY THREE supports fewer sensor families: it omits CERAVAC/CTR and IONIVAC/ITR support described for the CENTER controller.
+Compared with CENTER THREE, DISPLAY THREE supports fewer sensor families: it omits CERAVAC/CTR and IONIVAC/ITR support
+described for the CENTER controller.
 
 ## 6. Front-panel parameters to mirror in software
 
@@ -912,7 +927,8 @@ AnALoG:
   Lo  halved analogue output
 ```
 
-Factory defaults include `PrE=oFF`, `FiLt=3`, `rEAdY=on`, `Cor=1.00`, `S-on=HAnd`, `S-oFF=HAnd`, unit `mbar`, `diGit=2`, brightness `Hi`, analogue output `Hi`.
+Factory defaults include `PrE=oFF`, `FiLt=3`, `rEAdY=on`, `Cor=1.00`, `S-on=HAnd`, `S-oFF=HAnd`, unit `mbar`,
+`diGit=2`, brightness `Hi`, analogue output `Hi`.
 
 ## 8. Driver methods to implement
 
@@ -988,12 +1004,14 @@ DISPLAY THREE:
   - parameters are front-panel configured and auto-saved to EEPROM
 ```
 
-Final implementation recommendation: treat the DISPLAY THREE as a **passive gauge display plus I/O breakout**, while treating the CENTER THREE as a **true programmable controller**.
+Final implementation recommendation: treat the DISPLAY THREE as a **passive gauge display plus I/O breakout**, while
+treating the CENTER THREE as a **true programmable controller**.
 
 
-Yes. The Edwards TIC is closer to the **Leybold CENTER THREE** than the **DISPLAY THREE**, because it has a documented serial protocol. It is more object-oriented than Leybold’s three-letter mnemonic interface.
+Yes. The Edwards TIC is closer to the **Leybold CENTER THREE** than the **DISPLAY THREE**, because it has a documented
+serial protocol. It is more object-oriented than Leybold’s three-letter mnemonic interface.
 
-# Edwards TIC LLM Coding-Agent Guide
+## Edwards TIC LLM Coding-Agent Guide
 
 ## 1. Instrument family
 
@@ -1011,7 +1029,9 @@ D39722000  TIC Turbo & Instrument Controller 200 W
 
 ## 2. Protocol model
 
-The TIC is a **master/slave ASCII serial device**. The PC always initiates a transaction and must wait for the reply before sending another message. Messages end with carriage return. Queries begin with `?`; commands begin with `!`. Responses contain either data, beginning with `=`, or command status, beginning with `*`.
+The TIC is a **master/slave ASCII serial device**. The PC always initiates a transaction and must wait for the reply
+before sending another message. Messages end with carriage return. Queries begin with `?`; commands begin with `!`.
+Responses contain either data, beginning with `=`, or command status, beginning with `*`.
 
 Basic forms:
 
@@ -1051,7 +1071,8 @@ In multi-drop mode, prefix messages with:
 #<destination_id>:<source_id>
 ```
 
-The TIC accepts wildcard multi-drop address `99`. It also accepts wildcard object ID `0` for `?S`, returning TIC status object `902`.
+The TIC accepts wildcard multi-drop address `99`. It also accepts wildcard object ID `0` for `?S`, returning TIC status
+object `902`.
 
 ## 4. Response parsing
 
@@ -1078,7 +1099,8 @@ Priority:
 2/3 = alarm
 ```
 
-Driver rule: a `*... 0` response only means the command was accepted by the serial layer. For configuration writes, read the setup back and verify it.
+Driver rule: a `*... 0` response only means the command was accepted by the serial layer. For configuration writes,
+read the setup back and verify it.
 
 ## 5. Core object IDs
 
@@ -1144,7 +1166,8 @@ Special value:
 9.9000e+09  gauge not ON / error / striking / unavailable
 ```
 
-Gauge setup supports setpoint linkage, gauge type, gas type, filter on/off, ASG range, user gauge name, CapMan range, and IGC setup depending on gauge model. Gauge commands include accept new gauge, on/off, zero, calibrate and degas.
+Gauge setup supports setpoint linkage, gauge type, gas type, filter on/off, ASG range, user gauge name, CapMan range,
+and IGC setup depending on gauge model. Gauge commands include accept new gauge, on/off, zero, calibrate and degas.
 
 Gauge type constants include:
 
@@ -1322,7 +1345,7 @@ lock_front_panel()
 unlock_front_panel()
 ```
 
-# Shared API design across the three instruments
+## Shared API design across the three instruments
 
 ## Common high-level abstraction
 
@@ -1420,7 +1443,8 @@ EdwardsTICBackend
 
 ## Key design rule
 
-The public API should be **capability-driven**, not model-driven. For example, `read_pressure(1)` should work for all three, but internally:
+The public API should be **capability-driven**, not model-driven. For example, `read_pressure(1)` should work for all
+three, but internally:
 
 ```text
 CENTER THREE   -> PR1 serial query

@@ -117,6 +117,10 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
     def name(self) -> str:
         return "Magnetic Field Monitor"
 
+    @property
+    def controller_features(self) -> frozenset[str]:
+        return frozenset({"magnetic_field"})
+
     def _engine(self) -> MagnetControllerEngine:
         return MagnetControllerEngine.instance()
 

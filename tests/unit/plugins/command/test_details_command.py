@@ -7,7 +7,6 @@ from qtpy.QtWidgets import QComboBox, QLineEdit, QPlainTextEdit, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command.details import DetailsCommand
-from stoner_measurement.ui.settings_dialog import KEY_DEFAULT_DATA_DIR, make_app_settings
 
 
 class TestDetailsCommand:
@@ -169,20 +168,13 @@ class TestDetailsCommand:
         (tmp_path / "ProjectBeta").mkdir()
         (tmp_path / "ProjectGamma").mkdir()
         (tmp_path / "not_a_dir.txt").write_text("ignored")
+        from unittest.mock import patch
 
-        settings = make_app_settings()
-        original = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
-        settings.setValue(KEY_DEFAULT_DATA_DIR, str(tmp_path))
-        settings.sync()
-
-        try:
+        with patch("stoner_measurement.app_config.default_data_directory", return_value=str(tmp_path)):
             widget = DetailsCommand().config_widget()
             combo = widget.findChildren(QComboBox)[0]
             items = [combo.itemText(index) for index in range(combo.count())]
             assert items == sorted(["ProjectAlpha", "ProjectBeta", "ProjectGamma"])
-        finally:
-            settings.setValue(KEY_DEFAULT_DATA_DIR, original)
-            settings.sync()
 
     def test_config_widget_notes_updates(self, qapp):
         command = DetailsCommand()

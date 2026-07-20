@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from qtpy.QtCore import QTimer, Qt
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import (
     QComboBox,
     QLabel,
@@ -10,6 +10,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
 from stoner_measurement.ui.widgets.round_dial import RoundDialWidget
 
 

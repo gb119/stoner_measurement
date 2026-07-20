@@ -8,9 +8,8 @@ configured values directly to the plugin instance in the engine namespace,
 making them accessible to downstream sequence steps and data-saving plugins.
 
 The *project* combo box is pre-populated with the top-level subdirectories of
-the application default data directory, as configured in the application
-settings (``app/default_data_directory``).  Falls back to the user's home
-directory if no setting has been saved yet.
+the configured application default data directory. Falls back to the user's
+home directory if no setting has been saved yet.
 """
 
 from __future__ import annotations
@@ -35,22 +34,16 @@ from stoner_measurement.qt_compat import pyqtSignal
 def _get_data_root() -> Path:
     """Return the configured default data directory, falling back to the home directory.
 
-    Reads the ``app/default_data_directory`` key from the application settings
-    (see :func:`~stoner_measurement.ui.settings_dialog.make_app_settings`).
-    If the key is absent or the path is empty, :func:`pathlib.Path.home` is
-    returned instead.
+    If the configured path is empty, :func:`pathlib.Path.home` is returned
+    instead.
 
     Returns:
         (Path):
             The path to use as the root when listing project subdirectories.
     """
-    from stoner_measurement.ui.settings_dialog import (
-        KEY_DEFAULT_DATA_DIR,
-        make_app_settings,
-    )
+    from stoner_measurement.app_config import default_data_directory
 
-    settings = make_app_settings()
-    data_dir = settings.value(KEY_DEFAULT_DATA_DIR, "", type=str)
+    data_dir = default_data_directory()
     if data_dir:
         return Path(data_dir)
     return Path.home()

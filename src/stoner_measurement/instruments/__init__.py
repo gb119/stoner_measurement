@@ -87,6 +87,7 @@ from stoner_measurement.instruments.eurotherm import (
     Eurotherm2000Series,
     Eurotherm3200Series,
 )
+from stoner_measurement.instruments.leybold import LeyboldCenterThree, LeyboldDisplayThree
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInAmplifier,
     LockInAmplifierCapabilities,
@@ -120,6 +121,15 @@ from stoner_measurement.instruments.nanovoltmeter import (
     NanovoltmeterCapabilities,
     NanovoltmeterFunction,
     NanovoltmeterTriggerSource,
+)
+from stoner_measurement.instruments.pressure_controller import (
+    PressureControllerCapabilities,
+    PressureGaugeController,
+    PressureReading,
+    PressureRelayState,
+    PressureSetpoint,
+    PressureStatus,
+    PressureUnit,
 )
 from stoner_measurement.instruments.simulated import (
     SimulatedMagnetController,
@@ -177,6 +187,8 @@ __all__ = [
     "Eurotherm32h8",
     "InstrumentDriverManager",
     "InstrumentError",
+    "LeyboldCenterThree",
+    "LeyboldDisplayThree",
     "LockInAmplifier",
     "LockInAmplifierCapabilities",
     "LockInExpandFactor",
@@ -206,6 +218,13 @@ __all__ = [
     "NanovoltmeterCapabilities",
     "NanovoltmeterFunction",
     "NanovoltmeterTriggerSource",
+    "PressureControllerCapabilities",
+    "PressureGaugeController",
+    "PressureReading",
+    "PressureRelayState",
+    "PressureSetpoint",
+    "PressureStatus",
+    "PressureUnit",
     "PIDParameters",
     "PulsedSweepConfiguration",
     "RampState",

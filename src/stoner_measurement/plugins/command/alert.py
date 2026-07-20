@@ -11,10 +11,10 @@ from __future__ import annotations
 from typing import Any
 
 from qtpy.QtCore import Qt
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QMessageBox, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.qt_compat import pyqtSignal
 
 
 class AlertCommand(CommandPlugin):

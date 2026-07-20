@@ -2,26 +2,19 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from qtpy.QtCore import QSettings
 from qtpy.QtWidgets import QDialog, QLineEdit, QMessageBox
 
 from stoner_measurement.ui import settings_dialog as settings_module
-from stoner_measurement.ui.settings_dialog import KEY_DEFAULT_DATA_DIR, KEY_THEME, SettingsDialog
+from stoner_measurement.ui.settings_dialog import SettingsDialog
 
 
-def _temp_settings(path: Path) -> QSettings:
-    """Return a QSettings object backed by a test-local INI file."""
-    settings = QSettings(str(path), QSettings.Format.IniFormat)
-    settings.clear()
-    return settings
-
-
-def _install_dialog_dependencies(monkeypatch, settings: QSettings, toolbar_config: dict | None = None) -> None:
+def _install_dialog_dependencies(monkeypatch, app_config: dict, toolbar_config: dict | None = None) -> list[dict]:
     """Patch persistent dependencies used by SettingsDialog construction."""
-    monkeypatch.setattr(settings_module, "make_app_settings", lambda: settings)
+    saved_configs: list[dict] = []
+    monkeypatch.setattr(settings_module, "load_app_config", lambda: app_config)
+    monkeypatch.setattr(settings_module, "save_app_config", lambda config: saved_configs.append(config))
     monkeypatch.setattr(settings_module, "load_toolbar_config", lambda: toolbar_config or {"buttons": []})
+    return saved_configs
 
 
 def _cell_line_edit(dialog: SettingsDialog, row: int, column: int) -> QLineEdit:
@@ -33,59 +26,94 @@ def _cell_line_edit(dialog: SettingsDialog, row: int, column: int) -> QLineEdit:
 
 
 class TestSettingsDialogBasics:
-    def test_creates_dialog_with_saved_settings(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        settings.setValue(KEY_DEFAULT_DATA_DIR, str(tmp_path / "data"))
-        settings.setValue(KEY_THEME, "light")
-        _install_dialog_dependencies(monkeypatch, settings)
+    def test_creates_dialog_with_saved_settings(self, qapp, monkeypatch):
+        app_config = {
+            "app": {"default_data_directory": "C:/Data/Test", "theme": "light"},
+            "features": {
+                "temperature": True,
+                "magnetic_field": False,
+                "motor_position": True,
+                "pressure": True,
+            },
+        }
+        _install_dialog_dependencies(monkeypatch, app_config)
 
         dialog = SettingsDialog()
 
         assert dialog.windowTitle() == "Preferences"
-        assert dialog._data_dir_edit.text() == str(tmp_path / "data")
+        assert dialog._data_dir_edit.text() == "C:/Data/Test"
         assert dialog._theme_combo.currentText().lower() == "light"
+        assert dialog._feature_checkboxes["temperature"].isChecked() is True
+        assert dialog._feature_checkboxes["magnetic_field"].isChecked() is False
 
-    def test_unknown_saved_theme_falls_back_to_first_available_theme(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        settings.setValue(KEY_THEME, "definitely-not-a-theme")
-        _install_dialog_dependencies(monkeypatch, settings)
+    def test_unknown_saved_theme_falls_back_to_first_available_theme(self, qapp, monkeypatch):
+        _install_dialog_dependencies(
+            monkeypatch,
+            {
+                "app": {"default_data_directory": "", "theme": "definitely-not-a-theme"},
+                "features": {},
+            },
+        )
 
         dialog = SettingsDialog()
 
         assert dialog._theme_combo.currentText().lower() == settings_module.available_themes()[0]
 
-    def test_accept_persists_data_directory_and_theme(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        _install_dialog_dependencies(monkeypatch, settings)
+    def test_accept_persists_data_directory_theme_and_features(self, qapp, tmp_path, monkeypatch):
+        saved = _install_dialog_dependencies(
+            monkeypatch,
+            {
+                "app": {"default_data_directory": "", "theme": "dark"},
+                "features": {
+                    "temperature": True,
+                    "magnetic_field": True,
+                    "motor_position": True,
+                    "pressure": True,
+                },
+            },
+        )
         dialog = SettingsDialog()
 
         dialog._data_dir_edit.setText(f"  {tmp_path / 'runs'}  ")
         dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findText("Light"))
+        dialog._feature_checkboxes["pressure"].setChecked(False)
         dialog._on_accept()
 
         assert dialog.result() == QDialog.DialogCode.Accepted
-        assert settings.value(KEY_DEFAULT_DATA_DIR, "", type=str) == str(tmp_path / "runs")
-        assert settings.value(KEY_THEME, "", type=str) == "light"
+        assert saved == [
+            {
+                "app": {
+                    "default_data_directory": str(tmp_path / "runs"),
+                    "theme": "light",
+                },
+                "features": {
+                    "temperature": True,
+                    "magnetic_field": True,
+                    "motor_position": True,
+                    "pressure": False,
+                },
+            }
+        ]
 
-    def test_reject_does_not_persist_changes(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        settings.setValue(KEY_DEFAULT_DATA_DIR, "before")
-        settings.setValue(KEY_THEME, "dark")
-        _install_dialog_dependencies(monkeypatch, settings)
+    def test_reject_does_not_persist_changes(self, qapp, monkeypatch):
+        saved = _install_dialog_dependencies(
+            monkeypatch,
+            {
+                "app": {"default_data_directory": "before", "theme": "dark"},
+                "features": {"temperature": True},
+            },
+        )
         dialog = SettingsDialog()
 
         dialog._data_dir_edit.setText("after")
-        dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findText("Light"))
         dialog.reject()
 
         assert dialog.result() == QDialog.DialogCode.Rejected
-        assert settings.value(KEY_DEFAULT_DATA_DIR, "", type=str) == "before"
-        assert settings.value(KEY_THEME, "", type=str) == "dark"
+        assert saved == []
 
 
 class TestSettingsDialogToolbarRows:
-    def test_loads_toolbar_buttons_and_separators(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
+    def test_loads_toolbar_buttons_and_separators(self, qapp, monkeypatch):
         toolbar_config = {
             "buttons": [
                 {
@@ -97,7 +125,7 @@ class TestSettingsDialogToolbarRows:
                 {"separator": True},
             ]
         }
-        _install_dialog_dependencies(monkeypatch, settings, toolbar_config)
+        _install_dialog_dependencies(monkeypatch, {"app": {}, "features": {}}, toolbar_config)
 
         dialog = SettingsDialog()
 
@@ -110,9 +138,8 @@ class TestSettingsDialogToolbarRows:
         assert not _cell_line_edit(dialog, 1, 1).isEnabled()
         assert not _cell_line_edit(dialog, 1, 2).isEnabled()
 
-    def test_collect_toolbar_config_uses_sequence_stem_for_blank_name(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        _install_dialog_dependencies(monkeypatch, settings)
+    def test_collect_toolbar_config_uses_sequence_stem_for_blank_name(self, qapp, monkeypatch):
+        _install_dialog_dependencies(monkeypatch, {"app": {}, "features": {}})
         dialog = SettingsDialog()
         dialog._add_toolbar_row(name="", sequence="cool_scan.json", icon="", tooltip="")
         dialog._add_separator_row()
@@ -124,9 +151,8 @@ class TestSettingsDialogToolbarRows:
             ]
         }
 
-    def test_validate_toolbar_rows_reports_actionable_warnings(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        _install_dialog_dependencies(monkeypatch, settings)
+    def test_validate_toolbar_rows_reports_actionable_warnings(self, qapp, monkeypatch):
+        _install_dialog_dependencies(monkeypatch, {"app": {}, "features": {}})
         dialog = SettingsDialog()
         dialog._add_toolbar_row(name="Duplicate", sequence="same.json", icon="", tooltip="")
         dialog._add_toolbar_row(name="Duplicate", sequence="same.json", icon="", tooltip="")
@@ -139,9 +165,8 @@ class TestSettingsDialogToolbarRows:
         assert "Row 2: duplicate sequence filename 'same.json'." in warnings
         assert "Row 3: button entries should specify a sequence filename." in warnings
 
-    def test_remove_selected_toolbar_row(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        _install_dialog_dependencies(monkeypatch, settings)
+    def test_remove_selected_toolbar_row(self, qapp, monkeypatch):
+        _install_dialog_dependencies(monkeypatch, {"app": {}, "features": {}})
         dialog = SettingsDialog()
         dialog._add_toolbar_row(name="One", sequence="one.json")
         dialog._add_toolbar_row(name="Two", sequence="two.json")
@@ -154,9 +179,8 @@ class TestSettingsDialogToolbarRows:
 
 
 class TestSettingsDialogToolbarSave:
-    def test_save_toolbar_cancel_on_validation_warning_does_not_write(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        _install_dialog_dependencies(monkeypatch, settings)
+    def test_save_toolbar_cancel_on_validation_warning_does_not_write(self, qapp, monkeypatch):
+        _install_dialog_dependencies(monkeypatch, {"app": {}, "features": {}})
         dialog = SettingsDialog()
         dialog._add_toolbar_row(name="Broken", sequence="")
         saved = []
@@ -173,8 +197,7 @@ class TestSettingsDialogToolbarSave:
         assert dialog.toolbar_saved is False
 
     def test_save_toolbar_writes_valid_config(self, qapp, tmp_path, monkeypatch):
-        settings = _temp_settings(tmp_path / "settings.ini")
-        _install_dialog_dependencies(monkeypatch, settings)
+        _install_dialog_dependencies(monkeypatch, {"app": {}, "features": {}})
         dialog = SettingsDialog()
         dialog._add_toolbar_row(name="Run", sequence="run.json", icon="run.png", tooltip="Run it")
         saved = []

@@ -45,6 +45,11 @@ def _is_deleted_qt_wrapper_error(exc: RuntimeError) -> bool:
     return "wrapped C/C++ object" in str(exc) and "has been deleted" in str(exc)
 
 
+def _is_uninitialised_qt_wrapper_error(exc: RuntimeError) -> bool:
+    """Return True when a Qt wrapper exists but its Qt base was never initialised."""
+    return "super-class __init__()" in str(exc) and "was never called" in str(exc)
+
+
 class _LegacyConsoleWidget(QWidget):
     """Read-only output area combined with a command-input line.
 
@@ -266,9 +271,27 @@ class _IPythonConsoleWidget(QWidget):
         self._engine: SequenceEngine | None = None
         assert QtInProcessKernelManager is not None
         assert RichJupyterWidget is not None
+        self_ref = weakref.ref(self)
+
+        def _shutdown_on_destroyed(*_args) -> None:
+            widget = self_ref()
+            if widget is not None:
+                try:
+                    widget._shutdown_kernel()
+                except Exception:
+                    logger.debug("Failed to shut down in-process console kernel on destroy", exc_info=True)
+
+        self.destroyed.connect(_shutdown_on_destroyed)
 
         self._kernel_manager = QtInProcessKernelManager()
         self._kernel_manager.start_kernel(show_banner=False)
+        history_manager = getattr(getattr(self._kernel_manager.kernel, "shell", None), "history_manager", None)
+        if history_manager is not None:
+            try:
+                history_manager.enabled = False
+                history_manager.end_session = lambda *args, **kwargs: None
+            except Exception:
+                logger.debug("Failed to disable IPython history for embedded console", exc_info=True)
         self._kernel_client = self._kernel_manager.client()
         self._kernel_client.start_channels()
         self._kernel_active = True
@@ -307,18 +330,6 @@ QToolTip {{
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._console)
         self.setLayout(layout)
-
-        self_ref = weakref.ref(self)
-
-        def _shutdown_on_destroyed(*_args) -> None:
-            widget = self_ref()
-            if widget is not None:
-                try:
-                    widget._shutdown_kernel()
-                except Exception:
-                    logger.debug("Failed to shut down in-process console kernel on destroy", exc_info=True)
-
-        self.destroyed.connect(_shutdown_on_destroyed)
 
     @pyqtSlot(str)
     def write(self, text: str) -> None:
@@ -442,6 +453,28 @@ QToolTip {{
         self._kernel_active = False
         kernel_client = self._kernel_client
         kernel_manager = self._kernel_manager
+        # Disconnect the RichJupyterWidget from the kernel client before stopping
+        # channels.  Any kernel_info_reply or similar message that is already
+        # queued in the Qt event loop would otherwise dispatch into the console's
+        # _control (QTextEdit) after Qt has destroyed it, raising:
+        #   RuntimeError: wrapped C/C++ object of type QTextEdit has been deleted
+        # Setting kernel_client to None on the widget disconnects _dispatch and
+        # all other channel slots so queued events are silently discarded.
+        try:
+            console = self._console
+        except AttributeError:
+            console = None
+        except RuntimeError as exc:
+            if not _is_uninitialised_qt_wrapper_error(exc):
+                raise
+            console = None
+        if console is not None:
+            try:
+                console.kernel_client = None
+            except RuntimeError as exc:
+                if not _is_deleted_qt_wrapper_error(exc):
+                    raise
+                logger.debug("Console widget was already deleted when disconnecting kernel client during shutdown.", exc_info=True)
         try:
             kernel_client.stop_channels()
         except RuntimeError as exc:

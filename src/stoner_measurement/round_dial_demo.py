@@ -6,9 +6,9 @@ import sys
 
 from qtpy.QtWidgets import QApplication, QMainWindow
 
+from stoner_measurement.app_config import theme_setting
 from stoner_measurement.ui.icons import make_app_icon
-from stoner_measurement.ui.settings_dialog import KEY_THEME, make_app_settings
-from stoner_measurement.ui.theme import DEFAULT_THEME, apply_theme
+from stoner_measurement.ui.theme import apply_theme
 from stoner_measurement.ui.widgets import RoundDialDemoWidget
 
 
@@ -22,8 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setOrganizationName("University of Leeds")
     app.setWindowIcon(make_app_icon())
 
-    saved_theme = make_app_settings().value(KEY_THEME, DEFAULT_THEME, type=str)
-    apply_theme(app, saved_theme)
+    apply_theme(app, theme_setting())
 
     window = QMainWindow()
     window.setWindowTitle("Round Dial Demo")

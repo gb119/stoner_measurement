@@ -14,8 +14,8 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInLineFilter,
     LockInOutput,
     LockInOutputChannel,
-    LockInReferenceSource,
     LockinRefenceEdge,
+    LockInReferenceSource,
     LockInReserveMode,
 )
 from stoner_measurement.instruments.protocol.base import BaseProtocol

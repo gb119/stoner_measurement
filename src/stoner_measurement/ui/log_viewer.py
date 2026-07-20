@@ -14,7 +14,6 @@ from datetime import datetime
 from pathlib import Path
 
 from qtpy.QtCore import QSettings, Qt
-from stoner_measurement.qt_compat import pyqtSignal, pyqtSlot
 from qtpy.QtGui import QCloseEvent, QColor, QFont, QTextCharFormat, QTextCursor
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -33,6 +32,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from stoner_measurement.qt_compat import pyqtSignal, pyqtSlot
 from stoner_measurement.ui.theme import colour, validation_error_lineedit_stylesheet
 
 #: Colour map from logging level to display colour.

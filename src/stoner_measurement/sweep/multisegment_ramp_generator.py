@@ -22,8 +22,8 @@ from qtpy.QtWidgets import (
     QLabel,
     QPushButton,
     QTableWidget,
-    QVBoxLayout,
     QTabWidget,
+    QVBoxLayout,
     QWidget,
 )
 

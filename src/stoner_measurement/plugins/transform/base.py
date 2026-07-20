@@ -16,10 +16,10 @@ from collections.abc import Callable
 from typing import Any
 
 from qtpy.QtCore import QObject
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
+from stoner_measurement.qt_compat import pyqtSignal
 
 
 class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):

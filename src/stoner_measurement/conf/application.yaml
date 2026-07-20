@@ -1,0 +1,8 @@
+app:
+  default_data_directory: "C:/Data/"
+  theme: dark
+features:
+  temperature: true
+  magnetic_field: true
+  motor_position: true
+  pressure: true

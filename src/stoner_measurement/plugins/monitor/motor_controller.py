@@ -34,6 +34,10 @@ class MotorAngleMonitorPlugin(MonitorPlugin):
     def name(self) -> str:
         return "Motor Angle Monitor"
 
+    @property
+    def controller_features(self) -> frozenset[str]:
+        return frozenset({"motor_position"})
+
     def _engine(self) -> MotorControllerEngine:
         return MotorControllerEngine.instance()
 

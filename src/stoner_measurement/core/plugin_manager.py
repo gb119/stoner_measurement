@@ -12,6 +12,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import QObject
+
 from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ class PluginManager(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._plugins: dict[str, BasePlugin] = {}
+        self._plugin_filter = None
 
     # ------------------------------------------------------------------
     # Discovery
@@ -92,16 +94,22 @@ class PluginManager(QObject):
     @property
     def plugins(self) -> dict[str, BasePlugin]:  # type: ignore[name-defined]
         """Mapping of plugin name → plugin instance."""
-        return dict(self._plugins)
+        if self._plugin_filter is None:
+            return dict(self._plugins)
+        return {
+            name: plugin
+            for name, plugin in self._plugins.items()
+            if self._plugin_filter(name, plugin)
+        }
 
     @property
     def plugin_names(self) -> list[str]:
         """Sorted list of registered plugin names."""
-        return sorted(self._plugins)
+        return sorted(self.plugins)
 
     def get(self, name: str) -> BasePlugin | None:  # type: ignore[name-defined]
         """Return the plugin with *name*, or ``None`` if not found."""
-        return self._plugins.get(name)
+        return self.plugins.get(name)
 
     def plugins_by_type(self, plugin_type: str) -> dict[str, BasePlugin]:  # type: ignore[name-defined]
         """Return a filtered mapping of plugins matching *plugin_type*.
@@ -129,4 +137,9 @@ class PluginManager(QObject):
             >>> pm.plugins_by_type("state")
             {}
         """
-        return {name: p for name, p in self._plugins.items() if p.plugin_type == plugin_type}
+        return {name: p for name, p in self.plugins.items() if p.plugin_type == plugin_type}
+
+    def set_plugin_filter(self, predicate) -> None:
+        """Set an optional visibility predicate for registered plugins."""
+        self._plugin_filter = predicate
+        self.plugins_changed.emit()

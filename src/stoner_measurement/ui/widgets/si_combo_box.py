@@ -8,8 +8,9 @@ with SI engineering prefixes using :func:`pyqtgraph.functions.siFormat`.
 from __future__ import annotations
 
 import pyqtgraph as pg
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QComboBox
+
+from stoner_measurement.qt_compat import pyqtSignal
 
 __all__ = ["SIComboBox"]
 

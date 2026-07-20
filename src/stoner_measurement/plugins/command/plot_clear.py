@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from stoner_measurement.qt_compat import pyqtSignal
 from qtpy.QtWidgets import QLabel, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine

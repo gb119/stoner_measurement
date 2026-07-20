@@ -38,6 +38,10 @@ def _normalise_outputs(values: Iterable[str] | None) -> list[str] | None:
 class MagnetControllerPluginMixin:
     """Shared engine-backed behaviour for magnet state scan/sweep plugins."""
 
+    @property
+    def controller_features(self) -> frozenset[str]:
+        return frozenset({"magnetic_field"})
+
     def _init_magnet_controller_plugin(self) -> None:
         self.ramp_rate: float = 0.1
         self.use_plugin_ramp_rate: bool = True

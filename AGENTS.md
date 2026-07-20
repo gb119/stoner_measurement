@@ -1,4 +1,4 @@
-﻿# Codex Instructions
+# Codex Instructions
 
 ## Agent Identity
 
@@ -12,28 +12,20 @@ Run project commands through the conda environment:
 conda run -n stoner_measurement <command>
 ```
 
-## Examples
-
-```powershell
-conda run -n stoner_measurement pytest
-conda run -n stoner_measurement ruff check
-conda run -n stoner_measurement codacy issues gh gb119 stoner_measurement --limit 1000 --output json
-```
-
 Prefer `conda run -n stoner_measurement ...` over `conda activate`, because
 Codex shell calls may run as separate non-interactive PowerShell sessions and
 activation may not persist between commands.
 
-If `conda` is not on `PATH` in the current shell, use the full executable path:
+If `conda` is not on `PATH`, use the full executable path:
 
 ```powershell
 C:\ProgramData\anaconda3\Scripts\conda.exe run -n stoner_measurement <command>
 ```
 
-## Tooling Available
+## Tools
 
-The `stoner_measurement` conda environment includes the project installed in
-editable mode plus the main development tools:
+The `stoner_measurement` conda environment includes the project in editable
+mode plus the main development tools:
 
 ```powershell
 conda run -n stoner_measurement python
@@ -49,10 +41,6 @@ conda run -n stoner_measurement python -m build
 conda run -n stoner_measurement twine
 conda run -n stoner_measurement check-manifest
 ```
-
-Packaging tools (`build`, `twine`, and `check-manifest`) are installed through
-the `pip:` section of `environment.yml` so the environment remains usable on
-newer Python versions where conda packages may lag.
 
 Useful commands:
 
@@ -71,15 +59,19 @@ conda run -n stoner_measurement check-manifest
 conda run -n stoner_measurement codacy issues gh gb119 stoner_measurement --limit 1000 --output json
 ```
 
+Packaging tools (`build`, `twine`, and `check-manifest`) are installed through
+the `pip:` section of `environment.yml` so the environment remains usable on
+newer Python versions where conda packages may lag.
+
 ## Qt Tests
 
-The environment includes Qt bindings and Qt test tooling, including `PyQt6`,
-`PySide6`, `qtpy`, and `pytest-qt`. Use the conda environment for any graphical
-user interface (GUI) or widget tests so the correct Qt stack is available.
+The environment includes `PyQt6`, `PySide6`, `qtpy`, and `pytest-qt`. Use the
+conda environment for GUI or widget tests so the correct Qt stack is
+available.
 
 ## Codacy
 
-The Codacy cloud CLI is available as:
+Use Codacy through the conda environment:
 
 ```powershell
 conda run -n stoner_measurement codacy
