@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import gc
 import shutil
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from qtpy.QtCore import QCoreApplication
 from qtpy.QtWidgets import QApplication
 
 from stoner_measurement import resources
@@ -46,6 +48,23 @@ def isolate_persistent_test_state(monkeypatch, qapp):
     monkeypatch.setattr(resources, "user_config_root", lambda: config_root)
     yield
     shutil.rmtree(sandbox_root, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def cleanup_top_level_qt_widgets(qapp):
+    """Destroy top-level test widgets and flush deferred Qt cleanup work."""
+    existing_widgets = {id(widget) for widget in QApplication.topLevelWidgets()}
+    yield
+    for widget in QApplication.topLevelWidgets():
+        if id(widget) in existing_widgets:
+            continue
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, 0)
+    qapp.processEvents()
+    gc.collect()
+    QCoreApplication.sendPostedEvents(None, 0)
+    qapp.processEvents()
 
 
 @pytest.fixture
