@@ -969,6 +969,8 @@ class TestPlotTraceCommand:
         assert not _is_deleted_error_bar_wrapper_error(RuntimeError("some unrelated error"))
         # Message with only the suffix and not the prefix must not match.
         assert not _is_deleted_error_bar_wrapper_error(RuntimeError("object has been deleted"))
+        # Message with only the prefix and not the suffix must not match.
+        assert not _is_deleted_error_bar_wrapper_error(RuntimeError("wrapped C/C++ object of type ErrorBarItem"))
 
     def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qapp, monkeypatch):
         """Pending update must stay busy until error-bar update completes."""

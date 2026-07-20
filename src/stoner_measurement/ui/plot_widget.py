@@ -113,7 +113,7 @@ _TRACE_AXIS_PROPERTY = "axis"
 # The type name in the middle varies: Python 3.14+ may report the concrete
 # subclass name (e.g. "_SafeErrorBarItem") rather than the base class name
 # ("ErrorBarItem"), so we match substrings rather than the full message.
-_DELETED_QT_WRAPPER_PREFIX = "wrapped C/C++ object"
+_DELETED_QT_WRAPPER_PREFIX = "wrapped C/C++ object of type"
 _DELETED_QT_WRAPPER_SUFFIX = "has been deleted"
 
 
