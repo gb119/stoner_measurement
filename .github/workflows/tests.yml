@@ -77,7 +77,12 @@ jobs:
           print("QT_API env:", os.environ.get("QT_API"))
           print("Qt API:", qtpy.API_NAME)
           print("Qt plugins:", plugins_path)
-          expected_api = os.environ["QT_API"]
+          expected_api = {
+              "pyqt5": "PyQt5",
+              "pyqt6": "PyQt6",
+              "pyside2": "PySide2",
+              "pyside6": "PySide6",
+          }[os.environ["QT_API"]]
           if qtpy.API_NAME != expected_api:
               raise RuntimeError(
                   f"Expected qtpy to use {expected_api!r}, got {qtpy.API_NAME!r} instead."
