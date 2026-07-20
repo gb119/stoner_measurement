@@ -109,13 +109,18 @@ _COLOUR_COLUMN_WIDTH = 90
 _AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
-# PyQt reports the QGraphicsItem teardown race seen in CI with this exact text.
-_DELETED_ERROR_BAR_WRAPPER_MESSAGE = "wrapped C/C++ object of type ErrorBarItem has been deleted"
+# PyQt reports the QGraphicsItem teardown race with this prefix and suffix.
+# The type name in the middle varies: Python 3.14+ may report the concrete
+# subclass name (e.g. "_SafeErrorBarItem") rather than the base class name
+# ("ErrorBarItem"), so we match substrings rather than the full message.
+_DELETED_QT_WRAPPER_PREFIX = "wrapped C/C++ object"
+_DELETED_QT_WRAPPER_SUFFIX = "has been deleted"
 
 
 def _is_deleted_error_bar_wrapper_error(exc: RuntimeError) -> bool:
     """Return whether *exc* reports a deleted Qt wrapper during teardown."""
-    return str(exc) == _DELETED_ERROR_BAR_WRAPPER_MESSAGE
+    msg = str(exc)
+    return _DELETED_QT_WRAPPER_PREFIX in msg and _DELETED_QT_WRAPPER_SUFFIX in msg
 
 
 class _SafeErrorBarItem(pg.ErrorBarItem):
