@@ -10,12 +10,20 @@ from stoner_measurement.plugins.command import (
 )
 
 
-def _make_plot_widget(qtbot):
-    """Create a PlotWidget registered for pytest-qt teardown."""
+def _make_plot_widget(qtbot, qapp, request):
+    """Create a PlotWidget and close it explicitly before pytest-qt teardown."""
     from stoner_measurement.ui.plot_widget import PlotWidget
 
     widget = PlotWidget()
     qtbot.addWidget(widget)
+
+    def _cleanup() -> None:
+        widget.close()
+        qapp.processEvents()
+        widget.deleteLater()
+        qapp.processEvents()
+
+    request.addfinalizer(_cleanup)
     return widget
 
 
@@ -900,10 +908,10 @@ class TestPlotTraceCommand:
         np.testing.assert_allclose(received["src:ch:V"], [0.01, 0.01])
         np.testing.assert_allclose(received["src:ch:R"], [0.01, 0.01])
 
-    def test_set_trace_with_errors_updates_plot_widget(self, qtbot):
+    def test_set_trace_with_errors_updates_plot_widget(self, qtbot, qapp, request):
         """PlotWidget.set_trace_with_errors updates trace data and creates error bars."""
 
-        widget = _make_plot_widget(qtbot)
+        widget = _make_plot_widget(qtbot, qapp, request)
         widget.set_trace_with_errors(
             "sig",
             [0.0, 1.0, 2.0],
@@ -914,18 +922,18 @@ class TestPlotTraceCommand:
         assert widget.y_data("sig") == [1.0, 2.0, 3.0]
         assert "sig" in widget._error_bar_items
 
-    def test_set_trace_with_errors_no_errors_no_error_bar_item(self, qtbot):
+    def test_set_trace_with_errors_no_errors_no_error_bar_item(self, qtbot, qapp, request):
         """PlotWidget.set_trace_with_errors with no errors should not create an ErrorBarItem."""
 
-        widget = _make_plot_widget(qtbot)
+        widget = _make_plot_widget(qtbot, qapp, request)
         widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, None)
         assert widget.y_data("sig") == [2.0, 3.0]
         assert "sig" not in widget._error_bar_items
 
-    def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qtbot, monkeypatch):
+    def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qtbot, qapp, request, monkeypatch):
         """Pending update must stay busy until error-bar update completes."""
 
-        widget = _make_plot_widget(qtbot)
+        widget = _make_plot_widget(qtbot, qapp, request)
         widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
         error_bar_item = widget._error_bar_items["sig"]
         original_set_data = error_bar_item.setData
@@ -942,10 +950,10 @@ class TestPlotTraceCommand:
         assert observed_busy_states == [True]
         assert widget.is_busy_for_data() is False
 
-    def test_remove_trace_cleans_up_error_bar_item(self, qtbot):
+    def test_remove_trace_cleans_up_error_bar_item(self, qtbot, qapp, request):
         """remove_trace() must also remove the associated ErrorBarItem."""
 
-        widget = _make_plot_widget(qtbot)
+        widget = _make_plot_widget(qtbot, qapp, request)
         widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
         assert "sig" in widget._error_bar_items
         widget.remove_trace("sig")
@@ -1084,14 +1092,14 @@ class TestPlotTraceCommand:
         colour_button.click()
         assert cmd.colour == "#008000"
 
-    def test_plot_widget_set_trace_style_from_dict(self, qtbot):
-        widget = _make_plot_widget(qtbot)
+    def test_plot_widget_set_trace_style_from_dict(self, qtbot, qapp, request):
+        widget = _make_plot_widget(qtbot, qapp, request)
         widget.append_point("sig", 0.0, 1.0)
         widget.set_trace_style_from_dict("sig", {"colour": "red", "line_style": "dash"})
         assert widget._trace_style["sig"]["line"] == "dash"
 
-    def test_plot_widget_set_trace_style_from_dict_empty_is_noop(self, qtbot):
-        widget = _make_plot_widget(qtbot)
+    def test_plot_widget_set_trace_style_from_dict_empty_is_noop(self, qtbot, qapp, request):
+        widget = _make_plot_widget(qtbot, qapp, request)
         widget.append_point("sig", 0.0, 1.0)
         original_style = dict(widget._trace_style["sig"])
         widget.set_trace_style_from_dict("sig", {})

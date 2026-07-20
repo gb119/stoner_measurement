@@ -59,11 +59,13 @@ jobs:
       - name: Run tests
         shell: bash -el {0}
         env:
+          QT_API: ${{ matrix.qt-backend }}
           QT_QPA_PLATFORM: offscreen
         run: |
           echo "Testing backend: ${{ matrix.qt-backend }}"
           echo "Testing Python: ${{ matrix.python-version }}"
           python - <<'PY'
+          import os
           import qtpy
           from qtpy.QtCore import QLibraryInfo
 
@@ -72,8 +74,14 @@ jobs:
           else:
               plugins_path = QLibraryInfo.location(QLibraryInfo.PluginsPath)
 
+          print("QT_API env:", os.environ.get("QT_API"))
           print("Qt API:", qtpy.API_NAME)
           print("Qt plugins:", plugins_path)
+          expected_api = os.environ["QT_API"]
+          if qtpy.API_NAME != expected_api:
+              raise RuntimeError(
+                  f"Expected qtpy to use {expected_api!r}, got {qtpy.API_NAME!r} instead."
+              )
           PY
           pytest --cov --cov-report=xml --cov-report=term-missing
           mv .coverage coverage-${{ matrix.qt-backend }}-${{ matrix.python-version }}
