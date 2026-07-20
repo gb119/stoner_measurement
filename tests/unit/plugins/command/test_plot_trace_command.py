@@ -916,8 +916,20 @@ class TestPlotTraceCommand:
         assert widget.y_data("sig") == [2.0, 3.0]
         assert "sig" not in widget._error_bar_items
 
-    def test_error_bar_handles_qt_teardown(self, qapp, monkeypatch):
-        """Error-bar items should survive deleted-wrapper callbacks during teardown."""
+    @pytest.mark.parametrize(
+        "deleted_msg",
+        [
+            "wrapped C/C++ object of type ErrorBarItem has been deleted",
+            "wrapped C/C++ object of type _SafeErrorBarItem has been deleted",
+        ],
+        ids=["base-class-name", "subclass-name-py314"],
+    )
+    def test_error_bar_handles_qt_teardown(self, qapp, monkeypatch, deleted_msg):
+        """Error-bar items should survive deleted-wrapper callbacks during teardown.
+
+        Covers both the base-class type name reported by older PyQt/Python
+        versions and the subclass type name reported by Python 3.14+.
+        """
         from stoner_measurement.ui.plot_widget import PlotWidget
 
         widget = PlotWidget()
@@ -928,9 +940,7 @@ class TestPlotTraceCommand:
         cleared_path: list[bool] = []
 
         def _raise_deleted_wrapper(*_args, **_kwargs):
-            raise RuntimeError(
-                "wrapped C/C++ object of type ErrorBarItem has been deleted"
-            )
+            raise RuntimeError(deleted_msg)
 
         original_clear_path = error_bar_item._clear_path
 
@@ -943,6 +953,22 @@ class TestPlotTraceCommand:
 
         assert error_bar_item.boundingRect().isNull()
         assert cleared_path == [True]
+
+    def test_is_deleted_error_bar_wrapper_error_matches_variants(self):
+        """_is_deleted_error_bar_wrapper_error accepts any wrapped-type-name variant."""
+        from stoner_measurement.ui.plot_widget import _is_deleted_error_bar_wrapper_error
+
+        # Both the base-class and subclass-name variants must be recognised.
+        assert _is_deleted_error_bar_wrapper_error(
+            RuntimeError("wrapped C/C++ object of type ErrorBarItem has been deleted")
+        )
+        assert _is_deleted_error_bar_wrapper_error(
+            RuntimeError("wrapped C/C++ object of type _SafeErrorBarItem has been deleted")
+        )
+        # Completely unrelated error must not match.
+        assert not _is_deleted_error_bar_wrapper_error(RuntimeError("some unrelated error"))
+        # Message with only the suffix and not the prefix must not match.
+        assert not _is_deleted_error_bar_wrapper_error(RuntimeError("object has been deleted"))
 
     def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qapp, monkeypatch):
         """Pending update must stay busy until error-bar update completes."""
