@@ -15,8 +15,8 @@ from typing import Literal, TypedDict
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QPoint, Qt
-from qtpy.QtGui import QColor
+from qtpy.QtCore import QPoint, QRectF, Qt
+from qtpy.QtGui import QColor, QPainterPath
 from qtpy.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -109,6 +109,56 @@ _COLOUR_COLUMN_WIDTH = 90
 _AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
+_DELETED_QT_WRAPPER_MARKER = "has been deleted"
+
+
+def _is_deleted_qt_wrapper_error(exc: RuntimeError) -> bool:
+    """Return whether *exc* reports a deleted Qt wrapper during teardown."""
+    return _DELETED_QT_WRAPPER_MARKER in str(exc)
+
+
+class _SafeErrorBarItem(pg.ErrorBarItem):
+    """Error-bar item that tolerates deleted-wrapper callbacks during teardown."""
+
+    def _clear_path(self) -> None:
+        """Reset the cached painter path to an empty path."""
+        self.path = QPainterPath()
+
+    def setData(self, **opts) -> None:  # noqa: N802 - inherited Qt-style API
+        """Update error-bar data while ignoring deleted-wrapper teardown races."""
+        try:
+            super().setData(**opts)
+        except RuntimeError as exc:
+            if not _is_deleted_qt_wrapper_error(exc):
+                raise
+            self._clear_path()
+
+    def drawPath(self) -> None:  # noqa: N802 - inherited Qt-style API
+        """Build the painter path unless the underlying Qt object is gone."""
+        try:
+            super().drawPath()
+        except RuntimeError as exc:
+            if not _is_deleted_qt_wrapper_error(exc):
+                raise
+            self._clear_path()
+
+    def paint(self, painter, *args) -> None:
+        """Paint the item unless teardown has already deleted the Qt object."""
+        try:
+            super().paint(painter, *args)
+        except RuntimeError as exc:
+            if not _is_deleted_qt_wrapper_error(exc):
+                raise
+
+    def boundingRect(self) -> QRectF:  # noqa: N802 - inherited Qt-style API
+        """Return an empty rectangle after deleted-wrapper teardown races."""
+        try:
+            return super().boundingRect()
+        except RuntimeError as exc:
+            if not _is_deleted_qt_wrapper_error(exc):
+                raise
+            self._clear_path()
+            return QRectF()
 
 
 class _AxisDialogEntry(TypedDict):
@@ -542,7 +592,7 @@ class PlotWidget(QWidget):
         # Per-trace plot item
         self._traces: dict[str, pg.PlotDataItem] = {}
         # Per-trace error-bar item (optional)
-        self._error_bar_items: dict[str, pg.ErrorBarItem] = {}
+        self._error_bar_items: dict[str, _SafeErrorBarItem] = {}
         # Per-trace axis assignment: name → (x_axis_name, y_axis_name)
         self._trace_axes: dict[str, tuple[str, str]] = {}
         # Per-trace style: name → {"colour": str, "line": str, "point": str}
@@ -1421,7 +1471,7 @@ class PlotWidget(QWidget):
                 if trace_name in self._error_bar_items:
                     self._error_bar_items[trace_name].setData(**kwargs)
                 else:
-                    ebi = pg.ErrorBarItem(**kwargs)
+                    ebi = _SafeErrorBarItem(**kwargs)
                     vb.addItem(ebi)
                     self._error_bar_items[trace_name] = ebi
             elif trace_name in self._error_bar_items:

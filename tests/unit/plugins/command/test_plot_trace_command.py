@@ -915,6 +915,28 @@ class TestPlotTraceCommand:
         assert widget.y_data("sig") == [2.0, 3.0]
         assert "sig" not in widget._error_bar_items
 
+    def test_error_bar_item_ignores_deleted_wrapper_bounding_rect_callbacks(
+        self, qapp, monkeypatch
+    ):
+        """Error-bar items should survive deleted-wrapper callbacks during teardown."""
+        import pyqtgraph as pg
+
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        widget = PlotWidget()
+        widget.set_trace_with_errors("sig", [0.0, 1.0], [2.0, 3.0], None, [0.1, 0.2])
+        error_bar_item = widget._error_bar_items["sig"]
+        error_bar_item.path = None
+
+        def _raise_deleted_wrapper(*_args, **_kwargs):
+            raise RuntimeError(
+                "wrapped C/C++ object of type ErrorBarItem has been deleted"
+            )
+
+        monkeypatch.setattr(pg.ErrorBarItem, "drawPath", _raise_deleted_wrapper)
+
+        assert error_bar_item.boundingRect().isNull()
+
     def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qapp, monkeypatch):
         """Pending update must stay busy until error-bar update completes."""
         from stoner_measurement.ui.plot_widget import PlotWidget
@@ -1120,4 +1142,3 @@ class TestPlotTraceCommand:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))
-
