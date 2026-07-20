@@ -111,6 +111,32 @@ _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
 
 
+def _safe_remove_graphics_item(parent: object, item: object) -> None:
+    """Best-effort removal for pyqtgraph/Qt graphics items during teardown."""
+    remove_item = getattr(parent, "removeItem", None)
+    if callable(remove_item):
+        try:
+            remove_item(item)
+        except RuntimeError:
+            logger.debug("Graphics item was already deleted during teardown.", exc_info=True)
+
+
+def _safe_detach_graphics_item(item: object) -> None:
+    """Best-effort detach for graphics items that may already be half-destroyed."""
+    try:
+        hide = getattr(item, "hide", None)
+        if callable(hide):
+            hide()
+        set_parent_item = getattr(item, "setParentItem", None)
+        if callable(set_parent_item):
+            set_parent_item(None)
+        scene = getattr(item, "scene", lambda: None)()
+        if scene is not None:
+            _safe_remove_graphics_item(scene, item)
+    except RuntimeError:
+        logger.debug("Graphics item was already deleted during detach.", exc_info=True)
+
+
 class _AxisDialogEntry(TypedDict):
     name: str
     label: str
@@ -1665,6 +1691,37 @@ class PlotWidget(QWidget):
         self._colour_cycle = cycle(_TRACE_COLOURS)
         for name in list(self._traces.keys()):
             self.remove_trace(name)
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        """Detach pyqtgraph items before Qt tears down the graphics scene."""
+        self._teardown_plot_items()
+        super().closeEvent(event)
+
+    def _teardown_plot_items(self) -> None:
+        """Remove traces and error bars while the plot scene is still valid."""
+        if not hasattr(self, "_plot_item"):
+            return
+
+        for trace_name, error_bar_item in list(self._error_bar_items.items()):
+            x_ax, y_ax = self._trace_axes.get(trace_name, ("bottom", "left"))
+            view_box = self._pair_view_boxes.get((x_ax, y_ax), self._plot_item.vb)
+            _safe_remove_graphics_item(view_box, error_bar_item)
+            _safe_detach_graphics_item(error_bar_item)
+        self._error_bar_items.clear()
+
+        for trace_name, curve in list(self._traces.items()):
+            x_ax, y_ax = self._trace_axes.get(trace_name, ("bottom", "left"))
+            view_box = self._pair_view_boxes.get((x_ax, y_ax), self._plot_item.vb)
+            _safe_remove_graphics_item(view_box, curve)
+            _safe_detach_graphics_item(curve)
+
+        self._traces.clear()
+        self._trace_data.clear()
+        self._trace_axes.clear()
+        self._trace_style.clear()
+        self._trace_line_width.clear()
+        self._trace_point_size.clear()
+        self._trace_visible.clear()
 
     # ------------------------------------------------------------------
     # Public API — axis management
