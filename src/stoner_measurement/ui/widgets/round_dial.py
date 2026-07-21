@@ -1050,9 +1050,9 @@ class RoundDialWidget(QWidget):
         radius = max(1.0, (dial_side * 0.92 / 2.0) * self._label_radius_factor)
         center = QPointF(self.width() / 2.0, top_space + (usable_height / 2.0))
         rects = self._label_draw_rects(values, metrics, center, radius)
-        for left in range(len(rects)):
-            for right in range(left + 1, len(rects)):
-                if self._rects_overlap(rects[left], rects[right], self._label_collision_padding):
+        for left, left_rect in enumerate(rects):
+            for right_rect in rects[left + 1 :]:
+                if self._rects_overlap(left_rect, right_rect, self._label_collision_padding):
                     return False
         return True
 

@@ -1,11 +1,11 @@
 # Codacy Issues Summary
 
 Repository: `gh/gb119/stoner_measurement`
-Downloaded: 2026-07-20
+Downloaded: 2026-07-21
 
 ## Refresh Status
 
-- Codacy auth probe succeeded on 2026-07-20.
+- Codacy auth probe succeeded on 2026-07-21.
 - Fresh issue download completed with `--branch main --limit 1000`.
 - Local raw snapshot: `codacy-reports/issues.json`
 
@@ -43,7 +43,8 @@ Downloaded: 2026-07-20
 
 - `Prospector_mccabe`: 25 complexity findings
 - `Semgrep_codacy.python.i18n.no-hardcoded-strftime`: 10 findings
-- `Bandit`: 4 security findings
+- `Prospector_pycodestyle`: 10 style findings
+- `Bandit`: 5 security findings
 - `PyLintPython3_W0612`: 3 unused-variable findings
 - `PyLintPython3_W0108`: 3 unnecessary-lambda findings
 
@@ -77,10 +78,22 @@ For the mixed-case signal names, the current assessment is that they reflect nor
 - `src/stoner_measurement/plugins/trace/keithley_2400.py`: 2
 - `src/stoner_measurement/ui/plot_widget.py`: 2
 
+## Coverage Overlap
+
+The current Codacy snapshot overlaps with several of the July 21 coverage
+cold-spots:
+
+- `src/stoner_measurement/ui/widgets/round_dial.py`
+- `src/stoner_measurement/ui/plot_widget.py`
+- `src/stoner_measurement/ui/magnet_panel.py`
+
+These are good candidates for paired refactor-plus-test passes because they
+combine static-analysis debt with coverage debt.
+
 ## Immediate Plan
 
 1. Clear the single `High` finding in `test_mass_flow_controller_contracts.py`.
-2. Review the 4 Bandit findings and classify real defects vs intentional dynamic behavior.
+2. Review the 5 Bandit findings and classify real defects vs intentional dynamic behavior.
 3. Tackle the 10 `strftime` warnings with a shared formatting helper if the code paths align cleanly.
 4. Mark the 6 PyQt mixed-case `Prospector_pycodestyle` findings as ignorable if Codacy suppression is desired.
 5. Fix the remaining 4 real pycodestyle formatting issues in a small mechanical batch.
@@ -94,6 +107,7 @@ The highest-leverage next tranche is:
 - `tests/unit/instruments/contracts/test_mass_flow_controller_contracts.py`
 - `src/stoner_measurement/pressure_control/engine.py`
 - `src/stoner_measurement/core/sequence_engine.py`
+- `src/stoner_measurement/plugins/transform/curve_fit.py`
 - `src/stoner_measurement/scan/arbitrary_function_generator.py`
 
 That pass would clear the only `High` finding and cover the current Bandit-backed warning set.

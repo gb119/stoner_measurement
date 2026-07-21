@@ -109,6 +109,29 @@ class TestRoundDialWidget:
         assert widget.showLabels() is False
         assert widget.showValueText() is False
 
+    def test_preferred_label_values_reduces_full_circle_custom_labels_when_needed(self, qapp, monkeypatch):
+        widget = RoundDialWidget()
+        widget.setRange(0, 360)
+        widget.setScaleAngles(0, 360)
+        widget.setCustomLabels({index * 22.5: str(index) for index in range(16)})
+
+        def fake_label_set_fits(values):
+            return len(values) <= 8
+
+        monkeypatch.setattr(widget, "_label_set_fits", fake_label_set_fits)
+
+        assert widget._preferred_label_values() == [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0]  # noqa: SLF001
+
+    def test_preferred_label_values_preserves_endpoints_with_middle_fallback(self, qapp, monkeypatch):
+        widget = RoundDialWidget()
+        widget.setRange(0, 100)
+        widget.setScaleAngles(-135, 135)
+        widget.setPreferredLabelCounts([5])
+
+        monkeypatch.setattr(widget, "_label_set_fits", lambda values: False)
+
+        assert widget._preferred_label_values() == [0.0, 50.0, 100.0]  # noqa: SLF001
+
 
 class TestRoundDialDemoWidget:
     def test_creates_widget(self, qapp):

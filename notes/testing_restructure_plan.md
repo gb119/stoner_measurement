@@ -17,10 +17,17 @@ conda run -n stoner_measurement pytest --cov=stoner_measurement --cov-report=jso
 
 Latest observed result:
 
-- 2386 tests passed.
-- Combined branch-aware coverage: 74%.
-- Statement coverage: 78%.
-- Branch coverage: 57%.
+- Coverage artifact timestamp: 2026-07-21T15:25:56.
+- Combined branch-aware coverage: 76%.
+- Statement coverage: 80%.
+- Branch coverage: 58%.
+
+Latest rerun note:
+
+- The 2026-07-21 local rerun emitted `coverage.json` with the totals above, but
+  pytest exited non-zero after a Windows fatal access violation in the
+  Qt/IPython stack during teardown. Treat pass-count status as unverified until
+  a stable rerun completes.
 
 The lower branch coverage means new tests should prefer branch/edge cases over
 more happy-path assertions for already-covered code.
@@ -82,18 +89,19 @@ Ranked by missed lines plus missed branches:
 
 | Module | Coverage | Debt | Recommended approach |
 | --- | ---: | ---: | --- |
-| `ui/temperature_panel.py` | 54% | 623 | Extract/test state helpers; add thin Qt signal tests |
-| `ui/widgets/round_dial.py` | 44% | 539 | Parametrize modes, label placement, color/theme branches |
-| `ui/value_watch.py` | 43% | 419 | Unit-test model/state transitions before full widget flows |
-| `ui/dock_panel.py` | 63% | 413 | Split tree-model behavior from drag/drop integration |
-| `ui/magnet_panel.py` | 60% | 362 | Test state rendering and command enablement with fake engine |
-| `ui/settings_dialog.py` | 9% | 267 | Quick win: construct/apply/cancel/reset/validation tests |
-| `temperature_control/engine.py` | 63% | 246 | Contract tests for driver connection and state transitions |
+| `ui/value_watch.py` | 29% | 663 | Unit-test model/state transitions and threshold formatting before widget flows |
+| `ui/widgets/round_dial.py` | 44% | 532 | Parametrize modes, label placement, collision handling, and color/theme branches |
+| `ui/dock_panel.py` | 66% | 425 | Split tree-model behavior from drag/drop and selection integration |
+| `ui/temperature_panel.py` | 73% | 414 | Extract/test state helpers; add thin Qt signal and chart-refresh tests |
+| `ui/plot_widget.py` | 80% | 322 | Cover axes-dialog branches, context-menu actions, and persistence wiring |
+| `app.py` | 67% | 316 | Add focused app-shell tests for action wiring and plugin-tree edge cases |
+| `ui/magnet_panel.py` | 77% | 255 | Test state rendering, limits handling, and command enablement with fake engine |
+| `temperature_control/engine.py` | 67% | 242 | Contract tests for driver connection, error paths, and state transitions |
+| `ui/pressure_panel.py` | 69% | 225 | Add fake-engine panel tests for state rendering, limits, and button gating |
 | `plugins/trace/k6221_multi_sr830.py` | 80% | 212 | Fill branch cases around config validation and UI callbacks |
-| `plugins/trace/keithley_2400.py` | 68% | 193 | Split config UI, sweep construction, execution branches |
-| `magnet_control/engine.py` | 71% | 179 | Add fake-driver state transition tests |
+| `instruments/eurotherm/temperature_controllers.py` | 70% | 197 | Add driver contract tests for parsing, limits, and error-reporting branches |
+| `magnet_control/engine.py` | 73% | 194 | Add fake-driver state transition and failure-path tests |
 | `instruments/transport/gpib_transport.py` | 46% | 173 | Mock PyVISA resources under a transport contract |
-| `sweep/monitor_and_filter_generator.py` | 36% | 166 | Pure unit tests for filtering, abort, and monitor branches |
 
 ## Migration Rules
 
