@@ -1347,14 +1347,14 @@ class MagnetControlPanel(QWidget):
     @pyqtSlot()
     def _on_read_limits(self) -> None:
         """Read magnet constant and limits from the controller and update the UI."""
-        state = self._read_controller_state_or_warn("Magnet Constants & Limits")
-        if state is None:
-            return
-        if state.magnet_constant is not None and state.magnet_constant > 0:
-            self._magnet_constant = state.magnet_constant
-            self._magnet_const_spin.setValue(state.magnet_constant)
-
+        magnet_constant = self._engine.refresh_magnet_constant()
         limits = self._engine.get_limits()
+        if magnet_constant is None and limits is None:
+            QMessageBox.warning(self, "Magnet Constants & Limits", "No instrument connected or read failed.")
+            return
+        if magnet_constant is not None and magnet_constant > 0:
+            self._magnet_constant = magnet_constant
+            self._magnet_const_spin.setValue(magnet_constant)
         if limits is not None:
             self._max_current_spin.setValue(limits.max_current)
             if limits.max_field is not None:

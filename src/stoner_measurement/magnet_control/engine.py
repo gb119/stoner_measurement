@@ -289,6 +289,13 @@ class MagnetControllerEngine(QObject):
             self._at_target_since = None
             self._unstable_since = None
             self._stable = False
+            try:
+                self._magnet_constant = driver.refresh_magnet_constant()
+            except Exception:
+                logger.debug(
+                    "MagnetControllerEngine: failed to refresh magnet constant on connect",
+                    exc_info=True,
+                )
             self._set_status(MagnetEngineStatus.CONNECTED)
             self._timer.start()
         logger.info("MagnetControllerEngine: connected to %s", type(driver).__name__)
@@ -812,6 +819,17 @@ class MagnetControllerEngine(QObject):
             self.publisher.poll_activity.emit()
         return state
 
+    def refresh_magnet_constant(self) -> float | None:
+        """Refresh the cached magnet constant from the connected driver."""
+        with self._engine_lock:
+            if self._driver is None:
+                return self._magnet_constant
+            try:
+                self._magnet_constant = self._driver.refresh_magnet_constant()
+            except Exception:
+                logger.exception("MagnetControllerEngine: failed to refresh magnet constant")
+            return self._magnet_constant
+
     def get_limits(self) -> MagnetLimits | None:
         """Return the controller limits from the connected driver.
 
@@ -822,6 +840,10 @@ class MagnetControllerEngine(QObject):
         with self._engine_lock:
             if self._driver is None:
                 return self._limits
+            try:
+                self._magnet_constant = self._driver.refresh_magnet_constant()
+            except Exception:
+                logger.exception("MagnetControllerEngine: failed to refresh magnet constant")
             try:
                 limits = self._driver.limits
                 self._limits = limits
@@ -962,12 +984,7 @@ class MagnetControllerEngine(QObject):
         # Evaluate stability.
         self._evaluate_stability(field_val, now)
 
-        try:
-            magnet_constant: float | None = driver.magnet_constant
-            self._magnet_constant = magnet_constant
-        except Exception:
-            logger.debug("Failed to read magnet constant while updating magnet state", exc_info=True)
-            magnet_constant = self._magnet_constant
+        magnet_constant = self._magnet_constant
 
         persistent_current: float | None = None
         if status.persistent_field is not None and magnet_constant not in {None, 0.0}:

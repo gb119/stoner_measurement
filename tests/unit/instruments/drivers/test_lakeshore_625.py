@@ -63,6 +63,47 @@ class TestLakeshore625:
         m.ramp_to_target()
         assert t.write_log == [b"SETI 3.0\r\n", b"SETF 0.9\r\n", b"RAMP\r\n"]
 
+    def test_ramp_rate_current_query_uses_rate_in_a_per_s(self):
+        t = _null(responses=[b"0.5\r\n"])
+        m = Lakeshore625(transport=t)
+        assert m.ramp_rate_current == pytest.approx(30.0)
+        assert t.write_log == [b"RATE?\r\n"]
+
+    def test_ramp_rate_field_query_uses_rate_in_a_per_s(self):
+        t = _null(responses=[b"0.1\r\n"])
+        m = Lakeshore625(transport=t)
+        m._magnet_constant = 0.075  # noqa: SLF001
+        assert m.ramp_rate_field == pytest.approx(0.45)
+        assert t.write_log == [b"RATE?\r\n"]
+
+    def test_set_ramp_rate_current_writes_rate_in_a_per_s(self):
+        t = _null()
+        m = Lakeshore625(transport=t)
+        m.set_ramp_rate_current(30.0)
+        assert t.write_log == [b"RATE 0.5\r\n"]
+
+    def test_set_ramp_rate_field_writes_rate_in_a_per_s(self):
+        t = _null()
+        m = Lakeshore625(transport=t)
+        m.set_magnet_constant(0.075)
+        m.set_ramp_rate_field(0.45)
+        assert t.write_log == [b"FLDS 0,0.075\r\n", b"RATE 0.1\r\n"]
+
+    def test_set_ramp_rate_field_requires_positive_magnet_constant(self):
+        m = Lakeshore625(transport=_null())
+        m._magnet_constant = 0.0  # noqa: SLF001
+        with pytest.raises(ValueError, match="Magnet constant must be positive"):
+            m.set_ramp_rate_field(0.45)
+
+    def test_pause_hold_zero_and_abort_commands(self):
+        t = _null()
+        m = Lakeshore625(transport=t)
+        m.pause_ramp()
+        m.hold()
+        m.go_to_zero()
+        m.abort_ramp()
+        assert t.write_log == [b"STOP\r\n", b"STOP\r\n", b"ZERO\r\n", b"STOP\r\n"]
+
     def test_heater_methods_and_property(self):
         t = _null(responses=[b"1\r\n"])
         m = Lakeshore625(transport=t)
@@ -190,16 +231,21 @@ class TestLakeshore625:
         with pytest.raises(ValueError, match="positive"):
             m.set_magnet_constant(-1.0)
 
-    def test_magnet_constant_reads_flds_query_in_t_per_amp(self):
+    def test_refresh_magnet_constant_reads_flds_query_in_t_per_amp(self):
         t = _null(responses=[b"0,+0.0750\r\n"])
         m = Lakeshore625(transport=t)
-        assert m.magnet_constant == pytest.approx(0.075)
+        assert m.refresh_magnet_constant() == pytest.approx(0.075)
         assert t.write_log == [b"FLDS?\r\n"]
 
-    def test_magnet_constant_converts_flds_query_from_kg_per_amp(self):
+    def test_magnet_constant_property_returns_cached_value(self):
+        m = Lakeshore625(transport=_null())
+        m._magnet_constant = 0.075  # noqa: SLF001
+        assert m.magnet_constant == pytest.approx(0.075)
+
+    def test_refresh_magnet_constant_converts_flds_query_from_kg_per_amp(self):
         t = _null(responses=[b"1,+0.7500\r\n"])
         m = Lakeshore625(transport=t)
-        assert m.magnet_constant == pytest.approx(0.075)
+        assert m.refresh_magnet_constant() == pytest.approx(0.075)
 
     def test_set_magnet_constant_writes_flds_command(self):
         t = _null()
@@ -207,14 +253,15 @@ class TestLakeshore625:
         m.set_magnet_constant(0.075)
         assert t.write_log == [b"FLDS 0,0.075\r\n"]
 
-    def test_limits_reads_limit_and_field_constant_from_instrument(self):
-        t = _null(responses=[b"+60.1000,+5.0000,+2.0000\r\n", b"0,+0.1000\r\n"])
+    def test_limits_use_cached_field_constant(self):
+        t = _null(responses=[b"+60.1000,+5.0000,+2.0000\r\n"])
         m = Lakeshore625(transport=t)
+        m._magnet_constant = 0.1  # noqa: SLF001
         limits = m.limits
         assert limits.max_current == pytest.approx(60.1)
         assert limits.max_field == pytest.approx(6.01)
         assert limits.max_ramp_rate == pytest.approx(12.0)
-        assert t.write_log == [b"LIMIT?\r\n", b"FLDS?\r\n"]
+        assert t.write_log == [b"LIMIT?\r\n"]
 
     def test_set_limits_writes_limit_command_with_current_ramp_rate(self):
         t = _null(responses=[b"+5.0000\r\n"])

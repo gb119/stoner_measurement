@@ -621,7 +621,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         per-point voltage equals ``|I| × _compliance_resistance``.
 
         Measurement settings (NPLC, voltage range, digital filter, analogue
-        filter, relative mode, digits) are also applied to the 2182A.
+        filter, relative mode, digits) are also applied to the 2182A. Once
+        configuration completes successfully, the 6221 output is enabled and
+        left on so successive :meth:`measure` calls can start fresh sweeps
+        without reconfiguration. The output is disabled in :meth:`disconnect`.
 
         Raises:
             RuntimeError:
@@ -714,6 +717,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # ---- 2182A: trigger ----
             self._k2182a.set_trigger_source(NanovoltmeterTriggerSource.EXT)
             self._k2182a.set_trigger_count(n)
+            self._k6221.enable_output(True)
 
         except Exception:
             self._set_status(TraceStatus.ERROR)
@@ -723,10 +727,11 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
         """Arm the sweep, collect the complete trace, and yield (I, V) pairs.
 
-        Arms the 6221 sweep, initiates the 2182A trigger system, and enables
-        the 6221 output to start the sweep. Polls the 6221 operating-status
-        register until the sweep completes, then reads the 2182A buffer
-        (retrying until all *n* readings are available) and yields the
+        Arms the 6221 sweep and initiates the 2182A trigger system. The 6221
+        output is expected to have been enabled during :meth:`configure`, so
+        this method just starts the programmed sweep. It then polls the 6221
+        operating-status register until the sweep completes, reads the 2182A
+        buffer (retrying until all *n* readings are available), and yields the
         ``(source_current, voltage)`` pair for each scan point in order.
 
         Args:
@@ -767,7 +772,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # Arm 6221 sweep and initiate 2182A trigger system.
             if self._k2182a is None:
                 raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-            # Enable 6221 output — this starts the sweep.
             self._k2182a.initiate()
             self._k6221.sweep_abort()
             self._k6221.sweep_start()
@@ -797,7 +801,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # Allow the 2182A to finish the final measurement and commit it to memory.
             time.sleep(post_sweep_delay)
-            self._k6221.enable_output(False)
             if self._k2182a is None:
                 raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
             read_deadline = time.monotonic() + max(_TIMEOUT_MIN / 2.0, post_sweep_delay * 4.0)

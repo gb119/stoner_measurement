@@ -490,6 +490,15 @@ class MagnetController(BaseInstrument):
                 If the transport is not open.
         """
 
+    def refresh_magnet_constant(self) -> float:
+        """Refresh and return the magnet constant from the controller.
+
+        Drivers whose magnet constant is effectively static or already cached
+        may rely on the default implementation. Drivers that need an explicit
+        hardware query should override this method.
+        """
+        return self.magnet_constant
+
     @property
     @abstractmethod
     def limits(self) -> MagnetLimits:
@@ -587,7 +596,7 @@ class MagnetController(BaseInstrument):
 
         Args:
             rate (float):
-                Ramp rate in amps per second.
+                Ramp rate in amps per minute.
 
         Raises:
             ConnectionError:

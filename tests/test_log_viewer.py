@@ -93,12 +93,76 @@ class TestLogViewerWindowFiltering:
         assert "sequence info" not in output_text
         assert "instrument error" not in output_text
 
+    def test_pause_buffers_new_records_until_resumed(self, qapp):
+        viewer = LogViewerWindow()
+        first = _make_record("stoner_measurement.sequence", logging.INFO, "first message")
+        second = _make_record("stoner_measurement.sequence", logging.INFO, "second message")
+
+        viewer.append_record(first)
+        viewer._btn_pause.setChecked(True)
+        viewer.append_record(second)
+
+        paused_text = viewer._output.toPlainText()
+        assert "first message" in paused_text
+        assert "second message" not in paused_text
+
+        viewer._btn_pause.setChecked(False)
+
+        resumed_text = viewer._output.toPlainText()
+        assert "first message" in resumed_text
+        assert "second message" in resumed_text
+
+    def test_message_context_includes_neighboring_matching_source_lines(self, qapp):
+        viewer = LogViewerWindow()
+        before = _make_record(
+            "stoner_measurement.sequence.comms.GPIB0::23",
+            logging.DEBUG,
+            "GPIB0::23 RX 4.200",
+            channel="instrument_comms",
+            direction="RX",
+        )
+        match = _make_record(
+            "stoner_measurement.sequence.comms.GPIB0::23",
+            logging.DEBUG,
+            "GPIB0::23 TX SETV?",
+            channel="instrument_comms",
+            direction="TX",
+        )
+        after = _make_record(
+            "stoner_measurement.sequence.comms.GPIB0::23",
+            logging.DEBUG,
+            "GPIB0::23 RX 4.300",
+            channel="instrument_comms",
+            direction="RX",
+        )
+        other_source = _make_record(
+            "stoner_measurement.sequence",
+            logging.INFO,
+            "sequence message",
+        )
+
+        viewer.append_record(before)
+        viewer.append_record(other_source)
+        viewer.append_record(match)
+        viewer.append_record(after)
+
+        viewer._traffic_filter.setCurrentIndex(viewer._traffic_filter.findData("comms"))
+        viewer._message_filter.setText(r"::23.*SETV\?")
+        viewer._context_lines.setValue(1)
+
+        output_text = viewer._output.toPlainText()
+        assert "GPIB0::23 RX 4.200" in output_text
+        assert "GPIB0::23 TX SETV?" in output_text
+        assert "GPIB0::23 RX 4.300" in output_text
+        assert "sequence message" not in output_text
+
     def test_restores_saved_settings(self, qapp, tmp_path):
         _configure_test_settings(qapp, tmp_path)
 
         first = LogViewerWindow()
         first._display_level.setCurrentIndex(first._display_level.findData(logging.ERROR))
         first._traffic_filter.setCurrentIndex(first._traffic_filter.findData("no-comms"))
+        first._context_lines.setValue(2)
         first._display_sources.set_selected_prefixes({"stoner_measurement.sequence"})
         first._btn_display_sources.setChecked(True)
         first._btn_file_logging.setChecked(True)
@@ -113,6 +177,7 @@ class TestLogViewerWindowFiltering:
 
         assert second._display_level.currentData() == logging.ERROR
         assert second._traffic_filter.currentData() == "no-comms"
+        assert second._context_lines.value() == 2
         assert second._display_sources.selected_prefixes == {"stoner_measurement.sequence"}
         assert second._btn_display_sources.isChecked()
         assert second._btn_file_logging.isChecked()

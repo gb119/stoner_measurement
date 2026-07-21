@@ -316,7 +316,7 @@ class TestExecute:
         assert points == [(1e-3, 0.1), (2e-3, 0.2)]
         plugin._k6221.sweep_start.assert_called_once_with()
         plugin._k2182a.initiate.assert_called_once_with()
-        assert plugin._k6221.enable_output.call_args_list[:1] == [call(False)]
+        plugin._k6221.enable_output.assert_not_called()
         plugin._k2182a.read_buffer.assert_called_once_with(count=2)
         plugin._k2182a.clear_buffer.assert_called_once_with()
         assert plugin._k6221.get_operating_status.call_count == 3
@@ -347,6 +347,29 @@ class TestExecute:
         assert plugin._k2182a.read_buffer.call_count == 2
         plugin._k2182a.clear_buffer.assert_called_once_with()
 
+    def test_execute_can_run_successive_sweeps_without_reconfigure(self, qapp):
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        plugin = _make_plugin()
+        plugin._sweep_values = np.array([1e-3, 2e-3])
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._k6221.get_operating_status.return_value = 0x04
+        plugin._k2182a.read_buffer.side_effect = [(0.1, 0.2), (0.3, 0.4)]
+
+        with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep"):
+            first = list(plugin.execute({}))
+            second = list(plugin.execute({}))
+
+        assert first == [(1e-3, 0.1), (2e-3, 0.2)]
+        assert second == [(1e-3, 0.3), (2e-3, 0.4)]
+        assert plugin._k6221.sweep_start.call_count == 2
+        assert plugin._k2182a.initiate.call_count == 2
+        assert plugin._k2182a.clear_buffer.call_count == 2
+        plugin._k6221.enable_output.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # configure() guards
@@ -357,6 +380,19 @@ class TestConfigureGuards:
         plugin = _make_plugin()
         with pytest.raises(RuntimeError, match="connect"):
             plugin.configure()
+
+
+class TestConfigure:
+    def test_configure_enables_output_for_repeated_measurements(self, qapp):
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+
+        plugin.configure()
+
+        plugin._k6221.enable_output.assert_called_once_with(True)
 
 
 # ---------------------------------------------------------------------------

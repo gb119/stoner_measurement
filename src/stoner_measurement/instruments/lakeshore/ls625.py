@@ -31,6 +31,8 @@ _TERMINAL_RAMP_STATES = {
     MagnetState.QUIESCENT,
 }
 
+_SECONDS_PER_MINUTE = 60.0
+
 
 class Lakeshore625(MagnetController, MagnetSupply):
     """Driver for a Lakeshore 625 superconducting magnet power supply.
@@ -167,12 +169,16 @@ class Lakeshore625(MagnetController, MagnetSupply):
 
     @property
     def magnet_constant(self) -> float:
-        """Return the instrument field constant in tesla per amp.
+        """Return the cached instrument field constant in tesla per amp.
 
         Returns:
             (float):
                 Magnet constant in tesla per amp.
         """
+        return self._magnet_constant
+
+    def refresh_magnet_constant(self) -> float:
+        """Query and cache the instrument field constant in tesla per amp."""
         try:
             units, constant = _parse_csv(self.query("FLDS?"), expected=2)
             value = float(constant)
@@ -195,7 +201,7 @@ class Lakeshore625(MagnetController, MagnetSupply):
             current, _voltage, rate = _parse_csv(self.query("LIMIT?"), expected=3)
             max_current = float(current)
             ramp_rate_current_s = float(rate)
-            constant = self.magnet_constant
+            constant = self._magnet_constant
             self._limits = MagnetLimits(
                 max_current=max_current,
                 max_field=max_current * constant,
@@ -228,12 +234,14 @@ class Lakeshore625(MagnetController, MagnetSupply):
     @property
     def ramp_rate_current(self) -> float | None:
         """Return the programmed current ramp rate in amps per minute."""
-        return self._query_float("RATEI?")
+        rate = self._query_float("RATE?")
+        return None if rate is None else rate * _SECONDS_PER_MINUTE
 
     @property
     def ramp_rate_field(self) -> float | None:
         """Return the programmed field ramp rate in tesla per minute."""
-        return self._query_float("RATEF?")
+        rate = self._query_float("RATE?")
+        return None if rate is None else rate * self.magnet_constant * _SECONDS_PER_MINUTE
 
     def set_target_current(self, current: float) -> None:
         """Set the target current in amps.
@@ -260,7 +268,7 @@ class Lakeshore625(MagnetController, MagnetSupply):
             rate (float):
                 Ramp rate in amps per minute.
         """
-        self.write(f"RATEI {rate}")
+        self.write(f"RATE {rate / _SECONDS_PER_MINUTE}")
 
     def set_ramp_rate_field(self, rate: float) -> None:
         """Set the field ramp rate in tesla per minute.
@@ -269,7 +277,9 @@ class Lakeshore625(MagnetController, MagnetSupply):
             rate (float):
                 Ramp rate in tesla per minute.
         """
-        self.write(f"RATEF {rate}")
+        if self._magnet_constant <= 0.0:
+            raise ValueError("Magnet constant must be positive to convert field ramp rates.")
+        self.write(f"RATE {rate / self._magnet_constant / _SECONDS_PER_MINUTE}")
 
     def set_magnet_constant(self, tesla_per_amp: float) -> None:
         """Set the software magnet constant used for conversion.
@@ -296,7 +306,7 @@ class Lakeshore625(MagnetController, MagnetSupply):
         else:
             if self._magnet_constant <= 0.0:
                 raise ValueError("Magnet constant must be positive to convert field ramp limits.")
-            max_ramp_rate_current_s = max_ramp_rate_field / self._magnet_constant / 60.0
+            max_ramp_rate_current_s = max_ramp_rate_field / self._magnet_constant / _SECONDS_PER_MINUTE
         compliance_voltage = self._query_float("SETV?")
         self.write(f"LIMIT {limits.max_current},{compliance_voltage},{max_ramp_rate_current_s}")
         self._limits = limits
@@ -339,19 +349,23 @@ class Lakeshore625(MagnetController, MagnetSupply):
 
     def pause_ramp(self) -> None:
         """Pause an active ramp."""
-        self.write("PAUSE")
+        self.write("STOP")
 
     def hold(self) -> None:
         """Hold the present output without changing field."""
-        self.write("PAUSE")
+        self.write("STOP")
 
     def go_to_zero(self) -> None:
         """Ramp the supply output to zero."""
         self.write("ZERO")
 
     def abort_ramp(self) -> None:
-        """Abort ramping immediately."""
-        self.write("ABORT")
+        """Stop ramping immediately.
+
+        The Model 625 command set does not provide a dedicated abort command,
+        so this maps to the supported ``STOP`` action.
+        """
+        self.write("STOP")
 
     def heater_on(self) -> None:
         """Enable the persistent switch heater."""

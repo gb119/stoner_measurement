@@ -175,6 +175,137 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
     return _FakeMC(NullTransport(), OxfordProtocol(), field, current)
 
 
+def _make_cached_constant_driver(field: float = 1.0, current: float = 10.0):
+    """Build a fake driver whose magnet constant is refreshed explicitly."""
+    from stoner_measurement.instruments.magnet_controller import (
+        HeaterState,
+        MagnetController,
+        MagnetLimits,
+        MagnetState,
+        MagnetStatus,
+    )
+    from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
+    from stoner_measurement.instruments.transport import NullTransport
+
+    class _CachedConstantMC(MagnetController):
+        def __init__(self, transport, protocol, init_field, init_current):
+            super().__init__(transport=transport, protocol=protocol)
+            self._field_val = init_field
+            self._current_val = init_current
+            self._magnet_constant_val = 0.1
+            self.refresh_calls = 0
+            self.property_reads = 0
+
+        def get_model(self):
+            return "CachedConstantMagnet"
+
+        def get_firmware_version(self):
+            return "0.0"
+
+        @property
+        def current(self):
+            return self._current_val
+
+        @property
+        def field(self):
+            return self._field_val
+
+        @property
+        def voltage(self):
+            return 0.05
+
+        @property
+        def status(self):
+            return MagnetStatus(
+                state=MagnetState.AT_TARGET,
+                current=self._current_val,
+                field=self._field_val,
+                voltage=0.05,
+                persistent=False,
+                heater_on=True,
+                heater_state=HeaterState.ON,
+                at_target=True,
+                persistent_field=None,
+            )
+
+        @property
+        def magnet_constant(self):
+            self.property_reads += 1
+            return self._magnet_constant_val
+
+        def refresh_magnet_constant(self):
+            self.refresh_calls += 1
+            return self._magnet_constant_val
+
+        @property
+        def limits(self):
+            return MagnetLimits(max_current=100.0, max_field=10.0, max_ramp_rate=1.0)
+
+        @property
+        def heater(self):
+            return True
+
+        @property
+        def target_current(self):
+            return self._current_val
+
+        @property
+        def target_field(self):
+            return self._field_val
+
+        @property
+        def ramp_rate_current(self):
+            return 5.0
+
+        @property
+        def ramp_rate_field(self):
+            return 0.5
+
+        def set_target_current(self, current_):
+            self._current_val = current_
+
+        def set_target_field(self, field_):
+            self._field_val = field_
+
+        def set_ramp_rate_current(self, rate):
+            pass
+
+        def set_ramp_rate_field(self, rate):
+            pass
+
+        def set_magnet_constant(self, tesla_per_amp):
+            self._magnet_constant_val = tesla_per_amp
+
+        def set_limits(self, limits):
+            pass
+
+        def ramp_to_target(self):
+            pass
+
+        def ramp_to_current(self, current_, *, wait=False):
+            pass
+
+        def ramp_to_field(self, field_, *, wait=False):
+            pass
+
+        def pause_ramp(self):
+            pass
+
+        def abort_ramp(self):
+            pass
+
+        def heater_on(self):
+            pass
+
+        def heater_off(self):
+            pass
+
+        def return_to_local(self):
+            pass
+
+    return _CachedConstantMC(NullTransport(), OxfordProtocol(), field, current)
+
+
 def _make_history(
     values: list[float],
     start: datetime | None = None,
@@ -1095,6 +1226,22 @@ class TestEnginePublisher:
         assert limits.max_ramp_rate == pytest.approx(1.0)
         engine.shutdown()
 
+    def test_polling_uses_cached_magnet_constant(self, qapp):
+        engine = MagnetControllerEngine()
+        driver = _make_cached_constant_driver()
+        engine.connect_instrument(driver)
+
+        assert driver.refresh_calls == 1
+        assert driver.property_reads == 0
+
+        state = engine.read_controller_state()
+
+        assert state is not None
+        assert state.magnet_constant == pytest.approx(0.1)
+        assert driver.refresh_calls == 1
+        assert driver.property_reads == 0
+        engine.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # MagnetControlPanel widget smoke tests
@@ -1353,10 +1500,8 @@ class TestMagnetControlPanel:
         panel = MagnetControlPanel()
         monkeypatch.setattr(
             panel._engine,
-            "read_controller_state",
-            lambda: MagnetEngineState(
-                magnet_constant=0.075,
-            ),
+            "refresh_magnet_constant",
+            lambda: 0.075,
         )
         monkeypatch.setattr(
             panel._engine,
@@ -1374,6 +1519,24 @@ class TestMagnetControlPanel:
         assert panel._max_current_spin.value() == pytest.approx(88.0)
         assert panel._max_field_spin.value() == pytest.approx(7.5)
         assert panel._max_ramp_spin.value() == pytest.approx(0.9)
+
+    def test_read_limits_warns_when_refresh_and_limits_unavailable(self, monkeypatch, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        monkeypatch.setattr(panel._engine, "refresh_magnet_constant", lambda: None)
+        monkeypatch.setattr(panel._engine, "get_limits", lambda: None)
+        calls: list[tuple[str, str]] = []
+
+        def _fake_warning(_parent, title, text):
+            calls.append((title, text))
+            return 0
+
+        monkeypatch.setattr("stoner_measurement.ui.magnet_panel.QMessageBox.warning", _fake_warning)
+
+        panel._on_read_limits()
+
+        assert calls == [("Magnet Constants & Limits", "No instrument connected or read failed.")]
 
     def test_panel_restores_cached_config_settings_from_engine(self, qapp):
         from stoner_measurement.instruments.magnet_controller import MagnetLimits

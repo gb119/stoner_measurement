@@ -27,6 +27,7 @@ from qtpy.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -88,12 +89,16 @@ class LogFilterState:
             One of the keys in :data:`_TRAFFIC_FILTER_LABELS`.
         message_pattern (str):
             Optional regular expression that must match the rendered message.
+        context_lines (int):
+            Number of matching source lines to include before and after a
+            regexp match.
     """
 
     min_level: int = logging.DEBUG
     enabled_prefixes: set[str] | None = None
     traffic_mode: str = "all"
     message_pattern: str = ""
+    context_lines: int = 0
 
 
 @dataclass(slots=True)
@@ -313,6 +318,7 @@ class LogViewerWindow(QWidget):
         self._allow_exit_close = False
         self._file_handler: logging.FileHandler | None = None
         self._restoring_settings = False
+        self._display_paused = False
 
         self._output = QPlainTextEdit(self)
         self._output.setReadOnly(True)
@@ -325,6 +331,10 @@ class LogViewerWindow(QWidget):
         self._btn_clear = QPushButton("Clear", self)
         self._btn_clear.setFixedWidth(70)
         self._btn_clear.clicked.connect(self.clear)
+
+        self._btn_pause = QPushButton("Pause", self)
+        self._btn_pause.setCheckable(True)
+        self._btn_pause.toggled.connect(self._toggle_pause)
 
         self._btn_close = QPushButton("Close", self)
         self._btn_close.setFixedWidth(70)
@@ -341,6 +351,12 @@ class LogViewerWindow(QWidget):
         self._message_filter.setPlaceholderText("Message regexp")
         self._message_filter.setClearButtonEnabled(True)
         self._message_filter.textChanged.connect(self._on_filter_changed)
+        self._context_lines = QSpinBox(self)
+        self._context_lines.setRange(0, 99)
+        self._context_lines.setToolTip(
+            "Show this many matching-source lines before and after regexp matches"
+        )
+        self._context_lines.valueChanged.connect(self._on_filter_changed)
 
         self._btn_display_sources = QPushButton(_DISPLAY_SOURCE_BUTTON_TEXT, self)
         self._btn_display_sources.setCheckable(True)
@@ -455,8 +471,8 @@ class LogViewerWindow(QWidget):
         """
         self._on_source_registered(record.name)
         self._records.append(record)
-        if self._record_matches_filter(record, self._filter_state):
-            self._render_record(record)
+        if not self._display_paused:
+            self._append_record_to_display(record)
         if self._file_handler is not None and self._record_matches_filter(record, self._file_log_state):
             self._file_handler.handle(record)
 
@@ -476,8 +492,11 @@ class LogViewerWindow(QWidget):
         filter_row.addWidget(self._traffic_filter)
         filter_row.addWidget(QLabel("Message", self))
         filter_row.addWidget(self._message_filter, 1)
+        filter_row.addWidget(QLabel("Context", self))
+        filter_row.addWidget(self._context_lines)
         filter_row.addWidget(self._btn_display_sources)
         filter_row.addStretch()
+        filter_row.addWidget(self._btn_pause)
         filter_row.addWidget(self._btn_clear)
         filter_row.addWidget(self._btn_close)
 
@@ -548,10 +567,8 @@ class LogViewerWindow(QWidget):
         """Rebuild the visible log list after a display filter change."""
         self._sync_filter_state_from_controls()
         self._validate_regex_field(self._message_filter)
-        self._output.clear()
-        for record in self._records:
-            if self._record_matches_filter(record, self._filter_state):
-                self._render_record(record)
+        if not self._display_paused:
+            self._refresh_display()
         self._save_settings()
 
     def _on_file_config_changed(self, *_args: object) -> None:
@@ -581,6 +598,7 @@ class LogViewerWindow(QWidget):
         self._filter_state.traffic_mode = str(self._traffic_filter.currentData() or "all")
         self._filter_state.enabled_prefixes = self._display_sources.selected_prefixes
         self._filter_state.message_pattern = self._message_filter.text().strip()
+        self._filter_state.context_lines = self._context_lines.value()
 
     def _sync_file_state_from_controls(self) -> None:
         """Copy the file-logging controls into :attr:`_file_log_state`."""
@@ -621,6 +639,14 @@ class LogViewerWindow(QWidget):
         if not self._record_matches_message_pattern(record, getattr(state, "message_pattern", "")):
             return False
         return self._record_matches_traffic_mode(record, getattr(state, "traffic_mode", "all"))
+
+    def _record_matches_display_base_filter(self, record: logging.LogRecord) -> bool:
+        """Return ``True`` when *record* passes display filters except regexp matching."""
+        if record.levelno < self._filter_state.min_level:
+            return False
+        if not self._record_matches_enabled_prefixes(record, self._filter_state.enabled_prefixes):
+            return False
+        return self._record_matches_traffic_mode(record, self._filter_state.traffic_mode)
 
     def _record_matches_traffic_mode(self, record: logging.LogRecord, mode: str) -> bool:
         """Return ``True`` when *record* passes the traffic filter *mode*."""
@@ -681,6 +707,47 @@ class LogViewerWindow(QWidget):
         except (TypeError, KeyError, ValueError):
             message = str(record.msg)
         return f"[{timestamp}] {level_name:8s} {message}"
+
+    def _matching_display_records(self) -> list[logging.LogRecord]:
+        """Return the records that should currently be shown in the viewer."""
+        base_records = [
+            record for record in self._records if self._record_matches_display_base_filter(record)
+        ]
+        pattern = self._filter_state.message_pattern
+        context_lines = self._filter_state.context_lines
+        if not pattern:
+            return base_records
+
+        matching_indices = [
+            index
+            for index, record in enumerate(base_records)
+            if self._record_matches_message_pattern(record, pattern)
+        ]
+        if not matching_indices:
+            return []
+        if context_lines <= 0:
+            return [base_records[index] for index in matching_indices]
+
+        included_indices: set[int] = set()
+        for index in matching_indices:
+            start = max(0, index - context_lines)
+            stop = min(len(base_records), index + context_lines + 1)
+            included_indices.update(range(start, stop))
+        return [base_records[index] for index in range(len(base_records)) if index in included_indices]
+
+    def _append_record_to_display(self, record: logging.LogRecord) -> None:
+        """Update the display after appending *record*."""
+        if self._filter_state.message_pattern or self._filter_state.context_lines > 0:
+            self._refresh_display()
+            return
+        if self._record_matches_display_base_filter(record):
+            self._render_record(record)
+
+    def _refresh_display(self) -> None:
+        """Rebuild the visible log list from the stored records."""
+        self._output.clear()
+        for record in self._matching_display_records():
+            self._render_record(record)
 
     def _render_record(self, record: logging.LogRecord) -> None:
         """Render one log *record* into the output text area."""
@@ -767,6 +834,13 @@ class LogViewerWindow(QWidget):
         path = self._file_log_state.file_path or ""
         self._file_status.setText(f"Logging to: {path}")
 
+    def _toggle_pause(self, paused: bool) -> None:
+        """Pause or resume updates to the visible log output."""
+        self._display_paused = paused
+        self._btn_pause.setText("Resume" if paused else "Pause")
+        if not paused:
+            self._refresh_display()
+
     def _restore_settings(self) -> None:
         """Restore persisted viewer settings."""
         self._restoring_settings = True
@@ -776,6 +850,7 @@ class LogViewerWindow(QWidget):
             self._set_combo_data(self._display_level, settings.value("display_min_level", logging.DEBUG, int))
             self._set_combo_data(self._traffic_filter, settings.value("display_traffic_mode", "all", str))
             self._message_filter.setText(settings.value("display_message_pattern", "", str))
+            self._context_lines.setValue(settings.value("display_context_lines", 0, int))
             self._display_sources.set_selected_prefixes(
                 self._read_prefix_setting(settings, "display_enabled_prefixes")
             )
@@ -806,6 +881,7 @@ class LogViewerWindow(QWidget):
         settings.setValue("display_min_level", int(self._display_level.currentData() or logging.DEBUG))
         settings.setValue("display_traffic_mode", self._traffic_filter.currentData() or "all")
         settings.setValue("display_message_pattern", self._message_filter.text().strip())
+        settings.setValue("display_context_lines", self._context_lines.value())
         settings.setValue(
             "display_enabled_prefixes",
             self._serialise_prefixes(self._display_sources.selected_prefixes),
