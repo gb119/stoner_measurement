@@ -383,7 +383,7 @@ class TestListScanWidget:
         gen = ListScanGenerator(stages=[(1.0, True)])
         widget = ListScanWidget(generator=gen)
         gen.stages = [(1.0, True), (2.0, True)]
-        x_green, y_green = widget._green_scatter.getData()
+        _, y_green = widget._green_scatter.getData()
         assert y_green is not None
         assert np.allclose(y_green, gen.values)
 

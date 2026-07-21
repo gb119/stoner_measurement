@@ -548,11 +548,19 @@ class PressureControllerEngine(QObject):
                     value = float(self._mfc_driver.read_setpoint(channel=channel))
                     flow_setpoints.setdefault(channel, value)
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug(
+                        "Failed to read MFC setpoint for channel %s",
+                        channel,
+                        exc_info=True,
+                    )
                 try:
                     flow_unit = self._mfc_driver.read_unit(channel=channel)
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug(
+                        "Failed to read MFC engineering unit for channel %s",
+                        channel,
+                        exc_info=True,
+                    )
             self._last_flow_unit = flow_unit
             self._last_flow_setpoints = dict(flow_setpoints)
             for channel, value in target_pressures.items():

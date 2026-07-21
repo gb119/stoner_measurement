@@ -13,6 +13,7 @@ tab-delimited text file.  Two save modes are supported:
 
 from __future__ import annotations
 
+import importlib
 import pathlib
 import re
 from dataclasses import dataclass
@@ -140,10 +141,9 @@ class NexusSaveWriter(BaseSaveWriter):
     @classmethod
     def available(cls) -> bool:
         try:
-            import h5py  # noqa: F401
+            return importlib.import_module("h5py") is not None
         except ImportError:
             return False
-        return True
 
     @classmethod
     def unavailable_reason(cls) -> str:

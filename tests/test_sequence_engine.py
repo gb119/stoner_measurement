@@ -394,7 +394,7 @@ class TestCodeGeneration:
         plugin_b = DummyPlugin()
         plugin_b._instance_name = "beta"
         plugins = {"alpha": plugin_a, "beta": plugin_b}
-        code, line_map = engine.generate_sequence_code(
+        _, line_map = engine.generate_sequence_code(
             ["alpha", "beta"], plugins, return_line_map=True
         )
         attributed_plugins = set(line_map.values())

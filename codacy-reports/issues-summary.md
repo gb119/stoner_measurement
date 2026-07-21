@@ -65,7 +65,9 @@ The 10 current `Prospector_pycodestyle` findings split into two groups:
   - `tests/unit/instruments/contracts/test_lockin_amplifier_exports.py:36` — `E305` missing blank lines
   - `src/stoner_measurement/plugins/trace/base.py:594` — `E306` missing blank line before nested definition
 
-For the mixed-case signal names, the current assessment is that they reflect normal Qt/PyQt API style and are better handled as explicit ignores than by renaming public signal attributes.
+For the mixed-case signal names, the current assessment is that they reflect
+normal Qt/PyQt API style and are better handled as explicit ignores than by
+renaming public signal attributes.
 
 ## Top Files By Issue Count
 

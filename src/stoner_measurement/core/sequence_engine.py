@@ -44,13 +44,13 @@ import linecache
 import logging
 import queue
 import re
-import subprocess
 import sys
 import threading
 import time
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from io import TextIOBase
+from subprocess import SubprocessError, run
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
@@ -2019,7 +2019,7 @@ class SequenceEngine(QObject):
                 reports a formatting error.
         """
         try:
-            result = subprocess.run(
+            result = run(  # nosec B603 - invokes the current interpreter with fixed ruff arguments only
                 [
                     sys.executable,
                     "-m",
@@ -2035,7 +2035,7 @@ class SequenceEngine(QObject):
                 encoding="utf-8",
                 timeout=5,
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, SubprocessError):
             logging.getLogger(SEQUENCE_LOGGER_NAME).warning("ruff format fallback failed", exc_info=True)
             return None
         if result.returncode != 0:

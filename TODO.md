@@ -63,5 +63,6 @@ on status bbar right hand side.
 ## Bugs
 
 2. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.
-3. Lakeshore625 is sending a RATEF and RATEI (and query) commands - but only RATE[?] is supported that works with the ramp rate in A/s. 
+3. Lakeshore625 is sending RATEF and RATEI commands, plus query variants, but
+   only RATE[?] is supported and that only works with the ramp rate in A/s.
 

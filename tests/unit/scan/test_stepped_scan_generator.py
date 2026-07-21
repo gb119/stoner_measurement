@@ -461,7 +461,7 @@ class TestSteppedScanWidget:
     def test_plot_values_match_generator(self, qapp):
         gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
         widget = SteppedScanWidget(generator=gen)
-        x_green, y_green = widget._green_scatter.getData()
+        _, y_green = widget._green_scatter.getData()
         assert y_green is not None
         assert np.allclose(y_green, gen.values)
 

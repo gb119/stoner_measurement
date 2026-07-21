@@ -66,7 +66,7 @@ newer Python versions where conda packages may lag.
 ## Qt Tests
 
 The environment includes `PyQt6`, `PySide6`, `qtpy`, and `pytest-qt`. Use the
-conda environment for GUI or widget tests so the correct Qt stack is
+conda environment for graphical user interface (GUI) or widget tests so the correct Qt stack is
 available.
 
 ## Codacy
