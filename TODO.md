@@ -23,6 +23,9 @@ on status bbar right hand side.
 14. Base plugins now support an optional comment field, and the sequence list shows it after the instance/plugin
     label when present. Auto-inserted `If` children for state scan/sweep steps use the comment `meas_flag is set`
     to explain why they were added. DONE
+15. Magnet controller panel should show the actual and target rates.
+16. Lakeshore 625 - driver reads FLDS?/LIMIT? values from instrument for field-current constant and limits. DONE
+17. Lakeshore 625 driver uses OPST? instead of invalid RDGST? and maps the documented operation-status bits. DONE
 
 ## Done, but needs testing
 
@@ -35,10 +38,6 @@ on status bbar right hand side.
 6. Implement temperature stability as a table (Below T, tolerance, toleramce_sensor, time, stability_rate,
     stability_sensor, hold_off_time) - DONE NEEDS TESTING
 7. Related, make stability critiera use specific sensors. DONE NEEDS TESTING
-8. Lakeshore 625 - driver reads FLDS?/LIMIT? values from instrument for field-current constant and limits. DONE
-   NEEDS HARDWARE TESTING
-9. Lakeshore 625 driver uses OPST? instead of invalid RDGST? and maps the documented operation-status bits. DONE
-   NEEDS HARDWARE TESTING
 
 ## Partially done, needs more work
 
@@ -63,5 +62,6 @@ on status bbar right hand side.
 
 ## Bugs
 
-1. Magnet controller panel should show the actual and target rates.
 2. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.
+3. Lakeshore625 is sending a RATEF and RATEI (and query) commands - but only RATE[?] is supported that works with the ramp rate in A/s. 
+
