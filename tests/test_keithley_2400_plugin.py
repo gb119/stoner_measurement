@@ -132,6 +132,7 @@ class TestConfigureComplianceModes:
         plugin.configure()
 
         smu.set_compliance.assert_called_once_with(0.25)
+        smu.enable_output.assert_any_call(True)
 
     def test_configure_current_mode_resistance_compliance_uses_max_abs_current(self):
         """Current sweeps should derive voltage compliance from max |I| × R."""
@@ -202,6 +203,80 @@ class TestConfigureComplianceModes:
         smu.set_filter_count.assert_called_once_with(7, smu.set_filter_count.call_args.args[1])
         smu.set_filter_type.assert_called_once_with(FilterType.MOVING, smu.set_filter_type.call_args.args[1])
         smu.set_median_filter_enabled.assert_called_once_with(True, smu.set_median_filter_enabled.call_args.args[1])
+
+    def test_configure_with_output_disabled_leaves_output_off(self):
+        """The legacy opt-out flag should prevent configure() from enabling output."""
+        plugin = _make_plugin()
+        plugin._enable_output_during_measurement = False
+        smu = MagicMock()
+        plugin._smu = smu
+
+        plugin.configure()
+
+        smu.enable_output.assert_called_once_with(False)
+
+
+class TestExecuteLifecycle:
+    """Sweep execution should support repeated measurements after one configure call."""
+
+    def test_execute_does_not_toggle_output_after_successful_sweep(self):
+        from stoner_measurement.instruments.keithley.k2400 import BufferReading
+
+        plugin = _make_plugin()
+        plugin._sweep_values = (0.1, 0.2)
+        smu = MagicMock()
+        smu.get_buffer_count.return_value = 2
+        smu.read_buffer_records.return_value = (
+            BufferReading(voltage=1.0, current=0.01, resistance=100.0, time=1.0, status=0),
+            BufferReading(voltage=2.0, current=0.02, resistance=100.0, time=2.0, status=0),
+        )
+        plugin._smu = smu
+
+        points = list(plugin.execute({}))
+
+        assert points == [(0.1, 1.0), (0.2, 2.0)]
+        smu.initiate.assert_called_once_with()
+        smu.safe_output_off.assert_not_called()
+
+    def test_execute_can_run_successive_sweeps_without_reconfigure(self):
+        from stoner_measurement.instruments.keithley.k2400 import BufferReading
+
+        plugin = _make_plugin()
+        plugin._sweep_values = (0.1, 0.2)
+        smu = MagicMock()
+        smu.get_buffer_count.return_value = 2
+        smu.read_buffer_records.side_effect = [
+            (
+                BufferReading(voltage=1.0, current=0.01, resistance=100.0, time=1.0, status=0),
+                BufferReading(voltage=2.0, current=0.02, resistance=100.0, time=2.0, status=0),
+            ),
+            (
+                BufferReading(voltage=3.0, current=0.03, resistance=100.0, time=3.0, status=0),
+                BufferReading(voltage=4.0, current=0.04, resistance=100.0, time=4.0, status=0),
+            ),
+        ]
+        plugin._smu = smu
+
+        first = list(plugin.execute({}))
+        second = list(plugin.execute({}))
+
+        assert first == [(0.1, 1.0), (0.2, 2.0)]
+        assert second == [(0.1, 3.0), (0.2, 4.0)]
+        assert smu.initiate.call_count == 2
+        smu.safe_output_off.assert_not_called()
+
+
+class TestDisconnectLifecycle:
+    """Disconnect should own final output shutdown."""
+
+    def test_disconnect_turns_output_off(self):
+        plugin = _make_plugin()
+        smu = MagicMock()
+        plugin._smu = smu
+
+        plugin.disconnect()
+
+        smu.safe_output_off.assert_called_once_with()
 
 
 class TestConfigUi:

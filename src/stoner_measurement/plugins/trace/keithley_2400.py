@@ -120,8 +120,10 @@ class Keithley2400SweepPlugin(TracePlugin):
     and measure the response at each point. The active scan generator defines
     the source values. During configuration the plugin programs those values
     into the instrument as a LIST sweep, sets up the trigger model and trace
-    buffer, then reads the buffered results back as one multicolumn trace after
-    the sweep completes.
+    buffer, and enables the output ready for repeated measurements. Each
+    subsequent measurement starts the programmed sweep and reads the buffered
+    results back as one multicolumn trace after the sweep completes. The
+    output remains on until :meth:`disconnect`.
 
     The plugin returns one trace channel named ``IV`` containing programmed
     source values on the x-axis together with measured current, measured
@@ -487,6 +489,8 @@ class Keithley2400SweepPlugin(TracePlugin):
             else:
                 self._smu.write(":TRIG:TCON:OUTP NONE")
             self._smu.check_error_queue()
+            if self._enable_output_during_measurement:
+                self._smu.enable_output(True)
 
         except Exception:
             self._set_status(TraceStatus.ERROR)
@@ -512,8 +516,6 @@ class Keithley2400SweepPlugin(TracePlugin):
         )
 
         try:
-            if self._enable_output_during_measurement:
-                self._smu.enable_output(True)
             self._smu.initiate()
 
             if self._trigger_routing is TriggerRouting.BUS:
@@ -542,13 +544,6 @@ class Keithley2400SweepPlugin(TracePlugin):
             except _CLEANUP_EXCEPTIONS:
                 pass
             raise
-        finally:
-            if self._enable_output_during_measurement:
-                try:
-                    self._smu.safe_output_off()
-                except _CLEANUP_EXCEPTIONS:
-                    pass
-
         if self._last_buffer_raw is None:
             raise RuntimeError("Sweep completed without buffered readings.")
         current, voltage, _, _, _ = self._records_to_arrays(self._last_buffer_raw, self._sweep_values)
