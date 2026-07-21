@@ -286,6 +286,17 @@ class TestConfiguration:
         plugin._lockins[0].set_output_offset.assert_called_once()
         plugin._lockins[1].set_output_offset.assert_not_called()
 
+    def test_configure_leaves_6221_output_enabled(self, qapp):
+        plugin = _make_plugin()
+        plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
+        plugin._k6221 = MagicMock()
+        plugin._lockins = [MagicMock()]
+        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR")]
+
+        plugin.configure()
+
+        plugin._k6221.enable_output.assert_called_with(True)
+
     def test_configure_sets_source_range_best(self, qapp):
         plugin = _make_plugin()
         plugin._source_range_mode = "BEST"

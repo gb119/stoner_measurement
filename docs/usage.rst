@@ -65,6 +65,27 @@ Plugin types
   :meth:`~stoner_measurement.plugins.trace.TracePlugin.disconnect` to manage
   hardware connections.
 
+Hardware trace-plugin lifecycle
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Hardware-backed trace plugins should follow a consistent runtime lifecycle:
+
+1. ``connect()`` opens the instrument sessions and verifies identity, but does
+   not enable persistent outputs or start a sweep.
+2. ``configure()`` pushes the complete acquisition configuration to the
+   hardware. If the instrument has a persistent source or output, this step
+   should leave it enabled so the plugin is ready to measure immediately.
+3. ``measure()`` or ``execute()`` acquires a fresh trace using the existing
+   configured state. Successful measurements should not disable the output or
+   tear down configuration needed for the next measurement.
+4. ``disconnect()`` returns the hardware to a safe idle state, including
+   disabling any persistent outputs before closing the connections.
+
+This is the expected model for trace plugins such as the Keithley 6221/2182A,
+Keithley 2400, and Keithley 6221/SR830 integrations. It keeps repeated
+measurements fast, makes output ownership predictable, and ensures shutdown
+logic lives in one place.
+
 Trace data structure
 ~~~~~~~~~~~~~~~~~~~~
 

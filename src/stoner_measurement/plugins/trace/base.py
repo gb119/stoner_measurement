@@ -20,6 +20,27 @@ engine:
    trace, returning all ``(channel, x, y)`` points as a list.
 4. :meth:`~TracePlugin.disconnect` — cleanly release all reserved resources.
 
+For hardware-backed trace plugins, the expected lifecycle is slightly more
+specific:
+
+* :meth:`~TracePlugin.connect` should establish transport sessions and confirm
+  that the expected instruments are present, but should avoid enabling outputs
+  or starting sweeps.
+* :meth:`~TracePlugin.configure` should fully program the instrument state
+  needed for acquisition. When the hardware uses a persistent source or output,
+  configuration should leave that output enabled so repeated
+  :meth:`~TracePlugin.measure` calls can reuse the configured state without
+  reconfiguration.
+* :meth:`~TracePlugin.measure` should acquire a fresh trace using the existing
+  configured state. On the success path it should not tear down the output or
+  reset the configuration needed for the next measurement.
+* :meth:`~TracePlugin.disconnect` should be responsible for returning hardware
+  to a safe idle state, including disabling persistent outputs before closing
+  transports.
+
+This convention keeps repeated trace acquisition fast and predictable while
+making shutdown ownership explicit.
+
 Status during these operations is reported via the :attr:`~TracePlugin.status`
 property and the :attr:`~TracePlugin.status_changed` signal using the
 :class:`TraceStatus` enum.

@@ -206,6 +206,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     channel names. When resistance conversion is enabled, additional derived
     channels are produced for non-angular outputs.
 
+    The runtime lifecycle follows a persistent-output model: :meth:`configure`
+    leaves the 6221 output enabled, each :meth:`measure` reuses that configured
+    source state to acquire a fresh scan, and :meth:`disconnect` turns the
+    output off.
+
     Attributes:
         _6221_resource (str):
             VISA resource string for the Keithley 6221 current source.
@@ -483,7 +488,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return transport, lockin
 
     def configure(self) -> None:
-        """Apply the stored 6221 and SR830 settings to the connected hardware."""
+        """Apply the stored 6221 and SR830 settings to the connected hardware.
+
+        On successful completion the 6221 output is left enabled so subsequent
+        measurements can reuse the configured waveform without reconfiguration.
+        The output is disabled in :meth:`disconnect`.
+        """
         if self._k6221 is None or not self._lockins:
             raise RuntimeError("Not connected — call connect() before configure().")
 
@@ -515,6 +525,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     future.result()
 
             self._run_auto_phase()
+            self._k6221.enable_output(True)
         except Exception:
             self._set_status(TraceStatus.ERROR)
             raise
