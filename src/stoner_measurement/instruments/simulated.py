@@ -61,7 +61,10 @@ class SimulatedTemperatureController(TemperatureController):
         loop_numbers=(1, 2),
         has_ramp=True,
         has_pid=True,
-        heater_range_labels={1: ("Off", "Low", "Medium", "High"), 2: ("Off", "Low", "Medium", "High")},
+        heater_range_labels={
+            1: ("Off", "Low", "Medium", "High"),
+            2: ("Off", "Low", "Medium", "High"),
+        },
     )
 
     def __init__(self, transport=None, protocol=None) -> None:
@@ -105,9 +108,7 @@ class SimulatedTemperatureController(TemperatureController):
             self._active_setpoints[loop] = active
 
         control_target = self._active_setpoints[1]
-        self._temperature += (
-            control_target - self._temperature
-        ) * min(dt / 20.0, 1.0)
+        self._temperature += (control_target - self._temperature) * min(dt / 20.0, 1.0)
 
     def get_temperature(self, channel: str) -> float:
         self._update()
@@ -137,10 +138,7 @@ class SimulatedTemperatureController(TemperatureController):
 
     def get_heater_output(self, loop: int) -> float:
         self._update()
-        error = abs(
-            self._active_setpoints[loop]
-            - self.get_temperature(self._inputs[loop])
-        )
+        error = abs(self._active_setpoints[loop] - self.get_temperature(self._inputs[loop]))
         return min(error * 2.0, 100.0)
 
     def set_heater_range(self, loop: int, range_: int) -> None:
@@ -367,7 +365,10 @@ class SimulatedMagnetController(MagnetController):
     def heater_on(self) -> None:
         self._simulate_io_delay()
         persistent_entry_current = self._supply_current_at_persistent_entry or 0.0
-        if self._persistent_field is not None and abs(self._current - persistent_entry_current) > 1e-6:
+        if (
+            self._persistent_field is not None
+            and abs(self._current - persistent_entry_current) > 1e-6
+        ):
             raise RuntimeError(
                 "Cannot turn heater on in persistent mode until the supply "
                 "current matches the trapped persistent current."
@@ -433,7 +434,7 @@ class SimulatedMotorController(MotorController):
 
         max_velocity = max(self._velocity, 1e-9)
         accel = max(self._acceleration, 1e-9)
-        stopping_distance = (self._current_velocity ** 2) / (2.0 * accel)
+        stopping_distance = (self._current_velocity**2) / (2.0 * accel)
 
         if stopping_distance >= distance:
             self._current_velocity = max(0.0, self._current_velocity - accel * dt)
@@ -527,6 +528,7 @@ class SimulatedPressureGaugeController(PressureGaugeController):
         analogue_only=False,
         max_channels=3,
         max_relays=2,
+        interlocks=True,
     )
 
     def __init__(self, transport=None, protocol=None) -> None:
@@ -536,9 +538,18 @@ class SimulatedPressureGaugeController(PressureGaugeController):
         )
         self._pressures: dict[int, float] = {1: 1.0e-3, 2: 5.0e-4, 3: 2.0e-5}
         self._gauge_enabled: dict[int, bool] = {1: True, 2: True, 3: True}
+        self._interlocks: dict[str, bool] = {
+            "Vacuum": True,
+            "Cooling water": True,
+            "Access door": True,
+        }
         self._setpoints: dict[int, PressureSetpoint] = {
-            1: PressureSetpoint(source_channel=1, lower=1.0e-4, upper=1.0e-2, unit=PressureUnit.MBAR),
-            2: PressureSetpoint(source_channel=2, lower=1.0e-5, upper=1.0e-3, unit=PressureUnit.MBAR),
+            1: PressureSetpoint(
+                source_channel=1, lower=1.0e-4, upper=1.0e-2, unit=PressureUnit.MBAR
+            ),
+            2: PressureSetpoint(
+                source_channel=2, lower=1.0e-5, upper=1.0e-3, unit=PressureUnit.MBAR
+            ),
         }
 
     def identify(self) -> str:
@@ -555,7 +566,9 @@ class SimulatedPressureGaugeController(PressureGaugeController):
                 status=PressureStatus.SWITCHED_OFF,
             )
         value = self._pressures.get(channel, 1.0e-3)
-        return PressureReading(channel=channel, value=value, unit=PressureUnit.MBAR, status=PressureStatus.OK)
+        return PressureReading(
+            channel=channel, value=value, unit=PressureUnit.MBAR, status=PressureStatus.OK
+        )
 
     def read_all_pressures(self) -> dict[int, PressureReading]:
         """Return simulated pressure readings for all channels."""
@@ -589,6 +602,16 @@ class SimulatedPressureGaugeController(PressureGaugeController):
 
     def set_relay(self, index: int, enabled: bool) -> None:
         """No-op: relay control is not simulated."""
+
+    def read_interlocks(self) -> dict[str, bool]:
+        """Return a copy of the simulated interlock states."""
+        return dict(self._interlocks)
+
+    def set_simulated_interlock(self, name: str, satisfied: bool) -> None:
+        """Set one named simulated interlock to satisfied or tripped."""
+        if name not in self._interlocks:
+            raise KeyError(f"Unknown simulated interlock: {name!r}")
+        self._interlocks[name] = bool(satisfied)
 
     def get_capabilities(self) -> PressureControllerCapabilities:
         """Return the static capability descriptor."""

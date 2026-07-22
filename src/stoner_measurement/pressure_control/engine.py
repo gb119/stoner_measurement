@@ -84,6 +84,8 @@ class PressureControllerEngine(QObject):
         self._last_flow_setpoints: dict[int, float] = {}
         self._last_target_pressures: dict[int, float] = {}
         self._last_flow_unit: int | str | None = None
+        self._pressure_error = False
+        self._mfc_error = False
         self._apply_configuration(load_pressure_controller_config())
 
     @classmethod
@@ -101,21 +103,35 @@ class PressureControllerEngine(QObject):
         """The current operational status of the engine."""
         return self._status
 
+    @property
+    def pressure_has_error(self) -> bool:
+        """Whether the pressure-controller connection or latest read failed."""
+        return self._pressure_error
+
+    @property
+    def mfc_has_error(self) -> bool:
+        """Whether the MFC connection or latest read failed."""
+        return self._mfc_error
+
     def connect_instrument(self, driver: PressureGaugeController) -> None:
         """Connect to a pressure controller driver and start polling."""
         with self._engine_lock:
             self._ensure_running()
             self._timer.stop()
             if self._driver is not None:
-                self._disconnect_driver(self._driver, log_context="before replacing pressure controller")
+                self._disconnect_driver(
+                    self._driver, log_context="before replacing pressure controller"
+                )
             try:
                 if not driver.is_connected:
                     driver.connect()
             except Exception:
                 self._driver = None
+                self._pressure_error = True
                 self._set_status(self._derive_status())
                 raise
             self._driver = driver
+            self._pressure_error = False
             self._connected_driver_name = type(driver).__name__
             self._latest_state = replace(
                 self._latest_state,
@@ -124,7 +140,9 @@ class PressureControllerEngine(QObject):
             )
             self._set_status(self._derive_status())
             self._timer.start()
-        logger.info("PressureControllerEngine: connected pressure controller %s", type(driver).__name__)
+        logger.info(
+            "PressureControllerEngine: connected pressure controller %s", type(driver).__name__
+        )
         self.publisher.connection_changed.emit()
 
     def connect_mfc_instrument(self, driver: MassFlowController) -> None:
@@ -133,15 +151,19 @@ class PressureControllerEngine(QObject):
             self._ensure_running()
             self._timer.stop()
             if self._mfc_driver is not None:
-                self._disconnect_driver(self._mfc_driver, log_context="before replacing mass flow controller")
+                self._disconnect_driver(
+                    self._mfc_driver, log_context="before replacing mass flow controller"
+                )
             try:
                 if not driver.is_connected:
                     driver.connect()
             except Exception:
                 self._mfc_driver = None
+                self._mfc_error = True
                 self._set_status(self._derive_status())
                 raise
             self._mfc_driver = driver
+            self._mfc_error = False
             self._connected_mfc_driver_name = type(driver).__name__
             self._latest_state = replace(
                 self._latest_state,
@@ -150,21 +172,31 @@ class PressureControllerEngine(QObject):
             )
             self._set_status(self._derive_status())
             self._timer.start()
-        logger.info("PressureControllerEngine: connected mass flow controller %s", type(driver).__name__)
+        logger.info(
+            "PressureControllerEngine: connected mass flow controller %s", type(driver).__name__
+        )
         self.publisher.connection_changed.emit()
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
         """Instantiate and connect a pressure controller from identifiers."""
-        driver_cls = self._resolve_pressure_driver_class(driver_name)
-        capabilities = driver_cls._CAPABILITIES  # noqa: SLF001
-        if capabilities.analogue_only:
-            raise ValueError(
-                f"Driver {driver_name!r} requires external analogue I/O callbacks and cannot be built from the panel."
-            )
-        transport = self._build_transport(transport_name, address)
-        protocol = self._build_pressure_protocol(driver_name)
-        driver = driver_cls(transport=transport, protocol=protocol)
-        self.connect_instrument(driver)
+        try:
+            driver_cls = self._resolve_pressure_driver_class(driver_name)
+            capabilities = driver_cls._CAPABILITIES  # noqa: SLF001
+            if capabilities.analogue_only:
+                message = (
+                    f"Driver {driver_name!r} requires external analogue I/O callbacks "
+                    "and cannot be built from the panel."
+                )
+                raise ValueError(message)
+            transport = self._build_transport(transport_name, address)
+            protocol = self._build_pressure_protocol(driver_name)
+            driver = driver_cls(transport=transport, protocol=protocol)
+            self.connect_instrument(driver)
+        except Exception:
+            self._pressure_error = True
+            self._set_status(self._derive_status())
+            self.publisher.connection_changed.emit()
+            raise
         self._connected_driver_name = driver_name
         self._connected_transport_name = transport_name
         self._connected_address = address
@@ -172,11 +204,17 @@ class PressureControllerEngine(QObject):
 
     def connect_mfc_driver(self, driver_name: str, transport_name: str, address: str) -> None:
         """Instantiate and connect an MFC from identifiers."""
-        driver_cls = self._resolve_mfc_driver_class(driver_name)
-        transport = self._build_transport(transport_name, address)
-        protocol = self._build_mfc_protocol(driver_name)
-        driver = driver_cls(transport=transport, protocol=protocol)
-        self.connect_mfc_instrument(driver)
+        try:
+            driver_cls = self._resolve_mfc_driver_class(driver_name)
+            transport = self._build_transport(transport_name, address)
+            protocol = self._build_mfc_protocol(driver_name)
+            driver = driver_cls(transport=transport, protocol=protocol)
+            self.connect_mfc_instrument(driver)
+        except Exception:
+            self._mfc_error = True
+            self._set_status(self._derive_status())
+            self.publisher.connection_changed.emit()
+            raise
         self._connected_mfc_driver_name = driver_name
         self._connected_mfc_transport_name = transport_name
         self._connected_mfc_address = address
@@ -198,7 +236,9 @@ class PressureControllerEngine(QObject):
         driver_name = self.preferred_mfc_driver_name.strip()
         if not driver_name:
             raise RuntimeError("No persisted mass-flow-controller driver is configured.")
-        self.connect_mfc_driver(driver_name, self.preferred_mfc_transport_name, self.preferred_mfc_address)
+        self.connect_mfc_driver(
+            driver_name, self.preferred_mfc_transport_name, self.preferred_mfc_address
+        )
 
     def disconnect_instrument(self) -> None:
         """Disconnect the pressure controller while leaving any MFC connected."""
@@ -211,6 +251,7 @@ class PressureControllerEngine(QObject):
             self._connected_transport_name = None
             self._connected_address = None
             self._gauge_channel_enabled.clear()
+            self._pressure_error = False
             self._set_status(self._derive_status())
             self._latest_state = replace(
                 self._latest_state,
@@ -237,6 +278,7 @@ class PressureControllerEngine(QObject):
             self._last_flow_setpoints.clear()
             self._last_target_pressures.clear()
             self._last_flow_unit = None
+            self._mfc_error = False
             self._set_status(self._derive_status())
             self._latest_state = replace(
                 self._latest_state,
@@ -381,7 +423,9 @@ class PressureControllerEngine(QObject):
         driver = self._require_mfc_driver()
         caps = driver.get_capabilities()
         if not caps.supports_pressure_control:
-            raise RuntimeError(f"{type(driver).__name__} does not support pressure-control setpoints.")
+            raise RuntimeError(
+                f"{type(driver).__name__} does not support pressure-control setpoints."
+            )
         driver.set_setpoint(float(value), channel=channel)
         self._last_target_pressures[channel] = float(value)
 
@@ -402,7 +446,7 @@ class PressureControllerEngine(QObject):
                 logger.exception("PressureControllerEngine: read-state error")
                 self._set_status(PressureEngineStatus.ERROR)
                 return None
-            self._set_status(PressureEngineStatus.POLLING)
+            self._set_status(self._derive_status(polling=True))
             state.engine_status = self._status
             self._latest_state = state
             if state.reading is not None:
@@ -441,6 +485,8 @@ class PressureControllerEngine(QObject):
             self._last_flow_setpoints.clear()
             self._last_target_pressures.clear()
             self._last_flow_unit = None
+            self._pressure_error = False
+            self._mfc_error = False
             self._set_status(PressureEngineStatus.STOPPED)
             self._latest_state = PressureEngineState(engine_status=self._status)
         if PressureControllerEngine._singleton is self:
@@ -498,7 +544,10 @@ class PressureControllerEngine(QObject):
         raise ValueError(f"Unsupported transport type: {transport_name!r}")
 
     def _build_pressure_protocol(self, driver_name: str) -> BaseProtocol:
-        if "leyboldcenter" in driver_name.replace("_", "").lower() or "center" in driver_name.lower():
+        if (
+            "leyboldcenter" in driver_name.replace("_", "").lower()
+            or "center" in driver_name.lower()
+        ):
             return LeyboldCenterProtocol()
         return ScpiProtocol()
 
@@ -528,43 +577,57 @@ class PressureControllerEngine(QObject):
         flow_setpoints: dict[int, float] = dict(self._last_flow_setpoints)
         target_pressures: dict[int, float] = dict(self._last_target_pressures)
         gauge_channel_enabled: dict[int, bool | None] = dict(self._gauge_channel_enabled)
+        interlocks: dict[str, bool | str | int | None] = {}
         pressure_unit: PressureUnit | str | None = None
         flow_unit: int | str | None = self._last_flow_unit
 
         if self._driver is not None:
-            readings = self._driver.read_all_pressures()
-            pressure_unit = next((reading.unit for reading in readings.values()), None)
-            for channel, reading in readings.items():
-                if reading.status == PressureStatus.SWITCHED_OFF:
-                    gauge_channel_enabled[channel] = False
-                else:
-                    gauge_channel_enabled.setdefault(channel, True)
+            try:
+                readings = self._driver.read_all_pressures()
+                pressure_unit = next((reading.unit for reading in readings.values()), None)
+                for channel, reading in readings.items():
+                    if reading.status == PressureStatus.SWITCHED_OFF:
+                        gauge_channel_enabled[channel] = False
+                    else:
+                        gauge_channel_enabled.setdefault(channel, True)
+                capabilities = self._driver.get_capabilities()
+                if capabilities.interlocks:
+                    interlocks = self._driver.read_interlocks()
+                self._pressure_error = False
+            except Exception:
+                self._pressure_error = True
+                logger.exception("PressureControllerEngine: pressure-controller read error")
 
         if self._mfc_driver is not None:
-            caps = self._mfc_driver.get_capabilities()
-            for channel in range(1, caps.channel_count + 1):
-                flow_actual[channel] = float(self._mfc_driver.read_actual_value(channel=channel))
-                try:
-                    value = float(self._mfc_driver.read_setpoint(channel=channel))
+            try:
+                caps = self._mfc_driver.get_capabilities()
+                for channel in range(1, caps.channel_count + 1):
+                    flow_actual[channel] = float(
+                        self._mfc_driver.read_actual_value(channel=channel)
+                    )
+                    try:
+                        value = float(self._mfc_driver.read_setpoint(channel=channel))
+                        flow_setpoints.setdefault(channel, value)
+                    except Exception:
+                        logger.debug(
+                            "Failed to read MFC setpoint for channel %s", channel, exc_info=True
+                        )
+                    try:
+                        flow_unit = self._mfc_driver.read_unit(channel=channel)
+                    except Exception:
+                        logger.debug(
+                            "Failed to read MFC engineering unit for channel %s",
+                            channel,
+                            exc_info=True,
+                        )
+                self._last_flow_unit = flow_unit
+                self._last_flow_setpoints = dict(flow_setpoints)
+                for channel, value in target_pressures.items():
                     flow_setpoints.setdefault(channel, value)
-                except Exception:
-                    logging.getLogger(__name__).debug(
-                        "Failed to read MFC setpoint for channel %s",
-                        channel,
-                        exc_info=True,
-                    )
-                try:
-                    flow_unit = self._mfc_driver.read_unit(channel=channel)
-                except Exception:
-                    logging.getLogger(__name__).debug(
-                        "Failed to read MFC engineering unit for channel %s",
-                        channel,
-                        exc_info=True,
-                    )
-            self._last_flow_unit = flow_unit
-            self._last_flow_setpoints = dict(flow_setpoints)
-            for channel, value in target_pressures.items():
-                flow_setpoints.setdefault(channel, value)
+                self._mfc_error = False
+            except Exception:
+                self._mfc_error = True
+                logger.exception("PressureControllerEngine: mass-flow-controller read error")
 
         reading = PressureEngineReading(
             timestamp=now,
@@ -582,6 +645,7 @@ class PressureControllerEngine(QObject):
             flow_setpoints=flow_setpoints,
             target_pressures=target_pressures,
             gauge_channel_enabled=gauge_channel_enabled,
+            interlocks=interlocks,
             engine_status=PressureEngineStatus.POLLING,
             driver_name=self._connected_driver_name,
             mfc_driver_name=self._connected_mfc_driver_name,
@@ -589,12 +653,14 @@ class PressureControllerEngine(QObject):
             flow_unit=flow_unit,
         )
 
-    def _derive_status(self) -> PressureEngineStatus:
+    def _derive_status(self, *, polling: bool = False) -> PressureEngineStatus:
         if self._status == PressureEngineStatus.STOPPED:
             return PressureEngineStatus.STOPPED
+        if self._pressure_error or self._mfc_error:
+            return PressureEngineStatus.ERROR
         if self._driver is None and self._mfc_driver is None:
             return PressureEngineStatus.DISCONNECTED
-        return PressureEngineStatus.CONNECTED
+        return PressureEngineStatus.POLLING if polling else PressureEngineStatus.CONNECTED
 
     def _set_status(self, status: PressureEngineStatus) -> None:
         if status == self._status:

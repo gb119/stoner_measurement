@@ -42,6 +42,7 @@ class PressureEngineState:
     flow_setpoints: dict[int, float] = field(default_factory=dict)
     target_pressures: dict[int, float] = field(default_factory=dict)
     gauge_channel_enabled: dict[int, bool | None] = field(default_factory=dict)
+    interlocks: dict[str, bool | str | int | None] = field(default_factory=dict)
     engine_status: PressureEngineStatus = field(default=PressureEngineStatus.DISCONNECTED)
     driver_name: str | None = None
     mfc_driver_name: str | None = None

@@ -20,6 +20,8 @@ from qtpy.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -110,6 +112,7 @@ class PressureControlPanel(QWidget):
         self._chart_history: dict[str, list[tuple[float, float]]] = {}
         self._chart_duration_min = _CHART_DURATIONS[1][0]
         self._mfc_row_widgets: dict[int, dict[str, QWidget]] = {}
+        self._legend_items: dict[str, QTreeWidgetItem] = {}
 
         self._build_ui()
         self._load_connection_preferences()
@@ -161,6 +164,12 @@ class PressureControlPanel(QWidget):
         layout.setSpacing(8)
         layout.addWidget(self._build_pressure_connection_group())
         layout.addWidget(self._build_mfc_connection_group())
+        save_row = QHBoxLayout()
+        self._btn_save_configuration = QPushButton("Save Settings to YAML")
+        self._btn_save_configuration.clicked.connect(self._on_save_configuration)
+        save_row.addWidget(self._btn_save_configuration)
+        save_row.addStretch()
+        layout.addLayout(save_row)
         layout.addStretch()
         return widget
 
@@ -202,11 +211,8 @@ class PressureControlPanel(QWidget):
         self._btn_disconnect = QPushButton("Disconnect Gauge")
         self._btn_disconnect.setEnabled(False)
         self._btn_disconnect.clicked.connect(self._on_disconnect)
-        self._btn_save_configuration = QPushButton("Save Settings to YAML")
-        self._btn_save_configuration.clicked.connect(self._on_save_configuration)
         button_row.addWidget(self._btn_connect)
         button_row.addWidget(self._btn_disconnect)
-        button_row.addWidget(self._btn_save_configuration)
         button_row.addStretch()
         layout.addLayout(button_row)
         return group
@@ -358,16 +364,36 @@ class PressureControlPanel(QWidget):
         self._gauge_table = QTableWidget(0, 3, gauge_group)
         self._gauge_table.setHorizontalHeaderLabels(["Channel", "Enabled", "Action"])
         gauge_layout.addWidget(self._gauge_table)
-        layout.addWidget(gauge_group)
+
+        interlock_group = QGroupBox("Interlocks")
+        interlock_layout = QVBoxLayout(interlock_group)
+        self._interlock_table = QTableWidget(0, 2, interlock_group)
+        self._interlock_table.setHorizontalHeaderLabels(["Interlock", "State"])
+        interlock_layout.addWidget(self._interlock_table)
+        interlock_group.hide()
+        self._interlock_group = interlock_group
+
+        self._monitor_aux_layout = QHBoxLayout()
+        self._monitor_aux_layout.addWidget(gauge_group, stretch=1)
+        self._monitor_aux_layout.addWidget(interlock_group, stretch=1)
+        layout.addLayout(self._monitor_aux_layout)
 
         mfc_group = QGroupBox("Mass Flow Controller")
         mfc_layout = QVBoxLayout(mfc_group)
         self._mfc_table = QTableWidget(0, 7, mfc_group)
         self._mfc_table.setHorizontalHeaderLabels(
-            ["Channel", "Actual Flow", "Set Flow", "Apply Flow", "Target Pressure", "Apply Pressure", "Unit"]
+            [
+                "Channel",
+                "Actual Flow",
+                "Set Flow",
+                "Apply Flow",
+                "Target Pressure",
+                "Apply Pressure",
+                "Unit",
+            ]
         )
         mfc_layout.addWidget(self._mfc_table)
-        layout.addWidget(mfc_group)
+        layout.addWidget(mfc_group, stretch=1)
 
         button_row = QHBoxLayout()
         self._btn_read_state = QPushButton("Read Now")
@@ -375,7 +401,6 @@ class PressureControlPanel(QWidget):
         button_row.addWidget(self._btn_read_state)
         button_row.addStretch()
         layout.addLayout(button_row)
-        layout.addStretch()
         return widget
 
     def _build_chart_tab(self) -> QWidget:
@@ -394,10 +419,18 @@ class PressureControlPanel(QWidget):
         clear_btn.clicked.connect(self._on_clear_chart)
         controls.addWidget(clear_btn)
         layout.addLayout(controls)
+        content = QHBoxLayout()
         self._chart_widget = PlotWidget(show_axis_controls=False, show_trace_table=False)
         self._chart_widget.set_default_axis_labels("Time (s ago)", "Pressure")
+        self._chart_widget.set_axis_log_scale("left", True)
         self._chart_widget.add_y_axis("flow", "Flow")
-        layout.addWidget(self._chart_widget)
+        content.addWidget(self._chart_widget, stretch=4)
+        self._legend_tree = QTreeWidget()
+        self._legend_tree.setHeaderLabels(["Trace", "Value"])
+        self._legend_tree.setMinimumWidth(220)
+        self._legend_tree.itemChanged.connect(self._on_legend_item_changed)
+        content.addWidget(self._legend_tree, stretch=1)
+        layout.addLayout(content)
         return widget
 
     def _build_status_bar(self) -> QWidget:
@@ -427,18 +460,24 @@ class PressureControlPanel(QWidget):
     @pyqtSlot(PressureEngineStatus)
     def _on_engine_status_changed(self, status: PressureEngineStatus) -> None:
         colour = _STATUS_COLOURS.get(status, "#888888")
-        connected = status in (PressureEngineStatus.CONNECTED, PressureEngineStatus.POLLING)
         self._status_label.setText(f"{_colour_dot(colour)} Engine: {status.value}")
-        self._btn_connect.setEnabled(self._engine.connected_driver is None and status != PressureEngineStatus.STOPPED)
-        self._btn_disconnect.setEnabled(self._engine.connected_driver is not None and connected)
-        self._btn_mfc_connect.setEnabled(self._engine.connected_mfc_driver is None and status != PressureEngineStatus.STOPPED)
-        self._btn_mfc_disconnect.setEnabled(self._engine.connected_mfc_driver is not None and connected)
+        self._btn_connect.setEnabled(
+            self._engine.connected_driver is None and status != PressureEngineStatus.STOPPED
+        )
+        self._btn_disconnect.setEnabled(self._engine.connected_driver is not None)
+        self._btn_mfc_connect.setEnabled(
+            self._engine.connected_mfc_driver is None and status != PressureEngineStatus.STOPPED
+        )
+        self._btn_mfc_disconnect.setEnabled(self._engine.connected_mfc_driver is not None)
+        self._refresh_connection_indicators()
 
     @pyqtSlot(PressureEngineState)
     def _on_state_updated(self, state: PressureEngineState) -> None:
         self._driver_label.setText(f"Gauge: {state.driver_name or '—'}")
         self._mfc_driver_label.setText(f"MFC: {state.mfc_driver_name or '—'}")
-        self._updated_label.setText(f"Last updated: {format_local_time(datetime.now(tz=UTC).astimezone())}")
+        self._updated_label.setText(
+            f"Last updated: {format_local_time(datetime.now(tz=UTC).astimezone())}"
+        )
         for channel, (_, pressure_label, status_label) in self._channel_rows.items():
             reading = state.readings.get(channel)
             if reading is None:
@@ -449,14 +488,20 @@ class PressureControlPanel(QWidget):
             unit = reading.unit.value if hasattr(reading.unit, "value") else str(reading.unit)
             pressure_label.setText("—" if reading.value is None else f"{reading.value:.4E} {unit}")
             status = reading.status
-            status_text = status.value.replace("_", " ") if hasattr(status, "value") else str(status)
+            status_text = (
+                status.value.replace("_", " ") if hasattr(status, "value") else str(status)
+            )
             status_label.setText(status_text)
             bg = _PRESSURE_STATUS_COLOURS.get(status, "#757575")
-            status_label.setStyleSheet(f"color: white; background: {bg}; padding: 2px 6px; border-radius: 3px;")
+            status_label.setStyleSheet(
+                f"color: white; background: {bg}; padding: 2px 6px; border-radius: 3px;"
+            )
         self._refresh_gauge_table(state)
+        self._refresh_interlock_table(state)
         self._refresh_mfc_table(state)
         self._append_chart_state(state)
         self._refresh_chart()
+        self._refresh_connection_indicators()
 
     @pyqtSlot()
     def _on_connection_changed(self) -> None:
@@ -471,7 +516,9 @@ class PressureControlPanel(QWidget):
             if capabilities is not None and getattr(capabilities, "analogue_only", False):
                 continue
             self._driver_combo.addItem(driver_cls.display_name(), driver_cls)
-            self._driver_combo.setItemData(self._driver_combo.count() - 1, name, Qt.ItemDataRole.UserRole + 1)
+            self._driver_combo.setItemData(
+                self._driver_combo.count() - 1, name, Qt.ItemDataRole.UserRole + 1
+            )
         if self._driver_combo.count() == 0:
             self._driver_combo.addItem("(no drivers found)", None)
 
@@ -481,7 +528,9 @@ class PressureControlPanel(QWidget):
         for name in sorted(mfc_drivers):
             driver_cls = mfc_drivers[name]
             self._mfc_driver_combo.addItem(driver_cls.display_name(), driver_cls)
-            self._mfc_driver_combo.setItemData(self._mfc_driver_combo.count() - 1, name, Qt.ItemDataRole.UserRole + 1)
+            self._mfc_driver_combo.setItemData(
+                self._mfc_driver_combo.count() - 1, name, Qt.ItemDataRole.UserRole + 1
+            )
         if self._mfc_driver_combo.count() == 0:
             self._mfc_driver_combo.addItem("(no drivers found)", None)
 
@@ -491,13 +540,17 @@ class PressureControlPanel(QWidget):
 
     def _load_mfc_preferences(self) -> None:
         if self._engine.preferred_mfc_driver_name:
-            index = self._mfc_driver_combo.findData(self._engine.preferred_mfc_driver_name, Qt.ItemDataRole.UserRole + 1)
+            index = self._mfc_driver_combo.findData(
+                self._engine.preferred_mfc_driver_name, Qt.ItemDataRole.UserRole + 1
+            )
             if index >= 0:
                 self._mfc_driver_combo.setCurrentIndex(index)
         index = self._mfc_transport_combo.findText(self._engine.preferred_mfc_transport_name)
         if index >= 0:
             self._mfc_transport_combo.setCurrentIndex(index)
-        self._apply_mfc_address(self._engine.preferred_mfc_transport_name, self._engine.preferred_mfc_address)
+        self._apply_mfc_address(
+            self._engine.preferred_mfc_transport_name, self._engine.preferred_mfc_address
+        )
 
     @pyqtSlot(int)
     def _on_transport_changed(self, index: int) -> None:
@@ -512,7 +565,12 @@ class PressureControlPanel(QWidget):
             self._mfc_null_form_widget,
         ):
             widget.hide()
-        (self._mfc_serial_form_widget, self._mfc_gpib_form_widget, self._mfc_ethernet_form_widget, self._mfc_null_form_widget)[index].show()
+        (
+            self._mfc_serial_form_widget,
+            self._mfc_gpib_form_widget,
+            self._mfc_ethernet_form_widget,
+            self._mfc_null_form_widget,
+        )[index].show()
 
     @pyqtSlot()
     def _on_connect(self) -> None:
@@ -532,7 +590,9 @@ class PressureControlPanel(QWidget):
         except Exception as exc:
             logger.exception("Failed to connect pressure driver")
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
-            QMessageBox.critical(self, "Pressure Controller", f"Failed to connect pressure controller:\n{exc}")
+            QMessageBox.critical(
+                self, "Pressure Controller", f"Failed to connect pressure controller:\n{exc}"
+            )
             return
         self._sync_existing_connection_state()
 
@@ -540,6 +600,8 @@ class PressureControlPanel(QWidget):
     def _on_connect_mfc(self) -> None:
         if self._mfc_driver_combo.currentData() is None:
             return
+        transport_index = self._mfc_transport_combo.currentIndex()
+        self._set_mfc_address_widget_status(transport_index, VisaResourceStatus.CONNECTING)
         try:
             transport_name, address = self._selected_mfc_transport()
             driver_name = self._mfc_driver_combo.currentData(Qt.ItemDataRole.UserRole + 1)
@@ -551,7 +613,10 @@ class PressureControlPanel(QWidget):
             self._engine.connect_mfc_driver(resolved_driver_name, transport_name, address)
         except Exception as exc:
             logger.exception("Failed to connect MFC driver")
-            QMessageBox.critical(self, "Mass Flow Controller", f"Failed to connect mass flow controller:\n{exc}")
+            self._set_mfc_address_widget_status(transport_index, VisaResourceStatus.ERROR)
+            QMessageBox.critical(
+                self, "Mass Flow Controller", f"Failed to connect mass flow controller:\n{exc}"
+            )
             return
         self._sync_existing_connection_state()
 
@@ -575,12 +640,58 @@ class PressureControlPanel(QWidget):
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
 
     def _apply_mfc_disconnected_ui_state(self) -> None:
-        self._mfc_serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
-        self._mfc_gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
+        for index in range(4):
+            self._set_mfc_address_widget_status(index, VisaResourceStatus.DISCONNECTED)
+
+    def _set_mfc_address_widget_status(
+        self, transport_index: int, status: VisaResourceStatus
+    ) -> None:
+        if transport_index == 0:
+            self._mfc_serial_port_combo.set_status(status)
+        elif transport_index == 1:
+            self._mfc_gpib_resource_combo.set_status(status)
+        else:
+            widget = (
+                self._mfc_ethernet_form_widget
+                if transport_index == 2
+                else self._mfc_null_form_widget
+            )
+            backgrounds = {
+                VisaResourceStatus.DISCONNECTED: "",
+                VisaResourceStatus.CONNECTING: "#fff3cd",
+                VisaResourceStatus.CONNECTED: "#90ee90",
+                VisaResourceStatus.ERROR: "#f8d7da",
+            }
+            background = backgrounds[status]
+            widget.setStyleSheet(
+                f"QWidget {{ background-color: {background}; }}" if background else ""
+            )
+
+    def _refresh_connection_indicators(self) -> None:
+        if self._engine.connected_driver is not None or self._engine.pressure_has_error:
+            pressure_status = (
+                VisaResourceStatus.ERROR
+                if self._engine.pressure_has_error
+                else VisaResourceStatus.CONNECTED
+            )
+            self._set_address_widget_status(self._transport_combo.currentIndex(), pressure_status)
+        if self._engine.connected_mfc_driver is not None or self._engine.mfc_has_error:
+            mfc_status = (
+                VisaResourceStatus.ERROR
+                if self._engine.mfc_has_error
+                else VisaResourceStatus.CONNECTED
+            )
+            self._set_mfc_address_widget_status(
+                self._mfc_transport_combo.currentIndex(), mfc_status
+            )
 
     def _sync_existing_connection_state(self) -> None:
         if self._engine.connected_driver is None:
             self._apply_disconnected_ui_state()
+            if self._engine.pressure_has_error:
+                self._set_address_widget_status(
+                    self._transport_combo.currentIndex(), VisaResourceStatus.ERROR
+                )
         else:
             transport_name = self._engine.connected_transport_name or "Null (test)"
             address = self._engine.connected_address or ""
@@ -588,18 +699,30 @@ class PressureControlPanel(QWidget):
             if transport_index >= 0:
                 self._transport_combo.setCurrentIndex(transport_index)
                 restore_connection_address(self, transport_name, address)
-                self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTED)
+                status = (
+                    VisaResourceStatus.ERROR
+                    if self._engine.pressure_has_error
+                    else VisaResourceStatus.CONNECTED
+                )
+                self._set_address_widget_status(transport_index, status)
         if self._engine.connected_mfc_driver is None:
             self._apply_mfc_disconnected_ui_state()
+            if self._engine.mfc_has_error:
+                self._set_mfc_address_widget_status(
+                    self._mfc_transport_combo.currentIndex(), VisaResourceStatus.ERROR
+                )
         else:
             self._apply_mfc_address(
                 self._engine.connected_mfc_transport_name or "Null (test)",
                 self._engine.connected_mfc_address or "",
             )
-            if self._engine.connected_mfc_transport_name == "Serial":
-                self._mfc_serial_port_combo.set_status(VisaResourceStatus.CONNECTED)
-            if self._engine.connected_mfc_transport_name == "GPIB":
-                self._mfc_gpib_resource_combo.set_status(VisaResourceStatus.CONNECTED)
+            transport_index = self._mfc_transport_combo.currentIndex()
+            status = (
+                VisaResourceStatus.ERROR
+                if self._engine.mfc_has_error
+                else VisaResourceStatus.CONNECTED
+            )
+            self._set_mfc_address_widget_status(transport_index, status)
         self._on_engine_status_changed(self._engine.status)
         state = self._engine.read_controller_state()
         if state is not None:
@@ -608,14 +731,23 @@ class PressureControlPanel(QWidget):
     def _selected_mfc_transport(self) -> tuple[str, str]:
         transport_name = self._mfc_transport_combo.currentText()
         if transport_name == "Serial":
-            port = self._mfc_serial_port_combo.current_resource() or self._mfc_serial_port_combo.currentText()
+            port = (
+                self._mfc_serial_port_combo.current_resource()
+                or self._mfc_serial_port_combo.currentText()
+            )
             baud = int(self._mfc_serial_baud_combo.currentData() or 9600)
             return transport_name, f"port={port};baud={baud}"
         if transport_name == "GPIB":
-            resource = self._mfc_gpib_resource_combo.current_resource() or self._mfc_gpib_resource_combo.currentText()
+            resource = (
+                self._mfc_gpib_resource_combo.current_resource()
+                or self._mfc_gpib_resource_combo.currentText()
+            )
             return transport_name, resource
         if transport_name == "Ethernet":
-            return transport_name, f"{self._mfc_eth_host_edit.text().strip()}:{self._mfc_eth_port_spin.value()}"
+            return (
+                transport_name,
+                f"{self._mfc_eth_host_edit.text().strip()}:{self._mfc_eth_port_spin.value()}",
+            )
         return transport_name, ""
 
     def _apply_mfc_address(self, transport_name: str, address: str) -> None:
@@ -651,17 +783,38 @@ class PressureControlPanel(QWidget):
             text = "On" if enabled else "Off" if enabled is not None else "Unknown"
             self._gauge_table.setItem(row, 1, QTableWidgetItem(text))
             button = QPushButton("Disable" if enabled is not False else "Enable")
-            button.clicked.connect(lambda _checked=False, ch=channel, en=(enabled is False): self._set_gauge_channel(ch, en))
+            button.clicked.connect(
+                lambda _checked=False, ch=channel, en=enabled is False: self._set_gauge_channel(
+                    ch, en
+                )
+            )
             self._gauge_table.setCellWidget(row, 2, button)
 
+    def _refresh_interlock_table(self, state: PressureEngineState) -> None:
+        self._interlock_group.setVisible(bool(state.interlocks))
+        self._interlock_table.setRowCount(len(state.interlocks))
+        for row, (name, value) in enumerate(sorted(state.interlocks.items())):
+            if isinstance(value, bool):
+                state_text = "OK" if value else "Tripped"
+            elif value is None:
+                state_text = "Unknown"
+            else:
+                state_text = str(value)
+            self._interlock_table.setItem(row, 0, QTableWidgetItem(str(name)))
+            self._interlock_table.setItem(row, 1, QTableWidgetItem(state_text))
+
     def _refresh_mfc_table(self, state: PressureEngineState) -> None:
-        channels = sorted(set(state.flow_actual) | set(state.flow_setpoints) | set(state.target_pressures))
+        channels = sorted(
+            set(state.flow_actual) | set(state.flow_setpoints) | set(state.target_pressures)
+        )
         existing = set(self._mfc_row_widgets)
         self._mfc_table.setRowCount(len(channels))
         unit_text = "" if state.flow_unit is None else str(state.flow_unit)
         for row, channel in enumerate(channels):
             self._mfc_table.setItem(row, 0, QTableWidgetItem(str(channel)))
-            self._mfc_table.setItem(row, 1, QTableWidgetItem(self._format_float(state.flow_actual.get(channel))))
+            self._mfc_table.setItem(
+                row, 1, QTableWidgetItem(self._format_float(state.flow_actual.get(channel)))
+            )
             widgets = self._mfc_row_widgets.setdefault(channel, {})
             flow_edit = widgets.get("flow_edit")
             if not isinstance(flow_edit, QLineEdit):
@@ -684,7 +837,9 @@ class PressureControlPanel(QWidget):
             target_button = widgets.get("target_button")
             if not isinstance(target_button, QPushButton):
                 target_button = QPushButton("Set Pressure")
-                target_button.clicked.connect(lambda _checked=False, ch=channel: self._apply_target_pressure(ch))
+                target_button.clicked.connect(
+                    lambda _checked=False, ch=channel: self._apply_target_pressure(ch)
+                )
                 widgets["target_button"] = target_button
             self._mfc_table.setCellWidget(row, 5, target_button)
             self._mfc_table.setItem(row, 6, QTableWidgetItem(unit_text))
@@ -697,11 +852,18 @@ class PressureControlPanel(QWidget):
         timestamp = state.reading.timestamp.timestamp()
         for channel, reading in state.readings.items():
             if reading.value is not None:
-                self._chart_history.setdefault(f"pressure_{channel}", []).append((timestamp, float(reading.value)))
+                trace = f"Pressure {channel}"
+                self._chart_history.setdefault(trace, []).append((timestamp, float(reading.value)))
+                unit = reading.unit.value if hasattr(reading.unit, "value") else str(reading.unit)
+                self._update_legend_value(trace, f"{reading.value:.4E} {unit}")
         for channel, value in state.flow_setpoints.items():
-            self._chart_history.setdefault(f"flow_setpoint_{channel}", []).append((timestamp, float(value)))
+            trace = f"Flow setpoint {channel}"
+            self._chart_history.setdefault(trace, []).append((timestamp, float(value)))
+            self._update_legend_value(trace, self._format_flow_value(value, state.flow_unit))
         for channel, value in state.flow_actual.items():
-            self._chart_history.setdefault(f"flow_actual_{channel}", []).append((timestamp, float(value)))
+            trace = f"Flow actual {channel}"
+            self._chart_history.setdefault(trace, []).append((timestamp, float(value)))
+            self._update_legend_value(trace, self._format_flow_value(value, state.flow_unit))
 
     def _refresh_chart(self) -> None:
         now = datetime.now(tz=UTC).timestamp()
@@ -712,15 +874,44 @@ class PressureControlPanel(QWidget):
             self._chart_history[trace] = trimmed
             for ts, value in trimmed:
                 self._chart_widget.append_point(trace, ts - now, value)
-            if trace.startswith("flow_"):
+            if trace.startswith("Flow "):
                 self._chart_widget.assign_trace_axes(trace, y_axis="flow")
+            item = self._legend_items.get(trace)
+            if item is not None:
+                self._chart_widget.set_trace_visible(
+                    trace, item.checkState(0) == Qt.CheckState.Checked
+                )
+
+    def _update_legend_value(self, trace: str, value: str) -> None:
+        item = self._legend_items.get(trace)
+        if item is None:
+            item = QTreeWidgetItem([trace, value])
+            item.setData(0, Qt.ItemDataRole.UserRole, trace)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Checked)
+            self._legend_tree.addTopLevelItem(item)
+            self._legend_items[trace] = item
+        else:
+            item.setText(1, value)
+
+    def _on_legend_item_changed(self, item: QTreeWidgetItem, _column: int) -> None:
+        trace = item.data(0, Qt.ItemDataRole.UserRole)
+        if trace:
+            self._chart_widget.set_trace_visible(trace, item.checkState(0) == Qt.CheckState.Checked)
+
+    @staticmethod
+    def _format_flow_value(value: float, unit: int | str | None) -> str:
+        suffix = "" if unit is None else f" {unit}"
+        return f"{value:.4g}{suffix}"
 
     def _set_gauge_channel(self, channel: int, enabled: bool) -> None:
         try:
             self._engine.set_gauge_channel_enabled(channel, enabled)
             self._engine.read_controller_state()
         except Exception as exc:
-            QMessageBox.warning(self, "Gauge Channel", f"Failed to update gauge channel {channel}:\n{exc}")
+            QMessageBox.warning(
+                self, "Gauge Channel", f"Failed to update gauge channel {channel}:\n{exc}"
+            )
 
     def _apply_flow(self, channel: int) -> None:
         widget = self._mfc_row_widgets.get(channel, {}).get("flow_edit")
@@ -730,7 +921,9 @@ class PressureControlPanel(QWidget):
             self._engine.set_flow_rate(channel, float(widget.text()))
             self._engine.read_controller_state()
         except Exception as exc:
-            QMessageBox.warning(self, "Set Flow", f"Failed to set flow on channel {channel}:\n{exc}")
+            QMessageBox.warning(
+                self, "Set Flow", f"Failed to set flow on channel {channel}:\n{exc}"
+            )
 
     def _apply_target_pressure(self, channel: int) -> None:
         widget = self._mfc_row_widgets.get(channel, {}).get("target_edit")
@@ -740,7 +933,11 @@ class PressureControlPanel(QWidget):
             self._engine.set_target_pressure(channel, float(widget.text()))
             self._engine.read_controller_state()
         except Exception as exc:
-            QMessageBox.warning(self, "Set Target Pressure", f"Failed to set target pressure on channel {channel}:\n{exc}")
+            QMessageBox.warning(
+                self,
+                "Set Target Pressure",
+                f"Failed to set target pressure on channel {channel}:\n{exc}",
+            )
 
     @pyqtSlot()
     def _on_read_state(self) -> None:
@@ -752,18 +949,24 @@ class PressureControlPanel(QWidget):
     def _on_save_configuration(self) -> None:
         try:
             driver_name = self._driver_combo.currentData(Qt.ItemDataRole.UserRole + 1)
-            self._engine.preferred_driver_name = str(driver_name or self._driver_combo.currentText())
+            self._engine.preferred_driver_name = str(
+                driver_name or self._driver_combo.currentText()
+            )
             transport_name, address = selected_transport(self, self._transport_combo.currentIndex())
             self._engine.preferred_transport_name = transport_name
             self._engine.preferred_address = address
             mfc_driver_name = self._mfc_driver_combo.currentData(Qt.ItemDataRole.UserRole + 1)
-            self._engine.preferred_mfc_driver_name = str(mfc_driver_name or self._mfc_driver_combo.currentText())
+            self._engine.preferred_mfc_driver_name = str(
+                mfc_driver_name or self._mfc_driver_combo.currentText()
+            )
             mfc_transport_name, mfc_address = self._selected_mfc_transport()
             self._engine.preferred_mfc_transport_name = mfc_transport_name
             self._engine.preferred_mfc_address = mfc_address
             path = self._engine.save_configuration()
         except Exception as exc:
-            QMessageBox.critical(self, "Save Configuration", f"Failed to save configuration:\n{exc}")
+            QMessageBox.critical(
+                self, "Save Configuration", f"Failed to save configuration:\n{exc}"
+            )
             return
         QMessageBox.information(self, "Save Configuration", f"Configuration saved to:\n{path}")
 
@@ -776,6 +979,8 @@ class PressureControlPanel(QWidget):
     def _on_clear_chart(self) -> None:
         self._chart_history.clear()
         self._chart_widget.clear_all()
+        self._legend_tree.clear()
+        self._legend_items.clear()
 
     @staticmethod
     def _format_float(value: float | None) -> str:

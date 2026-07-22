@@ -83,6 +83,7 @@ class PressureControllerCapabilities:
     analogue_only: bool
     max_channels: int
     max_relays: int
+    interlocks: bool = False
 
 
 class PressureGaugeController(BaseInstrument):
@@ -135,6 +136,10 @@ class PressureGaugeController(BaseInstrument):
     @abstractmethod
     def set_relay(self, index: int, enabled: bool) -> None:
         """Enable or disable one relay output when supported."""
+
+    def read_interlocks(self) -> dict[str, bool | str | int | None]:
+        """Return current named interlock states when supported."""
+        return {}
 
     @abstractmethod
     def get_capabilities(self) -> PressureControllerCapabilities:

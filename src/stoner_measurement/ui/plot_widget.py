@@ -11,7 +11,7 @@ import logging
 import threading
 from collections.abc import Callable, Sequence
 from itertools import cycle
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, cast
 
 import numpy as np
 import pyqtgraph as pg
@@ -38,6 +38,14 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.ui.axis_mappings import (
+    AXIS_SCALES,
+    AxisScale,
+    MappedAxisItem,
+    inverse_values,
+    transform_values,
+    validate_scale,
+)
 from stoner_measurement.ui.theme import (
     apply_pyqtgraph_dark_theme,
     button_swatch_stylesheet,
@@ -50,7 +58,10 @@ logger = logging.getLogger(__name__)
 # Plot grid opacity used by pyqtgraph AxisItem.setGrid().
 _PLOT_GRID_ALPHA = 0.15
 
-_AXIS_LAYOUT_ROW = {"top": 0, "bottom": 4}
+# PlotItem reserves row 0 for its title and row 1 for top axes.  Placing an
+# axis in row 0 overlays its labels on the ViewBox instead of reducing the
+# data area to the axis spine.
+_AXIS_LAYOUT_ROW = {"top": 1, "bottom": 4}
 _LEFT_AXIS_BASE_COLUMN = 0
 _RIGHT_AXIS_BASE_COLUMN = 3
 
@@ -141,6 +152,8 @@ class _AxisDialogEntry(TypedDict):
     name: str
     label: str
     log_scale: bool
+    scale: AxisScale
+    scale_parameter: float
     grid: bool
     side: str
     visible: bool
@@ -157,6 +170,8 @@ class _AxisNameBuckets(TypedDict):
 class _AxisDialogChanges(TypedDict):
     labels: dict[str, str]
     log_scale: dict[str, bool]
+    scale: dict[str, AxisScale]
+    scale_parameter: dict[str, float]
     grid: dict[str, bool]
     side: dict[str, str]
     removed: _AxisNameBuckets
@@ -247,18 +262,35 @@ class AxesConfigDialog(QDialog):
         help_label.setText(help_text)
         root.addWidget(tabs)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(help_label)
         root.addWidget(buttons)
 
-    def _build_axis_tab(self, axis_kind: Literal["x", "y"], axes: list[_AxisDialogEntry]) -> QWidget:
+    def _build_axis_tab(
+        self, axis_kind: Literal["x", "y"], axes: list[_AxisDialogEntry]
+    ) -> QWidget:
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
         table = QTableWidget(tab)
-        table.setColumnCount(9)
-        table.setHorizontalHeaderLabels(["Show", "Name", "Title", "Position", "Scale", "Grid lines", "Min", "Max", "Remove"])
+        table.setColumnCount(10)
+        table.setHorizontalHeaderLabels(
+            [
+                "Show",
+                "Name",
+                "Title",
+                "Position",
+                "Scale",
+                "Parameter",
+                "Grid lines",
+                "Min",
+                "Max",
+                "Remove",
+            ]
+        )
         table.setShowGrid(True)
         table.setGridStyle(Qt.PenStyle.SolidLine)
         table.verticalHeader().setVisible(False)
@@ -274,6 +306,7 @@ class AxesConfigDialog(QDialog):
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents)
         table.setStyleSheet(
             "QTableWidget { "
             f"border: 1px solid {colour('border')}; "
@@ -290,7 +323,9 @@ class AxesConfigDialog(QDialog):
         name_input = QLineEdit(tab)
         label_input = QLineEdit(tab)
         add_button = QPushButton("Add Axis", tab)
-        add_button.clicked.connect(lambda _checked=False, kind=axis_kind: self._add_axis_row_from_inputs(kind))
+        add_button.clicked.connect(
+            lambda _checked=False, kind=axis_kind: self._add_axis_row_from_inputs(kind)
+        )
         add_layout.addRow("Name", name_input)
         add_layout.addRow("Title", label_input)
         add_layout.addRow(add_button)
@@ -303,7 +338,8 @@ class AxesConfigDialog(QDialog):
                 axis_kind=axis_kind,
                 axis_name=str(axis["name"]),
                 axis_label=str(axis["label"]),
-                log_scale=bool(axis["log_scale"]),
+                scale=axis.get("scale", "log" if bool(axis.get("log_scale", False)) else "linear"),
+                scale_parameter=float(axis.get("scale_parameter", 1.0)),
                 side=str(axis["side"]),
                 visible=bool(axis["visible"]),
                 grid_enabled=bool(axis["grid"]),
@@ -337,7 +373,8 @@ class AxesConfigDialog(QDialog):
             axis_kind=axis_kind,
             axis_name=axis_name,
             axis_label=axis_label,
-            log_scale=False,
+            scale="linear",
+            scale_parameter=1.0,
             side="top" if axis_kind == "x" else "right",
             visible=True,
             grid_enabled=False,
@@ -354,7 +391,8 @@ class AxesConfigDialog(QDialog):
         axis_kind: Literal["x", "y"],
         axis_name: str,
         axis_label: str,
-        log_scale: bool,
+        scale: AxisScale,
+        scale_parameter: float,
         side: str,
         visible: bool,
         grid_enabled: bool,
@@ -383,32 +421,44 @@ class AxesConfigDialog(QDialog):
         table.setCellWidget(row, 3, side_combo)
 
         scale_combo = QComboBox(table)
-        scale_combo.addItems(["linear", "log"])
-        scale_combo.setCurrentText("log" if log_scale else "linear")
+        scale_combo.addItems(list(AXIS_SCALES))
+        scale_combo.setCurrentText(scale)
         table.setCellWidget(row, 4, scale_combo)
+
+        parameter_edit = QLineEdit(f"{scale_parameter:g}", table)
+        parameter_edit.setToolTip("Linear threshold for symlog; scale factor for asinh")
+        parameter_edit.setEnabled(scale in {"symlog", "asinh"})
+        scale_combo.currentTextChanged.connect(
+            lambda value, widget=parameter_edit: widget.setEnabled(value in {"symlog", "asinh"})
+        )
+        table.setCellWidget(row, 5, parameter_edit)
 
         grid_checkbox = QCheckBox(table)
         grid_checkbox.setChecked(grid_enabled)
-        table.setCellWidget(row, 5, grid_checkbox)
+        table.setCellWidget(row, 6, grid_checkbox)
 
         minimum_edit = QLineEdit("" if minimum is None else f"{minimum:g}", table)
         minimum_edit.setPlaceholderText("auto")
         minimum_edit.editingFinished.connect(
             lambda kind=axis_kind, row_index=row: self._emit_range_change(kind, row_index)
         )
-        table.setCellWidget(row, 6, minimum_edit)
+        table.setCellWidget(row, 7, minimum_edit)
 
         maximum_edit = QLineEdit("" if maximum is None else f"{maximum:g}", table)
         maximum_edit.setPlaceholderText("auto")
-        maximum_edit.editingFinished.connect(lambda kind=axis_kind, row_index=row: self._emit_range_change(kind, row_index))
-        table.setCellWidget(row, 7, maximum_edit)
+        maximum_edit.editingFinished.connect(
+            lambda kind=axis_kind, row_index=row: self._emit_range_change(kind, row_index)
+        )
+        table.setCellWidget(row, 8, maximum_edit)
 
         remove_button = QPushButton("Remove", table)
         remove_button.setEnabled(removable)
         remove_button.clicked.connect(
-            lambda _checked=False, kind=axis_kind, row_index=row: self._mark_axis_removed(kind, row_index)
+            lambda _checked=False, kind=axis_kind, row_index=row: self._mark_axis_removed(
+                kind, row_index
+            )
         )
-        table.setCellWidget(row, 8, remove_button)
+        table.setCellWidget(row, 9, remove_button)
 
     def _mark_axis_removed(self, axis_kind: Literal["x", "y"], row: int) -> None:
         table = self._tables[axis_kind]
@@ -429,8 +479,8 @@ class AxesConfigDialog(QDialog):
         if item is None:
             return
         axis_name = item.text()
-        minimum_widget = table.cellWidget(row, 6)
-        maximum_widget = table.cellWidget(row, 7)
+        minimum_widget = table.cellWidget(row, 7)
+        maximum_widget = table.cellWidget(row, 8)
         minimum = None
         maximum = None
         if isinstance(minimum_widget, QLineEdit):
@@ -461,6 +511,8 @@ class AxesConfigDialog(QDialog):
         """
         labels: dict[str, str] = {}
         log_scale: dict[str, bool] = {}
+        scales: dict[str, AxisScale] = {}
+        scale_parameters: dict[str, float] = {}
         grid: dict[str, bool] = {}
         side: dict[str, str] = {}
         ranges: dict[str, tuple[float | None, float | None]] = {}
@@ -478,15 +530,24 @@ class AxesConfigDialog(QDialog):
                 label_widget = table.cellWidget(row, 2)
                 side_widget = table.cellWidget(row, 3)
                 scale_widget = table.cellWidget(row, 4)
-                grid_widget = table.cellWidget(row, 5)
-                minimum_widget = table.cellWidget(row, 6)
-                maximum_widget = table.cellWidget(row, 7)
+                parameter_widget = table.cellWidget(row, 5)
+                grid_widget = table.cellWidget(row, 6)
+                minimum_widget = table.cellWidget(row, 7)
+                maximum_widget = table.cellWidget(row, 8)
                 if isinstance(label_widget, QLineEdit):
                     labels[axis_name] = label_widget.text().strip() or axis_name
                 if isinstance(side_widget, QComboBox):
                     side[axis_name] = side_widget.currentText()
                 if isinstance(scale_widget, QComboBox):
-                    log_scale[axis_name] = scale_widget.currentText() == "log"
+                    scale_name = scale_widget.currentText()
+                    if scale_name in AXIS_SCALES:
+                        scales[axis_name] = scale_name  # type: ignore[assignment]
+                        log_scale[axis_name] = scale_name == "log"
+                if isinstance(parameter_widget, QLineEdit):
+                    try:
+                        scale_parameters[axis_name] = float(parameter_widget.text())
+                    except ValueError:
+                        scale_parameters[axis_name] = 1.0
                 if isinstance(grid_widget, QCheckBox):
                     grid[axis_name] = grid_widget.isChecked()
                 minimum = None
@@ -511,6 +572,8 @@ class AxesConfigDialog(QDialog):
         return {
             "labels": labels,
             "log_scale": log_scale,
+            "scale": scales,
+            "scale_parameter": scale_parameters,
             "grid": grid,
             "side": side,
             "removed": {
@@ -569,6 +632,7 @@ class PlotWidget(QWidget):
         self._traces: dict[str, pg.PlotDataItem] = {}
         # Per-trace error-bar item (optional)
         self._error_bar_items: dict[str, pg.ErrorBarItem] = {}
+        self._trace_error_data: dict[str, tuple[np.ndarray | None, np.ndarray | None]] = {}
         # Per-trace axis assignment: name → (x_axis_name, y_axis_name)
         self._trace_axes: dict[str, tuple[str, str]] = {}
         # Per-trace style: name → {"colour": str, "line": str, "point": str}
@@ -601,6 +665,8 @@ class PlotWidget(QWidget):
         # Axis offset ordering on each side.
         self._axis_order: dict[tuple[str, str], list[str]] = {}
         self._axis_log_scale: dict[str, bool] = {}
+        self._axis_scale: dict[str, AxisScale] = {}
+        self._axis_scale_parameter: dict[str, float] = {}
         self._axis_grid: dict[str, bool] = {}
         self._axis_manual_range: dict[str, tuple[float | None, float | None]] = {}
         self._axis_auto_range: dict[str, tuple[bool, bool]] = {}
@@ -653,7 +719,8 @@ class PlotWidget(QWidget):
 
     def _setup_pg_widget(self, layout: QVBoxLayout) -> None:
         """Create the pyqtgraph PlotWidget, register default axes, and add to layout."""
-        self._pg_widget = pg.PlotWidget(viewBox=_CoupledViewBox(self))
+        axis_items = {side: MappedAxisItem(side) for side in ("left", "right", "top", "bottom")}
+        self._pg_widget = pg.PlotWidget(viewBox=_CoupledViewBox(self), axisItems=axis_items)
         self._pg_widget.setObjectName("pgPlotWidget")
         self._pg_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._pg_widget.setBackground(colour("plot_background"))
@@ -666,6 +733,8 @@ class PlotWidget(QWidget):
         plot_item: pg.PlotItem = self._pg_widget.getPlotItem()
         plot_item.setMenuEnabled(False)
         self._plot_item = plot_item
+        self._default_top_axis = plot_item.getAxis("top")
+        self._default_top_axis_removed = False
         self._view_boxes["left"] = plot_item.vb
         self._view_boxes["bottom"] = plot_item.vb
         self._pair_view_boxes[("bottom", "left")] = plot_item.vb
@@ -679,6 +748,10 @@ class PlotWidget(QWidget):
         self._axis_visible["bottom"] = True
         self._axis_log_scale["bottom"] = False
         self._axis_log_scale["left"] = False
+        self._axis_scale["bottom"] = "linear"
+        self._axis_scale["left"] = "linear"
+        self._axis_scale_parameter["bottom"] = 1.0
+        self._axis_scale_parameter["left"] = 1.0
         self._axis_auto_range["bottom"] = (True, True)
         self._axis_auto_range["left"] = (True, True)
         self._axis_order[("y", "left")] = ["left"]
@@ -779,7 +852,9 @@ class PlotWidget(QWidget):
         """Mark affected axes as manual when the user pans/zooms."""
         if not changed:
             return
-        source_view_box = _view_box if isinstance(_view_box, pg.ViewBox) else self._active_mouse_view_box
+        source_view_box = (
+            _view_box if isinstance(_view_box, pg.ViewBox) else self._active_mouse_view_box
+        )
         x_changed = bool(changed[0])
         y_changed = bool(changed[1])
         if self._mouse_axis_coupling_active and not self._updating_mouse_axis_coupling:
@@ -814,7 +889,11 @@ class PlotWidget(QWidget):
 
     def _end_mouse_axis_coupling(self, view_box: pg.ViewBox | None = None) -> None:
         """Disable temporary coupling when the active mouse interaction ends."""
-        if view_box is not None and self._active_mouse_view_box is not None and view_box is not self._active_mouse_view_box:
+        if (
+            view_box is not None
+            and self._active_mouse_view_box is not None
+            and view_box is not self._active_mouse_view_box
+        ):
             return
         self._mouse_axis_coupling_active = False
         self._active_mouse_view_box = None
@@ -864,7 +943,10 @@ class PlotWidget(QWidget):
 
     def _on_scene_mouse_dragged(self, ev) -> None:
         """Ignore drag events for context-menu purposes."""
-        if hasattr(ev, "buttonDownScenePos") and ev.buttonDownScenePos(Qt.MouseButton.RightButton) is not None:
+        if (
+            hasattr(ev, "buttonDownScenePos")
+            and ev.buttonDownScenePos(Qt.MouseButton.RightButton) is not None
+        ):
             self._right_dragged = True
 
     def _on_scene_mouse_clicked(self, ev) -> None:
@@ -884,11 +966,15 @@ class PlotWidget(QWidget):
 
     def _x_axis_names(self) -> list[str]:
         """Return sorted names of registered x-axes."""
-        return sorted(name for name, orientation in self._axis_orientations.items() if orientation == "x")
+        return sorted(
+            name for name, orientation in self._axis_orientations.items() if orientation == "x"
+        )
 
     def _y_axis_names(self) -> list[str]:
         """Return sorted names of registered y-axes."""
-        return sorted(name for name, orientation in self._axis_orientations.items() if orientation == "y")
+        return sorted(
+            name for name, orientation in self._axis_orientations.items() if orientation == "y"
+        )
 
     def _refresh_trace_and_axis_controls(self) -> None:
         """Refresh table rows after trace or axis changes."""
@@ -1036,7 +1122,9 @@ class PlotWidget(QWidget):
             return
         hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
         button.setText(hex_colour)
-        button.setStyleSheet(button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour)))
+        button.setStyleSheet(
+            button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour))
+        )
 
     def _on_trace_colour_button_clicked(self) -> None:
         """Open a colour picker dialog and apply the chosen trace colour."""
@@ -1065,7 +1153,9 @@ class PlotWidget(QWidget):
         sender = self.sender()
         if sender is None:
             return
-        self.set_trace_style(trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), line_style=line_style)
+        self.set_trace_style(
+            trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), line_style=line_style
+        )
 
     def _on_trace_line_width_changed(self, line_width: float) -> None:
         """Update trace line width from a table control."""
@@ -1074,7 +1164,9 @@ class PlotWidget(QWidget):
         sender = self.sender()
         if sender is None:
             return
-        self.set_trace_style(trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), line_width=line_width)
+        self.set_trace_style(
+            trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), line_width=line_width
+        )
 
     def _on_trace_point_style_changed(self, index: int) -> None:
         """Update trace point style from a table control."""
@@ -1084,7 +1176,9 @@ class PlotWidget(QWidget):
         if sender is None:
             return
         point_style = str(sender.itemData(index))
-        self.set_trace_style(trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), point_style=point_style)
+        self.set_trace_style(
+            trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), point_style=point_style
+        )
 
     def _on_trace_point_size_changed(self, point_size: float) -> None:
         """Update trace point size from a table control."""
@@ -1093,7 +1187,9 @@ class PlotWidget(QWidget):
         sender = self.sender()
         if sender is None:
             return
-        self.set_trace_style(trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), point_size=point_size)
+        self.set_trace_style(
+            trace_name=str(sender.property(_TRACE_NAME_PROPERTY)), point_size=point_size
+        )
 
     def _on_trace_axis_changed(self, axis_name: str) -> None:
         """Update trace axis assignment from a table control."""
@@ -1122,6 +1218,8 @@ class PlotWidget(QWidget):
                     "name": name,
                     "label": axis.labelText or name,
                     "log_scale": self._axis_log_scale.get(name, False),
+                    "scale": self._axis_scale.get(name, "linear"),
+                    "scale_parameter": self._axis_scale_parameter.get(name, 1.0),
                     "side": self._axis_sides.get(
                         name,
                         (
@@ -1164,6 +1262,11 @@ class PlotWidget(QWidget):
         changes = dialog.axis_changes()
         labels = changes["labels"]
         log_scale = changes["log_scale"]
+        scales = changes.get(
+            "scale",
+            {name: "log" if enabled else "linear" for name, enabled in log_scale.items()},
+        )
+        scale_parameters = changes.get("scale_parameter", {})
         grid = changes["grid"]
         ranges = changes["ranges"]
         previous_manual = dict(self._axis_manual_range)
@@ -1179,19 +1282,20 @@ class PlotWidget(QWidget):
         for axis_name, side in sides.items():
             if axis_name in self._axis_items:
                 self.set_axis_side(axis_name, side)
-        for axis_name, enabled in log_scale.items():
+        for axis_name, scale in scales.items():
             if axis_name in self._axis_items:
-                self.set_axis_log_scale(axis_name, enabled)
+                self.set_axis_scale(axis_name, scale, scale_parameters.get(axis_name, 1.0))
         for axis_name, enabled in grid.items():
             if axis_name in self._axis_items:
                 self.set_axis_grid(axis_name, enabled)
         for axis_name, (minimum, maximum) in ranges.items():
             if axis_name in self._axis_items:
                 previous_min_auto, previous_max_auto = previous_auto.get(axis_name, (True, True))
-                previous_minimum, previous_maximum = previous_manual.get(axis_name, self._axis_range(axis_name))
-                if (
-                    minimum == (None if previous_min_auto else previous_minimum)
-                    and maximum == (None if previous_max_auto else previous_maximum)
+                previous_minimum, previous_maximum = previous_manual.get(
+                    axis_name, self._axis_range(axis_name)
+                )
+                if minimum == (None if previous_min_auto else previous_minimum) and maximum == (
+                    None if previous_max_auto else previous_maximum
                 ):
                     if previous_min_auto and previous_max_auto:
                         continue
@@ -1202,21 +1306,51 @@ class PlotWidget(QWidget):
             if axis_name in self._axis_items:
                 self.remove_axis(axis_name)
 
-        visible_x = {name for name in labels if name not in removed_x and sides.get(name) in {"top", "bottom"}}
-        visible_y = {name for name in labels if name not in removed_y and sides.get(name) in {"left", "right"}}
+        visible_x = {
+            name
+            for name in labels
+            if name not in removed_x and sides.get(name) in {"top", "bottom"}
+        }
+        visible_y = {
+            name
+            for name in labels
+            if name not in removed_y and sides.get(name) in {"left", "right"}
+        }
         added_x_axes = sorted(name for name in visible_x if name not in existing_x)
         added_y_axes = sorted(name for name in visible_y if name not in existing_y)
         for axis_name in added_x_axes:
             axis_label = labels.get(axis_name, axis_name)
-            self.add_x_axis(axis_name, axis_label, position=sides.get(axis_name, "top"))
-            self.set_axis_log_scale(axis_name, log_scale.get(axis_name, False))
+            position = sides.get(axis_name, "top")
+            if position not in {"top", "bottom"}:
+                position = "top"
+            self.add_x_axis(
+                axis_name,
+                axis_label,
+                position=cast(Literal["bottom", "top"], position),
+            )
+            self.set_axis_scale(
+                axis_name,
+                scales.get(axis_name, "linear"),
+                scale_parameters.get(axis_name, 1.0),
+            )
             self.set_axis_grid(axis_name, grid.get(axis_name, False))
             minimum, maximum = ranges.get(axis_name, (None, None))
             self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
         for axis_name in added_y_axes:
             axis_label = labels.get(axis_name, axis_name)
-            self.add_y_axis(axis_name, axis_label, side=sides.get(axis_name, "right"))
-            self.set_axis_log_scale(axis_name, log_scale.get(axis_name, False))
+            side = sides.get(axis_name, "right")
+            if side not in {"left", "right"}:
+                side = "right"
+            self.add_y_axis(
+                axis_name,
+                axis_label,
+                side=cast(Literal["left", "right"], side),
+            )
+            self.set_axis_scale(
+                axis_name,
+                scales.get(axis_name, "linear"),
+                scale_parameters.get(axis_name, 1.0),
+            )
             self.set_axis_grid(axis_name, grid.get(axis_name, False))
             minimum, maximum = ranges.get(axis_name, (None, None))
             self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
@@ -1240,10 +1374,8 @@ class PlotWidget(QWidget):
             self._axis_items[x_axis].linkToView(view_box)
         if y_axis != "left":
             self._axis_items[y_axis].linkToView(view_box)
-        view_box.setLogMode(
-            self._axis_log_scale.get(x_axis, False),
-            self._axis_log_scale.get(y_axis, False),
-        )
+        view_box.setLogMode("x", self._axis_scale.get(x_axis) == "log")
+        view_box.setLogMode("y", self._axis_scale.get(y_axis) == "log")
         return view_box
 
     def _get_or_create_trace(self, trace_name: str) -> pg.PlotDataItem:
@@ -1252,6 +1384,7 @@ class PlotWidget(QWidget):
             colour = next(self._colour_cycle)
             pen = pg.mkPen(color=colour, width=2, style=_LINE_STYLES["solid"])
             curve = pg.PlotDataItem(pen=pen, name=trace_name)
+            curve.setLogMode(False, False)
             # Add to the default ViewBox initially
             self._plot_item.vb.addItem(curve)
             self._traces[trace_name] = curve
@@ -1268,7 +1401,60 @@ class PlotWidget(QWidget):
             self._refresh_trace_and_axis_controls()
         return self._traces[trace_name]
 
-    def _refresh_auto_ranges_for_view_box(self, view_box: pg.ViewBox, x_axis: str, y_axis: str) -> None:
+    def _mapped_axis_values(self, axis_name: str, values) -> np.ndarray:
+        """Return raw values transformed for one named axis."""
+        return transform_values(
+            values,
+            self._axis_scale.get(axis_name, "linear"),
+            self._axis_scale_parameter.get(axis_name, 1.0),
+        )
+
+    def _inverse_axis_values(self, axis_name: str, values) -> np.ndarray:
+        """Return ViewBox coordinates converted back to raw axis values."""
+        return inverse_values(
+            values,
+            self._axis_scale.get(axis_name, "linear"),
+            self._axis_scale_parameter.get(axis_name, 1.0),
+        )
+
+    def _update_trace_display(self, trace_name: str, *, update_errors: bool = True) -> None:
+        """Render one trace from its retained raw data using its axis mappings."""
+        curve = self._traces[trace_name]
+        x_axis, y_axis = self._trace_axes.get(trace_name, ("bottom", "left"))
+        xs, ys = self._trace_data[trace_name]
+        curve.setLogMode(False, False)
+        curve.setData(
+            self._mapped_axis_values(x_axis, xs),
+            self._mapped_axis_values(y_axis, ys),
+        )
+        if update_errors:
+            self._update_error_bar_display(trace_name)
+
+    def _update_error_bar_display(self, trace_name: str) -> None:
+        """Transform and redraw retained error-bar endpoints for one trace."""
+        if trace_name not in self._error_bar_items:
+            return
+        self._error_bar_items[trace_name].setData(**self._mapped_error_bar_data(trace_name))
+
+    def _mapped_error_bar_data(self, trace_name: str) -> dict[str, np.ndarray]:
+        """Build transformed pyqtgraph error-bar data for one trace."""
+        x_axis, y_axis = self._trace_axes.get(trace_name, ("bottom", "left"))
+        xs, ys = (np.asarray(values, dtype=float) for values in self._trace_data[trace_name])
+        mapped_x = self._mapped_axis_values(x_axis, xs)
+        mapped_y = self._mapped_axis_values(y_axis, ys)
+        x_err, y_err = self._trace_error_data.get(trace_name, (None, None))
+        kwargs: dict[str, np.ndarray] = {"x": mapped_x, "y": mapped_y}
+        if x_err is not None and len(x_err) == len(xs):
+            kwargs["left"] = mapped_x - self._mapped_axis_values(x_axis, xs - x_err)
+            kwargs["right"] = self._mapped_axis_values(x_axis, xs + x_err) - mapped_x
+        if y_err is not None and len(y_err) == len(ys):
+            kwargs["bottom"] = mapped_y - self._mapped_axis_values(y_axis, ys - y_err)
+            kwargs["top"] = self._mapped_axis_values(y_axis, ys + y_err) - mapped_y
+        return kwargs
+
+    def _refresh_auto_ranges_for_view_box(
+        self, view_box: pg.ViewBox, x_axis: str, y_axis: str
+    ) -> None:
         """Re-apply auto/manual range policy for one axis pair after data changes."""
         x_min_auto, x_max_auto = self._axis_auto_range.get(x_axis, (True, True))
         y_min_auto, y_max_auto = self._axis_auto_range.get(y_axis, (True, True))
@@ -1326,11 +1512,11 @@ class PlotWidget(QWidget):
             [0.0]
         """
         try:
-            curve = self._get_or_create_trace(trace_name)
+            self._get_or_create_trace(trace_name)
             xs, ys = self._trace_data[trace_name]
             xs.append(float(x))
             ys.append(float(y))
-            curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+            self._update_trace_display(trace_name)
             self._refresh_auto_ranges_for_trace(trace_name)
         finally:
             self._mark_data_update_processed()
@@ -1372,13 +1558,15 @@ class PlotWidget(QWidget):
         trace_name: str,
         x_data: Sequence[float],
         y_data: Sequence[float],
+        *,
+        update_errors: bool = True,
     ) -> None:
         """Set the x/y arrays for a trace without touching update counters."""
-        curve = self._get_or_create_trace(trace_name)
+        self._get_or_create_trace(trace_name)
         xs = list(map(float, x_data))
         ys = list(map(float, y_data))
         self._trace_data[trace_name] = (xs, ys)
-        curve.setData(np.array(xs, dtype=float), np.array(ys, dtype=float))
+        self._update_trace_display(trace_name, update_errors=update_errors)
         self._refresh_auto_ranges_for_trace(trace_name)
 
     @pyqtSlot(str, object, object, object, object)
@@ -1423,13 +1611,17 @@ class PlotWidget(QWidget):
             [2.0, 3.0]
         """
         try:
-            self._set_trace_data(trace_name, x_data, y_data)
+            self._set_trace_data(trace_name, x_data, y_data, update_errors=False)
 
             x_arr = np.asarray(x_data, dtype=float)
             y_arr = np.asarray(y_data, dtype=float)
 
-            x_err_arr = np.asarray(x_err, dtype=float) if x_err is not None else np.array([], dtype=float)
-            y_err_arr = np.asarray(y_err, dtype=float) if y_err is not None else np.array([], dtype=float)
+            x_err_arr = (
+                np.asarray(x_err, dtype=float) if x_err is not None else np.array([], dtype=float)
+            )
+            y_err_arr = (
+                np.asarray(y_err, dtype=float) if y_err is not None else np.array([], dtype=float)
+            )
             has_x_err = len(x_err_arr) == len(x_arr) and np.any(x_err_arr != 0)
             has_y_err = len(y_err_arr) == len(y_arr) and np.any(y_err_arr != 0)
 
@@ -1437,21 +1629,19 @@ class PlotWidget(QWidget):
             vb = self._pair_view_boxes.get((x_ax, y_ax), self._plot_item.vb)
 
             if has_x_err or has_y_err:
-                kwargs: dict = {"x": x_arr, "y": y_arr}
-                if has_x_err:
-                    kwargs["left"] = x_err_arr
-                    kwargs["right"] = x_err_arr
-                if has_y_err:
-                    kwargs["top"] = y_err_arr
-                    kwargs["bottom"] = y_err_arr
+                self._trace_error_data[trace_name] = (
+                    x_err_arr if has_x_err else None,
+                    y_err_arr if has_y_err else None,
+                )
                 if trace_name in self._error_bar_items:
-                    self._error_bar_items[trace_name].setData(**kwargs)
+                    self._update_error_bar_display(trace_name)
                 else:
-                    ebi = pg.ErrorBarItem(**kwargs)
+                    ebi = pg.ErrorBarItem(**self._mapped_error_bar_data(trace_name))
                     vb.addItem(ebi)
                     self._error_bar_items[trace_name] = ebi
             elif trace_name in self._error_bar_items:
                 ebi = self._error_bar_items.pop(trace_name)
+                self._trace_error_data.pop(trace_name, None)
                 parent = ebi.parentItem()
                 if hasattr(parent, "removeItem"):
                     parent.removeItem(ebi)
@@ -1546,10 +1736,14 @@ class PlotWidget(QWidget):
         curve = self._get_or_create_trace(trace_name)
         if not (line_style is None or line_style in _LINE_STYLES):
             valid_line_styles = ", ".join(_LINE_STYLES)
-            raise ValueError(f"Unknown line style: {line_style!r}. " f"Valid options are: {valid_line_styles}.")
+            raise ValueError(
+                f"Unknown line style: {line_style!r}. Valid options are: {valid_line_styles}."
+            )
         if not (point_style is None or point_style in _POINT_STYLES):
             valid_point_styles = ", ".join(_POINT_STYLES)
-            raise ValueError(f"Unknown point style: {point_style!r}. " f"Valid options are: {valid_point_styles}.")
+            raise ValueError(
+                f"Unknown point style: {point_style!r}. Valid options are: {valid_point_styles}."
+            )
         if line_width is not None and line_width <= 0:
             raise ValueError(f"Line width must be greater than zero, got {line_width}.")
         if point_size is not None and point_size <= 0:
@@ -1563,11 +1757,11 @@ class PlotWidget(QWidget):
         if line_style is not None:
             style["line"] = line_style
         else:
-            style.setdefault("line","solid")
+            style.setdefault("line", "solid")
         if point_style is not None:
             style["point"] = point_style
         else:
-            style.setdefault("point","none")
+            style.setdefault("point", "none")
         if line_width is not None:
             self._trace_line_width[trace_name] = line_width
         if point_size is not None:
@@ -1579,7 +1773,7 @@ class PlotWidget(QWidget):
             style=_LINE_STYLES[style["line"]],
         )
         curve.setPen(pen)
-        symbol = _POINT_STYLES.get(style["point"],None)
+        symbol = _POINT_STYLES.get(style["point"], None)
         curve.setSymbol(symbol)
         if symbol is None:
             curve.setSymbolBrush(None)
@@ -1640,7 +1834,9 @@ class PlotWidget(QWidget):
                 point_size=point_size,
             )
         except (TypeError, ValueError) as exc:
-            logger.warning("set_trace_style_from_dict: invalid style value for %r: %s", trace_name, exc)
+            logger.warning(
+                "set_trace_style_from_dict: invalid style value for %r: %s", trace_name, exc
+            )
 
     def remove_trace(self, trace_name: str) -> None:
         """Remove a named trace and all its data.
@@ -1669,6 +1865,7 @@ class PlotWidget(QWidget):
         vb.removeItem(curve)
         if trace_name in self._error_bar_items:
             vb.removeItem(self._error_bar_items.pop(trace_name))
+        self._trace_error_data.pop(trace_name, None)
         del self._trace_data[trace_name]
         self._trace_style.pop(trace_name, None)
         self._trace_line_width.pop(trace_name, None)
@@ -1708,6 +1905,7 @@ class PlotWidget(QWidget):
             _safe_remove_graphics_item(view_box, error_bar_item)
             _safe_detach_graphics_item(error_bar_item)
         self._error_bar_items.clear()
+        self._trace_error_data.clear()
 
         for trace_name, curve in list(self._traces.items()):
             x_ax, y_ax = self._trace_axes.get(trace_name, ("bottom", "left"))
@@ -1748,7 +1946,8 @@ class PlotWidget(QWidget):
                     break
             view_box = self._pair_view_boxes.get((linked_x, name), self._plot_item.vb)
             minimum, maximum = view_box.viewRange()[1]
-        return float(minimum), float(maximum)
+        raw = self._inverse_axis_values(name, [minimum, maximum])
+        return float(raw[0]), float(raw[1])
 
     def set_axis_label(self, name: str, label: str) -> None:
         """Set the displayed title for an axis.
@@ -1781,14 +1980,42 @@ class PlotWidget(QWidget):
             KeyError:
                 If *name* is unknown.
         """
+        self.set_axis_scale(name, "log" if log_scale else "linear")
+
+    def set_axis_scale(self, name: str, scale: AxisScale, parameter: float = 1.0) -> None:
+        """Set an axis to linear, log, symlog, logit, or asinh mapping."""
         if name not in self._axis_items:
             raise KeyError(f"Unknown axis: {name!r}")
-        self._axis_log_scale[name] = bool(log_scale)
-        for (x_axis, y_axis), view_box in self._pair_view_boxes.items():
-            view_box.setLogMode(
-                self._axis_log_scale.get(x_axis, False),
-                self._axis_log_scale.get(y_axis, False),
+        scale, parameter = validate_scale(scale, parameter)
+        min_auto, max_auto = self._axis_auto_range.get(name, (True, True))
+        stored_minimum, stored_maximum = self._axis_manual_range.get(name, self._axis_range(name))
+        manual_values = [
+            value
+            for value, automatic in (
+                (stored_minimum, min_auto),
+                (stored_maximum, max_auto),
             )
+            if not automatic and value is not None
+        ]
+        if manual_values and not np.all(
+            np.isfinite(transform_values(manual_values, scale, parameter))
+        ):
+            raise ValueError(f"Existing manual range is outside the domain of the {scale} scale.")
+        self._axis_scale[name] = scale
+        self._axis_scale_parameter[name] = parameter
+        self._axis_log_scale[name] = scale == "log"
+        axis_item = self._axis_items[name]
+        if isinstance(axis_item, MappedAxisItem):
+            axis_item.set_scale_mapping(scale, parameter)
+        else:
+            axis_item.setLogMode(scale == "log")
+        for (x_axis, y_axis), view_box in self._pair_view_boxes.items():
+            view_box.setLogMode("x", self._axis_scale.get(x_axis) == "log")
+            view_box.setLogMode("y", self._axis_scale.get(y_axis) == "log")
+        for trace_name in self._traces:
+            self._update_trace_display(trace_name)
+        self._refresh_all_auto_ranges()
+        self._reapply_manual_axis_ranges()
 
     def set_axis_side(self, name: str, side: str) -> None:
         """Move an axis to a different side of the plot."""
@@ -1829,7 +2056,9 @@ class PlotWidget(QWidget):
             view_box.autoRange()
         self._refresh_all_auto_ranges()
 
-    def set_axis_range(self, name: str, minimum: float | None = None, maximum: float | None = None) -> None:
+    def set_axis_range(
+        self, name: str, minimum: float | None = None, maximum: float | None = None
+    ) -> None:
         """Set the visible range for an axis with independent auto/manual bounds.
 
         Passing ``None`` for either bound leaves that bound on auto-range while
@@ -1842,8 +2071,17 @@ class PlotWidget(QWidget):
         orientation = self._axis_orientations[name]
         if minimum is not None and maximum is not None and minimum >= maximum:
             raise ValueError(f"Axis minimum must be less than maximum for {name!r}.")
+        supplied_bounds = [value for value in (minimum, maximum) if value is not None]
+        if supplied_bounds and not np.all(
+            np.isfinite(self._mapped_axis_values(name, supplied_bounds))
+        ):
+            raise ValueError(
+                f"Axis range is outside the domain of the {self._axis_scale[name]} scale."
+            )
         current_minimum, current_maximum = self._axis_range(name)
-        stored_minimum, stored_maximum = self._axis_manual_range.get(name, (current_minimum, current_maximum))
+        stored_minimum, stored_maximum = self._axis_manual_range.get(
+            name, (current_minimum, current_maximum)
+        )
         manual_minimum = current_minimum if min_auto else minimum
         manual_maximum = current_maximum if max_auto else maximum
         if minimum is not None:
@@ -1868,18 +2106,28 @@ class PlotWidget(QWidget):
             else:
                 view_box.enableAutoRange(axis=axis_constant, enable=True)
                 view_box.autoRange()
-                autorange_minimum, autorange_maximum = (
+                mapped_autorange_minimum, mapped_autorange_maximum = (
                     view_box.viewRange()[0] if orientation == "x" else view_box.viewRange()[1]
+                )
+                autorange_minimum, autorange_maximum = self._inverse_axis_values(
+                    name, [mapped_autorange_minimum, mapped_autorange_maximum]
                 )
                 final_minimum = autorange_minimum if min_auto else manual_minimum
                 final_maximum = autorange_maximum if max_auto else manual_maximum
+                if final_minimum is None or final_maximum is None:
+                    raise RuntimeError(f"Could not resolve axis range for {name!r}.")
                 if final_minimum >= final_maximum:
                     raise ValueError(f"Axis minimum must be less than maximum for {name!r}.")
+                mapped_range = self._mapped_axis_values(name, [final_minimum, final_maximum])
+                if not np.all(np.isfinite(mapped_range)):
+                    raise ValueError(
+                        f"Axis range is outside the domain of the {self._axis_scale[name]} scale."
+                    )
                 view_box.enableAutoRange(axis=axis_constant, enable=False)
                 if orientation == "x":
-                    view_box.setRange(xRange=(final_minimum, final_maximum), padding=0.0)
+                    view_box.setRange(xRange=tuple(mapped_range), padding=0.0)
                 else:
-                    view_box.setRange(yRange=(final_minimum, final_maximum), padding=0.0)
+                    view_box.setRange(yRange=tuple(mapped_range), padding=0.0)
 
     def _update_grid_state(self) -> None:
         """Apply grid visibility directly to each axis item.
@@ -1957,6 +2205,8 @@ class PlotWidget(QWidget):
         self._axis_orientations.pop(name, None)
         self._view_boxes.pop(name, None)
         self._axis_log_scale.pop(name, None)
+        self._axis_scale.pop(name, None)
+        self._axis_scale_parameter.pop(name, None)
         self._axis_grid.pop(name, None)
         self._axis_auto_range.pop(name, None)
         self._axis_manual_range.pop(name, None)
@@ -1995,7 +2245,7 @@ class PlotWidget(QWidget):
         """
         if name in self._axis_items:
             return
-        axis = pg.AxisItem(side)
+        axis = MappedAxisItem(side)
         axis.setLabel(label)
         axis.setGrid(False)
         self._axis_items[name] = axis
@@ -2004,6 +2254,8 @@ class PlotWidget(QWidget):
         self._register_axis_side(name, "y", side)
         self._axis_visible[name] = True
         self._axis_log_scale[name] = False
+        self._axis_scale[name] = "linear"
+        self._axis_scale_parameter[name] = 1.0
         self._axis_auto_range[name] = (True, True)
         self._axis_manual_range[name] = self._axis_range("left")
         self._axis_grid[name] = False
@@ -2081,7 +2333,10 @@ class PlotWidget(QWidget):
         """
         if name in self._axis_items:
             return
-        axis = pg.AxisItem(position)
+        if position == "top" and not self._default_top_axis_removed:
+            self._plot_item.layout.removeItem(self._default_top_axis)
+            self._default_top_axis_removed = True
+        axis = MappedAxisItem(position)
         axis.setLabel(label)
         axis.setGrid(False)
         self._axis_items[name] = axis
@@ -2090,6 +2345,8 @@ class PlotWidget(QWidget):
         self._register_axis_side(name, "x", position)
         self._axis_visible[name] = True
         self._axis_log_scale[name] = False
+        self._axis_scale[name] = "linear"
+        self._axis_scale_parameter[name] = 1.0
         self._axis_auto_range[name] = (True, True)
         self._axis_manual_range[name] = self._axis_range("bottom")
         self._axis_grid[name] = False
@@ -2179,6 +2436,7 @@ class PlotWidget(QWidget):
                 new_vb.addItem(ebi)
 
         self._trace_axes[trace_name] = (x_axis, y_axis)
+        self._update_trace_display(trace_name)
         self._refresh_trace_and_axis_controls()
 
     # ------------------------------------------------------------------

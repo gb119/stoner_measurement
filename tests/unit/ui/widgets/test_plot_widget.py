@@ -1,11 +1,13 @@
-﻿"""Tests for PlotWidget and axis configuration UI."""
+"""Tests for PlotWidget and axis configuration UI."""
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 from qtpy.QtGui import QColor
-from qtpy.QtWidgets import QDialog, QHeaderView, QLineEdit
+from qtpy.QtWidgets import QComboBox, QDialog, QHeaderView, QLineEdit
 
+from stoner_measurement.ui.axis_mappings import inverse_values, transform_values
 from stoner_measurement.ui.plot_widget import (
     _MAX_VISIBLE_TRACE_ROWS,
     _POINT_PICTOGRAMS,
@@ -172,6 +174,44 @@ class TestPlotWidget:
         assert changes["labels"]["left"] == "Value"
         dialog.reject()
 
+    def test_axes_config_dialog_collects_mapping_and_parameter(self, qapp):
+        """The axes dialog exposes every mapping and its scale parameter."""
+        dialog = AxesConfigDialog(
+            x_axes=[],
+            y_axes=[
+                {
+                    "name": "left",
+                    "label": "Value",
+                    "log_scale": False,
+                    "grid": True,
+                    "side": "left",
+                    "visible": True,
+                    "minimum": None,
+                    "maximum": None,
+                    "removable": False,
+                }
+            ],
+        )
+        table = dialog._tables["y"]
+        scale_combo = table.cellWidget(0, 4)
+        parameter_edit = table.cellWidget(0, 5)
+        assert isinstance(scale_combo, QComboBox)
+        assert isinstance(parameter_edit, QLineEdit)
+        assert [scale_combo.itemText(i) for i in range(scale_combo.count())] == [
+            "linear",
+            "log",
+            "symlog",
+            "logit",
+            "asinh",
+        ]
+
+        scale_combo.setCurrentText("asinh")
+        parameter_edit.setText("2.5")
+        changes = dialog.axis_changes()
+
+        assert changes["scale"]["left"] == "asinh"
+        assert changes["scale_parameter"]["left"] == pytest.approx(2.5)
+
     def test_open_axes_dialog_applies_additions_and_removals(self, qapp, monkeypatch):
         widget = PlotWidget()
         widget.add_y_axis("temp", "Temperature (K)")
@@ -257,15 +297,14 @@ class TestPlotWidget:
             on_range_changed=on_range_changed,
         )
         table = dialog._tables["x"]
-        minimum_edit = table.cellWidget(0, 6)
-        maximum_edit = table.cellWidget(0, 7)
+        minimum_edit = table.cellWidget(0, 7)
+        maximum_edit = table.cellWidget(0, 8)
         assert isinstance(minimum_edit, QLineEdit)
         assert isinstance(maximum_edit, QLineEdit)
         minimum_edit.setText("1.5")
         maximum_edit.setText("3.5")
         dialog._emit_range_change("x", 0)
         assert calls == [("bottom", 1.5, 3.5)]
-
 
     def test_add_y_axis(self, qapp):
         widget = PlotWidget()
@@ -282,6 +321,28 @@ class TestPlotWidget:
         widget = PlotWidget()
         widget.add_x_axis("freq", "Frequency (Hz)", position="top")
         assert "freq" in widget.axis_names
+
+    def test_top_axis_reserves_space_above_all_plot_viewboxes(self, qapp):
+        """Top-axis labels sit above its spine rather than over plotted data."""
+        widget = PlotWidget()
+        widget.resize(800, 600)
+        widget.add_x_axis("freq", "Frequency (Hz)", position="top")
+        widget.add_y_axis("right", "Right axis", side="right")
+        widget.append_point("signal", 1.0, 2.0)
+        widget.assign_trace_axes("signal", x_axis="freq", y_axis="right")
+        widget.show()
+        qapp.processEvents()
+
+        top_spine_y = widget._axis_items["freq"].geometry().bottom()
+        main_top = widget._plot_item.vb.sceneBoundingRect().top()
+        auxiliary_top = widget._pair_view_boxes[("freq", "right")].sceneBoundingRect().top()
+        left_top = widget._axis_items["left"].scenePos().y()
+        right_top = widget._axis_items["right"].scenePos().y()
+
+        assert main_top == pytest.approx(top_spine_y, abs=1.0)
+        assert auxiliary_top == pytest.approx(top_spine_y, abs=1.0)
+        assert left_top == pytest.approx(top_spine_y, abs=1.0)
+        assert right_top == pytest.approx(top_spine_y, abs=1.0)
 
     def test_assign_trace_axes(self, qapp):
         widget = PlotWidget()
@@ -379,6 +440,110 @@ class TestPlotWidget:
         widget.add_x_axis("freq", "Freq")
         widget.set_axis_log_scale("freq", True)
         assert widget._axis_log_scale["freq"] is True
+
+    def test_log_scale_updates_axis_viewbox_and_trace_mapping(self, qapp):
+        """Log mode affects tick rendering, view bounds, and plotted values."""
+        widget = PlotWidget()
+        widget.append_point("pressure", 0.0, 1.0e-6)
+
+        widget.set_axis_log_scale("left", True)
+
+        axis = widget._axis_items["left"]
+        view_box = widget._pair_view_boxes[("bottom", "left")]
+        trace = widget._traces["pressure"]
+        assert axis.logMode is True
+        assert view_box.state["logMode"] == [False, True]
+        assert trace.opts["logMode"] == [False, False]
+        assert trace.getData()[1].tolist() == pytest.approx([-6.0])
+
+    def test_trace_created_after_enabling_log_scale_is_mapped(self, qapp):
+        """New traces inherit the current logarithmic axis mode."""
+        widget = PlotWidget()
+        widget.set_axis_log_scale("left", True)
+
+        widget.append_point("pressure", 0.0, 1.0e-5)
+
+        assert widget._traces["pressure"].opts["logMode"] == [False, False]
+        assert widget._traces["pressure"].getData()[1].tolist() == pytest.approx([-5.0])
+
+    def test_reassigned_trace_inherits_destination_axis_log_mode(self, qapp):
+        """Moving a trace to a logarithmic axis remaps its displayed values."""
+        widget = PlotWidget()
+        widget.add_y_axis("pressure", "Pressure")
+        widget.set_axis_log_scale("pressure", True)
+        widget.append_point("gauge", 0.0, 1.0e-4)
+
+        widget.assign_trace_axes("gauge", y_axis="pressure")
+
+        assert widget._traces["gauge"].opts["logMode"] == [False, False]
+        assert widget._traces["gauge"].getData()[1].tolist() == pytest.approx([-4.0])
+
+    @pytest.mark.parametrize(
+        ("scale", "parameter", "raw", "mapped"),
+        [
+            ("symlog", 1.0, [-100.0, -0.5, 0.0, 0.5, 100.0], [-3.0, -0.5, 0.0, 0.5, 3.0]),
+            ("logit", 1.0, [0.01, 0.5, 0.99], [-1.995635, 0.0, 1.995635]),
+            ("asinh", 2.0, [-7.253721, 0.0, 7.253721], [-2.0, 0.0, 2.0]),
+        ],
+    )
+    def test_axis_mapping_round_trip(self, scale, parameter, raw, mapped):
+        """Custom mappings transform display data and preserve raw values."""
+        transformed = transform_values(raw, scale, parameter)
+        assert transformed.tolist() == pytest.approx(mapped, abs=1.0e-6)
+        assert inverse_values(transformed, scale, parameter).tolist() == pytest.approx(raw)
+
+    @pytest.mark.parametrize("scale", ["symlog", "logit", "asinh"])
+    def test_custom_axis_scale_maps_trace_and_tick_labels(self, qapp, scale):
+        """Custom scales map trace coordinates while retaining meaningful labels."""
+        widget = PlotWidget()
+        raw = [0.1, 0.5, 0.9] if scale == "logit" else [-10.0, 0.0, 10.0]
+        widget.set_trace("signal", [0.0, 1.0, 2.0], raw)
+
+        widget.set_axis_scale("left", scale, 1.0)
+
+        displayed = widget._traces["signal"].getData()[1]
+        assert displayed.tolist() == pytest.approx(transform_values(raw, scale, 1.0).tolist())
+        assert widget.y_data("signal") == raw
+        labels = widget._axis_items["left"].tickStrings(displayed, 1.0, 1.0)
+        assert labels == [f"{value:.6g}" for value in raw]
+
+    def test_logit_rejects_values_outside_open_unit_interval(self, qapp):
+        """Values outside the logit domain are omitted from rendered data."""
+        widget = PlotWidget()
+        widget.set_axis_scale("left", "logit")
+        widget.set_trace("probability", [0.0, 1.0, 2.0], [0.0, 0.5, 1.0])
+
+        displayed = widget._traces["probability"].getData()[1]
+        assert np.isnan(displayed[0])
+        assert displayed[1] == pytest.approx(0.0)
+        assert np.isnan(displayed[2])
+
+    def test_mapped_axis_manual_range_uses_raw_values(self, qapp):
+        """Axis range controls continue to accept untransformed physical values."""
+        widget = PlotWidget()
+        widget.set_axis_scale("left", "logit")
+
+        widget.set_axis_range("left", 0.01, 0.99)
+
+        assert widget._plot_item.vb.viewRange()[1] == pytest.approx(
+            [-1.995635, 1.995635], abs=1.0e-6
+        )
+        assert widget._axis_range("left") == pytest.approx((0.01, 0.99))
+
+    def test_error_bar_endpoints_follow_custom_mapping(self, qapp):
+        """Nonlinear mappings transform each error-bar endpoint independently."""
+        widget = PlotWidget()
+        widget.set_trace_with_errors("signal", [0.0], [10.0], None, [5.0])
+
+        widget.set_axis_scale("left", "asinh", 2.0)
+
+        item = widget._error_bar_items["signal"]
+        centre = transform_values([10.0], "asinh", 2.0)[0]
+        lower = transform_values([5.0], "asinh", 2.0)[0]
+        upper = transform_values([15.0], "asinh", 2.0)[0]
+        assert item.opts["y"].tolist() == pytest.approx([centre])
+        assert item.opts["bottom"].tolist() == pytest.approx([centre - lower])
+        assert item.opts["top"].tolist() == pytest.approx([upper - centre])
 
     def test_set_axis_grid_updates_axis_state(self, qapp):
         widget = PlotWidget()
