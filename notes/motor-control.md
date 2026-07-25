@@ -13,6 +13,27 @@ motor** with:
 Physically, the motor drives a shaft that **must not rotate beyond +/- soft-limit** unless the user explicitly
 approves an override.
 
+### Controller connections
+
+Most motor drivers use one of the shared Serial, GPIB, Ethernet, or Null
+transports. Thorlabs Kinesis drivers are different: pylablib speaks the
+APT/Kinesis protocol directly through the controller's FTDI USB interface, so
+they do not use a generic byte transport or load the Kinesis .NET assemblies.
+
+For `ThorlabsHDR50` and `ThorlabsKDC101KPRMTE`, select **Kinesis USB** in the
+motor panel and enter the controller serial number printed on the device. The
+engine passes that serial number to pylablib's Kinesis driver, which discovers
+and opens the USB controller. This requires the `pyft232` Python package and
+the FTDI D2XX/CDM driver (`ftd2xx.dll`) on Windows, but does not require CLR
+assembly-path or `PATH` configuration for `Thorlabs.MotionControl.*.dll`. The
+selected driver, `Kinesis USB` transport label, and serial number are persisted
+in `motor_controller.yaml` in the standard `connection` fields.
+
+On Windows the driver adds the default
+`C:\Program Files\Thorlabs\Kinesis` installation directory to Python's DLL
+search path before importing `pyft232`. For a non-default installation, set
+`THORLABS_KINESIS_DIR` to the directory containing the 64-bit `ftd2xx.dll`.
+
 ---
 
 ## **2. Soft Limit Definition**

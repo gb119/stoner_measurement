@@ -14,6 +14,7 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -171,7 +172,7 @@ class MotorControlPanel(QWidget):
         driver_form.addRow("Driver:", self._driver_combo)
 
         self._transport_combo = QComboBox()
-        for label in ("Serial", "GPIB", "Ethernet", "Null (test)"):
+        for label in ("Serial", "GPIB", "Ethernet", "Kinesis USB", "Null (test)"):
             self._transport_combo.addItem(label)
         self._transport_combo.currentIndexChanged.connect(self._on_transport_changed)
         driver_form.addRow("Transport:", self._transport_combo)
@@ -184,17 +185,20 @@ class MotorControlPanel(QWidget):
         self._serial_form_widget = self._build_serial_address_form()
         self._gpib_form_widget = self._build_gpib_address_form()
         self._ethernet_form_widget = self._build_ethernet_address_form()
+        self._kinesis_form_widget = self._build_kinesis_address_form()
         self._null_form_widget = QLabel("No address required for Null transport.")
 
         for w in (
             self._serial_form_widget,
             self._gpib_form_widget,
             self._ethernet_form_widget,
+            self._kinesis_form_widget,
             self._null_form_widget,
         ):
             address_stack.addWidget(w)
             w.hide()
         self._serial_form_widget.show()
+        self._driver_combo.currentIndexChanged.connect(self._on_driver_changed)
         layout.addWidget(self._address_group)
 
         btn_row = QHBoxLayout()
@@ -251,6 +255,19 @@ class MotorControlPanel(QWidget):
         self._eth_port_spin.setValue(DEFAULT_ETHERNET_PORT)
         form.addRow("Host:", self._eth_host_edit)
         form.addRow("Port:", self._eth_port_spin)
+        return w
+
+    def _build_kinesis_address_form(self) -> QWidget:
+        """Build the direct-USB address form used by Thorlabs Kinesis drivers."""
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(0, 0, 0, 0)
+        self._kinesis_serial_edit = QLineEdit()
+        self._kinesis_serial_edit.setPlaceholderText("e.g. 27000001")
+        self._kinesis_serial_edit.setToolTip(
+            "Controller serial number shown on the Thorlabs device label."
+        )
+        form.addRow("Controller serial number:", self._kinesis_serial_edit)
         return w
 
     def _build_control_tab(self) -> QWidget:
@@ -517,6 +534,16 @@ class MotorControlPanel(QWidget):
     def _on_transport_changed(self, index: int) -> None:
         show_transport_widget(self, index)
 
+    @pyqtSlot(int)
+    def _on_driver_changed(self, _index: int) -> None:
+        """Select a driver's preferred connection mechanism when it declares one."""
+        driver_cls = self._driver_combo.currentData()
+        preferred = getattr(driver_cls, "preferred_connection_transport", None)
+        if preferred:
+            index = self._transport_combo.findText(str(preferred))
+            if index >= 0:
+                self._transport_combo.setCurrentIndex(index)
+
     @pyqtSlot()
     def _on_connect(self) -> None:
         driver_cls = self._driver_combo.currentData()
@@ -556,8 +583,8 @@ class MotorControlPanel(QWidget):
 
     def _apply_disconnected_ui_state(self) -> None:
         """Clear connected-only UI state without issuing engine commands."""
-        self._set_address_widget_status(2, VisaResourceStatus.DISCONNECTED)
-        self._set_address_widget_status(3, VisaResourceStatus.DISCONNECTED)
+        for index in range(self._transport_combo.count()):
+            self._set_address_widget_status(index, VisaResourceStatus.DISCONNECTED)
         self._serial_port_combo.set_status(VisaResourceStatus.DISCONNECTED)
         self._gpib_resource_combo.set_status(VisaResourceStatus.DISCONNECTED)
 

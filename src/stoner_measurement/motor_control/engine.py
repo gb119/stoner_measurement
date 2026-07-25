@@ -194,13 +194,27 @@ class MotorControllerEngine(QObject):
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
         """Instantiate and connect a motor controller from identifiers."""
         driver_cls = self._resolve_driver_class(driver_name)
-        transport = self._build_transport(transport_name, address)
-        protocol = self._build_protocol(driver_name)
-        driver = driver_cls(transport=transport, protocol=protocol)
+        connection_address = address
+        if transport_name.strip().lower() == "kinesis usb":
+            from stoner_measurement.instruments.thorlabs._kinesis_base import (
+                _KinesisMotorBase,
+            )
+
+            if not issubclass(driver_cls, _KinesisMotorBase):
+                raise ValueError(f"Driver {driver_name!r} does not support Kinesis USB")
+            serial_number = address.strip()
+            if not serial_number:
+                raise ValueError("A Thorlabs controller serial number is required.")
+            driver = driver_cls(serial_number=serial_number)
+            connection_address = serial_number
+        else:
+            transport = self._build_transport(transport_name, address)
+            protocol = self._build_protocol(driver_name)
+            driver = driver_cls(transport=transport, protocol=protocol)
         self.connect_instrument(driver)
         self._connected_driver_name = driver_name
         self._connected_transport_name = transport_name
-        self._connected_address = address
+        self._connected_address = connection_address
         self.publisher.connection_changed.emit()
 
     def connect_preferred_driver(self) -> None:

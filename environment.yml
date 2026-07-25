@@ -17,6 +17,7 @@ dependencies:
       - build
       - twine
       - check-manifest
+      - pyft232>=0.12
   - setuptools>=61
   # Runtime dependencies
   - asteval>=1.0

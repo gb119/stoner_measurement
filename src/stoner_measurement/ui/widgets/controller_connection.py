@@ -26,6 +26,8 @@ _TRANSPORT_NAME_ALIASES = {
     "serial": "Serial",
     "gpib": "GPIB",
     "ethernet": "Ethernet",
+    "kinesis": "Kinesis USB",
+    "kinesis usb": "Kinesis USB",
 }
 
 
@@ -108,6 +110,8 @@ def _restore_address(panel, transport: str, address: str) -> None:
             return
         panel._eth_host_edit.setText(host)
         panel._eth_port_spin.setValue(port)
+    elif transport == "Kinesis USB" and hasattr(panel, "_kinesis_serial_edit"):
+        panel._kinesis_serial_edit.setText(address)
 
 
 def restore_preferred_address(panel) -> None:
@@ -126,42 +130,54 @@ def restore_connection_address(panel, transport: str, address: str) -> None:
 
 def show_transport_widget(panel, index: int) -> None:
     """Show widgets for the selected transport."""
-    widgets = [
-        panel._serial_form_widget,
-        panel._gpib_form_widget,
-        panel._ethernet_form_widget,
-        panel._null_form_widget,
-    ]
-    for widget in widgets:
+    widgets = {
+        "Serial": panel._serial_form_widget,
+        "GPIB": panel._gpib_form_widget,
+        "Ethernet": panel._ethernet_form_widget,
+        "Null (test)": panel._null_form_widget,
+    }
+    if hasattr(panel, "_kinesis_form_widget"):
+        widgets["Kinesis USB"] = panel._kinesis_form_widget
+    for widget in widgets.values():
         widget.hide()
-    widgets[index].show()
+    selected = _normalise_transport_name(panel._transport_combo.itemText(index))
+    widget = widgets.get(selected)
+    if widget is not None:
+        widget.show()
 
 
 def selected_transport(panel, index: int) -> tuple[str, str]:
     """Return selected transport name and address."""
-    if index == 0:
+    transport = _normalise_transport_name(panel._transport_combo.itemText(index))
+    if transport == "Serial":
         port = panel._serial_port_combo.current_resource() or "/dev/ttyUSB0"
         baud = panel._serial_baud_combo.currentData()
         return "Serial", f"port={port};baud={baud}"
-    if index == 1:
+    if transport == "GPIB":
         resource = panel._gpib_resource_combo.current_resource() or "GPIB0::2::INSTR"
         return "GPIB", resource
-    if index == 2:
+    if transport == "Ethernet":
         host = panel._eth_host_edit.text().strip() or "localhost"
         port = panel._eth_port_spin.value()
         return "Ethernet", f"{host}:{port}"
+    if transport == "Kinesis USB":
+        return "Kinesis USB", panel._kinesis_serial_edit.text().strip()
     return "Null (test)", ""
 
 
 def set_address_widget_status(panel, transport_index: int, status: VisaResourceStatus) -> None:
     """Update connection status on address widgets that support it."""
-    if transport_index == 0:
+    transport = _normalise_transport_name(panel._transport_combo.itemText(transport_index))
+    if transport == "Serial":
         panel._serial_port_combo.set_status(status)
-    elif transport_index == 1:
+    elif transport == "GPIB":
         panel._gpib_resource_combo.set_status(status)
-    elif transport_index == 2:
+    elif transport == "Ethernet":
         _set_widget_background(panel._ethernet_form_widget, status)
         _set_widget_background(panel._eth_host_edit, status)
         _set_widget_background(panel._eth_port_spin, status)
-    elif transport_index == 3:
+    elif transport == "Kinesis USB":
+        _set_widget_background(panel._kinesis_form_widget, status)
+        _set_widget_background(panel._kinesis_serial_edit, status)
+    elif transport == "Null (test)":
         _set_widget_background(panel._null_form_widget, status)

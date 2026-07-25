@@ -6,7 +6,10 @@ tolerant pylablib API-probing logic used by all Thorlabs Kinesis-backed drivers.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
+from importlib import import_module
+from pathlib import Path
 from typing import Any
 
 from stoner_measurement.instruments.motor_controller import (
@@ -19,6 +22,32 @@ from stoner_measurement.instruments.transport.null_transport import NullTranspor
 
 _MotorFactory = Callable[[str], Any]
 _MISSING = object()
+_DLL_DIRECTORY_HANDLES: list[Any] = []
+_DLL_DIRECTORIES: set[Path] = set()
+
+
+def _configure_ftdi_dll_search_path() -> None:
+    """Add a discovered Kinesis directory to Windows' DLL search path."""
+    if os.name != "nt" or not hasattr(os, "add_dll_directory"):
+        return
+
+    candidates = [
+        os.environ.get("THORLABS_KINESIS_DIR"),
+        str(Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Thorlabs" / "Kinesis"),
+        str(Path(os.environ.get("ProgramW6432", r"C:\Program Files")) / "Thorlabs" / "Kinesis"),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        directory = Path(candidate).resolve()
+        if directory in _DLL_DIRECTORIES:
+            return
+        if not (directory / "ftd2xx.dll").is_file():
+            continue
+        handle = os.add_dll_directory(str(directory))
+        _DLL_DIRECTORY_HANDLES.append(handle)
+        _DLL_DIRECTORIES.add(directory)
+        return
 
 
 class _KinesisMotorBase(MotorController):
@@ -46,6 +75,7 @@ class _KinesisMotorBase(MotorController):
 
     _DEFAULT_MODEL: str = "UnknownKinesis"
     _DEVICE_NAME: str = "Thorlabs Kinesis"
+    preferred_connection_transport: str = "Kinesis USB"
 
     def __init__(
         self,
@@ -236,6 +266,30 @@ class _KinesisMotorBase(MotorController):
     def _build_motor(self) -> Any:
         factory = self._motor_factory
         if factory is None:
+            _configure_ftdi_dll_search_path()
+            try:
+                import_module("ft232")
+            except ModuleNotFoundError as exc:
+                if exc.name != "ft232":
+                    raise
+                raise RuntimeError(
+                    "Thorlabs USB support requires the 'pyft232' package. "
+                    "Kinesis .NET assemblies are not used."
+                ) from exc
+            except OSError as exc:
+                raise RuntimeError(
+                    "Thorlabs USB support could not load the FTDI D2XX driver "
+                    "(ftd2xx.dll). Install the FTDI CDM/D2XX driver; Kinesis "
+                    ".NET assemblies are not used."
+                ) from exc
+            except AttributeError as exc:
+                if exc.args != ("ftd2xx",):
+                    raise
+                raise RuntimeError(
+                    "Thorlabs USB support found pyft232 but could not locate "
+                    "ftd2xx.dll. Install Kinesis in its default directory or "
+                    "set THORLABS_KINESIS_DIR to the directory containing the DLL."
+                ) from exc
             from pylablib.devices import (
                 Thorlabs,  # pylint: disable=import-outside-toplevel
             )
