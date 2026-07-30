@@ -7,6 +7,7 @@ otherwise stated.
 
 from __future__ import annotations
 
+import math
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -17,6 +18,30 @@ from stoner_measurement.instruments.base_instrument import BaseInstrument
 if TYPE_CHECKING:
     from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.transport.base import BaseTransport
+
+
+def current_is_at_target(
+    current: float,
+    target_current: float | None,
+    ramp_rate_current: float | None,
+) -> bool:
+    """Return whether a magnet current is at, or imminently at, its target.
+
+    Current and target are in amps and ramp rate is in amps per minute.  A
+    target counts as reached when the error is no more than 1% of the target,
+    no more than 1 mA, or would be traversed in no more than two seconds at
+    the programmed ramp rate.
+    """
+    if target_current is None or not math.isfinite(current) or not math.isfinite(target_current):
+        return False
+
+    difference = abs(target_current - current)
+    if difference <= max(abs(target_current) * 0.01, 0.001):
+        return True
+
+    if ramp_rate_current is None or not math.isfinite(ramp_rate_current) or ramp_rate_current == 0.0:
+        return False
+    return difference / abs(ramp_rate_current) * 60.0 <= 2.0
 
 
 class MagnetState(Enum):

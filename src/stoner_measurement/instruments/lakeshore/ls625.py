@@ -11,6 +11,7 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
     MagnetSupply,
+    current_is_at_target,
 )
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
@@ -153,13 +154,18 @@ class Lakeshore625(MagnetController, MagnetSupply):
                 state = MagnetState.AT_TARGET
             else:
                 state = MagnetState.RAMPING
-        at_target = state in _TERMINAL_RAMP_STATES
         heater_state = self._read_heater_state()
+        current = self.current
+        field = self.field
+        voltage = self.voltage
+        at_target = state not in {MagnetState.FAULT, MagnetState.QUENCH, MagnetState.UNKNOWN} and current_is_at_target(
+            current, self.target_current, self.ramp_rate_current
+        )
         return MagnetStatus(
             state=state,
-            current=self.current,
-            field=self.field,
-            voltage=self.voltage,
+            current=current,
+            field=field,
+            voltage=voltage,
             persistent=False,
             heater_on=heater_state is HeaterState.ON,
             heater_state=heater_state,

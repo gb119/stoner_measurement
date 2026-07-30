@@ -12,6 +12,7 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
     MagnetSupply,
+    current_is_at_target,
 )
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
@@ -187,7 +188,9 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         persistent_field = None
         if persistent:
             persistent_field = self._query_float("R3") * self._magnet_constant
-        at_target = state in _TERMINAL_RAMP_STATES and state is not MagnetState.QUENCH
+        at_target = state not in {MagnetState.FAULT, MagnetState.QUENCH, MagnetState.UNKNOWN} and current_is_at_target(
+            current, self.target_current, self.ramp_rate_current
+        )
         return MagnetStatus(
             state=state,
             current=current,

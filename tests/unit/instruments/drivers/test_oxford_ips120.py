@@ -72,6 +72,8 @@ class TestOxfordIPS120:
                 b"R0.3\r",
                 b"R0.2\r",
                 b"R1.0\r",
+                b"R1.1\r",
+                b"R0.1\r",
             ]
         )
         m = OxfordIPS120(transport=t)
@@ -83,7 +85,7 @@ class TestOxfordIPS120:
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
         assert status.persistent is True
-        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r", b"R3\r"]
+        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r", b"R3\r", b"R0\r", b"R4\r"]
 
     def test_status_reads_persistent_current_for_heater_off_at_field(self):
         t = _null(
@@ -93,6 +95,8 @@ class TestOxfordIPS120:
                 b"R0.3\r",
                 b"R0.2\r",
                 b"R1.05\r",
+                b"R1.1\r",
+                b"R0.1\r",
             ]
         )
         m = OxfordIPS120(transport=t)
@@ -103,7 +107,7 @@ class TestOxfordIPS120:
         assert status.persistent is True
         assert status.heater_state is HeaterState.OFF
         assert status.persistent_field == pytest.approx(0.525)
-        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r", b"R3\r"]
+        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r", b"R3\r", b"R0\r", b"R4\r"]
 
     def test_limits_reads_current_limit_register(self):
         t = _null(responses=[b"R120.0\r"])

@@ -201,11 +201,7 @@ class MotorControllerEngine(QObject):
         driver_cls = self._resolve_driver_class(driver_name)
         connection_address = address
         if transport_name.strip().lower() == "kinesis usb":
-            from stoner_measurement.instruments.thorlabs._kinesis_base import (
-                _KinesisMotorBase,
-            )
-
-            if not issubclass(driver_cls, _KinesisMotorBase):
+            if getattr(driver_cls, "preferred_connection_transport", None) != "Kinesis USB":
                 raise ValueError(f"Driver {driver_name!r} does not support Kinesis USB")
             serial_number = address.strip()
             if not serial_number:

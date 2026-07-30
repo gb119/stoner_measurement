@@ -27,7 +27,11 @@ from stoner_measurement.instruments.addressing import (
     parse_serial_address,
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
-from stoner_measurement.instruments.magnet_controller import MagnetLimits, MagnetState
+from stoner_measurement.instruments.magnet_controller import (
+    MagnetLimits,
+    MagnetState,
+    current_is_at_target,
+)
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
@@ -831,8 +835,8 @@ class MagnetControllerEngine(QObject):
                 return None
             try:
                 state = self._build_state()
-            except Exception as exc:
-                logger.exception(f"MagnetControllerEngine: read-state error")
+            except Exception:
+                logger.exception("MagnetControllerEngine: read-state error")
                 self._set_status(MagnetEngineStatus.ERROR)
                 return None
 
@@ -1008,6 +1012,11 @@ class MagnetControllerEngine(QObject):
 
         # Evaluate stability.
         self._evaluate_stability(field_val, now)
+        self._is_at_target = status.state not in {
+            MagnetState.FAULT,
+            MagnetState.QUENCH,
+            MagnetState.UNKNOWN,
+        } and current_is_at_target(status.current, target_current, ramp_rate_current)
 
         magnet_constant = self._magnet_constant
 
@@ -1025,7 +1034,7 @@ class MagnetControllerEngine(QObject):
             state=status.state,
             persistent_current=persistent_current,
             persistent_field=status.persistent_field,
-            at_target=status.at_target,
+            at_target=self._is_at_target,
             quench_detected=status.state is MagnetState.QUENCH,
             field_rate=field_rate,
         )

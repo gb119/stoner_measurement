@@ -37,6 +37,7 @@ dependencies:
   - scipy>=1.17.1
   # Instrument communication
   - pylablib>=1.4
+  - pywin32>=306
   - pyserial>=3.5
   - pyvisa>=1.13
   # Testing

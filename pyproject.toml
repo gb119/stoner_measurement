@@ -53,6 +53,7 @@ docs = [
 instruments = [
     "pylablib>=1.4",
     "pyft232>=0.12",
+    "pywin32>=306; sys_platform == 'win32'",
     "pyserial>=3.5",
     "pyvisa>=1.13",
 ]

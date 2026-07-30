@@ -121,7 +121,9 @@ class TestLakeshore625:
 
     def test_status_maps_heater_transition_states(self):
         for psh_reply, expected in ((b"2\r\n", HeaterState.COOLING), (b"3\r\n", HeaterState.WARMING)):
-            t = _null(responses=[b"2\r\n", psh_reply, b"1.1\r\n", b"0.3\r\n", b"0.2\r\n"])
+            t = _null(
+                responses=[b"2\r\n", psh_reply, b"1.1\r\n", b"0.3\r\n", b"0.2\r\n", b"1.1\r\n", b"0.1\r\n"]
+            )
             m = Lakeshore625(transport=t)
             status = m.status
             assert status.heater_state is expected
@@ -135,6 +137,8 @@ class TestLakeshore625:
                 b"1.1\r\n",
                 b"0.3\r\n",
                 b"0.2\r\n",
+                b"1.1\r\n",
+                b"0.1\r\n",
             ]
         )
         m = Lakeshore625(transport=t)
@@ -145,7 +149,15 @@ class TestLakeshore625:
         assert status.field == pytest.approx(0.3)
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
-        assert t.write_log == [b"OPST?\r\n", b"PSH?\r\n", b"RDGI?\r\n", b"RDGF?\r\n", b"RDGV?\r\n"]
+        assert t.write_log == [
+            b"OPST?\r\n",
+            b"PSH?\r\n",
+            b"RDGI?\r\n",
+            b"RDGF?\r\n",
+            b"RDGV?\r\n",
+            b"SETI?\r\n",
+            b"RATE?\r\n",
+        ]
 
     def test_status_maps_ramping_state(self):
         t = _null(
@@ -155,6 +167,8 @@ class TestLakeshore625:
                 b"0.1\r\n",
                 b"0.1\r\n",
                 b"1\r\n",
+                b"1.0\r\n",
+                b"0.1\r\n",
             ]
         )
         m = Lakeshore625(transport=t)
@@ -170,6 +184,8 @@ class TestLakeshore625:
                 b"0.0\r\n",
                 b"0.0\r\n",
                 b"0\r\n",
+                b"0.0\r\n",
+                b"0.1\r\n",
             ]
         )
         m = Lakeshore625(transport=t)
@@ -184,6 +200,8 @@ class TestLakeshore625:
                 b"0.0\r\n",
                 b"0.0\r\n",
                 b"0\r\n",
+                b"0.0\r\n",
+                b"0.1\r\n",
             ]
         )
         m = Lakeshore625(transport=t)

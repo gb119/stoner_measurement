@@ -18,6 +18,7 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     MagnetStatus,
     MagnetSupply,
+    current_is_at_target,
 )
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
@@ -257,7 +258,11 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         heater_state = self._read_heater_state()
         heater = heater_state is HeaterState.ON
         persistent = heater_state is HeaterState.OFF
-        at_target = state in _TERMINAL_RAMP_STATES and abs(fld - fset) < _AT_TARGET_FIELD_TOLERANCE
+        target_current = fset / self._magnet_constant
+        ramp_rate_current = self._read_sig_float("RSET") / self._magnet_constant
+        at_target = state not in {MagnetState.FAULT, MagnetState.QUENCH, MagnetState.UNKNOWN} and current_is_at_target(
+            cur, target_current, ramp_rate_current
+        )
         if at_target and state == MagnetState.STANDBY:
             state = MagnetState.AT_TARGET
         return MagnetStatus(

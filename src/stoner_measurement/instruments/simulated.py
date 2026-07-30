@@ -18,6 +18,7 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetLimits,
     MagnetState,
     MagnetStatus,
+    current_is_at_target,
 )
 from stoner_measurement.instruments.mass_flow_controller import (
     MassFlowController,
@@ -256,7 +257,7 @@ class SimulatedMagnetController(MagnetController):
     def status(self) -> MagnetStatus:
         self._simulate_io_delay()
         current = self.current
-        at_target = abs(self._target_current - current) < 1e-6
+        at_target = current_is_at_target(current, self._target_current, self.ramp_rate_current)
 
         if self._heater_state is HeaterState.WARMING:
             self._heater_state = HeaterState.ON
