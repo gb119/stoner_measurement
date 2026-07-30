@@ -13,6 +13,6 @@ class ThorlabsHDR50(_KinesisMotorBase):
     homing operations.
     """
 
-    _EXPECTED_IDENTITY_TOKENS = ("HDR50", "THORLABS")
+    _EXPECTED_IDENTITY_TOKENS = ("Thorlabs","APT Stepper Motor Controller")
     _DEFAULT_MODEL = "HDR50"
     _DEVICE_NAME = "HDR50"

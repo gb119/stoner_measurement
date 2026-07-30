@@ -831,8 +831,8 @@ class MagnetControllerEngine(QObject):
                 return None
             try:
                 state = self._build_state()
-            except Exception:
-                logger.exception("MagnetControllerEngine: read-state error")
+            except Exception as exc:
+                logger.exception(f"MagnetControllerEngine: read-state error")
                 self._set_status(MagnetEngineStatus.ERROR)
                 return None
 

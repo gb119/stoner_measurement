@@ -496,6 +496,14 @@ class TraceData:
         if not 0 <= index < len(arrays):
             raise IndexError(f"TraceData index {index!r} out of range 0–3")
         return arrays[index]
+    
+    def __str__(self):
+        """Make a friendly representation of the trace."""
+        return f"Trace {[x for x in self._df.columns].join(',')} {len(self._df)} rows"
+    
+    def __repr__(self):
+        """Representation string."""
+        return str(self)
 
 
 class TraceStatus(enum.Enum):

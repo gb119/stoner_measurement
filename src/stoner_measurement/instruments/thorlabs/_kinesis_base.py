@@ -10,7 +10,9 @@ import os
 from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
+from platform import architecture
 from typing import Any
+import logging
 
 from stoner_measurement.instruments.motor_controller import (
     MotorController,
@@ -25,25 +27,33 @@ _MISSING = object()
 _DLL_DIRECTORY_HANDLES: list[Any] = []
 _DLL_DIRECTORIES: set[Path] = set()
 
+logger = logging.getLogger(__name__)
 
 def _configure_ftdi_dll_search_path() -> None:
     """Add a discovered Kinesis directory to Windows' DLL search path."""
     if os.name != "nt" or not hasattr(os, "add_dll_directory"):
         return
-
     candidates = [
         os.environ.get("THORLABS_KINESIS_DIR"),
-        str(Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Thorlabs" / "Kinesis"),
-        str(Path(os.environ.get("ProgramW6432", r"C:\Program Files")) / "Thorlabs" / "Kinesis"),
-    ]
+        ]
+    match architecture():
+        case ('64bit', 'WindowsPE'):
+            candidates.append(str(Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Thorlabs" / "Kinesis"))
+        case ('32bit', 'WindowsPE'):
+            candidates.append(str(Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Thorlabs" / "Kinesis"))
+        case _:
+            raise OSError("Unable to workout platform")            
     for candidate in candidates:
         if not candidate:
             continue
         directory = Path(candidate).resolve()
+        logger.debug(f"locating THORLABS Kinesis: {directory}")
         if directory in _DLL_DIRECTORIES:
             return
         if not (directory / "ftd2xx.dll").is_file():
+            logger.debug("Dll not found")
             continue
+        logger.debug("Dll found")
         handle = os.add_dll_directory(str(directory))
         _DLL_DIRECTORY_HANDLES.append(handle)
         _DLL_DIRECTORIES.add(directory)
@@ -110,10 +120,16 @@ class _KinesisMotorBase(MotorController):
         """Open a pylablib/Kinesis connection."""
         if self._motor is not None:
             return
-        self._motor = self._build_motor()
+        try:
+            self._motor = self._build_motor()
+        except Exception as exc:
+            logger.debug(f"Failed to build motor {exc}")
+            raise
         try:
             self.confirm_identity()
+            logger.debug("Motor control identified, connected")
         except Exception:
+            logger.debug("Failed to confirm identity")
             self.disconnect()
             raise
 
@@ -269,6 +285,7 @@ class _KinesisMotorBase(MotorController):
             _configure_ftdi_dll_search_path()
             try:
                 import_module("ft232")
+                logger.debug("Imported dll")
             except ModuleNotFoundError as exc:
                 if exc.name != "ft232":
                     raise
@@ -290,12 +307,20 @@ class _KinesisMotorBase(MotorController):
                     "ftd2xx.dll. Install Kinesis in its default directory or "
                     "set THORLABS_KINESIS_DIR to the directory containing the DLL."
                 ) from exc
+            logger.debug("Trying to import from pylablib")
             from pylablib.devices import (
                 Thorlabs,  # pylint: disable=import-outside-toplevel
             )
 
             factory = Thorlabs.KinesisMotor
-        return factory(self._serial_number)
+            logger.debug("Imported Thorlab module")
+            try:
+                motor = factory(self._serial_number)
+            except Exception as exc:
+                logger.debug(f"Failed to create motor {exc}")
+                raise
+            return motor
+            
 
     def _call_first_available(
         self,

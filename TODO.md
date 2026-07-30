@@ -62,7 +62,8 @@ on status bbar right hand side.
 
 ## Bugs
 
-2. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.
-3. Lakeshore625 is sending RATEF and RATEI commands, plus query variants, but
+1. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.
+2. Lakeshore625 is sending RATEF and RATEI commands, plus query variants, but
    only RATE[?] is supported and that only works with the ramp rate in A/s.
-
+3. Oxofrd IPS120 not reading limits properly. 
+4. Oxford IPS120, not allowing control of persistent switch heater - both buttons grayed out even though it detects the switch heater on/off state

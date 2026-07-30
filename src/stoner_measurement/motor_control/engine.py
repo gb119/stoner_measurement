@@ -510,8 +510,8 @@ class MotorControllerEngine(QObject):
                 return None
             try:
                 state = self._build_state()
-            except Exception:
-                logger.exception("MotorControllerEngine: read-state error")
+            except Exception as exc:
+                logger.exception(f"MotorControllerEngine: read-state error {exc}")
                 self._set_status(MotorEngineStatus.ERROR)
                 return None
 
@@ -582,11 +582,14 @@ class MotorControllerEngine(QObject):
         now = datetime.now(tz=UTC)
 
         angle_val = float(status.current_angle)
+        logger.debug(f"Read {angle_val=}")
         displayed_angle = wrap_angle_360(angle_val)
+        logger.debug(f"Read {displayed_angle=}")
         self._history.append((now, angle_val))
         angular_rate = _compute_rate(self._history)
 
         target_angle = status.target_angle if status.target_angle is not None else self._target_angle
+        logger.debug(f"Read {target_angle=}")
         displayed_target = (
             wrap_angle_360(target_angle)
             if target_angle is not None
@@ -607,7 +610,7 @@ class MotorControllerEngine(QObject):
             target_revolutions=int(target_angle // 360.0) if target_angle is not None else None,
             move_direction=self._move_direction.value,
         )
-
+        logger.debug(f"Read {reading=}")
         return MotorEngineState(
             reading=reading,
             target_angle=target_angle,

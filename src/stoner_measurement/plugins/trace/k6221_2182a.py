@@ -814,7 +814,11 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                         f"after waiting {post_sweep_delay:.2f} s beyond sweep completion."
                     )
                 time.sleep(_POLL_INTERVAL)
+            # Reset 2182 Buffer
             self._k2182a.clear_buffer()
+            self._k2182a.set_buffer_size(n)
+            self._k2182a.set_buffer_feed_sense()
+            self._k2182a.set_buffer_feed_continuous_next()
         except Exception:
             # Attempt a clean abort on any failure.
             try:
