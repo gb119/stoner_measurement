@@ -140,6 +140,7 @@ class MagnetControllerEngine(QObject):
         self._ramp_rate_current: float | None = None
         self._magnet_constant: float | None = None
         self._limits: MagnetLimits | None = None
+        self._zero_target_active: bool = False
         self._quench_active: bool = False
         self._latest_state: MagnetEngineState = MagnetEngineState(engine_status=self._status)
 
@@ -297,6 +298,7 @@ class MagnetControllerEngine(QObject):
             self._at_target_since = None
             self._unstable_since = None
             self._stable = False
+            self._zero_target_active = False
             try:
                 self._magnet_constant = driver.refresh_magnet_constant()
             except Exception:
@@ -594,6 +596,7 @@ class MagnetControllerEngine(QObject):
         """
         with self._engine_lock:
             self._target_field = field
+            self._zero_target_active = False
             if self._driver is None:
                 return
             try:
@@ -611,6 +614,7 @@ class MagnetControllerEngine(QObject):
         """
         with self._engine_lock:
             self._target_current = current
+            self._zero_target_active = False
             if self._driver is None:
                 return
             try:
@@ -690,6 +694,7 @@ class MagnetControllerEngine(QObject):
                 return
             try:
                 self._validate_ramp_allowed()
+                self._zero_target_active = False
                 self._mark_target_pending()
                 self._driver.ramp_to_target()
             except Exception:
@@ -709,6 +714,7 @@ class MagnetControllerEngine(QObject):
                 self._validate_ramp_allowed()
                 self._driver.set_target_field(field)
                 self._target_field = field
+                self._zero_target_active = False
                 self._mark_target_pending()
                 self._driver.ramp_to_target()
             except Exception:
@@ -743,10 +749,9 @@ class MagnetControllerEngine(QObject):
                 self._validate_ramp_allowed()
                 self._driver.go_to_zero()
                 self._target_field = 0.0
-                try:
-                    self._target_current = 0.0
-                except Exception:
-                    logger.debug("Failed to cache zero target current after go-to-zero command", exc_info=True)
+                self._target_current = 0.0
+                self._zero_target_active = True
+                self._mark_target_pending()
             except Exception:
                 logger.exception("Failed to go to zero")
 
@@ -998,6 +1003,12 @@ class MagnetControllerEngine(QObject):
         target_current = self._read_driver_float_attr("target_current", self._target_current)
         ramp_rate_field = self._read_driver_float_attr("ramp_rate_field", self._ramp_rate_field)
         ramp_rate_current = self._read_driver_float_attr("ramp_rate_current", self._ramp_rate_current)
+        if self._zero_target_active:
+            # IPS120 A2 ramps to zero without changing its stored R5/R8
+            # setpoints. Keep zero as the active target until another target
+            # command explicitly supersedes the zero action.
+            target_field = 0.0
+            target_current = 0.0
 
         self._target_field = target_field
         self._target_current = target_current
@@ -1012,11 +1023,24 @@ class MagnetControllerEngine(QObject):
 
         # Evaluate stability.
         self._evaluate_stability(field_val, now)
-        self._is_at_target = status.state not in {
+        healthy_state = status.state not in {
             MagnetState.FAULT,
             MagnetState.QUENCH,
             MagnetState.UNKNOWN,
-        } and current_is_at_target(status.current, target_current, ramp_rate_current)
+        }
+        if field_val is not None and target_field is not None:
+            field_tolerance = max(abs(target_field) * 0.01, self._stability_config.tolerance_t)
+            self._is_at_target = healthy_state and abs(field_val - target_field) <= field_tolerance
+        else:
+            self._is_at_target = healthy_state and current_is_at_target(
+                status.current,
+                target_current,
+                ramp_rate_current,
+            )
+
+        reading_state = status.state
+        if self._is_at_target and reading_state is MagnetState.RAMPING:
+            reading_state = MagnetState.AT_TARGET
 
         magnet_constant = self._magnet_constant
 
@@ -1031,7 +1055,7 @@ class MagnetControllerEngine(QObject):
             voltage=status.voltage,
             heater_on=status.heater_on,
             heater_state=status.heater_state,
-            state=status.state,
+            state=reading_state,
             persistent_current=persistent_current,
             persistent_field=status.persistent_field,
             at_target=self._is_at_target,

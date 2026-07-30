@@ -29,14 +29,19 @@ The IPS120 uses a **single-layer command system**:
 ### 🔹 Core registers
 
 ```text
-R0   → Demand current (setpoint)
-R1   → Measured current
-R2   → Measured voltage
-R3   → Persistent current
-R4   → Ramp rate
-R5   → Current limit
-R6   → Voltage limit
-R7   → Measured field (when fitted / field mode active)
+R0   → Demand current (output current)
+R1   → Measured power-supply voltage
+R2   → Measured magnet current
+R5   → Set point (target current)
+R6   → Current sweep rate
+R7   → Demand field (output field)
+R8   → Set point (target field)
+R9   → Field sweep rate
+R15  → Software voltage limit
+R16  → Persistent magnet current
+R18  → Persistent magnet field
+R21  → Safe current limit, most negative
+R22  → Safe current limit, most positive
 ```
 
 ***
@@ -209,8 +214,9 @@ Must parse character-by-character — no delimiters.
 ### 🔹 Read-only via registers
 
 ```text
-R5 → Current limit  
-R6 → Voltage limit  
+R15 → Software voltage limit
+R21 → Safe current limit, most negative
+R22 → Safe current limit, most positive
 ```
 
 ***
@@ -335,10 +341,12 @@ H0
 ### 🔹 Read state
 
 ```text
-R1   → current  
-R2   → voltage  
-R4   → ramp rate  
-R7   → field  
+R1   → power-supply voltage
+R2   → magnet current
+R6   → current sweep rate
+R7   → output field
+R8   → target field
+R9   → field sweep rate
 X    → full system state  
 ```
 

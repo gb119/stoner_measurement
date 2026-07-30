@@ -1427,6 +1427,10 @@ class MagnetControlPanel(QWidget):
             label = "Quench"
             fg = "#ffffff"
             bg = "#c62828"
+        elif state.at_target:
+            label = "Holding"
+            fg = "#ffffff"
+            bg = "#2e7d32"
         elif reading.state is MagnetState.RAMPING:
             target_field = state.target_field
             field = reading.field
@@ -1469,8 +1473,11 @@ class MagnetControlPanel(QWidget):
             return
 
         in_transition = reading.heater_state in {HeaterState.WARMING, HeaterState.COOLING}
-        ramping = reading.state is MagnetState.RAMPING
-        at_zero = abs(reading.current) <= 0.01 and (reading.field is None or abs(reading.field) <= 1e-4)
+        ramping = reading.state is MagnetState.RAMPING and not state.at_target
+        zero_is_target = state.target_field is not None and abs(state.target_field) < 1e-9
+        at_zero = (zero_is_target and state.at_target) or (
+            abs(reading.current) <= 0.01 and (reading.field is None or abs(reading.field) <= 1e-4)
+        )
         faulted = reading.state in {MagnetState.FAULT, MagnetState.QUENCH}
 
         self._btn_pause_ramp.setEnabled(ramping and not faulted)
@@ -1518,7 +1525,7 @@ class MagnetControlPanel(QWidget):
         heater_is_on = heater_state is HeaterState.ON
         heater_is_off = heater_state is HeaterState.OFF
         heater_state_known = heater_is_on or heater_is_off
-        ramping = reading.state is MagnetState.RAMPING
+        ramping = reading.state is MagnetState.RAMPING and not state.at_target
 
         persistent_matches_target = True
         if state.target_current is not None:

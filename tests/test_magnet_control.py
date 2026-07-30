@@ -160,6 +160,9 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
         def pause_ramp(self):
             pass
 
+        def go_to_zero(self):
+            pass
+
         def abort_ramp(self):
             pass
 
@@ -1178,6 +1181,90 @@ class TestEnginePublisher:
         assert state.ramp_rate_current == pytest.approx(5.0)
         engine.shutdown()
 
+    def test_read_controller_state_normalizes_ramping_within_one_percent(self, monkeypatch, qapp):
+        from stoner_measurement.instruments.magnet_controller import (
+            HeaterState,
+            MagnetState,
+            MagnetStatus,
+        )
+
+        engine = MagnetControllerEngine()
+        driver = _make_fake_driver(field=0.9928, current=9.928)
+        driver._target_current_val = 10.0
+
+        def _ramping_status(_self):
+            return MagnetStatus(
+                state=MagnetState.RAMPING,
+                current=9.928,
+                field=0.9928,
+                voltage=0.05,
+                persistent=False,
+                heater_on=True,
+                heater_state=HeaterState.ON,
+                at_target=False,
+            )
+
+        monkeypatch.setattr(type(driver), "status", property(_ramping_status))
+        engine.connect_instrument(driver)
+
+        state = engine.read_controller_state()
+
+        assert state is not None
+        assert state.at_target is True
+        assert state.reading is not None
+        assert state.reading.state is MagnetState.AT_TARGET
+        engine.shutdown()
+
+    def test_go_to_zero_preserves_zero_target_until_reached(self, monkeypatch, qapp):
+        from stoner_measurement.instruments.magnet_controller import (
+            HeaterState,
+            MagnetState,
+            MagnetStatus,
+        )
+
+        engine = MagnetControllerEngine()
+        driver = _make_fake_driver(field=0.0005, current=0.005)
+        driver._target_current_val = 10.0
+
+        def _zeroing_status(_self):
+            return MagnetStatus(
+                state=MagnetState.RAMPING,
+                current=0.005,
+                field=0.0005,
+                voltage=0.05,
+                persistent=False,
+                heater_on=True,
+                heater_state=HeaterState.ON,
+                at_target=False,
+            )
+
+        monkeypatch.setattr(type(driver), "status", property(_zeroing_status))
+        engine.connect_instrument(driver)
+        engine.go_to_zero()
+
+        state = engine.read_controller_state()
+
+        assert state is not None
+        assert state.target_field == pytest.approx(0.0)
+        assert state.target_current == pytest.approx(0.0)
+        assert state.at_target is True
+        assert state.reading is not None
+        assert state.reading.state is MagnetState.AT_TARGET
+        engine.shutdown()
+
+    def test_new_target_supersedes_active_zero_target(self, qapp):
+        engine = MagnetControllerEngine()
+        driver = _make_fake_driver()
+        engine.connect_instrument(driver)
+        engine.go_to_zero()
+
+        engine.set_target_field(1.5)
+        state = engine.read_controller_state()
+
+        assert state is not None
+        assert state.target_field == pytest.approx(1.5)
+        engine.shutdown()
+
     def test_set_target_field_invalidates_cached_target_state(self, qapp):
         from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
 
@@ -1432,6 +1519,37 @@ class TestMagnetControlPanel:
         assert "Target Rate" in panel._legend_items
         assert panel._legend_items["Field Rate"].text(1) == "0.3500 T/min"
         assert panel._legend_items["Target Rate"].text(1) == "0.8000 T/min"
+        assert panel._chart_current == [pytest.approx(10.0)]
+        assert panel._chart_voltage == [pytest.approx(0.2)]
+        assert panel._chart_target_rate == [pytest.approx(0.8)]
+
+    def test_at_target_state_overrides_stale_ramping_activity(self, qapp):
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        state = MagnetEngineState(
+            reading=MagnetReading(
+                timestamp=datetime.now(tz=UTC),
+                field=0.9928,
+                current=9.928,
+                voltage=0.05,
+                heater_on=True,
+                heater_state=HeaterState.ON,
+                state=MagnetState.RAMPING,
+                at_target=True,
+            ),
+            target_field=1.0,
+            target_current=10.0,
+            at_target=True,
+        )
+
+        panel._on_state_updated(state)
+
+        assert panel._ramp_action_label.text() == "Holding"
+        assert panel._btn_pause_ramp.isEnabled() is False
+        assert panel._btn_hold.isEnabled() is False
+        assert panel._btn_abort_ramp.isEnabled() is False
 
     def test_read_target_updates_target_field_spin_box(self, monkeypatch, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel

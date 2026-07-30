@@ -23,9 +23,9 @@ This is organised as a **true mapping table**:
 | Function                  | Lake Shore 625  | IPS120   | Mercury IPS           | Notes                           |
 | ------------------------- | --------------- | -------- | --------------------- | ------------------------------- |
 | Set current               | `SETI <val>`    | `I<val>` | `SET:...:CURR <val>`  | Same function                   |
-| Read current (measured)   | `RDGI?`         | `R1`     | `READ:...:CURR?`      | IPS120 uses register            |
-| Read setpoint             | `SETI?`         | `R0`     | `READ:...:CURR?`      | Mercury same signal used        |
-| Set field (if calibrated) | via calibration | implicit | `SET:...:FIELD <val>` | Mercury has native field object |
+| Read current (measured)   | `RDGI?`         | `R2`     | `READ:...:CURR?`      | IPS120 uses register            |
+| Read setpoint             | `SETI?`         | `R5`     | `READ:...:CURR?`      | Mercury same signal used        |
+| Set field (if calibrated) | via calibration | `J<val>` | `SET:...:FIELD <val>` | IPS120 and Mercury support field commands |
 
 ***
 
@@ -33,9 +33,9 @@ This is organised as a **true mapping table**:
 
 | Function       | Lake Shore 625 | IPS120   | Mercury IPS          | Notes                   |
 | -------------- | -------------- | -------- | -------------------- | ----------------------- |
-| Set ramp rate  | `RATE <val>`   | `S<val>` | `SET:...:RSET <val>` | Same role               |
-| Read ramp rate | `RATE?`        | `R4`     | `READ:...:RSET?`     | IPS120 register         |
-| Rate units     | A/s            | A/s      | A/s or T/s           | Mercury depends on mode |
+| Set ramp rate  | `RATE <val>`   | `S<val>` / `T<val>` | `SET:...:RSET <val>` | IPS120 supports current and field units |
+| Read ramp rate | `RATE?`        | `R6` / `R9` | `READ:...:RSET?`     | IPS120 current / field registers |
+| Rate units     | A/s            | A/min or T/min | A/s or T/s        | Depends on command or mode |
 
 ***
 
@@ -67,7 +67,7 @@ This is organised as a **true mapping table**:
 | ----------------------- | -------------- | ------ | ------------------ | -------------------- |
 | Heater ON               | `PSH 1`        | `H1`   | `SET:...:SWHT ON`  | Drives magnet        |
 | Heater OFF              | `PSH 0`        | `H0`   | `SET:...:SWHT OFF` | Persistent mode      |
-| Read persistent current | `PSCUR?`       | `R3`   | `READ:...:PCUR?`   | IPS120 uses register |
+| Read persistent current | `PSCUR?`       | `R16`  | `READ:...:PCUR?`   | IPS120 uses register |
 
 ***
 
@@ -75,8 +75,8 @@ This is organised as a **true mapping table**:
 
 | Function     | Lake Shore 625 | IPS120 | Mercury IPS      | Notes          |
 | ------------ | -------------- | ------ | ---------------- | -------------- |
-| Read voltage | `RDGV?`        | `R2`   | `READ:...:VOLT?` | Direct mapping |
-| Read current | `RDGI?`        | `R1`   | `READ:...:CURR?` |                |
+| Read voltage | `RDGV?`        | `R1`   | `READ:...:VOLT?` | Direct mapping |
+| Read current | `RDGI?`        | `R2`   | `READ:...:CURR?` |                |
 | Read demand  | `SETI?`        | `R0`   | `READ:...:CURR?` |                |
 
 ***
@@ -85,8 +85,8 @@ This is organised as a **true mapping table**:
 
 | Function           | Lake Shore 625       | IPS120          | Mercury IPS         | Notes                    |
 | ------------------ | -------------------- | --------------- | ------------------- | ------------------------ |
-| Read current limit | `LIMIT?` (or config) | `R5`            | `READ:...:CLIM?`    | IPS120 explicit register |
-| Read voltage limit | config               | `R6`            | `READ:...:VLIM?`    |                          |
+| Read current limit | `LIMIT?` (or config) | `R21` / `R22`  | `READ:...:CLIM?`    | IPS120 safe negative / positive limits |
+| Read voltage limit | config               | `R15`           | `READ:...:VLIM?`    | IPS120 software voltage limit |
 | Set limits         | model-dependent      | typically fixed | `SET:...:CLIM/VLIM` | Mercury most flexible    |
 
 ***

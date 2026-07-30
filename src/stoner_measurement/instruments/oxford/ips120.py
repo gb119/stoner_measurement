@@ -131,7 +131,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             (float):
                 Measured magnet supply current in amps.
         """
-        return self._query_float("R1")
+        return self._query_float("R2")
 
     @property
     def field(self) -> float:
@@ -151,7 +151,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             (float):
                 Measured output voltage in volts.
         """
-        return self._query_float("R2")
+        return self._query_float("R1")
 
     @property
     def status(self) -> MagnetStatus:
@@ -187,7 +187,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         )
         persistent_field = None
         if persistent:
-            persistent_field = self._query_float("R3") * self._magnet_constant
+            persistent_field = self._query_float("R18")
         at_target = state not in {MagnetState.FAULT, MagnetState.QUENCH, MagnetState.UNKNOWN} and current_is_at_target(
             current, self.target_current, self.ramp_rate_current
         )
@@ -216,14 +216,18 @@ class OxfordIPS120(MagnetController, MagnetSupply):
 
     @property
     def limits(self) -> MagnetLimits:
-        """Read the controller current limit and return operating limits.
+        """Read the controller safe-current limits and return operating limits.
 
         Returns:
             (MagnetLimits):
-                Current limit read from IPS120 register R5, the corresponding
-                field limit, and the cached software ramp-rate limit.
+                Maximum absolute safe-current limit read from IPS120 registers
+                R21/R22, the corresponding field limit, and the cached software
+                ramp-rate limit.
         """
-        max_current = abs(self._query_float("R5"))
+        max_current = max(
+            abs(self._query_float("R21")),
+            abs(self._query_float("R22")),
+        )
         self._limits = MagnetLimits(
             max_current=max_current,
             max_field=max_current * self._magnet_constant,
@@ -246,24 +250,22 @@ class OxfordIPS120(MagnetController, MagnetSupply):
     @property
     def target_current(self) -> float | None:
         """Return the programmed current target in amps."""
-        return self._query_float("R0")
+        return self._query_float("R5")
 
     @property
     def target_field(self) -> float | None:
         """Return the programmed field target in tesla."""
-        current = self.target_current
-        return None if current is None else current * self._magnet_constant
+        return self._query_float("R8")
 
     @property
     def ramp_rate_current(self) -> float | None:
         """Return the programmed current ramp rate in amps per minute."""
-        return self._query_float("R4")
+        return self._query_float("R6")
 
     @property
     def ramp_rate_field(self) -> float | None:
         """Return the programmed field ramp rate in tesla per minute."""
-        rate = self.ramp_rate_current
-        return None if rate is None else rate * self._magnet_constant
+        return self._query_float("R9")
 
     def set_target_current(self, current: float) -> None:
         """Set the target current in amps.
@@ -281,7 +283,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             field (float):
                 Target magnetic field in tesla.
         """
-        self.set_target_current(field / self._magnet_constant)
+        self.write(f"J{field}")
 
     def set_ramp_rate_current(self, rate: float) -> None:
         """Set the current ramp rate in amps per minute.
@@ -299,7 +301,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             rate (float):
                 Ramp rate in tesla per minute.
         """
-        self.set_ramp_rate_current(rate / self._magnet_constant)
+        self.write(f"T{rate}")
 
     def set_magnet_constant(self, tesla_per_amp: float) -> None:
         """Set the software magnet constant used for conversion.

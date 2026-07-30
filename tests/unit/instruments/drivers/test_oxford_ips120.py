@@ -46,7 +46,7 @@ class TestOxfordIPS120:
         assert m.current == pytest.approx(2.5)
         assert m.field == pytest.approx(0.75)
         assert m.voltage == pytest.approx(1.2)
-        assert t.write_log == [b"R1\r", b"R7\r", b"R2\r"]
+        assert t.write_log == [b"R2\r", b"R7\r", b"R1\r"]
 
     def test_set_target_and_ramp_commands(self):
         t = _null()
@@ -85,7 +85,7 @@ class TestOxfordIPS120:
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
         assert status.persistent is True
-        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r", b"R3\r", b"R0\r", b"R4\r"]
+        assert t.write_log == [b"X\r", b"R2\r", b"R7\r", b"R1\r", b"R18\r", b"R5\r", b"R6\r"]
 
     def test_status_reads_persistent_current_for_heater_off_at_field(self):
         t = _null(
@@ -106,11 +106,11 @@ class TestOxfordIPS120:
 
         assert status.persistent is True
         assert status.heater_state is HeaterState.OFF
-        assert status.persistent_field == pytest.approx(0.525)
-        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r", b"R3\r", b"R0\r", b"R4\r"]
+        assert status.persistent_field == pytest.approx(1.05)
+        assert t.write_log == [b"X\r", b"R2\r", b"R7\r", b"R1\r", b"R18\r", b"R5\r", b"R6\r"]
 
-    def test_limits_reads_current_limit_register(self):
-        t = _null(responses=[b"R120.0\r"])
+    def test_limits_read_hardware_safe_current_registers(self):
+        t = _null(responses=[b"R-115.0\r", b"R120.0\r"])
         m = OxfordIPS120(transport=t)
         m.set_magnet_constant(0.075)
         m.set_limits(MagnetLimits(max_current=0.0, max_ramp_rate=0.8))
@@ -120,15 +120,17 @@ class TestOxfordIPS120:
         assert limits.max_current == pytest.approx(120.0)
         assert limits.max_field == pytest.approx(9.0)
         assert limits.max_ramp_rate == pytest.approx(0.8)
-        assert t.write_log == [b"R5\r"]
+        assert t.write_log == [b"R21\r", b"R22\r"]
 
     def test_target_and_ramp_rate_read_correct_registers(self):
-        t = _null(responses=[b"R12.5\r", b"R0.25\r"])
+        t = _null(responses=[b"R12.5\r", b"R1.25\r", b"R0.25\r", b"R0.025\r"])
         m = OxfordIPS120(transport=t)
 
         assert m.target_current == pytest.approx(12.5)
+        assert m.target_field == pytest.approx(1.25)
         assert m.ramp_rate_current == pytest.approx(0.25)
-        assert t.write_log == [b"R0\r", b"R4\r"]
+        assert m.ramp_rate_field == pytest.approx(0.025)
+        assert t.write_log == [b"R5\r", b"R8\r", b"R6\r", b"R9\r"]
 
     @pytest.mark.parametrize(
         ("code", "expected"),
@@ -152,17 +154,24 @@ class TestOxfordIPS120:
         m.set_magnet_constant(0.5)
         assert m.magnet_constant == pytest.approx(0.5)
 
-    def test_set_target_field_uses_magnet_constant_conversion(self):
+    def test_set_target_field_uses_native_field_command(self):
         t = _null()
         m = OxfordIPS120(transport=t)
         m.set_magnet_constant(0.5)
         m.set_target_field(1.0)
-        assert t.write_log == [b"I2.0\r"]
+        assert t.write_log == [b"J1.0\r"]
+
+    def test_set_ramp_rate_field_uses_native_field_command(self):
+        t = _null()
+        m = OxfordIPS120(transport=t)
+        m.set_magnet_constant(0.5)
+        m.set_ramp_rate_field(0.1)
+        assert t.write_log == [b"T0.1\r"]
 
     def test_query_float_raises_for_unparseable_numeric_response(self):
         t = _null(responses=[b"Rnot-a-float\r"])
         m = OxfordIPS120(transport=t)
-        with pytest.raises(ValueError, match=r"Invalid numeric response for R1"):
+        with pytest.raises(ValueError, match=r"Invalid numeric response for R2"):
             _ = m.current
 
     def test_wait_for_ramp_raises_timeout_when_stuck_ramping(self, monkeypatch):
