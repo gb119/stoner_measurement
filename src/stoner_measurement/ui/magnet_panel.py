@@ -29,6 +29,7 @@ from qtpy.QtGui import QColor, QIcon, QPixmap
 from qtpy.QtWidgets import (
     QColorDialog,
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -316,6 +317,17 @@ class MagnetControlPanel(QWidget):
             self._transport_combo.addItem(label)
         self._transport_combo.currentIndexChanged.connect(self._on_transport_changed)
         driver_form.addRow("Transport:", self._transport_combo)
+
+        self._polling_rate_spin = QDoubleSpinBox()
+        self._polling_rate_spin.setRange(0.0, 10.0)
+        self._polling_rate_spin.setDecimals(1)
+        self._polling_rate_spin.setSingleStep(0.1)
+        self._polling_rate_spin.setSuffix(" Hz")
+        self._polling_rate_spin.setSpecialValueText("Disabled")
+        self._polling_rate_spin.setValue(self._engine.polling_rate_hz)
+        self._polling_rate_spin.setToolTip("Set to 0 to disable automatic polling.")
+        self._polling_rate_spin.valueChanged.connect(self._engine.set_polling_rate)
+        driver_form.addRow("Polling rate:", self._polling_rate_spin)
 
         layout.addWidget(driver_group)
 
@@ -1505,6 +1517,7 @@ class MagnetControlPanel(QWidget):
         in_transition = heater_state in {HeaterState.WARMING, HeaterState.COOLING}
         heater_is_on = heater_state is HeaterState.ON
         heater_is_off = heater_state is HeaterState.OFF
+        heater_state_known = heater_is_on or heater_is_off
         ramping = reading.state is MagnetState.RAMPING
 
         persistent_matches_target = True
@@ -1517,12 +1530,14 @@ class MagnetControlPanel(QWidget):
                 persistent_matches_target = delta_current <= tolerance
 
         can_turn_on = (
-            (not heater_is_on)
+            heater_state_known
+            and (not heater_is_on)
             and (not in_transition)
             and persistent_matches_target
         )
         can_turn_off = (
-            (not heater_is_off)
+            heater_state_known
+            and (not heater_is_off)
             and (not in_transition)
             and (not ramping)
         )

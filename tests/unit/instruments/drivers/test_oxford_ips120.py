@@ -6,6 +6,7 @@ import pytest
 
 from stoner_measurement.instruments.magnet_controller import (
     HeaterState,
+    MagnetLimits,
     MagnetState,
     MagnetStatus,
 )
@@ -66,10 +67,11 @@ class TestOxfordIPS120:
     def test_status_maps_state(self):
         t = _null(
             responses=[
-                b"X00A0C0H0P1\r",
+                b"X00A0C0H2M00P00\r",
                 b"R1.1\r",
                 b"R0.3\r",
                 b"R0.2\r",
+                b"R1.0\r",
             ]
         )
         m = OxfordIPS120(transport=t)
@@ -81,7 +83,61 @@ class TestOxfordIPS120:
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
         assert status.persistent is True
-        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r"]
+        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r", b"R3\r"]
+
+    def test_status_reads_persistent_current_for_heater_off_at_field(self):
+        t = _null(
+            responses=[
+                b"X00A0C0H2M00P00\r",
+                b"R1.1\r",
+                b"R0.3\r",
+                b"R0.2\r",
+                b"R1.05\r",
+            ]
+        )
+        m = OxfordIPS120(transport=t)
+        m.set_magnet_constant(0.5)
+
+        status = m.status
+
+        assert status.persistent is True
+        assert status.heater_state is HeaterState.OFF
+        assert status.persistent_field == pytest.approx(0.525)
+        assert t.write_log == [b"X\r", b"R1\r", b"R7\r", b"R2\r", b"R3\r"]
+
+    def test_limits_reads_current_limit_register(self):
+        t = _null(responses=[b"R120.0\r"])
+        m = OxfordIPS120(transport=t)
+        m.set_magnet_constant(0.075)
+        m.set_limits(MagnetLimits(max_current=0.0, max_ramp_rate=0.8))
+
+        limits = m.limits
+
+        assert limits.max_current == pytest.approx(120.0)
+        assert limits.max_field == pytest.approx(9.0)
+        assert limits.max_ramp_rate == pytest.approx(0.8)
+        assert t.write_log == [b"R5\r"]
+
+    def test_target_and_ramp_rate_read_correct_registers(self):
+        t = _null(responses=[b"R12.5\r", b"R0.25\r"])
+        m = OxfordIPS120(transport=t)
+
+        assert m.target_current == pytest.approx(12.5)
+        assert m.ramp_rate_current == pytest.approx(0.25)
+        assert t.write_log == [b"R0\r", b"R4\r"]
+
+    @pytest.mark.parametrize(
+        ("code", "expected"),
+        [
+            (0, HeaterState.OFF),
+            (1, HeaterState.ON),
+            (2, HeaterState.OFF),
+            (5, HeaterState.FAULT),
+            (8, HeaterState.UNKNOWN),
+        ],
+    )
+    def test_heater_status_codes_follow_ips120_status_format(self, code, expected):
+        assert OxfordIPS120._decode_heater_state(code) is expected
 
     def test_set_magnet_constant_validation(self):
         m = OxfordIPS120(transport=_null())

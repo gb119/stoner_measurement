@@ -171,19 +171,33 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         state = _ACTIVITY_STATE_MAP.get(activity, MagnetState.UNKNOWN)
         if system_status == 1:
             state = MagnetState.QUENCH
-        heater_state = self._decode_heater_state(tokens.get("H", 0))
-        persistent = heater_state is HeaterState.OFF and tokens.get("P", 0) > 0
-        heater_on = heater_state is HeaterState.ON
+        current = self.current
+        field = self.field
+        voltage = self.voltage
+        heater_code = tokens.get("H", 8)
+        heater_state = self._decode_heater_state(heater_code)
+        persistent = heater_code == 2
+        heater_on = (
+            True
+            if heater_state is HeaterState.ON
+            else False
+            if heater_state is HeaterState.OFF
+            else None
+        )
+        persistent_field = None
+        if persistent:
+            persistent_field = self._query_float("R3") * self._magnet_constant
         at_target = state in _TERMINAL_RAMP_STATES and state is not MagnetState.QUENCH
         return MagnetStatus(
             state=state,
-            current=self.current,
-            field=self.field,
-            voltage=self.voltage,
+            current=current,
+            field=field,
+            voltage=voltage,
             persistent=persistent,
             heater_on=heater_on,
             heater_state=heater_state,
             at_target=at_target,
+            persistent_field=persistent_field,
             message=status_reply,
         )
 
@@ -199,12 +213,19 @@ class OxfordIPS120(MagnetController, MagnetSupply):
 
     @property
     def limits(self) -> MagnetLimits:
-        """Return configured software limits for this driver instance.
+        """Read the controller current limit and return operating limits.
 
         Returns:
             (MagnetLimits):
-                Cached configured current/field/ramp limits.
+                Current limit read from IPS120 register R5, the corresponding
+                field limit, and the cached software ramp-rate limit.
         """
+        max_current = abs(self._query_float("R5"))
+        self._limits = MagnetLimits(
+            max_current=max_current,
+            max_field=max_current * self._magnet_constant,
+            max_ramp_rate=self._limits.max_ramp_rate,
+        )
         return self._limits
 
     @property
@@ -222,7 +243,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
     @property
     def target_current(self) -> float | None:
         """Return the programmed current target in amps."""
-        return self._query_float("R5")
+        return self._query_float("R0")
 
     @property
     def target_field(self) -> float | None:
@@ -233,7 +254,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
     @property
     def ramp_rate_current(self) -> float | None:
         """Return the programmed current ramp rate in amps per minute."""
-        return self._query_float("R6")
+        return self._query_float("R4")
 
     @property
     def ramp_rate_field(self) -> float | None:
@@ -409,9 +430,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             0: HeaterState.OFF,
             1: HeaterState.ON,
             2: HeaterState.OFF,
-            3: HeaterState.FAULT,
-            5: HeaterState.WARMING,
-            6: HeaterState.COOLING,
+            5: HeaterState.FAULT,
             8: HeaterState.UNKNOWN,
         }.get(value, HeaterState.UNKNOWN)
 

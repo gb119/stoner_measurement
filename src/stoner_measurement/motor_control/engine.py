@@ -89,6 +89,7 @@ class MotorControllerEngine(QObject):
 
         self._timer = QTimer(self)
         self._engine_lock = threading.RLock()
+        self._polling_rate_hz = 1.0
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
         self._apply_configuration(load_motor_controller_config())
@@ -100,8 +101,11 @@ class MotorControllerEngine(QObject):
             self._preferred_transport_name = str(connection.get("transport", "Null (test)"))
             self._preferred_address = str(connection.get("address", ""))
 
+        polling_rate = config.get("polling_rate_hz")
         poll_interval = config.get("poll_interval_ms")
-        if isinstance(poll_interval, int):
+        if isinstance(polling_rate, (int, float)):
+            self.set_polling_rate(float(polling_rate))
+        elif isinstance(poll_interval, int):
             self.set_poll_interval(poll_interval)
 
         stability = config.get("stability")
@@ -188,7 +192,8 @@ class MotorControllerEngine(QObject):
             self._unstable_since = None
             self._stable = False
             self._set_status(MotorEngineStatus.CONNECTED)
-            self._timer.start()
+            if self._polling_rate_hz > 0.0:
+                self._timer.start()
         logger.info("MotorControllerEngine: connected to %s", type(driver).__name__)
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
@@ -365,6 +370,7 @@ class MotorControllerEngine(QObject):
         """Return the current engine configuration as a serialisable mapping."""
         return {
             "poll_interval_ms": self._timer.interval(),
+            "polling_rate_hz": self._polling_rate_hz,
             "connection": {
                 "driver": self._preferred_driver_name,
                 "transport": self._preferred_transport_name,
@@ -475,8 +481,27 @@ class MotorControllerEngine(QObject):
 
     def set_poll_interval(self, ms: int) -> None:
         """Set the polling interval in milliseconds."""
-        ms = max(50, ms)
+        ms = max(100, ms)
+        self._polling_rate_hz = min(10.0, 1000.0 / ms)
         self._timer.setInterval(ms)
+
+    @property
+    def polling_rate_hz(self) -> float:
+        """Polling rate in hertz; zero means automatic polling is disabled."""
+        return self._polling_rate_hz
+
+    def set_polling_rate(self, rate_hz: float) -> None:
+        """Set automatic polling from 0 to 10 Hz."""
+        rate_hz = min(10.0, max(0.0, float(rate_hz)))
+        self._polling_rate_hz = rate_hz
+        if rate_hz == 0.0:
+            self._timer.stop()
+            if self._driver is not None:
+                self._set_status(MotorEngineStatus.CONNECTED)
+            return
+        self._timer.setInterval(round(1000.0 / rate_hz))
+        if self._driver is not None and self._status is not MotorEngineStatus.STOPPED:
+            self._timer.start()
 
     def read_controller_state(self) -> MotorEngineState | None:
         """Poll the controller once and publish the resulting engine state."""

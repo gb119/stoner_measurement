@@ -329,6 +329,17 @@ class TemperatureControlPanel(QWidget):
         self._transport_combo.currentIndexChanged.connect(self._on_transport_changed)
         driver_form.addRow("Transport:", self._transport_combo)
 
+        self._polling_rate_spin = QDoubleSpinBox()
+        self._polling_rate_spin.setRange(0.0, 10.0)
+        self._polling_rate_spin.setDecimals(1)
+        self._polling_rate_spin.setSingleStep(0.1)
+        self._polling_rate_spin.setSuffix(" Hz")
+        self._polling_rate_spin.setSpecialValueText("Disabled")
+        self._polling_rate_spin.setValue(self._engine.polling_rate_hz)
+        self._polling_rate_spin.setToolTip("Set to 0 to disable automatic polling.")
+        self._polling_rate_spin.valueChanged.connect(self._engine.set_polling_rate)
+        driver_form.addRow("Polling rate:", self._polling_rate_spin)
+
         layout.addWidget(driver_group)
 
         # Transport-specific address fields

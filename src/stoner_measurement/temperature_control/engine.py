@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 _HISTORY_SIZE = 60
 
 #: Default polling interval in milliseconds.
-_DEFAULT_POLL_INTERVAL_MS = 2000
+_DEFAULT_POLL_INTERVAL_MS = 1000
 
 
 class TemperatureControllerEngine(QObject):
@@ -136,6 +136,7 @@ class TemperatureControllerEngine(QObject):
 
         self._timer = QTimer(self)
         self._engine_lock = threading.RLock()
+        self._polling_rate_hz = 1.0
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
         self._apply_configuration(load_temperature_controller_config())
@@ -150,8 +151,11 @@ class TemperatureControllerEngine(QObject):
             )
             self._preferred_address = str(connection.get("address", ""))
 
+        polling_rate = config.get("polling_rate_hz")
         poll_interval = config.get("poll_interval_ms")
-        if isinstance(poll_interval, int):
+        if isinstance(polling_rate, (int, float)):
+            self.set_polling_rate(float(polling_rate))
+        elif isinstance(poll_interval, int):
             self.set_poll_interval(poll_interval)
 
         stability = config.get("stability")
@@ -500,6 +504,7 @@ class TemperatureControllerEngine(QObject):
         """Return the current engine configuration as a serialisable mapping."""
         return {
             "poll_interval_ms": self._timer.interval(),
+            "polling_rate_hz": self._polling_rate_hz,
             "connection": {
                 "driver": self._preferred_driver_name,
                 "transport": self._preferred_transport_name,
@@ -1086,7 +1091,27 @@ class TemperatureControllerEngine(QObject):
                 Polling interval in milliseconds (minimum 100 ms).
         """
         ms = max(100, ms)
+        self._polling_rate_hz = min(10.0, 1000.0 / ms)
         self._timer.setInterval(ms)
+
+    @property
+    def polling_rate_hz(self) -> float:
+        """Polling rate in hertz; zero means automatic polling is disabled."""
+        return self._polling_rate_hz
+
+    def set_polling_rate(self, rate_hz: float) -> None:
+        """Set automatic polling from 0 to 10 Hz."""
+        rate_hz = min(10.0, max(0.0, float(rate_hz)))
+        self._polling_rate_hz = rate_hz
+        if rate_hz == 0.0:
+            self._timer.stop()
+            if self._driver is not None:
+                self._set_status(EngineStatus.CONNECTED)
+            return
+        self._timer.setInterval(round(1000.0 / rate_hz))
+        if self._driver is not None and self._status is not EngineStatus.STOPPED:
+            if self._polling_rate_hz > 0.0:
+                self._timer.start()
 
     def read_controller_state(self) -> TemperatureEngineState | None:
         """Read the current controller state immediately and publish it.
