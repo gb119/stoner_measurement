@@ -15,7 +15,6 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -44,6 +43,7 @@ from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
+    AptControllerComboBox,
     RoundDialWidget,
     SISpinBox,
     VisaResourceComboBox,
@@ -274,10 +274,9 @@ class MotorControlPanel(QWidget):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(0, 0, 0, 0)
-        self._kinesis_serial_edit = QLineEdit()
-        self._kinesis_serial_edit.setPlaceholderText("e.g. 27000001")
+        self._kinesis_serial_edit = AptControllerComboBox()
         self._kinesis_serial_edit.setToolTip(
-            "Controller serial number shown on the Thorlabs device label."
+            "Select an attached APT controller or enter the serial number manually."
         )
         form.addRow("Controller serial number:", self._kinesis_serial_edit)
         return w

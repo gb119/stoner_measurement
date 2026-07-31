@@ -177,7 +177,6 @@ def set_address_widget_status(panel, transport_index: int, status: VisaResourceS
         _set_widget_background(panel._eth_host_edit, status)
         _set_widget_background(panel._eth_port_spin, status)
     elif transport == "Kinesis USB":
-        _set_widget_background(panel._kinesis_form_widget, status)
-        _set_widget_background(panel._kinesis_serial_edit, status)
+        panel._kinesis_serial_edit.set_status(status)
     elif transport == "Null (test)":
         _set_widget_background(panel._null_form_widget, status)

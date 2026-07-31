@@ -4,6 +4,7 @@ Collects custom :mod:`PyQt6` compound widgets that are shared across
 multiple measurement panels and dialogs.
 """
 
+from stoner_measurement.ui.widgets.apt_controller_widget import AptControllerComboBox
 from stoner_measurement.ui.widgets.controller_connection import (
     load_connection_preferences,
     restore_connection_address,
@@ -32,6 +33,7 @@ __all__ = [
     "FILTER_ALL",
     "FILTER_GPIB",
     "FILTER_SERIAL",
+    "AptControllerComboBox",
     "RoundDialWidget",
     "RoundDialDemoWidget",
     "RoundDialPanel",
