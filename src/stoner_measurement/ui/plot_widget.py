@@ -2334,7 +2334,15 @@ class PlotWidget(QWidget):
         if name in self._axis_items:
             return
         if position == "top" and not self._default_top_axis_removed:
+            # GraphicsLayout.removeItem() only removes the AxisItem itself from
+            # the scene.  Its LabelItem can otherwise outlive the
+            # QGraphicsTextItem it wraps and receive a queued resize event
+            # during widget teardown (notably with PyQt6 on CI).  Close the
+            # axis first so pyqtgraph explicitly disposes of its label.
+            self._default_top_axis.unlinkFromView()
+            self._default_top_axis.close()
             self._plot_item.layout.removeItem(self._default_top_axis)
+            self._default_top_axis = None
             self._default_top_axis_removed = True
         axis = MappedAxisItem(position)
         axis.setLabel(label)
