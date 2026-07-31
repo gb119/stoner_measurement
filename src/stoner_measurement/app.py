@@ -185,6 +185,7 @@ class MeasurementApp(QMainWindow):
         self._wire_engine_activity_status()
         self._show_status_message("Ready")
         self._engine.status_changed.connect(self._on_engine_status_changed)
+        self._engine.execution_progress.connect(self._on_engine_status_changed)
 
         # Wire the console to the engine --------------------------------------
         console = self._main_window.script_tab.console

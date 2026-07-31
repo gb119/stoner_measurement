@@ -215,6 +215,33 @@ class TestScriptExecution:
         _wait_for_script_finished(engine, qapp)
         assert "Idle" in statuses
 
+    def test_run_script_reports_current_source_line(self, engine, qapp):
+        progress: list[str] = []
+        engine.execution_progress.connect(progress.append)
+
+        engine.run_script("first = 1\nsecond = first + 1")
+        _wait_for_script_finished(engine, qapp)
+
+        assert "Running — line 1: first = 1" in progress
+        assert "Running — line 2: second = first + 1" in progress
+
+    def test_generated_script_progress_identifies_sequence_step(self, engine, qapp):
+        plugin = DummyPlugin()
+        plugin.instance_name = "source_meter"
+        progress: list[str] = []
+        engine.execution_progress.connect(progress.append)
+
+        engine.run_script(
+            "measurement = 42",
+            customised=False,
+            line_map={1: plugin},
+        )
+        _wait_for_script_finished(engine, qapp)
+
+        assert len(progress) == 1
+        assert "source_meter" in progress[0]
+        assert "line 1: measurement = 42" in progress[0]
+
     def test_run_script_emits_script_finished(self, engine, qapp):
         finished: list[bool] = []
         engine.script_finished.connect(lambda: finished.append(True))
@@ -258,7 +285,10 @@ class TestScriptExecution:
         finished: list[bool] = []
         engine.script_finished.connect(lambda: finished.append(True))
         engine.run_script("")
-        _wait_for_script_finished(engine, qapp)
+        deadline = time.monotonic() + _TIMEOUT
+        while not finished and time.monotonic() < deadline:
+            qapp.processEvents()
+            time.sleep(_POLL)
         assert finished
 
     def test_validate_script_syntax_emits_step_attributed_error_for_generated_code(self, engine):

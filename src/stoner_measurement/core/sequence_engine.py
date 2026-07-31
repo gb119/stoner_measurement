@@ -257,6 +257,7 @@ class _EngineThread(QThread):
     output = pyqtSignal(str)
     error_output = pyqtSignal(str)
     status_changed = pyqtSignal(str)
+    execution_progress = pyqtSignal(str)
     script_finished = pyqtSignal()
 
     def __init__(
@@ -374,7 +375,11 @@ class _EngineThread(QThread):
     # Execution helpers
     # ------------------------------------------------------------------
 
-    def _make_tracer(self):
+    def _make_tracer(
+        self,
+        code_str: str,
+        line_map: dict[int, BasePlugin] | None = None,
+    ):
         """Return a ``sys.settrace``-compatible function for pause/stop support.
 
         The tracer is called by the Python interpreter at every line of code
@@ -388,6 +393,7 @@ class _EngineThread(QThread):
         """
         stop_event = self._stop_event
         pause_event = self._pause_event
+        source_lines = code_str.splitlines()
 
         def _tracer(frame, event, arg):  # noqa: ANN001, ANN202  # pylint: disable=unused-argument
             """Trace function called by CPython at every line/call/return boundary.
@@ -405,6 +411,20 @@ class _EngineThread(QThread):
                 pause_event.wait()
             if stop_event.is_set():
                 raise KeyboardInterrupt("Sequence stopped by user")
+            if event == "line" and frame.f_code.co_filename == "<sequence>" and frame.f_lineno >= 1:
+                line_number = frame.f_lineno
+                source = source_lines[line_number - 1].strip() if line_number <= len(source_lines) else ""
+                owner = None if line_map is None else line_map.get(line_number)
+                if owner is None:
+                    detail = f"Running — line {line_number}"
+                else:
+                    label = owner.name
+                    if owner.instance_name and owner.instance_name != label:
+                        label = f"{label} ({owner.instance_name})"
+                    detail = f"Running — {label} — line {line_number}"
+                if source:
+                    detail = f"{detail}: {source}"
+                self.execution_progress.emit(detail)
             return _tracer
 
         return _tracer
@@ -448,7 +468,7 @@ class _EngineThread(QThread):
         try:
             compiled = compile(code_str, "<sequence>", "exec")
             old_tracer = sys.gettrace()
-            sys.settrace(self._make_tracer())
+            sys.settrace(self._make_tracer(code_str, line_map))
             try:
                 with redirect_stdout(out_stream), redirect_stderr(err_stream):
                     exec(compiled, self._namespace)  # noqa: S102  # nosec B102  # pylint: disable=exec-used
@@ -667,6 +687,7 @@ class SequenceEngine(QObject):
     output = pyqtSignal(str)
     error_output = pyqtSignal(str)
     status_changed = pyqtSignal(str)
+    execution_progress = pyqtSignal(str)
     values_catalog_changed = pyqtSignal(dict)
     namespace_updated = pyqtSignal()
     script_finished = pyqtSignal()
@@ -701,6 +722,7 @@ class SequenceEngine(QObject):
         self._thread.output.connect(self.output)
         self._thread.error_output.connect(self.error_output)
         self._thread.status_changed.connect(self.status_changed)
+        self._thread.execution_progress.connect(self.execution_progress)
         self._thread.script_finished.connect(self.script_finished)
         self._thread.start()
 

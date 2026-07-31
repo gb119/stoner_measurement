@@ -92,6 +92,50 @@ class TestGpibProtocolTermination:
         assert resource.trigger_count == 1
         transport.close()
 
+    def test_close_leaves_shared_resource_manager_and_other_resources_open(self, monkeypatch):
+        pytest.importorskip("pyvisa")
+        import pyvisa
+
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        class _FakeResource:
+            def __init__(self):
+                self.closed = False
+                self.timeout = None
+                self.read_termination = None
+                self.send_end = None
+
+            def close(self):
+                self.closed = True
+
+        class _SharedResourceManager:
+            def __init__(self):
+                self.resources = {}
+                self.close_calls = 0
+
+            def open_resource(self, resource_string):
+                return self.resources.setdefault(resource_string, _FakeResource())
+
+            def close(self):
+                self.close_calls += 1
+                for resource in self.resources.values():
+                    resource.close()
+
+        manager = _SharedResourceManager()
+        monkeypatch.setattr(pyvisa, "ResourceManager", lambda: manager)
+        first = GpibTransport(address=22)
+        second = GpibTransport(address=2)
+        first.open()
+        second.open()
+
+        first.close()
+
+        assert manager.close_calls == 0
+        assert manager.resources["GPIB0::22::INSTR"].closed is True
+        assert manager.resources["GPIB0::2::INSTR"].closed is False
+        assert second.is_open is True
+        second.close()
+
 
 class TestPassThroughGpibTransport:
     class _FakeResource:

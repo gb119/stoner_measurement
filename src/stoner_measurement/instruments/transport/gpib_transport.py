@@ -192,13 +192,16 @@ class GpibTransport(BaseTransport):
             ) from exc
 
     def close(self) -> None:
-        """Close the GPIB resource."""
+        """Close this transport's GPIB resource.
+
+        PyVISA shares one :class:`ResourceManager` between instances.  Closing
+        that manager here would also close resources owned by other active
+        transports, so its process-level lifetime is left to PyVISA.
+        """
         if self._resource is not None:
             self._resource.close()
             self._resource = None
-        if self._rm is not None:
-            self._rm.close()
-            self._rm = None
+        self._rm = None
         self._is_open = False
         self._log_comms_traffic("IEEE", "Connection closed.")
 
