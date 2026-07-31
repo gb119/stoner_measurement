@@ -578,8 +578,8 @@ class MotorControlPanel(QWidget):
                 address=address,
             )
             self._refresh_target_angle_bounds()
-        except Exception:
-            logger.exception("Failed to connect motor driver")
+        except Exception as exc:
+            logger.exception(f"Failed to connect motor driver: {exc}")
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 

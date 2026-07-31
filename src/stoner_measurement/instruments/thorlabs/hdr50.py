@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import math
-import time
 from collections.abc import Callable
+import logging
+import time
 from typing import Any
+
+import numpy as np
 
 from stoner_measurement.instruments.motor_controller import (
     MotorController,
@@ -14,6 +16,8 @@ from stoner_measurement.instruments.motor_controller import (
 )
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.transport.null_transport import NullTransport
+
+logger = logging.getLogger(__name__)
 
 _MotorFactory = Callable[[str], Any]
 _APT_MOTOR_PROG_ID = "MGMOTOR.MGMotorCtrl.1"
@@ -42,6 +46,7 @@ class _AptActiveXMotor:
             try:
                 from win32com.client import Dispatch  # pylint: disable=import-outside-toplevel
             except ImportError as exc:
+                logger.error(f"Failed at import of pywin32 for ThorLabs APT ActiveX control:{exc}")
                 raise RuntimeError(
                     "Thorlabs HDR50 ActiveX support requires pywin32 and the Thorlabs APT software."
                 ) from exc
@@ -53,6 +58,7 @@ class _AptActiveXMotor:
             self._control.HWSerialNum = int(self.serial_number)
             self._control.EnableHWChannel(_CHANNEL)
         except Exception as exc:
+            logger.error(f"Failed at initialising Thorlab APT ActiveX control: {exc}")
             self.close()
             raise RuntimeError(
                 "Could not start the Thorlabs APT motor ActiveX control. "
@@ -91,9 +97,9 @@ class _AptActiveXMotor:
             self._control.SetVelParams(_CHANNEL, min_velocity, requested_acceleration, requested_max_velocity)
             actual_min, actual_acceleration, actual_max_velocity = self._velocity_parameters()
             if (
-                math.isclose(actual_min, min_velocity, rel_tol=1e-6, abs_tol=1e-6)
-                and math.isclose(actual_acceleration, requested_acceleration, rel_tol=1e-6, abs_tol=1e-6)
-                and math.isclose(actual_max_velocity, requested_max_velocity, rel_tol=1e-6, abs_tol=1e-6)
+                np.isclose(actual_min, min_velocity, rel_tol=1e-6, abs_tol=1e-6)
+                and np.isclose(actual_acceleration, requested_acceleration, rel_tol=1e-6, abs_tol=1e-6)
+                and np.isclose(actual_max_velocity, requested_max_velocity, rel_tol=1e-6, abs_tol=1e-6)
             ):
                 return
             time.sleep(self._settle_time)
@@ -101,14 +107,14 @@ class _AptActiveXMotor:
 
     def move_to(self, angle: float) -> None:
         target = float(angle)
-        if math.isclose(self.get_position(), target, abs_tol=_POSITION_TOLERANCE_DEG):
+        if np.isclose(self.get_position(), target, abs_tol=_POSITION_TOLERANCE_DEG):
             return
 
         for _attempt in range(_COMMAND_RETRIES):
             self._control.SetAbsMovePos(_CHANNEL, target)
             self._control.MoveAbsolute(_CHANNEL, False)
             time.sleep(self._settle_time)
-            if self.is_moving() or math.isclose(
+            if self.is_moving() or np.isclose(
                 self.get_position(),
                 target,
                 abs_tol=_POSITION_TOLERANCE_DEG,
@@ -147,6 +153,7 @@ class ThorlabsHDR50(MotorController):
 
     def __init__(self, serial_number: str, *, motor_factory: _MotorFactory | None = None) -> None:
         super().__init__(transport=NullTransport(), protocol=ScpiProtocol())
+        logger.debug(f"Creating APT motor for {serial_number}")
         self.auto_check_errors = False
         self._serial_number = str(serial_number)
         self._motor_factory = motor_factory
@@ -156,15 +163,24 @@ class ThorlabsHDR50(MotorController):
     @property
     def is_connected(self) -> bool:
         return self._motor is not None
+    
+    @property
+    def serial_number(self):
+        """Read only property for the serial number."""
+        return self._serial_number
 
     def connect(self) -> None:
         if self._motor is not None:
             return
+        logger.debug(f"Connecting to motor at {self.serial_number}")
         factory = self._motor_factory or _AptActiveXMotor
+        logger.debug(f"Created factor {self._motor_factory or _AptActiveXMotor}")
         self._motor = factory(self._serial_number)
         try:
             self.confirm_identity()
-        except Exception:
+            logger.debug("Confirmed APT identity")
+        except Exception as exc:
+            logger.error(f"Failed to confirm APT identity {exc}")
             self.disconnect()
             raise
 
@@ -244,12 +260,14 @@ class ThorlabsHDR50(MotorController):
     def status(self) -> MotorStatus:
         motor = self._connected_motor()
         homed = getattr(motor, "is_homed", None)
-        return MotorStatus(
+        state = MotorStatus(
             current_angle=self.get_position(),
             target_angle=self._target_angle,
             moving=self.is_moving(),
             homed=bool(homed()) if callable(homed) else None,
         )
+        logger.debug("APT Motor {state=}")
+        return state
 
     def _connected_motor(self) -> Any:
         if self._motor is None:
