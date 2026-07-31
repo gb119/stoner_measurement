@@ -292,6 +292,7 @@ class TestExecuteGuards:
         from unittest.mock import MagicMock
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
         # _sweep_values is None — configure() not called
         with pytest.raises(RuntimeError, match="configure"):
             list(plugin.execute({}))
@@ -328,7 +329,7 @@ class TestExecute:
         plugin._k2182a.initiate.assert_called_once_with()
         plugin._k6221.enable_output.assert_not_called()
         plugin._k2182a.read_buffer.assert_called_once_with(count=2)
-        plugin._k2182a.clear_buffer.assert_called_once_with()
+        plugin._k2182a.set_buffer_feed_continuous_next.assert_called_once_with()
         plugin._k6221.clear_sweep_complete_event.assert_called_once_with()
         plugin._k6221.wait_for_sweep_complete_srq.assert_called_once()
         plugin._k2182a.get_buffer_count.assert_not_called()
@@ -351,7 +352,7 @@ class TestExecute:
 
         assert points == [(1e-3, 0.1), (2e-3, 0.2)]
         assert plugin._k2182a.read_buffer.call_count == 2
-        plugin._k2182a.clear_buffer.assert_called_once_with()
+        plugin._k2182a.set_buffer_feed_continuous_next.assert_called_once_with()
 
     def test_execute_can_run_successive_sweeps_without_reconfigure(self, qapp):
         from unittest.mock import MagicMock, patch
@@ -373,7 +374,8 @@ class TestExecute:
         assert second == [(1e-3, 0.3), (2e-3, 0.4)]
         assert plugin._k6221.sweep_start.call_count == 2
         assert plugin._k2182a.initiate.call_count == 2
-        assert plugin._k2182a.clear_buffer.call_count == 2
+        assert plugin._k2182a.set_buffer_feed_continuous_next.call_count == 2
+        plugin._k2182a.clear_buffer.assert_not_called()
         plugin._k6221.enable_output.assert_not_called()
 
 
@@ -399,6 +401,7 @@ class TestConfigure:
         plugin.configure()
 
         plugin._k6221.enable_output.assert_called_once_with(True)
+        plugin._k2182a.clear_buffer.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------

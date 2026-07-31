@@ -449,12 +449,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         values: dict[str, str] = {}
         for column in ("V", "R", "P"):
             key = f"IV {column}"
-            values[f"{var}:{key} mean"] = (
-                f"{var}.get_channel_statistic({key!r}, 'mean')"
-            )
-            values[f"{var}:{key} std"] = (
-                f"{var}.get_channel_statistic({key!r}, 'std')"
-            )
+            values[f"{var}:{key} mean"] = f"{var}.get_channel_statistic({key!r}, 'mean')"
+            values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
         return values
 
     def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
@@ -633,8 +629,13 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             >>> plugin = Keithley6221_2182APlugin()
             >>> # plugin.connect(); plugin.configure()  # requires real hardware
         """
+        # ---- Check connected ok ----
         if self._k6221 is None:
-            raise RuntimeError("Not connected — call connect() before configure().")
+            self._log.error(f"{self.__class__.__name__}:Not connected — call connect() before execute().")
+            raise RuntimeError("Not connected — call connect() before execute().")
+        if self._k2182a is None:
+            self._log.error(f"{self.__class__.__name__}:DIRECT_GPIB mode selected but 2182A is not connected.")
+            raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
 
         self._set_status(TraceStatus.CONFIGURING)
         try:
@@ -685,8 +686,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             )
 
             # ---- 2182A: reset and configure ----
-            if self._k2182a is None:
-                raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
             self._k2182a.reset()
 
             self._k2182a.set_digits(self._digits)
@@ -714,9 +713,13 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # ---- 2182A: trigger ----
             self._k2182a.set_trigger_source(NanovoltmeterTriggerSource.EXT)
             self._k2182a.set_trigger_count(n)
+
+            # ---- 6221 arm to go ----
+            self._k6221.sweep_abort()
             self._k6221.enable_output(True)
 
-        except Exception:
+        except Exception as exc:
+            self._log.error(f"{self.__class__.__name__}: Exception during confgiure {exc}")
             self._set_status(TraceStatus.ERROR)
             raise
         self._set_status(TraceStatus.IDLE)
@@ -752,9 +755,15 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             >>> # plugin.connect(); plugin.configure()
             >>> # pts = list(plugin.execute({}))  # requires real hardware
         """
+        # ---- Check connected ok ----
         if self._k6221 is None:
+            self._log.error(f"{self.__class__.__name__}:Not connected — call connect() before execute().")
             raise RuntimeError("Not connected — call connect() before execute().")
+        if self._k2182a is None:
+            self._log.error(f"{self.__class__.__name__}:DIRECT_GPIB mode selected but 2182A is not connected.")
+            raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
         if self._sweep_values is None:
+            self._log.error(f"{self.__class__.__name__}:Not configured — call configure() before execute().")
             raise RuntimeError("Not configured — call configure() before execute().")
 
         n = len(self._sweep_values)
@@ -766,16 +775,15 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         post_sweep_delay = self._post_sweep_delay()
 
         try:
-            # Arm 6221 sweep and initiate 2182A trigger system.
-            if self._k2182a is None:
-                raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+            # ---- Arm 6221 sweep and initiate 2182A trigger system. ----
             self._k6221.clear_sweep_complete_event()
-            self._k2182a.clear_buffer()
             self._k2182a.set_buffer_feed_continuous_next()
             self._k2182a.initiate()
-            self._k6221.sweep_abort()
+
+            # ---- Start sweep ----
             self._k6221.sweep_start()
 
+            # ---- Wait for sweep to finish ----
             if not self._k6221.wait_for_sweep_complete_srq(timeout):
                 self._k6221.sweep_abort()
                 self._k2182a.abort()
@@ -784,28 +792,32 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # Allow the 2182A to finish the final measurement and commit it to memory.
             time.sleep(post_sweep_delay)
-            if self._k2182a is None:
-                raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
+
+            # ---- Loop to read data back from 2182A ----
             read_deadline = time.monotonic() + max(_TIMEOUT_MIN / 2.0, post_sweep_delay * 4.0)
             while True:
                 voltages = self._k2182a.read_buffer(count=n)
                 if len(voltages) == n:
                     break
                 if time.monotonic() > read_deadline:
+                    self._log.error(
+                        f"{self.__class__.__name__}:2182A returned {len(voltages)} readings but"
+                        f" expected {n}  after waiting {post_sweep_delay:.2f} s beyond sweep completion."
+                    )
                     raise RuntimeError(
                         f"2182A returned {len(voltages)} readings but expected {n} "
                         f"after waiting {post_sweep_delay:.2f} s beyond sweep completion."
                     )
                 time.sleep(_POLL_INTERVAL)
-            # Reset 2182 Buffer
-            self._k2182a.set_buffer_feed_continuous_next()
-        except Exception:
-            # Attempt a clean abort on any failure.
+        except Exception as exc:
+            # ---- Attempt a clean abort on any failure. ----
+            self._log.error(f"{self.__class__.__name__}: Exception during execute loop {exc}")
             try:
                 self._k6221.sweep_abort()
                 self._k2182a.abort()
                 self._k6221.enable_output(False)
-            except _CLEANUP_EXCEPTIONS:
+            except _CLEANUP_EXCEPTIONS as exc:
+                self._log.error(f"{self.__class__.__name__}:Exceptions during cleanup {exc}")
                 pass
             raise
 
