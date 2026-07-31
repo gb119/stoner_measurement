@@ -66,6 +66,8 @@ class MagnetReading:
             Persistent-mode trapped current in amps, if known.
         persistent_field (float | None):
             Field trapped when entering persistent mode, if known.
+        persistent (bool):
+            ``True`` when the controller reports a trapped persistent field.
         at_target (bool):
             ``True`` when the output has reached the programmed target.
         quench_detected (bool):
@@ -101,6 +103,7 @@ class MagnetReading:
     heater_state: HeaterState | None = None
     persistent_current: float | None = None
     persistent_field: float | None = None
+    persistent: bool = False
     quench_detected: bool = False
     field_rate: float = 0.0
 

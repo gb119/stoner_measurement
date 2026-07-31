@@ -1753,6 +1753,8 @@ class SequenceEngine(QObject):
         if return_line_map:
             lines.append("    # __SM_END__")
         lines.append("finally:")
+        for plugin in ordered_plugins:
+            lines.extend(plugin.generate_finally_code(1))
         disconnect_lines = [
             f"    {plugin.instance_name}.disconnect()"
             for plugin in reversed(ordered_plugins)

@@ -1,4 +1,4 @@
-# Copilot general instructions
+﻿# Copilot general instructions
 
 ## Critical rules
 
@@ -48,6 +48,18 @@ instruments over USB, Serial, GPIB, and Ethernet. It provides:
   plugins or UI code.
 - Keeping command generation in drivers makes malformed commands easier to
   trace.
+
+### Logging
+
+- Use the `logging` module and create a logger object with `logger = logging.getLogger(__name__)`
+  pattern by default in instrument drivers - note the transport layer has built
+  in logging already.
+- Prefix logging messages with the class name of the driver gernerating the log message to
+  aid filtering.
+- When catching exceptions, log the exception with logger.error(f"....{exc}...") type
+  patterns before re-raising the error.
+- Log successful steps of instrument operations (connect, identify, configure etc) with
+  logger.debug(...) messages.
 
 ## Docstring formatting
 

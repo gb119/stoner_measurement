@@ -158,6 +158,10 @@ class Lakeshore625(MagnetController, MagnetSupply):
         current = self.current
         field = self.field
         voltage = self.voltage
+        persistent_current = None
+        if heater_state is HeaterState.OFF:
+            persistent_current = self._query_float("PSHIS?")
+        persistent = persistent_current is not None and abs(persistent_current) > 1e-12
         at_target = state not in {MagnetState.FAULT, MagnetState.QUENCH, MagnetState.UNKNOWN} and current_is_at_target(
             current, self.target_current, self.ramp_rate_current
         )
@@ -166,10 +170,11 @@ class Lakeshore625(MagnetController, MagnetSupply):
             current=current,
             field=field,
             voltage=voltage,
-            persistent=False,
+            persistent=persistent,
             heater_on=heater_state is HeaterState.ON,
             heater_state=heater_state,
             at_target=at_target,
+            persistent_current=persistent_current,
             message=raw,
         )
 

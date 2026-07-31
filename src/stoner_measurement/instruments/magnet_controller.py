@@ -150,6 +150,8 @@ class MagnetStatus:
             ``True`` when the output has reached the programmed target.
         persistent_field (float | None):
             Field trapped when entering persistent mode, if known.
+        persistent_current (float | None):
+            Current trapped in the persistent magnet circuit, if known.
         message (str | None):
             Optional human-readable status or error message from the
             instrument, or ``None`` if no message is available.
@@ -164,6 +166,7 @@ class MagnetStatus:
     at_target: bool
     heater_state: HeaterState = HeaterState.UNKNOWN
     persistent_field: float | None = None
+    persistent_current: float | None = None
     message: str | None = None
 
 

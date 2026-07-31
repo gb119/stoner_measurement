@@ -186,7 +186,10 @@ class Motor(Protocol):
         """Move by *angle* degrees in *direction*."""
         ...
 
-    def move_home(self) -> None:
+    def move_home(
+        self,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
         """Move to the configured home position."""
         ...
 
@@ -263,7 +266,10 @@ class MotorController(BaseInstrument):
         self.move_to_angle(self.get_position() + signed_angle, direction=canonical_direction)
 
     @abstractmethod
-    def move_home(self) -> None:
+    def move_home(
+        self,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
         """Move to the configured home position."""
 
     @abstractmethod

@@ -236,6 +236,8 @@ class TestOxfordMercuryIPS:
                 b"STAT:DEV:PSU.M1:PSU:SIG:VOLT:+0.00000V\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:FSET:+1.00000T\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:SWHT:OFF\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:PFLD:+1.00000T\n",
+                b"STAT:DEV:PSU.M1:PSU:SIG:PCUR:+2.00000A\n",
                 b"STAT:DEV:PSU.M1:PSU:SIG:RSET:+0.10000T/m\n",
             ]
         )
@@ -244,6 +246,8 @@ class TestOxfordMercuryIPS:
         assert status.persistent is True
         assert status.heater_on is False
         assert status.heater_state.value == "off"
+        assert status.persistent_field == pytest.approx(1.0)
+        assert status.persistent_current == pytest.approx(2.0)
 
     def test_read_sig_float_raises_on_invalid_response(self):
         t = _null(responses=[b"STAT:DEV:PSU.M1:PSU:SIG:FLD:NOT_A_NUMBER\n"])

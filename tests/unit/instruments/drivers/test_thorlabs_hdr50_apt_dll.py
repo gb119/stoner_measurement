@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.instruments.thorlabs.hdr50 import _AptDllMotor
 
 
@@ -20,6 +21,10 @@ class _FakeAptDll:
     acceleration: float = 5.0
     max_velocity: float = 10.0
     status_bits: int = 0
+    home_direction: int = 1
+    home_limit_switch: int = 1
+    home_velocity: float = 3.0
+    home_zero_offset: float = 0.0
     ignore_velocity_writes: int = 0
     ignore_move_commands: int = 0
     calls: list[tuple] = field(default_factory=list)
@@ -91,6 +96,30 @@ class _FakeAptDll:
         self.calls.append(("MOT_MoveHome", _value(serial), _value(wait)))
         return 0
 
+    def MOT_GetHomeParams(self, serial, direction, limit_switch, velocity, zero_offset) -> int:
+        direction._obj.value = self.home_direction
+        limit_switch._obj.value = self.home_limit_switch
+        velocity._obj.value = self.home_velocity
+        zero_offset._obj.value = self.home_zero_offset
+        return 0
+
+    def MOT_SetHomeParams(self, serial, direction, limit_switch, velocity, zero_offset) -> int:
+        self.calls.append(
+            (
+                "MOT_SetHomeParams",
+                _value(serial),
+                _value(direction),
+                _value(limit_switch),
+                _value(velocity),
+                _value(zero_offset),
+            )
+        )
+        self.home_direction = _value(direction)
+        self.home_limit_switch = _value(limit_switch)
+        self.home_velocity = _value(velocity)
+        self.home_zero_offset = _value(zero_offset)
+        return 0
+
     def MOT_GetStatusBits(self, serial, status) -> int:
         status._obj.value = self.status_bits
         return 0
@@ -128,6 +157,21 @@ def test_velocity_write_is_read_back_and_retried():
         assert len(writes) == 2
         assert dll.max_velocity == pytest.approx(25.0)
         assert dll.acceleration == pytest.approx(5.0)
+    finally:
+        motor.close()
+
+
+def test_home_applies_direction_without_overwriting_other_home_parameters():
+    dll = _FakeAptDll()
+    motor = _AptDllMotor("70001234", dll=dll, settle_time=0.0)
+    try:
+        motor.home(MotorMoveDirection.COUNTERCLOCKWISE)
+
+        assert dll.home_direction == 2
+        assert dll.home_limit_switch == 1
+        assert dll.home_velocity == pytest.approx(3.0)
+        assert dll.calls[-2][0] == "MOT_SetHomeParams"
+        assert dll.calls[-1] == ("MOT_MoveHome", 70001234, 0)
     finally:
         motor.close()
 

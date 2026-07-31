@@ -125,13 +125,14 @@ class OxfordIPS120(MagnetController, MagnetSupply):
 
     @property
     def current(self) -> float:
-        """Return output current in amps.
+        """Return demand current in amps.
 
         Returns:
             (float):
-                Measured magnet supply current in amps.
+                Demand current reported by IPS120 register R0. This is used
+                instead of the less reliable R2 measured-current readback.
         """
-        return self._query_float("R2")
+        return self._query_float("R0")
 
     @property
     def field(self) -> float:
@@ -185,8 +186,10 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             if heater_state is HeaterState.OFF
             else None
         )
+        persistent_current = None
         persistent_field = None
         if persistent:
+            persistent_current = self._query_float("R16")
             persistent_field = self._query_float("R18")
         at_target = state not in {MagnetState.FAULT, MagnetState.QUENCH, MagnetState.UNKNOWN} and current_is_at_target(
             current, self.target_current, self.ramp_rate_current
@@ -201,6 +204,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
             heater_state=heater_state,
             at_target=at_target,
             persistent_field=persistent_field,
+            persistent_current=persistent_current,
             message=status_reply,
         )
 
@@ -249,8 +253,8 @@ class OxfordIPS120(MagnetController, MagnetSupply):
 
     @property
     def target_current(self) -> float | None:
-        """Return the programmed current target in amps."""
-        return self._query_float("R5")
+        """Return the demand current in amps."""
+        return self._query_float("R0")
 
     @property
     def target_field(self) -> float | None:

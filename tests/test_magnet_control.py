@@ -1523,6 +1523,35 @@ class TestMagnetControlPanel:
         assert panel._chart_voltage == [pytest.approx(0.2)]
         assert panel._chart_target_rate == [pytest.approx(0.8)]
 
+    def test_state_update_charts_persistent_field_and_current(self, qapp):
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        state = MagnetEngineState(
+            reading=MagnetReading(
+                timestamp=datetime.now(tz=UTC),
+                field=1.0,
+                current=0.0,
+                voltage=0.0,
+                heater_on=False,
+                heater_state=HeaterState.OFF,
+                state=MagnetState.PERSISTENT,
+                persistent_current=12.5,
+                persistent_field=1.25,
+                persistent=True,
+                at_target=True,
+            ),
+            engine_status=MagnetEngineStatus.POLLING,
+        )
+
+        panel._on_state_updated(state)
+
+        assert panel._chart_persistent_current == [pytest.approx(12.5)]
+        assert panel._chart_persistent_field == [pytest.approx(1.25)]
+        assert panel._legend_items["Persistent Current"].text(1) == "12.5000 A"
+        assert panel._legend_items["Persistent Field"].text(1) == "1.2500 T"
+
     def test_at_target_state_overrides_stale_ramping_activity(self, qapp):
         from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
@@ -1609,6 +1638,7 @@ class TestMagnetControlPanel:
                 heater_state=HeaterState.OFF,
                 state=MagnetState.STANDBY,
                 persistent_current=10.0,
+                persistent=True,
                 at_target=False,
             ),
             target_current=10.0,
@@ -1626,6 +1656,36 @@ class TestMagnetControlPanel:
 
         assert not panel._btn_heater_on.isEnabled()
         assert panel._btn_heater_off.isEnabled()
+
+    def test_read_heater_enables_heater_on_for_h0_at_zero(self, monkeypatch, qapp):
+        from stoner_measurement.instruments.magnet_controller import HeaterState, MagnetState
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        monkeypatch.setattr(
+            panel._engine,
+            "read_controller_state",
+            lambda: MagnetEngineState(
+                reading=MagnetReading(
+                    timestamp=datetime.now(tz=UTC),
+                    field=0.0,
+                    current=0.0,
+                    voltage=0.0,
+                    heater_on=False,
+                    heater_state=HeaterState.OFF,
+                    state=MagnetState.STANDBY,
+                    persistent=False,
+                    at_target=True,
+                ),
+                target_current=1.5,
+                engine_status=MagnetEngineStatus.POLLING,
+            ),
+        )
+
+        panel._on_read_heater()
+
+        assert panel._btn_heater_on.isEnabled()
+        assert not panel._btn_heater_off.isEnabled()
 
     def test_read_ramp_warns_when_state_unavailable(self, monkeypatch, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel

@@ -66,6 +66,8 @@ _STATUS_COLOURS: dict[MotorEngineStatus, str] = {
     MotorEngineStatus.ERROR: "#cc0000",
 }
 
+_STATUS_BAR_MINIMUM_WIDTH = 720
+
 
 def _colour_dot(colour: str, size: int = 12) -> str:
     return (
@@ -409,6 +411,9 @@ class MotorControlPanel(QWidget):
     def _build_status_bar(self) -> QWidget:
         status_bar = QWidget()
         status_bar.setFixedHeight(28)
+        # Keep the control tab columns wide enough for the longest live
+        # direction text so polling updates cannot make the dial shuffle.
+        status_bar.setMinimumWidth(_STATUS_BAR_MINIMUM_WIDTH)
         bar_layout = QHBoxLayout(status_bar)
         bar_layout.setContentsMargins(4, 2, 4, 2)
         bar_layout.setSpacing(12)
@@ -691,7 +696,9 @@ class MotorControlPanel(QWidget):
 
     @pyqtSlot()
     def _on_move_home(self) -> None:
-        self._engine.move_home()
+        self._engine.set_velocity(self._velocity_spin.value())
+        self._engine.set_acceleration(self._acceleration_spin.value())
+        self._engine.move_home(direction=self._direction_combo.currentData())
 
     @pyqtSlot()
     def _on_save_configuration(self) -> None:

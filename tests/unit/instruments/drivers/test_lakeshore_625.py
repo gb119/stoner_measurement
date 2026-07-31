@@ -137,6 +137,7 @@ class TestLakeshore625:
                 b"1.1\r\n",
                 b"0.3\r\n",
                 b"0.2\r\n",
+                b"1.05\r\n",
                 b"1.1\r\n",
                 b"0.1\r\n",
             ]
@@ -149,12 +150,15 @@ class TestLakeshore625:
         assert status.field == pytest.approx(0.3)
         assert status.voltage == pytest.approx(0.2)
         assert status.heater_on is False
+        assert status.persistent_current == pytest.approx(1.05)
+        assert status.persistent is True
         assert t.write_log == [
             b"OPST?\r\n",
             b"PSH?\r\n",
             b"RDGI?\r\n",
             b"RDGF?\r\n",
             b"RDGV?\r\n",
+            b"PSHIS?\r\n",
             b"SETI?\r\n",
             b"RATE?\r\n",
         ]

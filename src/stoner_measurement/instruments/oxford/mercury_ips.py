@@ -258,6 +258,8 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         heater_state = self._read_heater_state()
         heater = heater_state is HeaterState.ON
         persistent = heater_state is HeaterState.OFF
+        persistent_field = self._read_sig_float("PFLD") if persistent else None
+        persistent_current = self._read_sig_float("PCUR") if persistent else None
         target_current = fset / self._magnet_constant
         ramp_rate_current = self._read_sig_float("RSET") / self._magnet_constant
         at_target = state not in {MagnetState.FAULT, MagnetState.QUENCH, MagnetState.UNKNOWN} and current_is_at_target(
@@ -274,6 +276,8 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
             heater_on=heater,
             heater_state=heater_state,
             at_target=at_target,
+            persistent_field=persistent_field,
+            persistent_current=persistent_current,
         )
 
     @property

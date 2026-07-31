@@ -91,6 +91,10 @@ _FIELD_COLOUR = QColor(colour("trace_blue"))
 #: Colour for the current trace.
 _CURRENT_COLOUR = QColor(colour("trace_orange"))
 
+#: Colour for persistent current and field traces.
+_PERSISTENT_CURRENT_COLOUR = QColor("#8e44ad")
+_PERSISTENT_FIELD_COLOUR = QColor("#00838f")
+
 #: Colour for the voltage trace.
 _VOLTAGE_COLOUR = QColor(colour("trace_green"))
 
@@ -201,6 +205,8 @@ class MagnetControlPanel(QWidget):
         self._chart_times: list[float] = []
         self._chart_field: list[float] = []
         self._chart_current: list[float] = []
+        self._chart_persistent_field: list[float] = []
+        self._chart_persistent_current: list[float] = []
         self._chart_voltage: list[float] = []
         self._chart_heater: list[float] = []
         self._chart_field_rate: list[float] = []
@@ -765,6 +771,16 @@ class MagnetControlPanel(QWidget):
         field_val = reading.field if reading.field is not None else 0.0
         self._chart_field.append(field_val)
         self._chart_current.append(reading.current)
+        self._chart_persistent_field.append(
+            reading.persistent_field
+            if reading.persistent_field is not None
+            else float("nan")
+        )
+        self._chart_persistent_current.append(
+            reading.persistent_current
+            if reading.persistent_current is not None
+            else float("nan")
+        )
         self._chart_voltage.append(reading.voltage if reading.voltage is not None else 0.0)
         self._chart_heater.append(1.0 if reading.heater_on else 0.0)
         self._chart_field_rate.append(reading.field_rate)
@@ -776,6 +792,8 @@ class MagnetControlPanel(QWidget):
             self._chart_times.pop(0)
             self._chart_field.pop(0)
             self._chart_current.pop(0)
+            self._chart_persistent_field.pop(0)
+            self._chart_persistent_current.pop(0)
             self._chart_voltage.pop(0)
             self._chart_heater.pop(0)
             self._chart_field_rate.pop(0)
@@ -804,6 +822,45 @@ class MagnetControlPanel(QWidget):
         self._chart_widget.assign_trace_axes("Current", y_axis="electrical")
         self._chart_widget.set_trace_style("Current", colour=_CURRENT_COLOUR.name())
         self._update_legend_value("Current", f"{reading.current:.4f} A")
+
+        if reading.persistent_field is not None or "Persistent Field" in self._legend_items:
+            self._chart_widget.set_trace(
+                "Persistent Field", xs, self._chart_persistent_field
+            )
+            self._chart_widget.assign_trace_axes("Persistent Field", y_axis="left")
+            self._chart_widget.set_trace_style(
+                "Persistent Field",
+                colour=_PERSISTENT_FIELD_COLOUR.name(),
+                line_style="dash",
+            )
+            field_label = (
+                "—"
+                if reading.persistent_field is None
+                else f"{reading.persistent_field:.4f} T"
+            )
+            self._update_legend_value("Persistent Field", field_label)
+
+        if (
+            reading.persistent_current is not None
+            or "Persistent Current" in self._legend_items
+        ):
+            self._chart_widget.set_trace(
+                "Persistent Current", xs, self._chart_persistent_current
+            )
+            self._chart_widget.assign_trace_axes(
+                "Persistent Current", y_axis="electrical"
+            )
+            self._chart_widget.set_trace_style(
+                "Persistent Current",
+                colour=_PERSISTENT_CURRENT_COLOUR.name(),
+                line_style="dash",
+            )
+            current_label = (
+                "—"
+                if reading.persistent_current is None
+                else f"{reading.persistent_current:.4f} A"
+            )
+            self._update_legend_value("Persistent Current", current_label)
 
         self._chart_widget.set_trace("Voltage", xs, self._chart_voltage)
         self._chart_widget.assign_trace_axes("Voltage", y_axis="electrical")
@@ -1527,8 +1584,8 @@ class MagnetControlPanel(QWidget):
         heater_state_known = heater_is_on or heater_is_off
         ramping = reading.state is MagnetState.RAMPING and not state.at_target
 
-        persistent_matches_target = True
-        if state.target_current is not None:
+        persistent_matches_target = not reading.persistent
+        if reading.persistent and state.target_current is not None:
             if reading.persistent_current is None:
                 persistent_matches_target = False
             else:
@@ -1607,6 +1664,8 @@ class MagnetControlPanel(QWidget):
         self._chart_times.clear()
         self._chart_field.clear()
         self._chart_current.clear()
+        self._chart_persistent_field.clear()
+        self._chart_persistent_current.clear()
         self._chart_voltage.clear()
         self._chart_heater.clear()
         self._chart_field_rate.clear()

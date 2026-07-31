@@ -1158,6 +1158,10 @@ class BasePlugin(ABC):
             "",
         ]
 
+    def generate_finally_code(self, indent: int) -> list[str]:
+        """Return optional lines to run before lifecycle disconnects in ``finally``."""
+        return []
+
     def generate_instantiation_code(self) -> list[str]:
         """Return Python code lines that conditionally instantiate this plugin from its config.
 

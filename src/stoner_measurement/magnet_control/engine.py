@@ -1044,9 +1044,13 @@ class MagnetControllerEngine(QObject):
 
         magnet_constant = self._magnet_constant
 
-        persistent_current: float | None = None
-        if status.persistent_field is not None and magnet_constant not in {None, 0.0}:
-            persistent_current = status.persistent_field / magnet_constant
+        persistent_current = status.persistent_current
+        persistent_field = status.persistent_field
+        if magnet_constant not in {None, 0.0}:
+            if persistent_current is None and persistent_field is not None:
+                persistent_current = persistent_field / magnet_constant
+            elif persistent_field is None and persistent_current is not None:
+                persistent_field = persistent_current * magnet_constant
 
         reading = MagnetReading(
             timestamp=now,
@@ -1057,7 +1061,8 @@ class MagnetControllerEngine(QObject):
             heater_state=status.heater_state,
             state=reading_state,
             persistent_current=persistent_current,
-            persistent_field=status.persistent_field,
+            persistent_field=persistent_field,
+            persistent=status.persistent,
             at_target=self._is_at_target,
             quench_detected=status.state is MagnetState.QUENCH,
             field_rate=field_rate,

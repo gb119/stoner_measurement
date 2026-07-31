@@ -6,13 +6,13 @@ tolerant pylablib API-probing logic used by all Thorlabs Kinesis-backed drivers.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
 from platform import architecture
 from typing import Any
-import logging
 
 from stoner_measurement.instruments.motor_controller import (
     MotorController,
@@ -217,8 +217,12 @@ class _KinesisMotorBase(MotorController):
             return
         raise NotImplementedError("Motor object does not expose a supported relative or absolute move API.")
 
-    def move_home(self) -> None:
+    def move_home(
+        self,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
         """Move to the configured home position."""
+        del direction
         self._ensure_connected()
         self._target_angle = None
         if self._call_first_available(("home", "move_home")) is not _MISSING:
@@ -317,10 +321,14 @@ class _KinesisMotorBase(MotorController):
             try:
                 motor = factory(self._serial_number)
             except Exception as exc:
-                logger.debug(f"Failed to create motor {exc}")
+                logger.error(f"Failed to create motor: {exc}")
                 raise
             return motor
-            
+        try:
+            return factory(self._serial_number)
+        except Exception as exc:
+            logger.error(f"Failed to create motor: {exc}")
+            raise
 
     def _call_first_available(
         self,

@@ -455,18 +455,30 @@ class MotorControllerEngine(QObject):
             except Exception:
                 logger.exception("Failed to set motor home to %s deg", angle)
 
-    def move_home(self) -> None:
+    def move_home(
+        self,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
         """Command the connected controller to move to its home position."""
         with self._engine_lock:
             if self._driver is None:
                 return
             try:
-                self._driver.move_home()
+                current_angle = float(self._driver.get_position())
+                plan = resolve_relative_motor_move(
+                    current_angle,
+                    0.0,
+                    direction,
+                    soft_limit=self._soft_limit,
+                    force=True,
+                )
+                self._driver.move_home(direction=plan.direction)
                 self._target_angle = 0.0
                 self._display_target_angle = 0.0
+                self._move_direction = plan.direction
                 self._mark_target_pending()
-            except Exception:
-                logger.exception("Failed to move motor home")
+            except Exception as exc:
+                logger.error(f"Failed to move motor home: {exc}")
 
     def set_stability_config(self, config: MotorStabilityConfig) -> None:
         """Replace the current at-target stability configuration."""

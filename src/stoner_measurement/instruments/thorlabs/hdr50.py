@@ -29,6 +29,8 @@ _DllLoader = Callable[[str], Any]
 _COMMAND_RETRIES = 3
 _COMMAND_SETTLE_S = 0.05
 _POSITION_TOLERANCE_DEG = 0.01
+_APT_HOME_CLOCKWISE = 1
+_APT_HOME_COUNTERCLOCKWISE = 2
 # Values published by the locally installed APTAPI.h.  Including the full
 # motion-controller set lets the selector serve both the HDR50 controller and
 # the KDC101/KPRMTE route presented by the same motor panel.
@@ -279,8 +281,45 @@ class _AptDllMotor:
             logger.error(f"APT relative move by {distance} did not start on attempt {attempt}")
         raise RuntimeError(f"APT controller did not start the relative move by {distance:g} degrees.")
 
-    def home(self) -> None:
+    def home(
+        self,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
+        home_direction, limit_switch, velocity, zero_offset = self._home_parameters()
+        requested_direction = (
+            _APT_HOME_COUNTERCLOCKWISE
+            if direction is MotorMoveDirection.COUNTERCLOCKWISE
+            else _APT_HOME_CLOCKWISE
+        )
+        if home_direction != requested_direction:
+            self._check_result(
+                "MOT_SetHomeParams",
+                self._dll.MOT_SetHomeParams(
+                    self._serial,
+                    ctypes.c_long(requested_direction),
+                    ctypes.c_long(limit_switch),
+                    ctypes.c_float(velocity),
+                    ctypes.c_float(zero_offset),
+                ),
+            )
         self._check_result("MOT_MoveHome", self._dll.MOT_MoveHome(self._serial, ctypes.c_int(False)))
+
+    def _home_parameters(self) -> tuple[int, int, float, float]:
+        direction = ctypes.c_long()
+        limit_switch = ctypes.c_long()
+        velocity = ctypes.c_float()
+        zero_offset = ctypes.c_float()
+        self._check_result(
+            "MOT_GetHomeParams",
+            self._dll.MOT_GetHomeParams(
+                self._serial,
+                ctypes.byref(direction),
+                ctypes.byref(limit_switch),
+                ctypes.byref(velocity),
+                ctypes.byref(zero_offset),
+            ),
+        )
+        return direction.value, limit_switch.value, float(velocity.value), float(zero_offset.value)
 
     def set_position_reference(self, angle: float) -> None:
         """Implement an arbitrary position reference as a driver-side offset."""
@@ -484,9 +523,24 @@ class ThorlabsHDR50(MotorController):
         self._target_angle = self.get_position() + signed_angle
         self._connected_motor().move_relative(signed_angle)
 
-    def move_home(self) -> None:
+    def move_home(
+        self,
+        direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE,
+    ) -> None:
+        if direction is MotorMoveDirection.SHORTEST:
+            direction = (
+                MotorMoveDirection.COUNTERCLOCKWISE
+                if self.get_position() > 0.0
+                else MotorMoveDirection.CLOCKWISE
+            )
         self._target_angle = None
-        self._connected_motor().home()
+        motor = self._connected_motor()
+        if isinstance(motor, _AptDllMotor):
+            motor.home(direction)
+        else:
+            # Retain compatibility with injected/legacy motor objects whose
+            # native home method predates direction-aware APT homing.
+            motor.home()
 
     def set_home(self, angle: float = 0.0) -> None:
         self._connected_motor().set_position_reference(float(angle))

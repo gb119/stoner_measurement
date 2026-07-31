@@ -22,6 +22,7 @@ from stoner_measurement.plugins.command.alert import AlertCommand
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.command.if_command import IfCommand
+from stoner_measurement.plugins.command.make_safe import MakeSafeCommand
 from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
 from stoner_measurement.plugins.command.pressure_gauge_channel import (
     PressureGaugeChannelCommand,
@@ -38,6 +39,7 @@ __all__ = [
     "CommandPlugin",
     "DetailsCommand",
     "IfCommand",
+    "MakeSafeCommand",
     "PlotClearCommand",
     "PlotPointsCommand",
     "PlotTraceCommand",

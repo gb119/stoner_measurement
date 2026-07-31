@@ -353,7 +353,7 @@ QTabBar::tab {{
     background: {background};
     color: {text};
     border: 1px solid {border};
-    padding: 6px 10px;
+    padding: 6px 12px;
 }}
 
 QTabBar::tab:selected {{
