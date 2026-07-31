@@ -178,8 +178,21 @@ class TestKeithley6221:
         assert k.get_operating_status() == 4
         assert t.write_log == [b":STAT:OPER:COND?\n"]
 
+    def test_configure_and_wait_for_sweep_complete_srq_without_native_wait(self):
+        t = _null([b"64\n"])
+        k = Keithley6221(transport=t)
+
+        k.configure_sweep_complete_srq()
+        assert k.wait_for_sweep_complete_srq(1.0) is True
+
+        assert t.write_log == [
+            b":STAT:OPER:ENAB 2\n",
+            b"*SRE 128\n",
+            b"*STB?\n",
+        ]
+
     def test_sweep_status_helpers(self):
-        t = _null([b"2\n", b"4\n"])
+        t = _null([b"8\n", b"2\n"])
         k = Keithley6221(transport=t)
         assert k.sweep_is_running() is True
         assert k.sweep_is_finished() is True

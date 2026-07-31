@@ -472,6 +472,10 @@ QToolTip {{
         if console is not None:
             try:
                 console.kernel_client = None
+            except TypeError:
+                # qtconsole raises when its channel slots were already
+                # disconnected by an overlapping channel shutdown.
+                logger.debug("Console kernel client signals were already disconnected")
             except RuntimeError as exc:
                 if not _is_deleted_qt_wrapper_error(exc):
                     raise

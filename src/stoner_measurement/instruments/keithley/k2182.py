@@ -266,6 +266,13 @@ class Keithley2182A(Nanovoltmeter):
             raise ValueError("Filter count must be positive.")
         self.write(f":SENS:VOLT:DFIL:COUN {count}")
 
+    def set_filter_type(self, filter_type: str) -> None:
+        """Select the repeating or moving-window digital filter."""
+        token = filter_type.strip().upper()
+        if token not in {"REPEAT", "MOVING"}:
+            raise ValueError("Filter type must be 'REPEAT' or 'MOVING'.")
+        self.write(f":SENS:VOLT:DFIL:TCON {'REP' if token == 'REPEAT' else 'MOV'}")
+
     def set_analog_filter_enabled(self, state: bool) -> None:
         """Enable or disable the analogue low-pass filter.
 

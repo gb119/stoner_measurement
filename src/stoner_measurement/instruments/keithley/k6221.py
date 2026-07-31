@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from enum import Enum
 from time import sleep
 
@@ -20,8 +21,10 @@ from stoner_measurement.instruments.transport.base import BaseTransport
 #: Maximum number of values the 6221 accepts in a single :SOUR:LIST:CURR or
 #: :SOUR:LIST:COMP command. Longer lists are split and appended in batches.
 _LIST_BATCH_SIZE: int = 100
-_OPERATING_STATUS_SWEEP_RUNNING = 0x02
-_OPERATING_STATUS_SWEEP_FINISHED = 0x04
+_OPERATING_STATUS_SWEEP_RUNNING = 0x08
+_OPERATING_STATUS_SWEEP_FINISHED = 0x02
+_STATUS_BYTE_OPERATION_SUMMARY = 0x80
+_STATUS_BYTE_REQUEST_SERVICE = 0x40
 
 
 class _K6221_STATE(Enum):
@@ -627,6 +630,35 @@ class Keithley6221(CurrentSource):
     def get_operating_status(self) -> int:
         """Return the current operating-status condition register."""
         return int(float(self.query(":STAT:OPER:COND?")))
+
+    def configure_sweep_complete_srq(self) -> None:
+        """Route the sweep-finished operating event to the SRQ line."""
+        self.write(f":STAT:OPER:ENAB {_OPERATING_STATUS_SWEEP_FINISHED}")
+        self.write(f"*SRE {_STATUS_BYTE_OPERATION_SUMMARY}")
+
+    def clear_sweep_complete_event(self) -> None:
+        """Clear a sweep event latched by an earlier acquisition."""
+        self.query(":STAT:OPER:EVEN?")
+
+    def wait_for_sweep_complete_srq(self, timeout: float, poll_interval: float = 0.01) -> bool:
+        """Wait for sweep SRQ, using a transport-native operation if available."""
+        native_result = self.transport.wait_for_srq(timeout)
+        if native_result is not None:
+            return native_result
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() <= deadline:
+            with self._lock:
+                auto_check_errors = self.auto_check_errors
+                self.auto_check_errors = False
+                try:
+                    status_byte = int(float(self.query("*STB?")))
+                finally:
+                    self.auto_check_errors = auto_check_errors
+            if status_byte & _STATUS_BYTE_REQUEST_SERVICE:
+                return True
+            sleep(poll_interval)
+        return False
 
     def sweep_is_running(self) -> bool:
         """Return ``True`` while the instrument reports an active sweep."""

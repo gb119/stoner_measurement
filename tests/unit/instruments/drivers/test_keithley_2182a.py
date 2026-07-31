@@ -81,6 +81,7 @@ class TestKeithley2182A:
         t = _null()
         k = Keithley2182A(transport=t)
         k.set_digits(6)
+        k.set_filter_type("REPEAT")
         k.set_analog_filter_enabled(True)
         k.set_relative_enabled(False)
         k.set_buffer_size(8)
@@ -88,6 +89,7 @@ class TestKeithley2182A:
         k.set_buffer_feed_continuous_next()
         assert t.write_log == [
             b":SENS:VOLT:DIG 6\n",
+            b":SENS:VOLT:DFIL:TCON REP\n",
             b":SENS:VOLT:LPAS:STAT 1\n",
             b":SENS:VOLT:REF:STAT 0\n",
             b":TRAC:POIN 8\n",
@@ -100,6 +102,8 @@ class TestKeithley2182A:
             k.set_digits(9)
         with pytest.raises(ValueError):
             k.set_buffer_size(0)
+        with pytest.raises(ValueError):
+            k.set_filter_type("window")
 
     def test_capabilities(self):
         caps = Keithley2182A(transport=_null()).get_capabilities()

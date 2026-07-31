@@ -234,6 +234,19 @@ class ScriptTab(QWidget):
         self.console.shutdown()
         super().closeEvent(event)
 
+    def __del__(self) -> None:
+        """Stop console channels before Qt garbage-collects child widgets."""
+        try:
+            console = self.console
+        except (AttributeError, RuntimeError):
+            return
+        try:
+            console.shutdown()
+        except Exception:
+            # Qt or qtconsole may already be part-way through teardown during
+            # garbage collection or QApplication shutdown.
+            return
+
     # ------------------------------------------------------------------
     # Tab management
     # ------------------------------------------------------------------

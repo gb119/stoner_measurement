@@ -359,6 +359,10 @@ class BaseTransport(ABC):
         """
         return None
 
+    def wait_for_srq(self, timeout: float) -> bool | None:
+        """Wait for SRQ natively, or return ``None`` when unsupported."""
+        return None
+
     @classmethod
     def from_uri(cls, uri: str) -> BaseTransport:
         """Construct the appropriate transport instance from a URI or VISA resource string.

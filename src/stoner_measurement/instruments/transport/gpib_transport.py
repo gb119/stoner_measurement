@@ -345,6 +345,21 @@ class GpibTransport(BaseTransport):
         self._log_comms_traffic("IEEE", f"{stb=}")
         return stb
 
+    def wait_for_srq(self, timeout: float) -> bool | None:
+        """Wait for the GPIB service-request line without command polling."""
+        if self._resource is None:
+            return None
+        import pyvisa
+
+        try:
+            self._resource.wait_for_srq(timeout=max(1, round(timeout * 1000.0)))
+        except pyvisa.VisaIOError as exc:
+            if exc.error_code == pyvisa.constants.StatusCode.error_timeout:
+                return False
+            raise
+        self._log_comms_traffic("IEEE", "SRQ asserted")
+        return True
+
     def flush(self) -> None:
         """Send IEEE 488.2 Device Clear to the instrument and reset the interface.
 

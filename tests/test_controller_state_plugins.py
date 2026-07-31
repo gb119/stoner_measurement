@@ -72,6 +72,7 @@ class _FakeMagnetEngine:
         self.target_field_calls: list[float] = []
         self.ramp_to_target_calls = 0
         self.read_calls = 0
+        self.disconnect_calls = 0
         self._limits = SimpleNamespace(max_field=2.5)
         self._state = MagnetEngineState(
             reading=MagnetReading(
@@ -125,6 +126,9 @@ class _FakeMagnetEngine:
     def get_limits(self):
         return self._limits
 
+    def disconnect_instrument(self) -> None:
+        self.disconnect_calls += 1
+
 
 class _FakeTemperatureDriver:
     def __init__(self) -> None:
@@ -150,6 +154,7 @@ class _FakeTemperatureEngine:
         self.setpoint_calls: list[tuple[int, float]] = []
         self.loop_settings_calls: list[int] = []
         self.read_calls = 0
+        self.disconnect_calls = 0
         self._state = TemperatureEngineState(
             readings={
                 "A": TemperatureChannelReading(
@@ -177,6 +182,9 @@ class _FakeTemperatureEngine:
 
     def get_engine_state(self):
         return self._state
+
+    def disconnect_instrument(self) -> None:
+        self.disconnect_calls += 1
 
     def connect_preferred_driver(self) -> None:
         self.connect_calls.append(
@@ -213,6 +221,7 @@ class _FakeMotorEngine:
         self.acceleration_calls: list[float] = []
         self.move_calls: list[tuple[float, MotorMoveDirection]] = []
         self.read_calls = 0
+        self.disconnect_calls = 0
         self._state = SimpleNamespace(
             reading=SimpleNamespace(
                 angle=12.5,
@@ -248,6 +257,9 @@ class _FakeMotorEngine:
 
     def get_engine_state(self):
         return self._state
+
+    def disconnect_instrument(self) -> None:
+        self.disconnect_calls += 1
 
     def set_velocity(self, value: float) -> None:
         self.velocity_calls.append(float(value))
@@ -550,6 +562,42 @@ def test_motor_controller_plugin_connects_with_persisted_engine_settings(monkeyp
 
     assert engine.connect_calls == [("PersistedMotorDriver", "GPIB", "GPIB0::5::INSTR")]
     assert engine.connected_driver is not None
+
+
+def test_engine_backed_scan_and_sweep_disconnect_leave_shared_hardware_connected(monkeypatch, qapp):
+    plugin_groups = (
+        (
+            magnet_module,
+            "MagnetControllerEngine",
+            _FakeMagnetEngine(),
+            (MagnetControllerScanPlugin, MagnetControllerSweepPlugin),
+        ),
+        (
+            temperature_module,
+            "TemperatureControllerEngine",
+            _FakeTemperatureEngine(),
+            (TemperatureControllerScanPlugin, TemperatureControllerSweepPlugin),
+        ),
+        (
+            motor_module,
+            "MotorControllerEngine",
+            _FakeMotorEngine(),
+            (MotorControllerScanPlugin, MotorControllerSweepPlugin),
+        ),
+    )
+
+    for module, engine_class_name, engine, plugin_classes in plugin_groups:
+        engine.connected_driver = object()
+        monkeypatch.setattr(
+            module,
+            engine_class_name,
+            type(f"Fake{engine_class_name}", (), {"instance": staticmethod(lambda engine=engine: engine)}),
+        )
+        for plugin_class in plugin_classes:
+            plugin_class().disconnect()
+
+        assert engine.disconnect_calls == 0
+        assert engine.connected_driver is not None
 
 
 def test_temperature_controller_plugin_surfaces_persisted_connection_failure(monkeypatch, qapp):

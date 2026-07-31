@@ -298,6 +298,16 @@ class TestExecuteGuards:
 
 
 class TestExecute:
+    def test_post_sweep_delay_uses_repeat_filter_conversion_count(self, qapp):
+        plugin = _make_plugin()
+        plugin._nplc = 10.0
+        plugin._filter_enabled = True
+        plugin._filter_count = 4
+        plugin._analog_filter = False
+        plugin._source_delay = 10.0
+
+        assert plugin._post_sweep_delay() == pytest.approx(0.8)
+
     def test_execute_waits_for_6221_operating_status_before_reading_buffer(self, qapp):
         from unittest.mock import MagicMock, call, patch
 
@@ -307,7 +317,7 @@ class TestExecute:
         plugin._sweep_values = np.array([1e-3, 2e-3])
         plugin._k6221 = MagicMock()
         plugin._k2182a = MagicMock()
-        plugin._k6221.get_operating_status.side_effect = [0x02, 0x02, 0x04]
+        plugin._k6221.wait_for_sweep_complete_srq.return_value = True
         plugin._k2182a.read_buffer.return_value = (0.1, 0.2)
 
         with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep") as sleep_mock:
@@ -319,14 +329,10 @@ class TestExecute:
         plugin._k6221.enable_output.assert_not_called()
         plugin._k2182a.read_buffer.assert_called_once_with(count=2)
         plugin._k2182a.clear_buffer.assert_called_once_with()
-        assert plugin._k6221.get_operating_status.call_count == 3
+        plugin._k6221.clear_sweep_complete_event.assert_called_once_with()
+        plugin._k6221.wait_for_sweep_complete_srq.assert_called_once()
         plugin._k2182a.get_buffer_count.assert_not_called()
-        assert sleep_mock.call_args_list == [
-            call(plugin._post_sweep_delay()),
-            call(0.25),
-            call(0.25),
-            call(plugin._post_sweep_delay()),
-        ]
+        assert sleep_mock.call_args_list == [call(plugin._post_sweep_delay())]
 
     def test_execute_retries_buffer_read_until_final_measurement_arrives(self, qapp):
         from unittest.mock import MagicMock, patch
@@ -337,7 +343,7 @@ class TestExecute:
         plugin._sweep_values = np.array([1e-3, 2e-3])
         plugin._k6221 = MagicMock()
         plugin._k2182a = MagicMock()
-        plugin._k6221.get_operating_status.return_value = 0x04
+        plugin._k6221.wait_for_sweep_complete_srq.return_value = True
         plugin._k2182a.read_buffer.side_effect = [(0.1,), (0.1, 0.2)]
 
         with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep"):
@@ -356,7 +362,7 @@ class TestExecute:
         plugin._sweep_values = np.array([1e-3, 2e-3])
         plugin._k6221 = MagicMock()
         plugin._k2182a = MagicMock()
-        plugin._k6221.get_operating_status.return_value = 0x04
+        plugin._k6221.wait_for_sweep_complete_srq.return_value = True
         plugin._k2182a.read_buffer.side_effect = [(0.1, 0.2), (0.3, 0.4)]
 
         with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep"):
