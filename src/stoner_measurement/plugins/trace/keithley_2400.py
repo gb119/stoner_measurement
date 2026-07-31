@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import enum
 import math
-import time
 from collections.abc import Generator
 from typing import Any
 
@@ -57,7 +56,6 @@ from stoner_measurement.plugins.trace.base import (
 from stoner_measurement.scan import FunctionScanGenerator
 from stoner_measurement.ui.widgets import FILTER_GPIB, SISpinBox, VisaResourceComboBox
 
-_POLL_INTERVAL: float = 0.1
 _TIMEOUT_FACTOR: float = 5.0
 _TIMEOUT_MIN: float = 10.0
 _LINE_PERIOD_50HZ: float = 0.02
@@ -488,6 +486,7 @@ class Keithley2400SweepPlugin(TracePlugin):
                 self._smu.write(":TRIG:TCON:OUTP DEL")
             else:
                 self._smu.write(":TRIG:TCON:OUTP NONE")
+            self._smu.configure_buffer_full_srq()
             self._smu.check_error_queue()
             if self._enable_output_during_measurement:
                 self._smu.enable_output(True)
@@ -516,23 +515,15 @@ class Keithley2400SweepPlugin(TracePlugin):
         )
 
         try:
+            self._smu.clear_buffer_full_event()
+            self._smu.clear_buffer()
+            self._smu.set_trace_feed_continuous_next()
             self._smu.initiate()
 
             if self._trigger_routing is TriggerRouting.BUS:
                 self._smu.transport.send_group_execute_trigger()
-            deadline = time.monotonic() + timeout
-            while True:
-                try:
-                    self._smu.wait_for_operation_complete()
-                    break
-                except Exception:
-                    if time.monotonic() > deadline:
-                        raise
-                    time.sleep(_POLL_INTERVAL)
-            while self._smu.get_buffer_count() < n_points:
-                if time.monotonic() > deadline:
-                    raise RuntimeError(f"Timeout waiting for Keithley 2400 sweep completion after {timeout:.1f} s.")
-                time.sleep(_POLL_INTERVAL)
+            if not self._smu.wait_for_buffer_full_srq(timeout):
+                raise RuntimeError(f"Timeout waiting for Keithley 2400 sweep-complete SRQ after {timeout:.1f} s.")
 
             self._last_buffer_raw = self._smu.read_buffer_records(_BUFFER_ELEMENTS, count=n_points)
             self._smu.set_trace_feed_continuous_never()

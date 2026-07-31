@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from stoner_measurement.instruments.keithley import Keithley2400, Keithley2410, Keithley2450
@@ -44,6 +46,32 @@ class TestKeithley2400:
         t = _null()
         Keithley2400(transport=t).set_source_mode(SourceMode.CURR)
         assert t.write_log[-1] == b":SOUR:FUNC:MODE CURR\n"
+
+    def test_configure_and_wait_for_buffer_full_srq_without_native_wait(self):
+        t = _null(responses=[b"512\n", b"0\n", b"64\n"])
+        k = Keithley2400(transport=t)
+
+        k.configure_buffer_full_srq()
+        k.clear_buffer_full_event()
+
+        assert k.wait_for_buffer_full_srq(1.0) is True
+        assert t.write_log == [
+            b":STAT:MEAS:ENAB 512\n",
+            b"*SRE 1\n",
+            b":STAT:MEAS?\n",
+            b"*STB?\n",
+            b"*STB?\n",
+        ]
+
+    def test_wait_for_buffer_full_srq_uses_native_transport_wait(self):
+        transport = MagicMock()
+        transport.wait_for_srq.return_value = True
+        k = Keithley2400(transport=transport)
+
+        assert k.wait_for_buffer_full_srq(2.5) is True
+
+        transport.wait_for_srq.assert_called_once_with(2.5)
+        transport.write.assert_not_called()
 
     def test_source_mode_invalid_value_raises(self):
         with pytest.raises(ValueError):

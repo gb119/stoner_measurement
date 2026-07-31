@@ -132,6 +132,7 @@ class TestConfigureComplianceModes:
         plugin.configure()
 
         smu.set_compliance.assert_called_once_with(0.25)
+        smu.configure_buffer_full_srq.assert_called_once_with()
         smu.enable_output.assert_any_call(True)
 
     def test_configure_current_mode_resistance_compliance_uses_max_abs_current(self):
@@ -225,7 +226,7 @@ class TestExecuteLifecycle:
         plugin = _make_plugin()
         plugin._sweep_values = (0.1, 0.2)
         smu = MagicMock()
-        smu.get_buffer_count.return_value = 2
+        smu.wait_for_buffer_full_srq.return_value = True
         smu.read_buffer_records.return_value = (
             BufferReading(voltage=1.0, current=0.01, resistance=100.0, time=1.0, status=0),
             BufferReading(voltage=2.0, current=0.02, resistance=100.0, time=2.0, status=0),
@@ -235,7 +236,13 @@ class TestExecuteLifecycle:
         points = list(plugin.execute({}))
 
         assert points == [(0.1, 1.0), (0.2, 2.0)]
+        smu.clear_buffer_full_event.assert_called_once_with()
+        smu.clear_buffer.assert_called_once_with()
+        smu.set_trace_feed_continuous_next.assert_called_once_with()
         smu.initiate.assert_called_once_with()
+        smu.wait_for_buffer_full_srq.assert_called_once()
+        smu.wait_for_operation_complete.assert_not_called()
+        smu.get_buffer_count.assert_not_called()
         smu.safe_output_off.assert_not_called()
 
     def test_execute_can_run_successive_sweeps_without_reconfigure(self):
@@ -244,7 +251,7 @@ class TestExecuteLifecycle:
         plugin = _make_plugin()
         plugin._sweep_values = (0.1, 0.2)
         smu = MagicMock()
-        smu.get_buffer_count.return_value = 2
+        smu.wait_for_buffer_full_srq.return_value = True
         smu.read_buffer_records.side_effect = [
             (
                 BufferReading(voltage=1.0, current=0.01, resistance=100.0, time=1.0, status=0),
@@ -263,7 +270,25 @@ class TestExecuteLifecycle:
         assert first == [(0.1, 1.0), (0.2, 2.0)]
         assert second == [(0.1, 3.0), (0.2, 4.0)]
         assert smu.initiate.call_count == 2
+        assert smu.clear_buffer_full_event.call_count == 2
+        assert smu.clear_buffer.call_count == 2
+        assert smu.set_trace_feed_continuous_next.call_count == 2
+        assert smu.wait_for_buffer_full_srq.call_count == 2
         smu.safe_output_off.assert_not_called()
+
+    def test_execute_aborts_and_disables_output_when_srq_times_out(self):
+        plugin = _make_plugin()
+        plugin._sweep_values = (0.1, 0.2)
+        smu = MagicMock()
+        smu.wait_for_buffer_full_srq.return_value = False
+        plugin._smu = smu
+
+        with pytest.raises(RuntimeError, match="sweep-complete SRQ"):
+            list(plugin.execute({}))
+
+        smu.abort.assert_called_once_with()
+        smu.safe_output_off.assert_called_once_with()
+        smu.read_buffer_records.assert_not_called()
 
 
 class TestDisconnectLifecycle:

@@ -15,8 +15,10 @@ References:
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
+from time import sleep
 
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
@@ -39,6 +41,9 @@ _NPLC_MIN = 0.01
 _NPLC_MAX = 10.0
 
 _VALID_FORMAT_ELEMENTS = frozenset({"VOLT", "CURR", "RES", "TIME", "STAT"})
+_MEASUREMENT_STATUS_BUFFER_FULL = 0x0200
+_STATUS_BYTE_MEASUREMENT_SUMMARY = 0x01
+_STATUS_BYTE_REQUEST_SERVICE = 0x40
 logger = logging.getLogger(__name__)
 
 
@@ -1103,6 +1108,35 @@ class Keithley2400(SourceMeter):
     def get_buffer_count(self) -> int:
         """Return the actual number of readings currently stored in the buffer."""
         return int(float(self.query(":TRAC:POIN:ACT?")))
+
+    def configure_buffer_full_srq(self) -> None:
+        """Route the trace-buffer-full measurement event to the SRQ line."""
+        self.write(f":STAT:MEAS:ENAB {_MEASUREMENT_STATUS_BUFFER_FULL}")
+        self.write(f"*SRE {_STATUS_BYTE_MEASUREMENT_SUMMARY}")
+
+    def clear_buffer_full_event(self) -> None:
+        """Clear a buffer-full event latched by an earlier acquisition."""
+        self.query(":STAT:MEAS?")
+
+    def wait_for_buffer_full_srq(self, timeout: float, poll_interval: float = 0.01) -> bool:
+        """Wait for buffer-full SRQ, using a transport-native operation if available."""
+        native_result = self.transport.wait_for_srq(timeout)
+        if native_result is not None:
+            return native_result
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() <= deadline:
+            with self._lock:
+                auto_check_errors = self.auto_check_errors
+                self.auto_check_errors = False
+                try:
+                    status_byte = int(float(self.query("*STB?")))
+                finally:
+                    self.auto_check_errors = auto_check_errors
+            if status_byte & _STATUS_BYTE_REQUEST_SERVICE:
+                return True
+            sleep(poll_interval)
+        return False
 
     def get_error(self) -> tuple[int | None, str]:
         """Return the oldest queued system error."""
