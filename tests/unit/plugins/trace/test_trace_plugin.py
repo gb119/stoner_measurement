@@ -121,6 +121,14 @@ class TestTracePlugin:
         edits = scan_page.findChildren(QLineEdit)
         assert len(edits) >= 2
 
+    def test_scan_page_does_not_show_plugin_type(self, qapp):
+        from qtpy.QtWidgets import QLabel
+
+        p = _SimpleTrace()
+        scan_page = p.config_tabs()[0][1]
+        labels = [label.text() for label in scan_page.findChildren(QLabel)]
+        assert "Plugin type:" not in labels
+
     def test_config_tabs_scan_widget_is_qwidget(self, qapp):
         from qtpy.QtWidgets import QWidget
 
@@ -164,6 +172,21 @@ class TestTracePlugin:
         container = _ScanTabContainer(p)
         p.set_scan_generator_class(SteppedScanGenerator)
         assert isinstance(container, QWidget)
+
+    def test_statistics_switch_is_immediately_above_scan_generator(self, qapp):
+        from qtpy.QtWidgets import QWidget
+
+        from stoner_measurement.plugins.trace import _ScanTabContainer
+
+        p = _SimpleTrace()
+        scan_page = p.config_tabs()[0][1]
+        statistics = scan_page.findChild(QWidget, "trace_statistics_options")
+        scan_container = scan_page.findChild(_ScanTabContainer)
+        layout = scan_page.layout()
+
+        assert statistics is not None
+        assert scan_container is not None
+        assert layout.indexOf(statistics) + 1 == layout.indexOf(scan_container)
 
     def test_data_attribute_initially_empty(self, qapp):
         p = _SimpleTrace()

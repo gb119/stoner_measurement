@@ -238,6 +238,14 @@ class TestBasePluginDefaults:
         tabs = plugin.config_tabs()
         assert tabs[-1][0] == "General"
 
+    def test_general_tab_does_not_show_plugin_type(self, qapp):
+        from qtpy.QtWidgets import QLabel
+
+        plugin = _MinimalPlugin()
+        general_widget = plugin.config_tabs()[-1][1]
+        labels = [label.text() for label in general_widget.findChildren(QLabel)]
+        assert "Plugin type:" not in labels
+
     def test_config_tabs_cache_widgets(self, qapp):
         plugin = _MinimalPlugin()
         tabs1 = plugin.config_tabs()

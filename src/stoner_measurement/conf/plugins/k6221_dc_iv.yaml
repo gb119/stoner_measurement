@@ -9,13 +9,18 @@ source_range_mode: BEST
 source_range: 0.001
 nplc: 1.0
 voltage_range: 0.0
+trigger_delay: 0.0
+line_sync: false
+autozero: true
+filter_type: "off"
 filter_enabled: false
 filter_count: 10
 analog_filter: false
 relative_enabled: false
+relative_value: 0.0
 digits: 8
-output_tlink: 1
-input_tlink: 2
+output_tlink: 2
+input_tlink: 1
 scan_generator:
   type: FunctionScanGenerator
   waveform: Sine

@@ -82,7 +82,12 @@ class TestKeithley2182A:
         k = Keithley2182A(transport=t)
         k.set_digits(6)
         k.set_filter_type("REPEAT")
+        k.set_filter_type("WINDOW")
+        k.set_trigger_delay(0.25)
+        k.set_line_sync_enabled(True)
+        k.set_autozero_enabled(False)
         k.set_analog_filter_enabled(True)
+        k.set_relative_value(-0.5)
         k.set_relative_enabled(False)
         k.set_buffer_size(8)
         k.set_buffer_feed_sense()
@@ -90,7 +95,12 @@ class TestKeithley2182A:
         assert t.write_log == [
             b":SENS:VOLT:DIG 6\n",
             b":SENS:VOLT:DFIL:TCON REP\n",
+            b":SENS:VOLT:DFIL:TCON MOV\n",
+            b":TRIG:DEL 0.25\n",
+            b":SYST:LSYN 1\n",
+            b":SYST:AZER 0\n",
             b":SENS:VOLT:LPAS:STAT 1\n",
+            b":SENS:VOLT:REF -0.5\n",
             b":SENS:VOLT:REF:STAT 0\n",
             b":TRAC:POIN 8\n",
             b":TRAC:FEED SENS\n",
@@ -103,7 +113,13 @@ class TestKeithley2182A:
         with pytest.raises(ValueError):
             k.set_buffer_size(0)
         with pytest.raises(ValueError):
-            k.set_filter_type("window")
+            k.set_filter_type("median")
+        with pytest.raises(ValueError):
+            k.set_trigger_delay(-0.1)
+        with pytest.raises(ValueError):
+            k.set_trigger_delay(1e6)
+        with pytest.raises(ValueError):
+            k.set_relative_value(121.0)
 
     def test_capabilities(self):
         caps = Keithley2182A(transport=_null()).get_capabilities()

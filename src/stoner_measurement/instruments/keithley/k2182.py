@@ -25,13 +25,15 @@ class Keithley2182A(Nanovoltmeter):
         protocol (BaseProtocol):
             Protocol instance (defaults to :class:`ScpiProtocol`).
     """
-    
-    _MODEL="MODEL 2182A"
+
+    _MODEL = "MODEL 2182A"
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the Keithley 2182A driver, defaulting to :class:`ScpiProtocol`."""
-        super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
-        
+        super().__init__(
+            transport=transport, protocol=protocol if protocol is not None else ScpiProtocol()
+        )
+
     def connect(self) -> None:
         """Open the transport connection to the instrument.
 
@@ -57,7 +59,7 @@ class Keithley2182A(Nanovoltmeter):
         """
         super().connect()
         if isinstance(self.transport, PassThroughGpibTransport):
-            self.transport.write("*CLS",host=True) # Clear error nuffer on 6221
+            self.transport.write("*CLS", host=True)  # Clear error nuffer on 6221
         self.write("*CLS")
 
     def reset(self) -> None:
@@ -81,7 +83,7 @@ class Keithley2182A(Nanovoltmeter):
             [b'*RST\\n']
             >>> instr.disconnect()
         """
-        self.write("*RST",slow=2000)
+        self.write("*RST", slow=2000)
 
     @staticmethod
     def _parse_csv_floats(values: str) -> tuple[float, ...]:
@@ -267,11 +269,42 @@ class Keithley2182A(Nanovoltmeter):
         self.write(f":SENS:VOLT:DFIL:COUN {count}")
 
     def set_filter_type(self, filter_type: str) -> None:
-        """Select the repeating or moving-window digital filter."""
+        """Select the repeating or moving-window digital filter.
+
+        ``"WINDOW"`` is accepted as the user-facing name for the
+        instrument's ``MOV`` (moving-window) mode.  ``"MOVING"`` remains an
+        accepted alias for callers using the SCPI manual's terminology.
+        """
         token = filter_type.strip().upper()
-        if token not in {"REPEAT", "MOVING"}:
-            raise ValueError("Filter type must be 'REPEAT' or 'MOVING'.")
+        if token not in {"REPEAT", "WINDOW", "MOVING"}:
+            raise ValueError("Filter type must be 'REPEAT', 'WINDOW', or 'MOVING'.")
         self.write(f":SENS:VOLT:DFIL:TCON {'REP' if token == 'REPEAT' else 'MOV'}")
+
+    def get_trigger_delay(self) -> float:
+        """Return the trigger delay in seconds."""
+        return float(self.query(":TRIG:DEL?"))
+
+    def set_trigger_delay(self, delay: float) -> None:
+        """Set the delay between a trigger event and measurement in seconds."""
+        if not 0.0 <= delay <= 999999.999:
+            raise ValueError("Trigger delay must be in the range 0..999999.999 seconds.")
+        self.write(f":TRIG:DEL {delay}")
+
+    def get_line_sync_enabled(self) -> bool:
+        """Return whether A/D conversions are synchronized to the power line."""
+        return self.query(":SYST:LSYN?") == "1"
+
+    def set_line_sync_enabled(self, state: bool) -> None:
+        """Enable or disable power-line synchronization of A/D conversions."""
+        self.write(f":SYST:LSYN {1 if state else 0}")
+
+    def get_autozero_enabled(self) -> bool:
+        """Return whether automatic zero-reference measurements are enabled."""
+        return self.query(":SYST:AZER?") == "1"
+
+    def set_autozero_enabled(self, state: bool) -> None:
+        """Enable or disable automatic zero-reference measurements."""
+        self.write(f":SYST:AZER {1 if state else 0}")
 
     def set_analog_filter_enabled(self, state: bool) -> None:
         """Enable or disable the analogue low-pass filter.
@@ -290,6 +323,16 @@ class Keithley2182A(Nanovoltmeter):
                 ``True`` to enable, ``False`` to disable.
         """
         self.write(f":SENS:VOLT:REF:STAT {1 if state else 0}")
+
+    def get_relative_value(self) -> float:
+        """Return the channel-one voltage reference used by relative mode."""
+        return float(self.query(":SENS:VOLT:REF?"))
+
+    def set_relative_value(self, value: float) -> None:
+        """Set the channel-one voltage reference used by relative mode."""
+        if not -120.0 <= value <= 120.0:
+            raise ValueError("Relative voltage must be in the range -120..120 V.")
+        self.write(f":SENS:VOLT:REF {value}")
 
     def get_trigger_source(self) -> NanovoltmeterTriggerSource:
         """Return the trigger source selection.

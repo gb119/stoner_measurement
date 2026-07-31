@@ -61,7 +61,6 @@ from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QFrame,
-    QLabel,
     QLineEdit,
     QVBoxLayout,
     QWidget,
@@ -674,7 +673,6 @@ class _ScanPage(QWidget):
 
         header_form.addRow("Instance name:", name_edit)
         header_form.addRow("Comment:", comment_edit)
-        header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
 
         if len(plugin._scan_generator_classes) > 1:
             combo = QComboBox()
@@ -711,10 +709,6 @@ class _ScanPage(QWidget):
         separator.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(separator)
 
-        # --- Scan generator config widget (auto-refreshes on generator change) ---
-        scan_container = _ScanTabContainer(plugin, parent=self)
-        layout.addWidget(scan_container)
-
         # --- Common trace output options ---
         output_form = QFormLayout()
         stats_check = QCheckBox("Report channel average and standard deviation outputs")
@@ -722,8 +716,13 @@ class _ScanPage(QWidget):
         stats_check.toggled.connect(plugin._set_report_channel_statistics)
         output_form.addRow(stats_check)
         output_widget = QWidget()
+        output_widget.setObjectName("trace_statistics_options")
         output_widget.setLayout(output_form)
         layout.addWidget(output_widget)
+
+        # --- Scan generator config widget (auto-refreshes on generator change) ---
+        scan_container = _ScanTabContainer(plugin, parent=self)
+        layout.addWidget(scan_container)
 
 
 class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):

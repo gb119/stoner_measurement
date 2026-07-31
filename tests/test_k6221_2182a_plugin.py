@@ -11,6 +11,7 @@ from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
     ComplianceMode,
     ConnectionMode,
+    DigitalFilterType,
     Keithley6221_2182APlugin,
     SourceRangeMode,
     TraceStatus,
@@ -21,6 +22,7 @@ from stoner_measurement.scan import FunctionScanGenerator, ListScanGenerator, St
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_plugin() -> Keithley6221_2182APlugin:
     """Return a freshly constructed plugin instance."""
     return Keithley6221_2182APlugin()
@@ -29,6 +31,7 @@ def _make_plugin() -> Keithley6221_2182APlugin:
 # ---------------------------------------------------------------------------
 # Identity properties
 # ---------------------------------------------------------------------------
+
 
 class TestIdentity:
     def test_name(self, qapp):
@@ -79,6 +82,7 @@ class TestIdentity:
 # Default attributes
 # ---------------------------------------------------------------------------
 
+
 class TestDefaults:
     def test_default_connection_mode(self, qapp):
         assert _make_plugin()._connection_mode is ConnectionMode.VIA_6221_SERIAL
@@ -96,10 +100,10 @@ class TestDefaults:
         assert _make_plugin()._nplc == pytest.approx(1.0)
 
     def test_default_output_tlink(self, qapp):
-        assert _make_plugin()._output_tlink == 1
+        assert _make_plugin()._output_tlink == 2
 
     def test_default_input_tlink(self, qapp):
-        assert _make_plugin()._input_tlink == 2
+        assert _make_plugin()._input_tlink == 1
 
     def test_no_active_instruments_at_init(self, qapp):
         plugin = _make_plugin()
@@ -113,6 +117,7 @@ class TestDefaults:
 # ---------------------------------------------------------------------------
 # Scan generator management
 # ---------------------------------------------------------------------------
+
 
 class TestScanGenerator:
     def test_scan_generator_classes(self, qapp):
@@ -142,16 +147,29 @@ class TestScanGenerator:
 # JSON round-trip
 # ---------------------------------------------------------------------------
 
+
 class TestJsonRoundTrip:
     def test_to_json_includes_all_keys(self, qapp):
         d = _make_plugin().to_json()
         for key in (
-            "resource_6221", "resource_2182a", "connection_mode",
-            "compliance_mode", "compliance", "compliance_resistance",
-            "source_delay", "source_range_mode", "source_range",
-            "nplc", "voltage_range", "filter_enabled", "filter_count",
-            "analog_filter", "relative_enabled", "digits",
-            "output_tlink", "input_tlink",
+            "resource_6221",
+            "resource_2182a",
+            "connection_mode",
+            "compliance_mode",
+            "compliance",
+            "compliance_resistance",
+            "source_delay",
+            "source_range_mode",
+            "source_range",
+            "nplc",
+            "voltage_range",
+            "filter_enabled",
+            "filter_count",
+            "analog_filter",
+            "relative_enabled",
+            "digits",
+            "output_tlink",
+            "input_tlink",
         ):
             assert key in d, f"Missing key: {key}"
 
@@ -168,14 +186,14 @@ class TestJsonRoundTrip:
         assert d["analog_filter"] is False
         assert d["relative_enabled"] is False
         assert d["digits"] == 8
-        assert d["output_tlink"] == 1
-        assert d["input_tlink"] == 2
+        assert d["output_tlink"] == 2
+        assert d["input_tlink"] == 1
 
     def test_round_trip_restores_settings(self, qapp):
         plugin = _make_plugin()
         plugin._compliance = 5.0
         plugin._nplc = 10.0
-        plugin._filter_enabled = True
+        plugin._filter_type = DigitalFilterType.REPEAT
         plugin._filter_count = 25
         plugin._output_tlink = 3
         plugin._input_tlink = 4
@@ -193,7 +211,7 @@ class TestJsonRoundTrip:
         assert isinstance(restored, Keithley6221_2182APlugin)
         assert restored._compliance == pytest.approx(5.0)
         assert restored._nplc == pytest.approx(10.0)
-        assert restored._filter_enabled is True
+        assert restored._filter_type is DigitalFilterType.REPEAT
         assert restored._filter_count == 25
         assert restored._output_tlink == 3
         assert restored._input_tlink == 4
@@ -277,10 +295,10 @@ class TestJsonRoundTrip:
         assert any("future_mode_value" in record.message for record in caplog.records)
 
 
-
 # ---------------------------------------------------------------------------
 # execute() guards
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteGuards:
     def test_execute_without_connect_raises(self, qapp):
@@ -290,6 +308,7 @@ class TestExecuteGuards:
 
     def test_execute_without_configure_raises(self, qapp):
         from unittest.mock import MagicMock
+
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
         plugin._k2182a = MagicMock()
@@ -302,7 +321,7 @@ class TestExecute:
     def test_post_sweep_delay_uses_repeat_filter_conversion_count(self, qapp):
         plugin = _make_plugin()
         plugin._nplc = 10.0
-        plugin._filter_enabled = True
+        plugin._filter_type = DigitalFilterType.REPEAT
         plugin._filter_count = 4
         plugin._analog_filter = False
         plugin._source_delay = 10.0
@@ -383,6 +402,7 @@ class TestExecute:
 # configure() guards
 # ---------------------------------------------------------------------------
 
+
 class TestConfigureGuards:
     def test_configure_without_connect_raises(self, qapp):
         plugin = _make_plugin()
@@ -408,6 +428,7 @@ class TestConfigure:
 # connect() transport selection and cleanup
 # ---------------------------------------------------------------------------
 
+
 class TestConnect:
     def test_connect_via_6221_uses_passthrough_transport(self, qapp):
         from unittest.mock import MagicMock, patch
@@ -422,18 +443,23 @@ class TestConnect:
         k6221.identify.return_value = "Keithley 6221"
         k2182.identify.return_value = "Keithley 2182A"
 
-        with patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
-            return_value=t6221,
-        ) as gpib_from_resource, patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string",
-            return_value=t2182,
-        ) as passthrough_from_resource, patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
-            return_value=k6221,
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
-            return_value=k2182,
+        with (
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
+                return_value=t6221,
+            ) as gpib_from_resource,
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string",
+                return_value=t2182,
+            ) as passthrough_from_resource,
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
+                return_value=k6221,
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
+                return_value=k2182,
+            ),
         ):
             plugin.connect()
 
@@ -454,17 +480,22 @@ class TestConnect:
         k6221.identify.return_value = "Keithley 6221"
         k2182.identify.return_value = "Keithley 2182A"
 
-        with patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
-            side_effect=[t6221, t2182],
-        ) as gpib_from_resource, patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string"
-        ) as passthrough_from_resource, patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
-            return_value=k6221,
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
-            return_value=k2182,
+        with (
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
+                side_effect=[t6221, t2182],
+            ) as gpib_from_resource,
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string"
+            ) as passthrough_from_resource,
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
+                return_value=k6221,
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
+                return_value=k2182,
+            ),
         ):
             plugin.connect()
 
@@ -483,20 +514,27 @@ class TestConnect:
         k6221 = MagicMock()
         k2182 = MagicMock()
         k6221.confirm_identity.return_value = "Keithley 6221"
-        k2182.confirm_identity.side_effect = RuntimeError("Unexpected instrument on 2182A connection")
+        k2182.confirm_identity.side_effect = RuntimeError(
+            "Unexpected instrument on 2182A connection"
+        )
 
-        with patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
-            return_value=t6221,
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string",
-            return_value=t2182,
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
-            return_value=k6221,
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
-            return_value=k2182,
+        with (
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.GpibTransport.from_resource_string",
+                return_value=t6221,
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.PassThroughGpibTransport.from_resource_string",
+                return_value=t2182,
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.Keithley6221",
+                return_value=k6221,
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_2182a.Keithley2182A",
+                return_value=k2182,
+            ),
         ):
             with pytest.raises(RuntimeError, match="Unexpected instrument"):
                 plugin.connect()
@@ -512,6 +550,7 @@ class TestConnect:
 # disconnect() behaviour
 # ---------------------------------------------------------------------------
 
+
 class TestDisconnect:
     def test_disconnect_sets_idle(self, qapp):
         plugin = _make_plugin()
@@ -521,6 +560,7 @@ class TestDisconnect:
 
     def test_disconnect_clears_instruments(self, qapp):
         from unittest.mock import MagicMock
+
         plugin = _make_plugin()
         mock_6221 = MagicMock()
         plugin._k6221 = mock_6221
@@ -533,6 +573,7 @@ class TestDisconnect:
         from unittest.mock import MagicMock
 
         import numpy as np
+
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
         plugin._sweep_values = np.array([0.0, 1.0])
@@ -544,9 +585,11 @@ class TestDisconnect:
 # Settings tab widget construction
 # ---------------------------------------------------------------------------
 
+
 class TestConfigTabsWidget:
     def test_settings_widget_is_qwidget(self, qapp):
         from qtpy.QtWidgets import QWidget
+
         plugin = _make_plugin()
         widget = plugin._plugin_config_tabs()
         assert isinstance(widget, QWidget)
@@ -570,6 +613,7 @@ class TestConfigTabsWidget:
 
     def test_settings_widget_contains_group_boxes(self, qapp):
         from qtpy.QtWidgets import QGroupBox
+
         plugin = _make_plugin()
         widget = plugin._plugin_config_tabs()
         groups = widget.findChildren(QGroupBox)
@@ -583,6 +627,7 @@ class TestConfigTabsWidget:
 # ---------------------------------------------------------------------------
 # New attributes — defaults and round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestNewAttributes:
     def test_compliance_mode_default(self, qapp):
@@ -611,9 +656,11 @@ class TestNewAttributes:
 # measure() — multicolumn DataFrame output
 # ---------------------------------------------------------------------------
 
+
 class TestMeasure:
     def _patch_execute(self, plugin, fake_pairs):
         from unittest.mock import patch
+
         return patch.object(plugin, "execute", return_value=iter(fake_pairs))
 
     def test_measure_returns_iv_key(self, qapp):
@@ -848,6 +895,7 @@ class TestMeasure:
 # Compliance bounds validation
 # ---------------------------------------------------------------------------
 
+
 class TestComplianceBounds:
     def test_voltage_mode_does_not_raise_below_limit(self, qapp):
         """Fixed-voltage compliance at the limit must configure without error."""
@@ -862,8 +910,10 @@ class TestComplianceBounds:
         plugin._compliance = 100.0  # below 105 V limit
         plugin._sweep_values = np.array([1e-3, 2e-3])
 
-        with patch.object(plugin._k6221, "configure_custom_sweep"), \
-             patch.object(plugin._k6221, "configure_list_compliance"):
+        with (
+            patch.object(plugin._k6221, "configure_custom_sweep"),
+            patch.object(plugin._k6221, "configure_list_compliance"),
+        ):
             # Should not raise
             try:
                 plugin.configure()
@@ -884,8 +934,10 @@ class TestComplianceBounds:
         # 100 mA × 2 kΩ = 200 V > 105 V
         plugin._sweep_values = np.array([0.1])
 
-        with patch.object(plugin._k6221, "configure_custom_sweep"), \
-             patch.object(plugin._k6221, "configure_list_compliance"):
+        with (
+            patch.object(plugin._k6221, "configure_custom_sweep"),
+            patch.object(plugin._k6221, "configure_list_compliance"),
+        ):
             with pytest.raises(ValueError, match="105"):
                 plugin.configure()
 
@@ -904,8 +956,10 @@ class TestComplianceBounds:
         plugin._sweep_values = np.array([1e-3])
 
         # Should not raise ValueError; RuntimeError from missing setup is OK
-        with patch.object(plugin._k6221, "configure_custom_sweep"), \
-             patch.object(plugin._k6221, "configure_list_compliance"):
+        with (
+            patch.object(plugin._k6221, "configure_custom_sweep"),
+            patch.object(plugin._k6221, "configure_list_compliance"),
+        ):
             try:
                 plugin.configure()
             except (RuntimeError, AttributeError):
@@ -914,5 +968,4 @@ class TestComplianceBounds:
 
 
 if __name__ == "__main__":
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

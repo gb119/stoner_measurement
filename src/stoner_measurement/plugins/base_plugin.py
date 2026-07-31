@@ -736,7 +736,7 @@ class BasePlugin(ABC):
     # ------------------------------------------------------------------
 
     def _general_config_widget(self, parent: QWidget | None = None) -> QWidget:
-        """Return a widget containing the instance-name editor and plugin-type display.
+        """Return a widget containing the instance-name and comment editors.
 
         This widget is included as a *General* tab in :meth:`config_tabs` so
         that users can rename the sequence-engine variable for this plugin
@@ -750,7 +750,7 @@ class BasePlugin(ABC):
             (QWidget):
                 A :class:`~PyQt6.QtWidgets.QWidget` with a
                 :class:`~PyQt6.QtWidgets.QLineEdit` for editing
-                :attr:`instance_name` and a label showing the plugin type.
+                :attr:`instance_name` and :attr:`comment`.
         """
         widget = QWidget(parent)
         layout = QFormLayout(widget)
@@ -845,7 +845,6 @@ class BasePlugin(ABC):
 
         layout.addRow("Instance name:", name_edit)
         layout.addRow("Comment:", comment_edit)
-        layout.addRow("Plugin type:", QLabel(self.plugin_type, widget))
         widget.setLayout(layout)
         return widget
 

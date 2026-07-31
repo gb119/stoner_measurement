@@ -76,7 +76,7 @@ class _StateSweepPage(QWidget):
         self._build_data_collection_section(plugin, layout)
 
     def _build_header_section(self, plugin: StateSweepPlugin, layout: QVBoxLayout) -> None:
-        """Build name edit, plugin type, optional generator combo, and timeout factor."""
+        """Build name/comment edits, the optional generator combo, and timeout factor."""
         header_form = QFormLayout()
 
         name_edit = QLineEdit(plugin.instance_name)
@@ -110,7 +110,6 @@ class _StateSweepPage(QWidget):
         )
         header_form.addRow("Instance name:", name_edit)
         header_form.addRow("Comment:", comment_edit)
-        header_form.addRow("Plugin type:", QLabel(plugin.plugin_type))
 
         comment_changed_signal = getattr(plugin, "comment_changed", None)
         if comment_changed_signal is not None:

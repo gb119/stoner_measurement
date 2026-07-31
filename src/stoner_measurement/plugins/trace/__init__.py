@@ -29,6 +29,7 @@ from stoner_measurement.plugins.trace.dummy import DummyPlugin
 from stoner_measurement.plugins.trace.k6221_2182a import (
     ComplianceMode,
     ConnectionMode,
+    DigitalFilterType,
     Keithley6221_2182APlugin,
     SourceRangeMode,
 )
@@ -39,11 +40,17 @@ from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
 )
 from stoner_measurement.plugins.trace.keithley_2400 import (
     ConnectionMode as K2400ConnectionMode,
+)
+from stoner_measurement.plugins.trace.keithley_2400 import (
     Keithley2400SweepPlugin,
-    RangeMode as K2400RangeMode,
     SweepSourceMode,
-    TerminalMode as K2400TerminalMode,
     TriggerRouting,
+)
+from stoner_measurement.plugins.trace.keithley_2400 import (
+    RangeMode as K2400RangeMode,
+)
+from stoner_measurement.plugins.trace.keithley_2400 import (
+    TerminalMode as K2400TerminalMode,
 )
 
 __all__ = [
@@ -54,6 +61,7 @@ __all__ = [
     "COLUMN_ROLE_Z",
     "ComplianceMode",
     "ConnectionMode",
+    "DigitalFilterType",
     "DataFrameTracePlugin",
     "DummyPlugin",
     "K2400ConnectionMode",
