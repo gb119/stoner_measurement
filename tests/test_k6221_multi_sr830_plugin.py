@@ -390,13 +390,11 @@ class TestAutoOffset:
         lockin.measure_outputs.assert_called_once_with((LockInOutput.X, LockInOutput.Y))
         lockin.set_output_offset.assert_has_calls(
             [
-                call(LockInOutputChannel.X, 25.0, LockInExpandFactor.X1),
                 call(LockInOutputChannel.X, 25.0, entry.expand),
-                call(LockInOutputChannel.Y, -50.0, LockInExpandFactor.X1),
                 call(LockInOutputChannel.Y, -50.0, entry.expand),
             ]
         )
-        assert lockin.wait_for_ifc.call_count == 4
+        assert lockin.wait_for_ifc.call_count == 2
         assert entry.auto_offsets == {"X": pytest.approx(25.0), "Y": pytest.approx(-50.0)}
         assert events.index(("output", True)) < events.index(
             ("read", (LockInOutput.X, LockInOutput.Y))
@@ -430,7 +428,7 @@ class TestAutoOffset:
     @pytest.mark.parametrize(
         ("selected_output", "processed_outputs"),
         [
-            (LockInOutput.R, (LockInOutput.X, LockInOutput.Y, LockInOutput.R)),
+            (LockInOutput.R, (LockInOutput.X, LockInOutput.Y)),
             (LockInOutput.THETA, (LockInOutput.X, LockInOutput.Y)),
         ],
     )

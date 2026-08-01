@@ -49,6 +49,15 @@ class TestSRS830:
         assert values[LockInOutput.THETA] == pytest.approx(45.0)
         assert t.write_log == [b"SNAP?1,3,4\n"]
 
+    def test_single_output_measurement_adds_snap_companion(self):
+        t = _null(responses=[b"3.0,45.0\n"])
+        k = SRS830(transport=t)
+
+        values = k.measure_outputs((LockInOutput.R,))
+
+        assert values == {LockInOutput.R: pytest.approx(3.0)}
+        assert t.write_log == [b"SNAP?3,4\n"]
+
     def test_getters(self):
         t = _null(
             responses=[

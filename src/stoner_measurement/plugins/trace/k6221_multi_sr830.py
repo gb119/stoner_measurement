@@ -613,9 +613,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             output for output in entry.outputs if output.offset_channel() is not None
         )
         if entry.offset_auto and entry.outputs != (LockInOutput.X,):
-            offset_outputs = tuple(
-                dict.fromkeys((LockInOutput.X, LockInOutput.Y, *selected_offset_outputs))
-            )
+            offset_outputs = (LockInOutput.X, LockInOutput.Y)
         else:
             offset_outputs = selected_offset_outputs
         entry.auto_offsets.clear()
@@ -629,11 +627,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 offset_pct = float(measured_values[output]) / entry.sensitivity * 100.0
                 offset_pct = max(-105.0, min(105.0, offset_pct))
                 entry.auto_offsets[channel.value] = offset_pct
-            lockin.set_output_offset(channel, offset_pct, LockInExpandFactor.X1)
+            lockin.set_output_offset(channel, offset_pct, entry.expand)
             lockin.wait_for_ifc()
-            if entry.expand is not LockInExpandFactor.X1:
-                lockin.set_output_offset(channel, offset_pct, entry.expand)
-                lockin.wait_for_ifc()
 
     def auto_offset(self) -> None:
         """Enable the 6221, settle, and run auto-offset on all configured lock-in output channels.

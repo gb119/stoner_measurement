@@ -256,9 +256,22 @@ class SRS830(LockInAmplifier):
             raise ValueError(
                 f"Unsupported output(s): {unsupported!r}. Must be one of {list(channel_map)!r}."
             )
-        channel_codes = ",".join(str(channel_map[output]) for output in requested)
-        values = self._parse_csv_values(self.query(f"SNAP?{channel_codes}"), expected=len(requested))
-        return {output: float(value) for output, value in zip(requested, values, strict=True)}
+        query_outputs = requested
+        if len(query_outputs) == 1:
+            companion_map = {
+                LockInOutput.X: LockInOutput.Y,
+                LockInOutput.Y: LockInOutput.X,
+                LockInOutput.R: LockInOutput.THETA,
+                LockInOutput.THETA: LockInOutput.R,
+            }
+            query_outputs = (*query_outputs, companion_map[query_outputs[0]])
+        channel_codes = ",".join(str(channel_map[output]) for output in query_outputs)
+        values = self._parse_csv_values(self.query(f"SNAP?{channel_codes}"), expected=len(query_outputs))
+        return {
+            output: float(value)
+            for output, value in zip(query_outputs, values, strict=True)
+            if output in requested
+        }
 
     def get_sensitivity(self) -> float:
         """Return the active input sensitivity scale in volts.
