@@ -42,6 +42,19 @@ class TestVisaResourceStatus:
 
 
 class TestVisaResourceComboBox:
+    def test_construction_defers_hardware_discovery_until_refresh(self, qapp, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "stoner_measurement.ui.widgets.visa_resource_widget.list_visa_resources",
+            lambda _resource_filter: calls.append(True) or [],
+        )
+
+        widget = VisaResourceComboBox()
+        assert calls == []
+
+        widget.refresh()
+        assert calls == [True]
+
     def test_creates_widget(self, qapp):
         w = VisaResourceComboBox()
         assert w is not None

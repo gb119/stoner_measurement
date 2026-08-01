@@ -207,6 +207,10 @@ class VisaResourceComboBox(QWidget):
             regardless of what PyVISA discovers.  Useful for providing
             well-known defaults such as ``"GPIB0::2::INSTR"``.  Defaults to
             an empty sequence.
+        auto_refresh (bool):
+            Enumerate hardware during construction when ``True``. Defaults to
+            ``False`` so creating a panel never blocks on VISA discovery; the
+            Refresh button still performs an explicit scan.
 
     Attributes:
         resource_changed (pyqtSignal[str]):
@@ -243,6 +247,7 @@ class VisaResourceComboBox(QWidget):
         resource_filter: frozenset[VisaInterfaceType] | None = FILTER_ALL,
         placeholder: str = "(no resource selected)",
         extra_resources: Sequence[str] = (),
+        auto_refresh: bool = False,
     ) -> None:
         super().__init__(parent)
         self._resource_filter = resource_filter
@@ -251,7 +256,11 @@ class VisaResourceComboBox(QWidget):
         self._status = VisaResourceStatus.DISCONNECTED
 
         self._build_ui()
-        self.refresh()
+        if auto_refresh:
+            self.refresh()
+        else:
+            for resource in self._extra_resources:
+                self._combo.addItem(resource)
 
     # ------------------------------------------------------------------
     # Public interface

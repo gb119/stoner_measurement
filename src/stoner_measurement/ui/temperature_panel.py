@@ -395,6 +395,7 @@ class TemperatureControlPanel(QWidget):
             resource_filter=FILTER_SERIAL,
             placeholder="/dev/ttyUSB0",
             extra_resources=["/dev/ttyUSB0"],
+            auto_refresh=False,
         )
         self._serial_baud_combo = QComboBox()
         for baud in (9600, 19200, 38400, 57600, 115200):
@@ -417,6 +418,7 @@ class TemperatureControlPanel(QWidget):
             resource_filter=FILTER_GPIB,
             placeholder="GPIB0::2::INSTR",
             extra_resources=["GPIB0::2::INSTR"],
+            auto_refresh=False,
         )
         form.addRow("VISA resource:", self._gpib_resource_combo)
         return w

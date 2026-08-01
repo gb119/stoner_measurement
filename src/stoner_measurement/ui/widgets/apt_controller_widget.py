@@ -43,12 +43,14 @@ class AptControllerComboBox(QWidget):
         *,
         discover: _DiscoveryFunction | None = None,
         placeholder: str = "e.g. 70000001",
+        auto_refresh: bool = False,
     ) -> None:
         super().__init__(parent)
         self._discover = discover or _discover_apt_controllers
         self._status = VisaResourceStatus.DISCONNECTED
         self._build_ui(placeholder)
-        self.refresh()
+        if auto_refresh:
+            self.refresh()
 
     def current_serial(self) -> str:
         """Return the selected controller serial number or manual entry."""

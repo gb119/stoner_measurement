@@ -64,6 +64,50 @@ class TestLogSourcesWidget:
 
 
 class TestLogViewerWindowFiltering:
+    def test_message_regex_appends_incrementally_without_full_refresh(self, qapp, monkeypatch):
+        viewer = LogViewerWindow()
+        viewer._message_filter.setText(r"target \d+")
+        viewer._filter_refresh_timer.stop()
+        refreshes = []
+        monkeypatch.setattr(viewer, "_refresh_display", lambda: refreshes.append(True))
+
+        viewer.append_record(
+            _make_record("stoner_measurement.sequence", logging.INFO, "ignore this")
+        )
+        viewer.append_record(
+            _make_record("stoner_measurement.sequence", logging.INFO, "target 42")
+        )
+
+        assert refreshes == []
+        assert viewer._filter_state.message_regex is not None
+        assert "ignore this" not in viewer._output.toPlainText()
+        assert "target 42" in viewer._output.toPlainText()
+
+    def test_message_regex_refresh_is_debounced_while_typing(self, qapp, qtbot, monkeypatch):
+        viewer = LogViewerWindow()
+        refreshes = []
+        monkeypatch.setattr(viewer, "_refresh_display", lambda: refreshes.append(True))
+
+        viewer._message_filter.setText("t")
+        viewer._message_filter.setText("ta")
+        viewer._message_filter.setText("target")
+
+        assert refreshes == []
+        qtbot.waitUntil(lambda: len(refreshes) == 1, timeout=1000)
+        assert refreshes == [True]
+
+    def test_retained_history_is_bounded_to_visible_document_capacity(self, qapp):
+        viewer = LogViewerWindow()
+        viewer._display_paused = True
+
+        for index in range(2005):
+            viewer.append_record(
+                _make_record("stoner_measurement.sequence", logging.INFO, f"message {index}")
+            )
+
+        assert len(viewer._records) == 2000
+        assert viewer._records[0].getMessage() == "message 5"
+
     def test_filters_by_level_and_source(self, qapp):
         viewer = LogViewerWindow()
         info_record = _make_record("stoner_measurement.sequence", logging.INFO, "sequence info")

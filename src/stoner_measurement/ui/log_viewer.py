@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from qtpy.QtCore import QSettings, Qt
+from qtpy.QtCore import QSettings, Qt, QTimer  # type: ignore[attr-defined]
 from qtpy.QtGui import QCloseEvent, QColor, QFont, QTextCharFormat, QTextCursor
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -74,6 +75,8 @@ _PLUGIN_PREFIX = f"{_ROOT_LOGGER_NAME}.plugins."
 _DISPLAY_SOURCE_BUTTON_TEXT = "Sources…"
 _FILE_LOGGING_BUTTON_TEXT = "File logging…"
 _FILE_LOG_FORMAT = "[%(asctime)s] %(levelname)-8s %(message)s"
+_MAX_RETAINED_RECORDS = 2000
+_MESSAGE_FILTER_DEBOUNCE_MS = 150
 
 
 @dataclass(slots=True)
@@ -99,6 +102,7 @@ class LogFilterState:
     traffic_mode: str = "all"
     message_pattern: str = ""
     context_lines: int = 0
+    message_regex: re.Pattern[str] | None = None
 
 
 @dataclass(slots=True)
@@ -126,6 +130,7 @@ class FileLogState:
     message_pattern: str = ""
     traffic_mode: str = "all"
     append: bool = True
+    message_regex: re.Pattern[str] | None = None
 
 
 class LogSourcesWidget(QWidget):
@@ -312,13 +317,17 @@ class LogViewerWindow(QWidget):
         )
         self.setWindowTitle("Log Viewer")
         self.resize(760, 520)
-        self._records: list[logging.LogRecord] = []
+        self._records: deque[logging.LogRecord] = deque(maxlen=_MAX_RETAINED_RECORDS)
         self._filter_state = LogFilterState()
         self._file_log_state = FileLogState()
         self._allow_exit_close = False
         self._file_handler: logging.FileHandler | None = None
         self._restoring_settings = False
         self._display_paused = False
+        self._filter_refresh_timer = QTimer(self)
+        self._filter_refresh_timer.setSingleShot(True)
+        self._filter_refresh_timer.setInterval(_MESSAGE_FILTER_DEBOUNCE_MS)
+        self._filter_refresh_timer.timeout.connect(self._apply_debounced_message_filter)
 
         self._output = QPlainTextEdit(self)
         self._output.setReadOnly(True)
@@ -350,7 +359,7 @@ class LogViewerWindow(QWidget):
         self._message_filter = QLineEdit(self)
         self._message_filter.setPlaceholderText("Message regexp")
         self._message_filter.setClearButtonEnabled(True)
-        self._message_filter.textChanged.connect(self._on_filter_changed)
+        self._message_filter.textChanged.connect(self._on_message_filter_changed)
         self._context_lines = QSpinBox(self)
         self._context_lines.setRange(0, 99)
         self._context_lines.setToolTip(
@@ -565,8 +574,23 @@ class LogViewerWindow(QWidget):
 
     def _on_filter_changed(self, *_args: object) -> None:
         """Rebuild the visible log list after a display filter change."""
+        self._filter_refresh_timer.stop()
         self._sync_filter_state_from_controls()
         self._validate_regex_field(self._message_filter)
+        if not self._display_paused:
+            self._refresh_display()
+        self._save_settings()
+
+    def _on_message_filter_changed(self, *_args: object) -> None:
+        """Compile message input immediately but debounce the expensive refresh."""
+        self._sync_filter_state_from_controls()
+        self._validate_regex_field(self._message_filter)
+        if self._restoring_settings:
+            return
+        self._filter_refresh_timer.start()
+
+    def _apply_debounced_message_filter(self) -> None:
+        """Refresh after the user pauses typing in the message filter."""
         if not self._display_paused:
             self._refresh_display()
         self._save_settings()
@@ -598,6 +622,9 @@ class LogViewerWindow(QWidget):
         self._filter_state.traffic_mode = str(self._traffic_filter.currentData() or "all")
         self._filter_state.enabled_prefixes = self._display_sources.selected_prefixes
         self._filter_state.message_pattern = self._message_filter.text().strip()
+        self._filter_state.message_regex = self._compile_message_pattern(
+            self._filter_state.message_pattern
+        )
         self._filter_state.context_lines = self._context_lines.value()
 
     def _sync_file_state_from_controls(self) -> None:
@@ -608,7 +635,19 @@ class LogViewerWindow(QWidget):
         self._file_log_state.enabled_prefixes = self._file_sources.selected_prefixes
         self._file_log_state.traffic_mode = str(self._file_traffic_filter.currentData() or "all")
         self._file_log_state.message_pattern = self._file_message_filter.text().strip()
+        self._file_log_state.message_regex = self._compile_message_pattern(
+            self._file_log_state.message_pattern
+        )
         self._file_log_state.append = bool(self._file_mode.currentData())
+
+    def _compile_message_pattern(self, pattern: str) -> re.Pattern[str] | None:
+        """Compile *pattern* once for repeated record matching."""
+        if not pattern:
+            return None
+        try:
+            return re.compile(pattern)
+        except re.error:
+            return None
 
     def _logger_name_matches_prefix(self, logger_name: str, prefix: str) -> bool:
         """Return ``True`` when *prefix* matches *logger_name* on a name boundary."""
@@ -636,7 +675,7 @@ class LogViewerWindow(QWidget):
             return False
         if not self._record_matches_enabled_prefixes(record, state.enabled_prefixes):
             return False
-        if not self._record_matches_message_pattern(record, getattr(state, "message_pattern", "")):
+        if not self._record_matches_message_pattern(record, state.message_regex):
             return False
         return self._record_matches_traffic_mode(record, getattr(state, "traffic_mode", "all"))
 
@@ -685,18 +724,17 @@ class LogViewerWindow(QWidget):
         self._validate_regex_field(self._message_filter)
         self._validate_regex_field(self._file_message_filter)
 
-    def _record_matches_message_pattern(self, record: logging.LogRecord, pattern: str) -> bool:
+    def _record_matches_message_pattern(
+        self, record: logging.LogRecord, pattern: re.Pattern[str] | None
+    ) -> bool:
         """Return ``True`` when *record* passes the message regexp *pattern*."""
-        if not pattern:
+        if pattern is None:
             return True
         try:
             message = record.getMessage()
         except (TypeError, KeyError, ValueError):
             message = str(record.msg)
-        try:
-            return re.search(pattern, message) is not None
-        except re.error:
-            return True
+        return pattern.search(message) is not None
 
     def _format_record_text(self, record: logging.LogRecord) -> str:
         """Return the on-screen text representation for *record*."""
@@ -713,9 +751,9 @@ class LogViewerWindow(QWidget):
         base_records = [
             record for record in self._records if self._record_matches_display_base_filter(record)
         ]
-        pattern = self._filter_state.message_pattern
+        pattern = self._filter_state.message_regex
         context_lines = self._filter_state.context_lines
-        if not pattern:
+        if pattern is None:
             return base_records
 
         matching_indices = [
@@ -737,19 +775,23 @@ class LogViewerWindow(QWidget):
 
     def _append_record_to_display(self, record: logging.LogRecord) -> None:
         """Update the display after appending *record*."""
-        if self._filter_state.message_pattern or self._filter_state.context_lines > 0:
+        pattern = self._filter_state.message_regex
+        if pattern is not None and self._filter_state.context_lines > 0:
             self._refresh_display()
             return
-        if self._record_matches_display_base_filter(record):
+        if self._record_matches_display_base_filter(record) and self._record_matches_message_pattern(
+            record, pattern
+        ):
             self._render_record(record)
 
     def _refresh_display(self) -> None:
         """Rebuild the visible log list from the stored records."""
         self._output.clear()
         for record in self._matching_display_records():
-            self._render_record(record)
+            self._render_record(record, ensure_visible=False)
+        self._output.ensureCursorVisible()
 
-    def _render_record(self, record: logging.LogRecord) -> None:
+    def _render_record(self, record: logging.LogRecord, *, ensure_visible: bool = True) -> None:
         """Render one log *record* into the output text area."""
         text = self._format_record_text(record)
 
@@ -769,7 +811,8 @@ class LogViewerWindow(QWidget):
         cursor.insertText(text + "\n")
         cursor.setCharFormat(QTextCharFormat())
         self._output.setTextCursor(cursor)
-        self._output.ensureCursorVisible()
+        if ensure_visible:
+            self._output.ensureCursorVisible()
 
     def _browse_for_log_file(self) -> None:
         """Open a save-file dialog for the file log destination."""

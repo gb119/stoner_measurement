@@ -19,7 +19,9 @@ def _controller(serial: str, model: str = "BSC201") -> AptControllerInfo:
 
 
 def test_widget_populates_discovered_controllers(qapp):
-    widget = AptControllerComboBox(discover=lambda: [_controller("70001234")])
+    widget = AptControllerComboBox(
+        discover=lambda: [_controller("70001234")], auto_refresh=True
+    )
 
     assert widget.combo.count() == 1
     assert widget.combo.itemText(0) == "70001234 — BSC201"
@@ -49,7 +51,9 @@ def test_refresh_preserves_discovered_selection(qapp):
 
 
 def test_editing_a_discovered_selection_returns_manual_text(qapp):
-    widget = AptControllerComboBox(discover=lambda: [_controller("70001234")])
+    widget = AptControllerComboBox(
+        discover=lambda: [_controller("70001234")], auto_refresh=True
+    )
     widget.combo.setCurrentIndex(0)
 
     widget.combo.setEditText("70009999")
@@ -69,6 +73,17 @@ def test_refresh_logs_discovery_error_and_keeps_manual_entry(qapp, caplog):
 
     assert widget.current_serial() == "70009999"
     assert "APT unavailable" in caplog.text
+
+
+def test_construction_defers_hardware_discovery_until_refresh(qapp):
+    calls = []
+    widget = AptControllerComboBox(discover=lambda: calls.append(True) or [])
+
+    assert calls == []
+
+    widget.refresh()
+
+    assert calls == [True]
 
 
 if __name__ == "__main__":
