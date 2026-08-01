@@ -61,6 +61,12 @@ class _NeverAckPlotWidget:
 
 
 class TestPlotTraceCommand:
+    @pytest.fixture(autouse=True)
+    def _managed_plot_widget_factory(self, managed_qt_widget):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        self.make_plot_widget = lambda: managed_qt_widget(PlotWidget())
+
     def test_name(self, qapp):
         assert PlotTraceCommand().name == "Plot Trace"
 
@@ -222,9 +228,7 @@ class TestPlotTraceCommand:
         import threading
         import time
 
-        from stoner_measurement.ui.plot_widget import PlotWidget
-
-        pw = PlotWidget()
+        pw = self.make_plot_widget()
         pw.mark_data_update_queued()
         engine.plot_widget = pw
 
@@ -500,9 +504,7 @@ class TestPlotTraceCommand:
         assert labels == []
 
     def test_execute_assigns_trace_to_configured_axes(self, qapp, engine):
-        from stoner_measurement.ui.plot_widget import PlotWidget
-
-        pw = PlotWidget()
+        pw = self.make_plot_widget()
         pw.add_x_axis("freq", "Frequency (Hz)")
         pw.add_y_axis("temp", "Temperature (K)")
         engine.plot_widget = pw
@@ -523,9 +525,7 @@ class TestPlotTraceCommand:
         assert pw._trace_axes["test trace"] == ("freq", "temp")
 
     def test_execute_creates_missing_axes_when_configured_axis_missing(self, qapp, engine):
-        from stoner_measurement.ui.plot_widget import PlotWidget
-
-        pw = PlotWidget()
+        pw = self.make_plot_widget()
         engine.plot_widget = pw
 
         cmd = PlotTraceCommand()
@@ -546,9 +546,7 @@ class TestPlotTraceCommand:
         assert pw._trace_axes["test trace"] == ("missing_x_axis", "missing_y_axis")
 
     def test_sequence_engine_attachment_creates_configured_axes(self, qapp, engine):
-        from stoner_measurement.ui.plot_widget import PlotWidget
-
-        pw = PlotWidget()
+        pw = self.make_plot_widget()
         engine.plot_widget = pw
         cmd = PlotTraceCommand()
         cmd.x_axis_name = "loaded_x"
@@ -1106,9 +1104,7 @@ class TestPlotTraceCommand:
         assert widget._trace_style["sig"] == original_style
 
     def test_plot_trace_style_signal_wired_to_plot_widget(self, qapp, engine):
-        from stoner_measurement.ui.plot_widget import PlotWidget
-
-        pw = PlotWidget()
+        pw = self.make_plot_widget()
         engine.plot_widget = pw
 
         cmd = PlotTraceCommand()
@@ -1129,4 +1125,3 @@ class TestPlotTraceCommand:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))
-

@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import TypeVar
 from uuid import uuid4
 
 import pytest
-from qtpy.QtWidgets import QApplication
+from qtpy.QtCore import QCoreApplication, QEvent
+from qtpy.QtWidgets import QApplication, QWidget
 
 from stoner_measurement import resources
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.trace import DummyPlugin
+
+_WidgetT = TypeVar("_WidgetT", bound=QWidget)
 
 
 @pytest.fixture(scope="session")
@@ -22,6 +26,41 @@ def qapp():
     if app is None:
         app = QApplication([])
     return app
+
+
+@pytest.fixture
+def managed_qt_widget(qapp):
+    """Retain and deterministically destroy widgets created by a test.
+
+    pytest-qt processes the event queue immediately after the test function
+    returns, before fixture teardown.  Keeping strong references here prevents
+    a widget's Python wrapper from disappearing while Qt still has deferred
+    events queued for its children.
+    """
+    widgets: list[QWidget] = []
+
+    def manage(widget: _WidgetT) -> _WidgetT:
+        widgets.append(widget)
+        return widget
+
+    yield manage
+
+    for widget in reversed(widgets):
+        try:
+            widget.close()
+        except RuntimeError:
+            pass
+    qapp.processEvents()
+
+    for widget in reversed(widgets):
+        try:
+            widget.deleteLater()
+        except RuntimeError:
+            pass
+    event_types = getattr(QEvent, "Type", QEvent)
+    QCoreApplication.sendPostedEvents(None, event_types.DeferredDelete)
+    qapp.processEvents()
+    widgets.clear()
 
 
 @pytest.fixture(autouse=True)

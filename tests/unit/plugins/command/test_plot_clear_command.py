@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import pytest
+
 from stoner_measurement.plugins.command import PlotClearCommand
 
 
 class TestPlotClearCommand:
+    @pytest.fixture(autouse=True)
+    def _managed_plot_widget_factory(self, managed_qt_widget):
+        from stoner_measurement.ui.plot_widget import PlotWidget
+
+        self.make_plot_widget = lambda: managed_qt_widget(PlotWidget())
+
     def test_name(self, qapp):
         assert PlotClearCommand().name == "Plot Clear"
 
@@ -60,9 +68,8 @@ class TestPlotClearCommand:
         assert isinstance(restored, PlotClearCommand)
 
     def test_sequence_engine_wires_to_plot_widget(self, qapp, engine):
-        from stoner_measurement.ui.plot_widget import PlotWidget
 
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget
         command = PlotClearCommand()
         engine.add_plugin("plot_clear", command)
@@ -72,9 +79,8 @@ class TestPlotClearCommand:
         assert plot_widget.trace_names == []
 
     def test_sequence_engine_disconnects_on_detach(self, qapp, engine):
-        from stoner_measurement.ui.plot_widget import PlotWidget
 
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget
         command = PlotClearCommand()
         engine.add_plugin("plot_clear", command)

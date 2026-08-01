@@ -623,7 +623,7 @@ class Keithley6221(CurrentSource):
         self.write(":SOUR:SWE:ARM")
 
     def sweep_init(self) -> None:
-        """Manually trigger the arm layer for a sweep."""        
+        """Manually trigger the arm layer for a sweep."""
         self.write(":INIT:IMM")
 
     def sweep_start(self) -> None:

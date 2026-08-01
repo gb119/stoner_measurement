@@ -836,3 +836,15 @@ Result:
    dedicated editor-widget module under `tests/unit/ui/widgets/`.
 2. Keep application-wide `MeasurementApp` workflow tests for a later pass under
    `tests/integration/app/` rather than mixing them into widget unit modules.
+
+## Completed In Twenty-Fourth Maintenance Pass
+
+- Added the shared `managed_qt_widget` fixture for tests that construct
+  top-level or lifecycle-sensitive widgets. It retains strong references until
+  fixture teardown, then closes widgets and drains deferred-delete events.
+- Applied the fixture to the main-window integration tests and the focused
+  PlotWidget/plot-command suites.
+- Added an explicit `MainWindow.closeEvent()` ownership boundary so its child
+  `PlotWidget` closes its PyQtGraph scene before the containing window is
+  destroyed.
+- Added regression coverage for the parent-to-plot close handoff.

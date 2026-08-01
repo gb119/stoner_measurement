@@ -57,6 +57,14 @@ contract at a time.
 - Keep tests deterministic: avoid arbitrary sleeps unless the behaviour under
   test is timing-related and the assertion tolerates scheduler variation.
 - For Qt tests, use the conda environment and keep Qt offscreen.
+- Pass top-level widgets to the shared ``managed_qt_widget`` fixture. It keeps
+  a strong reference until teardown, closes widgets before deleting them, and
+  drains deferred-delete events. This is especially important for PyQtGraph,
+  whose scene items can still receive deferred geometry events after a test
+  function returns.
+- Composite production widgets must close lifecycle-sensitive child widgets
+  explicitly in their own ``closeEvent``; parent ownership alone does not
+  guarantee orderly PyQtGraph scene teardown.
 
 ## Monolith Migration Rules
 

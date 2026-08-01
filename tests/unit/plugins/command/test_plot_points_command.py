@@ -43,6 +43,10 @@ class _NeverAckPlotWidget:
 
 
 class TestPlotPointsCommand:
+    @pytest.fixture(autouse=True)
+    def _managed_plot_widget_factory(self, managed_qt_widget):
+        self.make_plot_widget = lambda: managed_qt_widget(PlotWidget())
+
     def test_name(self, qapp):
         assert PlotPointsCommand().name == "Plot Points"
 
@@ -200,7 +204,7 @@ class TestPlotPointsCommand:
         assert received == []
 
     def test_execute_waits_when_plot_widget_busy(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         plot_widget.mark_data_update_queued()
         engine.plot_widget = plot_widget
 
@@ -277,7 +281,7 @@ class TestPlotPointsCommand:
         assert PlotPointsCommand().reported_values() == {}
 
     def test_sequence_engine_wires_to_plot_widget(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget
         command = PlotPointsCommand()
         engine.add_plugin("plot_points", command)
@@ -292,7 +296,7 @@ class TestPlotPointsCommand:
         assert plot_widget.is_busy_for_data() is False
 
     def test_sequence_engine_disconnects_on_detach(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget
         command = PlotPointsCommand()
         engine.add_plugin("plot_points", command)
@@ -306,7 +310,7 @@ class TestPlotPointsCommand:
         assert plot_widget.trace_names == []
 
     def test_execute_assigns_points_to_configured_axes(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         plot_widget.add_x_axis("freq", "Frequency (Hz)")
         plot_widget.add_y_axis("temp", "Temperature (K)")
         engine.plot_widget = plot_widget
@@ -325,7 +329,7 @@ class TestPlotPointsCommand:
         assert plot_widget._trace_axes["My Y"] == ("freq", "temp")
 
     def test_execute_different_series_on_different_y_axes(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         plot_widget.add_y_axis("temp", "Temperature (K)")
         engine.plot_widget = plot_widget
 
@@ -347,7 +351,7 @@ class TestPlotPointsCommand:
         assert plot_widget._trace_axes["Temp"] == ("bottom", "temp")
 
     def test_execute_auto_creates_missing_y_axis(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget
 
         command = PlotPointsCommand()
@@ -364,7 +368,7 @@ class TestPlotPointsCommand:
         assert plot_widget._trace_axes["My Y"] == ("bottom", "brand_new_axis")
 
     def test_execute_auto_creates_missing_x_axis(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget
 
         command = PlotPointsCommand()
@@ -382,7 +386,7 @@ class TestPlotPointsCommand:
         assert plot_widget._trace_axes["My Y"] == ("brand_new_x_axis", "left")
 
     def test_sequence_engine_attachment_creates_configured_axes(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget
         command = PlotPointsCommand()
         command.x_axis_name = "loaded_x"
@@ -491,7 +495,7 @@ class TestPlotPointsCommand:
         assert style_signals == []
 
     def test_plot_points_style_signal_wired_to_plot_widget(self, qapp, engine):
-        plot_widget = PlotWidget()
+        plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget
 
         command = PlotPointsCommand()

@@ -344,7 +344,9 @@ class TestExecute:
             points = list(plugin.execute({}))
 
         assert points == [(1e-3, 0.1), (2e-3, 0.2)]
-        plugin._k6221.sweep_start.assert_called_once_with()
+        plugin._k6221.sweep_init.assert_called_once_with()
+        plugin._k6221.sweep_arm.assert_not_called()
+        plugin._k6221.sweep_start.assert_not_called()
         plugin._k2182a.initiate.assert_called_once_with()
         plugin._k6221.enable_output.assert_not_called()
         plugin._k2182a.read_buffer.assert_called_once_with(count=2)
@@ -391,7 +393,9 @@ class TestExecute:
 
         assert first == [(1e-3, 0.1), (2e-3, 0.2)]
         assert second == [(1e-3, 0.3), (2e-3, 0.4)]
-        assert plugin._k6221.sweep_start.call_count == 2
+        assert plugin._k6221.sweep_init.call_count == 2
+        plugin._k6221.sweep_arm.assert_not_called()
+        plugin._k6221.sweep_start.assert_not_called()
         assert plugin._k2182a.initiate.call_count == 2
         assert plugin._k2182a.set_buffer_feed_continuous_next.call_count == 2
         plugin._k2182a.clear_buffer.assert_not_called()
@@ -411,7 +415,7 @@ class TestConfigureGuards:
 
 
 class TestConfigure:
-    def test_configure_enables_output_for_repeated_measurements(self, qapp):
+    def test_configure_arms_once_for_repeated_measurements(self, qapp):
         from unittest.mock import MagicMock
 
         plugin = _make_plugin()
@@ -420,7 +424,9 @@ class TestConfigure:
 
         plugin.configure()
 
-        plugin._k6221.enable_output.assert_called_once_with(True)
+        plugin._k6221.sweep_arm.assert_called_once_with()
+        plugin._k6221.sweep_init.assert_not_called()
+        plugin._k6221.sweep_start.assert_not_called()
         plugin._k2182a.clear_buffer.assert_called_once_with()
 
 

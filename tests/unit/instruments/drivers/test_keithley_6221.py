@@ -172,6 +172,22 @@ class TestKeithley6221:
             b":SOUR:SWE:ABOR\n",
         ]
 
+    def test_sweep_arm_enables_output_without_initiating(self):
+        t = _null()
+        k = Keithley6221(transport=t)
+
+        k.sweep_arm()
+
+        assert t.write_log == [b":OUTP:STAT 1\n", b":SOUR:SWE:ARM\n"]
+
+    def test_sweep_init_does_not_rearm_or_enable_output(self):
+        t = _null()
+        k = Keithley6221(transport=t)
+
+        k.sweep_init()
+
+        assert t.write_log == [b":INIT:IMM\n"]
+
     def test_get_operating_status(self):
         t = _null([b"4\n"])
         k = Keithley6221(transport=t)
