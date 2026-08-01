@@ -215,6 +215,11 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         """Return per-point measure flags (all ``True``)."""
         return np.ones(self._num_points, dtype=bool)
 
+    def _representation_details(self) -> str:
+        """Return the function signature, validation state, and point count."""
+        status = "valid" if self._syntax_error_line is None else "invalid"
+        return f"scan(ix, omega), {status}, {self._num_points} points"
+
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return an :class:`ArbitraryFunctionScanWidget` configured for this generator."""
         return ArbitraryFunctionScanWidget(generator=self, parent=parent)

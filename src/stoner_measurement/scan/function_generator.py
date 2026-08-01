@@ -264,6 +264,15 @@ class FunctionScanGenerator(BaseScanGenerator):
         """
         return np.ones(self._num_points, dtype=bool)
 
+    def _representation_details(self) -> str:
+        """Return the main waveform parameters and point count."""
+        return (
+            f"{self._waveform.value}, amplitude={self._amplitude:g}, "
+            f"offset={self._offset:g}, phase={self._phase:g} degrees, "
+            f"periods={self._periods:g}, exponent={self._exponent:g}, "
+            f"{self._num_points} points"
+        )
+
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`FunctionScanWidget` configured for this generator.
 

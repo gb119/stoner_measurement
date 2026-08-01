@@ -127,6 +127,11 @@ class ListScanGenerator(BaseScanGenerator):
             return np.array([], dtype=bool)
         return np.array([m for _, m in self._stages], dtype=bool)
 
+    def _representation_details(self) -> str:
+        """Return the number of explicitly configured points."""
+        count = len(self._stages)
+        return f"{count} {'point' if count == 1 else 'points'}"
+
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`ListScanWidget` configured for this generator.
 

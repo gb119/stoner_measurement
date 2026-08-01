@@ -553,6 +553,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._run_auto_phase()
             self._k6221.enable_output(True)
             self._configure_output_offsets()
+            self._clear_configuration_lia_status()
         except Exception:
             self._set_status(TraceStatus.ERROR)
             raise
@@ -601,6 +602,17 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             ]
             for future in futures:
                 future.result()
+
+    def _clear_configuration_lia_status(self) -> None:
+        """Clear and report LIA events generated while configuring each SR830."""
+        for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
+            status = lockin.read_lia_status()
+            if status:
+                self._log.debug(
+                    "Cleared SR830 %s configuration LIA status: %s",
+                    entry.resource,
+                    status.name or int(status),
+                )
 
     @staticmethod
     def _configure_one_lockin_offsets(entry: LockInEntry, lockin: SRS830) -> None:

@@ -336,6 +336,8 @@ class TestConfiguration:
             lockin.set_reference_phase.assert_called_once_with(0.0)
         plugin._lockins[0].set_output_offset.assert_called_once()
         plugin._lockins[1].set_output_offset.assert_not_called()
+        for lockin in plugin._lockins:
+            lockin.read_lia_status.assert_called_once_with()
 
     def test_configure_leaves_6221_output_enabled(self, qapp):
         plugin = _make_plugin()

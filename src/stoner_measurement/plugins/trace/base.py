@@ -495,13 +495,13 @@ class TraceData:
         if not 0 <= index < len(arrays):
             raise IndexError(f"TraceData index {index!r} out of range 0–3")
         return arrays[index]
-    
-    def __str__(self):
-        """Make a friendly representation of the trace."""
-        return f"Trace {[x for x in self._df.columns].join(',')} {len(self._df)} rows"
-    
-    def __repr__(self):
-        """Representation string."""
+
+    def __str__(self) -> str:
+        """Return a concise summary of the trace shape and columns."""
+        return f"TraceData(columns={self.columns!r}, rows={len(self._df)})"
+
+    def __repr__(self) -> str:
+        """Return the human-friendly trace summary."""
         return str(self)
 
 

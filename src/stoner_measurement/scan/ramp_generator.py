@@ -174,6 +174,13 @@ class RampScanGenerator(BaseScanGenerator):
         """Return per-point measure flags (all ``True``)."""
         return np.ones(self._num_points, dtype=bool)
 
+    def _representation_details(self) -> str:
+        """Return the ramp shape, range, and point count."""
+        return (
+            f"{self._mode.value}, {self._start:g} to {self._end:g}, "
+            f"{self._num_points} points"
+        )
+
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`RampScanWidget` configured for this generator."""
         return RampScanWidget(generator=self, parent=parent)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import IntFlag
 from time import perf_counter, sleep
 
 from stoner_measurement.instruments.lockin_amplifier import (
@@ -21,6 +22,29 @@ from stoner_measurement.instruments.lockin_amplifier import (
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.transport.base import BaseTransport
+
+
+class SRS830LIAStatus(IntFlag):
+    """Bits returned by the SR830 ``LIAS?`` lock-in status query."""
+
+    NONE = 0
+    INPUT_OR_RESERVE_OVERLOAD = 1 << 0
+    FILTER_OVERLOAD = 1 << 1
+    OUTPUT_OVERLOAD = 1 << 2
+    REFERENCE_UNLOCK = 1 << 3
+    FREQUENCY_RANGE_CHANGED = 1 << 4
+    TIME_CONSTANT_CHANGED = 1 << 5
+    DATA_STORAGE_TRIGGERED = 1 << 6
+
+    @property
+    def has_overload(self) -> bool:
+        """Return whether any input, filter, or output overload bit is set."""
+        overloads = (
+            self.INPUT_OR_RESERVE_OVERLOAD
+            | self.FILTER_OVERLOAD
+            | self.OUTPUT_OVERLOAD
+        )
+        return bool(self & overloads)
 
 
 class SRS830(LockInAmplifier):
@@ -111,6 +135,7 @@ class SRS830(LockInAmplifier):
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
         """Initialise the SR830 driver, defaulting to :class:`ScpiProtocol`."""
         super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
+        self._last_lia_status = SRS830LIAStatus.NONE
         self._time_constant :int|None = None
 
 
@@ -267,11 +292,44 @@ class SRS830(LockInAmplifier):
             query_outputs = (*query_outputs, companion_map[query_outputs[0]])
         channel_codes = ",".join(str(channel_map[output]) for output in query_outputs)
         values = self._parse_csv_values(self.query(f"SNAP?{channel_codes}"), expected=len(query_outputs))
-        return {
+        result = {
             output: float(value)
             for output, value in zip(query_outputs, values, strict=True)
             if output in requested
         }
+        self.poll_lia_status()
+        return result
+
+    @property
+    def last_lia_status(self) -> SRS830LIAStatus:
+        """Return the most recently decoded lock-in status condition."""
+        return self._last_lia_status
+
+    def read_lia_status(self) -> SRS830LIAStatus:
+        """Read, decode, and clear the SR830 lock-in status register.
+
+        Reading the complete ``LIAS?`` register clears its latched bits in
+        the instrument. The returned flags therefore describe conditions
+        accumulated since the previous read or ``*CLS`` command.
+        """
+        status = SRS830LIAStatus(int(float(self.query("LIAS?"))))
+        self._last_lia_status = status
+        return status
+
+    def poll_lia_status(self) -> SRS830LIAStatus:
+        """Read and clear ``LIAS?`` only when its serial-poll summary is set."""
+        status_byte = self.read_status_byte()
+        if status_byte is None or not status_byte & (1 << 3):
+            self._last_lia_status = SRS830LIAStatus.NONE
+            return self._last_lia_status
+
+        status = self.read_lia_status()
+        status_name = status.name or f"UNKNOWN_{int(status)}"
+        if status.has_overload or status & SRS830LIAStatus.REFERENCE_UNLOCK:
+            self._comms_logger.warning("SR830 LIA condition after measurement: %s", status_name)
+        else:
+            self._comms_logger.debug("SR830 LIA event after measurement: %s", status_name)
+        return status
 
     def get_sensitivity(self) -> float:
         """Return the active input sensitivity scale in volts.

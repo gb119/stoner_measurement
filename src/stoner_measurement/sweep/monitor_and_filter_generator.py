@@ -271,6 +271,14 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
         """
         return MonitorAndFilterSweepWidget(generator=self, parent=parent)
 
+    def _representation_details(self) -> str:
+        """Return the configured monitor count and measurement timeout."""
+        count = len(self._rows)
+        return (
+            f"{count} {'monitor' if count == 1 else 'monitors'}, "
+            f"timeout={self._timeout:g} seconds"
+        )
+
     def to_json(self) -> dict[str, Any]:
         return {
             "type": "MonitorAndFilterSweepGenerator",

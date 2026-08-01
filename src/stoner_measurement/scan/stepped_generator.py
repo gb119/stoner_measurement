@@ -260,6 +260,14 @@ class SteppedScanGenerator(BaseScanGenerator):
         )
         return np.concatenate([[0], per_stage_indices]).astype(int, copy=False)
 
+    def _representation_details(self) -> str:
+        """Return the configured segment and point counts."""
+        segment_count = len(self._stages)
+        point_count = 1 + sum(num_steps for _, num_steps, _ in self._stages)
+        segments = "segment" if segment_count == 1 else "segments"
+        points = "point" if point_count == 1 else "points"
+        return f"{segment_count} {segments}, {point_count} {points}"
+
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`SteppedScanWidget` configured for this generator.
 

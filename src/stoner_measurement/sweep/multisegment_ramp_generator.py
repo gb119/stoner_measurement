@@ -288,6 +288,11 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
 
         return total
 
+    def _representation_details(self) -> str:
+        """Return the start value and configured segment count."""
+        count = len(self._segments)
+        return f"start={self._start:g}, {count} {'segment' if count == 1 else 'segments'}"
+
     def to_json(self) -> dict[str, Any]:
         return {
             "type": "MultiSegmentRampSweepGenerator",

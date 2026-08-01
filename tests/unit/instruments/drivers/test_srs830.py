@@ -18,7 +18,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInReserveMode,
 )
 from stoner_measurement.instruments.protocol import ScpiProtocol
-from stoner_measurement.instruments.srs import SRS830
+from stoner_measurement.instruments.srs import SRS830, SRS830LIAStatus
 from stoner_measurement.instruments.transport import NullTransport
 
 
@@ -57,6 +57,31 @@ class TestSRS830:
 
         assert values == {LockInOutput.R: pytest.approx(3.0)}
         assert t.write_log == [b"SNAP?3,4\n"]
+
+    def test_read_lia_status_decodes_and_clears_register(self):
+        t = _null(responses=[b"36\n"])
+        k = SRS830(transport=t)
+
+        status = k.read_lia_status()
+
+        assert status == (
+            SRS830LIAStatus.OUTPUT_OVERLOAD
+            | SRS830LIAStatus.TIME_CONSTANT_CHANGED
+        )
+        assert status.has_overload is True
+        assert k.last_lia_status == status
+        assert t.write_log == [b"LIAS?\n"]
+
+    def test_measurement_reads_lia_register_when_summary_is_set(self, monkeypatch):
+        t = _null(responses=[b"3.0,45.0\n", b"8\n"])
+        k = SRS830(transport=t)
+        monkeypatch.setattr(k, "read_status_byte", lambda: 8)
+
+        values = k.measure_outputs((LockInOutput.R,))
+
+        assert values == {LockInOutput.R: pytest.approx(3.0)}
+        assert k.last_lia_status is SRS830LIAStatus.REFERENCE_UNLOCK
+        assert t.write_log == [b"SNAP?3,4\n", b"LIAS?\n"]
 
     def test_getters(self):
         t = _null(

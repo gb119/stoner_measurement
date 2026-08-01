@@ -74,6 +74,19 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         """Return a human-friendly label for generator picker widgets."""
         return class_display_name(cls)
 
+    def _representation_details(self) -> str:
+        """Return a concise description of the configured sweep."""
+        return ""
+
+    def __str__(self) -> str:
+        """Return a human-friendly summary of this generator."""
+        details = self._representation_details()
+        return f"{self.display_name()} ({details})" if details else self.display_name()
+
+    def __repr__(self) -> str:
+        """Return the human-friendly generator summary."""
+        return str(self)
+
     @property
     def state_sweep(self) -> StateSweepPlugin | None:
         """Return the owning state-sweep plugin.
