@@ -29,13 +29,13 @@ _STATUS_BYTE_REQUEST_SERVICE = 0x40
 
 class _K6221_STATE(Enum):
     """Represent the current state of the Keithley 6221 to determine next actions."""
-    
+
     IDLE="IDLE"
     SWEEPING="SWEEPING"
     SOURCE="SOURCE"
     WAVE="WAVE"
     ARMED="ARMED"
-    ARMING="ARMING"    
+    ARMING="ARMING"
 
 class Keithley6221(CurrentSource):
     """Driver for the Keithley 6221 precision AC/DC current source.
@@ -83,6 +83,7 @@ class Keithley6221(CurrentSource):
             >>> instr.disconnect()
         """
         super().connect()
+        self.reset()
         state=self.state()
         match state:
             case _K6221_STATE.SWEEPING:
@@ -117,7 +118,7 @@ class Keithley6221(CurrentSource):
             >>> instr.disconnect()
         """
         self.write("*RST", slow=2000)
-        
+
     def state(self)->_K6221_STATE:
         """Determine the state of the 6221 through status queries."""
         self.clear()
@@ -271,7 +272,7 @@ class Keithley6221(CurrentSource):
                 batch = ",".join(str(v) for v in delay[start : start + _LIST_BATCH_SIZE])
                 self.write(f":SOUR:LIST:DEL:APP {batch}")
 
-            
+
         if config.count != 1:
             self.write(f":SOUR:SWE:COUN {config.count}")
         sleep(0.5)
@@ -718,13 +719,12 @@ class Keithley6221(CurrentSource):
             has_pulsed_sweep=True,
             channel_count=1,
         )
-    
+
     def wave_abort(self)->None:
         """Abort a runnign waveform."""
         self.write("SOUR:WAVE:ABOR")
-        
+
     def wave_start(self)->None:
         """Arm the wave outpit."""
         self.write("SOUR:WAVE:ARM")
         self.write("SOUR:WAVE:INIT")
-        
