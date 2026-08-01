@@ -7,6 +7,7 @@ from stoner_measurement.ui.widgets import (
     FILTER_ALL,
     FILTER_GPIB,
     FILTER_SERIAL,
+    AutoSISpinBox,
     PercentSliderWidget,
     RoundDialDemoWidget,
     RoundDialPanel,
@@ -22,6 +23,7 @@ from stoner_measurement.ui.widgets import (
 __all__ = [
     "ConsoleWidget",
     "EditorWidget",
+    "AutoSISpinBox",
     "FILTER_ALL",
     "RoundDialDemoWidget",
     "RoundDialPanel",

@@ -644,6 +644,7 @@ class PlotWidget(QWidget):
         self._right_dragged = False
         self._pending_data_updates_lock = threading.Lock()
         self._updating_trace_controls = False
+        self._trace_controls_state: tuple | None = None
         self._mouse_axis_coupling_active = False
         self._active_mouse_view_box: pg.ViewBox | None = None
         self._updating_mouse_axis_coupling = False
@@ -983,6 +984,26 @@ class PlotWidget(QWidget):
 
         x_axes = self._x_axis_names()
         y_axes = self._y_axis_names()
+        controls_state = (
+            tuple(x_axes),
+            tuple(y_axes),
+            tuple(
+                (
+                    trace_name,
+                    self._trace_visible.get(trace_name, True),
+                    *self._trace_axes.get(trace_name, ("bottom", "left")),
+                    self._trace_style.get(trace_name, {}).get("colour"),
+                    self._trace_style.get(trace_name, {}).get("line"),
+                    self._trace_style.get(trace_name, {}).get("point"),
+                    self._trace_line_width.get(trace_name, _DEFAULT_LINE_WIDTH),
+                    self._trace_point_size.get(trace_name, _DEFAULT_POINT_SIZE),
+                )
+                for trace_name in self.trace_names
+            ),
+        )
+        if controls_state == self._trace_controls_state:
+            return
+
         self._updating_trace_controls = True
         try:
             self._trace_table.clearContents()
@@ -993,6 +1014,7 @@ class PlotWidget(QWidget):
                 self._build_trace_table_row(row, trace_name, style, x_axis, y_axis, x_axes, y_axes)
         finally:
             self._updating_trace_controls = False
+        self._trace_controls_state = controls_state
         self._update_trace_table_height()
 
     def _build_trace_table_row(  # pylint: disable=too-many-arguments
@@ -1782,6 +1804,7 @@ class PlotWidget(QWidget):
             curve.setSymbolBrush(style["colour"])
             curve.setSymbolPen(pen)
         curve.setSymbolSize(self._trace_point_size.get(trace_name, _DEFAULT_POINT_SIZE))
+        self._refresh_trace_and_axis_controls()
 
     @pyqtSlot(str, object)
     def set_trace_style_from_dict(self, trace_name: str, style: dict) -> None:
@@ -2432,6 +2455,8 @@ class PlotWidget(QWidget):
 
         curve = self._traces[trace_name]
         old_axes = self._trace_axes[trace_name]
+        if old_axes == (x_axis, y_axis):
+            return
         old_vb = self._pair_view_boxes.get(old_axes, self._plot_item.vb)
         new_vb = self._create_pair_view_box(x_axis, y_axis)
 

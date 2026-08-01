@@ -11,6 +11,7 @@ import pytest
 from qtpy.QtWidgets import QCheckBox, QTableWidget, QTabWidget, QWidget
 
 from stoner_measurement.instruments.lockin_amplifier import (
+    LockInExpandFactor,
     LockInLineFilter,
     LockinRefenceEdge,
     LockInReferenceSource,
@@ -23,15 +24,25 @@ from stoner_measurement.plugins.trace import (
     TraceStatus,
     WaveformScanMode,
 )
-from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
-    _ROW_OUTPUTS,
-    LockInEntry,
-    LockInReading,
-)
+from stoner_measurement.plugins.trace.k6221_multi_sr830 import LockInEntry, LockInReading
+from stoner_measurement.ui.widgets import AutoSISpinBox
 
 
 def _make_plugin() -> Keithley6221_MultiSR830Plugin:
     return Keithley6221_MultiSR830Plugin()
+
+
+def _row_with_label(table: QTableWidget, label: str) -> int:
+    """Return the row carrying *label* in the table's vertical header."""
+    return next(row for row in range(table.rowCount()) if table.verticalHeaderItem(row).text() == label)
+
+
+def _output_checks(table: QTableWidget, column: int = 0) -> dict[str, QCheckBox]:
+    """Return output checkboxes keyed by SR830 output name."""
+    return {
+        output: table.cellWidget(_row_with_label(table, f"Output {output}"), column)
+        for output in ("X", "Y", "R", "THETA")
+    }
 
 
 class TestDefaults:
@@ -111,6 +122,7 @@ class TestJsonRoundTrip:
                 phase=45.0,
                 auto_phase=True,
                 auto_sensitivity=False,
+                offset_auto=True,
                 auto_offsets={"X": 12.5, "Y": -3.0},
             )
         ]
@@ -125,6 +137,7 @@ class TestJsonRoundTrip:
         assert entry.phase == pytest.approx(45.0)
         assert entry.auto_phase is True
         assert entry.auto_sensitivity is False
+        assert entry.offset_auto is True
         assert entry.auto_offsets == {"X": pytest.approx(12.5), "Y": pytest.approx(-3.0)}
 
     def test_restore_legacy_single_output_field(self, qapp):
@@ -157,11 +170,11 @@ class TestUi:
         assert "Common" in inner_tab.tabText(0)
         assert "Lock-in" in inner_tab.tabText(1)
 
-        # Transposed table: rows = settings (11), cols = lock-ins (1 by default)
+        # Transposed table: rows = settings (including one per output), cols = lock-ins.
         tables = settings_widget.findChildren(QTableWidget)
         assert tables
         table = tables[0]
-        assert table.rowCount() == 11
+        assert table.rowCount() == 14
         assert table.columnCount() == 1
 
         # Remove button disabled when only one lock-in
@@ -174,12 +187,9 @@ class TestUi:
         texts = [cb.text() for cb in checkboxes]
         assert any("Offset" in t for t in texts)
 
-        output_widget = table.cellWidget(_ROW_OUTPUTS, 0)
-        assert output_widget is not None
-        output_checks = {
-            cb.text(): cb for cb in output_widget.findChildren(QCheckBox) if cb.text() in {"X", "Y", "R", "THETA"}
-        }
+        output_checks = _output_checks(table)
         assert set(output_checks) == {"X", "Y", "R", "THETA"}
+        assert all(check is not None for check in output_checks.values())
         assert output_checks["X"].isChecked()
         assert not output_checks["Y"].isChecked()
         assert not output_checks["R"].isChecked()
@@ -197,11 +207,7 @@ class TestUi:
         settings_widget = tabs[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
 
-        output_widget = table.cellWidget(_ROW_OUTPUTS, 0)
-        assert output_widget is not None
-        output_checks = {
-            cb.text(): cb for cb in output_widget.findChildren(QCheckBox) if cb.text() in {"X", "Y", "R", "THETA"}
-        }
+        output_checks = _output_checks(table)
 
         output_checks["Y"].click()
         output_checks["R"].click()
@@ -214,11 +220,7 @@ class TestUi:
         settings_widget = tabs[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
 
-        output_widget = table.cellWidget(_ROW_OUTPUTS, 0)
-        assert output_widget is not None
-        output_checks = {
-            cb.text(): cb for cb in output_widget.findChildren(QCheckBox) if cb.text() in {"X", "Y", "R", "THETA"}
-        }
+        output_checks = _output_checks(table)
 
         output_checks["X"].click()
 
@@ -230,19 +232,27 @@ class TestUi:
         settings_widget = tabs[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
 
-        output_widget = table.cellWidget(_ROW_OUTPUTS, 0)
-        auto_sens_check = table.cellWidget(4, 0)
-        auto_phase_check = table.cellWidget(7, 0)
+        output_checks = _output_checks(table)
+        auto_sens_check = table.cellWidget(_row_with_label(table, "Auto-sensitivity"), 0)
+        auto_phase_check = table.cellWidget(_row_with_label(table, "Auto-phase"), 0)
+        offset_spin = table.cellWidget(_row_with_label(table, "Offset (%)"), 0)
 
-        assert output_widget.styleSheet() == "background: transparent;"
         assert auto_sens_check.styleSheet() == "background: transparent;"
         assert auto_phase_check.styleSheet() == "background: transparent;"
-
-        output_checks = [
-            cb for cb in output_widget.findChildren(QCheckBox) if cb.text() in {"X", "Y", "R", "THETA"}
-        ]
+        assert isinstance(offset_spin, AutoSISpinBox)
         assert output_checks
-        assert all(cb.styleSheet() == "background: transparent;" for cb in output_checks)
+        assert all(cb.styleSheet() == "background: transparent;" for cb in output_checks.values())
+
+    def test_offset_spinbox_auto_state_updates_entry(self, qapp):
+        plugin = _make_plugin()
+        settings_widget = plugin.config_tabs()[1][1]
+        table = settings_widget.findChildren(QTableWidget)[0]
+        offset_spin = table.cellWidget(_row_with_label(table, "Offset (%)"), 0)
+
+        offset_spin.setAuto(True)
+
+        assert plugin._lockin_entries[0].offset_auto is True
+        assert offset_spin.lineEdit().text() == "Auto"
 
 
 class TestConfiguration:
@@ -344,6 +354,114 @@ class TestConfiguration:
 
 
 class TestAutoOffset:
+    def test_configure_calculates_auto_offsets_after_settling(self, qapp):
+        from stoner_measurement.instruments.lockin_amplifier import LockInOutputChannel
+
+        plugin = _make_plugin()
+        plugin._time_constant = 3.0
+        plugin._read_rate_multiple = 1.5
+        plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
+        events: list[object] = []
+        plugin._k6221 = MagicMock()
+        plugin._k6221.enable_output.side_effect = lambda enabled: events.append(("output", enabled))
+        lockin = MagicMock()
+        lockin.measure_outputs.side_effect = lambda outputs: (
+            events.append(("read", outputs))
+            or {LockInOutput.X: 0.25e-3, LockInOutput.Y: -0.5e-3}
+        )
+        lockin.set_output_offset.side_effect = (
+            lambda channel, offset, expand: events.append(("offset", channel, offset, expand))
+        )
+        plugin._lockins = [lockin]
+        entry = LockInEntry(
+            label="A",
+            resource="GPIB0::8::INSTR",
+            sensitivity=1e-3,
+            outputs=(LockInOutput.X, LockInOutput.Y),
+            offset_auto=True,
+            expand=LockInExpandFactor.X10,
+        )
+        plugin._lockin_entries = [entry]
+
+        with patch("stoner_measurement.plugins.trace.k6221_multi_sr830.time.sleep") as sleep:
+            plugin.configure()
+
+        sleep.assert_called_once_with(9.0)
+        lockin.measure_outputs.assert_called_once_with((LockInOutput.X, LockInOutput.Y))
+        lockin.set_output_offset.assert_has_calls(
+            [
+                call(LockInOutputChannel.X, 25.0, LockInExpandFactor.X1),
+                call(LockInOutputChannel.X, 25.0, entry.expand),
+                call(LockInOutputChannel.Y, -50.0, LockInExpandFactor.X1),
+                call(LockInOutputChannel.Y, -50.0, entry.expand),
+            ]
+        )
+        assert entry.auto_offsets == {"X": pytest.approx(25.0), "Y": pytest.approx(-50.0)}
+        assert events.index(("output", True)) < events.index(
+            ("read", (LockInOutput.X, LockInOutput.Y))
+        )
+        assert events.index(("read", (LockInOutput.X, LockInOutput.Y))) < events.index(
+            ("offset", LockInOutputChannel.X, 25.0, entry.expand)
+        )
+
+    def test_configure_auto_offset_reads_only_x_when_only_x_selected(self, qapp):
+        plugin = _make_plugin()
+        plugin._time_constant = 0.01
+        plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
+        plugin._k6221 = MagicMock()
+        lockin = MagicMock()
+        lockin.measure_outputs.return_value = {LockInOutput.X: 0.25e-3}
+        plugin._lockins = [lockin]
+        plugin._lockin_entries = [
+            LockInEntry(
+                label="A",
+                resource="GPIB0::8::INSTR",
+                sensitivity=1e-3,
+                outputs=(LockInOutput.X,),
+                offset_auto=True,
+            )
+        ]
+
+        plugin.configure()
+
+        lockin.measure_outputs.assert_called_once_with((LockInOutput.X,))
+
+    @pytest.mark.parametrize(
+        ("selected_output", "processed_outputs"),
+        [
+            (LockInOutput.R, (LockInOutput.X, LockInOutput.Y, LockInOutput.R)),
+            (LockInOutput.THETA, (LockInOutput.X, LockInOutput.Y)),
+        ],
+    )
+    def test_configure_auto_offset_processes_xy_for_polar_outputs(
+        self, qapp, selected_output, processed_outputs
+    ):
+        plugin = _make_plugin()
+        plugin._time_constant = 0.01
+        plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
+        plugin._k6221 = MagicMock()
+        lockin = MagicMock()
+        lockin.measure_outputs.return_value = {
+            LockInOutput.X: 0.1e-3,
+            LockInOutput.Y: 0.2e-3,
+            LockInOutput.R: 0.3e-3,
+        }
+        plugin._lockins = [lockin]
+        plugin._lockin_entries = [
+            LockInEntry(
+                label="A",
+                resource="GPIB0::8::INSTR",
+                sensitivity=1e-3,
+                outputs=(selected_output,),
+                offset_auto=True,
+            )
+        ]
+
+        plugin.configure()
+
+        lockin.measure_outputs.assert_called_once_with(processed_outputs)
+        assert set(plugin._lockin_entries[0].auto_offsets) >= {"X", "Y"}
+
     def test_auto_offset_calls_aoff_and_reads_back(self, qapp):
         plugin = _make_plugin()
         plugin._time_constant = 0.01

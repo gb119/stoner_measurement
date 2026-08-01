@@ -295,6 +295,27 @@ class TestPlotPointsCommand:
         assert plot_widget.y_data("My Y") == [5.0]
         assert plot_widget.is_busy_for_data() is False
 
+    def test_successive_execute_keeps_existing_trace_table_controls(self, qapp, engine):
+        plot_widget = self.make_plot_widget()
+        engine.plot_widget = plot_widget
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        engine._namespace["p_x"] = 1.0
+        engine._namespace["p_y"] = 5.0
+        command.x_key = "p:x"
+        command.y_entries = [{"key": "p:y", "label": "My Y"}]
+        command.execute()
+        original_checkbox = plot_widget._trace_table.cellWidget(0, 0)
+
+        engine._namespace["p_x"] = 2.0
+        engine._namespace["p_y"] = 6.0
+        command.execute()
+
+        assert plot_widget._trace_table.cellWidget(0, 0) is original_checkbox
+        assert plot_widget.x_data("My Y") == [1.0, 2.0]
+        assert plot_widget.y_data("My Y") == [5.0, 6.0]
+
     def test_sequence_engine_disconnects_on_detach(self, qapp, engine):
         plot_widget = self.make_plot_widget()
         engine.plot_widget = plot_widget

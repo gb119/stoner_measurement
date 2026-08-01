@@ -46,7 +46,13 @@ from stoner_measurement.instruments.srs.sr830 import SRS830
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData, TracePlugin, TraceStatus
 from stoner_measurement.scan import FunctionScanGenerator, ListScanGenerator, SteppedScanGenerator
-from stoner_measurement.ui.widgets import FILTER_GPIB, SIComboBox, SISpinBox, VisaResourceComboBox
+from stoner_measurement.ui.widgets import (
+    FILTER_GPIB,
+    AutoSISpinBox,
+    SIComboBox,
+    SISpinBox,
+    VisaResourceComboBox,
+)
 
 _CLEANUP_EXCEPTIONS: tuple[type[Exception], ...] = (OSError, RuntimeError, pyvisa.Error)
 _ZERO_CURRENT_THRESHOLD: float = 1e-30
@@ -58,21 +64,34 @@ _SR830_MAX_HARMONIC: int = SRS830.max_harmonic()
 # Row indices for the transposed lock-in configuration table.
 _ROW_LABEL = 0
 _ROW_RESOURCE = 1
-_ROW_OUTPUTS = 2
-_ROW_SENSITIVITY = 3
-_ROW_AUTO_SENSITIVITY = 4
-_ROW_HARMONIC = 5
-_ROW_PHASE = 6
-_ROW_AUTO_PHASE = 7
-_ROW_OFFSET_PCT = 8
-_ROW_EXPAND = 9
-_ROW_RESERVE = 10
-_LOCKIN_TABLE_ROWS = 11
+_ROW_OUTPUT_X = 2
+_ROW_OUTPUT_Y = 3
+_ROW_OUTPUT_R = 4
+_ROW_OUTPUT_THETA = 5
+_ROW_SENSITIVITY = 6
+_ROW_AUTO_SENSITIVITY = 7
+_ROW_HARMONIC = 8
+_ROW_PHASE = 9
+_ROW_AUTO_PHASE = 10
+_ROW_OFFSET_PCT = 11
+_ROW_EXPAND = 12
+_ROW_RESERVE = 13
+_LOCKIN_TABLE_ROWS = 14
+
+_LOCKIN_OUTPUT_ROWS: dict[LockInOutput, int] = {
+    LockInOutput.X: _ROW_OUTPUT_X,
+    LockInOutput.Y: _ROW_OUTPUT_Y,
+    LockInOutput.R: _ROW_OUTPUT_R,
+    LockInOutput.THETA: _ROW_OUTPUT_THETA,
+}
 
 _LOCKIN_ROW_LABELS: list[str] = [
     "Label",
     "Resource",
-    "Outputs",
+    "Output X",
+    "Output Y",
+    "Output R",
+    "Output THETA",
     "Sensitivity",
     "Auto-sensitivity",
     "Harmonic",
@@ -105,6 +124,9 @@ class LockInEntry:
             Initial input sensitivity in volts.
         offset_pct (float):
             Output offset as a percentage of full scale (−105 to +105).
+        offset_auto (bool):
+            When ``True``, calculate per-channel offsets from settled readings
+            during :meth:`Keithley6221_MultiSR830Plugin.configure`.
         expand (LockInExpandFactor):
             Output expand factor.
         reserve_mode (LockInReserveMode):
@@ -130,6 +152,7 @@ class LockInEntry:
     resource: str = "GPIB0::8::INSTR"
     sensitivity: float = 1e-3
     offset_pct: float = 0.0
+    offset_auto: bool = False
     expand: LockInExpandFactor = LockInExpandFactor.X1
     reserve_mode: LockInReserveMode = LockInReserveMode.NORMAL
     outputs: tuple[LockInOutput, ...] = (LockInOutput.X,)
@@ -146,6 +169,7 @@ class LockInEntry:
             "resource": self.resource,
             "sensitivity": self.sensitivity,
             "offset_pct": self.offset_pct,
+            "offset_auto": self.offset_auto,
             "expand": int(self.expand.value),
             "reserve_mode": self.reserve_mode.value,
             "outputs": [output.value for output in self.outputs],
@@ -526,6 +550,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
             self._run_auto_phase()
             self._k6221.enable_output(True)
+            self._configure_output_offsets()
         except Exception:
             self._set_status(TraceStatus.ERROR)
             raise
@@ -555,10 +580,51 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         lockin.set_reference_source(LockInReferenceSource.EXTERNAL, LockinRefenceEdge.FALLING)
         lockin.set_sensitivity(entry.sensitivity)
         lockin.set_reserve_mode(entry.reserve_mode)
-        for output in entry.outputs:
-            offset_channel = output.offset_channel()
-            if offset_channel is not None:
-                lockin.set_output_offset(offset_channel, entry.offset_pct, entry.expand)
+
+    def _configure_output_offsets(self) -> None:
+        """Apply manual offsets or calculate automatic offsets after settling."""
+        has_auto_offset = any(
+            entry.offset_auto for entry in self._lockin_entries
+        )
+        if has_auto_offset:
+            wait_time = max(self._read_rate_multiple, 3.0) * self._time_constant
+            if wait_time > 0.0:
+                time.sleep(wait_time)
+
+        with ThreadPoolExecutor(max_workers=max(1, len(self._lockins))) as executor:
+            futures = [
+                executor.submit(self._configure_one_lockin_offsets, entry, lockin)
+                for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
+            ]
+            for future in futures:
+                future.result()
+
+    @staticmethod
+    def _configure_one_lockin_offsets(entry: LockInEntry, lockin: SRS830) -> None:
+        """Apply configured offset and expand values to one SR830."""
+        selected_offset_outputs = tuple(
+            output for output in entry.outputs if output.offset_channel() is not None
+        )
+        if entry.offset_auto and entry.outputs != (LockInOutput.X,):
+            offset_outputs = tuple(
+                dict.fromkeys((LockInOutput.X, LockInOutput.Y, *selected_offset_outputs))
+            )
+        else:
+            offset_outputs = selected_offset_outputs
+        entry.auto_offsets.clear()
+        measured_values = lockin.measure_outputs(offset_outputs) if entry.offset_auto and offset_outputs else {}
+        for output in offset_outputs:
+            channel = output.offset_channel()
+            if channel is None:
+                continue
+            offset_pct = entry.offset_pct
+            if entry.offset_auto:
+                offset_pct = float(measured_values[output]) / entry.sensitivity * 100.0
+                offset_pct = max(-105.0, min(105.0, offset_pct))
+                entry.auto_offsets[channel.value] = offset_pct
+            lockin.set_output_offset(channel, offset_pct, LockInExpandFactor.X1)
+            if entry.expand is not LockInExpandFactor.X1:
+                lockin.set_output_offset(channel, offset_pct, entry.expand)
 
     def auto_offset(self) -> None:
         """Enable the 6221, settle, and run auto-offset on all configured lock-in output channels.
@@ -885,11 +951,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
             for col, entry in enumerate(self._lockin_entries):
                 label_edit = QLineEdit(entry.label)
-                outputs_widget = QWidget()
-                outputs_widget.setStyleSheet("background: transparent;")
-                outputs_layout = QVBoxLayout(outputs_widget)
-                outputs_layout.setContentsMargins(4, 2, 4, 2)
-                outputs_layout.setSpacing(2)
                 label_edit.textChanged.connect(
                     lambda text, *, idx=col: setattr(self._lockin_entries[idx], "label", text)
                 )
@@ -944,7 +1005,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 )
                 lockins_table.setCellWidget(_ROW_AUTO_PHASE, col, auto_phase_check)
 
-                offset_local = SISpinBox(suffix="%", value=entry.offset_pct)
+                offset_local = AutoSISpinBox(suffix="%", value=entry.offset_pct, auto=entry.offset_auto)
                 offset_local.setMinimum(-105.0)
                 offset_local.setMaximum(105.0)
 
@@ -1001,10 +1062,15 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     checkbox.setChecked(output in entry.outputs)
                     checkbox.toggled.connect(_make_output_toggled_handler())
                     output_checks.append((output, checkbox))
-                    outputs_layout.addWidget(checkbox)
+                    lockins_table.setCellWidget(_LOCKIN_OUTPUT_ROWS[output], col, checkbox)
 
                 offset_local.valueChanged.connect(
                     lambda value, *, idx=col: setattr(self._lockin_entries[idx], "offset_pct", float(value))
+                )
+                offset_local.autoChanged.connect(
+                    lambda automatic, *, idx=col: setattr(
+                        self._lockin_entries[idx], "offset_auto", bool(automatic)
+                    )
                 )
                 expand_combo.currentIndexChanged.connect(
                     lambda index, *, idx=col, combo=expand_combo: setattr(
@@ -1016,8 +1082,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                         self._lockin_entries[idx], "reserve_mode", combo.itemData(index)
                     )
                 )
-                outputs_layout.addStretch()
-                lockins_table.setCellWidget(_ROW_OUTPUTS, col, outputs_widget)
                 lockins_table.setCellWidget(_ROW_OFFSET_PCT, col, offset_local)
                 lockins_table.setCellWidget(_ROW_EXPAND, col, expand_combo)
                 lockins_table.setCellWidget(_ROW_RESERVE, col, reserve_combo)
@@ -1421,6 +1485,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             resource=str(data.get("resource", "GPIB0::8::INSTR")),
             sensitivity=float(data.get("sensitivity", 1e-3)),
             offset_pct=float(data.get("offset_pct", 0.0)),
+            offset_auto=bool(data.get("offset_auto", False)),
             expand=self._parse_enum(
                 LockInExpandFactor,
                 data.get("expand", LockInExpandFactor.X1.value),

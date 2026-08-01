@@ -669,6 +669,26 @@ class TestPlotWidget:
         assert widget._trace_table.rowCount() == 1
         assert widget._trace_table.item(0, 1).text() == "my_trace"
 
+    def test_trace_table_not_rebuilt_when_axis_assignment_is_unchanged(self, qapp):
+        widget = self.make_plot_widget()
+        widget.append_point("my_trace", 1.0, 2.0)
+        original_checkbox = widget._trace_table.cellWidget(0, 0)
+
+        widget.assign_trace_axes("my_trace", "bottom", "left")
+
+        assert widget._trace_table.cellWidget(0, 0) is original_checkbox
+
+    def test_trace_table_not_rebuilt_when_style_is_unchanged(self, qapp):
+        widget = self.make_plot_widget()
+        widget.append_point("my_trace", 1.0, 2.0)
+        widget.set_trace_style("my_trace", line_style="dash")
+        original_selector = widget._trace_table.cellWidget(0, 3)
+
+        widget.set_trace_style("my_trace", line_style="dash")
+
+        assert widget._trace_table.cellWidget(0, 3) is original_selector
+        assert original_selector.currentText() == "dash"
+
     def test_trace_table_row_removed_on_remove_trace(self, qapp):
         widget = self.make_plot_widget()
         widget.append_point("my_trace", 1.0, 2.0)
