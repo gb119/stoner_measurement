@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from time import sleep
+from time import perf_counter, sleep
 
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInAmplifier,
@@ -758,13 +758,33 @@ class SRS830(LockInAmplifier):
             max_harmonic=self._MAX_HARMONIC,
         )
 
-    def wait_for_ifc(self)->None:
-        """Wait for the IFC line to be asserted.
-        
-        Waits for the IFC line to be set indicating the current command is none.
-        Use the time constant if set or the poll time to limit how often to poll
-        the status bytes.
+    def wait_for_ifc(
+        self,
+        timeout: float | None = None,
+        poll_interval: float = 0.01,
+    ) -> None:
+        """Wait until the SR830 reports that command execution is complete.
+
+        The Serial Poll Status Byte IFC bit is polled until set. The default
+        timeout allows at least three configured time constants, with a
+        two-second minimum, while still preventing an unresponsive instrument
+        from blocking indefinitely.
+
+        Raises:
+            TimeoutError:
+                If IFC is not asserted before *timeout* expires.
         """
-        wait=3 * (self._time_constant or self.poll_time)
-        while not self.read_status_byte() & 2:
-            sleep(wait)
+        if timeout is None:
+            timeout = max(self.transport.timeout, 3.0 * float(self._time_constant or 0.0))
+        deadline = perf_counter() + max(0.0, timeout)
+        last_status_byte: int | None = None
+        while True:
+            last_status_byte = self.read_status_byte()
+            if last_status_byte is not None and last_status_byte & 2:
+                return
+            if perf_counter() >= deadline:
+                raise TimeoutError(
+                    "Timeout waiting for SR830 command completion; "
+                    f"last STB={last_status_byte}."
+                )
+            sleep(max(0.0, poll_interval))

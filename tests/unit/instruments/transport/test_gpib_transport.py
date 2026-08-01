@@ -92,6 +92,52 @@ class TestGpibProtocolTermination:
         assert resource.trigger_count == 1
         transport.close()
 
+    def test_read_times_out_when_mav_never_appears(self, monkeypatch):
+        pytest.importorskip("pyvisa")
+        import pyvisa
+
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        resource, rm_factory = self._make_fake_gpib_resource_manager()
+        resource.read_stb = lambda: 11
+        monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
+        transport = GpibTransport(address=8, timeout=0.0, command_complete_mask=2)
+        transport.open()
+
+        with pytest.raises(TimeoutError, match=r"MAV.*STB=11"):
+            transport.read()
+
+        transport.close()
+
+    def test_read_does_not_consume_timeout_while_command_is_executing(self, monkeypatch):
+        pytest.importorskip("pyvisa")
+        import pyvisa
+
+        import stoner_measurement.instruments.transport.gpib_transport as gpib_module
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        resource, rm_factory = self._make_fake_gpib_resource_manager()
+        statuses = iter((0, 0, 18, 18, 0))
+        resource.read_stb = lambda: next(statuses)
+        resource.read_raw = lambda _num_bytes=4096: b"done\n"
+        monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
+        times = iter((0.0, 100.0, 100.0, 200.0, 200.0, 200.0))
+        monkeypatch.setattr(gpib_module, "perf_counter", lambda: next(times))
+        monkeypatch.setattr(gpib_module, "sleep", lambda _seconds: None)
+        transport = GpibTransport(address=8, timeout=1.0, command_complete_mask=2)
+        transport.open()
+
+        assert transport.read() == b"done\n"
+
+        transport.close()
+
+    def test_command_complete_status_is_opt_in(self):
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        transport = GpibTransport(address=22)
+
+        assert transport._command_complete_mask is None
+
     def test_close_leaves_shared_resource_manager_and_other_resources_open(self, monkeypatch):
         pytest.importorskip("pyvisa")
         import pyvisa

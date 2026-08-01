@@ -63,6 +63,7 @@ class GpibTransport(BaseTransport):
         timeout: float = 2.0,
         use_mav: bool = True,
         poll_time: float = 0.01,
+        command_complete_mask: int | None = None,
     ) -> None:
         """Initialise the GPIB transport.
 
@@ -79,6 +80,11 @@ class GpibTransport(BaseTransport):
                 Use the 4th bit of the Status Byte to control reading. Default True
             poll_time (float):
                 Time in seconds to wait to see if the status byte will show MAV.
+            command_complete_mask (int | None):
+                Optional instrument-specific status-byte mask indicating that
+                command execution is complete. When supplied, a completed
+                query that never asserts MAV is bounded by *timeout*. Defaults
+                to ``None`` because this bit is not standard across instruments.
 
         Raises:
             ImportError:
@@ -99,6 +105,7 @@ class GpibTransport(BaseTransport):
         self._read_termination: str = _DEFAULT_GPIB_READ_TERMINATOR
         self._poll_time: float = poll_time or _DEFAULT_READ_POLL
         self._use_mav = use_mav
+        self._command_complete_mask = command_complete_mask
 
     @classmethod
     def from_resource_string(
@@ -107,6 +114,7 @@ class GpibTransport(BaseTransport):
         timeout: float = 2.0,
         use_mav: bool = True,
         poll_time: float = 0.01,
+        command_complete_mask: int | None = None,
     ) -> GpibTransport:
         """Construct a :class:`GpibTransport` from a VISA resource string.
 
@@ -151,7 +159,12 @@ class GpibTransport(BaseTransport):
         board = int(m.group(1))
         address = int(m.group(2))
         return cls(
-            address=address, board=board, timeout=timeout, use_mav=use_mav, poll_time=poll_time
+            address=address,
+            board=board,
+            timeout=timeout,
+            use_mav=use_mav,
+            poll_time=poll_time,
+            command_complete_mask=command_complete_mask,
         )
 
     @property
@@ -256,15 +269,35 @@ class GpibTransport(BaseTransport):
         if self._resource is None:
             raise ConnectionError("GPIB transport is not open.")
         frame_limit = self._resolve_max_frame_size(num_bytes)
+        deadline = perf_counter() + max(0.0, self._timeout)
+        last_status_byte: int | None = None
         try:
             response = b""
-            while (
-                self._use_mav and not self.read_status_byte() & 16
-            ):  # Loop until we see MAV bytes.
+            while self._use_mav:  # Loop until the instrument reports message available.
+                last_status_byte = self.read_status_byte()
+                if last_status_byte is not None and last_status_byte & 16:
+                    break
+                if (
+                    self._command_complete_mask is not None
+                    and last_status_byte is not None
+                    and not last_status_byte & self._command_complete_mask
+                ):
+                    deadline = perf_counter() + max(0.0, self._timeout)
+                if self._command_complete_mask is not None and perf_counter() >= deadline:
+                    raise TimeoutError(
+                        f"Timeout waiting for MAV after command completion from "
+                        f"GPIB address {self.address}; "
+                        f"last STB={last_status_byte}."
+                    )
                 sleep(self._poll_time)
             while (
                 self._use_mav and self.read_status_byte() & 16
             ) or not response:  # Loop until we don;'t have a message available.
+                if self._command_complete_mask is not None and perf_counter() >= deadline:
+                    raise TimeoutError(
+                        f"Timeout reading from GPIB address {self.address}; "
+                        f"last STB={last_status_byte}."
+                    )
                 frame = self._resource.read_raw(frame_limit)
                 response += frame
                 if self._use_mav:
@@ -274,6 +307,8 @@ class GpibTransport(BaseTransport):
         except pyvisa.errors.VisaIOError as exc:
             logger.error(f"Timeout reading from GPIB address {self.address}: {exc}")
             raise TimeoutError(f"Timeout reading from GPIB address {self.address}: {exc}") from exc
+        except TimeoutError:
+            raise
         except Exception as exc:
             logger.error("Exception in GPIB read {exc}\n{format_exc()}")
             raise InstrumentError("Hit an error in read") from exc
@@ -431,6 +466,7 @@ class PassThroughGpibTransport(GpibTransport):
         timeout: float = 2.0,
         use_mav: bool = True,
         poll_time: float = 0.01,
+        command_complete_mask: int | None = None,
         max_read_chunks: int = 64,
     ) -> None:
         """Initialise the GPIB transport.
@@ -459,7 +495,14 @@ class PassThroughGpibTransport(GpibTransport):
                 "pyvisa is required for GpibTransport. Install it with: pip install pyvisa"
             ) from exc
 
-        super().__init__(address=address, board=board, timeout=timeout)
+        super().__init__(
+            address=address,
+            board=board,
+            timeout=timeout,
+            use_mav=use_mav,
+            poll_time=poll_time,
+            command_complete_mask=command_complete_mask,
+        )
         self._max_read_chunks = max_read_chunks
         self._last_cmd = 0
         self.last_stb = 0

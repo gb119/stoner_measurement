@@ -134,6 +134,23 @@ class TestSRS830:
         with pytest.raises(ValueError):
             k.set_output_offset(LockInOutputChannel.X, -106.0, LockInExpandFactor.X1)
 
+    def test_wait_for_ifc_returns_when_command_complete(self, monkeypatch):
+        k = SRS830(transport=_null())
+        monkeypatch.setattr(k, "read_status_byte", lambda: 2)
+
+        k.wait_for_ifc(timeout=0.0)
+
+    def test_wait_for_ifc_times_out_with_last_status(self, monkeypatch):
+        import stoner_measurement.instruments.srs.sr830 as sr830_module
+
+        k = SRS830(transport=_null())
+        monkeypatch.setattr(k, "read_status_byte", lambda: 9)
+        times = iter((0.0, 1.0))
+        monkeypatch.setattr(sr830_module, "perf_counter", lambda: next(times))
+
+        with pytest.raises(TimeoutError, match="STB=9"):
+            k.wait_for_ifc(timeout=0.5, poll_interval=0.0)
+
     def test_capabilities(self):
         caps = SRS830(transport=_null()).get_capabilities()
         assert isinstance(caps, LockInAmplifierCapabilities)

@@ -396,6 +396,7 @@ class TestAutoOffset:
                 call(LockInOutputChannel.Y, -50.0, entry.expand),
             ]
         )
+        assert lockin.wait_for_ifc.call_count == 4
         assert entry.auto_offsets == {"X": pytest.approx(25.0), "Y": pytest.approx(-50.0)}
         assert events.index(("output", True)) < events.index(
             ("read", (LockInOutput.X, LockInOutput.Y))
@@ -757,6 +758,55 @@ class TestGpibTrigger:
         lockin.measure_outputs.assert_called_once_with((LockInOutput.X, LockInOutput.R))
         assert readings["GPIB0::8::INSTR"].output_values[LockInOutput.X] == pytest.approx(1.0)
 
+    def test_read_lockin_recovers_lia_timeout_by_dropping_expand(self, qapp):
+        from stoner_measurement.instruments.lockin_amplifier import LockInOutputChannel
+
+        plugin = _make_plugin()
+        lockin = MagicMock()
+        lockin.measure_outputs.side_effect = [
+            TimeoutError("MAV missing"),
+            {LockInOutput.X: 1.0, LockInOutput.R: 1.0},
+        ]
+        lockin.read_status_byte.return_value = 11
+        entry = LockInEntry(
+            label="A",
+            resource="GPIB0::8::INSTR",
+            outputs=(LockInOutput.X,),
+            offset_auto=True,
+            auto_offsets={"X": 25.0},
+            expand=LockInExpandFactor.X10,
+        )
+
+        resource, reading = plugin._read_one_lockin(entry, lockin)
+
+        assert resource == entry.resource
+        assert reading.output_values[LockInOutput.X] == pytest.approx(1.0)
+        assert lockin.measure_outputs.call_count == 2
+        lockin.set_output_offset.assert_called_once_with(
+            LockInOutputChannel.X, 25.0, LockInExpandFactor.X1
+        )
+        lockin.wait_for_ifc.assert_called_once_with()
+        lockin.write.assert_called_once_with("*CLS")
+        assert entry.expand is LockInExpandFactor.X1
+
+    def test_read_lockin_does_not_retry_timeout_without_lia_status(self, qapp):
+        plugin = _make_plugin()
+        lockin = MagicMock()
+        lockin.measure_outputs.side_effect = TimeoutError("MAV missing")
+        lockin.read_status_byte.return_value = 3
+        entry = LockInEntry(
+            label="A",
+            resource="GPIB0::8::INSTR",
+            outputs=(LockInOutput.X,),
+            expand=LockInExpandFactor.X10,
+        )
+
+        with pytest.raises(TimeoutError, match="MAV missing"):
+            plugin._read_one_lockin(entry, lockin)
+
+        lockin.set_output_offset.assert_not_called()
+        assert entry.expand is LockInExpandFactor.X10
+
 
 class TestValidation:
     def test_invalid_harmonic_raises(self, qapp):
@@ -778,6 +828,30 @@ class TestValidation:
 
 
 class TestConnect:
+    def test_sr830_transport_opts_into_ifc_aware_mav_timeout(self, qapp):
+        plugin = _make_plugin()
+        entry = LockInEntry(label="A", resource="GPIB0::8::INSTR")
+        mock_transport = MagicMock()
+        mock_sr830 = MagicMock()
+        mock_sr830.identify.return_value = "Stanford Research Systems,SR830"
+
+        with patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
+            return_value=mock_transport,
+        ) as transport_factory, patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
+            return_value=mock_sr830,
+        ):
+            transport, lockin = plugin._connect_one_lockin(entry)
+
+        transport_factory.assert_called_once_with(
+            entry.resource,
+            timeout=10.0,
+            command_complete_mask=2,
+        )
+        assert transport is mock_transport
+        assert lockin is mock_sr830
+
     def test_sr830_identity_mismatch_closes_transports_and_resets_state(self, qapp):
         """Verify connect() cleans up and resets state when an SR830 returns a wrong identity."""
         plugin = _make_plugin()

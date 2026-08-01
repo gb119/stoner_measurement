@@ -13,7 +13,7 @@ from stoner_measurement.instruments.temperature_controller import (
     SensorStatus,
     ZoneEntry,
 )
-from stoner_measurement.instruments.transport import NullTransport
+from stoner_measurement.instruments.transport import GpibTransport, NullTransport
 
 
 def _null(responses=None):
@@ -24,6 +24,14 @@ def _null(responses=None):
 
 
 class TestLakeshoreTemperatureControllers:
+    def test_lakeshore335_disables_gpib_mav_polling(self):
+        transport = GpibTransport(address=12)
+
+        Lakeshore335(transport=transport)
+
+        assert transport._use_mav is False
+        assert transport._command_complete_mask is None
+
     def test_default_protocol_is_lakeshore(self):
         assert isinstance(Lakeshore335(transport=NullTransport()).protocol, LakeshoreProtocol)
         assert isinstance(Lakeshore336(transport=NullTransport()).protocol, LakeshoreProtocol)

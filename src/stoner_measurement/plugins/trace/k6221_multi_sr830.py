@@ -38,6 +38,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInInputSource,
     LockInLineFilter,
     LockInOutput,
+    LockInOutputChannel,
     LockinRefenceEdge,
     LockInReferenceSource,
     LockInReserveMode,
@@ -60,6 +61,8 @@ _SR830_TIME_CONSTANTS: tuple[float, ...] = SRS830.supported_time_constants()
 _SR830_SENSITIVITIES: tuple[float, ...] = SRS830.supported_sensitivities()
 _SR830_FILTER_SLOPES: tuple[int, ...] = SRS830.supported_filter_slopes()
 _SR830_MAX_HARMONIC: int = SRS830.max_harmonic()
+_SR830_STATUS_IFC = 1 << 1
+_SR830_STATUS_LIA = 1 << 3
 
 # Row indices for the transposed lock-in configuration table.
 _ROW_LABEL = 0
@@ -494,7 +497,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             RuntimeError:
                 If the instrument identity does not contain ``"SR830"``.
         """
-        transport = GpibTransport.from_resource_string(entry.resource, timeout=10.0)
+        transport = GpibTransport.from_resource_string(
+            entry.resource,
+            timeout=10.0,
+            command_complete_mask=_SR830_STATUS_IFC,
+        )
         try:
             lockin = SRS830(transport)
             lockin.connect()
@@ -623,8 +630,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 offset_pct = max(-105.0, min(105.0, offset_pct))
                 entry.auto_offsets[channel.value] = offset_pct
             lockin.set_output_offset(channel, offset_pct, LockInExpandFactor.X1)
+            lockin.wait_for_ifc()
             if entry.expand is not LockInExpandFactor.X1:
                 lockin.set_output_offset(channel, offset_pct, entry.expand)
+                lockin.wait_for_ifc()
 
     def auto_offset(self) -> None:
         """Enable the 6221, settle, and run auto-offset on all configured lock-in output channels.
@@ -1362,10 +1371,52 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         requested_outputs = entry.outputs
         if LockInOutput.R not in requested_outputs:
             requested_outputs = (*requested_outputs, LockInOutput.R)
-        measured_values = lockin.measure_outputs(requested_outputs)
+        try:
+            measured_values = lockin.measure_outputs(requested_outputs)
+        except TimeoutError:
+            status_byte = lockin.read_status_byte() or 0
+            if not self._recover_expanded_lockin_read(entry, lockin, status_byte):
+                raise
+            measured_values = lockin.measure_outputs(requested_outputs)
         output_values = {output: float(measured_values[output]) for output in entry.outputs}
         ratio_signal = abs(float(measured_values[LockInOutput.R]))
         return entry.resource, LockInReading(output_values, float(ratio_signal))
+
+    def _recover_expanded_lockin_read(
+        self,
+        entry: LockInEntry,
+        lockin: SRS830,
+        status_byte: int,
+    ) -> bool:
+        """Drop expansion and clear status before retrying a timed-out SR830 read."""
+        if not status_byte & _SR830_STATUS_LIA or entry.expand is LockInExpandFactor.X1:
+            return False
+
+        offset_channels = {
+            LockInOutputChannel(channel_name)
+            for channel_name in entry.auto_offsets
+            if channel_name in LockInOutputChannel._value2member_map_
+        }
+        offset_channels.update(
+            channel
+            for output in entry.outputs
+            if (channel := output.offset_channel()) is not None
+        )
+        if not offset_channels:
+            return False
+
+        self._log.warning(
+            "SR830 %s read timed out with STB=%d while expanded; retrying at x1.",
+            entry.resource,
+            status_byte,
+        )
+        for channel in sorted(offset_channels, key=lambda item: item.value):
+            offset_pct = entry.auto_offsets.get(channel.value, entry.offset_pct)
+            lockin.set_output_offset(channel, offset_pct, LockInExpandFactor.X1)
+            lockin.wait_for_ifc()
+        entry.expand = LockInExpandFactor.X1
+        lockin.write("*CLS")
+        return True
 
     def _trigger_gpib_lockins(self) -> None:
         for lockin in self._lockins:
