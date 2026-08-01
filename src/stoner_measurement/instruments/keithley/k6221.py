@@ -617,11 +617,19 @@ class Keithley6221(CurrentSource):
         combined = "".join(parts)
         return combined.rstrip("\r\n")
 
-    def sweep_start(self) -> None:
-        """Arm the configured sweep, making it ready for triggering."""
+    def sweep_arm(self) -> None:
+        """Arm the configured sweep."""
         self.enable_output(True)
         self.write(":SOUR:SWE:ARM")
+
+    def sweep_init(self) -> None:
+        """Manually trigger the arm layer for a sweep."""        
         self.write(":INIT:IMM")
+
+    def sweep_start(self) -> None:
+        """Arm the configured sweep, making it ready for triggering."""
+        self.sweep_arm()
+        self.sweep_init()
 
     def sweep_abort(self) -> None:
         """Abort a running or armed sweep."""

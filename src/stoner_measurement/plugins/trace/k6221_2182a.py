@@ -759,7 +759,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # ---- 6221 arm to go ----
             self._k6221.sweep_abort()
-            self._k6221.enable_output(True)
+            self._k6221.sweep_arm()
 
         except Exception as exc:
             self._log.error(f"{self.__class__.__name__}: Exception during confgiure {exc}")
@@ -837,7 +837,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             self._k2182a.initiate()
 
             # ---- Start sweep ----
-            self._k6221.sweep_start()
+            self._k6221.sweep_init()
 
             # ---- Wait for sweep to finish ----
             if not self._k6221.wait_for_sweep_complete_srq(timeout):
