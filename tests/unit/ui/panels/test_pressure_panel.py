@@ -72,6 +72,17 @@ def test_chart_uses_log_pressure_axis_and_live_value_legend(panel):
     assert panel._legend_items["Flow actual 1"].text(1) == "0.25 sccm"  # noqa: SLF001
 
 
+def test_chart_duration_sets_fixed_real_time_window(panel):
+    """Changing duration changes the physical x range rather than auto-fitting data."""
+    index = panel._duration_combo.findData(60)  # noqa: SLF001
+
+    panel._duration_combo.setCurrentIndex(index)  # noqa: SLF001
+
+    assert panel._chart_widget._axis_range("bottom") == pytest.approx(  # noqa: SLF001
+        (-3600.0, 0.0)
+    )
+
+
 def test_monitor_reports_supported_interlocks(panel):
     """Named interlock states appear only when supplied by the driver state."""
     state = PressureEngineState(interlocks={"Vacuum": True, "Water": False})

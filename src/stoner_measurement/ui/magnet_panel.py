@@ -63,7 +63,7 @@ from stoner_measurement.magnet_control.types import (
 )
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.icons import make_magnet_icon
-from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
 from stoner_measurement.ui.theme import (
     colour,
     indicator_label_stylesheet,
@@ -633,10 +633,11 @@ class MagnetControlPanel(QWidget):
         self._chart_widget.add_y_axis("electrical", "Current / Voltage")
         self._chart_widget.add_y_axis("heater", "Heater")
         self._chart_widget.add_y_axis("rate", "Ramp Rate (T/min)")
+        self._chart_widget.set_rolling_time_window(self._chart_duration_min * 60.0)
         content.addWidget(self._chart_widget, stretch=4)
 
         self._legend_tree = QTreeWidget()
-        self._legend_tree.setHeaderLabels(["Trace", "Value"])
+        configure_chart_legend(self._legend_tree)
         self._legend_tree.setMinimumWidth(220)
         self._legend_tree.itemChanged.connect(self._on_legend_item_changed)
         self._legend_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -898,6 +899,8 @@ class MagnetControlPanel(QWidget):
                 line_style="dash",
             )
             self._update_legend_value("Target Rate", f"{state.ramp_rate_field:.4f} T/min")
+
+        self._chart_widget.set_rolling_time_window(duration_s)
 
     def _update_legend_value(self, trace: str, value: str) -> None:
         """Create or update a live-value legend entry."""
@@ -1659,6 +1662,7 @@ class MagnetControlPanel(QWidget):
                 Index of the selected duration.
         """
         self._chart_duration_min = self._duration_combo.itemData(index)
+        self._chart_widget.set_rolling_time_window(self._chart_duration_min * 60.0)
 
     @pyqtSlot()
     def _on_clear_chart(self) -> None:

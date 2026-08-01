@@ -55,6 +55,15 @@ from stoner_measurement.ui.theme import (
 
 logger = logging.getLogger(__name__)
 
+
+def configure_chart_legend(tree) -> None:
+    """Configure a two-column chart legend to favour the trace label column."""
+    tree.setHeaderLabels(["Trace", "Value"])
+    header = tree.header()
+    header.setStretchLastSection(False)
+    header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+    header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+
 # Plot grid opacity used by pyqtgraph AxisItem.setGrid().
 _PLOT_GRID_ALPHA = 0.15
 
@@ -1717,6 +1726,18 @@ class PlotWidget(QWidget):
             self.set_axis_label("bottom", x_label)
         if y_label:
             self.set_axis_label("left", y_label)
+
+    def set_rolling_time_window(self, duration_seconds: float) -> None:
+        """Fix the bottom axis to a real-time window ending at the present.
+
+        Rolling controller charts express sample timestamps as negative seconds
+        relative to the current time. Keeping this axis manual prevents the
+        data extent and polling density from changing the apparent time scale.
+        """
+        duration = float(duration_seconds)
+        if not np.isfinite(duration) or duration <= 0.0:
+            raise ValueError("Rolling time-window duration must be positive and finite.")
+        self.set_axis_range("bottom", minimum=-duration, maximum=0.0)
 
     def set_trace_style(  # pylint: disable=too-many-arguments
         self,

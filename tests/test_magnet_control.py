@@ -1343,6 +1343,16 @@ class TestMagnetControlPanel:
         assert panel is not None
         assert panel.windowTitle() == "Magnet Control"
 
+    def test_chart_duration_sets_fixed_real_time_window(self, qapp):
+        from stoner_measurement.ui.magnet_panel import MagnetControlPanel
+
+        panel = MagnetControlPanel()
+        index = panel._duration_combo.findData(60)
+
+        panel._duration_combo.setCurrentIndex(index)
+
+        assert panel._chart_widget._axis_range("bottom") == pytest.approx((-3600.0, 0.0))
+
     def test_show_and_raise(self, qapp):
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 

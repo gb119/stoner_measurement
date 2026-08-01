@@ -237,7 +237,7 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
         """
         values = self._parse_csv_floats(
             self.query(f"ZONE? {self._normalise_loop(loop)},{zone_index}"),
-            minimum_length=6,
+            minimum_length=8,
         )
         return ZoneEntry(
             upper_bound=values[0],
@@ -246,7 +246,8 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
             d=values[3],
             heater_output=values[4],
             heater_range=int(values[5]),
-            ramp_rate=0.0,
+            input_channel=int(values[6]),
+            ramp_rate=values[7],
         )
 
     def set_zone(self, loop: int, zone_index: int, entry: ZoneEntry) -> None:
@@ -276,7 +277,8 @@ class _LakeshoreTemperatureControllerBase(TemperatureController):
         self.write(
             f"ZONE {self._normalise_loop(loop)},{zone_index},"
             f"{entry.upper_bound},{entry.p},{entry.i},{entry.d},"
-            f"{entry.heater_output},{int(entry.heater_range)}"
+            f"{entry.heater_output},{int(entry.heater_range)},"
+            f"{int(entry.input_channel)},{entry.ramp_rate}"
         )
 
     def get_input_channel_settings(self, channel: str) -> InputChannelSettings:

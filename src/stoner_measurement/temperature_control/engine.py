@@ -1219,6 +1219,9 @@ class TemperatureControllerEngine(QObject):
         needle_valve = self._read_needle_valve(driver, caps)
         gas_auto_mode = self._read_gas_auto(driver, caps)
         at_setpoint, stable = self._evaluate_stability(readings, setpoints, caps.loop_numbers, now)
+        stability_rate_channels = self._select_stability_rate_channels(
+            readings, setpoints, caps.loop_numbers
+        )
 
         return TemperatureEngineState(
             readings=readings,
@@ -1231,8 +1234,27 @@ class TemperatureControllerEngine(QObject):
             input_channels=input_channels,
             at_setpoint=at_setpoint,
             stable=stable,
+            stability_rate_channels=stability_rate_channels,
             engine_status=EngineStatus.POLLING,
         )
+
+    def _select_stability_rate_channels(
+        self,
+        readings: dict[str, TemperatureChannelReading],
+        setpoints: dict[int, float],
+        loop_numbers: tuple[int, ...],
+    ) -> dict[int, str]:
+        """Return the effective rate sensor selected by each loop's stability band."""
+        selected: dict[int, str] = {}
+        for loop in loop_numbers:
+            setpoint = setpoints.get(loop)
+            if setpoint is None:
+                continue
+            band = _select_stability_band(self._stability_config, setpoint)
+            reading = _reading_for_channel(readings, band.rate_channel)
+            if reading is not None:
+                selected[loop] = reading.channel
+        return selected
 
     def _collect_readings(self, driver, caps, now) -> dict[str, TemperatureChannelReading]:
         """Query all sensor channels and return timestamped readings with rate-of-change."""

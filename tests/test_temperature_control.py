@@ -711,6 +711,24 @@ class TestEngineStabilityEvaluation:
         assert stable[1] is True
         engine.shutdown()
 
+    def test_stability_band_selects_chart_rate_sensor(self, qapp):
+        engine = TemperatureControllerEngine()
+        engine._stability_config = StabilityConfig(
+            bands=[
+                StabilityBand(max_temperature_k=100.0, rate_channel="A"),
+                StabilityBand(max_temperature_k=500.0, rate_channel="C"),
+            ]
+        )
+        readings = {
+            "A": self._make_reading("A", 90.0),
+            "C": self._make_reading("C", 300.0),
+        }
+
+        selected = engine._select_stability_rate_channels(readings, {1: 300.0}, (1,))
+
+        assert selected == {1: "C"}
+        engine.shutdown()
+
     def test_stable_cleared_after_leaving_setpoint(self, qapp):
         engine = TemperatureControllerEngine()
         engine._stability_config = StabilityConfig(
@@ -1053,7 +1071,7 @@ class TestTemperatureControlPanel:
             )
         )
 
-        curve_combo = panel._input_settings_widget._curve_combo
+        curve_combo = panel._input_settings_widget._editors["A"]["curve_number"]
         named_curve_index = curve_combo.findData(5)
         assert named_curve_index >= 0
         assert curve_combo.itemText(named_curve_index) == "Standard Diode (5)"
@@ -1066,7 +1084,40 @@ class TestTemperatureControlPanel:
         assert hasattr(panel, "_chart_widget")
         assert hasattr(panel, "_legend_tree")
 
-    def test_rate_source_combo_populated(self, qapp):
+    def test_chart_duration_sets_fixed_real_time_window(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        index = panel._duration_combo.findData(60)
+
+        panel._duration_combo.setCurrentIndex(index)
+
+        assert panel._chart_widget._axis_range("bottom") == pytest.approx((-3600.0, 0.0))
+
+    def test_chart_elapsed_time_is_independent_of_poll_density(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        start = datetime.now(tz=UTC)
+
+        def plotted_xs(offsets):
+            panel._on_clear_chart()
+            for offset in offsets:
+                timestamp = start + timedelta(seconds=offset)
+                state = TemperatureEngineState(
+                    readings={
+                        "A": TemperatureChannelReading(
+                            "A", 100.0 + offset, timestamp, status=None
+                        )
+                    }
+                )
+                panel._update_chart(state, timestamp.timestamp())
+            return panel._chart_widget.x_data("T_A")
+
+        assert plotted_xs([0, 60]) == pytest.approx([-60.0, 0.0])
+        assert plotted_xs([0, 20, 40, 60]) == pytest.approx([-60.0, -40.0, -20.0, 0.0])
+
+    def test_input_settings_table_has_one_column_per_channel(self, qapp):
         from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
@@ -1081,19 +1132,103 @@ class TestTemperatureControlPanel:
             )
         )
 
-        assert panel._rate_source_combo.count() == 2
-        assert panel._rate_source_combo.itemData(0) == "A"
-        assert panel._rate_source_combo.itemData(1) == "B"
+        table = panel._input_settings_widget._table
+        assert table.columnCount() == 2
+        assert [table.horizontalHeaderItem(i).text() for i in range(2)] == ["A", "B"]
 
-    def test_rate_source_selection_updates_channel(self, qapp):
+    def test_input_settings_read_and_write_all_channels(self, qapp, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from stoner_measurement.instruments.temperature_controller import InputChannelSettings
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
         panel = TemperatureControlPanel()
-        panel._rate_source_combo.addItem("A", "A")
-        panel._rate_source_combo.addItem("B", "B")
+        table = panel._input_settings_widget
+        table.set_channels(("A", "B"))
+        read = MagicMock(
+            side_effect=lambda channel: InputChannelSettings(
+                sensor_type=1,
+                filter_points=10 if channel == "A" else 20,
+            )
+        )
+        write = MagicMock()
+        monkeypatch.setattr(panel._engine, "get_input_channel_settings", read)
+        monkeypatch.setattr(panel._engine, "set_input_channel_settings", write)
 
-        panel._on_rate_source_changed(1)
+        assert table.read_all(show_warning=False)
+        table.write_all()
 
+        assert table._editors["A"]["filter_points"].value() == 10
+        assert table._editors["B"]["filter_points"].value() == 20
+        assert [call.args[0] for call in write.call_args_list] == ["A", "B"]
+
+    def test_zone_table_uses_row_headers_and_heater_range_labels(self, qapp):
+        from stoner_measurement.instruments.temperature_controller import ZoneEntry
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        zone_widget = panel._zone_table_widget
+        zone_widget.set_loop(1, ("Off", "Low", "Medium", "High"))
+        zone_widget._populate_table(
+            [ZoneEntry(100.0, 10.0, 1.0, 0.0, 2.5, 2, 0.0)]
+        )
+
+        assert zone_widget._table.columnCount() == 7
+        assert zone_widget._table.verticalHeaderItem(0).text() == "1"
+        range_combo = zone_widget._table.cellWidget(0, 5)
+        assert range_combo.currentText() == "Medium"
+        assert zone_widget._collect_entries()[0].ramp_rate == pytest.approx(2.5)
+
+    def test_connected_panel_runs_all_hardware_reads(self, qapp, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        caps = ControllerCapabilities(
+            num_inputs=1,
+            num_loops=1,
+            input_channels=("A",),
+            loop_numbers=(1,),
+            has_zone=True,
+            has_input_settings=True,
+            has_cryogen_control=True,
+        )
+        panel._engine._driver = SimpleNamespace(get_capabilities=lambda: caps)
+        loop_group = SimpleNamespace(read_from_hardware=MagicMock())
+        monkeypatch.setattr(panel, "_rebuild_loop_groups", lambda _caps: None)
+        panel._loop_groups = {1: loop_group}
+        monkeypatch.setattr(panel, "_configure_zone_tab", lambda _caps: None)
+        monkeypatch.setattr(panel, "_configure_input_settings_tab", lambda _caps: None)
+        monkeypatch.setattr(panel, "_refresh_stability_channel_selectors", lambda: None)
+        monkeypatch.setattr(panel._zone_table_widget, "read_from_hardware", MagicMock())
+        monkeypatch.setattr(panel._input_settings_widget, "read_all", MagicMock())
+        monkeypatch.setattr(panel, "_on_read_needle", MagicMock())
+        monkeypatch.setattr(panel._engine, "read_controller_state", lambda: None)
+
+        panel._sync_connected_driver_ui()
+
+        loop_group.read_from_hardware.assert_called_once_with()
+        panel._zone_table_widget.read_from_hardware.assert_called_once_with(show_warning=False)
+        panel._input_settings_widget.read_all.assert_called_once_with(show_warning=False)
+        panel._on_read_needle.assert_called_once_with()
+
+    def test_chart_uses_stability_rate_channel(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        now = datetime.now(tz=UTC)
+        state = TemperatureEngineState(
+            readings={
+                "A": TemperatureChannelReading("A", 100.0, now, status=None),
+                "B": TemperatureChannelReading("B", 101.0, now, status=None),
+            },
+            stability_rate_channels={1: "B"},
+        )
+
+        panel._update_chart(state, now.timestamp())
         assert panel._rate_source_channel == "B"
 
     def test_legend_updates_existing_item(self, qapp):
@@ -1108,6 +1243,16 @@ class TestTemperatureControlPanel:
         item = panel._legend_tree.topLevelItem(0)
         assert item.text(0) == "T_A"
         assert item.text(1) == "301 K"
+
+    def test_legend_value_column_sizes_to_contents(self, qapp):
+        from qtpy.QtWidgets import QHeaderView
+
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        header = panel._legend_tree.header()
+        assert header.sectionResizeMode(0) == QHeaderView.ResizeMode.Stretch
+        assert header.sectionResizeMode(1) == QHeaderView.ResizeMode.ResizeToContents
 
     def test_clear_chart_clears_legend(self, qapp):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
@@ -1155,7 +1300,7 @@ class TestTemperatureControlPanel:
         assert xs == []
         assert ys == []
 
-    def test_chart_settings_persist_rate_source(self, qapp):
+    def test_chart_rate_source_is_not_a_persisted_manual_setting(self, qapp):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
         panel = TemperatureControlPanel()
@@ -1164,7 +1309,7 @@ class TestTemperatureControlPanel:
 
         panel2 = TemperatureControlPanel()
 
-        assert panel2._rate_source_channel == "B"
+        assert panel2._rate_source_channel is None
 
     def test_legend_item_has_icon(self, qapp):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel

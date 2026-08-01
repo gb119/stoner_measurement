@@ -77,7 +77,7 @@ from stoner_measurement.temperature_control.types import (
     TemperatureEngineState,
 )
 from stoner_measurement.ui.icons import make_temperature_icon
-from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
 from stoner_measurement.ui.theme import (
     colour,
     disabled_tab_stylesheet,
@@ -216,7 +216,6 @@ class TemperatureControlPanel(QWidget):
 
         self._build_ui()
         self._load_connection_preferences()
-        self._load_chart_settings()
         self._connect_engine_signals()
 
     # ------------------------------------------------------------------
@@ -586,25 +585,8 @@ class TemperatureControlPanel(QWidget):
         layout = QVBoxLayout(widget)
         layout.setSpacing(6)
 
-        # Channel selector row
-        selector_row = QHBoxLayout()
-        selector_row.addWidget(QLabel("Channel:"))
-        self._input_channel_combo = QComboBox()
-        self._input_channel_combo.currentIndexChanged.connect(self._on_input_channel_changed)
-        selector_row.addWidget(self._input_channel_combo)
-        selector_row.addStretch()
-        layout.addLayout(selector_row)
-
-        rate_row = QHBoxLayout()
-        rate_row.addWidget(QLabel("Rate source:"))
-        self._rate_source_combo = QComboBox()
-        rate_row.addWidget(self._rate_source_combo)
-        self._rate_source_combo.currentIndexChanged.connect(self._on_rate_source_changed)
-        rate_row.addStretch()
-        layout.addLayout(rate_row)
-
-        # Settings form
-        self._input_settings_widget = _InputSettingsWidget(self._engine)
+        # Settings table
+        self._input_settings_widget = _InputSettingsTableWidget(self._engine)
         layout.addWidget(self._input_settings_widget)
         layout.addStretch()
 
@@ -646,10 +628,11 @@ class TemperatureControlPanel(QWidget):
         self._chart_widget.set_default_axis_labels("Time (s ago)", "Temperature (K)")
         self._chart_widget.add_y_axis("output", "Output (%)")
         self._chart_widget.add_y_axis("rate", "Rate (K/min)")
+        self._chart_widget.set_rolling_time_window(self._chart_duration_min * 60.0)
         content.addWidget(self._chart_widget, stretch=4)
 
         self._legend_tree = QTreeWidget()
-        self._legend_tree.setHeaderLabels(["Trace", "Value"])
+        configure_chart_legend(self._legend_tree)
         self._legend_tree.setMinimumWidth(220)
         self._legend_tree.itemChanged.connect(self._on_legend_item_changed)
         self._legend_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -845,6 +828,11 @@ class TemperatureControlPanel(QWidget):
         """
         duration_s = self._chart_duration_min * 60.0
 
+        self._rate_source_channel = next(
+            (state.stability_rate_channels[loop] for loop in sorted(state.stability_rate_channels)),
+            next(iter(state.readings), None),
+        )
+
         for i, (ch, reading) in enumerate(state.readings.items()):
             ts = reading.timestamp.timestamp()
             buf_t = self._chart_times.setdefault(ch, [])
@@ -909,6 +897,8 @@ class TemperatureControlPanel(QWidget):
                     colour=_NEEDLE_COLOUR.name(),
                 )
                 self._update_legend_value("NV", f"{state.needle_valve:.1f} %")
+
+        self._chart_widget.set_rolling_time_window(duration_s)
 
     # ------------------------------------------------------------------
     # Connection tab slots
@@ -1031,12 +1021,6 @@ class TemperatureControlPanel(QWidget):
         self._zone_table_widget.clear_table()
         # Disable input settings tab.
         self._tabs.setTabEnabled(self._input_settings_tab_index, False)
-        self._input_channel_combo.blockSignals(True)
-        self._input_channel_combo.clear()
-        self._input_channel_combo.blockSignals(False)
-        self._rate_source_combo.blockSignals(True)
-        self._rate_source_combo.clear()
-        self._rate_source_combo.blockSignals(False)
         self._rate_source_channel = None
         self._input_settings_widget.set_curve_names({})
         self._input_settings_widget.clear()
@@ -1085,6 +1069,14 @@ class TemperatureControlPanel(QWidget):
         self._configure_zone_tab(caps)
         self._configure_input_settings_tab(caps)
         self._refresh_stability_channel_selectors()
+        for group in self._loop_groups.values():
+            group.read_from_hardware()
+        if caps.has_zone:
+            self._zone_table_widget.read_from_hardware(show_warning=False)
+        if caps.has_input_settings:
+            self._input_settings_widget.read_all(show_warning=False)
+        if caps.has_cryogen_control:
+            self._on_read_needle()
         state = self._engine.read_controller_state()
         if state is not None:
             self._on_state_updated(state)
@@ -1114,7 +1106,8 @@ class TemperatureControlPanel(QWidget):
                 self._zone_loop_selector_widget.show()
             else:
                 self._zone_loop_selector_widget.hide()
-            self._zone_table_widget.set_loop(caps.loop_numbers[0] if caps.loop_numbers else 1)
+            loop = caps.loop_numbers[0] if caps.loop_numbers else 1
+            self._zone_table_widget.set_loop(loop, caps.heater_range_labels.get(loop, ()))
         else:
             self._zone_loop_selector_widget.hide()
             self._zone_table_widget.clear_table()
@@ -1130,7 +1123,9 @@ class TemperatureControlPanel(QWidget):
         """
         loop = self._zone_loop_combo.itemData(index)
         if loop is not None:
-            self._zone_table_widget.set_loop(loop)
+            labels = self._capabilities.heater_range_labels.get(loop, ()) if self._capabilities else ()
+            self._zone_table_widget.set_loop(loop, labels)
+            self._zone_table_widget.read_from_hardware(show_warning=False)
 
     def _configure_input_settings_tab(self, caps: ControllerCapabilities) -> None:
         """Enable or disable the Input Settings tab based on driver capabilities.
@@ -1145,59 +1140,12 @@ class TemperatureControlPanel(QWidget):
         enabled = caps.has_input_settings
         self._tabs.setTabEnabled(self._input_settings_tab_index, enabled)
 
-        # Rate-of-change plotting only requires temperature channels, not
-        # editable input settings. Populate the rate-source selector whenever
-        # channels are available.
-        self._rate_source_combo.blockSignals(True)
-        self._rate_source_combo.clear()
-        for ch in caps.input_channels:
-            self._rate_source_combo.addItem(ch, ch)
-
-        if caps.input_channels:
-            if self._rate_source_channel in caps.input_channels:
-                selected = self._rate_source_channel
-            else:
-                selected = caps.input_channels[0]
-                self._rate_source_channel = selected
-
-            index = self._rate_source_combo.findData(selected)
-            if index >= 0:
-                self._rate_source_combo.setCurrentIndex(index)
-        self._rate_source_combo.blockSignals(False)
-
-        self._input_channel_combo.blockSignals(True)
-        self._input_channel_combo.clear()
         if enabled:
             self._input_settings_widget.set_curve_names(self._engine.get_calibration_curve_names())
-            for ch in caps.input_channels:
-                self._input_channel_combo.addItem(ch, ch)
-            if caps.input_channels:
-                self._input_settings_widget.set_channel(caps.input_channels[0])
+            self._input_settings_widget.set_channels(caps.input_channels)
         else:
             self._input_settings_widget.set_curve_names({})
             self._input_settings_widget.clear()
-        self._input_channel_combo.blockSignals(False)
-
-    @pyqtSlot(int)
-    def _on_input_channel_changed(self, index: int) -> None:
-        """Update the input settings widget when a different channel is selected.
-
-        Args:
-            index (int):
-                Index of the newly selected channel in the channel combo box.
-        """
-        channel = self._input_channel_combo.itemData(index)
-        if channel is not None:
-            self._input_settings_widget.set_channel(channel)
-
-    @pyqtSlot(int)
-    def _on_rate_source_changed(self, index: int) -> None:
-        """Select the temperature channel used for dT/dt calculation."""
-        channel = self._rate_source_combo.itemData(index)
-        if not channel:
-            return
-        self._rate_source_channel = channel
-        self._save_chart_settings()
 
     def _on_legend_item_changed(self, item, _column: int) -> None:
         """Show/hide traces from legend checkboxes."""
@@ -1301,7 +1249,6 @@ class TemperatureControlPanel(QWidget):
     def _save_chart_settings(self) -> None:
         """Persist chart preferences."""
         settings = _panel_settings()
-        settings.setValue("temperaturePanel/chart/rateSource", self._rate_source_channel)
 
         for trace, item in self._legend_items.items():
             settings.setValue(
@@ -1315,16 +1262,6 @@ class TemperatureControlPanel(QWidget):
                     value,
                 )
         settings.sync()
-
-    def _load_chart_settings(self) -> None:
-        """Restore persisted chart preferences."""
-        settings = _panel_settings()
-        rate_source = settings.value(
-            "temperaturePanel/chart/rateSource",
-            None,
-            type=str,
-        )
-        self._rate_source_channel = rate_source or None
 
     def _restore_trace_settings(self, trace: str, item: QTreeWidgetItem) -> None:
         """Restore persisted visibility and style for a trace."""
@@ -1619,6 +1556,7 @@ class TemperatureControlPanel(QWidget):
                 Index of the selected duration in the duration combo box.
         """
         self._chart_duration_min = self._duration_combo.itemData(index)
+        self._chart_widget.set_rolling_time_window(self._chart_duration_min * 60.0)
 
     @pyqtSlot()
     def _on_clear_chart(self) -> None:
@@ -1637,17 +1575,15 @@ class TemperatureControlPanel(QWidget):
 # ---------------------------------------------------------------------------
 
 #: Column indices for the zone table.
-_COL_ZONE = 0
-_COL_UPPER = 1
-_COL_P = 2
-_COL_I = 3
-_COL_D = 4
-_COL_RAMP = 5
-_COL_RANGE = 6
-_COL_OUTPUT = 7
+_COL_UPPER = 0
+_COL_P = 1
+_COL_I = 2
+_COL_D = 3
+_COL_RAMP = 4
+_COL_RANGE = 5
+_COL_OUTPUT = 6
 
 _ZONE_COLUMNS = [
-    "Zone",
     "Upper Bound (K)",
     "P",
     "I",
@@ -1679,13 +1615,15 @@ class _ZoneTableWidget(QWidget):
         super().__init__(parent)
         self._engine = engine
         self._loop: int = 1
+        self._heater_range_labels: tuple[str, ...] = ()
+        self._input_channels: list[int] = []
         self._build()
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
-    def set_loop(self, loop: int) -> None:
+    def set_loop(self, loop: int, heater_range_labels: tuple[str, ...] = ()) -> None:
         """Set the active control loop number.
 
         Args:
@@ -1694,10 +1632,12 @@ class _ZoneTableWidget(QWidget):
                 read or written.
         """
         self._loop = loop
+        self._heater_range_labels = heater_range_labels
 
     def clear_table(self) -> None:
         """Remove all rows from the zone table."""
         self._table.setRowCount(0)
+        self._input_channels.clear()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -1712,6 +1652,7 @@ class _ZoneTableWidget(QWidget):
         # Table
         self._table = QTableWidget(0, len(_ZONE_COLUMNS))
         self._table.setHorizontalHeaderLabels(_ZONE_COLUMNS)
+        self._table.verticalHeader().setVisible(True)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setAlternatingRowColors(True)
@@ -1746,6 +1687,7 @@ class _ZoneTableWidget(QWidget):
                 Zone-table entries to display.
         """
         self._table.setRowCount(0)
+        self._input_channels.clear()
         for i, entry in enumerate(entries):
             self._append_row(i + 1, entry)
 
@@ -1754,7 +1696,7 @@ class _ZoneTableWidget(QWidget):
 
         Args:
             zone_number (int):
-                Display-only zone index shown in the first column.
+                Display-only zone index shown in the row header.
             entry (ZoneEntry | None):
                 Initial values; when ``None`` all numeric fields default to
                 ``0.0`` / ``0``.
@@ -1762,10 +1704,9 @@ class _ZoneTableWidget(QWidget):
         row = self._table.rowCount()
         self._table.insertRow(row)
 
-        # Zone number — read-only label column.
-        zone_item = QTableWidgetItem(str(zone_number))
-        zone_item.setFlags(zone_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self._table.setItem(row, _COL_ZONE, zone_item)
+        # Zone number is the table's read-only vertical row header.
+        self._table.setVerticalHeaderItem(row, QTableWidgetItem(str(zone_number)))
+        self._input_channels.append(entry.input_channel if entry else 0)
 
         def _dspin(value: float, max_val: float = 1000.0, decimals: int = 3) -> QDoubleSpinBox:
             w = QDoubleSpinBox()
@@ -1795,7 +1736,15 @@ class _ZoneTableWidget(QWidget):
         self._table.setCellWidget(row, _COL_I, _dspin(i))
         self._table.setCellWidget(row, _COL_D, _dspin(d))
         self._table.setCellWidget(row, _COL_RAMP, _dspin(ramp, max_val=999.0))
-        self._table.setCellWidget(row, _COL_RANGE, _ispin(hr))
+        if self._heater_range_labels:
+            range_combo = QComboBox()
+            for index, label in enumerate(self._heater_range_labels):
+                range_combo.addItem(label, index)
+            selected = range_combo.findData(hr)
+            range_combo.setCurrentIndex(selected if selected >= 0 else 0)
+            self._table.setCellWidget(row, _COL_RANGE, range_combo)
+        else:
+            self._table.setCellWidget(row, _COL_RANGE, _ispin(hr))
         self._table.setCellWidget(row, _COL_OUTPUT, _dspin(ho, max_val=100.0))
 
     def _collect_entries(self) -> list[ZoneEntry]:
@@ -1816,6 +1765,7 @@ class _ZoneTableWidget(QWidget):
                     ramp_rate=self._double_value(row, _COL_RAMP),
                     heater_range=self._int_value(row, _COL_RANGE),
                     heater_output=self._double_value(row, _COL_OUTPUT),
+                    input_channel=self._input_channels[row],
                 )
             )
         return entries
@@ -1828,14 +1778,14 @@ class _ZoneTableWidget(QWidget):
     def _int_value(self, row: int, column: int) -> int:
         """Return an integer value from the zone table."""
         widget = self._table.cellWidget(row, column)
+        if isinstance(widget, QComboBox):
+            return int(widget.currentData())
         return widget.value() if widget is not None else 0
 
     def _renumber_zones(self) -> None:
         """Refresh the read-only zone-number column after row additions/removals."""
         for row in range(self._table.rowCount()):
-            item = self._table.item(row, _COL_ZONE)
-            if item is not None:
-                item.setText(str(row + 1))
+            self._table.setVerticalHeaderItem(row, QTableWidgetItem(str(row + 1)))
 
     # ------------------------------------------------------------------
     # Button slots
@@ -1844,11 +1794,17 @@ class _ZoneTableWidget(QWidget):
     @pyqtSlot()
     def _on_read(self) -> None:
         """Read the zone table from the instrument via the engine."""
+        self.read_from_hardware()
+
+    def read_from_hardware(self, *, show_warning: bool = True) -> bool:
+        """Read the active loop's zone table and update the editor."""
         entries = self._engine.get_zone_table(self._loop)
         if entries is None:
-            QMessageBox.warning(self, "Zone Table", "No instrument connected.")
-            return
+            if show_warning:
+                QMessageBox.warning(self, "Zone Table", "No instrument connected.")
+            return False
         self._populate_table(entries)
+        return True
 
     @pyqtSlot()
     def _on_apply(self) -> None:
@@ -1871,6 +1827,7 @@ class _ZoneTableWidget(QWidget):
             row = self._table.rowCount() - 1
         if row >= 0:
             self._table.removeRow(row)
+            self._input_channels.pop(row)
             self._renumber_zones()
 
     @pyqtSlot()
@@ -1893,6 +1850,7 @@ class _ZoneTableWidget(QWidget):
                     ramp_rate=float(item["ramp_rate"]),
                     heater_range=int(item["heater_range"]),
                     heater_output=float(item["heater_output"]),
+                    input_channel=int(item.get("input_channel", 0)),
                 )
                 for item in data
             ]
@@ -1919,6 +1877,7 @@ class _ZoneTableWidget(QWidget):
                 "ramp_rate": e.ramp_rate,
                 "heater_range": e.heater_range,
                 "heater_output": e.heater_output,
+                "input_channel": e.input_channel,
             }
             for e in entries
         ]
@@ -2200,6 +2159,205 @@ class _InputSettingsWidget(QWidget):
 
 
 # ---------------------------------------------------------------------------
+# Multi-channel input settings table
+# ---------------------------------------------------------------------------
+
+_INPUT_SETTING_ROWS = (
+    ("sensor_type", "Sensor type"),
+    ("autorange", "Autorange"),
+    ("range", "Range"),
+    ("compensation", "Compensation"),
+    ("units", "Units"),
+    ("filter_enabled", "Digital filter"),
+    ("filter_points", "Filter points"),
+    ("filter_window", "Filter window (%)"),
+    ("curve_number", "Calibration curve"),
+)
+
+
+class _InputSettingsTableWidget(QWidget):
+    """Edit all available sensor input settings in adjacent table columns."""
+
+    def __init__(
+        self, engine: TemperatureControllerEngine, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._engine = engine
+        self._channels: tuple[str, ...] = ()
+        self._curve_names: dict[int, str] = {}
+        self._editors: dict[str, dict[str, QWidget]] = {}
+        self._build()
+
+    def _build(self) -> None:
+        """Build the settings table and shared read/write actions."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._table = QTableWidget(len(_INPUT_SETTING_ROWS), 0)
+        self._table.setVerticalHeaderLabels([label for _, label in _INPUT_SETTING_ROWS])
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.setAlternatingRowColors(True)
+        self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        layout.addWidget(self._table)
+
+        buttons = QHBoxLayout()
+        read_button = QPushButton("Read All")
+        read_button.setToolTip("Read input settings for every sensor channel")
+        read_button.clicked.connect(self._on_read)
+        write_button = QPushButton("Write All")
+        write_button.setToolTip("Write input settings for every sensor channel")
+        write_button.clicked.connect(self._on_write)
+        buttons.addWidget(read_button)
+        buttons.addWidget(write_button)
+        buttons.addStretch()
+        layout.addLayout(buttons)
+
+    def set_channels(self, channels: tuple[str, ...]) -> None:
+        """Rebuild the table with one column for each input channel."""
+        self._channels = tuple(channels)
+        self._editors.clear()
+        self._table.setColumnCount(len(self._channels))
+        self._table.setHorizontalHeaderLabels(list(self._channels))
+        for column, channel in enumerate(self._channels):
+            editors = self._make_channel_editors()
+            self._editors[channel] = editors
+            for row, (key, _label) in enumerate(_INPUT_SETTING_ROWS):
+                self._table.setCellWidget(row, column, editors[key])
+
+    def set_curve_names(self, curve_names: dict[int, str]) -> None:
+        """Use controller-reported names in every calibration-curve selector."""
+        self._curve_names = {
+            number: name.strip() for number, name in curve_names.items() if name.strip()
+        }
+        for editors in self._editors.values():
+            combo = editors["curve_number"]
+            selected = combo.currentData()
+            self._populate_curve_combo(combo)
+            index = combo.findData(selected)
+            combo.setCurrentIndex(index if index >= 0 else 0)
+
+    def clear(self) -> None:
+        """Remove all channel columns and their editor widgets."""
+        self.set_channels(())
+
+    def read_all(self, *, show_warning: bool = True) -> bool:
+        """Read every channel from hardware and populate successful columns."""
+        failed = []
+        for channel in self._channels:
+            settings = self._engine.get_input_channel_settings(channel)
+            if settings is None:
+                failed.append(channel)
+            else:
+                self._populate_channel(channel, settings)
+        if failed and show_warning:
+            QMessageBox.warning(
+                self,
+                "Input Settings",
+                f"Could not read input settings for: {', '.join(failed)}.",
+            )
+        return not failed
+
+    def write_all(self) -> None:
+        """Write every channel's current table values to the hardware."""
+        for channel in self._channels:
+            self._engine.set_input_channel_settings(channel, self._collect_channel(channel))
+
+    @pyqtSlot()
+    def _on_read(self) -> None:
+        self.read_all()
+
+    @pyqtSlot()
+    def _on_write(self) -> None:
+        self.write_all()
+
+    def _make_channel_editors(self) -> dict[str, QWidget]:
+        """Create one complete set of editors for a channel column."""
+        sensor_type = QComboBox()
+        for code, label in _LAKESHORE_SENSOR_TYPES:
+            sensor_type.addItem(label, code)
+
+        autorange = QCheckBox("Enabled")
+        range_spin = QSpinBox()
+        range_spin.setRange(0, 15)
+        compensation = QCheckBox("Enabled")
+
+        units = QComboBox()
+        for code, label in _LAKESHORE_UNITS:
+            units.addItem(label, code)
+
+        filter_enabled = QCheckBox("Enabled")
+        filter_points = QSpinBox()
+        filter_points.setRange(1, 200)
+        filter_window = QDoubleSpinBox()
+        filter_window.setRange(0.0, 10.0)
+        filter_window.setDecimals(1)
+        filter_window.setSuffix(" %")
+
+        curve_number = QComboBox()
+        self._populate_curve_combo(curve_number)
+        return {
+            "sensor_type": sensor_type,
+            "autorange": autorange,
+            "range": range_spin,
+            "compensation": compensation,
+            "units": units,
+            "filter_enabled": filter_enabled,
+            "filter_points": filter_points,
+            "filter_window": filter_window,
+            "curve_number": curve_number,
+        }
+
+    def _populate_curve_combo(self, combo: QComboBox) -> None:
+        """Populate one calibration-curve selector."""
+        combo.clear()
+        for number in range(_MAX_CALIBRATION_CURVE + 1):
+            name = self._curve_names.get(number)
+            combo.addItem(f"{name} ({number})" if name else str(number), number)
+
+    def _populate_channel(self, channel: str, settings: InputChannelSettings) -> None:
+        """Populate one channel column from a hardware settings snapshot."""
+        editors = self._editors[channel]
+        for key, value in (
+            ("sensor_type", settings.sensor_type),
+            ("units", settings.units),
+            ("curve_number", settings.curve_number),
+        ):
+            if value is not None:
+                combo = editors[key]
+                index = combo.findData(value)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+        for key, value in (
+            ("autorange", settings.autorange),
+            ("compensation", settings.compensation),
+            ("filter_enabled", settings.filter_enabled),
+        ):
+            if value is not None:
+                editors[key].setChecked(value)
+        for key, value in (
+            ("range", settings.range_),
+            ("filter_points", settings.filter_points),
+            ("filter_window", settings.filter_window),
+        ):
+            if value is not None:
+                editors[key].setValue(value)
+
+    def _collect_channel(self, channel: str) -> InputChannelSettings:
+        """Build an input-settings snapshot from one channel column."""
+        editors = self._editors[channel]
+        return InputChannelSettings(
+            sensor_type=editors["sensor_type"].currentData(),
+            autorange=editors["autorange"].isChecked(),
+            range_=editors["range"].value(),
+            compensation=editors["compensation"].isChecked(),
+            units=editors["units"].currentData(),
+            filter_enabled=editors["filter_enabled"].isChecked(),
+            filter_points=editors["filter_points"].value(),
+            filter_window=editors["filter_window"].value(),
+            curve_number=editors["curve_number"].currentData(),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Per-loop control group widget
 # ---------------------------------------------------------------------------
 
@@ -2467,9 +2625,13 @@ class _LoopControlGroup(QGroupBox):
     @pyqtSlot()
     def _on_read(self) -> None:
         """Query the hardware for all loop settings and update the UI."""
+        self.read_from_hardware()
+
+    def read_from_hardware(self) -> bool:
+        """Query the hardware for all loop settings and update the UI."""
         settings = self._engine.get_loop_settings(self._loop)
         if settings is None:
-            return
+            return False
         # Setpoint
         self._sp_spin.blockSignals(True)
         self._sp_spin.setValue(settings.setpoint)
@@ -2514,6 +2676,7 @@ class _LoopControlGroup(QGroupBox):
             self._manual_output_spin.blockSignals(True)
             self._manual_output_spin.setValue(settings.manual_output)
             self._manual_output_spin.blockSignals(False)
+        return True
 
 
 # ---------------------------------------------------------------------------

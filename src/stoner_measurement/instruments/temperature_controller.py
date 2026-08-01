@@ -229,6 +229,9 @@ class ZoneEntry:
             Manual heater output power percentage for this zone (0–100 %).
             Used when the loop is in open-loop mode or as the initial value
             when entering the zone.
+        input_channel (int):
+            Instrument-specific zone control-input index.  ``0`` selects the
+            loop's default control input on Lakeshore controllers.
     """
 
     upper_bound: float
@@ -238,6 +241,7 @@ class ZoneEntry:
     ramp_rate: float
     heater_range: int
     heater_output: float
+    input_channel: int = 0
 
 
 @dataclass(frozen=True)

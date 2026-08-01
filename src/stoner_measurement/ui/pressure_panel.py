@@ -37,7 +37,7 @@ from stoner_measurement.instruments.pressure_controller import (
 from stoner_measurement.pressure_control.engine import PressureControllerEngine
 from stoner_measurement.pressure_control.types import PressureEngineState, PressureEngineStatus
 from stoner_measurement.qt_compat import pyqtSlot
-from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
 from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
@@ -441,9 +441,10 @@ class PressureControlPanel(QWidget):
         self._chart_widget.set_default_axis_labels("Time (s ago)", "Pressure")
         self._chart_widget.set_axis_log_scale("left", True)
         self._chart_widget.add_y_axis("flow", "Flow")
+        self._chart_widget.set_rolling_time_window(self._chart_duration_min * 60.0)
         content.addWidget(self._chart_widget, stretch=4)
         self._legend_tree = QTreeWidget()
-        self._legend_tree.setHeaderLabels(["Trace", "Value"])
+        configure_chart_legend(self._legend_tree)
         self._legend_tree.setMinimumWidth(220)
         self._legend_tree.itemChanged.connect(self._on_legend_item_changed)
         content.addWidget(self._legend_tree, stretch=1)
@@ -898,6 +899,7 @@ class PressureControlPanel(QWidget):
                 self._chart_widget.set_trace_visible(
                     trace, item.checkState(0) == Qt.CheckState.Checked
                 )
+        self._chart_widget.set_rolling_time_window(self._chart_duration_min * 60.0)
 
     def _update_legend_value(self, trace: str, value: str) -> None:
         item = self._legend_items.get(trace)

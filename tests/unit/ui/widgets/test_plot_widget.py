@@ -555,6 +555,20 @@ class TestPlotWidget:
         widget.set_axis_grid("bottom", False)
         assert widget._axis_grid["bottom"] is False
 
+    def test_rolling_time_window_uses_fixed_real_time_axis(self, qapp):
+        widget = self.make_plot_widget()
+
+        widget.set_rolling_time_window(3600.0)
+
+        assert widget._axis_range("bottom") == pytest.approx((-3600.0, 0.0))
+        assert widget._axis_auto_range["bottom"] == (False, False)
+
+    @pytest.mark.parametrize("duration", [0.0, -1.0, float("inf")])
+    def test_rolling_time_window_rejects_invalid_duration(self, qapp, duration):
+        widget = self.make_plot_widget()
+        with pytest.raises(ValueError, match="positive and finite"):
+            widget.set_rolling_time_window(duration)
+
     def test_remove_axis_rejects_default_axis(self, qapp):
         widget = self.make_plot_widget()
         with pytest.raises(ValueError, match="default axis"):

@@ -101,7 +101,7 @@ class TestLakeshoreTemperatureControllers:
             tc.get_num_zones(5)
 
     def test_lakeshore336_get_zone(self):
-        t = _null(responses=[b"100.0,50.0,10.0,0.5,25.0,2\r\n"])
+        t = _null(responses=[b"100.0,50.0,10.0,0.5,25.0,2,1,4.5\r\n"])
         tc = Lakeshore336(transport=t)
         zone = tc.get_zone(1, 1)
         assert zone.upper_bound == pytest.approx(100.0)
@@ -110,7 +110,17 @@ class TestLakeshoreTemperatureControllers:
         assert zone.d == pytest.approx(0.5)
         assert zone.heater_output == pytest.approx(25.0)
         assert zone.heater_range == 2
+        assert zone.input_channel == 1
+        assert zone.ramp_rate == pytest.approx(4.5)
         assert t.write_log == [b"ZONE? 1,1\r\n"]
+
+    def test_lakeshore335_get_zone_reads_control_input_and_ramp_rate(self):
+        t = _null(responses=[b"80.0,40.0,8.0,0.2,10.0,1,2,3.5\r\n"])
+        zone = Lakeshore335(transport=t).get_zone(1, 2)
+
+        assert zone.input_channel == 2
+        assert zone.ramp_rate == pytest.approx(3.5)
+        assert t.write_log == [b"ZONE? 1,2\r\n"]
 
     def test_lakeshore336_set_zone(self):
         t = _null()
@@ -125,7 +135,7 @@ class TestLakeshoreTemperatureControllers:
             heater_output=25.0,
         )
         tc.set_zone(1, 1, zone)
-        assert t.write_log == [b"ZONE 1,1,100.0,50.0,10.0,0.5,25.0,2\r\n"]
+        assert t.write_log == [b"ZONE 1,1,100.0,50.0,10.0,0.5,25.0,2,0,0.0\r\n"]
 
     def test_lakeshore336_get_input_channel_settings(self):
         t = _null(

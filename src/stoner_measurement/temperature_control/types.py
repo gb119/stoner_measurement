@@ -119,6 +119,10 @@ class TemperatureEngineState:
             ``True`` for each loop that has been continuously at setpoint for
             the configured stability window, with a rate of change below the
             configured minimum.
+        stability_rate_channels (dict[int, str]):
+            Effective sensor channel selected by the active stability-table
+            band for each loop.  Chart consumers use this to plot the same
+            heating/cooling rate used by the stability decision.
         engine_status (EngineStatus):
             Current operational status of the engine.
 
@@ -143,6 +147,7 @@ class TemperatureEngineState:
     input_channels: dict[int, str] = field(default_factory=dict)
     at_setpoint: dict[int, bool] = field(default_factory=dict)
     stable: dict[int, bool] = field(default_factory=dict)
+    stability_rate_channels: dict[int, str] = field(default_factory=dict)
     engine_status: EngineStatus = EngineStatus.DISCONNECTED
 
 
