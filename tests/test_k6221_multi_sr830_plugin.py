@@ -64,7 +64,6 @@ class TestDefaults:
         entry = LockInEntry()
         assert entry.harmonic == 1
         assert entry.phase == pytest.approx(0.0)
-        assert entry.auto_phase is False
         assert entry.auto_sensitivity is True
         assert entry.auto_offsets == {}
 
@@ -119,8 +118,7 @@ class TestJsonRoundTrip:
                 label="LIA 1",
                 resource="GPIB0::8::INSTR",
                 harmonic=3,
-                phase=45.0,
-                auto_phase=True,
+                phase=None,
                 auto_sensitivity=False,
                 offset_auto=True,
                 auto_offsets={"X": 12.5, "Y": -3.0},
@@ -134,11 +132,22 @@ class TestJsonRoundTrip:
         assert restored._source_range_mode == "FIXED"
         entry = restored._lockin_entries[0]
         assert entry.harmonic == 3
-        assert entry.phase == pytest.approx(45.0)
-        assert entry.auto_phase is True
+        assert entry.phase is None
         assert entry.auto_sensitivity is False
         assert entry.offset_auto is True
         assert entry.auto_offsets == {"X": pytest.approx(12.5), "Y": pytest.approx(-3.0)}
+        serialised_entry = plugin.to_json()["lockins"][0]
+        assert serialised_entry["phase"] == "auto"
+        assert "auto_phase" not in serialised_entry
+
+    def test_restore_legacy_auto_phase_flag(self, qapp):
+        plugin = _make_plugin()
+        payload = plugin.to_json()
+        payload["lockins"] = [{"phase": 45.0, "auto_phase": True}]
+
+        restored = BasePlugin.from_json(payload)
+
+        assert restored._lockin_entries[0].phase is None
 
     def test_restore_legacy_single_output_field(self, qapp):
         plugin = _make_plugin()
@@ -174,7 +183,7 @@ class TestUi:
         tables = settings_widget.findChildren(QTableWidget)
         assert tables
         table = tables[0]
-        assert table.rowCount() == 14
+        assert table.rowCount() == 13
         assert table.columnCount() == 1
 
         # Remove button disabled when only one lock-in
@@ -234,11 +243,11 @@ class TestUi:
 
         output_checks = _output_checks(table)
         auto_sens_check = table.cellWidget(_row_with_label(table, "Auto-sensitivity"), 0)
-        auto_phase_check = table.cellWidget(_row_with_label(table, "Auto-phase"), 0)
+        phase_spin = table.cellWidget(_row_with_label(table, "Phase (\u00b0)"), 0)
         offset_spin = table.cellWidget(_row_with_label(table, "Offset (%)"), 0)
 
         assert auto_sens_check.styleSheet() == "background: transparent;"
-        assert auto_phase_check.styleSheet() == "background: transparent;"
+        assert isinstance(phase_spin, AutoSISpinBox)
         assert isinstance(offset_spin, AutoSISpinBox)
         assert output_checks
         assert all(cb.styleSheet() == "background: transparent;" for cb in output_checks.values())
@@ -254,8 +263,40 @@ class TestUi:
         assert plugin._lockin_entries[0].offset_auto is True
         assert offset_spin.lineEdit().text() == "Auto"
 
+    def test_phase_spinbox_auto_state_updates_entry(self, qapp):
+        plugin = _make_plugin()
+        settings_widget = plugin.config_tabs()[1][1]
+        table = settings_widget.findChildren(QTableWidget)[0]
+        phase_spin = table.cellWidget(_row_with_label(table, "Phase (\u00b0)"), 0)
+
+        phase_spin.setAuto(True)
+
+        assert plugin._lockin_entries[0].phase is None
+        assert phase_spin.lineEdit().text() == "Auto"
+
 
 class TestConfiguration:
+    def test_configure_auto_phase_uses_phase_state(self, qapp):
+        plugin = _make_plugin()
+        plugin._time_constant = 1e-5
+        plugin._read_rate_multiple = 0.0
+        plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
+        plugin._k6221 = MagicMock()
+        automatic_lockin = MagicMock()
+        manual_lockin = MagicMock()
+        plugin._lockins = [automatic_lockin, manual_lockin]
+        plugin._lockin_entries = [
+            LockInEntry(label="Auto", resource="GPIB0::8::INSTR", phase=None),
+            LockInEntry(label="Manual", resource="GPIB0::9::INSTR", phase=45.0),
+        ]
+
+        plugin.configure()
+
+        automatic_lockin.set_reference_phase.assert_not_called()
+        automatic_lockin.auto_phase.assert_called_once_with()
+        manual_lockin.set_reference_phase.assert_called_once_with(45.0)
+        manual_lockin.auto_phase.assert_not_called()
+
     def test_configure_maps_common_and_per_lockin_settings(self, qapp):
         plugin = _make_plugin()
         plugin._scan_mode = WaveformScanMode.OFFSET

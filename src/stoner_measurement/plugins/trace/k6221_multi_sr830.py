@@ -75,11 +75,10 @@ _ROW_SENSITIVITY = 6
 _ROW_AUTO_SENSITIVITY = 7
 _ROW_HARMONIC = 8
 _ROW_PHASE = 9
-_ROW_AUTO_PHASE = 10
-_ROW_OFFSET_PCT = 11
-_ROW_EXPAND = 12
-_ROW_RESERVE = 13
-_LOCKIN_TABLE_ROWS = 14
+_ROW_OFFSET_PCT = 10
+_ROW_EXPAND = 11
+_ROW_RESERVE = 12
+_LOCKIN_TABLE_ROWS = 13
 
 _LOCKIN_OUTPUT_ROWS: dict[LockInOutput, int] = {
     LockInOutput.X: _ROW_OUTPUT_X,
@@ -99,7 +98,6 @@ _LOCKIN_ROW_LABELS: list[str] = [
     "Auto-sensitivity",
     "Harmonic",
     "Phase (\u00b0)",
-    "Auto-phase",
     "Offset (%)",
     "Expand",
     "Reserve",
@@ -138,10 +136,9 @@ class LockInEntry:
             Ordered selection of outputs to record (1–4 unique values).
         harmonic (int):
             Detection harmonic (1 to :data:`_SR830_MAX_HARMONIC`).
-        phase (float):
-            Reference phase offset in degrees.
-        auto_phase (bool):
-            When ``True``, run auto-phase after settling during configure.
+        phase (float | None):
+            Reference phase offset in degrees, or ``None`` to run auto-phase
+            after settling during configure.
         auto_sensitivity (bool):
             When ``True``, this lock-in participates in dynamic auto-sensitivity
             during measurement (subject to the plugin-level master enable).
@@ -160,8 +157,7 @@ class LockInEntry:
     reserve_mode: LockInReserveMode = LockInReserveMode.NORMAL
     outputs: tuple[LockInOutput, ...] = (LockInOutput.X,)
     harmonic: int = 1
-    phase: float = 0.0
-    auto_phase: bool = False
+    phase: float | None = 0.0
     auto_sensitivity: bool = True
     auto_offsets: dict[str, float] = field(default_factory=dict)
 
@@ -177,8 +173,7 @@ class LockInEntry:
             "reserve_mode": self.reserve_mode.value,
             "outputs": [output.value for output in self.outputs],
             "harmonic": self.harmonic,
-            "phase": self.phase,
-            "auto_phase": self.auto_phase,
+            "phase": "auto" if self.phase is None else self.phase,
             "auto_sensitivity": self.auto_sensitivity,
             "auto_offsets": dict(self.auto_offsets),
         }
@@ -223,10 +218,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     The second tab contains the lock-in configuration table. Each column
     represents one SR830. For each lock-in you set a human-readable label,
     resource string, selected output channels, sensitivity, whether that
-    lock-in participates in auto-sensitivity, harmonic, reference phase,
-    whether auto-phase should be run during configuration, output offset,
-    expand factor, and reserve mode. Multiple outputs may be selected for each
-    lock-in using separate check boxes for X, Y, R, and THETA.
+    lock-in participates in auto-sensitivity, harmonic, numeric or automatic
+    reference phase, output offset, expand factor, and reserve mode. Multiple
+    outputs may be selected for each lock-in using separate check boxes for X,
+    Y, R, and THETA.
 
     The scan generator defines the swept values. The plugin returns one trace
     per configured output channel, using the lock-in labels to build readable
@@ -583,7 +578,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         lockin.set_input_coupling(self._input_coupling)
         lockin.set_line_filter(self._line_filter)
         lockin.set_harmonic(entry.harmonic)
-        lockin.set_reference_phase(entry.phase)
+        if entry.phase is not None:
+            lockin.set_reference_phase(entry.phase)
         lockin.set_reference_source(LockInReferenceSource.EXTERNAL, LockinRefenceEdge.FALLING)
         lockin.set_sensitivity(entry.sensitivity)
         lockin.set_reserve_mode(entry.reserve_mode)
@@ -993,21 +989,24 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 )
                 lockins_table.setCellWidget(_ROW_HARMONIC, col, harmonic_spin)
 
-                phase_spin = SISpinBox(suffix="\u00b0", value=entry.phase)
+                phase_spin = AutoSISpinBox(
+                    suffix="\u00b0",
+                    value=0.0 if entry.phase is None else entry.phase,
+                    auto=entry.phase is None,
+                )
                 phase_spin.setMinimum(-360.0)
                 phase_spin.setMaximum(360.0)
                 phase_spin.valueChanged.connect(
                     lambda value, *, idx=col: setattr(self._lockin_entries[idx], "phase", float(value))
                 )
-                lockins_table.setCellWidget(_ROW_PHASE, col, phase_spin)
-
-                auto_phase_check = QCheckBox()
-                auto_phase_check.setStyleSheet("background: transparent;")
-                auto_phase_check.setChecked(entry.auto_phase)
-                auto_phase_check.toggled.connect(
-                    lambda checked, *, idx=col: setattr(self._lockin_entries[idx], "auto_phase", bool(checked))
+                phase_spin.autoChanged.connect(
+                    lambda automatic, *, idx=col, spin=phase_spin: setattr(
+                        self._lockin_entries[idx],
+                        "phase",
+                        None if automatic else float(spin.value()),
+                    )
                 )
-                lockins_table.setCellWidget(_ROW_AUTO_PHASE, col, auto_phase_check)
+                lockins_table.setCellWidget(_ROW_PHASE, col, phase_spin)
 
                 offset_local = AutoSISpinBox(suffix="%", value=entry.offset_pct, auto=entry.offset_auto)
                 offset_local.setMinimum(-105.0)
@@ -1249,7 +1248,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     def _run_auto_phase(self, output_off:bool = False) -> None:
         """Enable the 6221 output, settle, and run auto-phase for entries that request it."""
-        if not any(entry.auto_phase for entry in self._lockin_entries):
+        if not any(entry.phase is None for entry in self._lockin_entries):
             return
         if self._k6221 is None:
             raise RuntimeError("Not connected.")
@@ -1261,7 +1260,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             phase_lockins = [
                 lockin
                 for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
-                if entry.auto_phase
+                if entry.phase is None
             ]
             with ThreadPoolExecutor(max_workers=max(1, len(phase_lockins))) as executor:
                 futures = [executor.submit(lockin.auto_phase) for lockin in phase_lockins]
@@ -1526,6 +1525,13 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         auto_offsets: dict[str, float] = (
             {str(k): float(v) for k, v in auto_offsets_raw.items()} if isinstance(auto_offsets_raw, dict) else {}
         )
+        phase_raw = data.get("phase", 0.0)
+        phase = (
+            None
+            if bool(data.get("auto_phase", False))
+            or (isinstance(phase_raw, str) and phase_raw.strip().casefold() == "auto")
+            else float(phase_raw)
+        )
         return LockInEntry(
             label=str(data.get("label", default_label)),
             resource=str(data.get("resource", "GPIB0::8::INSTR")),
@@ -1546,8 +1552,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             ),
             outputs=self._restore_lockin_outputs(data),
             harmonic=int(data.get("harmonic", 1)),
-            phase=float(data.get("phase", 0.0)),
-            auto_phase=bool(data.get("auto_phase", False)),
+            phase=phase,
             auto_sensitivity=bool(data.get("auto_sensitivity", True)),
             auto_offsets=auto_offsets,
         )
