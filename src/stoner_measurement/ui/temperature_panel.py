@@ -451,6 +451,11 @@ class TemperatureControlPanel(QWidget):
         """
         self._control_widget = QWidget()
         self._control_layout = QVBoxLayout(self._control_widget)
+        self._loop_container = QWidget()
+        self._loop_layout = QHBoxLayout(self._loop_container)
+        self._loop_layout.setContentsMargins(0, 0, 0, 0)
+        self._loop_layout.setSpacing(6)
+        self._control_layout.addWidget(self._loop_container)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self._control_widget)
@@ -587,8 +592,7 @@ class TemperatureControlPanel(QWidget):
 
         # Settings table
         self._input_settings_widget = _InputSettingsTableWidget(self._engine)
-        layout.addWidget(self._input_settings_widget)
-        layout.addStretch()
+        layout.addWidget(self._input_settings_widget, stretch=1)
 
         return widget
 
@@ -1354,20 +1358,15 @@ class TemperatureControlPanel(QWidget):
                 The driver's capability descriptor.
         """
         self._clear_loop_groups()
-        stretch_item = self._control_layout.takeAt(self._control_layout.count() - 1)
         for lp in caps.loop_numbers:
             group = _LoopControlGroup(lp, self._engine, caps)
             self._loop_groups[lp] = group
-            insert_pos = self._control_layout.count()
-            self._control_layout.insertWidget(insert_pos, group)
-        self._control_layout.addStretch()
-        if stretch_item:
-            del stretch_item
+            self._loop_layout.addWidget(group, stretch=1)
 
     def _clear_loop_groups(self) -> None:
         """Remove all existing per-loop control group widgets."""
         for group in self._loop_groups.values():
-            self._control_layout.removeWidget(group)
+            self._loop_layout.removeWidget(group)
             group.deleteLater()
         self._loop_groups.clear()
 
@@ -1417,6 +1416,8 @@ class TemperatureControlPanel(QWidget):
         channels = self._stability_channels()
         if not channels:
             combo.addItem("First available", "")
+            if selected:
+                combo.addItem(selected, selected)
         else:
             for channel in channels:
                 combo.addItem(channel, channel)
@@ -2197,7 +2198,7 @@ class _InputSettingsTableWidget(QWidget):
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._table.setAlternatingRowColors(True)
         self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        layout.addWidget(self._table)
+        layout.addWidget(self._table, stretch=1)
 
         buttons = QHBoxLayout()
         read_button = QPushButton("Read All")

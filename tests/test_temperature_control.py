@@ -711,6 +711,46 @@ class TestEngineStabilityEvaluation:
         assert stable[1] is True
         engine.shutdown()
 
+    def test_stability_table_round_trips_through_machine_yaml(
+        self, monkeypatch, tmp_path, qapp
+    ):
+        from stoner_measurement.temperature_control import config as config_module
+
+        config_path = tmp_path / "temperature_controller.yaml"
+        monkeypatch.setattr(config_module, "machine_config_path", lambda: config_path)
+        source = TemperatureControllerEngine()
+        source.set_stability_config(
+            StabilityConfig(
+                unstable_holdoff_s=2.5,
+                bands=[
+                    StabilityBand(
+                        max_temperature_k=80.0,
+                        tolerance_channel="A",
+                        tolerance_k=0.15,
+                        rate_channel="B",
+                        min_rate=0.02,
+                        window_s=45.0,
+                    ),
+                    StabilityBand(
+                        max_temperature_k=350.0,
+                        tolerance_channel="B",
+                        tolerance_k=0.4,
+                        rate_channel="A",
+                        min_rate=0.05,
+                        window_s=90.0,
+                    ),
+                ],
+            )
+        )
+        source.save_configuration()
+        source.shutdown()
+
+        restored = TemperatureControllerEngine()
+
+        assert restored.stability_config.unstable_holdoff_s == pytest.approx(2.5)
+        assert restored.stability_config.bands == source.stability_config.bands
+        restored.shutdown()
+
     def test_stability_band_selects_chart_rate_sensor(self, qapp):
         engine = TemperatureControllerEngine()
         engine._stability_config = StabilityConfig(
@@ -962,6 +1002,26 @@ class TestTemperatureControlPanel:
         assert rate_combo.itemData(0) == "A"
         assert rate_combo.itemData(1) == "B"
 
+    def test_yaml_sensor_selections_survive_panel_build_before_connection(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        engine = TemperatureControllerEngine.instance()
+        engine.set_stability_config(
+            StabilityConfig(
+                bands=[
+                    StabilityBand(
+                        tolerance_channel="A",
+                        rate_channel="B",
+                    )
+                ]
+            )
+        )
+
+        panel = TemperatureControlPanel()
+
+        assert panel._stab_table.cellWidget(0, 1).currentData() == "A"
+        assert panel._stab_table.cellWidget(0, 3).currentData() == "B"
+
     def test_driver_combo_contains_temperature_controllers(self, qapp):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
@@ -1034,6 +1094,40 @@ class TestTemperatureControlPanel:
 
         panel = TemperatureControlPanel()
         assert not panel._tabs.isTabEnabled(panel._input_settings_tab_index)
+
+    def test_control_loops_are_arranged_side_by_side(self, qapp):
+        from qtpy.QtWidgets import QHBoxLayout
+
+        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        caps = ControllerCapabilities(
+            num_inputs=2,
+            num_loops=2,
+            input_channels=("A", "B"),
+            loop_numbers=(1, 2),
+        )
+
+        panel._rebuild_loop_groups(caps)
+
+        assert isinstance(panel._loop_layout, QHBoxLayout)
+        assert panel._loop_layout.count() == 2
+        assert panel._loop_layout.itemAt(0).widget() is panel._loop_groups[1]
+        assert panel._loop_layout.itemAt(1).widget() is panel._loop_groups[2]
+
+    def test_input_settings_table_receives_tab_expanding_space(self, qapp):
+        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+        panel = TemperatureControlPanel()
+        tab = panel._tabs.widget(panel._input_settings_tab_index)
+        tab_layout = tab.layout()
+        input_layout = panel._input_settings_widget.layout()
+
+        assert tab_layout.count() == 1
+        assert tab_layout.stretch(0) == 1
+        assert input_layout.stretch(0) == 1
+        assert input_layout.stretch(1) == 0
 
     def test_needle_read_btn_exists(self, qapp):
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
