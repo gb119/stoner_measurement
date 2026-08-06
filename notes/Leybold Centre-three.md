@@ -904,8 +904,6 @@ CH 2   off when channel 2 exceeds t-off
 CH 3   off when channel 3 exceeds t-off; DISPLAY THREE only
 ```
 
-
-
 ## 7. General parameters
 
 ```text
@@ -1006,7 +1004,6 @@ DISPLAY THREE:
 
 Final implementation recommendation: treat the DISPLAY THREE as a **passive gauge display plus I/O breakout**, while
 treating the CENTER THREE as a **true programmable controller**.
-
 
 Yes. The Edwards TIC is closer to the **Leybold CENTER THREE** than the **DISPLAY THREE**, because it has a documented
 serial protocol. It is more object-oriented than Leybold’s three-letter mnemonic interface.
@@ -1198,8 +1195,6 @@ Gas constants:
 5 Krypton
 6 Voltage
 ```
-
-
 
 ## 7. Turbo pump API
 

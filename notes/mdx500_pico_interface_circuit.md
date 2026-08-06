@@ -160,7 +160,7 @@ Use `U3=ADuM4151ARIZ`, powered by `3V3_CTL/GND_CTL` on side 1 and
 `+3V3_F/GND_MDX` on side 2. Fit 100 nF plus 1 uF at each supply pair.
 
 | Pico-side net | ADuM4151 function | Field-side net |
-|---|---|---|
+| --- | --- | --- |
 | `SCLK` | `MCLK -> SCLK` | shared ADC/DAC clock |
 | `MOSI` | `MO -> SI` | shared ADC/DAC data in |
 | `MISO` | `MI <- SO` | shared tri-stated data out |
@@ -224,7 +224,7 @@ and each used input programmed for the unipolar `0..10.24 V` range. Follow the
 data sheet's reference-capacitor and supply-decoupling layout exactly.
 
 | ADC input | MDX pin | Signal | Engineering full scale |
-|---|---:|---|---:|
+| --- | ---: | --- | ---: |
 | `AIN0` | 1 | current monitor | 1 A |
 | `AIN1` | 2 | power monitor | 500 W |
 | `AIN2` | 3 | voltage monitor | 1200 V |
@@ -256,7 +256,7 @@ gate the `REMOTE_ON` LED path. Confirm logic-output current limits and the actua
 relay LED drop.
 
 | Relay | Contact wiring | Meaning when closed |
-|---|---|---|
+| --- | --- | --- |
 | `K1 REMOTE_ON` | J2.7 and J2.8 tied together -> K1 -> J2.25 | two-wire remote output on |
 | `K2 MODE_P` | J2.16 -> K2 -> J2.25 | `P_REG_N = low` |
 | `K3 MODE_I` | J2.17 -> K3 -> J2.25 | `I_REG_N = low` |
@@ -264,7 +264,7 @@ relay LED drop.
 Mode contact truth table:
 
 | Requested mode | K2 / pin 16 | K3 / pin 17 |
-|---|---|---|
+| --- | --- | --- |
 | voltage | closed / low | closed / low |
 | power | closed / low | open / high |
 | current | open / high | closed / low |
@@ -295,7 +295,7 @@ connector to the 74HC165 status chain.
 ## DB-25 connections used by this board
 
 | Pin | Connection |
-|---:|---|
+| ---: | --- |
 | 1 | ADS8688 AIN0 through filter |
 | 2 | ADS8688 AIN1 through filter |
 | 3 | ADS8688 AIN2 through filter |
@@ -375,7 +375,7 @@ Items marked **provisional** require schematic/thermal review. Items marked
 ### Integrated circuits and isolation devices
 
 | References | Qty | Part / suggested ordering code | Package | Function and selection notes |
-|---|---:|---|---|---|
+| --- | ---: | --- | --- | --- |
 | U1 | 1 | TPS7A4901DGN | HVSSOP-8 PowerPAD | 36 V-input adjustable LDO set to 5.0 V. Verify exact orderable suffix and thermal pad footprint. |
 | U8 | 1 | TPS7A4901DGN | HVSSOP-8 PowerPAD | Second high-voltage LDO set to approximately 12.0 V for DAC AVDD. |
 | U2 | 1 | TLV75533PDBVR | SOT-23-5 | Fixed 3.3 V LDO from the 5 V field rail. |
@@ -388,7 +388,7 @@ Items marked **provisional** require schematic/thermal review. Items marked
 ### Connectors, protection, and test hardware
 
 | References | Qty | Description | Rating / footprint | Notes |
-|---|---:|---|---|---|
+| --- | ---: | --- | --- | --- |
 | J1 | 1 | 2x8 keyed board-to-board/backplane connector | Connector family selected with backplane mechanics | Carries controller-domain SPI, selects, reset, relay drives, status returns, 3.3 V and ground. It is not a Pico cable. |
 | J2 | 1 | Male DB-25 connector with metal shell and screw locks | Through-hole right-angle or panel/cable type | Must mate with the MDX female User port. Select the exact mechanical part after enclosure and cable-entry decisions. |
 | F1 | 1 | Fast-acting fuse | 63 mA, at least 32 V | **Provisional.** Choose cartridge/holder or SMD part after measuring startup current; do not treat it as a precise 100 mA limiter. |
@@ -409,7 +409,7 @@ Use at least 50 ppm/degree C thin-film resistors for regulator feedback and
 analog paths. General digital pull resistors may be ordinary 1% thick-film.
 
 | References | Qty | Value | Tolerance / rating | Package | Function |
-|---|---:|---:|---|---|---|
+| --- | ---: | ---: | --- | --- | --- |
 | R1 | 1 | 324 kohm | 0.1%, 25 ppm/degree C | 0603 or 0805 | U1 upper feedback resistor; with R2 gives approximately 5.02 V using nominal 1.185 V feedback reference. Recalculate from the selected regulator revision. |
 | R2 | 1 | 100 kohm | 0.1%, 25 ppm/degree C | 0603 or 0805 | U1 lower feedback resistor. |
 | R3 | 1 | 910 kohm | 0.1%, 25 ppm/degree C | 0805 | U8 upper feedback resistor; with R4 gives approximately 11.97 V. Recalculate before release. |
@@ -432,7 +432,7 @@ check effective capacitance at the applied DC bias. The ADS8688 reference
 capacitors should be placed exactly as its data sheet specifies.
 
 | References | Qty | Value | Dielectric / minimum rating | Package | Function |
-|---|---:|---:|---|---|---|
+| --- | ---: | ---: | --- | --- | --- |
 | C1 | 1 | 10 uF | X7R, 25 V | 1210 | Bulk capacitor after F1 on `+15V_F`. |
 | C2 | 1 | 100 nF | X7R, 50 V | 0603 | High-frequency bypass on `+15V_F`. |
 | C3 | 1 | 2.2 uF | X7R, 25 V | 0805/1206 | U1 input bypass. |
@@ -463,7 +463,7 @@ Reference designators in this table are reserved for the controller schematic
 and do not collide with the per-channel-card references above.
 
 | References | Qty | Part / value | Package | Function and notes |
-|---|---:|---|---|---|
+| --- | ---: | --- | --- | --- |
 | P100 | 1 | Raspberry Pi Pico or Pico W | Castellated Pico module | Mount directly on the controller PCB. Keep USB accessible at the enclosure edge. |
 | U100 | 1 | SN74LVC244APW | TSSOP-20 | Eight-channel backplane fan-out buffer: four SCLK and four MOSI outputs, each serving at most two slots. |
 | U101, U102 | 2 | SN74HC138PW | TSSOP-16 | Active-low 3-to-8 decoders for ADC and DAC chip selects. Pull enables to their inactive state. |
@@ -487,7 +487,7 @@ implementation can replace this hardware default-off path.
 ### PCB, cable, and enclosure items
 
 | Item | Qty | Requirement |
-|---|---:|---|
+| --- | ---: | --- |
 | Four-layer controller/backplane PCB | 1 | Carries the Pico, multiplexers, decoders, shift registers, watchdog, and up to eight card connectors. No Pico-to-SPI cable is required. |
 | Four-layer channel-card PCB | 1 per MDX | Maintain separate controller and field ground/power planes with the ADuM keep-out respected. Use an isolation slot only if supported by the final mechanical and safety review. |
 | Shielded DB-25 cable | 1 | Straight-through, individually screened or overall shielded cable suitable for the installation environment; keep analog returns paired with their signals. |

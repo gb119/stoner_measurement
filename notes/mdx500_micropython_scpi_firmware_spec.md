@@ -395,17 +395,20 @@ only for queries.
 
 ### Channel configuration and output
 
-| Command | Parameters / response | Behaviour |
-|---|---|---|
-| `SOURce:FUNCtion` | `<channel>,POWer|VOLTage|CURRent` | Set mode only while output is off. Use a custom validated mode converter. |
-| `SOURce:FUNCtion?` | `<channel>` -> mode | Query configured mode. |
-| `SOURce:POWer` | `<channel>,<watts>` | Validate 0..configured power full scale and program desired value; do not enable. |
-| `SOURce:POWer?` | `<channel>` -> watts | Query requested power. |
-| `SOURce:VOLTage` | `<channel>,<volts>` | Optional voltage-mode setpoint. |
-| `SOURce:CURRent` | `<channel>,<amps>` | Optional current-mode setpoint. |
-| `OUTPut` | `<channel>,ON|OFF` | ON starts supervised single-channel ignition; OFF disables first and zeros second. |
-| `OUTPut?` | `<channel>` -> `0|1` | Query commanded enable, not measured status. |
-| `ABORt` | `<channel>` | Immediate channel shutdown and operation cancellation. |
+|        Command        | Parameters / response    |                      Behaviour                         |
+| --------------------- | ------------------------ | ------------------------------------------------------ |
+| `SOURce:FUNCtion`     | `\<channel\>, POWer \|`  | Set mode only while output is off. Use a custom        |
+|                       |  `VOLTage \| CURRent```  | validated mode converter.                              |
+| `SOURce:FUNCtion?`    | `\<channel\>` -> mode    | Query configured mode.                                 |
+| `SOURce:POWer`        | `\<channel\>,\<watts\>`  | Validate 0..configured power full scale and program    |
+|                       |                          | desired value; do not enable.                          |
+| `SOURce:POWer?`       | `\<channel\>` -> watts   | Query requested power.                                 |
+| `SOURce:VOLTage`      | `\<channel\>,\<volts\>`  | Optional voltage-mode setpoint.                        |
+| `SOURce:CURRent`      | `\<channel\>,\<amps\>`   | Optional current-mode setpoint.                        |
+| `OUTPut`              | `\<channel\>,ON \| OFF`  | ON starts supervised single-channel ignition; OFF      |
+|                       |                          | disables first and zeros second.                       |
+| `OUTPut?`             | `\<channel\>` -> `0\|1`  | Query commanded enable, not measured status.           |
+| `ABORt`               | `\<channel\>`            | Immediate channel shutdown and operation cancellation. |
 
 Decorators should resemble:
 
@@ -423,15 +426,15 @@ simple queries synchronous and very short.
 
 ### Measurements and state
 
-| Command | Response |
-|---|---|
-| `MEASure:POWer? <channel>` | calibrated watts |
-| `MEASure:VOLTage? <channel>` | calibrated volts |
-| `MEASure:CURRent? <channel>` | calibrated amperes |
-| `MEASure:LEVel? <channel>` | calibrated selected-mode level |
-| `MEASure:ALL? <channel>` | `power_w,voltage_v,current_a,level,age_ms` |
-| `STATus:CHANnel? <channel>` | `state,output_on,setpoint_ok,fault_code` |
-| `SYSTem:CHANnel:PRESent? <channel>` | `0|1` |
+|             Command                   |                 Response                   |
+| ------------------------------------- | ------------------------------------------ |
+| `MEASure:POWer? \<channel\>`          | calibrated watts                           |
+| `MEASure:VOLTage? \<channel\>`        | calibrated volts                           |
+| `MEASure:CURRent? \<channel\>`        | calibrated amperes                         |
+| `MEASure:LEVel? \<channel\>`          | calibrated selected-mode level             |
+| `MEASure:ALL? \<channel\>`            | `power_w,voltage_v,current_a,level,age_ms` |
+| `STATus:CHANnel? \<channel\>`         | `state,output_on,setpoint_ok,fault_code`   |
+| `SYSTem:CHANnel:PRESent? \<channel\>` | `0 \| 1`                                   |
 
 Queries return the latest coherent monitor snapshot. Add an explicit
 `MEASure:FRESh?` only if a blocking fresh conversion is genuinely required;
@@ -439,28 +442,28 @@ ordinary queries must not disturb the 10/100 Hz scheduler.
 
 ### Ignition configuration
 
-| Command | Purpose |
-|---|---|
-| `SOURce:IGNition:TIMEout <channel>,<seconds>` | default 5.0 s |
-| `SOURce:IGNition:TOLerance:ABSolute <channel>,<watts>` | low-power absolute tolerance |
-| `SOURce:IGNition:TOLerance:RELative <channel>,<fraction>` | relative tolerance, e.g. 0.10 |
-| `SOURce:IGNition:GOOD <channel>,<samples>` | consecutive samples required |
-| `SOURce:VOLTage:LIMit:LOWer <channel>,<volts>` | plausible lower voltage |
-| `SOURce:VOLTage:LIMit:UPPer <channel>,<volts>` | plausible/hard upper voltage |
+|                     Command                                   |            Purpose            |
+| ------------------------------------------------------------- | ----------------------------- |
+| `SOURce:IGNition:TIMEout \<channel\>,\<seconds\>`             | default 5.0 s                 |
+| `SOURce:IGNition:TOLerance:ABSolute \<channel\>,\<watts\>`    | low-power absolute tolerance  |
+| `SOURce:IGNition:TOLerance:RELative \<channel\>,\<fraction\>` | relative tolerance, e.g. 0.10 |
+| `SOURce:IGNition:GOOD \<channel\>,\<samples\>`                | consecutive samples required  |
+| `SOURce:VOLTage:LIMit:LOWer \<channel\>,\<volts\>`            | plausible lower voltage       |
+| `SOURce:VOLTage:LIMit:UPPer \<channel\>,\<volts\>`            | plausible/hard upper voltage  |
 
 Implement matching queries for every persisted setting.
 
 ### Group operation
 
-| Command | Behaviour |
-|---|---|
-| `GROUp:MASK <0..255>` | Select group members while group is idle. |
-| `GROUp:MASK?` | Return current mask. |
-| `GROUp:ARM` | Prepare every group member; complete only when all are armed or the operation fails. |
-| `GROUp:TRIGger` | Apply one relay-latch edge and start background ignition supervision. |
-| `GROUp:ABORt` | Disable all group members atomically. |
-| `GROUp:STATe?` | `IDLE|PREPARING|ARMED|IGNITING|RUNNING|FAULT`. |
-| `GROUp:RESult?` | Return mask, stable mask, fault mask, and trigger timestamp. |
+|       Command         |                                   Behaviour                                          |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `GROUp:MASK <0..255>` | Select group members while group is idle.                                            |
+| `GROUp:MASK?`         | Return current mask.                                                                 |
+| `GROUp:ARM`           | Prepare every group member; complete only when all are armed or the operation fails. |
+| `GROUp:TRIGger`       | Apply one relay-latch edge and start background ignition supervision.                |
+| `GROUp:ABORt`         | Disable all group members atomically.                                                |
+| `GROUp:STATe?`        | `IDLE \| PREPARING \| ARMED \| IGNITING \| RUNNING \| FAULT`.                        |
+| `GROUp:RESult?`       | Return mask, stable mask, fault mask, and trigger timestamp.                         |
 
 The setpoints are configured per channel before `GROUp:ARM`; the group command
 must not accept a variable-length list because the current parser requires a
@@ -468,36 +471,38 @@ fixed parameter tuple.
 
 ### Fault and reset commands
 
-| Command | Behaviour |
-|---|---|
-| `SYSTem:FAULt? <channel>` | Return code, detail, timestamp, final power and voltage. |
-| `SYSTem:FAULt:CLEar <channel>` | Clear only while output is off and hardware status is safe. |
-| `SYSTem:FAULt:CLEar:ALL` | Clear all eligible channel faults. |
-| `*RST` | Override base method: atomically disable all, zero DACs best-effort, cancel application operations, reset state/config to safe defaults, retain calibration. |
-| `*TST?` | Return nonzero if any required hardware self-test fails. Fix the base command spelling if necessary. |
+|           Command                |                                 Behaviour                                        |
+| -------------------------------- | -------------------------------------------------------------------------------- |
+| `SYSTem:FAULt? \<channel\>`      | Return code, detail, timestamp, final power and voltage.                         |
+| `SYSTem:FAULt:CLEar \<channel\>` | Clear only while output is off and hardware status is safe.                      |
+| `SYSTem:FAULt:CLEar:ALL`         | Clear all eligible channel faults.                                               |
+| `*RST`                           | Override base method: atomically disable all, zero DACs best-effort,  cancel     |
+|                                  | application operations, reset state/config to safe defaults, retain calibration. |
+| `*TST?`                          | Return nonzero if any required hardware self-test fails. Fix the base command    |
+|                                  | spelling if necessary.                                                           |
 
 ## SCPI status and error integration
 
 Use the base status registers consistently. Proposed `STATus:OPERation`
 condition bits:
 
-| Bit | Meaning |
-|---:|---|
-| 0 | any channel preparing/armed |
-| 1 | any channel igniting |
-| 2 | any channel running |
-| 3 | group operation active |
-| 4 | calibration/configuration operation active |
+| Bit |                     Meaning                |
+| --- | ------------------------------------------ |
+| 0   | any channel preparing/armed                |
+| 1   | any channel igniting                       |
+| 2   | any channel running                        |
+| 3   | group operation active                     |
+| 4   | calibration/configuration operation active |
 
 Proposed `STATus:QUEStionable` condition bits:
 
-| Bits | Meaning |
-|---:|---|
-| 0-7 | corresponding channel has a latched fault |
-| 8 | SPI/ADC/DAC communication fault |
-| 9 | watchdog/output-permit unavailable |
-| 10 | configuration or calibration invalid |
-| 11 | required channel card absent |
+| Bits |              Meaning                      |
+| ---- | ----------------------------------------- |
+| 0-7  | corresponding channel has a latched fault |
+| 8    | SPI/ADC/DAC communication fault           |
+| 9    | watchdog/output-permit unavailable        |
+| 10   | configuration or calibration invalid      |
+| 11   | required channel card absent              |
 
 Create device-specific `SCPIError` subclasses using the -300 range, for
 example:

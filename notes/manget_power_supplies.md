@@ -25,17 +25,21 @@ This is organised as a **true mapping table**:
 | Set current               | `SETI <val>`    | `I<val>` | `SET:...:CURR <val>`  | Same function                   |
 | Read current (measured)   | `RDGI?`         | `R2`     | `READ:...:CURR?`      | IPS120 uses register            |
 | Read setpoint             | `SETI?`         | `R5`     | `READ:...:CURR?`      | Mercury same signal used        |
-| Set field (if calibrated) | via calibration | `J<val>` | `SET:...:FIELD <val>` | IPS120 and Mercury support field commands |
+| Set field (if calibrated) | via calibration | `J<val>` | `SET:...:FIELD <val>` | IPS120 and Mercury support      |
+|                           |                 |          |                       | field commands                  |
 
 ***
 
 ### 🚀 2. Ramp / Sweep Rate
 
-| Function       | Lake Shore 625 | IPS120   | Mercury IPS          | Notes                   |
-| -------------- | -------------- | -------- | -------------------- | ----------------------- |
-| Set ramp rate  | `RATE <val>`   | `S<val>` / `T<val>` | `SET:...:RSET <val>` | IPS120 supports current and field units |
-| Read ramp rate | `RATE?`        | `R6` / `R9` | `READ:...:RSET?`     | IPS120 current / field registers |
-| Rate units     | A/s            | A/min or T/min | A/s or T/s        | Depends on command or mode |
+| Function       | Lake Shore 625 |   IPS120    | Mercury IPS          | Notes                      |
+| -------------- | -------------- | ----------! | -------------------- | -------------------------- |
+| Set ramp rate  | `RATE <val>`   | `S<val>`    | `SET:...:RSET <val>` | IPS120 supports current    |
+|                |                | / `T<val>`  |                      | and field units            !
+| Read ramp rate | `RATE?`        | `R6` / `R9` | `READ:...:RSET?`     | IPS120 current / field     !
+!                !                !             !                      ! registers                  |
+| Rate units     | A/s            | A/min or    | A/s or T/s           | Depends on command or mode |
+!                !                ! T/min       !                      !                            !
 
 ***
 
@@ -83,11 +87,12 @@ This is organised as a **true mapping table**:
 
 ### ⚡ 7. Limits & Protection
 
-| Function           | Lake Shore 625       | IPS120          | Mercury IPS         | Notes                    |
-| ------------------ | -------------------- | --------------- | ------------------- | ------------------------ |
-| Read current limit | `LIMIT?` (or config) | `R21` / `R22`  | `READ:...:CLIM?`    | IPS120 safe negative / positive limits |
+| Function           | Lake Shore 625       | IPS120          | Mercury IPS         | Notes                         |
+| ------------------ | -------------------- | --------------- | ------------------- | ----------------------------- |
+| Read current limit | `LIMIT?` (or config) | `R21` / `R22`   | `READ:...:CLIM?`    | IPS120 safe negative /        |
+|                    |                      |                 |                     | positive limits               |
 | Read voltage limit | config               | `R15`           | `READ:...:VLIM?`    | IPS120 software voltage limit |
-| Set limits         | model-dependent      | typically fixed | `SET:...:CLIM/VLIM` | Mercury most flexible    |
+| Set limits         | model-dependent      | typically fixed | `SET:...:CLIM/VLIM` | Mercury most flexible         |
 
 ***
 

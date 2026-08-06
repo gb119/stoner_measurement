@@ -83,7 +83,7 @@ The MDX User port is a female DB-25 connector. A bar over a manual signal name
 means active low. The table uses `*_N` below to make that polarity explicit.
 
 | Pin | Suggested Python name | Direction | Meaning | Relevance to VB system |
-|---:|---|---|---|---|
+| ---: | --- | --- | --- | --- |
 | 1 | `current_monitor` | Analog out | 0-full-scale voltage represents 0-1 A | Not explicitly consumed in supplied module |
 | 2 | `power_monitor` | Analog out | 0-full-scale voltage represents 0-500 W | Not explicitly consumed |
 | 3 | `voltage_monitor` | Analog out | 0-full-scale voltage represents 0-1200 V | Not explicitly consumed |
@@ -110,7 +110,7 @@ selected regulation mode at full-scale voltage.
 The MDX has three remotely selected regulation modes:
 
 | Mode | Pin 17 `current_regulation_n` | Pin 16 `power_regulation_n` |
-|---|---|---|
+| --- | --- | --- |
 | Voltage | low | low |
 | Power | high | low |
 | Current | low | high |
@@ -134,7 +134,7 @@ The high nibble selects an operation. The low nibble carries a DAC nibble,
 channel/control bits, or a four-channel bitmap.
 
 | Byte range | Meaning in VB | Payload |
-|---|---|---|
+| --- | --- | --- |
 | `0x00..0x0F` | Load DAC data bits 3..0 | Low four bits of 12-bit code |
 | `0x10..0x1F` | Load DAC data bits 7..4 | Middle four bits |
 | `0x20..0x2F` | Load DAC data bits 11..8 | High four bits |
@@ -409,7 +409,7 @@ Recommended internal state and safeguards:
 Assuming round-to-nearest conversion and no special calibration:
 
 | Request | DAC code | Expected byte sequence before waits |
-|---|---:|---|
+| --- | ---: | --- |
 | MDX 1, 0 mA | `0x000` | `00 10 20 3C 30 3C` |
 | MDX 1, 1000 mA | `0xFFF` | `0F 1F 2F 3C 30 3C` |
 | MDX 4, 1000 mA | `0xFFF` | `0F 1F 2F 3F 33 3F` |
@@ -419,7 +419,7 @@ Assuming round-to-nearest conversion and no special calibration:
 Bitmap examples:
 
 | Desired enabled supplies | Expected command(s) |
-|---|---|
+| --- | --- |
 | None in bank 1 | `50` |
 | MDX 1 only | `51` |
 | MDX 1 and 4 | `59` |
