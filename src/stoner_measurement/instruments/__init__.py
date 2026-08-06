@@ -101,6 +101,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInReserveMode,
 )
 from stoner_measurement.instruments.magnet_controller import (
+    KepcoBOPGL,
     MagnetController,
     MagnetLimits,
     MagnetState,
@@ -204,6 +205,7 @@ __all__ = [
     "MassFlowController",
     "MassFlowControllerCapabilities",
     "LoopStatus",
+    "KepcoBOPGL",
     "MagnetController",
     "MagnetLimits",
     "MagnetState",

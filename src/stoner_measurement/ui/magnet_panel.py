@@ -583,6 +583,16 @@ class MagnetControlPanel(QWidget):
         self._max_ramp_spin.setValue(1.0)
         const_form.addRow("Max ramp rate:", self._max_ramp_spin)
 
+        self._compliance_voltage_spin = SISpinBox()
+        self._compliance_voltage_spin.setOpts(
+            bounds=(0.01, 1000.0), decimals=3, suffix="V", siPrefix=True
+        )
+        self._compliance_voltage_spin.setValue(5.0)
+        self._compliance_voltage_spin.setToolTip(
+            "Voltage protection limit for magnet supplies that support compliance control"
+        )
+        const_form.addRow("Compliance voltage:", self._compliance_voltage_spin)
+
         limits_btn_row = QHBoxLayout()
         self._btn_read_limits = QPushButton("Read")
         self._btn_read_limits.setToolTip("Read magnet constant and limits from the controller")
@@ -1107,6 +1117,8 @@ class MagnetControlPanel(QWidget):
                 self._max_field_spin.setValue(limits.max_field)
             if limits.max_ramp_rate is not None:
                 self._max_ramp_spin.setValue(limits.max_ramp_rate)
+        if self._engine.compliance_voltage is not None:
+            self._compliance_voltage_spin.setValue(self._engine.compliance_voltage)
 
         if self._engine._target_field is not None:  # pylint: disable=protected-access
             self._target_field_spin.setValue(self._engine._target_field)  # pylint: disable=protected-access
@@ -1186,6 +1198,7 @@ class MagnetControlPanel(QWidget):
                     max_ramp_rate=self._max_ramp_spin.value(),
                 )
             )
+            self._engine.set_compliance_voltage(self._compliance_voltage_spin.value())
             path = self._engine.save_configuration()
         except Exception as exc:
             QMessageBox.critical(
@@ -1414,6 +1427,7 @@ class MagnetControlPanel(QWidget):
             max_ramp_rate=self._max_ramp_spin.value(),
         )
         self._engine.set_limits(limits)
+        self._engine.set_compliance_voltage(self._compliance_voltage_spin.value())
         # Refresh the equivalent-current label.
         self._on_target_field_changed(self._target_field_spin.value())
         self._on_ramp_field_changed(self._ramp_field_spin.value())
@@ -1423,7 +1437,8 @@ class MagnetControlPanel(QWidget):
         """Read magnet constant and limits from the controller and update the UI."""
         magnet_constant = self._engine.refresh_magnet_constant()
         limits = self._engine.get_limits()
-        if magnet_constant is None and limits is None:
+        compliance_voltage = self._engine.refresh_compliance_voltage()
+        if magnet_constant is None and limits is None and compliance_voltage is None:
             QMessageBox.warning(self, "Magnet Constants & Limits", "No instrument connected or read failed.")
             return
         if magnet_constant is not None and magnet_constant > 0:
@@ -1435,6 +1450,8 @@ class MagnetControlPanel(QWidget):
                 self._max_field_spin.setValue(limits.max_field)
             if limits.max_ramp_rate is not None:
                 self._max_ramp_spin.setValue(limits.max_ramp_rate)
+        if compliance_voltage is not None:
+            self._compliance_voltage_spin.setValue(compliance_voltage)
 
         self._on_target_field_changed(self._target_field_spin.value())
         self._on_ramp_field_changed(self._ramp_field_spin.value())

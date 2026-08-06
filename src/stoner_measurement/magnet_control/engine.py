@@ -14,6 +14,7 @@ command API; they never talk to instrument drivers directly.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from collections import deque
 from dataclasses import replace
@@ -32,7 +33,7 @@ from stoner_measurement.instruments.magnet_controller import (
     MagnetState,
     current_is_at_target,
 )
-from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
+from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
     GpibTransport,
@@ -140,6 +141,7 @@ class MagnetControllerEngine(QObject):
         self._ramp_rate_current: float | None = None
         self._magnet_constant: float | None = None
         self._limits: MagnetLimits | None = None
+        self._compliance_voltage: float | None = None
         self._zero_target_active: bool = False
         self._quench_active: bool = False
         self._latest_state: MagnetEngineState = MagnetEngineState(engine_status=self._status)
@@ -205,6 +207,10 @@ class MagnetControllerEngine(QObject):
         if isinstance(limits, dict):
             magnet_constant = limits.get("magnet_constant")
             self._magnet_constant = None if magnet_constant is None else float(magnet_constant)
+            compliance_voltage = limits.get("compliance_voltage")
+            self._compliance_voltage = (
+                None if compliance_voltage is None else float(compliance_voltage)
+            )
             max_current = limits.get("max_current")
             if max_current is not None:
                 max_field = limits.get("max_field")
@@ -306,6 +312,8 @@ class MagnetControllerEngine(QObject):
                     "MagnetControllerEngine: failed to refresh magnet constant on connect",
                     exc_info=True,
                 )
+            if self._compliance_voltage is not None:
+                self._apply_compliance_voltage(driver, self._compliance_voltage)
             self._set_status(MagnetEngineStatus.CONNECTED)
             if self._polling_rate_hz > 0.0:
                 self._timer.start()
@@ -439,6 +447,8 @@ class MagnetControllerEngine(QObject):
                 Protocol instance selected for the driver family.
         """
         name = driver_name.lower()
+        if "kepco" in name or "bop" in name:
+            return ScpiProtocol()
         if "oxford" in name or "ips" in name:
             return OxfordProtocol()
         return LakeshoreProtocol()
@@ -572,6 +582,7 @@ class MagnetControllerEngine(QObject):
             },
             "limits": {
                 "magnet_constant": self._magnet_constant,
+                "compliance_voltage": self._compliance_voltage,
                 "max_current": None if self._limits is None else self._limits.max_current,
                 "max_field": None if self._limits is None else self._limits.max_field,
                 "max_ramp_rate": None if self._limits is None else self._limits.max_ramp_rate,
@@ -686,6 +697,54 @@ class MagnetControllerEngine(QObject):
                 self._driver.set_limits(limits)
             except Exception:
                 logger.exception("Failed to set magnet limits")
+
+    @property
+    def compliance_voltage(self) -> float | None:
+        """Return the configured compliance voltage in volts, when available."""
+        return self._compliance_voltage
+
+    def set_compliance_voltage(self, voltage: float) -> None:
+        """Cache and, when supported, apply the magnet compliance voltage."""
+        value = float(voltage)
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(f"Compliance voltage must be positive and finite, got {voltage!r}.")
+        with self._engine_lock:
+            self._compliance_voltage = value
+            if self._driver is not None:
+                self._apply_compliance_voltage(self._driver, value)
+
+    def refresh_compliance_voltage(self) -> float | None:
+        """Read and cache compliance voltage from a capable connected driver."""
+        with self._engine_lock:
+            if self._driver is None:
+                return self._compliance_voltage
+            descriptor = getattr(type(self._driver), "compliance_voltage", None)
+            if not isinstance(descriptor, property):
+                return None
+            try:
+                value = float(self._driver.compliance_voltage)
+            except Exception:
+                logger.exception("MagnetControllerEngine: failed to read compliance voltage")
+                return None
+            if not math.isfinite(value) or value <= 0.0:
+                logger.warning("Magnet controller returned invalid compliance voltage %r", value)
+                return None
+            self._compliance_voltage = value
+            return value
+
+    @staticmethod
+    def _apply_compliance_voltage(driver: MagnetController, voltage: float) -> bool:
+        """Apply compliance voltage when *driver* exposes the optional setter."""
+        setter = getattr(driver, "set_compliance_voltage", None)
+        if not callable(setter):
+            logger.debug("%s does not support compliance voltage", type(driver).__name__)
+            return False
+        try:
+            setter(voltage)
+        except Exception:
+            logger.exception("Failed to set compliance voltage to %s V", voltage)
+            return False
+        return True
 
     def ramp_to_target(self) -> None:
         """Start ramping to the currently programmed target."""

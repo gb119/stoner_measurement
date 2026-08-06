@@ -497,6 +497,7 @@ class TestEngineLifecycle:
                 },
                 "limits": {
                     "magnet_constant": 0.1,
+                    "compliance_voltage": 4.5,
                     "max_current": 60.0,
                     "max_field": 6.0,
                     "max_ramp_rate": 0.8,
@@ -517,6 +518,7 @@ class TestEngineLifecycle:
         assert engine._ramp_rate_field == pytest.approx(0.4)  # noqa: SLF001
         assert engine._ramp_rate_current == pytest.approx(4.0)  # noqa: SLF001
         assert engine._magnet_constant == pytest.approx(0.1)  # noqa: SLF001
+        assert engine.compliance_voltage == pytest.approx(4.5)
         assert engine._limits is not None  # noqa: SLF001
         assert engine._limits.max_current == pytest.approx(60.0)  # noqa: SLF001
         assert engine._limits.max_field == pytest.approx(6.0)  # noqa: SLF001
@@ -548,6 +550,7 @@ class TestEngineLifecycle:
         engine.set_ramp_rate_field(0.75)
         engine.set_ramp_rate_current(7.5)
         engine.set_magnet_constant(0.1)
+        engine.set_compliance_voltage(5.0)
         engine.set_limits(MagnetLimits(max_current=80.0, max_field=8.0, max_ramp_rate=0.9))
         engine.set_stability_config(
             MagnetStabilityConfig(
@@ -573,6 +576,7 @@ class TestEngineLifecycle:
         }
         assert config["limits"] == {
             "magnet_constant": pytest.approx(0.1),
+            "compliance_voltage": pytest.approx(5.0),
             "max_current": pytest.approx(80.0),
             "max_field": pytest.approx(8.0),
             "max_ramp_rate": pytest.approx(0.9),
@@ -1747,6 +1751,7 @@ class TestMagnetControlPanel:
         panel = MagnetControlPanel()
         monkeypatch.setattr(panel._engine, "refresh_magnet_constant", lambda: None)
         monkeypatch.setattr(panel._engine, "get_limits", lambda: None)
+        monkeypatch.setattr(panel._engine, "refresh_compliance_voltage", lambda: None)
         calls: list[tuple[str, str]] = []
 
         def _fake_warning(_parent, title, text):

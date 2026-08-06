@@ -15,6 +15,7 @@ ramp:
 
 limits:
   magnet_constant:
+  compliance_voltage:
   max_current:
   max_field:
   max_ramp_rate:
