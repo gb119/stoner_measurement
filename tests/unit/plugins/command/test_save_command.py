@@ -825,6 +825,49 @@ class TestSaveCommand:
 
         assert out_file.exists()
 
+    def test_execute_automatically_promotes_path_template_to_fstring(self, qapp, engine, tmp_path):
+        """A quoted filename containing a replacement field should interpolate automatically."""
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        engine._namespace["run_index"] = 7  # noqa: SLF001
+        template = str(tmp_path / "run_{run_index:03d}.txt")
+        cmd.path_expr = repr(template)
+
+        cmd.execute()
+
+        assert (tmp_path / "run_007.txt").exists()
+        assert cmd.path_expr == repr(template)
+
+    def test_execute_automatically_promotes_raw_path_template(self, qapp, engine, tmp_path):
+        """A raw Windows-style path should become an ``fr`` string at evaluation time."""
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        engine._namespace["run_index"] = 8  # noqa: SLF001
+        template = str(tmp_path / "run_{run_index:03d}.txt")
+        cmd.path_expr = f"r'{template}'"
+
+        cmd.execute()
+
+        assert (tmp_path / "run_008.txt").exists()
+        assert cmd.path_expr == f"r'{template}'"
+
+    @pytest.mark.parametrize("prefix", ["f", "fr", "rf", "F", "FR", "RF"])
+    def test_execute_leaves_existing_fstring_prefix_unchanged(
+        self, qapp, engine, tmp_path, prefix
+    ):
+        """Existing f-string prefixes should not receive a second ``f``."""
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        engine._namespace["run_index"] = 9  # noqa: SLF001
+        template = str(tmp_path / "run_{run_index:03d}.txt")
+        literal = f"'{template}'" if "r" in prefix.lower() else repr(template)
+        cmd.path_expr = f"{prefix}{literal}"
+
+        cmd.execute()
+
+        assert (tmp_path / "run_009.txt").exists()
+        assert cmd.path_expr == f"{prefix}{literal}"
+
     # ------------------------------------------------------------------
     # execute / __call__ keyword parameter overrides
     # ------------------------------------------------------------------
