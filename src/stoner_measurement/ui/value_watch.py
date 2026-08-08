@@ -869,9 +869,9 @@ class ValueWatchWindow(QtWidgets.QWidget):
                 )
                 self._displays[entry.key] = display
 
-            self._relayout_displays()
         finally:
             self._rebuilding_displays = False
+        self._relayout_displays()
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         """Reflow the watch tiles when the window is resized."""
