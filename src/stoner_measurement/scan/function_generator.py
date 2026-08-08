@@ -9,25 +9,71 @@ the generator parameters.
 from __future__ import annotations
 
 import enum
+import json
 
 import numpy as np
 import pyqtgraph as pg
 from qtpy import QtGui
-from qtpy.QtCore import QObject
+from qtpy.QtCore import QObject, QSettings, QSize, Qt
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
+    QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan.base import BaseScanGenerator
 from stoner_measurement.ui.widgets import SISpinBox
 
 # Shared spin-box limits used across the widget controls.
 _SPINBOX_MAX_ABS = 1e6
 _MAX_NUM_POINTS = 10_000
+_PRESET_ICON_SIZE = QSize(96, 40)
+_PRESET_SETTINGS_PREFIX = "scan/function_generator/user_preset_"
+_PRESET_PARAMETER_KEYS = (
+    "waveform",
+    "amplitude",
+    "offset",
+    "phase",
+    "exponent",
+    "periods",
+    "num_points",
+)
+
+
+def _preset_settings() -> QSettings:
+    """Return the persistent application store used for user waveform presets."""
+    return QSettings(
+        QSettings.Format.IniFormat,
+        QSettings.Scope.UserScope,
+        "University of Leeds",
+        "Stoner Measurement",
+    )
+
+
+class _PresetButton(QPushButton):
+    """Push button that reports Ctrl-click separately from an ordinary click."""
+
+    control_clicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        """Store a preset on Ctrl-left-release without also recalling it."""
+        is_control_click = (
+            event.button() == Qt.MouseButton.LeftButton
+            and bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+            and self.rect().contains(event.pos())
+        )
+        if is_control_click:
+            self.setDown(False)
+            self.control_clicked.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class WaveformType(enum.Enum):
@@ -461,6 +507,64 @@ class FunctionScanWidget(QWidget):
 
         root_layout.addWidget(controls_box)
 
+        # --- Built-in and user presets ---
+        preset_layout = QHBoxLayout()
+        preset_layout.setContentsMargins(0, 0, 0, 0)
+        self._preset_buttons: list[_PresetButton] = []
+        built_in_presets = (
+            {
+                "waveform": WaveformType.SQUARE.value,
+                "amplitude": 1e-3,
+                "offset": 0.0,
+                "phase": 0.0,
+                "exponent": 1.0,
+                "periods": 4.0,
+                "num_points": 8,
+            },
+            {
+                "waveform": WaveformType.TRIANGLE.value,
+                "amplitude": 1e-3,
+                "offset": 0.0,
+                "phase": 0.0,
+                "exponent": 1.0,
+                "periods": 1.0,
+                "num_points": 101,
+            },
+            {
+                "waveform": WaveformType.SINE.value,
+                "amplitude": 1e-3,
+                "offset": 0.0,
+                "phase": 0.0,
+                "exponent": 1.0,
+                "periods": 1.0,
+                "num_points": 101,
+            },
+        )
+        for preset in built_in_presets:
+            waveform = WaveformType(preset["waveform"])
+            button = _PresetButton()
+            button.setIcon(self._waveform_preset_icon(preset))
+            button.setIconSize(_PRESET_ICON_SIZE)
+            button.setToolTip(f"Apply {waveform.value.lower()} wave preset")
+            button.clicked.connect(
+                lambda _checked=False, values=preset: self._apply_preset(values)
+            )
+            self._add_preset_button(preset_layout, button)
+
+        for slot in range(1, 4):
+            button = _PresetButton(str(slot))
+            button.setToolTip(
+                f"User preset {slot}: click to recall; Ctrl-click to store current settings"
+            )
+            button.clicked.connect(
+                lambda _checked=False, user_slot=slot: self._recall_user_preset(user_slot)
+            )
+            button.control_clicked.connect(
+                lambda user_slot=slot: self._store_user_preset(user_slot)
+            )
+            self._add_preset_button(preset_layout, button)
+        root_layout.addLayout(preset_layout)
+
         # --- Preview plot ---
         self._plot_widget = pg.PlotWidget()
 
@@ -489,6 +593,87 @@ class FunctionScanWidget(QWidget):
         root_layout.addWidget(self._plot_widget)
 
         self.setLayout(root_layout)
+
+    def _add_preset_button(self, layout: QHBoxLayout, button: _PresetButton) -> None:
+        """Add one consistently sized button to the preset row."""
+        button.setMinimumHeight(_PRESET_ICON_SIZE.height() + 8)
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addWidget(button)
+        self._preset_buttons.append(button)
+
+    @staticmethod
+    def _waveform_preset_icon(preset: dict[str, object]) -> QtGui.QIcon:
+        """Render a label-free yellow-on-black waveform thumbnail."""
+        generator = FunctionScanGenerator(
+            waveform=WaveformType(str(preset["waveform"])),
+            amplitude=float(preset["amplitude"]),
+            offset=float(preset["offset"]),
+            phase=float(preset["phase"]),
+            exponent=float(preset["exponent"]),
+            periods=float(preset["periods"]),
+            num_points=int(preset["num_points"]),
+        )
+        values = generator.generate()
+        pixmap = QtGui.QPixmap(_PRESET_ICON_SIZE)
+        pixmap.fill(QtGui.QColor("black"))
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtGui.QPen(QtGui.QColor("yellow"), 2.0))
+        width = float(pixmap.width() - 8)
+        height = float(pixmap.height() - 8)
+        value_min = float(np.min(values))
+        value_range = max(float(np.max(values)) - value_min, 1e-15)
+        path = QtGui.QPainterPath()
+        for index, value in enumerate(values):
+            x = 4.0 + width * index / max(len(values) - 1, 1)
+            y = 4.0 + height * (1.0 - (float(value) - value_min) / value_range)
+            if index == 0:
+                path.moveTo(x, y)
+            else:
+                path.lineTo(x, y)
+        painter.drawPath(path)
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _current_preset(self) -> dict[str, object]:
+        """Return the current waveform parameters in persistent form."""
+        data = self._generator.to_json()
+        return {key: data[key] for key in _PRESET_PARAMETER_KEYS}
+
+    def _apply_preset(self, preset: dict[str, object]) -> None:
+        """Apply all waveform parameters from *preset* and refresh the controls."""
+        self._generator.waveform = WaveformType(str(preset["waveform"]))
+        self._generator.amplitude = float(preset["amplitude"])
+        self._generator.offset = float(preset["offset"])
+        self._generator.phase = float(preset["phase"])
+        self._generator.exponent = float(preset["exponent"])
+        self._generator.periods = float(preset["periods"])
+        self._generator.num_points = int(preset["num_points"])
+        self.refresh()
+
+    def _store_user_preset(self, slot: int) -> None:
+        """Persist the current waveform parameters in user *slot*."""
+        settings = _preset_settings()
+        settings.setValue(
+            f"{_PRESET_SETTINGS_PREFIX}{slot}",
+            json.dumps(self._current_preset(), sort_keys=True),
+        )
+        settings.sync()
+
+    def _recall_user_preset(self, slot: int) -> None:
+        """Recall user *slot* when it contains a complete, valid preset."""
+        raw_value = _preset_settings().value(f"{_PRESET_SETTINGS_PREFIX}{slot}")
+        if not isinstance(raw_value, str):
+            return
+        try:
+            preset = json.loads(raw_value)
+            if not isinstance(preset, dict) or not all(
+                key in preset for key in _PRESET_PARAMETER_KEYS
+            ):
+                return
+            self._apply_preset(preset)
+        except (TypeError, ValueError):
+            return
 
     def _connect_signals(self) -> None:
         """Wire control signals to parameter setters and plot refresh."""

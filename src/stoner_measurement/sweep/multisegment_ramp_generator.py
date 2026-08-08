@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTabWidget,
@@ -28,6 +29,11 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.sweep.base import BaseSweepGenerator
+from stoner_measurement.ui.generator_json import (
+    load_generator_json,
+    save_generator_json,
+    set_generator_file_button_icons,
+)
 from stoner_measurement.ui.widgets import SISpinBox
 
 _DEFAULT_POLL_SECONDS = 0.05
@@ -77,7 +83,9 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
     ) -> None:
         super().__init__(state_sweep=state_sweep, parent=parent)
         self._start = float(start)
-        self._segments: list[tuple[float, float, bool]] = segments or [(1.0, 0.1, True)]
+        self._segments: list[tuple[float, float, bool]] = (
+            [(1.0, 0.1, True)] if segments is None else list(segments)
+        )
         self._poll_seconds = max(0.0, float(poll_seconds))
         self._start_timeout_seconds = max(0.0, float(start_timeout_seconds))
 
@@ -123,7 +131,7 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         cleaned: list[tuple[float, float, bool]] = []
         for target, rate, measure in value:
             cleaned.append((float(target), float(rate), bool(measure)))
-        self._segments = cleaned or [(1.0, 0.1, True)]
+        self._segments = cleaned
         self._invalidate()
 
     @property
@@ -373,13 +381,22 @@ class MultiSegmentRampSweepWidget(QWidget):
         config_layout.addWidget(self._table)
 
         controls = QHBoxLayout()
-        add_btn = QPushButton("Add Segment", self)
-        remove_btn = QPushButton("Remove Segment", self)
-        add_btn.clicked.connect(self._add_row)
-        remove_btn.clicked.connect(self._remove_row)
-        controls.addWidget(add_btn)
-        controls.addWidget(remove_btn)
-        controls.addStretch(1)
+        self._new_btn = QPushButton("New/Clear", self)
+        self._load_btn = QPushButton("Load", self)
+        self._save_btn = QPushButton("Save", self)
+        self._add_btn = QPushButton("+ Segment", self)
+        self._remove_btn = QPushButton("− Segment", self)
+        set_generator_file_button_icons(self, self._new_btn, self._load_btn, self._save_btn)
+        self._new_btn.clicked.connect(self._clear_segments)
+        self._load_btn.clicked.connect(self._load_from_json)
+        self._save_btn.clicked.connect(self._save_to_json)
+        self._add_btn.clicked.connect(self._add_row)
+        self._remove_btn.clicked.connect(self._remove_row)
+        controls.addWidget(self._new_btn)
+        controls.addWidget(self._load_btn)
+        controls.addWidget(self._save_btn)
+        controls.addWidget(self._add_btn, 1)
+        controls.addWidget(self._remove_btn, 1)
         config_layout.addLayout(controls)
         tabs.addTab(config_widget, "Segments")
 
@@ -450,9 +467,44 @@ class MultiSegmentRampSweepWidget(QWidget):
             row = self._table.rowCount() - 1
         if row >= 0:
             self._table.removeRow(row)
-        if self._table.rowCount() == 0:
-            self._add_row()
         self._sync_segments_from_table()
+
+    def _clear_segments(self) -> None:
+        """Remove every sweep segment while preserving the other settings."""
+        self._generator.segments = []
+        self._populate_from_generator()
+        self._refresh_preview()
+
+    def _load_from_json(self) -> None:
+        """Load a multi-segment sweep configuration selected by the user."""
+        data = load_generator_json(self, "Load multi-segment sweep")
+        if data is None:
+            return
+        if data.get("type") != "MultiSegmentRampSweepGenerator":
+            QMessageBox.warning(
+                self,
+                "Unable to load configuration",
+                "The file is not a multi-segment ramp sweep.",
+            )
+            return
+        try:
+            loaded = MultiSegmentRampSweepGenerator._from_json_data(
+                data,
+                state_sweep=self._generator.state_sweep,
+            )
+        except (TypeError, ValueError) as exc:
+            QMessageBox.warning(self, "Unable to load configuration", str(exc))
+            return
+        self._generator.start = loaded.start
+        self._generator.poll_seconds = loaded.poll_seconds
+        self._generator.start_timeout_seconds = loaded.start_timeout_seconds
+        self._generator.segments = loaded.segments
+        self._populate_from_generator()
+        self._refresh_preview()
+
+    def _save_to_json(self) -> None:
+        """Save the current multi-segment sweep to a user-selected file."""
+        save_generator_json(self, "Save multi-segment sweep", self._generator.to_json())
 
     def _populate_from_generator(self) -> None:
         self._start_spin.setValue(self._generator.start)
@@ -486,7 +538,14 @@ class MultiSegmentRampSweepWidget(QWidget):
         current_time = 0.0
         for target, rate, measure in self._generator.segments:
             rate_magnitude = abs(float(rate))
-            duration = self._generator.duration_seconds_for_distance_rate(abs(float(target) - current), rate_magnitude) if rate_magnitude > 0.0 else 0.0
+            duration = (
+                self._generator.duration_seconds_for_distance_rate(
+                    abs(float(target) - current),
+                    rate_magnitude,
+                )
+                if rate_magnitude > 0.0
+                else 0.0
+            )
             x_vals = [current_time, current_time + duration]
             y_vals = [current, float(target)]
             pen = pg.mkPen(color=(0, 200, 0, 200) if measure else (200, 0, 0, 200), width=2)
@@ -510,7 +569,14 @@ class MultiSegmentRampSweepWidget(QWidget):
             target_value_for_segment = float(target)
             rate_magnitude = abs(float(rate))
             segment_distance = abs(target_value_for_segment - current)
-            duration = self._generator.duration_seconds_for_distance_rate(segment_distance, rate_magnitude) if rate_magnitude > 0.0 else 0.0
+            duration = (
+                self._generator.duration_seconds_for_distance_rate(
+                    segment_distance,
+                    rate_magnitude,
+                )
+                if rate_magnitude > 0.0
+                else 0.0
+            )
 
             if current_stage == stage_index:
                 if segment_distance > 0.0:

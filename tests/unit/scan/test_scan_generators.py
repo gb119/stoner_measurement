@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from qtpy.QtCore import QSettings, Qt
 from qtpy.QtWidgets import QWidget
 
+import stoner_measurement.scan.function_generator as function_generator_module
 from stoner_measurement.scan import (
     BaseScanGenerator,
     FunctionScanGenerator,
@@ -631,6 +633,87 @@ class TestFunctionScanWidget:
         gen = FunctionScanGenerator(exponent=2.0)
         widget = FunctionScanWidget(generator=gen)
         assert abs(widget._exponent_spin.value() - 2.0) < 1e-9
+
+    @pytest.mark.parametrize(
+        ("button_index", "waveform", "num_points", "periods"),
+        [
+            (0, WaveformType.SQUARE, 8, 4.0),
+            (1, WaveformType.TRIANGLE, 101, 1.0),
+            (2, WaveformType.SINE, 101, 1.0),
+        ],
+    )
+    def test_builtin_preset_applies_all_settings(
+        self,
+        qapp,
+        button_index,
+        waveform,
+        num_points,
+        periods,
+    ):
+        gen = FunctionScanGenerator(
+            waveform=WaveformType.SAWTOOTH,
+            amplitude=3.0,
+            offset=2.0,
+            phase=30.0,
+            exponent=2.0,
+            periods=2.0,
+            num_points=20,
+        )
+        widget = FunctionScanWidget(generator=gen)
+        widget._preset_buttons[button_index].click()
+        assert gen.waveform is waveform
+        assert gen.amplitude == pytest.approx(1e-3)
+        assert gen.offset == pytest.approx(0.0)
+        assert gen.phase == pytest.approx(0.0)
+        assert gen.exponent == pytest.approx(1.0)
+        assert gen.periods == pytest.approx(periods)
+        assert gen.num_points == num_points
+
+    def test_preset_button_faces_match_requested_layout(self, qapp):
+        widget = FunctionScanWidget(generator=FunctionScanGenerator())
+        assert len(widget._preset_buttons) == 6
+        assert all(button.text() == "" for button in widget._preset_buttons[:3])
+        assert all(not button.icon().isNull() for button in widget._preset_buttons[:3])
+        assert [button.text() for button in widget._preset_buttons[3:]] == ["1", "2", "3"]
+
+    def test_user_preset_ctrl_click_stores_and_ordinary_click_recalls(
+        self,
+        qapp,
+        qtbot,
+        tmp_path,
+        monkeypatch,
+    ):
+        settings = QSettings(
+            str(tmp_path / "function-generator-presets.ini"),
+            QSettings.Format.IniFormat,
+        )
+        monkeypatch.setattr(function_generator_module, "_preset_settings", lambda: settings)
+        gen = FunctionScanGenerator(
+            waveform=WaveformType.SAWTOOTH,
+            amplitude=0.025,
+            offset=-0.004,
+            phase=12.0,
+            exponent=1.5,
+            periods=2.5,
+            num_points=77,
+        )
+        widget = FunctionScanWidget(generator=gen)
+        qtbot.mouseClick(
+            widget._preset_buttons[3],
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+
+        recalled = FunctionScanGenerator()
+        recalled_widget = FunctionScanWidget(generator=recalled)
+        recalled_widget._preset_buttons[3].click()
+        assert recalled.waveform is WaveformType.SAWTOOTH
+        assert recalled.amplitude == pytest.approx(0.025)
+        assert recalled.offset == pytest.approx(-0.004)
+        assert recalled.phase == pytest.approx(12.0)
+        assert recalled.exponent == pytest.approx(1.5)
+        assert recalled.periods == pytest.approx(2.5)
+        assert recalled.num_points == 77
 
     # ------------------------------------------------------------------
     # units — widget suffix propagation

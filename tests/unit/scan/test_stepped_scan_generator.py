@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from qtpy.QtWidgets import QWidget
 
+import stoner_measurement.ui.generator_json as generator_json_module
 from stoner_measurement.scan import SteppedScanGenerator, SteppedScanWidget
 
 
@@ -365,6 +366,76 @@ class TestSteppedScanWidget:
         widget._table.selectRow(0)
         widget._remove_btn.click()
         assert len(gen.stages) == 1
+
+    def test_file_and_row_buttons_have_requested_order_and_icons(self, qapp):
+        widget = SteppedScanWidget(generator=SteppedScanGenerator())
+        buttons = [
+            widget._new_btn,
+            widget._load_btn,
+            widget._save_btn,
+            widget._add_btn,
+            widget._remove_btn,
+        ]
+        assert [button.text() for button in buttons] == [
+            "",
+            "",
+            "",
+            "+ Stage",
+            "− Stage",
+        ]
+        assert all(not button.icon().isNull() for button in buttons[:3])
+        assert [button.toolTip() for button in buttons[:3]] == ["New/Clear", "Load", "Save"]
+
+    def test_new_clear_removes_all_stages_but_preserves_start(self, qapp):
+        gen = SteppedScanGenerator(
+            start=2.5,
+            stages=[(3.0, 0.1, True), (4.0, 0.2, False)],
+        )
+        widget = SteppedScanWidget(generator=gen)
+        widget._new_btn.click()
+        assert gen.start == pytest.approx(2.5)
+        assert gen.stages == []
+        assert widget._table.rowCount() == 0
+
+    def test_save_and_load_round_trip_updates_bound_generator(
+        self,
+        qapp,
+        tmp_path,
+        monkeypatch,
+    ):
+        gen = SteppedScanGenerator(
+            start=2.0,
+            stages=[(3.0, 0.25, True), (1.0, 0.5, False)],
+        )
+        gen.units = "T"
+        widget = SteppedScanWidget(generator=gen)
+        requested_path = tmp_path / "stepped-scan"
+        saved_path = requested_path.with_suffix(".json")
+        monkeypatch.setattr(
+            generator_json_module.QFileDialog,
+            "getSaveFileName",
+            lambda *_args: (str(requested_path), "JSON files (*.json)"),
+        )
+        widget._save_btn.click()
+        assert saved_path.is_file()
+
+        gen.start = -5.0
+        gen.stages = []
+        gen.units = "A"
+        widget.refresh()
+        monkeypatch.setattr(
+            generator_json_module.QFileDialog,
+            "getOpenFileName",
+            lambda *_args: (str(saved_path), "JSON files (*.json)"),
+        )
+        widget._load_btn.click()
+        assert gen.start == pytest.approx(2.0)
+        assert gen.stages == [
+            (3.0, 0.25, 4, True),
+            (1.0, 0.5, 4, False),
+        ]
+        assert gen.units == "T"
+        assert widget._table.rowCount() == 2
 
     def test_table_populated_from_generator_stages(self, qapp):
         gen = SteppedScanGenerator(stages=[(1.0, 0.5, True), (2.0, 0.25, False)])

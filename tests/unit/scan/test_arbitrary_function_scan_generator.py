@@ -5,8 +5,11 @@ from __future__ import annotations
 import logging
 
 import numpy as np
+import pytest
+from qtpy.QtCore import QSettings, Qt
 from qtpy.QtWidgets import QLabel, QWidget
 
+import stoner_measurement.scan.arbitrary_function_generator as arbitrary_function_module
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.scan import (
     ArbitraryFunctionScanGenerator,
@@ -196,6 +199,64 @@ class TestArbitraryFunctionScanWidget:
         assert "np" in label_texts
         assert "log" in label_texts
 
+    def test_fixed_preset_applies_requested_code_and_point_count(self, qapp):
+        gen = ArbitraryFunctionScanGenerator(
+            num_points=20,
+            code="def scan(ix, omega):\n    return ix\n",
+        )
+        widget = ArbitraryFunctionScanWidget(generator=gen)
+        widget._preset_buttons[0].click()
+        assert gen.num_points == 1000
+        assert gen.code == (
+            "def scan(ix, omega):\n"
+            '    """Example arbitrary scan: one sine period over the scan length."""\n'
+            "    t=ix*omega\n"
+            "    max_field=3\n"
+            "    return max_field*np.sin(10*t)*(1-np.exp(-t**2/10))\n"
+        )
+        assert widget._editor.text() == gen.code
+
+    def test_preset_button_faces_match_requested_layout(self, qapp):
+        widget = ArbitraryFunctionScanWidget(generator=ArbitraryFunctionScanGenerator())
+        assert len(widget._preset_buttons) == 6
+        assert widget._preset_buttons[0].text() == ""
+        assert not widget._preset_buttons[0].icon().isNull()
+        assert [button.text() for button in widget._preset_buttons[1:]] == [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+        ]
+
+    def test_user_preset_ctrl_click_stores_and_ordinary_click_recalls(
+        self,
+        qapp,
+        qtbot,
+        tmp_path,
+        monkeypatch,
+    ):
+        settings = QSettings(
+            str(tmp_path / "arbitrary-function-presets.ini"),
+            QSettings.Format.IniFormat,
+        )
+        monkeypatch.setattr(arbitrary_function_module, "_preset_settings", lambda: settings)
+        stored_code = "def scan(ix, omega):\n    return np.cos(3 * ix * omega)\n"
+        gen = ArbitraryFunctionScanGenerator(num_points=321, code=stored_code)
+        widget = ArbitraryFunctionScanWidget(generator=gen)
+        qtbot.mouseClick(
+            widget._preset_buttons[1],
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+
+        recalled = ArbitraryFunctionScanGenerator()
+        recalled_widget = ArbitraryFunctionScanWidget(generator=recalled)
+        recalled_widget._preset_buttons[1].click()
+        assert recalled.code == stored_code
+        assert recalled.num_points == 321
+        assert recalled_widget._editor.text() == stored_code
+
     # ------------------------------------------------------------------
     # units — JSON round-trip
     # ------------------------------------------------------------------
@@ -217,6 +278,4 @@ class TestArbitraryFunctionScanWidget:
 
 
 if __name__ == "__main__":
-    import pytest
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

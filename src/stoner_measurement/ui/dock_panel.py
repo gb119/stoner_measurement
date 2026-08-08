@@ -31,6 +31,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMenu,
@@ -1024,12 +1025,15 @@ class DockPanel(QWidget):
         self._sequence_tree.customContextMenuRequested.connect(self._show_sequence_context_menu)
 
         # --- Control buttons ---
-        self._add_step_btn = QPushButton("Add Step")
+        self._add_step_btn = QPushButton("+ Step")
         self._add_step_btn.setObjectName("addStepButton")
-        self._remove_step_btn = QPushButton("Remove Step")
+        self._remove_step_btn = QPushButton("− Step")
         self._remove_step_btn.setObjectName("removeStepButton")
-        layout.addWidget(self._add_step_btn)
-        layout.addWidget(self._remove_step_btn)
+        self._step_button_layout = QHBoxLayout()
+        self._step_button_layout.setContentsMargins(0, 0, 0, 0)
+        self._step_button_layout.addWidget(self._add_step_btn, 1)
+        self._step_button_layout.addWidget(self._remove_step_btn, 1)
+        layout.addLayout(self._step_button_layout)
 
         # --- Monitoring section ---
         self._monitor_label = QLabel("<b>Monitoring</b>")

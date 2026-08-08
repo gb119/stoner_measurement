@@ -69,6 +69,17 @@ The environment includes `PyQt6`, `PySide6`, `qtpy`, and `pytest-qt`. Use the
 conda environment for graphical user interface (GUI) or widget tests so the correct Qt stack is
 available.
 
+For offscreen widget rendering or screenshot-based visual checks, point Qt at
+the Windows font directory as well as selecting the offscreen platform:
+
+```powershell
+$env:QT_QPA_PLATFORM = "offscreen"
+$env:QT_QPA_FONTDIR = "C:\Windows\Fonts"
+```
+
+Without `QT_QPA_FONTDIR`, Qt's offscreen platform may discover no system fonts
+and render labels, button text, and editor content as square placeholder glyphs.
+
 ## Codacy
 
 Use Codacy through the conda environment:

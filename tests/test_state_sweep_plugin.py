@@ -7,6 +7,7 @@ from collections.abc import Iterator
 
 from qtpy.QtWidgets import QWidget
 
+import stoner_measurement.ui.generator_json as generator_json_module
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.state_scan import CounterPlugin
 from stoner_measurement.plugins.state_sweep import StateSweepPlugin, SweepTimePlugin
@@ -481,12 +482,81 @@ class TestSweepGenerators:
 
     def test_multisegment_estimated_duration_empty_segments(self, qapp):
         gen = MultiSegmentRampSweepGenerator(start=0.0, segments=[])
-        # Empty segments list is normalised to [(1.0, 0.1, True)] by setter.
-        # Access _segments directly to reach the empty-list code path; this
-        # is intentional since the setter prevents an empty list from being
-        # stored in normal use.
-        gen._segments = []
+        assert gen.segments == []
         assert gen.estimated_duration() == 0.0
+
+    def test_multisegment_file_and_row_buttons_have_requested_order_and_icons(self, qapp):
+        widget = MultiSegmentRampSweepGenerator().config_widget()
+        buttons = [
+            widget._new_btn,
+            widget._load_btn,
+            widget._save_btn,
+            widget._add_btn,
+            widget._remove_btn,
+        ]
+        assert [button.text() for button in buttons] == [
+            "",
+            "",
+            "",
+            "+ Segment",
+            "− Segment",
+        ]
+        assert all(not button.icon().isNull() for button in buttons[:3])
+        assert [button.toolTip() for button in buttons[:3]] == ["New/Clear", "Load", "Save"]
+
+    def test_multisegment_new_clear_removes_all_segments_but_preserves_settings(self, qapp):
+        gen = MultiSegmentRampSweepGenerator(
+            start=2.0,
+            segments=[(3.0, 0.5, True), (1.0, 0.25, False)],
+            poll_seconds=0.2,
+            start_timeout_seconds=15.0,
+        )
+        widget = gen.config_widget()
+        widget._new_btn.click()
+        assert gen.start == 2.0
+        assert gen.poll_seconds == 0.2
+        assert gen.start_timeout_seconds == 15.0
+        assert gen.segments == []
+        assert widget._table.rowCount() == 0
+
+    def test_multisegment_save_and_load_round_trip_updates_bound_generator(
+        self,
+        qapp,
+        tmp_path,
+        monkeypatch,
+    ):
+        gen = MultiSegmentRampSweepGenerator(
+            start=2.0,
+            segments=[(3.0, 0.5, True), (1.0, 0.25, False)],
+            poll_seconds=0.2,
+            start_timeout_seconds=15.0,
+        )
+        widget = gen.config_widget()
+        saved_path = tmp_path / "multi-segment-sweep.json"
+        monkeypatch.setattr(
+            generator_json_module.QFileDialog,
+            "getSaveFileName",
+            lambda *_args: (str(saved_path), "JSON files (*.json)"),
+        )
+        widget._save_btn.click()
+        assert saved_path.is_file()
+
+        gen.start = -4.0
+        gen.poll_seconds = 1.0
+        gen.start_timeout_seconds = 2.0
+        gen.segments = []
+        widget._populate_from_generator()
+        monkeypatch.setattr(
+            generator_json_module.QFileDialog,
+            "getOpenFileName",
+            lambda *_args: (str(saved_path), "JSON files (*.json)"),
+        )
+        widget._load_btn.click()
+        assert gen.start == 2.0
+        assert gen.poll_seconds == 0.2
+        assert gen.start_timeout_seconds == 15.0
+        assert gen.segments == [(3.0, 0.5, True), (1.0, 0.25, False)]
+        assert widget._table.rowCount() == 2
 
     def test_monitor_and_filter_estimated_duration_is_inf(self, qapp):
         import math

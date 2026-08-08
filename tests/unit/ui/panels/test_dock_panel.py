@@ -73,6 +73,14 @@ class TestDockPanel:
         panel = DockPanel(plugin_manager=plugin_manager)
         assert panel.sequence_steps == []
 
+    def test_step_buttons_share_one_row_with_compact_labels(self, plugin_manager):
+        panel = DockPanel(plugin_manager=plugin_manager)
+        assert panel._step_button_layout.count() == 2
+        assert panel._step_button_layout.itemAt(0).widget() is panel._add_step_btn
+        assert panel._step_button_layout.itemAt(1).widget() is panel._remove_step_btn
+        assert panel._add_step_btn.text() == "+ Step"
+        assert panel._remove_step_btn.text() == "− Step"
+
     def test_add_step(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
         panel._plugin_list.select_plugin("Dummy")
@@ -186,18 +194,21 @@ class TestDockPanel:
         assert isinstance(received[0], DummyPlugin)
 
     def test_plugin_selected_emits_none_when_selection_cleared(self, qapp):
-        """Clearing the sequence tree current item emits plugin_selected(None)."""
+        """Clearing the sequence-tree selection emits plugin_selected(None)."""
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
 
         panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
-        panel._sequence_tree.setCurrentItem(panel._sequence_tree.topLevelItem(0))
+        item = panel._sequence_tree.topLevelItem(0)
+        panel._sequence_tree.setCurrentItem(item)
+        item.setSelected(True)
+        assert panel._sequence_tree.selectedItems() == [item]
 
         received = []
         panel.plugin_selected.connect(received.append)
-        panel._sequence_tree.setCurrentItem(None)  # clear current item
+        panel._sequence_tree.clearSelection()
 
         assert len(received) == 1
         assert received[0] is None

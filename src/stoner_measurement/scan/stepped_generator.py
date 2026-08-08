@@ -18,6 +18,7 @@ from qtpy.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QTableWidget,
@@ -27,6 +28,11 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.scan.base import BaseScanGenerator
+from stoner_measurement.ui.generator_json import (
+    load_generator_json,
+    save_generator_json,
+    set_generator_file_button_icons,
+)
 from stoner_measurement.ui.widgets import SISpinBox
 
 _SPINBOX_MAX_ABS = 1e9
@@ -419,10 +425,17 @@ class SteppedScanWidget(QWidget):
         stages_layout.addWidget(self._table)
 
         btn_layout = QHBoxLayout()
-        self._add_btn = QPushButton("Add Stage")
-        self._remove_btn = QPushButton("Remove Stage")
-        btn_layout.addWidget(self._add_btn)
-        btn_layout.addWidget(self._remove_btn)
+        self._new_btn = QPushButton("New/Clear")
+        self._load_btn = QPushButton("Load")
+        self._save_btn = QPushButton("Save")
+        self._add_btn = QPushButton("+ Stage")
+        self._remove_btn = QPushButton("− Stage")
+        set_generator_file_button_icons(self, self._new_btn, self._load_btn, self._save_btn)
+        btn_layout.addWidget(self._new_btn)
+        btn_layout.addWidget(self._load_btn)
+        btn_layout.addWidget(self._save_btn)
+        btn_layout.addWidget(self._add_btn, 1)
+        btn_layout.addWidget(self._remove_btn, 1)
         stages_layout.addLayout(btn_layout)
 
         self._tabs.addTab(stages_widget, "Stages")
@@ -484,12 +497,42 @@ class SteppedScanWidget(QWidget):
     def _connect_signals(self) -> None:
         """Wire control signals to parameter setters and plot refresh."""
         self._start_spin.valueChanged.connect(self._on_start_changed)
+        self._new_btn.clicked.connect(self._clear_stages)
+        self._load_btn.clicked.connect(self._load_from_json)
+        self._save_btn.clicked.connect(self._save_to_json)
         self._add_btn.clicked.connect(self._add_default_row)
         self._remove_btn.clicked.connect(self._remove_selected_row)
         self._generator.values_changed.connect(self._refresh_plot)
         self._generator.current_point_changed.connect(self._on_current_point_changed)
         self._generator.units_changed.connect(self._update_units)
         self._update_units(self._generator.units)
+
+    def _clear_stages(self) -> None:
+        """Remove every stage while preserving the current start value."""
+        self._generator.stages = []
+        self.refresh()
+
+    def _load_from_json(self) -> None:
+        """Load a stepped-scan configuration selected by the user."""
+        data = load_generator_json(self, "Load stepped scan")
+        if data is None:
+            return
+        if data.get("type") != "SteppedScanGenerator":
+            QMessageBox.warning(self, "Unable to load configuration", "The file is not a stepped scan.")
+            return
+        try:
+            loaded = SteppedScanGenerator._from_json_data(data)
+        except (TypeError, ValueError) as exc:
+            QMessageBox.warning(self, "Unable to load configuration", str(exc))
+            return
+        self._generator.start = loaded.start
+        self._generator.stages = loaded.stages
+        self._generator.units = loaded.units
+        self.refresh()
+
+    def _save_to_json(self) -> None:
+        """Save the current stepped-scan configuration to a user-selected file."""
+        save_generator_json(self, "Save stepped scan", self._generator.to_json())
 
     def _update_units(self, units: str) -> None:
         """Update the suffix of all value spinboxes to match *units*."""

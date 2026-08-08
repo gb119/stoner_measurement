@@ -13,6 +13,7 @@ Notes:
 from __future__ import annotations
 
 import ast
+import json
 import logging
 import sys
 import textwrap
@@ -21,26 +22,39 @@ from typing import Any
 import numpy as np
 import pyqtgraph as pg
 from qtpy import QtGui
-from qtpy.QtCore import QObject
+from qtpy.QtCore import QObject, QSettings, QSize, Qt
 from qtpy.QtWidgets import (
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
+    QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan.base import BaseScanGenerator
 from stoner_measurement.ui.editor_widget import EditorWidget
 from stoner_measurement.ui.widgets import SISpinBox
 
 _MAX_NUM_POINTS = 10_000
+_PRESET_ICON_SIZE = QSize(96, 40)
+_PRESET_SETTINGS_PREFIX = "scan/arbitrary_function/user_preset_"
 _DEFAULT_SCAN_CODE = textwrap.dedent("""\
     def scan(ix, omega):
         \"\"\"Example arbitrary scan: one sine period over the scan length.\"\"\"
         return np.sin(ix * omega)
     """)
+_FIXED_PRESET_CODE = (
+    "def scan(ix, omega):\n"
+    '    """Example arbitrary scan: one sine period over the scan length."""\n'
+    "    t=ix*omega\n"
+    "    max_field=3\n"
+    "    return max_field*np.sin(10*t)*(1-np.exp(-t**2/10))\n"
+)
 _FORBIDDEN_AST_NODES: tuple[type[ast.AST], ...] = (
     ast.AsyncFor,
     ast.AsyncFunctionDef,
@@ -50,6 +64,36 @@ _FORBIDDEN_AST_NODES: tuple[type[ast.AST], ...] = (
     ast.Lambda,
     ast.Nonlocal,
 )
+
+
+def _preset_settings() -> QSettings:
+    """Return the persistent application store used for user function presets."""
+    return QSettings(
+        QSettings.Format.IniFormat,
+        QSettings.Scope.UserScope,
+        "University of Leeds",
+        "Stoner Measurement",
+    )
+
+
+class _ArbitraryPresetButton(QPushButton):
+    """Push button that reports Ctrl-click separately from an ordinary click."""
+
+    control_clicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        """Store a preset on Ctrl-left-release without also recalling it."""
+        is_control_click = (
+            event.button() == Qt.MouseButton.LeftButton
+            and bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+            and self.rect().contains(event.pos())
+        )
+        if is_control_click:
+            self.setDown(False)
+            self.control_clicked.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class ArbitraryFunctionScanGenerator(BaseScanGenerator):
@@ -288,6 +332,32 @@ class ArbitraryFunctionScanWidget(QWidget):
         root_layout.addWidget(namespace_label)
         root_layout.addWidget(self._editor)
 
+        # --- Fixed and user presets ---
+        preset_layout = QHBoxLayout()
+        preset_layout.setContentsMargins(0, 0, 0, 0)
+        self._preset_buttons: list[_ArbitraryPresetButton] = []
+
+        fixed_button = _ArbitraryPresetButton()
+        fixed_button.setIcon(self._fixed_preset_icon())
+        fixed_button.setIconSize(_PRESET_ICON_SIZE)
+        fixed_button.setToolTip("Apply damped oscillation example (1000 points)")
+        fixed_button.clicked.connect(lambda: self._apply_preset(_FIXED_PRESET_CODE, 1000))
+        self._add_preset_button(preset_layout, fixed_button)
+
+        for slot in range(1, 6):
+            button = _ArbitraryPresetButton(str(slot))
+            button.setToolTip(
+                f"User preset {slot}: click to recall; Ctrl-click to store code and points"
+            )
+            button.clicked.connect(
+                lambda _checked=False, user_slot=slot: self._recall_user_preset(user_slot)
+            )
+            button.control_clicked.connect(
+                lambda user_slot=slot: self._store_user_preset(user_slot)
+            )
+            self._add_preset_button(preset_layout, button)
+        root_layout.addLayout(preset_layout)
+
         # --- Preview plot ---
         self._plot_widget = pg.PlotWidget()
 
@@ -316,6 +386,77 @@ class ArbitraryFunctionScanWidget(QWidget):
         root_layout.addWidget(self._plot_widget)
 
         self.setLayout(root_layout)
+
+    def _add_preset_button(
+        self,
+        layout: QHBoxLayout,
+        button: _ArbitraryPresetButton,
+    ) -> None:
+        """Add one consistently sized button to the preset row."""
+        button.setMinimumHeight(_PRESET_ICON_SIZE.height() + 8)
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addWidget(button)
+        self._preset_buttons.append(button)
+
+    @staticmethod
+    def _fixed_preset_icon() -> QtGui.QIcon:
+        """Render a clear five-oscillation version of the fixed waveform."""
+        t_values = np.linspace(0.0, 2.0 * np.pi, 1000)
+        values = 3.0 * np.sin(5.0 * t_values) * (1.0 - np.exp(-(t_values**2) / 10.0))
+        pixmap = QtGui.QPixmap(_PRESET_ICON_SIZE)
+        pixmap.fill(QtGui.QColor("black"))
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtGui.QPen(QtGui.QColor("yellow"), 2.0))
+        width = float(pixmap.width() - 8)
+        height = float(pixmap.height() - 8)
+        value_min = float(np.min(values))
+        value_range = max(float(np.max(values)) - value_min, 1e-15)
+        path = QtGui.QPainterPath()
+        for index, value in enumerate(values):
+            x = 4.0 + width * index / max(len(values) - 1, 1)
+            y = 4.0 + height * (1.0 - (float(value) - value_min) / value_range)
+            if index == 0:
+                path.moveTo(x, y)
+            else:
+                path.lineTo(x, y)
+        painter.drawPath(path)
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _apply_preset(self, code: str, num_points: int) -> None:
+        """Apply preset source and point count, then refresh editor and preview."""
+        self._generator.num_points = num_points
+        self._generator.code = code
+        self.refresh()
+
+    def _store_user_preset(self, slot: int) -> None:
+        """Persist the current source and point count in user *slot*."""
+        settings = _preset_settings()
+        settings.setValue(
+            f"{_PRESET_SETTINGS_PREFIX}{slot}",
+            json.dumps(
+                {
+                    "code": self._generator.code,
+                    "num_points": self._generator.num_points,
+                },
+                sort_keys=True,
+            ),
+        )
+        settings.sync()
+
+    def _recall_user_preset(self, slot: int) -> None:
+        """Recall user *slot* when it contains valid source and point data."""
+        raw_value = _preset_settings().value(f"{_PRESET_SETTINGS_PREFIX}{slot}")
+        if not isinstance(raw_value, str):
+            return
+        try:
+            preset = json.loads(raw_value)
+            if not isinstance(preset, dict) or not {"code", "num_points"} <= preset.keys():
+                return
+            self._apply_preset(str(preset["code"]), int(preset["num_points"]))
+        except (TypeError, ValueError):
+            return
 
     def _connect_signals(self) -> None:
         """Wire control signals to generator updates and plot refresh."""
