@@ -18,12 +18,15 @@ from qtpy.QtCore import QObject
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
+    QLabel,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.scan.base import BaseScanGenerator
+from stoner_measurement.ui.aspect_ratio_widget import MaximumAspectRatioWidget
 from stoner_measurement.ui.widgets import SISpinBox
 
 _SPINBOX_MAX_ABS = 1e9
@@ -142,7 +145,9 @@ class RampScanGenerator(BaseScanGenerator):
         if mode is RampMode.LINEAR:
             return self._linear_values()
 
-        if base <= 0.0 or (mode in (RampMode.EXPONENTIAL, RampMode.LOGARITHMIC) and abs(base - 1.0) < _BASE_EPS):
+        if base <= 0.0 or (
+            mode in (RampMode.EXPONENTIAL, RampMode.LOGARITHMIC) and abs(base - 1.0) < _BASE_EPS
+        ):
             return self._linear_values()
         if mode is RampMode.POWER and abs(base) < _BASE_EPS:
             return self._linear_values()
@@ -176,10 +181,7 @@ class RampScanGenerator(BaseScanGenerator):
 
     def _representation_details(self) -> str:
         """Return the ramp shape, range, and point count."""
-        return (
-            f"{self._mode.value}, {self._start:g} to {self._end:g}, "
-            f"{self._num_points} points"
-        )
+        return f"{self._mode.value}, {self._start:g} to {self._end:g}, {self._num_points} points"
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`RampScanWidget` configured for this generator."""
@@ -233,33 +235,50 @@ class RampScanWidget(QWidget):
         root_layout = QVBoxLayout(self)
 
         controls_box = QGroupBox("Parameters")
-        form = QFormLayout(controls_box)
+        controls_layout = QVBoxLayout(controls_box)
 
-        self._start_spin = SISpinBox()
-        self._start_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
-        self._start_spin.setValue(self._generator.start)
-        form.addRow("Start:", self._start_spin)
-
-        self._end_spin = SISpinBox()
-        self._end_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
-        self._end_spin.setValue(self._generator.end)
-        form.addRow("End:", self._end_spin)
-
-        self._points_spin = SISpinBox(int=True)
-        self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
-        self._points_spin.setValue(self._generator.num_points)
-        form.addRow("Points:", self._points_spin)
-
+        mode_form = QFormLayout()
         self._mode_combo = QComboBox()
         for mode in RampMode:
             self._mode_combo.addItem(mode.value, mode)
         self._mode_combo.setCurrentIndex(list(RampMode).index(self._generator.mode))
-        form.addRow("Mode:", self._mode_combo)
+        mode_form.addRow("Mode:", self._mode_combo)
+        controls_layout.addLayout(mode_form)
+
+        self._parameter_grid = QGridLayout()
+        self._parameter_grid.setColumnStretch(1, 1)
+        self._parameter_grid.setColumnStretch(3, 1)
+        controls_layout.addLayout(self._parameter_grid)
+
+        self._start_spin = SISpinBox()
+        self._start_spin.setOpts(
+            bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True
+        )
+        self._start_spin.setValue(self._generator.start)
+        self._parameter_grid.addWidget(QLabel("Start:"), 0, 0)
+        self._parameter_grid.addWidget(self._start_spin, 0, 1)
+
+        self._end_spin = SISpinBox()
+        self._end_spin.setOpts(
+            bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True
+        )
+        self._end_spin.setValue(self._generator.end)
+        self._parameter_grid.addWidget(QLabel("End:"), 0, 2)
+        self._parameter_grid.addWidget(self._end_spin, 0, 3)
+
+        self._points_spin = SISpinBox(int=True)
+        self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
+        self._points_spin.setValue(self._generator.num_points)
+        self._parameter_grid.addWidget(QLabel("Points:"), 1, 0)
+        self._parameter_grid.addWidget(self._points_spin, 1, 1)
 
         self._base_spin = SISpinBox()
-        self._base_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True)
+        self._base_spin.setOpts(
+            bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True
+        )
         self._base_spin.setValue(self._generator.base)
-        form.addRow("Base:", self._base_spin)
+        self._parameter_grid.addWidget(QLabel("Base:"), 1, 2)
+        self._parameter_grid.addWidget(self._base_spin, 1, 3)
 
         root_layout.addWidget(controls_box)
 
@@ -277,7 +296,13 @@ class RampScanWidget(QWidget):
             axis.setTextPen(pg.mkPen("white"))
             axis.setTickFont(font)
             axis.setLabel(
-                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+                label,
+                **{
+                    "font-size": "11pt",
+                    "font-family": "Arial",
+                    "font-weight": "bold",
+                    "color": "white",
+                },
             )
             axis.setPen(axis_pen)
         self._curve = self._plot_widget.plot(pen=pg.mkPen(color="yellow", width=2.5))
@@ -288,7 +313,8 @@ class RampScanWidget(QWidget):
             size=12,
         )
         self._plot_widget.addItem(self._current_marker)
-        root_layout.addWidget(self._plot_widget)
+        self._plot_container = MaximumAspectRatioWidget(self._plot_widget)
+        root_layout.addWidget(self._plot_container, 1)
         self.setLayout(root_layout)
 
     def _connect_signals(self) -> None:

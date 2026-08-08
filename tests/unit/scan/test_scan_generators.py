@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from qtpy.QtCore import QSettings, Qt
-from qtpy.QtWidgets import QWidget
+from qtpy.QtWidgets import QSizePolicy, QWidget
 
 import stoner_measurement.scan.function_generator as function_generator_module
 from stoner_measurement.scan import (
@@ -232,7 +232,9 @@ class TestFunctionScanGenerator:
 
     def test_generate_cosine_via_phase_shift(self, qapp):
         """SINE at 90° phase gives cosine behaviour: first sample = amplitude."""
-        gen = FunctionScanGenerator(waveform=WaveformType.SINE, amplitude=2.0, offset=0.0, phase=90.0)
+        gen = FunctionScanGenerator(
+            waveform=WaveformType.SINE, amplitude=2.0, offset=0.0, phase=90.0
+        )
         arr = gen.generate()
         assert abs(arr[0] - 2.0) < 1e-9
 
@@ -263,7 +265,9 @@ class TestFunctionScanGenerator:
     def test_generate_applies_amplitude(self, qapp):
         # Use a phase of 90° so the first sample lands exactly at the peak
         # (sin(π/2) = 1), giving an exact value without relying on dense sampling.
-        gen = FunctionScanGenerator(waveform=WaveformType.SINE, amplitude=5.0, offset=0.0, phase=90.0)
+        gen = FunctionScanGenerator(
+            waveform=WaveformType.SINE, amplitude=5.0, offset=0.0, phase=90.0
+        )
         arr = gen.generate()
         assert abs(arr[0] - 5.0) < 1e-9
 
@@ -423,14 +427,18 @@ class TestFunctionScanGenerator:
     def test_generate_half_period(self, qapp):
         """0.5 periods of sine: starts at 0, peaks at midpoint, ends near 0."""
         gen = FunctionScanGenerator(
-            waveform=WaveformType.SINE, amplitude=1.0, offset=0.0, phase=0.0,
-            periods=0.5, num_points=101
+            waveform=WaveformType.SINE,
+            amplitude=1.0,
+            offset=0.0,
+            phase=0.0,
+            periods=0.5,
+            num_points=101,
         )
         arr = gen.generate()
         assert len(arr) == 101
-        assert abs(arr[0]) < 1e-9         # sin(0) = 0
+        assert abs(arr[0]) < 1e-9  # sin(0) = 0
         assert abs(arr[50] - 1.0) < 1e-9  # peak at midpoint: sin(π/2) = 1
-        assert abs(arr[-1]) < 1e-9        # sin(π) ≈ 0
+        assert abs(arr[-1]) < 1e-9  # sin(π) ≈ 0
 
     def test_generate_two_periods_length(self, qapp):
         gen = FunctionScanGenerator(num_points=50, periods=2.0)
@@ -440,8 +448,12 @@ class TestFunctionScanGenerator:
     def test_generate_two_periods_sine_symmetry(self, qapp):
         """Two periods of sine: the midpoint and endpoint are both ≈ 0."""
         gen = FunctionScanGenerator(
-            waveform=WaveformType.SINE, amplitude=1.0, offset=0.0, phase=0.0,
-            periods=2.0, num_points=201
+            waveform=WaveformType.SINE,
+            amplitude=1.0,
+            offset=0.0,
+            phase=0.0,
+            periods=2.0,
+            num_points=201,
         )
         arr = gen.generate()
         # Midpoint is at 2π (start of second period): sin(2π) = 0
@@ -676,6 +688,39 @@ class TestFunctionScanWidget:
         assert all(not button.icon().isNull() for button in widget._preset_buttons[:3])
         assert [button.text() for button in widget._preset_buttons[3:]] == ["1", "2", "3"]
 
+    def test_parameter_controls_use_requested_two_column_grid(self, qapp):
+        widget = FunctionScanWidget(generator=FunctionScanGenerator())
+        expected_positions = {
+            widget._amplitude_spin: (0, 1),
+            widget._offset_spin: (0, 3),
+            widget._points_spin: (1, 1),
+            widget._periods_spin: (1, 3),
+            widget._phase_spin: (2, 1),
+            widget._exponent_spin: (2, 3),
+        }
+        for control, expected_position in expected_positions.items():
+            index = widget._parameter_grid.indexOf(control)
+            row, column, _row_span, _column_span = widget._parameter_grid.getItemPosition(index)
+            assert (row, column) == expected_position
+
+    def test_preset_buttons_are_compact_and_fixed_width(self, qapp):
+        widget = FunctionScanWidget(generator=FunctionScanGenerator())
+        for button in widget._preset_buttons:
+            assert button.size().width() == 64
+            assert button.size().height() == 44
+            assert button.sizePolicy().horizontalPolicy() is QSizePolicy.Policy.Fixed
+
+    def test_preview_caps_height_at_four_by_three_when_space_is_available(self, qapp):
+        widget = FunctionScanWidget(generator=FunctionScanGenerator())
+        widget.resize(800, 1200)
+        widget.show()
+        qapp.processEvents()
+        assert widget._plot_container.height() > widget._plot_widget.height()
+        assert widget._plot_widget.width() / widget._plot_widget.height() == pytest.approx(
+            4.0 / 3.0,
+            abs=0.01,
+        )
+
     def test_user_preset_ctrl_click_stores_and_ordinary_click_recalls(
         self,
         qapp,
@@ -703,9 +748,15 @@ class TestFunctionScanWidget:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.ControlModifier,
         )
+        stored_tooltip = widget._preset_buttons[3].toolTip()
+        assert "Sawtooth" in stored_tooltip
+        assert "77 points" in stored_tooltip
+        assert "2.5 periods" in stored_tooltip
+        assert "amplitude 0.025" in stored_tooltip
 
         recalled = FunctionScanGenerator()
         recalled_widget = FunctionScanWidget(generator=recalled)
+        assert recalled_widget._preset_buttons[3].toolTip() == stored_tooltip
         recalled_widget._preset_buttons[3].click()
         assert recalled.waveform is WaveformType.SAWTOOTH
         assert recalled.amplitude == pytest.approx(0.025)
@@ -756,5 +807,4 @@ class TestFunctionScanWidget:
 
 
 if __name__ == "__main__":
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

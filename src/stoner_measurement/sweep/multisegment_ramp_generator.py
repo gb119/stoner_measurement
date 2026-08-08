@@ -13,7 +13,7 @@ from typing import Any
 
 import pyqtgraph as pg
 from qtpy import QtGui
-from qtpy.QtCore import QObject
+from qtpy.QtCore import QObject, Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -23,12 +23,16 @@ from qtpy.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTableWidget,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.sweep.base import BaseSweepGenerator
+from stoner_measurement.ui.aspect_ratio_widget import (
+    ContentWrappingTabWidget,
+    MaximumAspectRatioWidget,
+    set_table_visible_row_count,
+)
 from stoner_measurement.ui.generator_json import (
     load_generator_json,
     save_generator_json,
@@ -311,7 +315,9 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         }
 
     @classmethod
-    def _from_json_data(cls, data: dict[str, Any], *, state_sweep=None, parent: QObject | None = None):
+    def _from_json_data(
+        cls, data: dict[str, Any], *, state_sweep=None, parent: QObject | None = None
+    ):
         """Reconstruct a generator instance from serialised data.
 
         Args:
@@ -326,7 +332,10 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
             (MultiSegmentRampSweepGenerator):
                 Reconstructed generator instance.
         """
-        segments = [(float(target), float(rate), bool(measure)) for target, rate, measure in data.get("segments", [])]
+        segments = [
+            (float(target), float(rate), bool(measure))
+            for target, rate, measure in data.get("segments", [])
+        ]
         return cls(
             start=float(data.get("start", 0.0)),
             segments=segments,
@@ -340,7 +349,9 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
 class MultiSegmentRampSweepWidget(QWidget):
     """Configuration widget for MultiSegmentRampSweepGenerator."""
 
-    def __init__(self, generator: MultiSegmentRampSweepGenerator, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, generator: MultiSegmentRampSweepGenerator, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self._generator = generator
         self._segment_curves: list = []
@@ -350,11 +361,12 @@ class MultiSegmentRampSweepWidget(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        tabs = QTabWidget(self)
-        root.addWidget(tabs)
+        self._tabs = ContentWrappingTabWidget(self)
+        root.addWidget(self._tabs, alignment=Qt.AlignmentFlag.AlignTop)
 
         config_widget = QWidget(self)
         config_layout = QVBoxLayout(config_widget)
+        config_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         form = QFormLayout()
         self._start_spin = SISpinBox()
@@ -377,7 +389,10 @@ class MultiSegmentRampSweepWidget(QWidget):
         self._table.setHorizontalHeaderLabels(["Target", "Rate", "Measure"])
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.ResizeToContents
+        )
+        set_table_visible_row_count(self._table, 8)
         config_layout.addWidget(self._table)
 
         controls = QHBoxLayout()
@@ -398,7 +413,7 @@ class MultiSegmentRampSweepWidget(QWidget):
         controls.addWidget(self._add_btn, 1)
         controls.addWidget(self._remove_btn, 1)
         config_layout.addLayout(controls)
-        tabs.addTab(config_widget, "Segments")
+        self._tabs.addTab(config_widget, "Segments")
 
         preview_widget = QWidget(self)
         preview_layout = QVBoxLayout(preview_widget)
@@ -415,7 +430,13 @@ class MultiSegmentRampSweepWidget(QWidget):
             axis.setTextPen(pg.mkPen("white"))
             axis.setTickFont(font)
             axis.setLabel(
-                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+                label,
+                **{
+                    "font-size": "11pt",
+                    "font-family": "Arial",
+                    "font-weight": "bold",
+                    "color": "white",
+                },
             )
             axis.setPen(axis_pen)
 
@@ -426,9 +447,12 @@ class MultiSegmentRampSweepWidget(QWidget):
             size=12,
         )
         self._preview.addItem(self._current_marker)
-        preview_layout.addWidget(self._preview)
-        preview_layout.addWidget(QLabel("Preview uses green/red segment lines for measure true/false.", self))
-        tabs.addTab(preview_widget, "Preview")
+        self._preview_container = MaximumAspectRatioWidget(self._preview)
+        preview_layout.addWidget(self._preview_container)
+        preview_layout.addWidget(
+            QLabel("Preview uses green/red segment lines for measure true/false.", self)
+        )
+        self._tabs.addTab(preview_widget, "Preview")
 
         self._generator.values_changed.connect(self._clear_current_marker)
         self._generator.current_point_changed.connect(self._on_current_point_changed)

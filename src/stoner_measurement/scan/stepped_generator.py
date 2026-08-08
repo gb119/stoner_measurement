@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pyqtgraph as pg
 from qtpy import QtGui
-from qtpy.QtCore import QObject
+from qtpy.QtCore import QObject, Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -22,12 +22,16 @@ from qtpy.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTableWidget,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.scan.base import BaseScanGenerator
+from stoner_measurement.ui.aspect_ratio_widget import (
+    ContentWrappingTabWidget,
+    MaximumAspectRatioWidget,
+    set_table_visible_row_count,
+)
 from stoner_measurement.ui.generator_json import (
     load_generator_json,
     save_generator_json,
@@ -138,7 +142,9 @@ class SteppedScanGenerator(BaseScanGenerator):
                 target, step, measure = stage
                 step_value = float(step)
                 if step_value < 0:
-                    raise ValueError(f"Step size must be non-negative; stage {i} has step={step!r}.")
+                    raise ValueError(
+                        f"Step size must be non-negative; stage {i} has step={step!r}."
+                    )
                 target_value = float(target)
                 num_steps = self._step_count_from_step_size(current, target_value, step_value)
                 stages.append((target_value, num_steps, bool(measure)))
@@ -404,16 +410,19 @@ class SteppedScanWidget(QWidget):
     def _build_ui(self) -> None:
         """Build the tab widget with Stages and Preview tabs."""
         root_layout = QVBoxLayout(self)
-        self._tabs = QTabWidget()
-        root_layout.addWidget(self._tabs)
+        self._tabs = ContentWrappingTabWidget()
+        root_layout.addWidget(self._tabs, alignment=Qt.AlignmentFlag.AlignTop)
 
         # --- Stages tab ---
         stages_widget = QWidget()
         stages_layout = QVBoxLayout(stages_widget)
+        stages_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         start_form = QFormLayout()
         self._start_spin = SISpinBox()
-        self._start_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True)
+        self._start_spin.setOpts(
+            bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True
+        )
         self._start_spin.setValue(self._generator.start)
         self._start_spin.setToolTip("Initial scan value")
         start_form.addRow("Start:", self._start_spin)
@@ -422,6 +431,7 @@ class SteppedScanWidget(QWidget):
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Target", "Step Size", "Steps", "Measure"])
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        set_table_visible_row_count(self._table, 8)
         stages_layout.addWidget(self._table)
 
         btn_layout = QHBoxLayout()
@@ -457,7 +467,13 @@ class SteppedScanWidget(QWidget):
             axis.setTextPen(pg.mkPen("white"))
             axis.setTickFont(font)
             axis.setLabel(
-                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+                label,
+                **{
+                    "font-size": "11pt",
+                    "font-family": "Arial",
+                    "font-weight": "bold",
+                    "color": "white",
+                },
             )
             axis.setPen(axis_pen)
         self._green_scatter = pg.ScatterPlotItem(
@@ -481,7 +497,8 @@ class SteppedScanWidget(QWidget):
         self._plot_widget.addItem(self._green_scatter)
         self._plot_widget.addItem(self._red_scatter)
         self._plot_widget.addItem(self._current_marker)
-        preview_layout.addWidget(self._plot_widget)
+        self._plot_container = MaximumAspectRatioWidget(self._plot_widget)
+        preview_layout.addWidget(self._plot_container)
         self._tabs.addTab(preview_widget, "Preview")
 
         self.setLayout(root_layout)
@@ -518,7 +535,9 @@ class SteppedScanWidget(QWidget):
         if data is None:
             return
         if data.get("type") != "SteppedScanGenerator":
-            QMessageBox.warning(self, "Unable to load configuration", "The file is not a stepped scan.")
+            QMessageBox.warning(
+                self, "Unable to load configuration", "The file is not a stepped scan."
+            )
             return
         try:
             loaded = SteppedScanGenerator._from_json_data(data)
@@ -562,8 +581,11 @@ class SteppedScanWidget(QWidget):
 
             target_spin = SISpinBox()
             target_spin.setOpts(
-                bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4,
-                siPrefix=True, suffix=self._generator.units,
+                bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS),
+                step=0.1,
+                decimals=4,
+                siPrefix=True,
+                suffix=self._generator.units,
             )
             target_spin.setValue(float(target))
             target_spin.valueChanged.connect(self._on_table_changed)
@@ -571,8 +593,11 @@ class SteppedScanWidget(QWidget):
 
             step_spin = SISpinBox()
             step_spin.setOpts(
-                bounds=(_MIN_STEP, _SPINBOX_MAX_ABS), step=0.1, decimals=4,
-                siPrefix=True, suffix=self._generator.units,
+                bounds=(_MIN_STEP, _SPINBOX_MAX_ABS),
+                step=0.1,
+                decimals=4,
+                siPrefix=True,
+                suffix=self._generator.units,
             )
             step_spin.setValue(float(step))
             step_spin.valueChanged.connect(self._on_step_size_changed)

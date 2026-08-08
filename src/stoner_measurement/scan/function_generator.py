@@ -18,8 +18,10 @@ from qtpy.QtCore import QObject, QSettings, QSize, Qt
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -28,12 +30,14 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan.base import BaseScanGenerator
+from stoner_measurement.ui.aspect_ratio_widget import MaximumAspectRatioWidget
 from stoner_measurement.ui.widgets import SISpinBox
 
 # Shared spin-box limits used across the widget controls.
 _SPINBOX_MAX_ABS = 1e6
 _MAX_NUM_POINTS = 10_000
-_PRESET_ICON_SIZE = QSize(96, 40)
+_PRESET_ICON_SIZE = QSize(54, 36)
+_PRESET_BUTTON_SIZE = QSize(64, 44)
 _PRESET_SETTINGS_PREFIX = "scan/function_generator/user_preset_"
 _PRESET_PARAMETER_KEYS = (
     "waveform",
@@ -461,49 +465,68 @@ class FunctionScanWidget(QWidget):
 
         # --- Controls group box ---
         controls_box = QGroupBox("Parameters")
-        form = QFormLayout(controls_box)
+        controls_layout = QVBoxLayout(controls_box)
+        waveform_form = QFormLayout()
 
         self._waveform_combo = QComboBox()
         for wt in WaveformType:
             self._waveform_combo.addItem(wt.value, wt)
         self._waveform_combo.setCurrentIndex(list(WaveformType).index(self._generator.waveform))
-        form.addRow("Waveform:", self._waveform_combo)
+        waveform_form.addRow("Waveform:", self._waveform_combo)
+        controls_layout.addLayout(waveform_form)
+
+        self._parameter_grid = QGridLayout()
+        self._parameter_grid.setColumnStretch(1, 1)
+        self._parameter_grid.setColumnStretch(3, 1)
+        controls_layout.addLayout(self._parameter_grid)
 
         self._amplitude_spin = SISpinBox()
-        self._amplitude_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True)
+        self._amplitude_spin.setOpts(
+            bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True
+        )
         self._amplitude_spin.setValue(self._generator.amplitude)
         self._amplitude_spin.setToolTip("Peak-to-centre amplitude")
-        form.addRow("Amplitude:", self._amplitude_spin)
+        self._parameter_grid.addWidget(QLabel("Amplitude:"), 0, 0)
+        self._parameter_grid.addWidget(self._amplitude_spin, 0, 1)
 
         self._offset_spin = SISpinBox()
-        self._offset_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True)
+        self._offset_spin.setOpts(
+            bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True
+        )
         self._offset_spin.setValue(self._generator.offset)
         self._offset_spin.setToolTip("DC offset")
-        form.addRow("Offset:", self._offset_spin)
+        self._parameter_grid.addWidget(QLabel("Offset:"), 0, 2)
+        self._parameter_grid.addWidget(self._offset_spin, 0, 3)
 
         self._phase_spin = SISpinBox()
         self._phase_spin.setOpts(bounds=(-360.0, 360.0), step=1.0, decimals=2)
         self._phase_spin.setValue(self._generator.phase)
         self._phase_spin.setToolTip("Phase shift in degrees")
-        form.addRow("Phase (°):", self._phase_spin)
+        self._parameter_grid.addWidget(QLabel("Phase (°):"), 2, 0)
+        self._parameter_grid.addWidget(self._phase_spin, 2, 1)
 
         self._exponent_spin = SISpinBox()
-        self._exponent_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4)
+        self._exponent_spin.setOpts(
+            bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4
+        )
         self._exponent_spin.setValue(self._generator.exponent)
         self._exponent_spin.setToolTip("Power-law exponent before scaling")
-        form.addRow("Exponent:", self._exponent_spin)
+        self._parameter_grid.addWidget(QLabel("Exponent:"), 2, 2)
+        self._parameter_grid.addWidget(self._exponent_spin, 2, 3)
 
         self._points_spin = SISpinBox(int=True)
         self._points_spin.setOpts(bounds=(2, _MAX_NUM_POINTS))
         self._points_spin.setValue(self._generator.num_points)
         self._points_spin.setToolTip("Number of points in the sequence")
-        form.addRow("Points:", self._points_spin)
+        self._parameter_grid.addWidget(QLabel("Points:"), 1, 0)
+        self._parameter_grid.addWidget(self._points_spin, 1, 1)
 
         self._periods_spin = SISpinBox()
         self._periods_spin.setOpts(bounds=(0.01, 1000.0), step=0.5, decimals=2)
         self._periods_spin.setValue(self._generator.periods)
         self._periods_spin.setToolTip("Number of complete periods in the scan")
-        form.addRow("Periods:", self._periods_spin)
+        self._parameter_grid.addWidget(QLabel("Periods:"), 1, 2)
+        self._parameter_grid.addWidget(self._periods_spin, 1, 3)
 
         root_layout.addWidget(controls_box)
 
@@ -511,6 +534,7 @@ class FunctionScanWidget(QWidget):
         preset_layout = QHBoxLayout()
         preset_layout.setContentsMargins(0, 0, 0, 0)
         self._preset_buttons: list[_PresetButton] = []
+        self._user_preset_buttons: dict[int, _PresetButton] = {}
         built_in_presets = (
             {
                 "waveform": WaveformType.SQUARE.value,
@@ -546,16 +570,11 @@ class FunctionScanWidget(QWidget):
             button.setIcon(self._waveform_preset_icon(preset))
             button.setIconSize(_PRESET_ICON_SIZE)
             button.setToolTip(f"Apply {waveform.value.lower()} wave preset")
-            button.clicked.connect(
-                lambda _checked=False, values=preset: self._apply_preset(values)
-            )
+            button.clicked.connect(lambda _checked=False, values=preset: self._apply_preset(values))
             self._add_preset_button(preset_layout, button)
 
         for slot in range(1, 4):
             button = _PresetButton(str(slot))
-            button.setToolTip(
-                f"User preset {slot}: click to recall; Ctrl-click to store current settings"
-            )
             button.clicked.connect(
                 lambda _checked=False, user_slot=slot: self._recall_user_preset(user_slot)
             )
@@ -563,6 +582,9 @@ class FunctionScanWidget(QWidget):
                 lambda user_slot=slot: self._store_user_preset(user_slot)
             )
             self._add_preset_button(preset_layout, button)
+            self._user_preset_buttons[slot] = button
+            self._update_user_preset_tooltip(slot)
+        preset_layout.addStretch(1)
         root_layout.addLayout(preset_layout)
 
         # --- Preview plot ---
@@ -579,7 +601,13 @@ class FunctionScanWidget(QWidget):
             axis.setTextPen(pg.mkPen("white"))
             axis.setTickFont(font)
             axis.setLabel(
-                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+                label,
+                **{
+                    "font-size": "11pt",
+                    "font-family": "Arial",
+                    "font-weight": "bold",
+                    "color": "white",
+                },
             )
             axis.setPen(axis_pen)
         self._curve = self._plot_widget.plot(pen=pg.mkPen(color="yellow", width=2.5))
@@ -590,14 +618,15 @@ class FunctionScanWidget(QWidget):
             size=12,
         )
         self._plot_widget.addItem(self._current_marker)
-        root_layout.addWidget(self._plot_widget)
+        self._plot_container = MaximumAspectRatioWidget(self._plot_widget)
+        root_layout.addWidget(self._plot_container, 1)
 
         self.setLayout(root_layout)
 
     def _add_preset_button(self, layout: QHBoxLayout, button: _PresetButton) -> None:
         """Add one consistently sized button to the preset row."""
-        button.setMinimumHeight(_PRESET_ICON_SIZE.height() + 8)
-        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        button.setFixedSize(_PRESET_BUTTON_SIZE)
+        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         layout.addWidget(button)
         self._preset_buttons.append(button)
 
@@ -659,21 +688,60 @@ class FunctionScanWidget(QWidget):
             json.dumps(self._current_preset(), sort_keys=True),
         )
         settings.sync()
+        self._update_user_preset_tooltip(slot)
 
-    def _recall_user_preset(self, slot: int) -> None:
-        """Recall user *slot* when it contains a complete, valid preset."""
+    def _load_user_preset(self, slot: int) -> dict[str, object] | None:
+        """Return a validated user preset from persistent storage."""
         raw_value = _preset_settings().value(f"{_PRESET_SETTINGS_PREFIX}{slot}")
         if not isinstance(raw_value, str):
-            return
+            return None
         try:
             preset = json.loads(raw_value)
             if not isinstance(preset, dict) or not all(
                 key in preset for key in _PRESET_PARAMETER_KEYS
             ):
-                return
-            self._apply_preset(preset)
+                return None
+            return {
+                "waveform": WaveformType(str(preset["waveform"])).value,
+                "amplitude": float(preset["amplitude"]),
+                "offset": float(preset["offset"]),
+                "phase": float(preset["phase"]),
+                "exponent": float(preset["exponent"]),
+                "periods": float(preset["periods"]),
+                "num_points": int(preset["num_points"]),
+            }
         except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _user_preset_summary(preset: dict[str, object]) -> str:
+        """Return a concise human-readable waveform preset summary."""
+        return (
+            f"{preset['waveform']}; {int(preset['num_points'])} points; "
+            f"{float(preset['periods']):g} periods; "
+            f"amplitude {float(preset['amplitude']):g}; "
+            f"offset {float(preset['offset']):g}; "
+            f"phase {float(preset['phase']):g}°; "
+            f"exponent {float(preset['exponent']):g}"
+        )
+
+    def _update_user_preset_tooltip(self, slot: int) -> None:
+        """Show storage instructions or a summary for user *slot*."""
+        button = self._user_preset_buttons[slot]
+        preset = self._load_user_preset(slot)
+        if preset is None:
+            button.setToolTip(f"User preset {slot}: empty; Ctrl-click to store current settings")
             return
+        button.setToolTip(
+            f"User preset {slot}: {self._user_preset_summary(preset)}. "
+            "Click to recall; Ctrl-click to replace"
+        )
+
+    def _recall_user_preset(self, slot: int) -> None:
+        """Recall user *slot* when it contains a complete, valid preset."""
+        preset = self._load_user_preset(slot)
+        if preset is not None:
+            self._apply_preset(preset)
 
     def _connect_signals(self) -> None:
         """Wire control signals to parameter setters and plot refresh."""
@@ -731,9 +799,7 @@ class FunctionScanWidget(QWidget):
 
     def refresh(self) -> None:
         """Reload widget state from the bound generator."""
-        self._waveform_combo.setCurrentIndex(
-            list(WaveformType).index(self._generator.waveform)
-        )
+        self._waveform_combo.setCurrentIndex(list(WaveformType).index(self._generator.waveform))
         self._amplitude_spin.setValue(self._generator.amplitude)
         self._offset_spin.setValue(self._generator.offset)
         self._phase_spin.setValue(self._generator.phase)

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QObject
+from qtpy.QtCore import QObject, Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -19,12 +19,16 @@ from qtpy.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTableWidget,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.scan.base import BaseScanGenerator
+from stoner_measurement.ui.aspect_ratio_widget import (
+    ContentWrappingTabWidget,
+    MaximumAspectRatioWidget,
+    set_table_visible_row_count,
+)
 from stoner_measurement.ui.generator_json import (
     load_generator_json,
     save_generator_json,
@@ -259,16 +263,18 @@ class ListScanWidget(QWidget):
     def _build_ui(self) -> None:
         """Build the tab widget with Points and Preview tabs."""
         root_layout = QVBoxLayout(self)
-        self._tabs = QTabWidget()
-        root_layout.addWidget(self._tabs)
+        self._tabs = ContentWrappingTabWidget()
+        root_layout.addWidget(self._tabs, alignment=Qt.AlignmentFlag.AlignTop)
 
         # --- Points tab ---
         points_widget = QWidget()
         points_layout = QVBoxLayout(points_widget)
+        points_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self._table = QTableWidget(0, 2)
         self._table.setHorizontalHeaderLabels(["Target", "Measure"])
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        set_table_visible_row_count(self._table, 8)
         points_layout.addWidget(self._table)
 
         btn_layout = QHBoxLayout()
@@ -307,7 +313,8 @@ class ListScanWidget(QWidget):
         )
         self._plot_widget.addItem(self._green_scatter)
         self._plot_widget.addItem(self._red_scatter)
-        preview_layout.addWidget(self._plot_widget)
+        self._plot_container = MaximumAspectRatioWidget(self._plot_widget)
+        preview_layout.addWidget(self._plot_container)
         self._tabs.addTab(preview_widget, "Preview")
 
         self.setLayout(root_layout)
@@ -343,7 +350,9 @@ class ListScanWidget(QWidget):
         if data is None:
             return
         if data.get("type") != "ListScanGenerator":
-            QMessageBox.warning(self, "Unable to load configuration", "The file is not a list scan.")
+            QMessageBox.warning(
+                self, "Unable to load configuration", "The file is not a list scan."
+            )
             return
         try:
             loaded = ListScanGenerator._from_json_data(data)
@@ -379,8 +388,13 @@ class ListScanWidget(QWidget):
             self._table.insertRow(row)
 
             target_spin = SISpinBox()
-            target_spin.setOpts(bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True,
-                                suffix=self._generator.units)
+            target_spin.setOpts(
+                bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS),
+                step=0.1,
+                decimals=4,
+                siPrefix=True,
+                suffix=self._generator.units,
+            )
             target_spin.setValue(float(target))
             target_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)

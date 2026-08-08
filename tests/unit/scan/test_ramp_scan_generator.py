@@ -30,9 +30,15 @@ class TestRampScanGenerator:
             assert values[-1] == pytest.approx(7.0)
 
     def test_nonlinear_invalid_base_falls_back_to_linear(self, qapp):
-        exp_gen = RampScanGenerator(start=0.0, end=4.0, num_points=10, mode=RampMode.EXPONENTIAL, base=1.0)
-        log_gen = RampScanGenerator(start=0.0, end=4.0, num_points=10, mode=RampMode.LOGARITHMIC, base=1.0)
-        pow_gen = RampScanGenerator(start=0.0, end=4.0, num_points=10, mode=RampMode.POWER, base=0.0)
+        exp_gen = RampScanGenerator(
+            start=0.0, end=4.0, num_points=10, mode=RampMode.EXPONENTIAL, base=1.0
+        )
+        log_gen = RampScanGenerator(
+            start=0.0, end=4.0, num_points=10, mode=RampMode.LOGARITHMIC, base=1.0
+        )
+        pow_gen = RampScanGenerator(
+            start=0.0, end=4.0, num_points=10, mode=RampMode.POWER, base=0.0
+        )
         expected = np.linspace(0.0, 4.0, 10)
         assert np.allclose(exp_gen.generate(), expected)
         assert np.allclose(log_gen.generate(), expected)
@@ -76,6 +82,30 @@ class TestRampScanWidget:
     def test_is_qwidget(self, qapp):
         widget = RampScanWidget(generator=RampScanGenerator())
         assert isinstance(widget, QWidget)
+
+    def test_controls_use_requested_two_column_grid(self, qapp):
+        widget = RampScanWidget(generator=RampScanGenerator())
+        expected_positions = {
+            widget._start_spin: (0, 1),
+            widget._end_spin: (0, 3),
+            widget._points_spin: (1, 1),
+            widget._base_spin: (1, 3),
+        }
+        for control, expected_position in expected_positions.items():
+            index = widget._parameter_grid.indexOf(control)
+            row, column, _row_span, _column_span = widget._parameter_grid.getItemPosition(index)
+            assert (row, column) == expected_position
+
+    def test_preview_caps_height_at_four_by_three_when_space_is_available(self, qapp):
+        widget = RampScanWidget(generator=RampScanGenerator())
+        widget.resize(800, 1200)
+        widget.show()
+        qapp.processEvents()
+        assert widget._plot_container.height() > widget._plot_widget.height()
+        assert widget._plot_widget.width() / widget._plot_widget.height() == pytest.approx(
+            4.0 / 3.0,
+            abs=0.01,
+        )
 
     def test_start_spinbox_updates_generator(self, qapp):
         gen = RampScanGenerator(start=0.0)
@@ -160,5 +190,4 @@ class TestRampScanWidget:
 
 
 if __name__ == "__main__":
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

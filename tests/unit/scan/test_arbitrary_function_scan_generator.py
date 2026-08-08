@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import pytest
 from qtpy.QtCore import QSettings, Qt
-from qtpy.QtWidgets import QLabel, QWidget
+from qtpy.QtWidgets import QLabel, QSizePolicy, QWidget
 
 import stoner_measurement.scan.arbitrary_function_generator as arbitrary_function_module
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
@@ -65,7 +65,9 @@ class TestArbitraryFunctionScanGenerator:
 
         captured = capsys.readouterr()
         assert np.isnan(values[2])
-        assert any("Error evaluating arbitrary scan function at ix=2" in r.getMessage() for r in records)
+        assert any(
+            "Error evaluating arbitrary scan function at ix=2" in r.getMessage() for r in records
+        )
         assert "Error evaluating arbitrary scan function at ix=2" in captured.err
 
     def test_compile_error_reporting(self, qapp, capsys):
@@ -123,7 +125,9 @@ class TestArbitraryFunctionScanGenerator:
         logger = logging.getLogger(SEQUENCE_LOGGER_NAME)
         logger.addHandler(handler)
         try:
-            code = "def scan(ix, omega):\n    log.info('hello from ix=%d', ix)\n    return float(ix)\n"
+            code = (
+                "def scan(ix, omega):\n    log.info('hello from ix=%d', ix)\n    return float(ix)\n"
+            )
             gen = ArbitraryFunctionScanGenerator(num_points=3, code=code)
             gen.generate()
         finally:
@@ -229,6 +233,28 @@ class TestArbitraryFunctionScanWidget:
             "5",
         ]
 
+    def test_editor_prefers_at_least_five_lines(self, qapp):
+        widget = ArbitraryFunctionScanWidget(generator=ArbitraryFunctionScanGenerator())
+        assert widget._editor.minimumHeight() >= 5 * widget._editor.fontMetrics().lineSpacing()
+
+    def test_preset_buttons_are_compact_and_fixed_width(self, qapp):
+        widget = ArbitraryFunctionScanWidget(generator=ArbitraryFunctionScanGenerator())
+        for button in widget._preset_buttons:
+            assert button.size().width() == 64
+            assert button.size().height() == 44
+            assert button.sizePolicy().horizontalPolicy() is QSizePolicy.Policy.Fixed
+
+    def test_preview_caps_height_at_four_by_three_when_space_is_available(self, qapp):
+        widget = ArbitraryFunctionScanWidget(generator=ArbitraryFunctionScanGenerator())
+        widget.resize(800, 1200)
+        widget.show()
+        qapp.processEvents()
+        assert widget._plot_container.height() > widget._plot_widget.height()
+        assert widget._plot_widget.width() / widget._plot_widget.height() == pytest.approx(
+            4.0 / 3.0,
+            abs=0.01,
+        )
+
     def test_user_preset_ctrl_click_stores_and_ordinary_click_recalls(
         self,
         qapp,
@@ -249,9 +275,13 @@ class TestArbitraryFunctionScanWidget:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.ControlModifier,
         )
+        stored_tooltip = widget._preset_buttons[1].toolTip()
+        assert "321 points" in stored_tooltip
+        assert "return np.cos(3 * ix * omega)" in stored_tooltip
 
         recalled = ArbitraryFunctionScanGenerator()
         recalled_widget = ArbitraryFunctionScanWidget(generator=recalled)
+        assert recalled_widget._preset_buttons[1].toolTip() == stored_tooltip
         recalled_widget._preset_buttons[1].click()
         assert recalled.code == stored_code
         assert recalled.num_points == 321

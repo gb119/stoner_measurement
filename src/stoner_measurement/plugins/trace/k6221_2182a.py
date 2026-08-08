@@ -501,9 +501,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         var = self.instance_name
         values: dict[str, str] = {}
-        response_column = (
-            "G" if self._differential_mode and self._differential_conductance else "R"
-        )
+        response_column = "G" if self._differential_mode and self._differential_conductance else "R"
         columns = ["V", response_column, "P"]
         if self._secondary_enabled:
             columns.extend(self._secondary_column_names())
@@ -1938,14 +1936,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             "wiring and adjusts timing estimation; it does not change meter trigger commands."
         )
 
-        connection_row = QWidget()
-        connection_layout = QHBoxLayout(connection_row)
-        connection_layout.setContentsMargins(0, 0, 0, 0)
-        connection_layout.addWidget(QLabel("Driver:"))
-        connection_layout.addWidget(driver_combo)
-        connection_layout.addWidget(QLabel("GPIB resource:"))
-        connection_layout.addWidget(resource)
-        form.addRow("Connection:", connection_row)
+        form.addRow("Driver:", driver_combo)
+        form.addRow("GPIB resource:", resource)
         form.addRow("Channel prefix:", prefix)
         form.addRow("Trigger wiring:", trigger_mode)
 

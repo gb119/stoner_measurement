@@ -42,7 +42,9 @@ class _FiniteSweepGenerator(BaseSweepGenerator):
     def to_json(self) -> dict:
         return {
             "type": "_FiniteSweepGenerator",
-            "points": [[ix, value, stage, measure_flag] for ix, value, stage, measure_flag in self._points],
+            "points": [
+                [ix, value, stage, measure_flag] for ix, value, stage, measure_flag in self._points
+            ],
         }
 
 
@@ -104,7 +106,9 @@ class TestStateSweepPlugin:
 
     def test_next_returns_false_when_exhausted(self, qapp):
         plugin = _TestSweepPlugin()
-        plugin.sweep_generator = _FiniteSweepGenerator(points=[(0, 1.0, 0, True)], state_sweep=plugin, parent=plugin)
+        plugin.sweep_generator = _FiniteSweepGenerator(
+            points=[(0, 1.0, 0, True)], state_sweep=plugin, parent=plugin
+        )
         plugin._begin_sweep()
         assert next(plugin) is True
         assert plugin.ix == 0
@@ -240,7 +244,9 @@ class TestStateSweepPlugin:
 
     def test_generate_action_code_does_not_wrap_substeps_in_measure_flag_if(self, qapp):
         plugin = _TestSweepPlugin()
-        lines = plugin.generate_action_code(1, ["dummy_step"], lambda s, i: ["        sub_step_line()"])
+        lines = plugin.generate_action_code(
+            1, ["dummy_step"], lambda s, i: ["        sub_step_line()"]
+        )
         assert not any("if testsweep.meas_flag:" in line for line in lines)
         assert "        sub_step_line()" in lines
 
@@ -295,7 +301,9 @@ class TestStateSweepPlugin:
             points=[(0, 1.0, 0, True), (1, 2.5, 0, True)], state_sweep=plugin, parent=plugin
         )
         emitted: list[tuple[int, float, int]] = []
-        plugin.sweep_generator.current_point_changed.connect(lambda index, value, stage: emitted.append((index, value, stage)))
+        plugin.sweep_generator.current_point_changed.connect(
+            lambda index, value, stage: emitted.append((index, value, stage))
+        )
         plugin._begin_sweep()
         next(plugin)
         next(plugin)
@@ -358,6 +366,7 @@ class TestStateSweepPlugin:
 
     def test_limits_inherited_from_state_plugin(self, qapp):
         from stoner_measurement.plugins.state import StatePlugin
+
         plugin = _TestSweepPlugin()
         assert isinstance(plugin, StatePlugin)
         assert plugin.limits == (float("-inf"), float("inf"))
@@ -365,6 +374,7 @@ class TestStateSweepPlugin:
     def test_state_signals_inherited_from_state_plugin(self, qapp):
         from stoner_measurement.plugins.state import StatePlugin
         from stoner_measurement.plugins.state_scan import StateScanPlugin
+
         # Both families share signals from StatePlugin
         assert hasattr(StatePlugin, "state_changed")
         assert hasattr(StatePlugin, "state_reached")
@@ -418,7 +428,9 @@ class TestSweepGenerators:
 
     def test_monitor_and_filter_empty_expression_timeout_triggers(self, qapp):
         plugin = _TestSweepPlugin()
-        gen = MonitorAndFilterSweepGenerator(rows=[("", False, 1.0)], timeout=0.0, poll_seconds=0.0, state_sweep=plugin)
+        gen = MonitorAndFilterSweepGenerator(
+            rows=[("", False, 1.0)], timeout=0.0, poll_seconds=0.0, state_sweep=plugin
+        )
         it = iter(gen)
         ix, value, stage, measure = next(it)
         assert ix == -1
@@ -474,6 +486,7 @@ class TestSweepGenerators:
 
     def test_multisegment_estimated_duration_zero_rate_returns_inf(self, qapp):
         import math
+
         gen = MultiSegmentRampSweepGenerator(
             start=0.0,
             segments=[(1.0, 0.0, True)],
@@ -503,6 +516,28 @@ class TestSweepGenerators:
         ]
         assert all(not button.icon().isNull() for button in buttons[:3])
         assert [button.toolTip() for button in buttons[:3]] == ["New/Clear", "Load", "Save"]
+
+    def test_multisegment_table_shows_eight_rows_before_scrolling(self, qapp):
+        segments = [(float(index), 0.1, True) for index in range(9)]
+        widget = MultiSegmentRampSweepGenerator(segments=segments).config_widget()
+        expected_height = (
+            widget._table.horizontalHeader().height()
+            + 8 * widget._table.verticalHeader().defaultSectionSize()
+            + 2 * widget._table.frameWidth()
+        )
+        widget.show()
+        qapp.processEvents()
+        assert widget._table.height() == expected_height
+        assert widget._table.verticalScrollBar().isVisible()
+
+    def test_multisegment_tabs_wrap_four_by_three_preview_height(self, qapp):
+        widget = MultiSegmentRampSweepGenerator().config_widget()
+        widget.resize(800, 1200)
+        widget.show()
+        widget._tabs.setCurrentIndex(1)
+        qapp.processEvents()
+        assert widget._tabs.height() < widget.height()
+        assert abs(widget._preview.width() / widget._preview.height() - (4.0 / 3.0)) < 0.01
 
     def test_multisegment_new_clear_removes_all_segments_but_preserves_settings(self, qapp):
         gen = MultiSegmentRampSweepGenerator(
@@ -560,6 +595,7 @@ class TestSweepGenerators:
 
     def test_monitor_and_filter_estimated_duration_is_inf(self, qapp):
         import math
+
         gen = MonitorAndFilterSweepGenerator()
         assert math.isinf(gen.estimated_duration())
 

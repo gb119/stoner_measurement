@@ -37,11 +37,13 @@ from qtpy.QtWidgets import (
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan.base import BaseScanGenerator
+from stoner_measurement.ui.aspect_ratio_widget import MaximumAspectRatioWidget
 from stoner_measurement.ui.editor_widget import EditorWidget
 from stoner_measurement.ui.widgets import SISpinBox
 
 _MAX_NUM_POINTS = 10_000
-_PRESET_ICON_SIZE = QSize(96, 40)
+_PRESET_ICON_SIZE = QSize(54, 36)
+_PRESET_BUTTON_SIZE = QSize(64, 44)
 _PRESET_SETTINGS_PREFIX = "scan/arbitrary_function/user_preset_"
 _DEFAULT_SCAN_CODE = textwrap.dedent("""\
     def scan(ix, omega):
@@ -181,8 +183,12 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         """Validate AST safety and required function shape."""
         for node in ast.walk(tree):
             if isinstance(node, _FORBIDDEN_AST_NODES):
-                return getattr(node, "lineno", None), (f"Unsupported statement in scan code: {type(node).__name__}.")
-        scan_functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "scan"]
+                return getattr(node, "lineno", None), (
+                    f"Unsupported statement in scan code: {type(node).__name__}."
+                )
+        scan_functions = [
+            node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "scan"
+        ]
         if len(scan_functions) != 1:
             return 1, "Code must define exactly one function named scan(ix, omega)."
         scan_function = scan_functions[0]
@@ -216,9 +222,9 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             "log": sequence_logger,
         }
         # pylint: disable=exec-used
-        exec(
-            compile(self._code, "<scan_code>", "exec"), namespace
-        )  # noqa: S102 – full builtins intentional; matches curve_fit plugin contract
+        compiled_code = compile(self._code, "<scan_code>", "exec")
+        # Full builtins are intentional and match the curve_fit plugin contract.
+        exec(compiled_code, namespace)  # noqa: S102
         scan = namespace.get("scan")
         return scan if callable(scan) else None
 
@@ -251,7 +257,9 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
             try:
                 values[ix] = float(scan_function(ix, omega))
             except Exception as exc:
-                self._report_scan_exception(f"Error evaluating arbitrary scan function at ix={ix}", exc)
+                self._report_scan_exception(
+                    f"Error evaluating arbitrary scan function at ix={ix}", exc
+                )
                 values[ix] = np.nan
         return values
 
@@ -318,6 +326,12 @@ class ArbitraryFunctionScanWidget(QWidget):
 
         self._editor = EditorWidget(self)
         self._editor.set_text(self._generator.code)
+        editor_frame = 2 * self._editor.frameWidth()
+        editor_margins = self._editor.contentsMargins()
+        five_lines = 5 * self._editor.fontMetrics().lineSpacing()
+        self._editor.setMinimumHeight(
+            five_lines + editor_frame + editor_margins.top() + editor_margins.bottom()
+        )
         if self._generator.syntax_error_line is not None and self._generator.syntax_error_message:
             self._editor.set_syntax_error(
                 self._generator.syntax_error_line,
@@ -336,6 +350,7 @@ class ArbitraryFunctionScanWidget(QWidget):
         preset_layout = QHBoxLayout()
         preset_layout.setContentsMargins(0, 0, 0, 0)
         self._preset_buttons: list[_ArbitraryPresetButton] = []
+        self._user_preset_buttons: dict[int, _ArbitraryPresetButton] = {}
 
         fixed_button = _ArbitraryPresetButton()
         fixed_button.setIcon(self._fixed_preset_icon())
@@ -346,9 +361,6 @@ class ArbitraryFunctionScanWidget(QWidget):
 
         for slot in range(1, 6):
             button = _ArbitraryPresetButton(str(slot))
-            button.setToolTip(
-                f"User preset {slot}: click to recall; Ctrl-click to store code and points"
-            )
             button.clicked.connect(
                 lambda _checked=False, user_slot=slot: self._recall_user_preset(user_slot)
             )
@@ -356,6 +368,9 @@ class ArbitraryFunctionScanWidget(QWidget):
                 lambda user_slot=slot: self._store_user_preset(user_slot)
             )
             self._add_preset_button(preset_layout, button)
+            self._user_preset_buttons[slot] = button
+            self._update_user_preset_tooltip(slot)
+        preset_layout.addStretch(1)
         root_layout.addLayout(preset_layout)
 
         # --- Preview plot ---
@@ -372,7 +387,13 @@ class ArbitraryFunctionScanWidget(QWidget):
             axis.setTextPen(pg.mkPen("white"))
             axis.setTickFont(font)
             axis.setLabel(
-                label, **{"font-size": "11pt", "font-family": "Arial", "font-weight": "bold", "color": "white"}
+                label,
+                **{
+                    "font-size": "11pt",
+                    "font-family": "Arial",
+                    "font-weight": "bold",
+                    "color": "white",
+                },
             )
             axis.setPen(axis_pen)
         self._curve = self._plot_widget.plot(pen=pg.mkPen(color="yellow", width=2.5))
@@ -383,7 +404,8 @@ class ArbitraryFunctionScanWidget(QWidget):
             size=12,
         )
         self._plot_widget.addItem(self._current_marker)
-        root_layout.addWidget(self._plot_widget)
+        self._plot_container = MaximumAspectRatioWidget(self._plot_widget)
+        root_layout.addWidget(self._plot_container, 1)
 
         self.setLayout(root_layout)
 
@@ -393,8 +415,8 @@ class ArbitraryFunctionScanWidget(QWidget):
         button: _ArbitraryPresetButton,
     ) -> None:
         """Add one consistently sized button to the preset row."""
-        button.setMinimumHeight(_PRESET_ICON_SIZE.height() + 8)
-        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        button.setFixedSize(_PRESET_BUTTON_SIZE)
+        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         layout.addWidget(button)
         self._preset_buttons.append(button)
 
@@ -444,19 +466,67 @@ class ArbitraryFunctionScanWidget(QWidget):
             ),
         )
         settings.sync()
+        self._update_user_preset_tooltip(slot)
 
-    def _recall_user_preset(self, slot: int) -> None:
-        """Recall user *slot* when it contains valid source and point data."""
+    def _load_user_preset(self, slot: int) -> dict[str, object] | None:
+        """Return a validated user preset from persistent storage."""
         raw_value = _preset_settings().value(f"{_PRESET_SETTINGS_PREFIX}{slot}")
         if not isinstance(raw_value, str):
-            return
+            return None
         try:
             preset = json.loads(raw_value)
             if not isinstance(preset, dict) or not {"code", "num_points"} <= preset.keys():
-                return
-            self._apply_preset(str(preset["code"]), int(preset["num_points"]))
+                return None
+            return {
+                "code": str(preset["code"]),
+                "num_points": int(preset["num_points"]),
+            }
         except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _scan_code_summary(code: str) -> str:
+        """Summarise scan source using its docstring or first body statement."""
+        try:
+            tree = ast.parse(code)
+            scan_function = next(
+                node
+                for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "scan"
+            )
+            docstring = ast.get_docstring(scan_function)
+            if docstring:
+                summary = docstring.splitlines()[0].strip()
+            elif scan_function.body:
+                summary = ast.unparse(scan_function.body[0])
+            else:
+                summary = "empty scan function"
+        except (SyntaxError, StopIteration):
+            summary = next(
+                (line.strip() for line in code.splitlines() if line.strip()),
+                "empty scan function",
+            )
+        summary = " ".join(summary.split())
+        return f"{summary[:77]}..." if len(summary) > 80 else summary
+
+    def _update_user_preset_tooltip(self, slot: int) -> None:
+        """Show storage instructions or a summary for user *slot*."""
+        button = self._user_preset_buttons[slot]
+        preset = self._load_user_preset(slot)
+        if preset is None:
+            button.setToolTip(f"User preset {slot}: empty; Ctrl-click to store code and points")
             return
+        summary = self._scan_code_summary(str(preset["code"]))
+        button.setToolTip(
+            f"User preset {slot}: {int(preset['num_points'])} points; {summary}. "
+            "Click to recall; Ctrl-click to replace"
+        )
+
+    def _recall_user_preset(self, slot: int) -> None:
+        """Recall user *slot* when it contains valid source and point data."""
+        preset = self._load_user_preset(slot)
+        if preset is not None:
+            self._apply_preset(str(preset["code"]), int(preset["num_points"]))
 
     def _connect_signals(self) -> None:
         """Wire control signals to generator updates and plot refresh."""

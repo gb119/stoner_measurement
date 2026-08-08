@@ -281,6 +281,31 @@ class TestListScanWidget:
         assert widget._tabs.tabText(0) == "Points"
         assert widget._tabs.tabText(1) == "Preview"
 
+    def test_table_height_shows_eight_rows_before_scrolling(self, qapp):
+        stages = [(float(index), True) for index in range(9)]
+        widget = ListScanWidget(generator=ListScanGenerator(stages=stages))
+        expected_height = (
+            widget._table.horizontalHeader().height()
+            + 8 * widget._table.verticalHeader().defaultSectionSize()
+            + 2 * widget._table.frameWidth()
+        )
+        widget.show()
+        qapp.processEvents()
+        assert widget._table.height() == expected_height
+        assert widget._table.verticalScrollBar().isVisible()
+
+    def test_tabs_wrap_four_by_three_preview_height(self, qapp):
+        widget = ListScanWidget(generator=ListScanGenerator())
+        widget.resize(800, 1200)
+        widget.show()
+        widget._tabs.setCurrentIndex(1)
+        qapp.processEvents()
+        assert widget._tabs.height() < widget.height()
+        assert widget._plot_widget.width() / widget._plot_widget.height() == pytest.approx(
+            4.0 / 3.0,
+            abs=0.01,
+        )
+
     # ------------------------------------------------------------------
     # Add / remove rows
     # ------------------------------------------------------------------
@@ -509,5 +534,4 @@ class TestListScanWidget:
 
 
 if __name__ == "__main__":
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

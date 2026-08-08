@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from qtpy.QtWidgets import QCheckBox, QComboBox, QGroupBox, QSpinBox
+from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QGroupBox, QSpinBox
 
 from stoner_measurement.instruments.keithley.k182 import Keithley182
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
@@ -83,6 +83,24 @@ def test_secondary_page_uses_driver_capabilities(managed_qt_widget):
     ]
     assert widget.findChild(QCheckBox, "secondary_autozero").isEnabled() is False
     assert widget.findChild(QCheckBox, "secondary_line_sync").isEnabled() is False
+
+
+def test_secondary_driver_and_resource_use_separate_form_rows(managed_qt_widget):
+    plugin = Keithley2400SweepPlugin()
+    settings = managed_qt_widget(plugin._plugin_config_tabs())
+    controls = settings.findChild(QGroupBox, "secondary_controls")
+    form = controls.layout()
+    assert isinstance(form, QFormLayout)
+
+    rows_by_label = {}
+    for row in range(form.rowCount()):
+        label_item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+        field_item = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+        if label_item is not None and field_item is not None:
+            rows_by_label[label_item.widget().text()] = field_item.widget()
+
+    assert rows_by_label["Driver:"] is settings.findChild(QComboBox, "secondary_driver")
+    assert rows_by_label["GPIB resource:"].objectName() == "secondary_resource"
 
 
 def test_connect_opens_and_identifies_secondary_meter():

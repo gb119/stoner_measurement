@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from qtpy.QtWidgets import QCheckBox, QComboBox, QGroupBox, QLabel, QLineEdit
+from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QGroupBox, QLabel, QLineEdit
 
 from stoner_measurement.instruments.keithley.k182 import Keithley182
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
@@ -94,6 +94,24 @@ def test_secondary_page_master_switch_enables_controls(qapp):
     wiring = widget.findChild(QComboBox, "secondary_trigger_mode")
     wiring.setCurrentIndex(wiring.findData(SecondaryTriggerMode.DAISY_CHAIN))
     assert plugin._secondary_trigger_mode is SecondaryTriggerMode.DAISY_CHAIN
+
+
+def test_secondary_driver_and_resource_use_separate_form_rows(qapp):
+    plugin = Keithley6221_2182APlugin()
+    settings = plugin._plugin_config_tabs()
+    controls = settings.findChild(QGroupBox, "secondary_controls")
+    form = controls.layout()
+    assert isinstance(form, QFormLayout)
+
+    rows_by_label = {}
+    for row in range(form.rowCount()):
+        label_item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+        field_item = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+        if label_item is not None and field_item is not None:
+            rows_by_label[label_item.widget().text()] = field_item.widget()
+
+    assert rows_by_label["Driver:"] is settings.findChild(QComboBox, "secondary_driver")
+    assert rows_by_label["GPIB resource:"].objectName() == "secondary_resource"
 
 
 def test_keithley_182_selection_exposes_only_supported_settings(qapp):
