@@ -319,8 +319,8 @@ class TestDisconnectLifecycle:
 class TestConfigUi:
     """UI structure for the Keithley 2400 trace-plugin configuration."""
 
-    def test_settings_tab_contains_basic_and_advanced_nested_tabs(self, qtbot):
-        """Settings should expose nested Basic/Advanced tabs."""
+    def test_settings_tab_contains_basic_advanced_and_secondary_tabs(self, qtbot):
+        """Settings should expose the three nested configuration pages."""
         plugin = _make_plugin()
         tabs = plugin.config_tabs()
         settings_widget = tabs[1][1]
@@ -330,7 +330,10 @@ class TestConfigUi:
         inner_tabs = next(
             tab
             for tab in nested_tabs
-            if tab.count() == 2 and tab.tabText(0) == "Basic" and tab.tabText(1) == "Advanced"
+            if tab.count() == 3
+            and tab.tabText(0) == "Basic"
+            and tab.tabText(1) == "Advanced"
+            and tab.tabText(2) == "Secondary nanovoltmeter"
         )
         assert inner_tabs is not None
 

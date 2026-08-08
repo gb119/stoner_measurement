@@ -323,9 +323,9 @@ class TestKeithley2400:
 
     def test_check_error_queue_accepts_plain_no_error_message(self):
         t = _null(responses=[b'0,"No error"\n'])
-        assert Keithley2400(transport=t).check_error_queue(
-            raise_on_error=False
-        ) == ((0, "No error"),)
+        assert Keithley2400(transport=t).check_error_queue(raise_on_error=False) == (
+            (0, "No error"),
+        )
 
     def test_buffer_size_validation(self):
         with pytest.raises(ValueError, match="positive"):
@@ -373,6 +373,34 @@ class TestKeithley2400:
         assert caps.has_source_delay
         assert caps.has_trigger_model
         assert caps.has_buffer
+
+    def test_configure_trigger_link_source_handshake(self):
+        transport = _null()
+        driver = Keithley2400(transport=transport)
+
+        driver.configure_trigger_link_source_handshake(input_line=1, output_line=2)
+
+        assert transport.write_log == [
+            b":TRIG:CLE\n",
+            b":TRIG:SOUR TLIN\n",
+            b":TRIG:DIR SOUR\n",
+            b":TRIG:INP SOUR\n",
+            b":TRIG:ILIN 1\n",
+            b":TRIG:OUTP SOUR\n",
+            b":TRIG:OLIN 2\n",
+        ]
+
+    @pytest.mark.parametrize(("input_line", "output_line"), [(0, 2), (1, 7)])
+    def test_trigger_link_source_handshake_rejects_invalid_lines(self, input_line, output_line):
+        transport = _null()
+        driver = Keithley2400(transport=transport)
+
+        with pytest.raises(ValueError, match="range 1..6"):
+            driver.configure_trigger_link_source_handshake(
+                input_line=input_line, output_line=output_line
+            )
+
+        assert transport.write_log == []
 
 
 class TestKeithley24xxVariants:

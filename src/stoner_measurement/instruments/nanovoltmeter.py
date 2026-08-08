@@ -10,7 +10,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 
@@ -45,6 +45,23 @@ class NanovoltmeterCapabilities:
     has_trigger: bool = False
     has_buffer: bool = False
     supported_functions: tuple[NanovoltmeterFunction, ...] = (NanovoltmeterFunction.VOLT,)
+    fixed_voltage_ranges: tuple[float, ...] = ()
+    nplc_values: tuple[float, ...] = ()
+    digit_values: tuple[int, ...] = ()
+    filter_types: tuple[str, ...] = ()
+    default_nplc: float | None = None
+    default_digits: int | None = None
+    default_filter_type: str | None = None
+    counted_filter_types: tuple[str, ...] = ()
+    analog_filter_time_multiplier: float = 1.0
+    supports_filter_count: bool = False
+    supports_analog_filter: bool = False
+    supports_relative: bool = False
+    supports_line_sync: bool = False
+    supports_autozero: bool = False
+    supports_safe_reset: bool = True
+    relative_limits: tuple[float, float] | None = None
+    max_buffer_points: int | None = None
 
 
 class Nanovoltmeter(BaseInstrument):
@@ -77,6 +94,8 @@ class Nanovoltmeter(BaseInstrument):
         >>> nvm.measure_voltage()
         1.23e-06
     """
+
+    CAPABILITIES: ClassVar[NanovoltmeterCapabilities] = NanovoltmeterCapabilities()
 
     def __init__(
         self,

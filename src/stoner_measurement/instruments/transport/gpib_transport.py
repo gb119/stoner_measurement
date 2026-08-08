@@ -102,10 +102,11 @@ class GpibTransport(BaseTransport):
         self.board = board
         self._resource: pyvisa.resources.GPIBInstrument | None = None
         self._rm: pyvisa.ResourceManager | None = None
-        self._read_termination: str = _DEFAULT_GPIB_READ_TERMINATOR
+        self._read_termination: str | None = _DEFAULT_GPIB_READ_TERMINATOR
         self._poll_time: float = poll_time or _DEFAULT_READ_POLL
         self._use_mav = use_mav
         self._command_complete_mask = command_complete_mask
+        self._status_error_mask: int | None = 0x04
 
     @classmethod
     def from_resource_string(
@@ -242,7 +243,7 @@ class GpibTransport(BaseTransport):
         if slow is not None:
             sleep(slow / 1000)
         rc = self._resource.read_stb()
-        if rc & 4:
+        if self._status_error_mask is not None and rc & self._status_error_mask:
             raise InstrumentError(f"Bad return status byte from {data.decode()}: STB={rc}")
         return rc
 
@@ -348,12 +349,16 @@ class GpibTransport(BaseTransport):
             "gpib_terminator",
             getattr(protocol, "terminator", _DEFAULT_GPIB_READ_TERMINATOR),
         )
-        if isinstance(terminator, bytes):
+        if terminator is None:
+            self._read_termination = None
+        elif isinstance(terminator, bytes):
             self._read_termination = terminator.decode("latin-1")
         else:
             self._read_termination = str(terminator)
         if self._resource is not None:
             self._resource.read_termination = self._read_termination
+        self._status_error_mask = getattr(protocol, "status_error_mask", 0x04)
+        self._use_mav = bool(getattr(protocol, "gpib_use_mav", self._use_mav))
         logger.info(
             f"Termination sort for {self._resource} {self._read_termination=} {terminator=}"
         )

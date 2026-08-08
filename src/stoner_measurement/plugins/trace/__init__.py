@@ -22,6 +22,7 @@ from stoner_measurement.plugins.trace.k6221_2182a import (
     ConnectionMode,
     DigitalFilterType,
     Keithley6221_2182APlugin,
+    SecondaryTriggerMode,
     SourceRangeMode,
 )
 from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
@@ -58,6 +59,7 @@ __all__ = [
     "SweepSourceMode",
     "TriggerRouting",
     "LockInOutput",
+    "SecondaryTriggerMode",
     "SourceRangeMode",
     "TracePlugin",
     "TraceStatus",

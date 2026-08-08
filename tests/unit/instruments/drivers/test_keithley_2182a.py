@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from stoner_measurement.instruments.keithley import Keithley182, Keithley2182A
+from stoner_measurement.instruments.keithley import Keithley2182A
 from stoner_measurement.instruments.nanovoltmeter import (
     NanovoltmeterCapabilities,
     NanovoltmeterFunction,
@@ -127,14 +127,15 @@ class TestKeithley2182A:
         assert caps.has_filter
         assert caps.has_trigger
         assert caps.has_buffer
-
-
-class TestKeithley2182Variants:
-    def test_keithley182_inherits_2182a_behaviour(self):
-        t = _null()
-        k = Keithley182(transport=t)
-        k.abort()
-        assert t.write_log[-1] == b":ABOR\n"
+        assert caps.fixed_voltage_ranges == (0.01, 0.1, 1.0, 10.0, 100.0, 120.0)
+        assert caps.nplc_values == (0.1, 1.0, 10.0)
+        assert caps.digit_values == (4, 5, 6, 7, 8)
+        assert caps.filter_types == ("OFF", "REPEAT", "WINDOW")
+        assert caps.supports_filter_count
+        assert caps.supports_line_sync
+        assert caps.supports_autozero
+        assert caps.supports_safe_reset
+        assert caps.relative_limits == (-120.0, 120.0)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Keithley 2182A/182 nanovoltmeter drivers."""
+"""Keithley 2182A SCPI nanovoltmeter driver."""
 
 from __future__ import annotations
 
@@ -439,6 +439,29 @@ class Keithley2182A(Nanovoltmeter):
         payload = self.query(":TRAC:DATA?")
         return self._parse_csv_floats(payload)
 
+    CAPABILITIES = NanovoltmeterCapabilities(
+        has_function_selection=True,
+        has_filter=True,
+        has_trigger=True,
+        has_buffer=True,
+        supported_functions=(NanovoltmeterFunction.VOLT, NanovoltmeterFunction.TEMP),
+        fixed_voltage_ranges=(0.01, 0.1, 1.0, 10.0, 100.0, 120.0),
+        nplc_values=(0.1, 1.0, 10.0),
+        digit_values=(4, 5, 6, 7, 8),
+        filter_types=("OFF", "REPEAT", "WINDOW"),
+        default_nplc=1.0,
+        default_digits=8,
+        default_filter_type="OFF",
+        counted_filter_types=("REPEAT",),
+        analog_filter_time_multiplier=2.0,
+        supports_filter_count=True,
+        supports_analog_filter=True,
+        supports_relative=True,
+        supports_line_sync=True,
+        supports_autozero=True,
+        relative_limits=(-120.0, 120.0),
+    )
+
     def get_capabilities(self) -> NanovoltmeterCapabilities:
         """Return static capability metadata for the Keithley 2182A.
 
@@ -446,14 +469,4 @@ class Keithley2182A(Nanovoltmeter):
             (NanovoltmeterCapabilities):
                 Capability descriptor.
         """
-        return NanovoltmeterCapabilities(
-            has_function_selection=True,
-            has_filter=True,
-            has_trigger=True,
-            has_buffer=True,
-            supported_functions=(NanovoltmeterFunction.VOLT, NanovoltmeterFunction.TEMP),
-        )
-
-
-class Keithley182(Keithley2182A):
-    """Driver for the Keithley 182 nanovoltmeter."""
+        return self.CAPABILITIES

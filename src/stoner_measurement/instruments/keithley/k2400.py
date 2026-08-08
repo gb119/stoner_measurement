@@ -1034,6 +1034,40 @@ class Keithley2400(SourceMeter):
         self.write(f":ARM:SOUR {config.arm_source.value}")
         self.write(f":ARM:COUN {config.arm_count}")
 
+    def configure_trigger_link_source_handshake(
+        self,
+        *,
+        input_line: int = 1,
+        output_line: int = 2,
+    ) -> None:
+        """Handshake each source step with an external Trigger Link instrument.
+
+        The first trigger-layer event is bypassed so the initial source value
+        can be applied immediately.  Every source event then emits a pulse on
+        *output_line*; subsequent source steps wait for a pulse on *input_line*.
+
+        Args:
+            input_line (int):
+                Trigger Link input line carrying measurement-complete pulses.
+            output_line (int):
+                Trigger Link output line carrying source-event pulses.
+
+        Raises:
+            ValueError:
+                If either Trigger Link line is outside the supported range 1..6.
+        """
+        if not 1 <= input_line <= 6:
+            raise ValueError("Trigger Link input line must be in the range 1..6.")
+        if not 1 <= output_line <= 6:
+            raise ValueError("Trigger Link output line must be in the range 1..6.")
+        self.write(":TRIG:CLE")
+        self.write(":TRIG:SOUR TLIN")
+        self.write(":TRIG:DIR SOUR")
+        self.write(":TRIG:INP SOUR")
+        self.write(f":TRIG:ILIN {input_line}")
+        self.write(":TRIG:OUTP SOUR")
+        self.write(f":TRIG:OLIN {output_line}")
+
     def initiate(self) -> None:
         """Arm and start the trigger model.
 

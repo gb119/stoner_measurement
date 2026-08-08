@@ -21,6 +21,8 @@ relative_value: 0.0
 digits: 8
 output_tlink: 2
 input_tlink: 1
+secondary_nanovoltmeter:
+  enabled: false
 scan_generator:
   type: FunctionScanGenerator
   waveform: Sine
