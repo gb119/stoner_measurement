@@ -7,6 +7,7 @@ compliance_resistance: 1000.0
 source_delay: 0.001
 source_range_mode: BEST
 source_range: 0.001
+differential_mode: false
 nplc: 1.0
 voltage_range: 0.0
 trigger_delay: 0.0

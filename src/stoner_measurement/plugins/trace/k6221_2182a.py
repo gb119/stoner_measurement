@@ -54,6 +54,10 @@ from stoner_measurement.instruments.transport.gpib_transport import (
     GpibTransport,
     PassThroughGpibTransport,
 )
+from stoner_measurement.plugins.trace._differential import (
+    modulate_current_sweep,
+    reduce_differential_readings,
+)
 from stoner_measurement.plugins.trace._nanovoltmeter_support import (
     NANOVOLTMETER_DRIVER_LABELS as _NANOVOLTMETER_DRIVER_LABELS,
 )
@@ -345,6 +349,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._source_delay: float = 1e-3
         self._source_range_mode: SourceRangeMode = SourceRangeMode.BEST
         self._source_range: float = 1e-3
+        self._differential_mode: bool = False
+        self._differential_conductance: bool = False
+        self._delta_current: float = 1e-6
 
         # 2182A measurement settings
         self._nplc: float = 1.0
@@ -384,6 +391,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._secondary_nanovoltmeter: Nanovoltmeter | None = None
         self._secondary_voltages: tuple[float, ...] | None = None
         self._sweep_values: np.ndarray | None = None
+        self._nominal_sweep_values: np.ndarray | None = None
         self._apply_initial_config()
 
     # ------------------------------------------------------------------
@@ -493,7 +501,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         var = self.instance_name
         values: dict[str, str] = {}
-        columns = ["V", "R", "P"]
+        response_column = (
+            "G" if self._differential_mode and self._differential_conductance else "R"
+        )
+        columns = ["V", response_column, "P"]
         if self._secondary_enabled:
             columns.extend(self._secondary_column_names())
         for column in columns:
@@ -545,51 +556,87 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             i_arr = np.array([], dtype=float)
             v_arr = np.array([], dtype=float)
 
-        with np.errstate(invalid="ignore", divide="ignore"):
-            r_arr = np.where(
-                np.abs(i_arr) > _ZERO_CURRENT_THRESHOLD,
-                v_arr / i_arr,
-                float("nan"),
+        response_name = "R"
+        response_unit = "Ω"
+        if self._differential_mode:
+            if self._nominal_sweep_values is None:
+                raise RuntimeError("Differential sweep completed without nominal scan values.")
+            reduced = reduce_differential_readings(
+                self._nominal_sweep_values,
+                v_arr,
+                self._delta_current,
+                conductance=self._differential_conductance,
             )
-        p_arr = i_arr * v_arr
+            i_arr = reduced.current
+            v_arr = reduced.voltage
+            r_arr = reduced.response
+            p_arr = reduced.power
+            if self._differential_conductance:
+                response_name = "G"
+                response_unit = "S"
+        else:
+            with np.errstate(invalid="ignore", divide="ignore"):
+                r_arr = np.where(
+                    np.abs(i_arr) > _ZERO_CURRENT_THRESHOLD,
+                    v_arr / i_arr,
+                    float("nan"),
+                )
+            p_arr = i_arr * v_arr
 
-        columns: dict[str, np.ndarray] = {"V": v_arr, "R": r_arr, "P": p_arr}
+        columns: dict[str, np.ndarray] = {"V": v_arr, response_name: r_arr, "P": p_arr}
         column_roles = {
             "V": COLUMN_ROLE_Y,
-            "R": COLUMN_ROLE_Z,
+            response_name: COLUMN_ROLE_Z,
             "P": COLUMN_ROLE_Z,
         }
         names = {
             "x": self.x_label,
             "V": "V",
-            "R": "R",
+            response_name: response_name,
             "P": "P",
         }
         units = {
             "x": self.x_units,
             "V": self.y_units,
-            "R": "Ω",
+            response_name: response_unit,
             "P": "W",
         }
 
         if self._secondary_enabled:
             secondary = np.asarray(self._secondary_voltages or (), dtype=float)
-            if len(secondary) != len(i_arr):
+            expected_secondary = (
+                len(self._sweep_values)
+                if self._differential_mode and self._sweep_values is not None
+                else len(i_arr)
+            )
+            if len(secondary) != expected_secondary:
                 raise RuntimeError(
                     "Secondary nanovoltmeter returned an unexpected number of readings."
                 )
-            with np.errstate(invalid="ignore", divide="ignore"):
-                secondary_r = np.where(
-                    np.abs(i_arr) > _ZERO_CURRENT_THRESHOLD,
-                    secondary / i_arr,
-                    float("nan"),
+            if self._differential_mode:
+                assert self._nominal_sweep_values is not None
+                secondary_reduced = reduce_differential_readings(
+                    self._nominal_sweep_values,
+                    secondary,
+                    self._delta_current,
+                    conductance=self._differential_conductance,
                 )
-            secondary_p = i_arr * secondary
-            secondary_names = self._secondary_column_names()
+                secondary = secondary_reduced.voltage
+                secondary_r = secondary_reduced.response
+                secondary_p = secondary_reduced.power
+            else:
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    secondary_r = np.where(
+                        np.abs(i_arr) > _ZERO_CURRENT_THRESHOLD,
+                        secondary / i_arr,
+                        float("nan"),
+                    )
+                secondary_p = i_arr * secondary
+            secondary_names = self._secondary_column_names(response_name=response_name)
             for column, values, unit, role in zip(
                 secondary_names,
                 (secondary, secondary_r, secondary_p),
-                (self.y_units, "Ω", "W"),
+                (self.y_units, response_unit, "W"),
                 (COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_Z),
                 strict=True,
             ):
@@ -604,10 +651,14 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         )
         return {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
 
-    def _secondary_column_names(self) -> tuple[str, str, str]:
+    def _secondary_column_names(self, *, response_name: str | None = None) -> tuple[str, str, str]:
         """Return prefixed voltage, resistance, and power column names."""
         prefix = self._secondary_prefix.strip() or "secondary"
-        return (f"{prefix} V", f"{prefix} R", f"{prefix} P")
+        if response_name is None:
+            response_name = (
+                "G" if self._differential_mode and self._differential_conductance else "R"
+            )
+        return (f"{prefix} V", f"{prefix} {response_name}", f"{prefix} P")
 
     # ------------------------------------------------------------------
     # Lifecycle API
@@ -737,7 +788,12 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         self._set_status(TraceStatus.CONFIGURING)
         try:
-            self._sweep_values = self.scan_generator.generate()
+            self._nominal_sweep_values = np.asarray(self.scan_generator.generate(), dtype=float)
+            self._sweep_values = (
+                modulate_current_sweep(self._nominal_sweep_values, self._delta_current)
+                if self._differential_mode
+                else self._nominal_sweep_values.copy()
+            )
             n = len(self._sweep_values)
             if n == 0:
                 raise ValueError("Scan generator produced no points.")
@@ -1124,6 +1180,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._secondary_nanovoltmeter = None
         self._secondary_voltages = None
         self._sweep_values = None
+        self._nominal_sweep_values = None
         self._set_status(TraceStatus.IDLE)
 
     # ------------------------------------------------------------------
@@ -1160,6 +1217,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         data["source_delay"] = self._source_delay
         data["source_range_mode"] = self._source_range_mode.value
         data["source_range"] = self._source_range
+        data["differential_mode"] = self._differential_mode
+        if self._differential_mode:
+            data["differential_conductance"] = self._differential_conductance
+            data["delta_current"] = self._delta_current
         data["nplc"] = self._nplc
         data["voltage_range"] = self._voltage_range
         data["filter_type"] = self._filter_type.value
@@ -1242,6 +1303,12 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 self._source_range_mode.value,
             )
         self._source_range = float(data.get("source_range", self._source_range))
+        self._differential_mode = bool(data.get("differential_mode", self._differential_mode))
+        if self._differential_mode:
+            self._differential_conductance = bool(
+                data.get("differential_conductance", self._differential_conductance)
+            )
+            self._delta_current = float(data.get("delta_current", self._delta_current))
         self._nplc = float(data.get("nplc", self._nplc))
         self._voltage_range = float(data.get("voltage_range", self._voltage_range))
         filter_type_str = data.get("filter_type")
@@ -1524,6 +1591,26 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             "Fixed: a specific range is held for the entire sweep."
         )
 
+        differential_enabled = QCheckBox("Enable alternating delta-current mode")
+        differential_enabled.setObjectName("differential_mode")
+        differential_enabled.setChecked(self._differential_mode)
+        differential_conductance = QCheckBox(
+            "Report differential conductance (otherwise differential resistance)"
+        )
+        differential_conductance.setObjectName("differential_conductance")
+        differential_conductance.setChecked(self._differential_conductance)
+        differential_conductance.setEnabled(self._differential_mode)
+        delta_current = SISpinBox(suffix="A", value=self._delta_current)
+        delta_current.setObjectName("delta_current")
+        delta_current.setMinimum(1e-15)
+        delta_current.setMaximum(0.1)
+        delta_current.setEnabled(self._differential_mode)
+
+        def _on_differential_mode_toggled(enabled: bool) -> None:
+            self._differential_mode = enabled
+            differential_conductance.setEnabled(enabled)
+            delta_current.setEnabled(enabled)
+
         def _on_compliance_level_changed(value: float) -> None:
             if self._compliance_mode is ComplianceMode.VOLTAGE:
                 self._compliance = value
@@ -1542,10 +1629,18 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         compliance_level_sb.valueChanged.connect(_on_compliance_level_changed)
         delay_sb.valueChanged.connect(_on_delay_changed)
         src_range_combo.currentIndexChanged.connect(_on_src_range_changed)
+        differential_enabled.toggled.connect(_on_differential_mode_toggled)
+        differential_conductance.toggled.connect(
+            lambda enabled: setattr(self, "_differential_conductance", enabled)
+        )
+        delta_current.valueChanged.connect(lambda value: setattr(self, "_delta_current", value))
 
         src_form.addRow(compliance_group)
         src_form.addRow("Source delay:", delay_sb)
         src_form.addRow("Source range:", src_range_combo)
+        src_form.addRow("Differential mode:", differential_enabled)
+        src_form.addRow("Delta current:", delta_current)
+        src_form.addRow("Differential result:", differential_conductance)
         root_layout.addWidget(src_group)
 
         # ---- Measurement group ----

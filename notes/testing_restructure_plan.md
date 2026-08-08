@@ -874,3 +874,15 @@ Result:
   retaining incremental TDI and NeXus saving.
 - Removed the retired `save_mode`, `data_source`, and `dataframe_trace`
   configuration and entry-point fields from repository fixtures and metadata.
+
+## Differential Trace-Mode Maintenance Coverage
+
+- Added focused shared-helper and plugin coverage in
+  `tests/unit/plugins/trace/test_differential_mode.py` for Keithley 2400 and
+  6221/2182A alternating delta-current sweeps.
+- Covered sweep modulation, three-reading voltage/dV reduction, endpoint
+  voltage estimation, resistance/conductance selection, optional secondary
+  nanovoltmeter data, conditional JSON persistence, configuration controls,
+  and current-source validation.
+- Verified this coverage together with the existing 2400, 6221/2182A,
+  measurement-setting, and secondary-nanovoltmeter suites.

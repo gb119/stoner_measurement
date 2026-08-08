@@ -53,6 +53,10 @@ from stoner_measurement.instruments.source_meter import (
     TriggerSource,
 )
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
+from stoner_measurement.plugins.trace._differential import (
+    modulate_current_sweep,
+    reduce_differential_readings,
+)
 from stoner_measurement.plugins.trace._nanovoltmeter_support import (
     NANOVOLTMETER_DRIVER_LABELS,
     NANOVOLTMETER_DRIVERS,
@@ -245,6 +249,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._source_delay: float = 0.01
         self._trigger_delay: float = 0.0
         self._enable_output_during_measurement: bool = True
+        self._differential_mode: bool = False
+        self._differential_conductance: bool = False
+        self._delta_current: float = 1e-6
 
         self._trigger_routing: TriggerRouting = TriggerRouting.IMMEDIATE
         self._trigger_count_override: int = 0
@@ -283,6 +290,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._secondary_voltages: tuple[float, ...] | None = None
 
         self._sweep_values: tuple[float, ...] | None = None
+        self._nominal_sweep_values: tuple[float, ...] | None = None
         self.scan_generator = FunctionScanGenerator()
         self._apply_initial_config()
 
@@ -353,13 +361,19 @@ class Keithley2400SweepPlugin(TracePlugin):
 
         var = self.instance_name
         values: dict[str, str] = {}
-        for column in ("Current", "Voltage", "Resistance", "Power", "Timestamp"):
+        response_column = (
+            "Conductance"
+            if self._differential_mode and self._differential_conductance
+            else "Resistance"
+        )
+        for column in ("Current", "Voltage", response_column, "Power", "Timestamp"):
             key = f"IV {column}"
             values[f"{var}:{key} mean"] = f"{var}.get_channel_statistic({key!r}, 'mean')"
             values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
         if self._secondary_enabled:
             prefix = self._secondary_prefix.strip() or "secondary"
-            for column in (f"{prefix} V", f"{prefix} R", f"{prefix} P"):
+            response_symbol = "G" if response_column == "Conductance" else "R"
+            for column in (f"{prefix} V", f"{prefix} {response_symbol}", f"{prefix} P"):
                 key = f"IV {column}"
                 values[f"{var}:{key} mean"] = f"{var}.get_channel_statistic({key!r}, 'mean')"
                 values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
@@ -420,11 +434,19 @@ class Keithley2400SweepPlugin(TracePlugin):
 
         self._set_status(TraceStatus.CONFIGURING)
         try:
-            values = tuple(float(v) for v in self.scan_generator.generate())
-            if not values:
+            nominal_values = tuple(float(v) for v in self.scan_generator.generate())
+            if not nominal_values:
                 raise ValueError("Scan generator produced no points.")
+            if self._differential_mode and self._source_mode is not SweepSourceMode.CURRENT:
+                raise ValueError("Differential mode requires a current-source sweep.")
 
-            self._sweep_values = values
+            self._nominal_sweep_values = nominal_values
+            self._sweep_values = (
+                tuple(modulate_current_sweep(np.asarray(nominal_values), self._delta_current))
+                if self._differential_mode
+                else nominal_values
+            )
+            values = self._sweep_values
             n_points = len(values)
 
             self._smu.reset()
@@ -699,12 +721,34 @@ class Keithley2400SweepPlugin(TracePlugin):
         current, voltage, resistance, power, timestamp = self._records_to_arrays(
             records, self._sweep_values
         )
-        x_arr = np.asarray(self._sweep_values, dtype=float)
+        response_name = "Resistance"
+        response_unit = "Ω"
+        response_symbol = "R"
+        if self._differential_mode:
+            if self._nominal_sweep_values is None:
+                raise RuntimeError("Differential sweep completed without nominal scan values.")
+            reduced = reduce_differential_readings(
+                np.asarray(self._nominal_sweep_values),
+                voltage,
+                self._delta_current,
+                conductance=self._differential_conductance,
+            )
+            current = reduced.current
+            voltage = reduced.voltage
+            resistance = reduced.response
+            power = reduced.power
+            if self._differential_conductance:
+                response_name = "Conductance"
+                response_unit = "S"
+                response_symbol = "G"
+            x_arr = reduced.current
+        else:
+            x_arr = np.asarray(self._sweep_values, dtype=float)
 
         columns = {
             "Current": current,
             "Voltage": voltage,
-            "Resistance": resistance,
+            response_name: resistance,
             "Power": power,
             "Timestamp": timestamp,
         }
@@ -715,7 +759,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             "Voltage": COLUMN_ROLE_Y
             if self._source_mode is SweepSourceMode.CURRENT
             else COLUMN_ROLE_Z,
-            "Resistance": COLUMN_ROLE_Z,
+            response_name: COLUMN_ROLE_Z,
             "Power": COLUMN_ROLE_Z,
             "Timestamp": COLUMN_ROLE_Z,
         }
@@ -723,7 +767,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             "x": self.x_label,
             "Current": "Current",
             "Voltage": "Voltage",
-            "Resistance": "Resistance",
+            response_name: response_name,
             "Power": "Power",
             "Timestamp": "Timestamp",
         }
@@ -731,28 +775,40 @@ class Keithley2400SweepPlugin(TracePlugin):
             "x": self.x_units,
             "Current": "A",
             "Voltage": "V",
-            "Resistance": "Ω",
+            response_name: response_unit,
             "Power": "W",
             "Timestamp": "s",
         }
         if self._secondary_enabled:
             secondary_voltage = np.asarray(self._secondary_voltages or (), dtype=float)
-            if len(secondary_voltage) != len(current):
+            if len(secondary_voltage) != len(self._sweep_values):
                 raise RuntimeError(
                     "Secondary nanovoltmeter returned an unexpected number of readings."
                 )
-            with np.errstate(invalid="ignore", divide="ignore"):
-                secondary_resistance = np.where(
-                    np.abs(current) > 1e-30,
-                    secondary_voltage / current,
-                    float("nan"),
+            if self._differential_mode:
+                assert self._nominal_sweep_values is not None
+                secondary_reduced = reduce_differential_readings(
+                    np.asarray(self._nominal_sweep_values),
+                    secondary_voltage,
+                    self._delta_current,
+                    conductance=self._differential_conductance,
                 )
-            secondary_power = current * secondary_voltage
+                secondary_voltage = secondary_reduced.voltage
+                secondary_resistance = secondary_reduced.response
+                secondary_power = secondary_reduced.power
+            else:
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    secondary_resistance = np.where(
+                        np.abs(current) > 1e-30,
+                        secondary_voltage / current,
+                        float("nan"),
+                    )
+                secondary_power = current * secondary_voltage
             prefix = self._secondary_prefix.strip() or "secondary"
             for column, values, unit, role in zip(
-                (f"{prefix} V", f"{prefix} R", f"{prefix} P"),
+                (f"{prefix} V", f"{prefix} {response_symbol}", f"{prefix} P"),
                 (secondary_voltage, secondary_resistance, secondary_power),
-                ("V", "Ω", "W"),
+                ("V", response_unit, "W"),
                 (COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_Z),
                 strict=True,
             ):
@@ -834,6 +890,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._secondary_nanovoltmeter = None
         self._secondary_voltages = None
         self._sweep_values = None
+        self._nominal_sweep_values = None
         self._set_status(TraceStatus.IDLE)
 
     def to_json(self) -> dict[str, Any]:
@@ -867,8 +924,12 @@ class Keithley2400SweepPlugin(TracePlugin):
                 "filter_count": self._filter_count,
                 "filter_type": self._filter_type.value,
                 "median_filter_enabled": self._median_filter_enabled,
+                "differential_mode": self._differential_mode,
             }
         )
+        if self._differential_mode:
+            data["differential_conductance"] = self._differential_conductance
+            data["delta_current"] = self._delta_current
         secondary: dict[str, Any] = {"enabled": self._secondary_enabled}
         if self._secondary_enabled:
             secondary.update(
@@ -941,6 +1002,12 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._median_filter_enabled = bool(
             data.get("median_filter_enabled", self._median_filter_enabled)
         )
+        self._differential_mode = bool(data.get("differential_mode", self._differential_mode))
+        if self._differential_mode:
+            self._differential_conductance = bool(
+                data.get("differential_conductance", self._differential_conductance)
+            )
+            self._delta_current = float(data.get("delta_current", self._delta_current))
         secondary = data.get("secondary_nanovoltmeter", {})
         if not isinstance(secondary, dict):
             return
@@ -1053,6 +1120,10 @@ class Keithley2400SweepPlugin(TracePlugin):
 
         def _on_mode_changed(index: int) -> None:
             self._source_mode = mode_combo.itemData(index)
+            current_mode = self._source_mode is SweepSourceMode.CURRENT
+            differential_enabled.setEnabled(current_mode)
+            if not current_mode:
+                differential_enabled.setChecked(False)
             if self._source_mode is SweepSourceMode.VOLTAGE:
                 compliance_label.setText("Compliance current:")
                 compliance_sb.setSuffix("A")
@@ -1103,6 +1174,33 @@ class Keithley2400SweepPlugin(TracePlugin):
             lambda state: setattr(self, "_enable_output_during_measurement", state)
         )
 
+        differential_enabled = QCheckBox("Enable alternating delta-current mode")
+        differential_enabled.setObjectName("differential_mode")
+        differential_enabled.setChecked(self._differential_mode)
+        differential_enabled.setEnabled(self._source_mode is SweepSourceMode.CURRENT)
+        differential_conductance = QCheckBox(
+            "Report differential conductance (otherwise differential resistance)"
+        )
+        differential_conductance.setObjectName("differential_conductance")
+        differential_conductance.setChecked(self._differential_conductance)
+        differential_conductance.setEnabled(self._differential_mode)
+        delta_current = SISpinBox(suffix="A", value=self._delta_current)
+        delta_current.setObjectName("delta_current")
+        delta_current.setMinimum(1e-15)
+        delta_current.setMaximum(10.0)
+        delta_current.setEnabled(self._differential_mode)
+
+        def _on_differential_mode_toggled(enabled: bool) -> None:
+            self._differential_mode = enabled
+            differential_conductance.setEnabled(enabled)
+            delta_current.setEnabled(enabled)
+
+        differential_enabled.toggled.connect(_on_differential_mode_toggled)
+        differential_conductance.toggled.connect(
+            lambda enabled: setattr(self, "_differential_conductance", enabled)
+        )
+        delta_current.valueChanged.connect(lambda value: setattr(self, "_delta_current", value))
+
         src_form.addRow("Sweep mode:", mode_combo)
         src_form.addRow("Compliance mode:", compliance_mode_combo)
         src_form.addRow(compliance_label, compliance_sb)
@@ -1111,6 +1209,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         src_form.addRow("Source delay:", source_delay_sb)
         src_form.addRow("Trigger delay:", trigger_delay_sb)
         src_form.addRow("Enable output during sweep:", output_chk)
+        src_form.addRow("Differential mode:", differential_enabled)
+        src_form.addRow("Delta current:", delta_current)
+        src_form.addRow("Differential result:", differential_conductance)
         basic_layout.addWidget(src_group)
 
         ranges_group = QGroupBox("Ranges")
