@@ -2,27 +2,35 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
 from typing import Any
 
+import numpy as np
+import pandas as pd
 import pytest
 
+from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.trace import TracePlugin, TraceStatus
 
 
 class _SimpleTrace(TracePlugin):
-    """Minimal TracePlugin that yields a fixed number of (i, i^2) points."""
+    """Minimal TracePlugin that returns a fixed complete trace."""
 
     @property
     def name(self) -> str:
         return "SimpleTrace"
 
-    def execute(
-        self, parameters: dict[str, Any]
-    ) -> Generator[tuple[float, float]]:
+    def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         n = int(parameters.get("n", 5))
-        for i in range(n):
-            yield float(i), float(i * i)
+        x = np.arange(n, dtype=float)
+        frame = pd.DataFrame({"y": x**2}, index=pd.Index(x, name="x"))
+        return {
+            self.name: TraceData(
+                frame,
+                column_roles={"y": COLUMN_ROLE_Y},
+                names={"x": "x", "y": "y"},
+                units={"x": "", "y": ""},
+            )
+        }
 
 
 class TestTracePlugin:
@@ -30,35 +38,15 @@ class TestTracePlugin:
         p = _SimpleTrace()
         assert p.plugin_type == "trace"
 
-    def test_channel_names_default(self, qapp):
+    def test_trace_names_default(self, qapp):
         p = _SimpleTrace()
-        assert p.channel_names == ["SimpleTrace"]
+        assert p.trace_names == ["SimpleTrace"]
 
     def test_x_label_default(self, qapp):
         assert _SimpleTrace().x_label == "x"
 
     def test_y_label_default(self, qapp):
         assert _SimpleTrace().y_label == "y"
-
-    def test_execute_yields_tuples(self, qapp):
-        p = _SimpleTrace()
-        pts = list(p.execute({"n": 4}))
-        assert len(pts) == 4
-        for x, y in pts:
-            assert isinstance(x, float)
-            assert isinstance(y, float)
-
-    def test_execute_values(self, qapp):
-        p = _SimpleTrace()
-        pts = list(p.execute({"n": 3}))
-        assert pts == [(0.0, 0.0), (1.0, 1.0), (2.0, 4.0)]
-
-    def test_execute_multichannel_default_wraps_execute(self, qapp):
-        p = _SimpleTrace()
-        pts = list(p.execute_multichannel({"n": 3}))
-        assert len(pts) == 3
-        assert all(ch == "SimpleTrace" for ch, _, _ in pts)
-        assert [(x, y) for _, x, y in pts] == [(0.0, 0.0), (1.0, 1.0), (2.0, 4.0)]
 
     def test_config_widget_default(self, qapp):
         from qtpy.QtWidgets import QWidget
@@ -116,7 +104,9 @@ class TestTracePlugin:
 
         p = _SimpleTrace()
         scan_page = p.config_tabs()[0][1]
-        comment_label = next(label for label in scan_page.findChildren(QLabel) if label.text() == "Comment:")
+        comment_label = next(
+            label for label in scan_page.findChildren(QLabel) if label.text() == "Comment:"
+        )
         assert comment_label is not None
         edits = scan_page.findChildren(QLineEdit)
         assert len(edits) >= 2
@@ -267,6 +257,19 @@ class TestTracePlugin:
         p.measure({"n": 2})
         assert p.status is TraceStatus.DATA_AVAILABLE
 
+    def test_measure_failure_sets_error_and_clears_stale_data(self, qapp):
+        class _FailingTrace(_SimpleTrace):
+            def _measure(self, parameters):
+                del parameters
+                raise RuntimeError("acquisition failed")
+
+        p = _FailingTrace()
+        p.data = {"stale": TraceData()}
+        with pytest.raises(RuntimeError, match="acquisition failed"):
+            p.measure({})
+        assert p.status is TraceStatus.ERROR
+        assert p.data == {}
+
     def test_measure_returns_complete_list(self, qapp):
         """measure() must return a dict mapping channel to TraceData."""
         import numpy as np
@@ -281,31 +284,11 @@ class TestTracePlugin:
         assert isinstance(td.df, pd.DataFrame)
         assert p.status is TraceStatus.DATA_AVAILABLE
 
-    def test_num_traces_default_one(self, qapp):
-        assert _SimpleTrace().num_traces == 1
-
-    def test_trace_title_default_is_name(self, qapp):
-        p = _SimpleTrace()
-        assert p.trace_title == p.name
-
     def test_x_units_default_empty(self, qapp):
         assert _SimpleTrace().x_units == ""
 
     def test_y_units_default_empty(self, qapp):
         assert _SimpleTrace().y_units == ""
-
-    def test_trace_scan_alias_for_scan_generator(self, qapp):
-        p = _SimpleTrace()
-        assert p.trace_scan is p.scan_generator
-
-    def test_num_traces_reflects_channel_count(self, qapp):
-        class _TwoChannel(_SimpleTrace):
-            @property
-            def channel_names(self):
-                return ["ch1", "ch2"]
-
-        p = _TwoChannel()
-        assert p.num_traces == 2
 
 
 if __name__ == "__main__":

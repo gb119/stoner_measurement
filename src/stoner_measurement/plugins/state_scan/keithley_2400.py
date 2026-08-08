@@ -108,7 +108,8 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
 
     The plugin exposes the measured current, voltage, resistance, power, and
     timestamp through :meth:`reported_values`, so they can be collected into the
-    state-scan dataframe or consumed by nested sub-steps in the sequence.
+    state scan's :class:`~stoner_measurement.core.TraceData` table or consumed
+    by nested sub-steps in the sequence.
 
     In voltage-source mode, the scan variable is the programmed source voltage
     and compliance is expressed as a current limit unless resistance-derived
@@ -133,7 +134,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
     through :meth:`reported_values` rather than returned as a trace object.
     This allows the current point's source value, measured voltage, measured
     current, resistance, power, and timestamp to be collected into the
-    state-scan dataframe or used by nested sequence steps.
+    state scan's TraceData table or used by nested sequence steps.
 
     Attributes:
         _smu (Keithley2400 | None):

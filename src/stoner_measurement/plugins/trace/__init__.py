@@ -1,8 +1,6 @@
 """Trace sub-package — plugins that collect (x, y) data traces from instruments.
 
-Exports :class:`TracePlugin` (abstract base), :class:`TraceData`,
-:class:`TraceStatus`, and the ``COLUMN_ROLE_*`` role constants from
-:mod:`stoner_measurement.plugins.trace.base`,
+Exports :class:`TracePlugin` (abstract base), :class:`TraceStatus`,
 :class:`DummyPlugin` from :mod:`stoner_measurement.plugins.trace.dummy`, and
 :class:`Keithley6221_2182APlugin` together with :class:`ConnectionMode`,
 :class:`ComplianceMode`, and :class:`SourceRangeMode` from
@@ -13,18 +11,11 @@ are also re-exported for internal use and testing.
 """
 
 from stoner_measurement.plugins.trace.base import (
-    COLUMN_ROLE_D,
-    COLUMN_ROLE_E,
-    COLUMN_ROLE_F,
-    COLUMN_ROLE_Y,
-    COLUMN_ROLE_Z,
-    TraceData,
     TracePlugin,
     TraceStatus,
     _ScanPage,
     _ScanTabContainer,
 )
-from stoner_measurement.plugins.trace.dataframe_trace import DataFrameTracePlugin
 from stoner_measurement.plugins.trace.dummy import DummyPlugin
 from stoner_measurement.plugins.trace.k6221_2182a import (
     ComplianceMode,
@@ -54,15 +45,9 @@ from stoner_measurement.plugins.trace.keithley_2400 import (
 )
 
 __all__ = [
-    "COLUMN_ROLE_D",
-    "COLUMN_ROLE_E",
-    "COLUMN_ROLE_F",
-    "COLUMN_ROLE_Y",
-    "COLUMN_ROLE_Z",
     "ComplianceMode",
     "ConnectionMode",
     "DigitalFilterType",
-    "DataFrameTracePlugin",
     "DummyPlugin",
     "K2400ConnectionMode",
     "K2400RangeMode",
@@ -74,7 +59,6 @@ __all__ = [
     "TriggerRouting",
     "LockInOutput",
     "SourceRangeMode",
-    "TraceData",
     "TracePlugin",
     "TraceStatus",
     "WaveformScanMode",

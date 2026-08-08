@@ -848,7 +848,6 @@ class SequenceEngine(QObject):
         # Master catalogs — populated by _rebuild_data_catalogs() as plugins are registered.
         ns["_traces"] = {}
         ns["_values"] = {}
-        ns["_dataframes"] = {}
         return ns
 
     def add_plugin(self, ep_name: str, plugin: BasePlugin) -> None:
@@ -1001,41 +1000,17 @@ class SequenceEngine(QObject):
         the current sequence.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
-        from stoner_measurement.plugins.state import StatePlugin
-
         traces: dict[str, str] = {}
         values: dict[str, str] = {}
-        dataframe_plugins: list[StatePlugin] = []
         if not script:
             for plugin in self._extra_catalog_plugins:
                 if isinstance(plugin, BasePlugin):
                     traces.update(plugin.reported_traces())
                     values.update(plugin.reported_values())
-                if isinstance(plugin, StatePlugin) and plugin.collect_data:
-                    dataframe_plugins.append(plugin)
-        dataframes: dict[str, list[str]] = {}
-        for plugin in dataframe_plugins:
-            dataframes[plugin.instance_name] = self._expected_dataframe_columns(plugin, values)
         self._namespace["_traces"] = traces
         self._namespace["_values"] = values
-        self._namespace["_dataframes"] = dataframes
         self.values_catalog_changed.emit(dict(values))
         self.namespace_updated.emit()
-
-    def _expected_dataframe_columns(self, plugin: Any, values_catalog: dict[str, str]) -> list[str]:
-        """Return the expected DataFrame columns for a state plugin collecting data."""
-        columns = ["value", "stage"]
-        if plugin.collect_outputs is None:
-            selected_values = list(values_catalog.keys())
-        else:
-            selected_values = [key for key in plugin.collect_outputs if key in values_catalog]
-
-        seen: set[str] = set(columns)
-        for value_key in selected_values:
-            if value_key not in seen:
-                columns.append(value_key)
-                seen.add(value_key)
-        return columns
 
     def update_step_plugin_catalog(self, plugins: list[BasePlugin]) -> None:
         """Update the engine's step-plugin catalog and rebuild ``_traces``/``_values``.
@@ -1286,7 +1261,7 @@ class SequenceEngine(QObject):
         self.namespace_updated.emit()
 
     def refresh_value_catalog(self) -> None:
-        """Rebuild and emit the current trace, value, and dataframe catalogues.
+        """Rebuild and emit the current trace and value catalogues.
 
         This public helper allows UI components to request a catalogue refresh
         after sequence-editor or plugin-instance changes without depending on
@@ -1302,29 +1277,6 @@ class SequenceEngine(QObject):
                 Copy of the current namespace dictionary.
         """
         return dict(self._namespace)
-
-    @property
-    def dataframes_catalog(self) -> dict[str, list[str]]:
-        """Master catalog of state-plugin DataFrames and their expected columns.
-
-        Returns a snapshot of the ``_dataframes`` dict in the engine namespace.
-        Keys are state-plugin instance names; values are ordered lists of expected
-        DataFrame column names.
-
-        Returns:
-            (dict[str, list[str]]):
-                Snapshot copy of the dataframe catalog.
-        """
-        catalog = self._namespace.get("_dataframes", {})
-        if not isinstance(catalog, dict):
-            return {}
-        result: dict[str, list[str]] = {}
-        for key, columns in catalog.items():
-            if isinstance(columns, list):
-                result[str(key)] = [str(column) for column in columns]
-            else:
-                result[str(key)] = []
-        return result
 
     @property
     def namespace(self) -> dict:

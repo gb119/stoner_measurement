@@ -13,9 +13,7 @@ from stoner_measurement.scan import SteppedScanGenerator
 
 def _make_scan(plugin, end=0.4, step=0.1):
     """Return a SteppedScanGenerator with one stage and assign it to *plugin*."""
-    gen = SteppedScanGenerator(
-        start=0.0, stages=[(end, step, True)], parent=plugin
-    )
+    gen = SteppedScanGenerator(start=0.0, stages=[(end, step, True)], parent=plugin)
     plugin.scan_generator = gen
     return gen
 
@@ -27,6 +25,12 @@ def _register_tab_widgets(qtbot, tabs):
     return tabs
 
 
+def _measure_pairs(plugin, parameters):
+    """Measure once and return conventional x/y pairs for model assertions."""
+    trace = plugin.measure(parameters)[plugin.name]
+    return list(zip(trace.x, trace.y, strict=True))
+
+
 class TestDummyPlugin:
     def test_name(self):
         plugin = DummyPlugin()
@@ -35,13 +39,13 @@ class TestDummyPlugin:
     def test_execute_uses_scan_generator(self, qapp):
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.4, step=0.1)  # 5 points: 0.0…0.4
-        data = list(plugin.execute({}))
+        data = _measure_pairs(plugin, {})
         assert len(data) == 5
 
     def test_execute_empty_scan_yields_default_points(self, qapp):
         plugin = DummyPlugin()
         # Default FunctionScanGenerator generates 501 points
-        data = list(plugin.execute({}))
+        data = _measure_pairs(plugin, {})
         assert len(data) == 501
 
     def test_execute_yields_all_points_regardless_of_measure_flag(self, qapp):
@@ -52,14 +56,14 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({}))
-        # All 5 scan points yielded — execute() does not filter by measure flag
+        data = _measure_pairs(plugin, {})
+        # All five configured scan points are represented in the dataset.
         assert len(data) == 5
 
     def test_execute_yields_tuples(self, qapp):
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.4, step=0.1)
-        data = list(plugin.execute({}))
+        data = _measure_pairs(plugin, {})
         for item in data:
             assert isinstance(item, tuple)
             assert len(item) == 2
@@ -68,7 +72,7 @@ class TestDummyPlugin:
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.4, step=0.1)
         # Explicit I_c=1.0 > all scan points (0…0.4), so all V must be 0
-        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
+        data = _measure_pairs(plugin, {"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"})
         for _i, v in data:
             assert v == 0.0
 
@@ -81,7 +85,7 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
+        data = _measure_pairs(plugin, {"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"})
         assert len(data) == 3
         i_vals = [i for i, _v in data]
         v_vals = [v for _i, v in data]
@@ -130,6 +134,7 @@ class TestDummyPlugin:
 
     def test_has_scan_generator(self, qapp):
         from stoner_measurement.scan import FunctionScanGenerator
+
         plugin = DummyPlugin()
         assert isinstance(plugin.scan_generator, FunctionScanGenerator)
 
@@ -164,7 +169,10 @@ class TestDummyPlugin:
         plugin = DummyPlugin()
         tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
         settings_widget = tabs[1][1]
-        assert all(cb.text() != "Report channel average and standard deviation outputs" for cb in settings_widget.findChildren(QCheckBox))
+        assert all(
+            cb.text() != "Report channel average and standard deviation outputs"
+            for cb in settings_widget.findChildren(QCheckBox)
+        )
 
     def test_about_tab_is_third(self, qapp, qtbot):
         plugin = DummyPlugin()
@@ -187,12 +195,14 @@ class TestDummyPlugin:
 
     def test_set_scan_generator_class(self, qapp):
         from stoner_measurement.scan import FunctionScanGenerator
+
         plugin = DummyPlugin()
         plugin.set_scan_generator_class(FunctionScanGenerator)
         assert isinstance(plugin.scan_generator, FunctionScanGenerator)
 
     def test_set_scan_generator_class_noop_if_same(self, qapp):
         from stoner_measurement.scan import FunctionScanGenerator
+
         plugin = DummyPlugin()
         gen_before = plugin.scan_generator
         plugin.set_scan_generator_class(FunctionScanGenerator)
@@ -239,16 +249,16 @@ class TestDummyPlugin:
         assert len(td.y) == 5
         # New DataFrame-backed API
         assert isinstance(td.df, pd.DataFrame)
-        assert "y" in td.df.columns
+        assert "V" in td.df.columns
 
     def test_measure_tracedata_has_column_roles(self, qapp):
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y
+        from stoner_measurement.core import COLUMN_ROLE_Y
 
         plugin = DummyPlugin()
         _make_scan(plugin, end=0.2, step=0.1)
         result = plugin.measure({})
         td = result["Dummy"]
-        assert td.get_columns_by_role(COLUMN_ROLE_Y) == ["y"]
+        assert td.get_columns_by_role(COLUMN_ROLE_Y) == ["V"]
 
     def test_measure_status_data_available_after_completion(self, qapp):
         plugin = DummyPlugin()
@@ -281,21 +291,11 @@ class TestDummyPlugin:
     # Trace detail properties
     # ------------------------------------------------------------------
 
-    def test_num_traces(self, qapp):
-        assert DummyPlugin().num_traces == 1
-
-    def test_trace_title(self, qapp):
-        assert DummyPlugin().trace_title == "RSJ I-V"
-
     def test_x_units(self, qapp):
         assert DummyPlugin().x_units == "A"
 
     def test_y_units(self, qapp):
         assert DummyPlugin().y_units == "V"
-
-    def test_trace_scan_is_scan_generator(self, qapp):
-        plugin = DummyPlugin()
-        assert plugin.trace_scan is plugin.scan_generator
 
     def test_x_label(self, qapp):
         assert DummyPlugin().x_label == "I"
@@ -309,44 +309,36 @@ class TestDummyPlugin:
     def test_execute_zero_noise_is_exact(self, qapp):
         """V_n=0.0 must give exact RSJ values (no noise added)."""
         plugin = DummyPlugin()
-        gen = SteppedScanGenerator(
-            start=0.0, stages=[(2.0, 1.0, True)], parent=plugin
-        )
+        gen = SteppedScanGenerator(start=0.0, stages=[(2.0, 1.0, True)], parent=plugin)
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
+        data = _measure_pairs(plugin, {"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"})
         v_vals = [v for _i, v in data]
-        assert abs(v_vals[0]) < 1e-9       # I=0  → V=0
-        assert abs(v_vals[1]) < 1e-9       # I=1  → V=0 (at I_c)
+        assert abs(v_vals[0]) < 1e-9  # I=0  → V=0
+        assert abs(v_vals[1]) < 1e-9  # I=1  → V=0 (at I_c)
         assert abs(v_vals[2] - math.sqrt(3)) < 1e-9  # I=2 → sqrt(3)
 
     def test_execute_noise_shifts_voltages(self, qapp):
         """Non-zero V_n should produce voltages that differ from the noiseless values."""
         plugin = DummyPlugin()
-        gen = SteppedScanGenerator(
-            start=2.0, stages=[(2.0, 1.0, True)], parent=plugin
-        )
+        gen = SteppedScanGenerator(start=2.0, stages=[(2.0, 1.0, True)], parent=plugin)
         plugin.scan_generator = gen
-        noiseless = list(plugin.execute({"I_c": 0.0, "R_n": 1.0, "V_n": "0.0"}))
+        noiseless = _measure_pairs(plugin, {"I_c": 0.0, "R_n": 1.0, "V_n": "0.0"})
 
         np.random.seed(0)
-        noisy = list(plugin.execute({"I_c": 0.0, "R_n": 1.0, "V_n": "1.0"}))
+        noisy = _measure_pairs(plugin, {"I_c": 0.0, "R_n": 1.0, "V_n": "1.0"})
 
         # With noise scale=1.0 (much larger than typical RSJ voltages) the
         # noisy and noiseless voltages should almost certainly differ.
-        assert any(
-            abs(nv - v) > 1e-12 for (_, nv), (_, v) in zip(noisy, noiseless)
-        )
+        assert any(abs(nv - v) > 1e-12 for (_, nv), (_, v) in zip(noisy, noiseless))
 
     def test_execute_noise_uses_v_n_parameter(self, qapp):
         """V_n passed in parameters overrides _noise_level attribute."""
         plugin = DummyPlugin()
         plugin._noise_level = "0.0"  # default noiseless
-        gen = SteppedScanGenerator(
-            start=2.0, stages=[(2.0, 1.0, True)], parent=plugin
-        )
+        gen = SteppedScanGenerator(start=2.0, stages=[(2.0, 1.0, True)], parent=plugin)
         plugin.scan_generator = gen
         np.random.seed(1)
-        noisy = list(plugin.execute({"I_c": 0.0, "R_n": 1.0, "V_n": "100.0"}))
+        noisy = _measure_pairs(plugin, {"I_c": 0.0, "R_n": 1.0, "V_n": "100.0"})
         # With V_n=100 V the noise dominates; voltages should not all be
         # exactly equal to the noiseless RSJ value (I=2 → V=2 for I_c=0).
         noiseless_v = 2.0
@@ -364,7 +356,7 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
+        data = _measure_pairs(plugin, {"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"})
         # I=-2: V = -sqrt(4-1) = -sqrt(3)
         i_neg2 = next((v for i, v in data if abs(i - (-2.0)) < 1e-9), None)
         assert i_neg2 is not None
@@ -379,13 +371,18 @@ class TestDummyPlugin:
             parent=plugin,
         )
         plugin.scan_generator = gen
-        data1 = list(plugin.execute({"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}))
-        data2 = list(plugin.execute({"I_c": "1.0", "R_n": "2.0", "V_n": "0.0", "Rounding": "0.0"}))
+        data1 = _measure_pairs(
+            plugin, {"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "Rounding": "0.0"}
+        )
+        data2 = _measure_pairs(
+            plugin, {"I_c": "1.0", "R_n": "2.0", "V_n": "0.0", "Rounding": "0.0"}
+        )
         assert abs(data2[0][1] - 2.0 * data1[0][1]) < 1e-9
 
     def test_eval_expr_uses_engine_when_attached(self, qapp):
         """When attached to a SequenceEngine, _eval_expr goes through self.eval()."""
         from stoner_measurement.core.sequence_engine import SequenceEngine
+
         plugin = DummyPlugin()
         engine = SequenceEngine()
         engine.add_plugin("dummy", plugin)
@@ -457,5 +454,4 @@ class TestDummyPlugin:
 
 
 if __name__ == "__main__":
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

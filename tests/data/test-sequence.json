@@ -235,9 +235,7 @@
         "class": "stoner_measurement.plugins.command.save:SaveCommand",
         "instance_name": "save",
         "path_expr": "'TDI_Format_2.txt'",
-        "save_mode": "data",
         "trace_selection": {},
-        "data_source": "counter",
         "no_overwrite": true
       }
     }

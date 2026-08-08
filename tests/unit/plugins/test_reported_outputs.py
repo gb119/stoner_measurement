@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
 from typing import Any
 
 import pytest
@@ -18,12 +17,9 @@ class _SimpleTrace(TracePlugin):
     def name(self) -> str:
         return "SimpleTrace"
 
-    def execute(
-        self, parameters: dict[str, Any]
-    ) -> Generator[tuple[float, float]]:
-        n = int(parameters.get("n", 5))
-        for i in range(n):
-            yield float(i), float(i * i)
+    def _measure(self, parameters: dict[str, Any]):
+        del parameters
+        return {}
 
 
 class _InstantState(StateControlPlugin):
@@ -117,7 +113,7 @@ class TestReportedTraces:
     def test_trace_plugin_reported_traces_multi_channel(self, qapp):
         class _TwoChannel(_SimpleTrace):
             @property
-            def channel_names(self):
+            def trace_names(self):
                 return ["ch1", "ch2"]
 
         p = _TwoChannel()

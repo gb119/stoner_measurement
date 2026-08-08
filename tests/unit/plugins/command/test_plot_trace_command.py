@@ -142,7 +142,6 @@ class TestPlotTraceCommand:
         checkboxes = widget.findChildren(QCheckBox)
         assert len(checkboxes) >= 2
 
-
     def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
         from qtpy.QtWidgets import QCheckBox
 
@@ -261,7 +260,9 @@ class TestPlotTraceCommand:
         assert elapsed >= 0.01
         assert pw.is_busy_for_data() is False
 
-    def test_execute_advanced_mode_raises_when_plot_response_times_out(self, qapp, engine, monkeypatch):
+    def test_execute_advanced_mode_raises_when_plot_response_times_out(
+        self, qapp, engine, monkeypatch
+    ):
         import stoner_measurement.plugins.command.base as command_base
 
         monkeypatch.setattr(command_base, "_DEFAULT_PLOT_READY_TIMEOUT_SECONDS", 0.01)
@@ -448,13 +449,13 @@ class TestPlotTraceCommand:
 
     def test_plot_axis_labels_emitted_in_simple_mode(self, qapp, engine):
         """execute() emits plot_axis_labels in simple mode with TraceData metadata."""
-        from stoner_measurement.plugins.trace.base import TraceData
+        from stoner_measurement.core import TraceData
 
-        td = TraceData(
-            x=np.array([0.0, 1.0]),
-            y=np.array([2.0, 3.0]),
-            names={"x": "Current", "y": "Voltage", "d": "", "e": ""},
-            units={"x": "A", "y": "V", "d": "", "e": ""},
+        td = TraceData.from_xy(
+            np.array([0.0, 1.0]),
+            np.array([2.0, 3.0]),
+            names={"x": "Current", "y": "Voltage"},
+            units={"x": "A", "y": "V"},
         )
 
         cmd = PlotTraceCommand()
@@ -488,9 +489,9 @@ class TestPlotTraceCommand:
 
     def test_plot_axis_labels_not_emitted_when_names_empty(self, qapp, engine):
         """execute() does not emit plot_axis_labels when TraceData has no names."""
-        from stoner_measurement.plugins.trace.base import TraceData
+        from stoner_measurement.core import TraceData
 
-        td = TraceData(x=np.array([0.0]), y=np.array([1.0]))
+        td = TraceData.from_xy(np.array([0.0]), np.array([1.0]))
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
         engine._namespace["td"] = td
@@ -563,7 +564,7 @@ class TestPlotTraceCommand:
         """execute() uses column_key to select a specific DataFrame column."""
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import (
+        from stoner_measurement.core import (
             COLUMN_ROLE_Y,
             COLUMN_ROLE_Z,
             TraceData,
@@ -582,7 +583,9 @@ class TestPlotTraceCommand:
         cmd.column_key = "z"
 
         received: list[tuple] = []
-        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye)))
+        cmd.plot_trace_with_errors.connect(
+            lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye))
+        )
         cmd.execute()
 
         assert len(received) == 1
@@ -590,9 +593,9 @@ class TestPlotTraceCommand:
 
     def test_execute_simple_mode_falls_back_to_y_when_column_key_empty(self, qapp, engine):
         """execute() falls back to .y when column_key is empty."""
-        from stoner_measurement.plugins.trace.base import TraceData
+        from stoner_measurement.core import TraceData
 
-        td = TraceData(x=np.array([0.0, 1.0]), y=np.array([10.0, 20.0]))
+        td = TraceData.from_xy(np.array([0.0, 1.0]), np.array([10.0, 20.0]))
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
         engine._namespace["td"] = td
@@ -601,7 +604,9 @@ class TestPlotTraceCommand:
         cmd.column_key = ""  # empty → use .y
 
         received: list[tuple] = []
-        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye)))
+        cmd.plot_trace_with_errors.connect(
+            lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye))
+        )
         cmd.execute()
 
         assert len(received) == 1
@@ -609,9 +614,9 @@ class TestPlotTraceCommand:
 
     def test_execute_simple_mode_falls_back_to_y_for_unknown_column_key(self, qapp, engine):
         """execute() falls back to .y when column_key names a non-existent column."""
-        from stoner_measurement.plugins.trace.base import TraceData
+        from stoner_measurement.core import TraceData
 
-        td = TraceData(x=np.array([0.0, 1.0]), y=np.array([5.0, 6.0]))
+        td = TraceData.from_xy(np.array([0.0, 1.0]), np.array([5.0, 6.0]))
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
         engine._namespace["td"] = td
@@ -620,7 +625,9 @@ class TestPlotTraceCommand:
         cmd.column_key = "nonexistent"
 
         received: list[tuple] = []
-        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye)))
+        cmd.plot_trace_with_errors.connect(
+            lambda t, x, y, xe, ye: received.append((t, x, y, xe, ye))
+        )
         cmd.execute()
 
         assert len(received) == 1
@@ -630,7 +637,7 @@ class TestPlotTraceCommand:
         """_emit_trace_axis_labels uses the column_key to look up name/unit."""
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import (
+        from stoner_measurement.core import (
             COLUMN_ROLE_Y,
             COLUMN_ROLE_Z,
             TraceData,
@@ -664,7 +671,7 @@ class TestPlotTraceCommand:
         """Axis label y metadata should come from the actual plotted y column."""
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+        from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 
         df = pd.DataFrame({"V": [1.0], "R": [2.0]}, index=pd.Index([0.0], name="x"))
         td = TraceData(
@@ -706,7 +713,7 @@ class TestPlotTraceCommand:
         import pandas as pd
         from qtpy.QtWidgets import QComboBox
 
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+        from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 
         t1 = TraceData(
             df=pd.DataFrame({"A": [1.0]}, index=pd.Index([0.0], name="x")),
@@ -726,7 +733,9 @@ class TestPlotTraceCommand:
         widget = cmd.config_widget()
         combos = widget.findChildren(QComboBox)
 
-        trace_combo = next(c for c in combos if c.findText("src:t1") >= 0 and c.findText("src:t2") >= 0)
+        trace_combo = next(
+            c for c in combos if c.findText("src:t1") >= 0 and c.findText("src:t2") >= 0
+        )
         column_combo = next(c for c in combos if c.findText("(default)") >= 0)
         assert column_combo.findText("A") >= 0
         assert column_combo.findText("B") == -1
@@ -745,7 +754,7 @@ class TestPlotTraceCommand:
         """execute() emits plot_trace_with_errors once per COLUMN_ROLE_Y column."""
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+        from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 
         df = pd.DataFrame(
             {"V": [1.0, 2.0], "R": [10.0, 20.0]},
@@ -776,7 +785,7 @@ class TestPlotTraceCommand:
         """execute() must NOT emit plot_trace (advanced-mode signal) in simple mode."""
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+        from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 
         df = pd.DataFrame(
             {"V": [1.0], "R": [10.0]},
@@ -800,7 +809,7 @@ class TestPlotTraceCommand:
         """execute() passes y-error bars from COLUMN_ROLE_E to plot_trace_with_errors."""
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import (
+        from stoner_measurement.core import (
             COLUMN_ROLE_E,
             COLUMN_ROLE_Y,
             TraceData,
@@ -822,7 +831,9 @@ class TestPlotTraceCommand:
         cmd.column_key = ""
 
         received: list[tuple] = []
-        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.append((t, xe, list(ye))))
+        cmd.plot_trace_with_errors.connect(
+            lambda t, x, y, xe, ye: received.append((t, xe, list(ye)))
+        )
         cmd.execute()
 
         assert len(received) == 1
@@ -833,7 +844,7 @@ class TestPlotTraceCommand:
         """execute() matches e-columns positionally to y-columns."""
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import (
+        from stoner_measurement.core import (
             COLUMN_ROLE_E,
             COLUMN_ROLE_Y,
             TraceData,
@@ -860,9 +871,7 @@ class TestPlotTraceCommand:
         cmd.column_key = ""
 
         received: dict[str, list] = {}
-        cmd.plot_trace_with_errors.connect(
-            lambda t, x, y, xe, ye: received.update({t: list(ye)})
-        )
+        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.update({t: list(ye)}))
         cmd.execute()
 
         assert "src:ch:V" in received
@@ -874,7 +883,7 @@ class TestPlotTraceCommand:
         """execute() shares COLUMN_ROLE_D x-error across all y-columns."""
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import (
+        from stoner_measurement.core import (
             COLUMN_ROLE_D,
             COLUMN_ROLE_Y,
             TraceData,
@@ -896,9 +905,7 @@ class TestPlotTraceCommand:
         cmd.column_key = ""
 
         received: dict[str, list] = {}
-        cmd.plot_trace_with_errors.connect(
-            lambda t, x, y, xe, ye: received.update({t: list(xe)})
-        )
+        cmd.plot_trace_with_errors.connect(lambda t, x, y, xe, ye: received.update({t: list(xe)}))
         cmd.execute()
 
         assert "src:ch:V" in received
@@ -928,7 +935,9 @@ class TestPlotTraceCommand:
         assert widget.y_data("sig") == [2.0, 3.0]
         assert "sig" not in widget._error_bar_items
 
-    def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(self, qtbot, qapp, request, monkeypatch):
+    def test_set_trace_with_errors_waits_for_error_bar_work_before_marking_processed(
+        self, qtbot, qapp, request, monkeypatch
+    ):
         """Pending update must stay busy until error-bar update completes."""
 
         widget = _make_plot_widget(qtbot, qapp, request)

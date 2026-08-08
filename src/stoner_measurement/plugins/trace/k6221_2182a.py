@@ -23,7 +23,6 @@ import enum
 import logging
 import math
 import time
-from collections.abc import Generator
 from typing import Any
 
 import numpy as np
@@ -41,6 +40,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
 from stoner_measurement.instruments.current_source import CurrentSource
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
@@ -53,9 +53,6 @@ from stoner_measurement.instruments.transport.gpib_transport import (
     PassThroughGpibTransport,
 )
 from stoner_measurement.plugins.trace.base import (
-    COLUMN_ROLE_Y,
-    COLUMN_ROLE_Z,
-    TraceData,
     TracePlugin,
     TraceStatus,
 )
@@ -368,22 +365,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         return "k6221_dc_iv"
 
     @property
-    def trace_title(self) -> str:
-        """Human-readable display title.
-
-        Returns:
-            (str):
-                ``"6221/2182A I-V"``.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> Keithley6221_2182APlugin().trace_title
-            '6221/2182A I-V'
-        """
-        return "6221/2182A I-V"
-
-    @property
     def x_label(self) -> str:
         """Axis label for the source current.
 
@@ -448,7 +429,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         return "V"
 
     @property
-    def channel_names(self) -> list[str]:
+    def trace_names(self) -> list[str]:
         """Name of the single multicolumn measurement channel.
 
         Returns:
@@ -458,7 +439,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         Examples:
             >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> Keithley6221_2182APlugin().channel_names
+            >>> Keithley6221_2182APlugin().trace_names
             ['IV']
         """
         return ["IV"]
@@ -476,11 +457,11 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
         return values
 
-    def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
+    def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         """Acquire the sweep and return a single multicolumn ``"IV"`` trace.
 
         Runs the hardware sweep via :meth:`execute` to collect all ``(I, V)``
-        pairs, then builds a :class:`~stoner_measurement.plugins.trace.base.TraceData`
+        pairs, then builds a :class:`~stoner_measurement.core.TraceData`
         backed by a :class:`~pandas.DataFrame` with x = source current and
         three dependent-variable columns:
 
@@ -510,11 +491,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             >>> # plugin.connect(); plugin.configure()
             >>> # result = plugin.measure({})  # requires real hardware
         """
-        self._set_status(TraceStatus.MEASURING)
-        try:
-            pairs = list(self.execute(parameters))
-        finally:
-            self._set_status(TraceStatus.DATA_AVAILABLE)
+        pairs = self._acquire_pairs(parameters)
 
         if pairs:
             i_arr = np.array([i for i, _ in pairs], dtype=float)
@@ -552,9 +529,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             "R": "Ω",
             "P": "W",
         }
-        self.data = {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
-        self._update_channel_statistics()
-        return self.data
+        return {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
 
     # ------------------------------------------------------------------
     # Lifecycle API
@@ -767,7 +742,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             raise
         self._set_status(TraceStatus.IDLE)
 
-    def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
+    def _acquire_pairs(self, parameters: dict[str, Any]) -> list[tuple[float, float]]:
         """Arm the sweep, collect the complete trace, and yield (I, V) pairs.
 
         Arms the 6221 sweep and initiates the 2182A trigger system. The 6221
@@ -879,7 +854,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 pass
             raise
 
-        yield from zip(self._sweep_values, voltages)
+        return list(zip(self._sweep_values, voltages, strict=True))
 
     def _post_sweep_delay(self) -> float:
         """Return a conservative delay for the final 2182A reading to complete."""
@@ -1205,7 +1180,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         # Set the current selection: use math.isclose so that JSON round-trips
         # and minor floating-point differences don't prevent the correct item
         # from being re-selected.  _ZERO_CURRENT_THRESHOLD is reserved for
-        # zero-current detection in execute_multichannel().
+        # zero-current detection in the derived resistance calculation.
         _cur_src_idx = 0
         for _i in range(src_range_combo.count()):
             _mode, _val = src_range_combo.itemData(_i)

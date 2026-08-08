@@ -85,7 +85,6 @@ fourier_transform = "stoner_measurement.plugins.transform.fourier_transform:Four
 savgol_filter = "stoner_measurement.plugins.transform.savgol_filter:SavitzkyGolayPlugin"
 window_filter = "stoner_measurement.plugins.transform.window_filter:WindowFilterPlugin"
 dummy = "stoner_measurement.plugins.trace.dummy:DummyPlugin"
-dataframe_trace = "stoner_measurement.plugins.trace.dataframe_trace:DataFrameTracePlugin"
 k6221_dc_iv = "stoner_measurement.plugins.trace.k6221_2182a:Keithley6221_2182APlugin"
 k6221_multi_sr830 = "stoner_measurement.plugins.trace.k6221_multi_sr830:Keithley6221_MultiSR830Plugin"
 k2400_dc_iv = "stoner_measurement.plugins.trace.keithley_2400:Keithley2400SweepPlugin"

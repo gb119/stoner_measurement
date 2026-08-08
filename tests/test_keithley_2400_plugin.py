@@ -24,6 +24,12 @@ def _make_plugin() -> Keithley2400SweepPlugin:
     return plugin
 
 
+def _measure_pairs(plugin: Keithley2400SweepPlugin):
+    """Measure once and return the primary x/y pairs."""
+    trace = plugin.measure({})["IV"]
+    return list(zip(trace.x, trace.y, strict=True))
+
+
 class TestJsonRoundTrip:
     """JSON serialisation and restore behaviour."""
 
@@ -103,11 +109,7 @@ class TestReportedValues:
             BufferReading(voltage=0.4, current=0.002, resistance=200.0, time=2.0, status=0),
         )
 
-        def _execute(_parameters):
-            plugin._last_buffer_raw = buffer_records
-            return iter([(0.001, 0.1), (0.002, 0.4)])
-
-        plugin.execute = MagicMock(side_effect=_execute)
+        plugin._acquire_buffer_records = MagicMock(return_value=buffer_records)
 
         plugin.measure({})
 
@@ -197,13 +199,23 @@ class TestConfigureComplianceModes:
         smu.set_terminal_selection.assert_called_once()
         smu.set_remote_sense.assert_called_once_with(True)
         smu.set_source_autorange.assert_called_once()
-        smu.set_source_range.assert_called_once_with(pytest.approx(20.0), smu.set_source_autorange.call_args.args[1])
+        smu.set_source_range.assert_called_once_with(
+            pytest.approx(20.0), smu.set_source_autorange.call_args.args[1]
+        )
         smu.set_sense_autorange.assert_called_once()
-        smu.set_sense_range.assert_called_once_with(pytest.approx(0.01), smu.set_sense_autorange.call_args.args[1])
-        smu.set_filter_enabled.assert_called_once_with(True, smu.set_filter_enabled.call_args.args[1])
+        smu.set_sense_range.assert_called_once_with(
+            pytest.approx(0.01), smu.set_sense_autorange.call_args.args[1]
+        )
+        smu.set_filter_enabled.assert_called_once_with(
+            True, smu.set_filter_enabled.call_args.args[1]
+        )
         smu.set_filter_count.assert_called_once_with(7, smu.set_filter_count.call_args.args[1])
-        smu.set_filter_type.assert_called_once_with(FilterType.MOVING, smu.set_filter_type.call_args.args[1])
-        smu.set_median_filter_enabled.assert_called_once_with(True, smu.set_median_filter_enabled.call_args.args[1])
+        smu.set_filter_type.assert_called_once_with(
+            FilterType.MOVING, smu.set_filter_type.call_args.args[1]
+        )
+        smu.set_median_filter_enabled.assert_called_once_with(
+            True, smu.set_median_filter_enabled.call_args.args[1]
+        )
 
     def test_configure_with_output_disabled_leaves_output_off(self):
         """The legacy opt-out flag should prevent configure() from enabling output."""
@@ -233,7 +245,7 @@ class TestExecuteLifecycle:
         )
         plugin._smu = smu
 
-        points = list(plugin.execute({}))
+        points = _measure_pairs(plugin)
 
         assert points == [(0.1, 1.0), (0.2, 2.0)]
         smu.clear_buffer_full_event.assert_called_once_with()
@@ -264,8 +276,8 @@ class TestExecuteLifecycle:
         ]
         plugin._smu = smu
 
-        first = list(plugin.execute({}))
-        second = list(plugin.execute({}))
+        first = _measure_pairs(plugin)
+        second = _measure_pairs(plugin)
 
         assert first == [(0.1, 1.0), (0.2, 2.0)]
         assert second == [(0.1, 3.0), (0.2, 4.0)]
@@ -284,7 +296,7 @@ class TestExecuteLifecycle:
         plugin._smu = smu
 
         with pytest.raises(RuntimeError, match="sweep-complete SRQ"):
-            list(plugin.execute({}))
+            plugin.measure({})
 
         smu.abort.assert_called_once_with()
         smu.safe_output_off.assert_called_once_with()
@@ -341,16 +353,22 @@ class TestConfigUi:
         assert "Current sweep" in basic_combo_texts or "Voltage sweep" in basic_combo_texts
         assert "Auto" in basic_combo_texts
 
-        advanced_combo_texts = [combo.itemText(0) for combo in advanced_widget.findChildren(QComboBox)]
+        advanced_combo_texts = [
+            combo.itemText(0) for combo in advanced_widget.findChildren(QComboBox)
+        ]
         assert "Front terminals" in advanced_combo_texts
         assert "Immediate" in advanced_combo_texts
         assert "Repeat" in advanced_combo_texts
 
-        basic_combos = {combo.currentText(): combo for combo in basic_widget.findChildren(QComboBox)}
+        basic_combos = {
+            combo.currentText(): combo for combo in basic_widget.findChildren(QComboBox)
+        }
         assert "Current sweep" in basic_combos
         assert "Fixed limit" in basic_combos
 
-        advanced_combos = {combo.currentText(): combo for combo in advanced_widget.findChildren(QComboBox)}
+        advanced_combos = {
+            combo.currentText(): combo for combo in advanced_widget.findChildren(QComboBox)
+        }
         assert "Front terminals" in advanced_combos
         assert "4-wire remote sense" in advanced_combos
         assert "Immediate" in advanced_combos

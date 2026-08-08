@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLabel, QWidget
 
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y
 
 _DEFAULT_COLUMN_OPTION = "(default)"
 

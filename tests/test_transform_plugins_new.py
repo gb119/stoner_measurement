@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 from qtpy.QtWidgets import QWidget
 
+from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform import (
     FourierTransformPlugin,
     SavitzkyGolayPlugin,

@@ -40,7 +40,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
-from stoner_measurement.plugins.trace.base import (
+from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_E,
     COLUMN_ROLE_Y,
     TraceData,
@@ -1051,12 +1051,16 @@ class CurveFitPlugin(TransformPlugin):
         try:
             y_initial = fit_func(x_arr, *p0_vals)
             y_arr = np.asarray(y_initial, dtype=float)
-            names: dict[str, str] = dict(source_names or {})
-            names.setdefault("x", "x")
-            names.setdefault(y_col_name, y_col_name)
-            units: dict[str, str] = dict(source_units or {})
-            units.setdefault("x", "")
-            units.setdefault(y_col_name, "")
+            source_name_map = source_names or {}
+            source_unit_map = source_units or {}
+            names = {
+                "x": source_name_map.get("x", "x"),
+                y_col_name: source_name_map.get(y_col_name, y_col_name),
+            }
+            units = {
+                "x": source_unit_map.get("x", ""),
+                y_col_name: source_unit_map.get(y_col_name, ""),
+            }
             df = pd.DataFrame({y_col_name: y_arr}, index=pd.Index(x_arr, name="x"))
             return TraceData(
                 df=df,
@@ -1181,12 +1185,16 @@ class CurveFitPlugin(TransformPlugin):
         try:
             y_best = fit_func(x_arr, *popt)
             y_arr = np.asarray(y_best, dtype=float)
-            names: dict[str, str] = dict(source_names or {})
-            names.setdefault("x", "x")
-            names.setdefault(y_col_name, y_col_name)
-            units: dict[str, str] = dict(source_units or {})
-            units.setdefault("x", "")
-            units.setdefault(y_col_name, "")
+            source_name_map = source_names or {}
+            source_unit_map = source_units or {}
+            names = {
+                "x": source_name_map.get("x", "x"),
+                y_col_name: source_name_map.get(y_col_name, y_col_name),
+            }
+            units = {
+                "x": source_unit_map.get("x", ""),
+                y_col_name: source_unit_map.get(y_col_name, ""),
+            }
             df = pd.DataFrame({y_col_name: y_arr}, index=pd.Index(x_arr, name="x"))
             return TraceData(
                 df=df,
@@ -1248,7 +1256,7 @@ class CurveFitPlugin(TransformPlugin):
 
         In simple mode, :attr:`column_key` is used to select a specific column
         from a multicolumn
-        :class:`~stoner_measurement.plugins.trace.base.TraceData`.  When
+        :class:`~stoner_measurement.core.TraceData`.  When
         :attr:`column_key` is empty the first :data:`COLUMN_ROLE_Y` column is
         used (backward-compatible behaviour).
 
@@ -1544,7 +1552,7 @@ class CurveFitPlugin(TransformPlugin):
         """Return the DataFrame column names for the trace identified by *trace_key*.
 
         Attempts to evaluate the trace expression in the engine namespace and
-        return :attr:`~stoner_measurement.plugins.trace.TraceData.columns` from
+        return :attr:`~stoner_measurement.core.TraceData.columns` from
         the result.  Returns an empty list if the trace has not yet been measured
         or if the evaluation fails.
 

@@ -134,14 +134,14 @@ class TestStateSweepPlugin:
     def test_collect_records_stage(self, qapp):
         plugin = _TestSweepPlugin()
         plugin.collect_filter = "True"
-        plugin._data = plugin.data.iloc[0:0]
+        plugin.clear_data()
         plugin.ix = 3
         plugin.value = 1.25
         plugin.stage = 7
         plugin.meas_flag = True
         # Detached from engine -> no-op
         plugin.collect()
-        assert plugin.data.empty
+        assert plugin.data.df.empty
 
     def test_sweep_config_has_output_catalogue_checkboxes(self, qapp):
         from qtpy.QtWidgets import QCheckBox, QScrollArea

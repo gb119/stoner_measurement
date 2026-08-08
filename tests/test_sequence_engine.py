@@ -622,17 +622,11 @@ class TestDataCatalogs:
     def test_values_catalog_empty_before_plugins(self, engine):
         assert engine.values_catalog == {}
 
-    def test_dataframes_catalog_empty_before_plugins(self, engine):
-        assert engine.dataframes_catalog == {}
-
     def test_namespace_has_traces_key(self, engine):
         assert "_traces" in engine.namespace
 
     def test_namespace_has_values_key(self, engine):
         assert "_values" in engine.namespace
-
-    def test_namespace_has_dataframes_key(self, engine):
-        assert "_dataframes" in engine.namespace
 
     def test_add_trace_plugin_populates_traces_catalog(self, engine):
         plugin = DummyPlugin()
@@ -679,26 +673,24 @@ class TestDataCatalogs:
         assert len(cat) > 0
         assert any("counter" in k for k in cat)
 
-    def test_dataframes_catalog_populated_for_collecting_state_plugin(self, engine):
+    def test_collecting_state_plugin_populates_traces_catalog(self, engine):
         from stoner_measurement.plugins.state_scan import CounterPlugin
 
         plugin = CounterPlugin()
         plugin.collect_data = True
         engine.update_step_plugin_catalog([plugin])
-        cat = engine.dataframes_catalog
-        assert plugin.instance_name in cat
-        assert cat[plugin.instance_name][:2] == ["value", "stage"]
+        cat = engine.traces_catalog
+        key = f"{plugin.instance_name}:{plugin.state_name}"
+        assert cat[key] == f"{plugin.instance_name}.data"
 
-    def test_dataframes_catalog_honours_collect_outputs(self, engine):
+    def test_non_collecting_state_plugin_does_not_report_trace(self, engine):
         from stoner_measurement.plugins.state_scan import CounterPlugin
 
         plugin = CounterPlugin()
-        plugin.collect_data = True
-        expected_key = next(iter(plugin.reported_values().keys()))
-        plugin.collect_outputs = [expected_key, "missing:value"]
+        plugin.collect_data = False
         engine.update_step_plugin_catalog([plugin])
-        cat = engine.dataframes_catalog
-        assert cat[plugin.instance_name] == ["value", "stage", expected_key]
+        key = f"{plugin.instance_name}:{plugin.state_name}"
+        assert key not in engine.traces_catalog
 
     def test_values_catalog_includes_trace_statistics_when_enabled(self, engine):
         plugin = DummyPlugin()

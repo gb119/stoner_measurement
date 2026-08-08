@@ -6,7 +6,7 @@ common set of fields and methods that are defined here once and inherited by
 both families:
 
 * iteration state (``ix``, ``value``, ``stage``, ``meas_flag``)
-* data-collection settings and the collected :class:`~pandas.DataFrame`
+* data-collection settings and the collected :class:`~stoner_measurement.core.TraceData`
 * ``collect()`` / ``clear_data()`` lifecycle helpers
 * ``instance_name_changed`` signal with auto-update of ``collect_filter``
 * ``state_changed``, ``state_reached``, ``state_error`` progress signals
@@ -24,6 +24,7 @@ from typing import Any, SupportsInt
 import pandas as pd
 from qtpy.QtCore import QObject
 
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.plugins.sequence.base import SequencePlugin
 from stoner_measurement.qt_compat import pyqtSignal
@@ -63,10 +64,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             Python expression evaluated by :meth:`clear_data` to decide
             whether the collected data should be cleared.  Defaults to
             ``"True"``.
-        data (pandas.DataFrame):
-            Accumulated measurement data.  The index is :attr:`ix`; the first
-            two columns are ``value`` and ``stage``; subsequent columns are the
-            evaluated outputs from the sequence engine's values catalogue.
+        data (TraceData):
+            Accumulated measurement data.  The controlled state is the shared
+            x axis; ``iteration`` and ``stage`` are auxiliary columns and the
+            remaining columns are evaluated sequence outputs.
         instance_name_changed (pyqtSignal[str, str]):
             Emitted when :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.instance_name`
             changes.  Arguments are the old name and the new name.
@@ -97,11 +98,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         ...     def set_state(self, v): self._v = float(v)
         ...     def get_state(self): return getattr(self, "_v", 0.0)
         ...     def is_at_target(self): return True
-        >>> import pandas as pd
         >>> p = _S()
-        >>> isinstance(p.data, pd.DataFrame)
+        >>> isinstance(p.data, TraceData)
         True
-        >>> p.data.empty
+        >>> p.data.df.empty
         True
         >>> p.limits
         (-inf, inf)
@@ -125,7 +125,9 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.collect_filter: str = f"{self.instance_name}.meas_flag"
         self.clear_filter: str = "True"
         self.collect_outputs: list[str] | None = None
-        self._data: pd.DataFrame = pd.DataFrame()
+        # Subclass state metadata may depend on fields initialised after
+        # ``super().__init__`` (for example a source-mode selector).
+        self._data = TraceData()
         self._cached_config_tabs: list | None = None
 
     @property
@@ -232,50 +234,60 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     # ------------------------------------------------------------------
 
     @property
-    def data(self) -> pd.DataFrame:
+    def data(self) -> TraceData:
         """Accumulated measurement data collected during the iteration loop.
 
-        The :class:`~pandas.DataFrame` index is the iterator index
-        (:attr:`ix`).  The first two columns are ``value`` and ``stage``;
-        subsequent columns contain the evaluated outputs from the sequence
-        engine's values catalogue.  Populated by :meth:`collect` and reset by
+        The :class:`TraceData` x axis is the controlled or swept physical
+        state.  The ``iteration`` and ``stage`` columns retain loop bookkeeping;
+        subsequent columns contain evaluated outputs from the sequence engine's
+        values catalogue.  Populated by :meth:`collect` and reset by
         :meth:`clear_data`.
 
         Returns:
-            (pandas.DataFrame):
-                The accumulated data, or an empty DataFrame if no data has
+            (TraceData):
+                The accumulated data, or an empty TraceData if no data has
                 been collected or the data has been cleared.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
+            >>> import numpy as np
             >>> p = CounterPlugin()
-            >>> import pandas as pd
-            >>> isinstance(p.data, pd.DataFrame)
+            >>> from stoner_measurement.core import TraceData
+            >>> isinstance(p.data, TraceData)
             True
-            >>> p.data.empty
+            >>> p.data.df.empty
             True
         """
         return self._data
+
+    def _empty_trace_data(self) -> TraceData:
+        """Return an empty collected-data table with state-axis metadata."""
+        frame = pd.DataFrame(index=pd.Index([], dtype=float, name="x"))
+        return TraceData(
+            frame,
+            names={"x": self.state_name},
+            units={"x": self.units},
+        )
 
     def clear_data(self) -> None:
         """Clear the collected data if :attr:`clear_filter` evaluates to ``True``.
 
         Evaluates :attr:`clear_filter` in the sequence engine namespace.  If
         the result is truthy, :attr:`data` is reset to an empty
-        :class:`~pandas.DataFrame`.  If the plugin is not attached to an engine
+        :class:`TraceData`.  If the plugin is not attached to an engine
         the data is always cleared unconditionally.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
-            >>> import pandas as pd
+            >>> import numpy as np
             >>> p = CounterPlugin()
-            >>> p._data = pd.DataFrame([{"value": 1.0}])
+            >>> p._data = TraceData.from_xy(np.array([0.0]), np.array([1.0]))
             >>> p.clear_data()
-            >>> p.data.empty
+            >>> p.data.df.empty
             True
         """
         try:
@@ -283,7 +295,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         except RuntimeError:
             should_clear = True
         if should_clear:
-            self._data = pd.DataFrame()
+            self._data = self._empty_trace_data()
 
     def collect(self, outputs: list[str] | None = None) -> None:
         """Append a row of current output values to :attr:`data`.
@@ -291,8 +303,8 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         Only collects when :attr:`meas_flag` is ``True`` **and** the plugin is
         attached to a sequence engine (i.e. :attr:`sequence_engine` is not
         ``None``).  Both conditions must be met.  Evaluates
-        :attr:`collect_filter`; if truthy, appends a row to :attr:`data` keyed
-        by :attr:`ix`.  The row contains :attr:`value` and :attr:`stage`,
+        :attr:`collect_filter`; if truthy, appends a row to :attr:`data` at the
+        current state value.  The row contains ``iteration`` and ``stage``,
         followed by evaluated outputs from the engine's values catalogue.
 
         Keyword Parameters:
@@ -315,10 +327,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> p.ix = 0
             >>> p.value = 1.5
             >>> p.collect()
-            >>> p.data.index.tolist()
-            [0]
-            >>> float(p.data["value"].iloc[0])
-            1.5
+            >>> p.data.x.tolist()
+            [1.5]
+            >>> int(p.data.df["iteration"].iloc[0])
+            0
             >>> engine.shutdown()
         """
         if not self.meas_flag or self.sequence_engine is None:
@@ -339,7 +351,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         else:
             keys = [k for k in self.collect_outputs if k in values_cat]
 
-        row: dict[str, Any] = {"value": self.value, "stage": self.stage}
+        row: dict[str, Any] = {"iteration": self.ix, "stage": self.stage}
         for key in keys:
             expr = values_cat[key]
             try:
@@ -348,8 +360,23 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 self.log.warning("collect(): failed to evaluate %r: %s", expr, exc)
                 row[key] = None
 
-        new_row = pd.DataFrame([row], index=[self.ix])
-        self._data = new_row if self._data.empty else pd.concat([self._data, new_row])
+        new_row = pd.DataFrame([row], index=pd.Index([self.value], name="x"))
+        frame = new_row if self._data.df.empty else pd.concat([self._data.df, new_row])
+        output_columns = [column for column in frame.columns if column not in {"iteration", "stage"}]
+        roles = {"iteration": COLUMN_ROLE_Z, "stage": COLUMN_ROLE_Z}
+        roles.update({column: COLUMN_ROLE_Y for column in output_columns})
+        names = {"x": self.state_name, "iteration": "Iteration", "stage": "Stage"}
+        names.update({column: str(column) for column in output_columns})
+        units = {key: "" for key in names}
+        units["x"] = self.units
+        self._data = TraceData(frame, column_roles=roles, names=names, units=units)
+
+    def reported_traces(self) -> dict[str, str]:
+        """Expose collected state data through the shared trace catalogue."""
+        if not self.collect_data:
+            return {}
+        variable = self.instance_name
+        return {f"{variable}:{self.state_name}": f"{variable}.data"}
 
     # ------------------------------------------------------------------
     # JSON serialisation (shared fields)

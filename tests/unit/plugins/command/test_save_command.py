@@ -6,6 +6,32 @@ import pytest
 
 from stoner_measurement.plugins.command import SaveCommand
 
+
+def _set_collected_state_data(counter, values: list[float]) -> None:
+    """Install representative collected scan data on a state plugin."""
+    import pandas as pd
+
+    from stoner_measurement.core import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
+
+    frame = pd.DataFrame(
+        {
+            "iteration": range(len(values)),
+            "stage": [0] * len(values),
+            "signal": values,
+        },
+        index=pd.Index(values, name="x"),
+    )
+    counter._data = TraceData(  # noqa: SLF001
+        frame,
+        column_roles={
+            "iteration": COLUMN_ROLE_Z,
+            "stage": COLUMN_ROLE_Z,
+            "signal": COLUMN_ROLE_Y,
+        },
+        names={"x": counter.state_name, "signal": "Signal"},
+        units={"x": counter.units},
+    )
+
 # ---------------------------------------------------------------------------
 # SaveCommand
 # ---------------------------------------------------------------------------
@@ -194,6 +220,34 @@ class TestSaveCommand:
         # There must be at least as many rows as data points.
         assert len(data_rows) >= n_points
 
+    def test_trace_mode_includes_every_dataframe_column(self, qapp, engine):
+        """Multicolumn traces must not be reduced to the legacy primary y view."""
+        import pandas as pd
+
+        from stoner_measurement.core import TraceData
+
+        frame = pd.DataFrame(
+            {"voltage": [1.0, 2.0], "resistance": [10.0, 20.0]},
+            index=pd.Index([0.1, 0.2], name="x"),
+        )
+        trace = TraceData(
+            frame,
+            names={"x": "Current", "voltage": "Voltage", "resistance": "Resistance"},
+            units={"x": "A", "voltage": "V", "resistance": "Ω"},
+        )
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        engine._namespace["trace"] = trace
+        engine._namespace["_traces"] = {"source:IV": "trace"}
+
+        columns = cmd._build_trace_columns(ns=engine._namespace, trace_keys=None)
+
+        assert [name for name, _values in columns] == [
+            "IV:Current (A)",
+            "IV:Voltage (V)",
+            "IV:Resistance (Ω)",
+        ]
+
     def test_execute_creates_parent_dirs(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
@@ -223,14 +277,8 @@ class TestSaveCommand:
     # New attributes and serialisation
     # ------------------------------------------------------------------
 
-    def test_default_save_mode(self, qapp):
-        assert SaveCommand().save_mode == "traces"
-
     def test_default_trace_selection_empty(self, qapp):
         assert SaveCommand().trace_selection == {}
-
-    def test_default_data_source_empty(self, qapp):
-        assert SaveCommand().data_source == ""
 
     def test_default_no_overwrite_true(self, qapp):
         assert SaveCommand().no_overwrite is True
@@ -243,14 +291,12 @@ class TestSaveCommand:
 
     def test_to_json_includes_new_fields(self, qapp):
         cmd = SaveCommand()
-        cmd.save_mode = "data"
-        cmd.data_source = "my_state"
         cmd.no_overwrite = False
         cmd.incremental_save = True
         cmd.save_format = "nexus"
         d = cmd.to_json()
-        assert d["save_mode"] == "data"
-        assert d["data_source"] == "my_state"
+        assert "save_mode" not in d
+        assert "data_source" not in d
         assert d["no_overwrite"] is False
         assert d["incremental_save"] is True
         assert d["save_format"] == "nexus"
@@ -260,16 +306,12 @@ class TestSaveCommand:
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
         cmd = SaveCommand()
-        cmd.save_mode = "data"
-        cmd.data_source = "ctrl"
         cmd.no_overwrite = False
         cmd.incremental_save = True
         cmd.save_format = "nexus"
         cmd.trace_selection = {"dummy:Dummy": False}
         restored = BasePlugin.from_json(cmd.to_json())
         assert isinstance(restored, SaveCommand)
-        assert restored.save_mode == "data"
-        assert restored.data_source == "ctrl"
         assert restored.no_overwrite is False
         assert restored.incremental_save is True
         assert restored.save_format == "nexus"
@@ -425,11 +467,11 @@ class TestSaveCommand:
         assert all(dataset.kwargs["maxshape"] == (None,) for dataset in data.datasets.values())
         assert all(dataset.kwargs["chunks"] is True for dataset in data.datasets.values())
 
-    def test_incremental_nexus_appends_resizable_datasets(self, qapp, engine, tmp_path, monkeypatch):
+    def test_incremental_nexus_appends_resizable_datasets(
+        self, qapp, engine, tmp_path, monkeypatch
+    ):
         import sys
         import types
-
-        import pandas as pd
 
         from stoner_measurement.plugins.state_control import CounterPlugin
 
@@ -498,30 +540,28 @@ class TestSaveCommand:
         monkeypatch.setitem(sys.modules, "h5py", fake_h5py)
 
         counter = CounterPlugin()
+        counter.collect_data = True
         engine.add_plugin("counter", counter)
-        counter._data = pd.DataFrame([{"value": 1.0}, {"value": 2.0}])  # noqa: SLF001
+        engine.update_step_plugin_catalog([counter])
+        _set_collected_state_data(counter, [1.0, 2.0])
 
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
         cmd.save_format = "nexus"
-        cmd.save_mode = "data"
-        cmd.data_source = "counter"
         cmd.incremental_save = True
         out_file = tmp_path / "out.nxs"
         cmd.path_expr = repr(str(out_file))
 
         cmd.execute()
-        counter._data = pd.DataFrame(  # noqa: SLF001
-            [{"value": 1.0}, {"value": 2.0}, {"value": 3.0}, {"value": 4.0}]
-        )
+        _set_collected_state_data(counter, [1.0, 2.0, 3.0, 4.0])
         cmd.execute()
 
         root = files[out_file]
         data = root.groups["entry"].groups["data"]
-        assert data.datasets["index"].data == [0.0, 1.0, 2.0, 3.0]
-        assert data.datasets["value"].data == [1.0, 2.0, 3.0, 4.0]
-        assert data.datasets["index"].resize_calls == [(4,)]
-        assert data.datasets["value"].resize_calls == [(4,)]
+        assert data.datasets["value_value"].data == [1.0, 2.0, 3.0, 4.0]
+        assert data.datasets["value_signal"].data == [1.0, 2.0, 3.0, 4.0]
+        assert data.datasets["value_value"].resize_calls == [(4,)]
+        assert data.datasets["value_signal"].resize_calls == [(4,)]
 
     # ------------------------------------------------------------------
     # Trace selection
@@ -606,118 +646,44 @@ class TestSaveCommand:
         assert any(h.startswith("Dummy:") for h in header[1:])
 
     # ------------------------------------------------------------------
-    # Data mode
+    # Collected state traces
     # ------------------------------------------------------------------
 
-    def test_execute_data_mode_saves_dataframe(self, qapp, engine, tmp_path):
-        import pandas as pd
-
+    def test_execute_saves_collected_state_trace(self, qapp, engine, tmp_path):
         from stoner_measurement.plugins.state_control import CounterPlugin
 
         counter = CounterPlugin()
+        counter.collect_data = True
         engine.add_plugin("counter", counter)
-        # Inject some data directly.
-        counter._data = pd.DataFrame(  # noqa: SLF001
-            [{"value": 1.0, "x": 10.0}, {"value": 2.0, "x": 20.0}]
-        )
+        engine.update_step_plugin_catalog([counter])
+        _set_collected_state_data(counter, [1.0, 2.0])
 
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
-        cmd.save_mode = "data"
-        cmd.data_source = "counter"
         cmd.no_overwrite = False
         out_file = tmp_path / "out.txt"
         cmd.path_expr = repr(str(out_file))
-        cmd.execute()
-
-        assert out_file.exists()
-        lines = out_file.read_text().splitlines()
-        header = lines[0].split("\t")
-        assert header[0] == "TDI Format 2.0"
-        # Column 0 is the TDI marker; column 1 is the first numerical data column.
-        assert header[1] == "index"
-        # DataFrame column names should be in the headers.
-        assert any("value" in h for h in header[1:])
-        assert any("x" in h for h in header[1:])
-        assert lines[1].split("\t")[1] == "0.0"
-        assert lines[2].split("\t")[1] == "1.0"
-
-    def test_execute_data_mode_uses_named_index_header(self, qapp, engine, tmp_path):
-        import pandas as pd
-
-        from stoner_measurement.plugins.state_control import CounterPlugin
-
-        counter = CounterPlugin()
-        engine.add_plugin("counter", counter)
-        counter._data = pd.DataFrame(  # noqa: SLF001
-            [{"value": 1.0}, {"value": 2.0}],
-            index=pd.Index([10, 20], name="step"),
-        )
-
-        cmd = SaveCommand()
-        engine.add_plugin("save", cmd)
-        cmd.save_mode = "data"
-        cmd.data_source = "counter"
-        cmd.no_overwrite = False
-        out_file = tmp_path / "out.txt"
-        cmd.path_expr = repr(str(out_file))
-        cmd.execute()
+        cmd.execute(trace="counter:Value")
 
         lines = out_file.read_text().splitlines()
         header = lines[0].split("\t")
-        assert header[1] == "step"
-        assert lines[1].split("\t")[1] == "10.0"
-        assert lines[2].split("\t")[1] == "20.0"
+        assert any("Value:Value" in item for item in header)
+        assert any("Value:Signal" in item for item in header)
+        assert lines[1].split("\t")[1] == "1.0"
+        assert lines[2].split("\t")[1] == "2.0"
 
-    def test_execute_data_mode_no_source_logs_warning(self, qapp, engine, tmp_path, caplog):
-        import logging
-
-        cmd = SaveCommand()
-        engine.add_plugin("save", cmd)
-        cmd.save_mode = "data"
-        cmd.data_source = ""
-        cmd.no_overwrite = False
-        out_file = tmp_path / "out.txt"
-        cmd.path_expr = repr(str(out_file))
-
-        with caplog.at_level(logging.WARNING):
-            cmd.execute()
-
-        assert not out_file.exists()
-        assert any("no data_source" in r.message for r in caplog.records)
-
-    def test_execute_data_mode_missing_source_logs_warning(self, qapp, engine, tmp_path, caplog):
-        import logging
-
-        cmd = SaveCommand()
-        engine.add_plugin("save", cmd)
-        cmd.save_mode = "data"
-        cmd.data_source = "nonexistent_plugin"
-        cmd.no_overwrite = False
-        out_file = tmp_path / "out.txt"
-        cmd.path_expr = repr(str(out_file))
-
-        with caplog.at_level(logging.WARNING):
-            cmd.execute()
-
-        assert not out_file.exists()
-        assert any("not found" in r.message for r in caplog.records)
-
-    def test_incremental_data_mode_appends_only_new_rows(self, qapp, engine, tmp_path):
-        import pandas as pd
-
+    def test_incremental_state_trace_appends_only_new_rows(self, qapp, engine, tmp_path):
         from stoner_measurement.plugins.state_control import CounterPlugin
 
         counter = CounterPlugin()
+        counter.collect_data = True
         engine.add_plugin("counter", counter)
-        counter._data = pd.DataFrame(  # noqa: SLF001
-            [{"value": float(i)} for i in range(40)]
-        )
+        engine.update_step_plugin_catalog([counter])
+        _set_collected_state_data(counter, [float(i) for i in range(40)])
 
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
-        cmd.save_mode = "data"
-        cmd.data_source = "counter"
+        cmd.trace_selection = {"counter:Value": True}
         cmd.incremental_save = True
         cmd.no_overwrite = False
         out_file = tmp_path / "out.txt"
@@ -725,33 +691,25 @@ class TestSaveCommand:
 
         cmd.execute()
         first_lines = out_file.read_text(encoding="utf-8").splitlines()
-
-        counter._data = pd.DataFrame(  # noqa: SLF001
-            [{"value": float(i)} for i in range(43)]
-        )
+        _set_collected_state_data(counter, [float(i) for i in range(43)])
         cmd.execute()
 
         second_lines = out_file.read_text(encoding="utf-8").splitlines()
         assert second_lines[: len(first_lines)] == first_lines
         assert len(second_lines) == len(first_lines) + 3
-        assert [line.split("\t", maxsplit=1)[0] for line in second_lines[-3:]] == ["", "", ""]
         assert [line.split("\t")[1] for line in second_lines[-3:]] == ["40.0", "41.0", "42.0"]
 
-    def test_incremental_data_mode_reuses_no_overwrite_filename(self, qapp, engine, tmp_path):
-        import pandas as pd
-
+    def test_incremental_state_trace_reuses_no_overwrite_filename(self, qapp, engine, tmp_path):
         from stoner_measurement.plugins.state_control import CounterPlugin
 
         counter = CounterPlugin()
+        counter.collect_data = True
         engine.add_plugin("counter", counter)
-        counter._data = pd.DataFrame(  # noqa: SLF001
-            [{"value": float(i)} for i in range(40)]
-        )
+        engine.update_step_plugin_catalog([counter])
+        _set_collected_state_data(counter, [float(i) for i in range(40)])
 
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
-        cmd.save_mode = "data"
-        cmd.data_source = "counter"
         cmd.incremental_save = True
         cmd.no_overwrite = True
         out_file = tmp_path / "out.txt"
@@ -759,9 +717,7 @@ class TestSaveCommand:
         cmd.path_expr = repr(str(out_file))
 
         cmd.execute()
-        counter._data = pd.DataFrame(  # noqa: SLF001
-            [{"value": float(i)} for i in range(41)]
-        )
+        _set_collected_state_data(counter, [float(i) for i in range(41)])
         cmd.execute()
 
         versioned = tmp_path / "out_001.txt"
@@ -837,9 +793,7 @@ class TestSaveCommand:
     # execute — default data directory resolution
     # ------------------------------------------------------------------
 
-    def test_execute_resolves_relative_path_against_data_directory(
-        self, qapp, engine, tmp_path
-    ):
+    def test_execute_resolves_relative_path_against_data_directory(self, qapp, engine, tmp_path):
         """Relative path_expr should be resolved against the configured default data directory."""
         from unittest.mock import patch
 
@@ -847,7 +801,9 @@ class TestSaveCommand:
         engine.add_plugin("save", cmd)
         cmd.path_expr = "'subdir/out.txt'"
 
-        with patch("stoner_measurement.app_config.default_data_directory", return_value=str(tmp_path)):
+        with patch(
+            "stoner_measurement.app_config.default_data_directory", return_value=str(tmp_path)
+        ):
             cmd.execute()
 
         expected = tmp_path / "subdir" / "out.txt"
@@ -862,7 +818,9 @@ class TestSaveCommand:
         out_file = tmp_path / "absolute_out.txt"
         cmd.path_expr = repr(str(out_file))
 
-        with patch("stoner_measurement.app_config.default_data_directory", return_value="/some/other/dir"):
+        with patch(
+            "stoner_measurement.app_config.default_data_directory", return_value="/some/other/dir"
+        ):
             cmd.execute()
 
         assert out_file.exists()
@@ -967,32 +925,6 @@ class TestSaveCommand:
         header = out_file.read_text().splitlines()[0].split("\t")
         assert any("Dummy:" in h for h in header[1:])
 
-    def test_execute_data_kwarg_overrides_data_source(self, qapp, engine, tmp_path):
-        import pandas as pd
-
-        from stoner_measurement.plugins.state_control import CounterPlugin
-
-        counter = CounterPlugin()
-        engine.add_plugin("counter", counter)
-        counter._data = pd.DataFrame(  # noqa: SLF001
-            [{"value": 1.0, "x": 10.0}, {"value": 2.0, "x": 20.0}]
-        )
-
-        cmd = SaveCommand()
-        engine.add_plugin("save", cmd)
-        cmd.no_overwrite = False
-        # Configured for trace mode with no data source.
-        cmd.save_mode = "traces"
-        cmd.data_source = ""
-        out_file = tmp_path / "out.txt"
-        cmd.path_expr = repr(str(out_file))
-
-        # kwarg should switch to data mode and use 'counter'.
-        cmd.execute(data="counter")
-        lines = out_file.read_text().splitlines()
-        header = lines[0].split("\t")
-        assert any("value" in h for h in header[1:])
-
     def test_execute_no_overwrite_kwarg_overrides_config(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
@@ -1023,12 +955,6 @@ class TestSaveCommand:
         cmd.execute(no_overwrite=False)
         text = out_file.read_text(encoding="utf-8")
         assert "TDI Format 2.0" in text
-
-    def test_execute_trace_and_data_kwarg_raises(self, qapp, engine):
-        cmd = SaveCommand()
-        engine.add_plugin("save", cmd)
-        with pytest.raises(ValueError, match="mutually exclusive"):
-            cmd.execute(trace="dummy:Dummy", data="counter")
 
     def test_call_trace_kwarg_forwarded(self, qapp, engine, tmp_path):
         """__call__ should forward kwargs to execute."""
@@ -1092,4 +1018,3 @@ class TestSaveCommand:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))
-

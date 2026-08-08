@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from qtpy.QtWidgets import QComboBox, QFormLayout, QWidget
 
-from stoner_measurement.plugins.trace.base import (
+from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
     TraceData,
@@ -197,19 +197,17 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
             index=pd.Index(x_out, name="x"),
         )
 
-        names = dict(source_names)
-        names.setdefault("x", default_x_name)
+        names = {"x": source_names.get("x", default_x_name)}
         for component, column_name in component_columns.items():
-            names.setdefault(column_name, column_name)
+            names[column_name] = source_names.get(column_name, column_name)
 
-        units = dict(source_units)
-        units["x"] = x_unit
+        units = {"x": x_unit}
         value_unit = source_units.get(y_col_name, "")
         for component, column_name in component_columns.items():
             if component == "angle":
-                units.setdefault(column_name, "rad")
+                units[column_name] = "rad"
             else:
-                units.setdefault(column_name, value_unit)
+                units[column_name] = value_unit
 
         return {
             _OUTPUT_TRACE_KEY: TraceData(

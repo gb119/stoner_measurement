@@ -33,6 +33,7 @@ def _table_column_by_label(table: _ParamTableWidget, label: str) -> int:
             return col
     raise AssertionError(f"Column label {label!r} not found")
 
+
 # ---------------------------------------------------------------------------
 # Module-level helper tests
 # ---------------------------------------------------------------------------
@@ -287,10 +288,7 @@ class TestCurveFitInitialValueReporting:
         plugin.advanced_mode = True
         plugin.x_expr = "_xdata"
         plugin.y_expr = "_ydata"
-        plugin.fit_code = (
-            "def fit(x, a, b): return a * x + b\n"
-            "def p0(x, y): return (7.0, 8.0)"
-        )
+        plugin.fit_code = "def fit(x, a, b): return a * x + b\ndef p0(x, y): return (7.0, 8.0)"
         plugin.param_names = ["a", "b"]
         plugin.report_initial_values = True
         engine._namespace["_xdata"] = np.linspace(0.0, 1.0, 20)
@@ -548,8 +546,8 @@ class TestCurveFitTransform:
         engine.shutdown()
 
     def test_simple_mode_with_trace_data(self, qapp):
+        from stoner_measurement.core import TraceData
         from stoner_measurement.core.sequence_engine import SequenceEngine
-        from stoner_measurement.plugins.trace import TraceData
 
         engine = SequenceEngine()
         plugin = CurveFitPlugin()
@@ -557,7 +555,7 @@ class TestCurveFitTransform:
 
         x = np.linspace(0.0, 1.0, 30)
         y = 5.0 * x + 2.0
-        td = TraceData(x=x, y=y)
+        td = TraceData.from_xy(x, y)
         engine._namespace["_td"] = td
         engine._namespace["_traces"] = {"dummy:ch": "_td"}
 
@@ -791,10 +789,7 @@ class TestCurveFitConfigTabs:
         p.x_expr = "_x"
         p.y_expr = "_y"
         p.fit_code = (
-            "def fit(x, a, b):\n"
-            "    return a * x + b\n"
-            "def p0(x, y):\n"
-            "    return (2.5, -1.25)\n"
+            "def fit(x, a, b):\n    return a * x + b\ndef p0(x, y):\n    return (2.5, -1.25)\n"
         )
         p.param_names = ["a", "b"]
 
@@ -820,12 +815,7 @@ class TestCurveFitConfigTabs:
         p.advanced_mode = True
         p.x_expr = "_x"
         p.y_expr = "_y"
-        p.fit_code = (
-            "def fit(x, a, b):\n"
-            "    return a * x + b\n"
-            "def p0(x, y):\n"
-            "    return (2.5,)\n"
-        )
+        p.fit_code = "def fit(x, a, b):\n    return a * x + b\ndef p0(x, y):\n    return (2.5,)\n"
         p.param_names = ["a", "b"]
 
         tabs = p.config_tabs()
@@ -969,7 +959,7 @@ class TestCurveFitOptionalTraces:
     def test_initial_trace_computed_in_transform(self, linear_plugin):
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import TraceData
+        from stoner_measurement.core import TraceData
 
         plugin, _ = linear_plugin
         plugin.show_initial_trace = True
@@ -983,7 +973,7 @@ class TestCurveFitOptionalTraces:
     def test_best_fit_trace_computed_in_transform(self, linear_plugin):
         import pandas as pd
 
-        from stoner_measurement.plugins.trace.base import TraceData
+        from stoner_measurement.core import TraceData
 
         plugin, _ = linear_plugin
         plugin.show_best_fit_trace = True
@@ -1052,8 +1042,8 @@ class TestCurveFitColumnKey:
         """Return (engine, plugin) wired up with a two-y-column TraceData."""
         import pandas as pd
 
+        from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
         from stoner_measurement.core.sequence_engine import SequenceEngine
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
 
         engine = SequenceEngine()
         plugin = CurveFitPlugin()
@@ -1078,8 +1068,8 @@ class TestCurveFitColumnKey:
         """Return (engine, plugin) for two y-columns with two y-error columns."""
         import pandas as pd
 
+        from stoner_measurement.core import COLUMN_ROLE_E, COLUMN_ROLE_Y, TraceData
         from stoner_measurement.core.sequence_engine import SequenceEngine
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_E, COLUMN_ROLE_Y, TraceData
 
         engine = SequenceEngine()
         plugin = CurveFitPlugin()
@@ -1201,8 +1191,8 @@ class TestCurveFitColumnKey:
         import pandas as pd
         from qtpy.QtWidgets import QComboBox
 
+        from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
         from stoner_measurement.core.sequence_engine import SequenceEngine
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
 
         engine = SequenceEngine()
         plugin = CurveFitPlugin()
@@ -1224,7 +1214,9 @@ class TestCurveFitColumnKey:
         tabs = plugin.config_tabs()
         data_widget = dict(tabs)["Data"]
         combos = data_widget.findChildren(QComboBox)
-        trace_combo = next(c for c in combos if c.findText("src:t1") >= 0 and c.findText("src:t2") >= 0)
+        trace_combo = next(
+            c for c in combos if c.findText("src:t1") >= 0 and c.findText("src:t2") >= 0
+        )
         column_combo = next(c for c in combos if c.findText("(default)") >= 0)
 
         assert column_combo.findText("A") >= 0
@@ -1236,5 +1228,4 @@ class TestCurveFitColumnKey:
 
 
 if __name__ == "__main__":
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

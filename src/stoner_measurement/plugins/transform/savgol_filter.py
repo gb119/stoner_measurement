@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from qtpy.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget
 
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform._trace_selection import (
     TraceChannelSelectionMixin,
 )
@@ -151,22 +151,20 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         output_col = y_col_name if derivative_order == 0 else f"d{derivative_order}_{y_col_name}"
         df = pd.DataFrame({output_col: y_filtered}, index=pd.Index(x_arr, name="x"))
 
-        names = dict(source_names)
-        names.setdefault("x", "x")
+        names = {"x": source_names.get("x", "x")}
         if derivative_order == 0:
-            names.setdefault(output_col, names.get(y_col_name, y_col_name))
+            names[output_col] = source_names.get(y_col_name, y_col_name)
         else:
-            base_name = names.get(y_col_name, y_col_name)
-            names.setdefault(output_col, f"d{derivative_order}_{base_name}_dx{derivative_order}")
+            base_name = source_names.get(y_col_name, y_col_name)
+            names[output_col] = f"d{derivative_order}_{base_name}_dx{derivative_order}"
 
-        units = dict(source_units)
-        units.setdefault("x", "")
-        y_unit = units.get(y_col_name, "")
-        x_unit = units.get("x", "")
+        units = {"x": source_units.get("x", "")}
+        y_unit = source_units.get(y_col_name, "")
+        x_unit = units["x"]
         if derivative_order == 0:
-            units.setdefault(output_col, y_unit)
+            units[output_col] = y_unit
         else:
-            units.setdefault(output_col, _derive_unit(y_unit, x_unit, derivative_order))
+            units[output_col] = _derive_unit(y_unit, x_unit, derivative_order)
 
         return {
             _OUTPUT_TRACE_KEY: TraceData(

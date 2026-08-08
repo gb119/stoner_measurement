@@ -89,47 +89,71 @@ logic lives in one place.
 Trace data structure
 ~~~~~~~~~~~~~~~~~~~~
 
-Each :class:`~stoner_measurement.plugins.trace.TraceData` object returned by
-:meth:`~stoner_measurement.plugins.trace.TracePlugin.measure` is backed by a
-:class:`pandas.DataFrame`.  The independent variable (*x*) is the index; one
-or more dependent variable **columns** are stored in the DataFrame, each
-annotated with a *role* string from the ``COLUMN_ROLE_*`` constants.
+All tabular measurement results use
+:class:`~stoner_measurement.core.TraceData`.  This includes objects
+returned by :meth:`~stoner_measurement.plugins.trace.TracePlugin.measure` and
+data accumulated by state scan/sweep plugins when ``collect_data`` is enabled.
+Each object is backed by a :class:`pandas.DataFrame`: the independent variable
+(*x*) is the index, and one or more dependent or auxiliary variables are
+columns annotated with role strings from the ``COLUMN_ROLE_*`` constants.
+
+One ``TraceData`` therefore represents one shared-x table.  The mapping
+returned by ``measure()`` is only for genuinely separate trace tables, which
+may have different x arrays.  Multiple simultaneously acquired outputs on the
+same scan belong in columns of one ``TraceData``.
+
+For a state scan or sweep, *x* is the controlled physical state.  The
+``iteration`` and ``stage`` bookkeeping values are retained as auxiliary
+columns, alongside the selected scalar outputs.  The resulting table is
+published directly in the trace catalogue, so plotting, transforms, and
+saving do not require an intermediate data-to-trace conversion step.  The Save
+command likewise has one trace selection path for both instrument traces and
+collected scan/sweep tables; incremental saving remains available for repeated
+saves as a table grows.
 
 .. code-block:: python
 
-    from stoner_measurement.plugins.trace import (
+    from stoner_measurement.core import (
         TraceData,
         COLUMN_ROLE_Y,
         COLUMN_ROLE_Z,
+        COLUMN_ROLE_E,
     )
     import numpy as np
     import pandas as pd
 
-    # Single-column trace (same as legacy API)
-    td = TraceData(x=np.array([0.0, 1.0, 2.0]), y=np.array([0.0, 1.0, 4.0]))
+    # Single-column convenience constructor
+    td = TraceData.from_xy(
+        np.array([0.0, 1.0, 2.0]),
+        np.array([0.0, 1.0, 4.0]),
+    )
 
-    # Multi-column trace using the new-style DataFrame constructor
+    # Multi-column trace, including its uncertainty column
     df = pd.DataFrame(
-        {"y": [0.0, 1.0, 4.0], "z": [0.0, 0.5, 2.0]},
+        {
+            "voltage": [0.0, 1.0, 4.0],
+            "current": [0.0, 0.5, 2.0],
+            "voltage_error": [0.01, 0.01, 0.02],
+        },
         index=pd.Index([0.0, 1.0, 2.0], name="x"),
     )
     td_multi = TraceData(
-        df=df,
-        column_roles={"y": COLUMN_ROLE_Y, "z": COLUMN_ROLE_Z},
-        names={"x": "Time", "y": "Voltage", "z": "Current"},
-        units={"x": "s", "y": "V", "z": "A"},
+        df,
+        column_roles={
+            "voltage": COLUMN_ROLE_Y,
+            "current": COLUMN_ROLE_Z,
+            "voltage_error": COLUMN_ROLE_E,
+        },
+        names={"x": "Time", "voltage": "Voltage", "current": "Current"},
+        units={"x": "s", "voltage": "V", "current": "A"},
     )
-
-    # Add a column to an existing trace
-    from stoner_measurement.plugins.trace import COLUMN_ROLE_E
-    td.add_column("e_voltage", np.array([0.01, 0.01, 0.02]), COLUMN_ROLE_E)
 
     # Query all columns with a particular role
     y_cols = td_multi.get_columns_by_role(COLUMN_ROLE_Y)
 
-The **legacy API** (``td.x``, ``td.y``, ``td.d``, ``td.e``,
-``TraceData(x=…, y=…, d=…, e=…)``) is fully preserved for backward
-compatibility.
+The ``td.x``, ``td.y``, ``td.d``, and ``td.e`` properties provide convenient
+views of the first column with the corresponding role.  The DataFrame remains
+the canonical representation.
 
 Selecting which column to plot
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

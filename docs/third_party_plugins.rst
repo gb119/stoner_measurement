@@ -371,8 +371,9 @@ can reference them directly:
        Records are forwarded to the application's log viewer.
    * - ``_traces``
      - Mapping of ``"{instance_name}:{channel}"`` to
-       :class:`~stoner_measurement.plugins.TraceData` objects for every trace
-       acquired so far in the current sequence run.
+       expressions resolving to :class:`~stoner_measurement.core.TraceData`
+       objects.  This includes instrument traces and collected state
+       scan/sweep tables.
    * - ``_values``
      - Mapping of ``"{instance_name}:{quantity}"`` to scalar Python
        expressions (as strings) for every scalar value reported by a plugin.

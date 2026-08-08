@@ -848,3 +848,29 @@ Result:
   `PlotWidget` closes its PyQtGraph scene before the containing window is
   destroyed.
 - Added regression coverage for the parent-to-plot close handoff.
+
+## Completed In Twenty-Fifth Migration Pass
+
+- Replaced the 509-line legacy `tests/test_trace_data.py` compatibility
+  monolith with focused canonical-contract coverage in
+  `tests/unit/core/test_trace_data.py`.
+- Removed tests for the retired tuple constructor, iteration/indexing shims,
+  `add_column()`, and the duplicate trace-plugin acquisition APIs.
+- Added behavior coverage for DataFrame copying, role and metadata validation,
+  default completion, single-y construction, error views, acquisition failure
+  status, shared-x multi-output acquisition, and multicolumn saving.
+- Verification commands and results are recorded with the implementation that
+  performed this migration.
+
+## Completed In Twenty-Sixth Migration Pass
+
+- Made `TraceData` the shared container for instrument traces and data
+  accumulated by state scan/sweep plugins.
+- Moved the `TraceData` implementation, column-role constants, and their
+  focused tests into `stoner_measurement.core` and `tests/unit/core`.
+- Removed the state-DataFrame catalogue and the DataFrame-to-trace transform;
+  collecting state plugins now publish their data directly in `_traces`.
+- Collapsed SaveCommand's trace/data branches into one TraceData path while
+  retaining incremental TDI and NeXus saving.
+- Removed the retired `save_mode`, `data_source`, and `dataframe_trace`
+  configuration and entry-point fields from repository fixtures and metadata.

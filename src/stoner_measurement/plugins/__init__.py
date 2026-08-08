@@ -78,7 +78,7 @@ from stoner_measurement.plugins.state_sweep import (
     SweepTimePlugin,
     TemperatureControllerSweepPlugin,
 )
-from stoner_measurement.plugins.trace import TraceData, TracePlugin
+from stoner_measurement.plugins.trace import TracePlugin
 from stoner_measurement.plugins.transform import TransformPlugin
 
 __all__ = [
@@ -106,7 +106,6 @@ __all__ = [
     "TemperatureControllerSweepPlugin",
     "TemperatureMonitorPlugin",
     "TopLevelSequence",
-    "TraceData",
     "TracePlugin",
     "TransformPlugin",
 ]

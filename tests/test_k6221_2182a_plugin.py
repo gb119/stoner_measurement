@@ -28,6 +28,12 @@ def _make_plugin() -> Keithley6221_2182APlugin:
     return Keithley6221_2182APlugin()
 
 
+def _measure_pairs(plugin: Keithley6221_2182APlugin):
+    """Measure once and return the primary x/y pairs."""
+    trace = plugin.measure({})["IV"]
+    return list(zip(trace.x, trace.y, strict=True))
+
+
 # ---------------------------------------------------------------------------
 # Identity properties
 # ---------------------------------------------------------------------------
@@ -36,9 +42,6 @@ def _make_plugin() -> Keithley6221_2182APlugin:
 class TestIdentity:
     def test_name(self, qapp):
         assert _make_plugin().name == "k6221_dc_iv"
-
-    def test_trace_title(self, qapp):
-        assert _make_plugin().trace_title == "6221/2182A I-V"
 
     def test_x_label(self, qapp):
         assert _make_plugin().x_label == "I"
@@ -55,11 +58,8 @@ class TestIdentity:
     def test_plugin_type(self, qapp):
         assert _make_plugin().plugin_type == "trace"
 
-    def test_num_traces(self, qapp):
-        assert _make_plugin().num_traces == 1
-
-    def test_channel_names(self, qapp):
-        assert _make_plugin().channel_names == ["IV"]
+    def test_trace_names(self, qapp):
+        assert _make_plugin().trace_names == ["IV"]
 
     def test_reported_values_include_channel_stats_when_enabled(self, qapp):
         plugin = _make_plugin()
@@ -71,11 +71,6 @@ class TestIdentity:
         assert "k6221_dc_iv:IV R std" in vals
         assert "k6221_dc_iv:IV P mean" in vals
         assert "k6221_dc_iv:IV P std" in vals
-
-    def test_num_traces_matches_channel_names_length(self, qapp):
-        """num_traces must always equal len(channel_names) for consistency."""
-        plugin = _make_plugin()
-        assert plugin.num_traces == len(plugin.channel_names)
 
 
 # ---------------------------------------------------------------------------
@@ -304,7 +299,7 @@ class TestExecuteGuards:
     def test_execute_without_connect_raises(self, qapp):
         plugin = _make_plugin()
         with pytest.raises(RuntimeError, match="connect"):
-            list(plugin.execute({}))
+            plugin.measure({})
 
     def test_execute_without_configure_raises(self, qapp):
         from unittest.mock import MagicMock
@@ -314,7 +309,7 @@ class TestExecuteGuards:
         plugin._k2182a = MagicMock()
         # _sweep_values is None — configure() not called
         with pytest.raises(RuntimeError, match="configure"):
-            list(plugin.execute({}))
+            plugin.measure({})
 
 
 class TestExecute:
@@ -341,7 +336,7 @@ class TestExecute:
         plugin._k2182a.read_buffer.return_value = (0.1, 0.2)
 
         with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep") as sleep_mock:
-            points = list(plugin.execute({}))
+            points = _measure_pairs(plugin)
 
         assert points == [(1e-3, 0.1), (2e-3, 0.2)]
         plugin._k6221.sweep_init.assert_called_once_with()
@@ -369,7 +364,7 @@ class TestExecute:
         plugin._k2182a.read_buffer.side_effect = [(0.1,), (0.1, 0.2)]
 
         with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep"):
-            points = list(plugin.execute({}))
+            points = _measure_pairs(plugin)
 
         assert points == [(1e-3, 0.1), (2e-3, 0.2)]
         assert plugin._k2182a.read_buffer.call_count == 2
@@ -388,8 +383,8 @@ class TestExecute:
         plugin._k2182a.read_buffer.side_effect = [(0.1, 0.2), (0.3, 0.4)]
 
         with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep"):
-            first = list(plugin.execute({}))
-            second = list(plugin.execute({}))
+            first = _measure_pairs(plugin)
+            second = _measure_pairs(plugin)
 
         assert first == [(1e-3, 0.1), (2e-3, 0.2)]
         assert second == [(1e-3, 0.3), (2e-3, 0.4)]
@@ -680,7 +675,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3, 2e-3])
 
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.2)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         assert list(result.keys()) == ["IV"]
@@ -696,7 +691,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3, 2e-3])
 
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.2)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         np.testing.assert_array_almost_equal(result["IV"].x, [1e-3, 2e-3])
@@ -712,7 +707,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3, 2e-3])
 
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         np.testing.assert_array_almost_equal(result["IV"].df["V"], [0.1, 0.4])
@@ -728,7 +723,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3, 2e-3])
 
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         r = result["IV"].df["R"].tolist()
@@ -746,7 +741,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3, 2e-3])
 
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         p = result["IV"].df["P"].tolist()
@@ -765,7 +760,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([0.0])
 
         fake_pairs = [(0.0, 0.5)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         assert math.isnan(result["IV"].df["R"].iloc[0])
@@ -776,14 +771,14 @@ class TestMeasure:
 
         import numpy as np
 
-        from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, COLUMN_ROLE_Z
+        from stoner_measurement.core import COLUMN_ROLE_Y, COLUMN_ROLE_Z
 
         plugin = _make_plugin()
         plugin._k6221 = MagicMock()
         plugin._sweep_values = np.array([1e-3])
 
         fake_pairs = [(1e-3, 0.1)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         roles = result["IV"].column_roles
@@ -802,7 +797,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3])
 
         fake_pairs = [(1e-3, 0.1)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         units = result["IV"].units
@@ -822,7 +817,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3])
 
         fake_pairs = [(1e-3, 0.1)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         names = result["IV"].names
@@ -840,7 +835,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3])
 
         fake_pairs = [(1e-3, 0.1)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             plugin.measure({})
 
         assert plugin.status is TraceStatus.DATA_AVAILABLE
@@ -856,7 +851,7 @@ class TestMeasure:
         plugin._sweep_values = np.array([1e-3])
 
         fake_pairs = [(1e-3, 0.1)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             result = plugin.measure({})
 
         assert plugin.data is result
@@ -873,7 +868,7 @@ class TestMeasure:
         plugin._set_report_channel_statistics(True)
 
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
-        with patch.object(plugin, "execute", return_value=iter(fake_pairs)):
+        with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
             plugin.measure({})
 
         assert plugin.channel_statistics["IV V"]["mean"] == pytest.approx(0.25)
@@ -890,7 +885,7 @@ class TestMeasure:
         plugin._k6221 = MagicMock()
         plugin._sweep_values = np.array([])
 
-        with patch.object(plugin, "execute", return_value=iter([])):
+        with patch.object(plugin, "_acquire_pairs", return_value=[]):
             result = plugin.measure({})
 
         assert "IV" in result

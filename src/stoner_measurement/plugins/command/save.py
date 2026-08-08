@@ -1,14 +1,9 @@
 """SaveCommand — built-in command plugin for writing data to disc.
 
-:class:`SaveCommand` is a concrete :class:`CommandPlugin` that evaluates a
-Python expression to obtain a file path and then writes data to a TDI Format 2.0
-tab-delimited text file.  Two save modes are supported:
-
-* **Traces** — writes all (or a selected subset of) trace channels from the
-  ``_traces`` catalogue in the sequence engine namespace.
-* **Data** — writes the accumulated :class:`~pandas.DataFrame` from a named
-  :class:`~stoner_measurement.plugins.state.StatePlugin` instance (either a
-  state-scan or state-sweep plugin).
+:class:`SaveCommand` evaluates a Python expression to obtain a file path and
+writes all or selected :class:`~stoner_measurement.core.TraceData`
+tables from the sequence engine's shared ``_traces`` catalogue.  Instrument
+measurements and collected state scan/sweep data use the same save path.
 """
 
 from __future__ import annotations
@@ -46,7 +41,6 @@ class SavePayload:
 
     metadata: list[str]
     columns: list[tuple[str, np.ndarray]]
-    save_mode: str
 
 
 class BaseSaveWriter:
@@ -165,8 +159,6 @@ class NexusSaveWriter(BaseSaveWriter):
             entry = handle.create_group("entry")
             entry.attrs["NX_class"] = "NXentry"
             entry.attrs["default"] = "data"
-            entry.attrs["measurement_save_mode"] = payload.save_mode
-
             data_group = entry.create_group("data")
             data_group.attrs["NX_class"] = "NXdata"
             if payload.columns:
@@ -353,12 +345,11 @@ class SaveCommand(CommandPlugin):
     Use this command when you want to write the current measurement results to
     disk from inside a sequence. It can save either:
 
-    * one or more trace datasets from the trace catalogue, or
-    * the accumulated table of data produced by a state-scan or state-sweep
-      plugin
+    * one or more trace datasets from the trace catalogue, including collected
+      state-scan and state-sweep tables.
 
-    In the configuration panel you choose the save mode, select which traces
-    or which data source to save, and provide a **path expression**. The path
+    In the configuration panel you select which trace tables to save and
+    provide a **path expression**. The path
     can be a fixed filename or a Python expression that builds a filename from
     current sequence variables, for example::
 
@@ -371,11 +362,8 @@ class SaveCommand(CommandPlugin):
     follows:
 
     * The top-left cell (row 0, column 0) contains ``"TDI Format 2.0"``.
-    * The remaining cells of row 0 are column headers. In trace mode each
-      header has the form
-      ``"{channel_name}:{axis_label} ({axis_units})"``.  In data mode the
-      DataFrame index is written first (header ``"index"`` unless the index is
-      named), followed by DataFrame column names.
+    * The remaining cells of row 0 are trace column headers with the form
+      ``"{channel_name}:{axis_label} ({axis_units})"``.
     * The remaining cells of column 0 (rows 1 onwards) hold flattened metadata
       from every plugin plus current scalar readings. Nested dicts are
          flattened using ``.`` separators; list items use ``[{index}]``
@@ -396,21 +384,12 @@ class SaveCommand(CommandPlugin):
             directory configured in the application settings. If no default
             data directory is set the path is relative to the current working
             directory.
-        save_mode (str):
-            Either ``"traces"`` (default) or ``"data"``. Selects whether
-            the plugin saves trace data or state-plugin table data.
-            trace channels or a state-control plugin's DataFrame are saved.
         trace_selection (dict[str, bool]):
             Per-trace enable flags for trace mode.  Keys are trace catalogue
             keys (``"{instance_name}:{channel_name}"``).  A key mapping to
             ``True`` (or absent from the dict) means the trace is saved;
             mapping to ``False`` means it is excluded.  An empty dict (the
             default) saves all available traces.
-        data_source (str):
-            Instance name of the
-            :class:`~stoner_measurement.plugins.state.StatePlugin`
-            whose :attr:`~stoner_measurement.plugins.state.StatePlugin.data`
-            DataFrame is saved in data mode.  Defaults to ``""``.
         no_overwrite (bool):
             When ``True`` (the default) an existing file is never overwritten;
             instead a numeric suffix is appended to the stem until a free
@@ -435,8 +414,6 @@ class SaveCommand(CommandPlugin):
         'command'
         >>> cmd.has_lifecycle
         False
-        >>> cmd.save_mode
-        'traces'
         >>> cmd.no_overwrite
         True
     """
@@ -445,9 +422,7 @@ class SaveCommand(CommandPlugin):
         """Initialise with default configuration."""
         super().__init__(parent)
         self.path_expr: str = "'data/output.txt'"
-        self.save_mode: str = "traces"
         self.trace_selection: dict[str, bool] = {}
-        self.data_source: str = ""
         self.no_overwrite: bool = True
         self.save_format: str = TdiSaveWriter.format_id
         self.incremental_save: bool = False
@@ -474,7 +449,6 @@ class SaveCommand(CommandPlugin):
         self,
         *,
         trace: str | list[str] | None = None,
-        data: str | None = None,
         no_overwrite: bool | None = None,
     ) -> None:
         """Evaluate :attr:`path_expr` and write data to disc.
@@ -486,33 +460,19 @@ class SaveCommand(CommandPlugin):
         The keyword parameters allow per-call overrides of the configured
         settings without permanently modifying the plugin:
 
-        * ``trace`` and ``data`` are mutually exclusive — supplying both raises
-          :exc:`ValueError`.
-        * Supplying ``trace`` implies trace mode for this call; supplying
-          ``data`` implies data mode.
+        * ``trace`` optionally selects one or more trace catalogue keys.
         * ``no_overwrite`` overrides :attr:`no_overwrite` for this call only.
 
         When the effective no-overwrite flag is ``True`` and the resolved path
         already exists, a numeric suffix (``_001``, ``_002``, …) is appended
         before the file extension until a free filename is found.
 
-        **Trace mode** (``save_mode == "traces"``)
-
-        Each non-empty channel (``x``, ``y``, ``d``, ``e``) of every selected
-        trace contributes one column.  Without the ``trace`` kwarg the selection
+        The x axis and every DataFrame column of each selected trace contributes
+        one output column.  Without the ``trace`` kwarg the selection
         is driven by :attr:`trace_selection` (absent key → enabled).  When
         ``trace`` is supplied it must be a trace catalogue key or a list of
         trace catalogue keys; only those traces are saved.  Column headers have
         the form ``"{channel_name}:{axis_label} ({axis_units})"``.
-
-        **Data mode** (``save_mode == "data"``)
-
-        The accumulated :class:`~pandas.DataFrame` from the
-        :class:`~stoner_measurement.plugins.state.StatePlugin`
-        instance named by :attr:`data_source` (or the ``data`` kwarg) is saved.
-        The DataFrame index is written as the first numerical column (header
-        ``"index"`` unless the index is named), followed by DataFrame column
-        names.
 
         The file layout is:
 
@@ -529,24 +489,14 @@ class SaveCommand(CommandPlugin):
                 One or more trace catalogue keys
                 (``"{instance_name}:{channel_name}"`` format) to save.  When
                 supplied, only the listed traces are saved regardless of
-                :attr:`trace_selection`, and the save mode for this call
-                becomes ``"traces"``.  May not be combined with *data*.
+                :attr:`trace_selection`.
                 Defaults to ``None`` (use configured :attr:`trace_selection`).
-            data (str | None):
-                Instance name of the
-                :class:`~stoner_measurement.plugins.state.StatePlugin`
-                whose DataFrame to save.  When supplied the save mode for
-                this call becomes ``"data"`` and the value overrides
-                :attr:`data_source`.  May not be combined with *trace*.
-                Defaults to ``None`` (use configured :attr:`data_source`).
             no_overwrite (bool | None):
                 When ``True``, prevent overwriting an existing file (see
                 :attr:`no_overwrite`).  ``None`` (default) uses the configured
                 :attr:`no_overwrite` attribute.
 
         Raises:
-            ValueError:
-                If both *trace* and *data* are supplied.
             RuntimeError:
                 If the plugin is not attached to a sequence engine.
             TypeError:
@@ -572,40 +522,30 @@ class SaveCommand(CommandPlugin):
             True
             >>> engine.shutdown()
         """
-        _save_mode, _trace_keys, _data_source, _no_overwrite = self._resolve_effective_options(
-            trace=trace,
-            data=data,
-            no_overwrite=no_overwrite,
+        trace_keys, effective_no_overwrite = self._resolve_effective_options(
+            trace=trace, no_overwrite=no_overwrite
         )
         ns = self.engine_namespace
         metadata = self._build_metadata(ns=ns)
-        columns = self._build_data_columns(
-            ns=ns,
-            save_mode=_save_mode,
-            trace_keys=_trace_keys,
-            data_source=_data_source,
-        )
-        if _save_mode == "data" and not columns:
-            return
-        payload = SavePayload(metadata=metadata, columns=columns, save_mode=_save_mode)
+        columns = self._build_trace_columns(ns=ns, trace_keys=trace_keys)
+        payload = SavePayload(metadata=metadata, columns=columns)
         writer = self._writer()
 
-        if _save_mode == "data" and self.incremental_save and writer.supports_incremental:
+        if self.incremental_save and writer.supports_incremental:
             dest = self._write_incremental_data_rows(
                 payload=payload,
                 writer=writer,
-                no_overwrite=_no_overwrite,
+                no_overwrite=effective_no_overwrite,
             )
         else:
             original = self._resolve_original_destination()
-            dest = self._next_available_destination(original) if _no_overwrite else original
+            dest = self._next_available_destination(original) if effective_no_overwrite else original
             writer.write(dest=dest, payload=payload)
-            if _save_mode == "data":
-                self._record_saved_file(
-                    original=original,
-                    dest=dest,
-                    data_rows=self._data_row_count(payload.columns),
-                )
+            self._record_saved_file(
+                original=original,
+                dest=dest,
+                data_rows=self._data_row_count(payload.columns),
+            )
         self.log.info("Data saved to %s", dest)
 
     def _writer(self) -> BaseSaveWriter:
@@ -621,29 +561,12 @@ class SaveCommand(CommandPlugin):
         self,
         *,
         trace: str | list[str] | None,
-        data: str | None,
         no_overwrite: bool | None,
-    ) -> tuple[str, set[str] | None, str, bool]:
+    ) -> tuple[set[str] | None, bool]:
         """Resolve per-call overrides into effective save settings."""
-        if trace is not None and data is not None:
-            raise ValueError("SaveCommand.execute(): 'trace' and 'data' are mutually exclusive")
-
-        if trace is not None:
-            save_mode = "traces"
-        elif data is not None:
-            save_mode = "data"
-        else:
-            save_mode = self.save_mode
-
-        trace_keys: set[str] | None
-        if trace is not None:
-            trace_keys = {trace} if isinstance(trace, str) else set(trace)
-        else:
-            trace_keys = None
-
-        data_source = data if data is not None else self.data_source
+        trace_keys = {trace} if isinstance(trace, str) else set(trace) if trace is not None else None
         effective_no_overwrite = self.no_overwrite if no_overwrite is None else no_overwrite
-        return save_mode, trace_keys, data_source, effective_no_overwrite
+        return trace_keys, effective_no_overwrite
 
     def _resolve_destination(self, *, no_overwrite: bool) -> pathlib.Path:
         """Evaluate :attr:`path_expr`, resolve to a writable path, and apply no-overwrite."""
@@ -703,54 +626,7 @@ class SaveCommand(CommandPlugin):
                 self.log.debug("Failed to evaluate value %r: %s", key, exc)
         return metadata
 
-    def _build_data_columns(
-        self,
-        *,
-        ns: dict[str, Any],
-        save_mode: str,
-        trace_keys: set[str] | None,
-        data_source: str,
-    ) -> list[tuple[str, np.ndarray]]:
-        """Build numeric columns and headers for traces or DataFrame data mode."""
-        if save_mode == "data":
-            return self._build_data_mode_columns(ns=ns, data_source=data_source)
-        return self._build_trace_mode_columns(ns=ns, trace_keys=trace_keys)
-
-    def _build_data_mode_columns(
-        self,
-        *,
-        ns: dict[str, Any],
-        data_source: str,
-    ) -> list[tuple[str, np.ndarray]]:
-        """Build numeric columns from a state-control DataFrame including the index first."""
-        if not data_source:
-            self.log.warning("SaveCommand: no data_source configured for data mode")
-            return []
-        source_plugin = ns.get(data_source)
-        if source_plugin is None:
-            self.log.warning("SaveCommand: data_source %r not found in namespace", data_source)
-            return []
-        df = getattr(source_plugin, "data", None)
-        if df is None:
-            self.log.warning("SaveCommand: plugin %r has no 'data' attribute", data_source)
-            return []
-        if df.empty:
-            self.log.debug("SaveCommand: plugin %r data is empty — writing headers only", data_source)
-
-        columns: list[tuple[str, np.ndarray]] = []
-        index_name = str(df.index.name) if df.index.name else "index"
-        index_arr = np.fromiter(
-            (_to_float_or_nan(value) for value in df.index),
-            dtype=float,
-            count=len(df.index),
-        )
-        columns.append((index_name, index_arr))
-        for col_name in df.columns:
-            arr = df[col_name].to_numpy(dtype=float, na_value=float("nan"))
-            columns.append((str(col_name), arr))
-        return columns
-
-    def _build_trace_mode_columns(
+    def _build_trace_columns(
         self,
         *,
         ns: dict[str, Any],
@@ -768,13 +644,15 @@ class SaveCommand(CommandPlugin):
             try:
                 trace_data = self.eval(expr)
                 channel_name = trace_key.split(":", 1)[-1]
-                for channel_attr in ("x", "y", "d", "e"):
-                    arr: np.ndarray = getattr(trace_data, channel_attr, None)
-                    if arr is None or len(arr) == 0:
-                        continue
-                    label = (trace_data.names or {}).get(channel_attr) or channel_attr
-                    units = (trace_data.units or {}).get(channel_attr, "")
-                    columns.append((f"{channel_name}:{label} ({units})", arr))
+                x_values = np.asarray(trace_data.x, dtype=float)
+                x_label = (trace_data.names or {}).get("x") or "x"
+                x_units = (trace_data.units or {}).get("x", "")
+                columns.append((f"{channel_name}:{x_label} ({x_units})", x_values))
+                for column_name in trace_data.df.columns:
+                    values = trace_data.df[column_name].to_numpy(dtype=float)
+                    label = (trace_data.names or {}).get(column_name) or str(column_name)
+                    units = (trace_data.units or {}).get(column_name, "")
+                    columns.append((f"{channel_name}:{label} ({units})", values))
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 self.log.debug("Failed to evaluate trace %r: %s", trace_key, exc)
         return columns
@@ -830,7 +708,6 @@ class SaveCommand(CommandPlugin):
         self,
         *,
         trace: str | list[str] | None = None,
-        data: str | None = None,
         no_overwrite: bool | None = None,
     ) -> None:
         """Invoke :meth:`execute`, forwarding any keyword-parameter overrides.
@@ -873,22 +750,15 @@ class SaveCommand(CommandPlugin):
             True
             >>> engine.shutdown()
         """
-        self.execute(trace=trace, data=data, no_overwrite=no_overwrite)
+        self.execute(trace=trace, no_overwrite=no_overwrite)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a settings widget for the save command.
 
         Displays controls for the output path expression, output file format,
-        save mode (``"traces"`` or ``"data"``), the no-overwrite flag, and
-        mode-specific settings:
-
-        * **Traces mode** — a scrollable list of per-trace checkboxes built
-          from the ``_traces`` catalogue in the sequence engine namespace (or
-          an empty list when the plugin is detached).
-        * **Data mode** — a combo box listing all
-          :class:`~stoner_measurement.plugins.state.StatePlugin`
-          instances registered with the engine (or a plain text field when the
-          plugin is detached).
+        incremental and no-overwrite flags, and a scrollable list of per-trace
+        checkboxes built from the ``_traces`` catalogue in the sequence engine
+        namespace (or an empty list when the plugin is detached).
 
         Keyword Parameters:
             parent (QWidget | None):
@@ -906,8 +776,6 @@ class SaveCommand(CommandPlugin):
             >>> isinstance(SaveCommand().config_widget(), QWidget)
             True
         """
-        from qtpy.QtWidgets import QStackedWidget
-
         widget = QWidget(parent)
         outer_layout = QVBoxLayout(widget)
         outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -916,22 +784,9 @@ class SaveCommand(CommandPlugin):
         self._build_path_form_row(widget, form)
         self._build_no_overwrite_row(widget, form)
         self._build_format_selector(widget, form)
-        mode_combo = self._build_mode_selector(widget, form)
+        self._build_incremental_row(widget, form)
         outer_layout.addLayout(form)
-
-        stack = QStackedWidget(widget)
-        outer_layout.addWidget(stack)
-        stack.addWidget(self._build_traces_page())  # index 0
-        stack.addWidget(self._build_data_page())    # index 1
-        stack.setCurrentIndex(0 if self.save_mode == "traces" else 1)
-
-        def _on_mode_changed(index: int) -> None:
-            mode = mode_combo.itemData(index)
-            if mode:
-                self.save_mode = mode
-            stack.setCurrentIndex(0 if self.save_mode == "traces" else 1)
-
-        mode_combo.currentIndexChanged.connect(_on_mode_changed)
+        outer_layout.addWidget(self._build_traces_page())
 
         outer_layout.addStretch()
         widget.setLayout(outer_layout)
@@ -1034,22 +889,14 @@ class SaveCommand(CommandPlugin):
         form.addRow("File format:", format_combo)
         return format_combo
 
-    def _build_mode_selector(self, widget: QWidget, form: QFormLayout) -> QComboBox:
-        mode_combo = QComboBox(widget)
-        mode_combo.addItem("Traces", "traces")
-        mode_combo.addItem("Data", "data")
-        current_idx = mode_combo.findData(self.save_mode)
-        if current_idx >= 0:
-            mode_combo.setCurrentIndex(current_idx)
-        mode_combo.setToolTip("Select whether to save trace channels or a state-control plugin's data.")
-        form.addRow("Save mode:", mode_combo)
-        form.addRow(
-            QLabel(
-                "<i>Expression is evaluated at runtime in the sequence engine namespace.</i>",
-                widget,
-            )
+    def _build_incremental_row(self, widget: QWidget, form: QFormLayout) -> None:
+        incremental_check = QCheckBox(widget)
+        incremental_check.setChecked(self.incremental_save)
+        incremental_check.setToolTip("Append only newly available rows on repeated saves.")
+        incremental_check.stateChanged.connect(
+            lambda state: setattr(self, "incremental_save", bool(state))
         )
-        return mode_combo
+        form.addRow("Save incrementally:", incremental_check)
 
     def _build_traces_page(self) -> QScrollArea:
         traces_scroll = QScrollArea()
@@ -1075,68 +922,15 @@ class SaveCommand(CommandPlugin):
         traces_scroll.setWidget(traces_container)
         return traces_scroll
 
-    def _build_data_page(self) -> QWidget:
-        data_widget = QWidget()
-        data_form = QFormLayout(data_widget)
-
-        engine = self.sequence_engine
-        state_plugins: list[str] = []
-        if engine is not None:
-            catalog = engine._namespace.get("_dataframes", {})
-            if isinstance(catalog, dict):
-                state_plugins.extend(str(name) for name in catalog)
-            elif isinstance(catalog, list):
-                state_plugins.extend(str(name) for name in catalog)
-
-        if state_plugins:
-            source_combo = QComboBox(data_widget)
-            for name in state_plugins:
-                source_combo.addItem(name)
-            idx = source_combo.findText(self.data_source)
-            if idx >= 0:
-                source_combo.setCurrentIndex(idx)
-            elif state_plugins:
-                self.data_source = state_plugins[0]
-
-            def _apply_source(index: int) -> None:
-                if index >= 0:
-                    self.data_source = source_combo.itemText(index)
-
-            source_combo.currentIndexChanged.connect(_apply_source)
-            data_form.addRow("Data source:", source_combo)
-        else:
-            source_edit = QLineEdit(self.data_source, data_widget)
-            source_edit.setToolTip("Instance name of a StatePlugin (state-scan or state-sweep) to save data from.")
-
-            def _apply_source_text() -> None:
-                self.data_source = source_edit.text().strip()
-
-            source_edit.editingFinished.connect(_apply_source_text)
-            data_form.addRow("Data source:", source_edit)
-            data_form.addRow(QLabel("<i>No state-control plugins available.</i>", data_widget))
-
-        incremental_check = QCheckBox(data_widget)
-        incremental_check.setChecked(self.incremental_save)
-        incremental_check.setToolTip("When checked, append newly available rows during data-mode saves.")
-
-        def _apply_incremental(state: int) -> None:
-            self.incremental_save = bool(state)
-
-        incremental_check.stateChanged.connect(_apply_incremental)
-        data_form.addRow("Save incrementally:", incremental_check)
-
-        data_widget.setLayout(data_form)
-        return data_widget
-
     def to_json(self) -> dict[str, Any]:
         """Serialise the save command configuration to a JSON-compatible dict.
 
         Returns:
             (dict[str, Any]):
                 Base dict from :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-                extended with ``"path_expr"``, ``"save_mode"``,
-                ``"trace_selection"``, ``"data_source"``, ``"no_overwrite"``,
-                and ``"save_format"``.
+                extended with ``"path_expr"``, ``"trace_selection"``,
+                ``"no_overwrite"``, ``"incremental_save"``, and
+                ``"save_format"``.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -1147,16 +941,14 @@ class SaveCommand(CommandPlugin):
             'command'
             >>> "path_expr" in d
             True
-            >>> "save_mode" in d
+            >>> "trace_selection" in d
             True
             >>> "no_overwrite" in d
             True
         """
         d = super().to_json()
         d["path_expr"] = self.path_expr
-        d["save_mode"] = self.save_mode
         d["trace_selection"] = self.trace_selection
-        d["data_source"] = self.data_source
         d["no_overwrite"] = self.no_overwrite
         d["save_format"] = self.save_format
         d["incremental_save"] = self.incremental_save
@@ -1171,12 +963,8 @@ class SaveCommand(CommandPlugin):
         """
         if "path_expr" in data:
             self.path_expr = data["path_expr"]
-        if "save_mode" in data:
-            self.save_mode = data["save_mode"]
         if "trace_selection" in data:
             self.trace_selection = dict(data["trace_selection"])
-        if "data_source" in data:
-            self.data_source = data["data_source"]
         if "no_overwrite" in data:
             self.no_overwrite = bool(data["no_overwrite"])
         if "save_format" in data:

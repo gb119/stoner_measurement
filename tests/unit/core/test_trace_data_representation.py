@@ -1,11 +1,11 @@
-"""Tests for concise TraceData representations."""
+"""Tests for concise core TraceData representations."""
 
 from __future__ import annotations
 
 import pandas as pd
 import pytest
 
-from stoner_measurement.plugins.trace.base import (
+from stoner_measurement.core import (
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
     TraceData,
@@ -29,7 +29,7 @@ def test_representation_reports_columns_and_rows():
 def test_representation_reports_empty_trace():
     trace = TraceData()
 
-    assert str(trace) == "TraceData(columns=['y'], rows=0)"
+    assert str(trace) == "TraceData(columns=[], rows=0)"
 
 
 if __name__ == "__main__":

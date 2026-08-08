@@ -1703,7 +1703,7 @@ class PlotWidget(QWidget):
 
         Called by :class:`~stoner_measurement.plugins.command.PlotTraceCommand`
         when trace metadata (names and units from
-        :class:`~stoner_measurement.plugins.trace.TraceData`) is available so
+        :class:`~stoner_measurement.core.TraceData`) is available so
         that the plot axes reflect the physical quantities being displayed.
 
         Args:

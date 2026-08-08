@@ -34,7 +34,9 @@ def _make_plugin() -> Keithley6221_MultiSR830Plugin:
 
 def _row_with_label(table: QTableWidget, label: str) -> int:
     """Return the row carrying *label* in the table's vertical header."""
-    return next(row for row in range(table.rowCount()) if table.verticalHeaderItem(row).text() == label)
+    return next(
+        row for row in range(table.rowCount()) if table.verticalHeaderItem(row).text() == label
+    )
 
 
 def _output_checks(table: QTableWidget, column: int = 0) -> dict[str, QCheckBox]:
@@ -57,7 +59,7 @@ class TestDefaults:
         assert plugin._time_constant == pytest.approx(0.3)
         assert plugin._read_rate_multiple == pytest.approx(3.0)
         assert len(plugin._lockin_entries) == 1
-        assert plugin.channel_names == ["LIA 1"]
+        assert plugin.trace_names == ["Signals"]
         assert plugin._report_channel_statistics is True
 
     def test_lockin_entry_defaults(self, qapp):
@@ -187,9 +189,13 @@ class TestUi:
         assert table.columnCount() == 1
 
         # Remove button disabled when only one lock-in
-        remove_buttons = [b for b in settings_widget.findChildren(QPushButton) if "Remove" in b.text()]
+        remove_buttons = [
+            b for b in settings_widget.findChildren(QPushButton) if "Remove" in b.text()
+        ]
         assert remove_buttons, "Expected a 'Remove selected' button"
-        assert not remove_buttons[0].isEnabled(), "Remove button should be disabled with a single lock-in"
+        assert not remove_buttons[0].isEnabled(), (
+            "Remove button should be disabled with a single lock-in"
+        )
 
         # Offset checkbox present
         checkboxes = settings_widget.findChildren(QCheckBox)
@@ -409,11 +415,10 @@ class TestAutoOffset:
         plugin._k6221.enable_output.side_effect = lambda enabled: events.append(("output", enabled))
         lockin = MagicMock()
         lockin.measure_outputs.side_effect = lambda outputs: (
-            events.append(("read", outputs))
-            or {LockInOutput.X: 0.25e-3, LockInOutput.Y: -0.5e-3}
+            events.append(("read", outputs)) or {LockInOutput.X: 0.25e-3, LockInOutput.Y: -0.5e-3}
         )
-        lockin.set_output_offset.side_effect = (
-            lambda channel, offset, expand: events.append(("offset", channel, offset, expand))
+        lockin.set_output_offset.side_effect = lambda channel, offset, expand: events.append(
+            ("offset", channel, offset, expand)
         )
         plugin._lockins = [lockin]
         entry = LockInEntry(
@@ -520,6 +525,7 @@ class TestAutoOffset:
             plugin.auto_offset()
 
         from stoner_measurement.instruments.lockin_amplifier import LockInOutputChannel
+
         lockin.auto_offset_channel.assert_called_once_with(LockInOutputChannel.X)
         lockin.get_output_offset.assert_called_once_with(LockInOutputChannel.X)
         assert plugin._lockin_entries[0].auto_offsets == {"X": pytest.approx(15.0)}
@@ -535,8 +541,10 @@ class TestAutoOffset:
         lockin.get_output_offset.return_value = (5.0, MagicMock())
         plugin._lockins = [lockin]
         entry = LockInEntry(
-            label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,),
-            auto_offsets={"X": 99.0}
+            label="A",
+            resource="GPIB0::8::INSTR",
+            outputs=(LockInOutput.X,),
+            auto_offsets={"X": 99.0},
         )
         plugin._lockin_entries = [entry]
 
@@ -549,8 +557,7 @@ class TestOffsetCorrection:
     def test_offset_correction_adds_back_offset_voltage(self, qapp):
         plugin = _make_plugin()
         entry = LockInEntry(
-            label="A", resource="GPIB0::8::INSTR",
-            sensitivity=1e-3, auto_offsets={"X": 50.0}
+            label="A", resource="GPIB0::8::INSTR", sensitivity=1e-3, auto_offsets={"X": 50.0}
         )
         # 50% of 1 mV = 0.5 mV offset voltage; measured = true - 0.5 mV
         # true = measured + 0.5 mV
@@ -560,8 +567,11 @@ class TestOffsetCorrection:
     def test_offset_correction_falls_back_to_offset_pct(self, qapp):
         plugin = _make_plugin()
         entry = LockInEntry(
-            label="A", resource="GPIB0::8::INSTR",
-            sensitivity=2e-3, offset_pct=25.0, auto_offsets={}
+            label="A",
+            resource="GPIB0::8::INSTR",
+            sensitivity=2e-3,
+            offset_pct=25.0,
+            auto_offsets={},
         )
         corrected = plugin._apply_offset_correction(entry, LockInOutput.X, 0.0)
         assert corrected == pytest.approx(0.5e-3)
@@ -584,8 +594,11 @@ class TestOffsetCorrection:
         }
         plugin._lockins = [lockin]
         entry = LockInEntry(
-            label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,),
-            sensitivity=1e-3, auto_offsets={"X": 50.0}
+            label="A",
+            resource="GPIB0::8::INSTR",
+            outputs=(LockInOutput.X,),
+            sensitivity=1e-3,
+            auto_offsets={"X": 50.0},
         )
         plugin._lockin_entries = [entry]
 
@@ -608,18 +621,23 @@ class TestRateLimitAndAutoSensitivity:
             LockInOutput.THETA: 45.0,
         }
         plugin._lockins = [lockin]
-        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))]
+        plugin._lockin_entries = [
+            LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))
+        ]
         plugin._time_constant = 2.0
         plugin._read_rate_multiple = 2.0
         plugin._last_read_at = {"GPIB0::8::INSTR": 9.0}
         monotonic_values = itertools.chain([10.0, 11.0, 12.0, 13.0], itertools.repeat(13.0))
 
-        with patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.time.monotonic",
-            side_effect=monotonic_values,
-        ), patch("stoner_measurement.plugins.trace.k6221_multi_sr830.time.sleep") as sleep_mock:
-            list(plugin.execute({}))
-            list(plugin.execute({}))
+        with (
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.time.monotonic",
+                side_effect=monotonic_values,
+            ),
+            patch("stoner_measurement.plugins.trace.k6221_multi_sr830.time.sleep") as sleep_mock,
+        ):
+            plugin.measure({})
+            plugin.measure({})
 
         assert sleep_mock.call_args_list == [call(3.0), call(3.0)]
         assert plugin._last_read_at["GPIB0::8::INSTR"] == pytest.approx(13.0)
@@ -640,7 +658,11 @@ class TestRateLimitAndAutoSensitivity:
         lockin.reset_mock()
         entry.sensitivity = 1e-3
         plugin._apply_auto_sensitivity(
-            {entry.resource: LockInReading(output_values={LockInOutput.R: 0.95e-3}, ratio_signal=0.95e-3)}
+            {
+                entry.resource: LockInReading(
+                    output_values={LockInOutput.R: 0.95e-3}, ratio_signal=0.95e-3
+                )
+            }
         )
         assert entry.sensitivity == pytest.approx(2e-3)
         lockin.set_sensitivity.assert_called_once_with(2e-3)
@@ -655,8 +677,12 @@ class TestRateLimitAndAutoSensitivity:
 
         plugin._apply_auto_sensitivity(
             {
-                low_entry.resource: LockInReading(output_values={LockInOutput.R: 1e-12}, ratio_signal=1e-12),
-                high_entry.resource: LockInReading(output_values={LockInOutput.R: 2.0}, ratio_signal=2.0),
+                low_entry.resource: LockInReading(
+                    output_values={LockInOutput.R: 1e-12}, ratio_signal=1e-12
+                ),
+                high_entry.resource: LockInReading(
+                    output_values={LockInOutput.R: 2.0}, ratio_signal=2.0
+                ),
             }
         )
 
@@ -667,9 +693,13 @@ class TestRateLimitAndAutoSensitivity:
         plugin = _make_plugin()
         plugin._auto_sensitivity_enabled = True
         # entry_a: auto_sensitivity=True (default) — should update
-        entry_a = LockInEntry(label="A", resource="GPIB0::8::INSTR", sensitivity=1e-3, auto_sensitivity=True)
+        entry_a = LockInEntry(
+            label="A", resource="GPIB0::8::INSTR", sensitivity=1e-3, auto_sensitivity=True
+        )
         # entry_b: auto_sensitivity=False — should NOT update
-        entry_b = LockInEntry(label="B", resource="GPIB0::9::INSTR", sensitivity=1e-3, auto_sensitivity=False)
+        entry_b = LockInEntry(
+            label="B", resource="GPIB0::9::INSTR", sensitivity=1e-3, auto_sensitivity=False
+        )
         plugin._lockin_entries = [entry_a, entry_b]
         lockin_a = MagicMock()
         lockin_b = MagicMock()
@@ -677,8 +707,12 @@ class TestRateLimitAndAutoSensitivity:
 
         plugin._apply_auto_sensitivity(
             {
-                entry_a.resource: LockInReading(output_values={LockInOutput.R: 5e-5}, ratio_signal=5e-5),
-                entry_b.resource: LockInReading(output_values={LockInOutput.R: 5e-5}, ratio_signal=5e-5),
+                entry_a.resource: LockInReading(
+                    output_values={LockInOutput.R: 5e-5}, ratio_signal=5e-5
+                ),
+                entry_b.resource: LockInReading(
+                    output_values={LockInOutput.R: 5e-5}, ratio_signal=5e-5
+                ),
             }
         )
 
@@ -692,15 +726,23 @@ class TestChannelsAndResistance:
         plugin._resistance_enabled = True
         plugin._lockin_entries = [
             LockInEntry(label="X label", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,)),
-            LockInEntry(label="Theta label", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)),
+            LockInEntry(
+                label="Theta label", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)
+            ),
         ]
 
-        assert plugin.channel_names == ["X label", "X label resistance", "Theta label"]
+        assert [spec.name for spec in plugin._channel_specs()] == [
+            "X label",
+            "X label resistance",
+            "Theta label",
+        ]
 
     def test_measure_returns_multi_channel_data_with_units(self, qapp):
         plugin = _make_plugin()
         plugin._resistance_enabled = True
-        plugin._lockin_entries = [LockInEntry(label="X label", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))]
+        plugin._lockin_entries = [
+            LockInEntry(label="X label", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))
+        ]
         specs = plugin._channel_specs()
 
         with patch.object(
@@ -717,9 +759,11 @@ class TestChannelsAndResistance:
         ):
             data = plugin.measure({})
 
-        assert list(data) == ["X label", "X label resistance"]
-        assert data["X label"].units["y"] == "V"
-        assert data["X label resistance"].units["y"] == "\u03a9"
+        assert list(data) == ["Signals"]
+        trace = data["Signals"]
+        assert trace.columns == ["X label", "X label resistance"]
+        assert trace.units["X label"] == "V"
+        assert trace.units["X label resistance"] == "\u03a9"
 
     def test_resistance_conversion_uses_rms_current_from_peak_amplitude(self, qapp):
         plugin = _make_plugin()
@@ -735,7 +779,7 @@ class TestChannelsAndResistance:
                 outputs=(LockInOutput.X, LockInOutput.R, LockInOutput.THETA),
             )
         ]
-        assert plugin.channel_names == [
+        assert [spec.name for spec in plugin._channel_specs()] == [
             "LIA X",
             "LIA X resistance",
             "LIA R",
@@ -792,7 +836,9 @@ class TestGpibTrigger:
             LockInOutput.THETA: 4.0,
         }
         plugin._lockins = [lockin]
-        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))]
+        plugin._lockin_entries = [
+            LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))
+        ]
         readings = plugin._read_lockins()
 
         transport.send_group_execute_trigger.assert_called_once_with()
@@ -876,12 +922,15 @@ class TestConnect:
         mock_sr830 = MagicMock()
         mock_sr830.identify.return_value = "Stanford Research Systems,SR830"
 
-        with patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
-            return_value=mock_transport,
-        ) as transport_factory, patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
-            return_value=mock_sr830,
+        with (
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
+                return_value=mock_transport,
+            ) as transport_factory,
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
+                return_value=mock_sr830,
+            ),
         ):
             transport, lockin = plugin._connect_one_lockin(entry)
 
@@ -904,15 +953,19 @@ class TestConnect:
         mock_sr830 = MagicMock()
         mock_sr830.identify.return_value = "SR860"  # does not contain "SR830"
 
-        with patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
-            side_effect=[mock_transport_6221, mock_transport_sr830],
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.Keithley6221",
-            return_value=mock_k6221,
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
-            return_value=mock_sr830,
+        with (
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
+                side_effect=[mock_transport_6221, mock_transport_sr830],
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.Keithley6221",
+                return_value=mock_k6221,
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
+                return_value=mock_sr830,
+            ),
         ):
             with pytest.raises(RuntimeError, match="Unexpected SR830 identity"):
                 plugin.connect()
@@ -941,15 +994,19 @@ class TestResistanceConversion:
         mock_sr830 = MagicMock()
         mock_sr830.connect.side_effect = OSError("Instrument not responding")
 
-        with patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
-            side_effect=[mock_transport_6221, mock_transport_sr830],
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.Keithley6221",
-            return_value=mock_k6221,
-        ), patch(
-            "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
-            return_value=mock_sr830,
+        with (
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
+                side_effect=[mock_transport_6221, mock_transport_sr830],
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.Keithley6221",
+                return_value=mock_k6221,
+            ),
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.SRS830",
+                return_value=mock_sr830,
+            ),
         ):
             with pytest.raises(OSError, match="Instrument not responding"):
                 plugin.connect()

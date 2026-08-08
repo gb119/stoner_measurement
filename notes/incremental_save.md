@@ -2,13 +2,13 @@
 
 ## **1. Applicability**
 
-The *save* command plugin supports two modes:
+The *save* command writes selected `TraceData` tables. Instrument acquisitions
+and data accumulated by state scan/sweep plugins share this representation.
 
-- **Trace mode**
-- **Data mode** - where a looping sequence command produces a dataframe that may be periodically saved.
-
-Incremental save applies **only** to *data mode*. It allows the plugin to write new rows to disk during
-long-running loops, reducing data loss if the program crashes.
+Incremental save applies to the selected trace tables. It allows the plugin to
+write new rows during long-running loops, reducing data loss if the program
+crashes. A sequence should select tables with a common row count when saving
+more than one trace incrementally.
 
 ---
 
@@ -16,9 +16,9 @@ long-running loops, reducing data loss if the program crashes.
 
 In the save plugin configuration panel:
 
-- The user chooses **Save as Trace** or **Save Data**.
-- In both modes there is a boolean switch to **avoid overwriting files**
-- If **Save Data** is selected, the user may enable **Save Incrementally** (boolean switch).
+- The user selects trace tables from the shared trace catalogue.
+- There is a boolean switch to **avoid overwriting files**.
+- The user may enable **Save Incrementally**.
 
 ---
 

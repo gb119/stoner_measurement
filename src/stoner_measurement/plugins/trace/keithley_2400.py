@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import enum
 import math
-from collections.abc import Generator
 from typing import Any
 
 import numpy as np
@@ -33,6 +32,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
 from stoner_measurement.instruments.keithley.k2400 import (
     FilterType,
     Keithley2400,
@@ -47,9 +47,6 @@ from stoner_measurement.instruments.source_meter import (
 )
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.trace.base import (
-    COLUMN_ROLE_Y,
-    COLUMN_ROLE_Z,
-    TraceData,
     TracePlugin,
     TraceStatus,
 )
@@ -195,8 +192,6 @@ class Keithley2400SweepPlugin(TracePlugin):
             Digital filter mode used by the instrument.
         _median_filter_enabled (bool):
             Whether the median filter is enabled.
-        _last_buffer_raw (tuple[float, ...] | None):
-            Most recently retrieved buffered readings.
         _sweep_values (tuple[float, ...] | None):
             Most recently generated source values programmed into the sweep.
 
@@ -256,7 +251,6 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._filter_type: FilterType = FilterType.REPEAT
         self._median_filter_enabled: bool = False
 
-        self._last_buffer_raw: tuple[float, ...] | None = None
         self._sweep_values: tuple[float, ...] | None = None
         self.scan_generator = FunctionScanGenerator()
         self._apply_initial_config()
@@ -272,17 +266,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         return "Keithley2400Sweep"
 
     @property
-    def trace_title(self) -> str:
-        """Human-readable title for the returned trace.
-
-        Returns:
-            (str):
-                Always ``"Keithley 2400 I-V Sweep"``.
-        """
-        return "Keithley 2400 I-V Sweep"
-
-    @property
-    def channel_names(self) -> list[str]:
+    def trace_names(self) -> list[str]:
         """Name of the single multicolumn measurement channel.
 
         Returns:
@@ -496,15 +480,13 @@ class Keithley2400SweepPlugin(TracePlugin):
             raise
         self._set_status(TraceStatus.IDLE)
 
-    def execute(
-        self,
-        parameters: dict[str, Any],
-    ) -> Generator[tuple[float, float]]:
-        """Run the configured sweep and yield the primary plotted channel."""
+    def _acquire_buffer_records(self, parameters: dict[str, Any]) -> tuple[Any, ...]:
+        """Run the configured sweep once and return its buffered readings."""
+        del parameters
         if self._smu is None:
-            raise RuntimeError("Not connected — call connect() before execute().")
+            raise RuntimeError("Not connected — call connect() before measure().")
         if self._sweep_values is None:
-            raise RuntimeError("Not configured — call configure() before execute().")
+            raise RuntimeError("Not configured — call configure() before measure().")
 
         n_points = len(self._sweep_values)
         timeout = max(
@@ -525,7 +507,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             if not self._smu.wait_for_buffer_full_srq(timeout):
                 raise RuntimeError(f"Timeout waiting for Keithley 2400 sweep-complete SRQ after {timeout:.1f} s.")
 
-            self._last_buffer_raw = self._smu.read_buffer_records(_BUFFER_ELEMENTS, count=n_points)
+            records = self._smu.read_buffer_records(_BUFFER_ELEMENTS, count=n_points)
             self._smu.set_trace_feed_continuous_never()
             self._smu.check_error_queue()
         except Exception:
@@ -535,23 +517,15 @@ class Keithley2400SweepPlugin(TracePlugin):
             except _CLEANUP_EXCEPTIONS:
                 pass
             raise
-        if self._last_buffer_raw is None:
+        if records is None:
             raise RuntimeError("Sweep completed without buffered readings.")
-        current, voltage, _, _, _ = self._records_to_arrays(self._last_buffer_raw, self._sweep_values)
-        primary = current if self._source_mode is SweepSourceMode.VOLTAGE else voltage
-        yield from zip(self._sweep_values, primary)
+        return records
 
-    def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
+    def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         """Acquire the sweep and return a single multicolumn trace."""
-        self._set_status(TraceStatus.MEASURING)
-        try:
-            _ = list(self.execute(parameters))
-            if self._sweep_values is None or self._last_buffer_raw is None:
-                raise RuntimeError("Sweep completed without an active instrument or sweep definition.")
-            records = self._last_buffer_raw
-        finally:
-            self._last_buffer_raw = None
-            self._set_status(TraceStatus.DATA_AVAILABLE)
+        records = self._acquire_buffer_records(parameters)
+        if self._sweep_values is None:
+            raise RuntimeError("Sweep completed without an active sweep definition.")
 
         current, voltage, resistance, power, timestamp = self._records_to_arrays(records, self._sweep_values)
         x_arr = np.asarray(self._sweep_values, dtype=float)
@@ -589,9 +563,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             "Power": "W",
             "Timestamp": "s",
         }
-        self.data = {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
-        self._update_channel_statistics()
-        return self.data
+        return {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
 
     def _records_to_arrays(
         self,
@@ -640,7 +612,6 @@ class Keithley2400SweepPlugin(TracePlugin):
                 pass
         self._smu = None
         self._sweep_values = None
-        self._last_buffer_raw = None
         self._set_status(TraceStatus.IDLE)
 
     def to_json(self) -> dict[str, Any]:

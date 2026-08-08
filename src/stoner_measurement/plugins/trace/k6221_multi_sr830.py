@@ -6,7 +6,7 @@ import enum
 import logging
 import math
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.instruments.current_source import CurrentWaveform
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.lockin_amplifier import (
@@ -45,7 +46,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
 )
 from stoner_measurement.instruments.srs.sr830 import SRS830
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData, TracePlugin, TraceStatus
+from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
 from stoner_measurement.scan import FunctionScanGenerator, ListScanGenerator, SteppedScanGenerator
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
@@ -63,6 +64,7 @@ _SR830_FILTER_SLOPES: tuple[int, ...] = SRS830.supported_filter_slopes()
 _SR830_MAX_HARMONIC: int = SRS830.max_harmonic()
 _SR830_STATUS_IFC = 1 << 1
 _SR830_STATUS_LIA = 1 << 3
+_TRACE_NAME = "Signals"
 
 # Row indices for the transposed lock-in configuration table.
 _ROW_LABEL = 0
@@ -289,10 +291,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         >>> plugin = Keithley6221_MultiSR830Plugin()
         >>> plugin.name
         'k6221_multi_sr830'
-        >>> plugin.trace_title
-        '6221 + multi-SR830'
-        >>> plugin.channel_names
-        ['LIA 1']
+        >>> plugin.trace_names
+        ['Signals']
     """
 
     _scan_generator_class = ListScanGenerator
@@ -341,11 +341,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return "k6221_multi_sr830"
 
     @property
-    def trace_title(self) -> str:
-        """Return the human-readable trace title."""
-        return "6221 + multi-SR830"
-
-    @property
     def x_label(self) -> str:
         """Return the label for the scanned 6221 sine parameter."""
         labels = {
@@ -375,53 +370,35 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return self._lockin_entries[0].outputs[0].unit
 
     @property
-    def channel_names(self) -> list[str]:
-        """Return the ordered list of emitted lock-in channel names."""
-        return [spec.name for spec in self._channel_specs()]
+    def trace_names(self) -> list[str]:
+        """Return the single shared-x trace dataset name."""
+        return [_TRACE_NAME]
 
     def set_scan_generator_class(self, cls) -> None:
         """Replace the scan generator class and update the displayed units."""
         super().set_scan_generator_class(cls)
         self._apply_scan_units()
 
-    def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
-        """Acquire the configured scan and return one trace per labelled channel."""
-        self._set_status(TraceStatus.MEASURING)
-        try:
-            x_values, channel_values, specs = self._acquire_trace(parameters)
-        finally:
-            self._set_status(TraceStatus.DATA_AVAILABLE)
-
-        data: dict[str, TraceData] = {}
+    def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
+        """Acquire all lock-in outputs once as one shared-x multicolumn trace."""
+        x_values, channel_values, specs = self._acquire_trace(parameters)
+        frame = pd.DataFrame(index=pd.Index(np.asarray(x_values, dtype=float), name="x"))
+        roles: dict[str, str] = {}
+        names = {"x": self.x_label}
+        units = {"x": self.x_units}
         for spec in specs:
-            y_values = np.asarray(channel_values.get(spec.name, []), dtype=float)
-            df = pd.DataFrame({"y": y_values}, index=pd.Index(np.asarray(x_values, dtype=float), name="x"))
-            data[spec.name] = TraceData(
-                df=df,
-                column_roles={"y": COLUMN_ROLE_Y},
-                names={"x": self.x_label, "y": spec.name},
-                units={"x": self.x_units, "y": spec.unit},
+            frame[spec.name] = np.asarray(channel_values[spec.name], dtype=float)
+            roles[spec.name] = COLUMN_ROLE_Y
+            names[spec.name] = spec.name
+            units[spec.name] = spec.unit
+        return {
+            _TRACE_NAME: TraceData(
+                df=frame,
+                column_roles=roles,
+                names=names,
+                units=units,
             )
-
-        self.data = data
-        self._update_channel_statistics()
-        return data
-
-    def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
-        """Acquire the scan and yield ``(x, y)`` pairs for the first channel."""
-        x_values, channel_values, specs = self._acquire_trace(parameters)
-        if not specs:
-            return
-        first_name = specs[0].name
-        for x_value, y_value in zip(x_values, channel_values[first_name], strict=True):
-            yield float(x_value), float(y_value)
-
-    def execute_multichannel(self, parameters: dict[str, Any]) -> Generator[tuple[str, float, float]]:
-        """Acquire the scan and yield ``(channel, x, y)`` tuples for every channel."""
-        x_values, channel_values, specs = self._acquire_trace(parameters)
-        for spec in specs:
-            for x_value, y_value in zip(x_values, channel_values[spec.name], strict=True):
-                yield spec.name, float(x_value), float(y_value)
+        }
 
     def connect(self) -> None:
         """Open the 6221 and all configured SR830 connections."""

@@ -17,7 +17,8 @@ engine:
    instrument identity.
 2. :meth:`~TracePlugin.configure` — push plugin settings to the instrument.
 3. :meth:`~TracePlugin.measure` — trigger and collect the complete multipoint
-   trace, returning all ``(channel, x, y)`` points as a list.
+   acquisition as a mapping of trace names to complete :class:`TraceData`
+   tables.
 4. :meth:`~TracePlugin.disconnect` — cleanly release all reserved resources.
 
 For hardware-backed trace plugins, the expected lifecycle is slightly more
@@ -50,11 +51,9 @@ from __future__ import annotations
 
 import enum
 from abc import abstractmethod
-from collections.abc import Generator, Iterator
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
-import pandas as pd
 from qtpy.QtCore import QObject
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -66,6 +65,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.trace_data import TraceData
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan import (
@@ -79,430 +79,6 @@ from stoner_measurement.scan import (
 
 if TYPE_CHECKING:
     pass
-
-
-# ---------------------------------------------------------------------------
-# Column role constants
-# ---------------------------------------------------------------------------
-
-COLUMN_ROLE_Y: str = "y"
-"""Role tag identifying a column as the primary dependent variable."""
-
-COLUMN_ROLE_Z: str = "z"
-"""Role tag identifying a column as a secondary dependent variable."""
-
-COLUMN_ROLE_D: str = "d"
-"""Role tag identifying a column as x-axis uncertainty (error bar)."""
-
-COLUMN_ROLE_E: str = "e"
-"""Role tag identifying a column as y-axis uncertainty (error bar)."""
-
-COLUMN_ROLE_F: str = "f"
-"""Role tag identifying a column as z-axis uncertainty (error bar)."""
-
-_VALID_ROLES: frozenset[str] = frozenset(
-    {COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_D, COLUMN_ROLE_E, COLUMN_ROLE_F}
-)
-
-
-class TraceData:
-    """Container for a measurement trace backed by a :class:`pandas.DataFrame`.
-
-    Each :class:`TraceData` instance corresponds to one named channel produced by a
-    :class:`TracePlugin`.  The independent variable (*x*) is stored as the DataFrame
-    index; one or more dependent variable columns are stored as DataFrame columns,
-    each annotated with a *role* string (see the ``COLUMN_ROLE_*`` constants).
-
-    Two construction paths are supported:
-
-    * **Legacy / backward-compatible path** — pass ``x``, ``y``, and optionally
-      ``d`` (x-error) and ``e`` (y-error) as NumPy arrays, together with optional
-      ``names`` and ``units`` dicts keyed by ``"x"``, ``"y"``, ``"d"``, ``"e"``.
-      A :class:`~pandas.DataFrame` is built automatically.
-    * **New-style path** — pass a pre-built :class:`~pandas.DataFrame` as ``df``
-      (index = x values, columns = dependent variable data) together with a
-      ``column_roles`` mapping and optional ``names`` / ``units`` dicts.  The
-      ``x``, ``y``, ``d``, and ``e`` positional arguments are ignored when ``df``
-      is provided.
-
-    Attributes:
-        column_roles (dict[str, str]):
-            Mapping from column name to role string.  Valid roles are the module
-            constants :data:`COLUMN_ROLE_Y`, :data:`COLUMN_ROLE_Z`,
-            :data:`COLUMN_ROLE_D`, :data:`COLUMN_ROLE_E`, and
-            :data:`COLUMN_ROLE_F`.
-        names (dict[str, str]):
-            Mapping from axis/column identifier to a human-readable display name.
-            Key ``"x"`` addresses the index (independent variable); all other keys
-            are column names.  Legacy code may use ``{"x": …, "y": …, "d": …,
-            "e": …}`` and those keys continue to work.
-        units (dict[str, str]):
-            Mapping from axis/column identifier to a physical unit string.  Same
-            key conventions as ``names``.
-
-    Keyword Parameters:
-        x (np.ndarray | None):
-            Independent-variable values (legacy path).  Defaults to an empty
-            float array when omitted.
-        y (np.ndarray | None):
-            Primary dependent-variable values (legacy path).  Defaults to an
-            empty float array when omitted.
-        d (np.ndarray | None):
-            x-axis error-bar values (legacy path).  Omitted from the DataFrame
-            when ``None`` or an empty array.
-        e (np.ndarray | None):
-            y-axis error-bar values (legacy path).  Omitted from the DataFrame
-            when ``None`` or an empty array.
-        names (dict[str, str] | None):
-            Human-readable name mapping (both paths).
-        units (dict[str, str] | None):
-            Physical unit mapping (both paths).
-        df (pd.DataFrame | None):
-            Pre-built DataFrame for the new-style path.  The index must contain
-            the independent-variable values.  When provided, the ``x`` / ``y``
-            / ``d`` / ``e`` keyword arguments are ignored.
-        column_roles (dict[str, str] | None):
-            Column-name → role mapping for the new-style path.  Ignored when
-            ``df`` is ``None``.
-
-    Examples:
-        >>> import numpy as np
-        >>> from stoner_measurement.plugins.trace.base import TraceData, COLUMN_ROLE_Y
-        >>> td = TraceData(x=np.array([0.0, 1.0]), y=np.array([0.0, 2.0]))
-        >>> float(td.x[1])
-        1.0
-        >>> float(td.y[1])
-        2.0
-        >>> len(td.d)
-        0
-        >>> x_arr, y_arr = td  # backward-compatible unpacking
-        >>> float(x_arr[0])
-        0.0
-        >>> td.get_columns_by_role(COLUMN_ROLE_Y)
-        ['y']
-    """
-
-    def __init__(
-        self,
-        x: np.ndarray | None = None,
-        y: np.ndarray | None = None,
-        d: np.ndarray | None = None,
-        e: np.ndarray | None = None,
-        names: dict[str, str] | None = None,
-        units: dict[str, str] | None = None,
-        *,
-        df: pd.DataFrame | None = None,
-        column_roles: dict[str, str] | None = None,
-    ) -> None:
-        """Initialise a TraceData instance.
-
-        See class docstring for full parameter descriptions.
-        """
-        if df is not None:
-            # New-style path: caller supplies a ready-made DataFrame.
-            self._df: pd.DataFrame = df.copy()
-            self.column_roles: dict[str, str] = dict(column_roles) if column_roles is not None else {}
-            self.names: dict[str, str] = dict(names) if names is not None else {"x": "x"}
-            self.units: dict[str, str] = dict(units) if units is not None else {"x": ""}
-        else:
-            # Legacy / backward-compatible path.
-            x_arr = np.array([], dtype=float) if x is None else np.asarray(x, dtype=float)
-            y_arr = np.array([], dtype=float) if y is None else np.asarray(y, dtype=float)
-
-            col_data: dict[str, np.ndarray] = {"y": y_arr}
-            roles: dict[str, str] = {"y": COLUMN_ROLE_Y}
-
-            if d is not None:
-                d_arr = np.asarray(d, dtype=float)
-                if len(d_arr) > 0:
-                    col_data["d"] = d_arr
-                    roles["d"] = COLUMN_ROLE_D
-
-            if e is not None:
-                e_arr = np.asarray(e, dtype=float)
-                if len(e_arr) > 0:
-                    col_data["e"] = e_arr
-                    roles["e"] = COLUMN_ROLE_E
-
-            self._df = pd.DataFrame(col_data, index=pd.Index(x_arr, name="x"))
-            self.column_roles = roles
-
-            if names is not None:
-                self.names = dict(names)
-            else:
-                self.names = {"x": "x", "y": "y"}
-                if "d" in col_data:
-                    self.names["d"] = ""
-                if "e" in col_data:
-                    self.names["e"] = ""
-
-            if units is not None:
-                self.units = dict(units)
-            else:
-                self.units = {"x": "", "y": ""}
-                if "d" in col_data:
-                    self.units["d"] = ""
-                if "e" in col_data:
-                    self.units["e"] = ""
-
-    # ------------------------------------------------------------------
-    # DataFrame-backed properties
-    # ------------------------------------------------------------------
-
-    @property
-    def df(self) -> pd.DataFrame:
-        """The underlying :class:`pandas.DataFrame` (index = x, columns = data).
-
-        Returns:
-            (pd.DataFrame):
-                The backing DataFrame.  Callers should treat this as read-only
-                and use :meth:`add_column` to add new columns.
-
-        Examples:
-            >>> import numpy as np, pandas as pd
-            >>> from stoner_measurement.plugins.trace.base import TraceData
-            >>> td = TraceData(x=np.array([1.0, 2.0]), y=np.array([3.0, 4.0]))
-            >>> isinstance(td.df, pd.DataFrame)
-            True
-            >>> list(td.df.columns)
-            ['y']
-        """
-        return self._df
-
-    @property
-    def columns(self) -> list[str]:
-        """Ordered list of column names in the underlying DataFrame.
-
-        Returns:
-            (list[str]):
-                Column names in DataFrame order.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import TraceData
-            >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
-            >>> td.columns
-            ['y']
-        """
-        return list(self._df.columns)
-
-    # ------------------------------------------------------------------
-    # Backward-compatible array properties
-    # ------------------------------------------------------------------
-
-    @property
-    def x(self) -> np.ndarray:
-        """Independent-variable values as a one-dimensional NumPy array.
-
-        Returns:
-            (np.ndarray):
-                The DataFrame index as a float64 array.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import TraceData
-            >>> td = TraceData(x=np.array([0.0, 1.0]), y=np.array([2.0, 3.0]))
-            >>> td.x.tolist()
-            [0.0, 1.0]
-        """
-        return self._df.index.to_numpy(dtype=float)
-
-    @property
-    def y(self) -> np.ndarray:
-        """First :data:`COLUMN_ROLE_Y`-role column as a one-dimensional NumPy array.
-
-        Returns:
-            (np.ndarray):
-                The first ``"y"``-role column, or an empty float64 array if no
-                such column exists.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import TraceData
-            >>> td = TraceData(x=np.array([0.0, 1.0]), y=np.array([2.0, 3.0]))
-            >>> td.y.tolist()
-            [2.0, 3.0]
-        """
-        cols = self.get_columns_by_role(COLUMN_ROLE_Y)
-        if not cols:
-            return np.array([], dtype=float)
-        return self._df[cols[0]].to_numpy(dtype=float)
-
-    @property
-    def d(self) -> np.ndarray:
-        """First :data:`COLUMN_ROLE_D`-role column as a one-dimensional NumPy array.
-
-        Returns:
-            (np.ndarray):
-                The first ``"d"``-role column, or an empty float64 array if no
-                such column exists.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import TraceData
-            >>> td = TraceData(x=np.array([0.0]), y=np.array([1.0]))
-            >>> len(td.d)
-            0
-        """
-        cols = self.get_columns_by_role(COLUMN_ROLE_D)
-        if not cols:
-            return np.array([], dtype=float)
-        return self._df[cols[0]].to_numpy(dtype=float)
-
-    @property
-    def e(self) -> np.ndarray:
-        """First :data:`COLUMN_ROLE_E`-role column as a one-dimensional NumPy array.
-
-        Returns:
-            (np.ndarray):
-                The first ``"e"``-role column, or an empty float64 array if no
-                such column exists.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import TraceData
-            >>> td = TraceData(x=np.array([0.0]), y=np.array([1.0]))
-            >>> len(td.e)
-            0
-        """
-        cols = self.get_columns_by_role(COLUMN_ROLE_E)
-        if not cols:
-            return np.array([], dtype=float)
-        return self._df[cols[0]].to_numpy(dtype=float)
-
-    # ------------------------------------------------------------------
-    # Multi-column API
-    # ------------------------------------------------------------------
-
-    def get_columns_by_role(self, role: str) -> list[str]:
-        """Return the names of all columns that carry *role*.
-
-        Args:
-            role (str):
-                One of the ``COLUMN_ROLE_*`` constants.
-
-        Returns:
-            (list[str]):
-                Column names (in insertion order) whose role matches *role*.
-                Empty list if no columns carry that role.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import (
-            ...     TraceData, COLUMN_ROLE_Y, COLUMN_ROLE_E,
-            ... )
-            >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
-            >>> td.get_columns_by_role(COLUMN_ROLE_Y)
-            ['y']
-            >>> td.get_columns_by_role(COLUMN_ROLE_E)
-            []
-        """
-        return [col for col in self._df.columns if self.column_roles.get(col) == role]
-
-    def add_column(self, name: str, data: np.ndarray, role: str) -> None:
-        """Add a new data column to this trace.
-
-        Args:
-            name (str):
-                Name for the new column.  Must not already exist in the
-                DataFrame.
-            data (np.ndarray):
-                One-dimensional data array whose length matches the number of
-                rows in the DataFrame.
-            role (str):
-                Role tag for the new column.  Must be one of the
-                ``COLUMN_ROLE_*`` constants.
-
-        Raises:
-            ValueError:
-                If *role* is not one of the recognised role constants.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import (
-            ...     TraceData, COLUMN_ROLE_Y, COLUMN_ROLE_Z,
-            ... )
-            >>> td = TraceData(x=np.array([1.0, 2.0]), y=np.array([3.0, 4.0]))
-            >>> td.add_column("z", np.array([5.0, 6.0]), COLUMN_ROLE_Z)
-            >>> td.get_columns_by_role(COLUMN_ROLE_Z)
-            ['z']
-            >>> td.df["z"].tolist()
-            [5.0, 6.0]
-        """
-        if role not in _VALID_ROLES:
-            raise ValueError(
-                f"Invalid column role {role!r}. "
-                f"Valid roles are: {sorted(_VALID_ROLES)}"
-            )
-        self._df[name] = np.asarray(data, dtype=float)
-        self.column_roles[name] = role
-
-    # ------------------------------------------------------------------
-    # Backward-compatible iteration and indexing
-    # ------------------------------------------------------------------
-
-    def __iter__(self) -> Iterator[np.ndarray]:
-        """Yield ``x`` then ``y`` to support two-element tuple unpacking.
-
-        This provides backward compatibility with code that previously used
-        ``x_arr, y_arr = trace_data[channel]``.
-
-        Yields:
-            (np.ndarray):
-                ``x`` — the independent-variable array.
-            (np.ndarray):
-                ``y`` — the primary dependent-variable array.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import TraceData
-            >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
-            >>> a, b = td
-            >>> float(a[0])
-            1.0
-            >>> float(b[0])
-            2.0
-        """
-        yield self.x
-        yield self.y
-
-    def __getitem__(self, index: int) -> np.ndarray:
-        """Return the array at *index* (0 → x, 1 → y, 2 → d, 3 → e).
-
-        Args:
-            index (int):
-                0 for ``x``, 1 for ``y``, 2 for ``d`` (x-error), 3 for ``e``
-                (y-error).
-
-        Returns:
-            (np.ndarray):
-                The requested array.
-
-        Raises:
-            IndexError:
-                If *index* is outside the range 0–3.
-
-        Examples:
-            >>> import numpy as np
-            >>> from stoner_measurement.plugins.trace.base import TraceData
-            >>> td = TraceData(x=np.array([1.0]), y=np.array([2.0]))
-            >>> float(td[0][0])
-            1.0
-            >>> float(td[1][0])
-            2.0
-        """
-        arrays = (self.x, self.y, self.d, self.e)
-        if not 0 <= index < len(arrays):
-            raise IndexError(f"TraceData index {index!r} out of range 0–3")
-        return arrays[index]
-
-    def __str__(self) -> str:
-        """Return a concise summary of the trace shape and columns."""
-        return f"TraceData(columns={self.columns!r}, rows={len(self._df)})"
-
-    def __repr__(self) -> str:
-        """Return the human-friendly trace summary."""
-        return str(self)
 
 
 class TraceStatus(enum.Enum):
@@ -728,36 +304,28 @@ class _ScanPage(QWidget):
 class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     """Abstract base class for plugins that collect (x, y) data traces.
 
-    A :class:`TracePlugin` acquires one or more complete traces of (x, y) data
+    A :class:`TracePlugin` acquires one or more complete shared-x datasets
     from instruments.  Subclasses must implement :attr:`name` (inherited from
     :class:`~stoner_measurement.plugins.base_plugin.BasePlugin`) and
-    :meth:`execute`.
+    :meth:`_measure`.
 
     The class provides:
 
     * **Lifecycle API** — :meth:`connect`, :meth:`configure`, :meth:`measure`,
       and :meth:`disconnect` form the standard sequence-engine interface.
-      Default implementations are no-ops (or delegate to :meth:`execute`);
-      override them in concrete plugins to interact with real hardware.
+      :meth:`measure` owns acquisition status, result storage, and statistics;
+      subclasses only implement the protected :meth:`_measure` hook.
     * **Status reporting** — :attr:`status` (a :class:`TraceStatus` value) and
       :attr:`status_changed` signal communicate the current lifecycle phase.
-    * **Single-channel acquisition** — :meth:`execute` yields ``(x, y)`` pairs
-      for the primary channel.
-    * **Multi-channel acquisition** — :meth:`execute_multichannel` yields
-      ``(channel, x, y)`` triples; the default implementation wraps
-      :meth:`execute` using the first entry of :attr:`channel_names`.
-    * **Complete-trace acquisition** — :meth:`measure` runs the full
-      acquisition and returns all ``(channel, x, y)`` points as a list.
-      Code generated by the sequence engine calls :meth:`measure` once to
-      obtain the complete dataset.
-    * **Scan generator** — :attr:`scan_generator` (also accessible via
-      :attr:`trace_scan`) holds the active
+    * **Complete-trace acquisition** — :meth:`measure` returns a mapping of
+      trace names to complete :class:`TraceData` tables.
+    * **Scan generator** — :attr:`scan_generator` holds the active
       :class:`~stoner_measurement.scan.BaseScanGenerator` instance.  The
       default class used is given by :attr:`_scan_generator_class` and can be
       changed at runtime via :meth:`set_scan_generator_class`.
-    * **Trace details** — :attr:`num_traces`, :attr:`trace_title`,
-      :attr:`x_label`, :attr:`y_label`, :attr:`x_units`, and :attr:`y_units`
-      describe the shape and labelling of the acquired data.
+    * **Trace details** — :attr:`trace_names`, :attr:`x_label`,
+      :attr:`y_label`, :attr:`x_units`, and :attr:`y_units` describe the
+      datasets available before acquisition.
 
     Attributes:
         _scan_generator_class (type[BaseScanGenerator]):
@@ -772,16 +340,11 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         scan_generator (BaseScanGenerator):
             Active scan generator instance.  Replaced (and
             :attr:`scan_generator_changed` emitted) when
-            :meth:`set_scan_generator_class` is called.  Also accessible as
-            :attr:`trace_scan`.
+            :meth:`set_scan_generator_class` is called.
         data (dict[str, TraceData]):
             Most recently acquired trace data, populated by :meth:`measure`.
-            Maps each channel name to a :class:`TraceData` instance whose
-            ``x`` and ``y`` attributes hold the measured arrays.  The
-            ``names`` and ``units`` dicts are populated from the plugin's
-            :attr:`x_label`, :attr:`y_label`, :attr:`x_units`, and
-            :attr:`y_units` properties.  Empty until the first successful
-            call to :meth:`measure`.
+            Maps each trace name to one complete :class:`TraceData` table.
+            Empty until the first successful call to :meth:`measure`.
         status_changed (pyqtSignal[object]):
             Emitted with the new :class:`TraceStatus` value whenever
             :attr:`status` changes.
@@ -805,14 +368,10 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         'x'
         >>> plugin.y_label
         'y'
-        >>> plugin.channel_names == [plugin.name]
+        >>> plugin.trace_names == [plugin.name]
         True
         >>> plugin.status is TraceStatus.IDLE
         True
-        >>> plugin.num_traces
-        1
-        >>> plugin.trace_title
-        'Dummy'
     """
 
     _scan_generator_class: ClassVar[type[BaseScanGenerator]] = FunctionScanGenerator
@@ -1023,32 +582,24 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
 
     def measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
-        """Trigger acquisition and return all trace data keyed by channel name.
+        """Acquire and return all trace datasets.
 
-        This is the primary measurement entry point for the sequence engine.
-        It sets :attr:`status` to :attr:`TraceStatus.MEASURING`, delegates to
-        :meth:`execute_multichannel` to acquire the complete trace, and finally
-        sets :attr:`status` to :attr:`TraceStatus.DATA_AVAILABLE` before
-        returning.
+        This is the sole public acquisition entry point.  It owns status
+        transitions, stores the result in :attr:`data`, and updates optional
+        statistics.  Subclasses implement :meth:`_measure` to perform the
+        instrument-specific acquisition.
 
         The result is also stored as :attr:`data` so that downstream code can
         access it without holding on to the return value.
 
-        Subclasses may override this method to implement custom measurement
-        logic while still honouring the status transitions.
-
         Args:
             parameters (dict[str, Any]):
-                Step-specific configuration forwarded to
-                :meth:`execute_multichannel` (and thence to :meth:`execute`).
+                Step-specific configuration forwarded to :meth:`_measure`.
 
         Returns:
             (dict[str, TraceData]):
-                Mapping of channel name to a :class:`TraceData` instance
-                containing the measured ``x`` and ``y`` arrays together with
-                ``names`` and ``units`` metadata derived from :attr:`x_label`,
-                :attr:`y_label`, :attr:`x_units`, and :attr:`y_units`.  The
-                same dict is stored as :attr:`data`.
+                Mapping of trace name to a complete :class:`TraceData`
+                dataset.  The same dict is stored as :attr:`data`.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -1077,35 +628,16 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             True
         """
         self._set_status(TraceStatus.MEASURING)
-        # xs/ys keys also serve as the set of channels seen so far.
-        xs: dict[str, list[float]] = {}
-        ys: dict[str, list[float]] = {}
-        # names/units only need the axes that are actually present.  The legacy
-        # "d" and "e" sentinel keys are no longer included because the DataFrame
-        # has no error-bar columns until add_column() is called explicitly.
-        names = {"x": self.x_label, "y": self.y_label}
-        units = {"x": self.x_units, "y": self.y_units}
         try:
-            for channel, x, y in self.execute_multichannel(parameters):
-                if channel not in xs:
-                    xs[channel] = []
-                    ys[channel] = []
-                xs[channel].append(x)
-                ys[channel].append(y)
-        finally:
-            self._set_status(TraceStatus.DATA_AVAILABLE)
-        self.data = {}
-        for ch, x_values in xs.items():
-            x_arr = np.array(x_values)
-            y_arr = np.array(ys[ch])
-            df = pd.DataFrame({"y": y_arr}, index=pd.Index(x_arr, name="x"))
-            self.data[ch] = TraceData(
-                df=df,
-                column_roles={"y": COLUMN_ROLE_Y},
-                names=names,
-                units=units,
-            )
+            data = self._measure(parameters)
+        except Exception:
+            self.data = {}
+            self.channel_statistics = {}
+            self._set_status(TraceStatus.ERROR)
+            raise
+        self.data = data
         self._update_channel_statistics()
+        self._set_status(TraceStatus.DATA_AVAILABLE)
         return self.data
 
     def disconnect(self) -> None:
@@ -1131,47 +663,6 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     # ------------------------------------------------------------------
     # Trace details
     # ------------------------------------------------------------------
-
-    @property
-    def num_traces(self) -> int:
-        """Number of independent trace channels provided by this plugin.
-
-        Returns:
-            (int):
-                ``len(self.channel_names)``; always at least 1.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.trace import DummyPlugin
-            >>> DummyPlugin().num_traces
-            1
-        """
-        return len(self.channel_names)
-
-    @property
-    def trace_title(self) -> str:
-        """Human-readable display title for the trace (used in plot titles, legends, etc.).
-
-        This title is intended for display purposes only.  For file-system
-        usage, derive a sanitised name from :attr:`name` or
-        :attr:`instance_name` instead.
-
-        The default implementation returns :attr:`name`.  Override in a
-        subclass to provide a more descriptive title.
-
-        Returns:
-            (str):
-                Trace title string.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.trace import DummyPlugin
-            >>> DummyPlugin().trace_title
-            'Dummy'
-        """
-        return self.name
 
     @property
     def x_units(self) -> str:
@@ -1212,31 +703,6 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             ''
         """
         return ""
-
-    @property
-    def trace_scan(self) -> BaseScanGenerator:
-        """The active scan generator for this trace.
-
-        This is an alias for :attr:`scan_generator` and is provided as the
-        canonical accessor for the sequence engine and external code that needs
-        to inspect or iterate the scan sequence.
-
-        Returns:
-            (BaseScanGenerator):
-                The currently active scan generator instance.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.trace import DummyPlugin
-            >>> from stoner_measurement.scan import SteppedScanGenerator
-            >>> plugin = DummyPlugin()
-            >>> isinstance(plugin.trace_scan, SteppedScanGenerator)
-            True
-            >>> plugin.trace_scan is plugin.scan_generator
-            True
-        """
-        return self.scan_generator
 
     # ------------------------------------------------------------------
     # Configuration tabs
@@ -1325,40 +791,17 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
-        """Acquire a trace and yield ``(x, y)`` data points.
+    def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
+        """Perform one acquisition and return complete trace datasets.
 
-        This method is the primary acquisition entry point.  Each yielded
-        tuple represents a single measured (x, y) pair on the default channel.
-
-        Args:
-            parameters (dict[str, Any]):
-                Step-specific configuration provided by the caller (e.g.
-                sweep range, integration time).
-
-        Yields:
-            (tuple[float, float]):
-                ``(x, y)`` data point pairs.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.trace import DummyPlugin
-            >>> from stoner_measurement.scan import SteppedScanGenerator
-            >>> plugin = DummyPlugin()
-            >>> plugin.scan_generator = SteppedScanGenerator(
-            ...     start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
-            ... )
-            >>> pts = list(plugin.execute({}))
-            >>> len(pts)
-            5
-            >>> isinstance(pts[0], tuple) and len(pts[0]) == 2
-            True
+        Implementations should acquire each instrument only once and should
+        not update :attr:`status`, :attr:`data`, or channel statistics; those
+        lifecycle responsibilities belong to :meth:`measure`.
         """
 
     @property
-    def channel_names(self) -> list[str]:
-        """Names of the available measurement channels.
+    def trace_names(self) -> list[str]:
+        """Names of the complete trace datasets returned by :meth:`measure`.
 
         The default implementation returns a single-element list containing
         :attr:`name`.  Override to expose multiple channels.
@@ -1371,7 +814,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.plugins.trace import DummyPlugin
-            >>> DummyPlugin().channel_names
+            >>> DummyPlugin().trace_names
             ['Dummy']
         """
         return [self.name]
@@ -1395,40 +838,6 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
                 Human-readable label string; default ``"y"``.
         """
         return "y"
-
-    def execute_multichannel(self, parameters: dict[str, Any]) -> Generator[tuple[str, float, float]]:
-        """Acquire traces from all channels and yield ``(channel, x, y)`` triples.
-
-        The default implementation wraps :meth:`execute` using the first entry
-        of :attr:`channel_names`.  Override this method when the plugin
-        supports simultaneous multi-channel acquisition.
-
-        Args:
-            parameters (dict[str, Any]):
-                Step-specific configuration forwarded to :meth:`execute`.
-
-        Yields:
-            (tuple[str, float, float]):
-                ``(channel_name, x, y)`` triples.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.trace import DummyPlugin
-            >>> from stoner_measurement.scan import SteppedScanGenerator
-            >>> plugin = DummyPlugin()
-            >>> plugin.scan_generator = SteppedScanGenerator(
-            ...     start=0.0, stages=[(0.2, 0.1, True)], parent=plugin
-            ... )
-            >>> pts = list(plugin.execute_multichannel({}))
-            >>> len(pts)
-            3
-            >>> pts[0][0]
-            'Dummy'
-        """
-        channel = self.channel_names[0]
-        for x, y in self.execute(parameters):
-            yield channel, x, y
 
     def generate_action_code(
         self,
@@ -1481,7 +890,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         Returns:
             (dict[str, str]):
                 Mapping of ``"{instance_name}:{channel_name}"`` → expression for each
-                channel in :attr:`channel_names`.
+                dataset in :attr:`trace_names`.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -1495,7 +904,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             "dummy.data['Dummy']"
         """
         var = self.instance_name
-        return {f"{var}:{ch}": f"{var}.data['{ch}']" for ch in self.channel_names}
+        return {f"{var}:{name}": f"{var}.data['{name}']" for name in self.trace_names}
 
     def reported_values(self) -> dict[str, str]:
         """Return optional channel statistics as scalar value outputs.
@@ -1512,12 +921,12 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
         var = self.instance_name
         values: dict[str, str] = {}
-        for channel in self.channel_names:
-            values[f"{var}:{channel} mean"] = (
-                f"{var}.get_channel_statistic({channel!r}, 'mean')"
+        for trace_name in self.trace_names:
+            values[f"{var}:{trace_name} mean"] = (
+                f"{var}.get_channel_statistic({trace_name!r}, 'mean')"
             )
-            values[f"{var}:{channel} std"] = (
-                f"{var}.get_channel_statistic({channel!r}, 'std')"
+            values[f"{var}:{trace_name} std"] = (
+                f"{var}.get_channel_statistic({trace_name!r}, 'std')"
             )
         return values
 

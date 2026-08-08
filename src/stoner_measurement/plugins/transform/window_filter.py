@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLineEdit, QWidget
 
-from stoner_measurement.plugins.trace.base import COLUMN_ROLE_Y, TraceData
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform._trace_selection import (
     TraceChannelSelectionMixin,
 )
@@ -167,13 +167,14 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
         y_filtered = np.convolve(y_arr, kernel, mode="same")
         df = pd.DataFrame({y_col_name: y_filtered}, index=pd.Index(x_arr, name="x"))
 
-        names: dict[str, str] = dict(source_names)
-        names.setdefault("x", "x")
-        names.setdefault(y_col_name, y_col_name)
-
-        units: dict[str, str] = dict(source_units)
-        units.setdefault("x", "")
-        units.setdefault(y_col_name, "")
+        names = {
+            "x": source_names.get("x", "x"),
+            y_col_name: source_names.get(y_col_name, y_col_name),
+        }
+        units = {
+            "x": source_units.get("x", ""),
+            y_col_name: source_units.get(y_col_name, ""),
+        }
 
         return {
             _FILTER_TRACE_KEY: TraceData(

@@ -7,13 +7,14 @@ as a smoke-test and worked example.
 
 from __future__ import annotations
 
-from collections.abc import Generator
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from qtpy.QtWidgets import QFormLayout, QLineEdit, QWidget
 from scipy.constants import Boltzmann as kb
 
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
 from stoner_measurement.scan import FunctionScanGenerator
 
@@ -83,22 +84,6 @@ class DummyPlugin(TracePlugin):
     def name(self) -> str:
         """Unique identifier for the dummy plugin."""
         return "Dummy"
-
-    @property
-    def trace_title(self) -> str:
-        """Human-readable display title for the RSJ I-V trace.
-
-        Returns:
-            (str):
-                ``"RSJ I-V"``.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> DummyPlugin().trace_title
-            'RSJ I-V'
-        """
-        return "RSJ I-V"
 
     @property
     def x_units(self) -> str:
@@ -204,8 +189,8 @@ class DummyPlugin(TracePlugin):
         except RuntimeError:
             return float(expr)
 
-    def execute(self, parameters: dict[str, Any]) -> Generator[tuple[float, float]]:
-        """Yield RSJ I-V data points with optional Gaussian noise.
+    def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
+        """Return one simulated RSJ I-V dataset with optional Gaussian noise.
 
         Iterates over the scan generator, treating each scan-point value as an
         applied current *I*, and collects ``(I, V)`` for every point whose
@@ -219,7 +204,8 @@ class DummyPlugin(TracePlugin):
 
         * ``V += np.random.normal(0, V_n, V.size)``
 
-        The noisy ``(I, V)`` pairs are then yielded in scan order.
+        The noisy current and voltage arrays are returned as one complete
+        :class:`TraceData` dataset.
 
         All three parameters are evaluated as Python expressions via
         :meth:`_eval_expr`, which delegates to the sequence engine's
@@ -241,23 +227,9 @@ class DummyPlugin(TracePlugin):
                   *Settings* tab (initially ``"0.0"``).  Set to ``"0.0"`` for
                   noiseless output.
 
-        Yields:
-            (tuple[float, float]):
-                ``(I, V)`` data point pairs.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.scan import SteppedScanGenerator
-            >>> plugin = DummyPlugin()
-            >>> plugin.scan_generator = SteppedScanGenerator(
-            ...     start=0.0, stages=[(0.4, 0.1, True)], parent=plugin
-            ... )
-            >>> pts = list(plugin.execute({}))
-            >>> len(pts)
-            5
-            >>> isinstance(pts[0], tuple) and len(pts[0]) == 2
-            True
+        Returns:
+            (dict[str, TraceData]):
+                A single dataset keyed by :attr:`name`.
         """
         i_c = self._eval_expr(str(parameters.get("I_c", self._critical_current)))
         r_n = self._eval_expr(str(parameters.get("R_n", self._normal_resistance)))
@@ -286,7 +258,18 @@ class DummyPlugin(TracePlugin):
         if v_n > 0.0:
             voltage_values += np.random.normal(0, v_n, voltage_values.size)
 
-        yield from zip(current_values, voltage_values)
+        frame = pd.DataFrame(
+            {"V": voltage_values},
+            index=pd.Index(np.asarray(current_values, dtype=float), name="x"),
+        )
+        return {
+            self.name: TraceData(
+                df=frame,
+                column_roles={"V": COLUMN_ROLE_Y},
+                names={"x": self.x_label, "V": self.y_label},
+                units={"x": self.x_units, "V": self.y_units},
+            )
+        }
 
     def to_json(self) -> dict[str, Any]:
         """Serialise this plugin's configuration, including RSJ model parameters.

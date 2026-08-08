@@ -40,11 +40,11 @@ class TestStateControlDataCollection:
     """Tests for the data-collection capabilities of StateControlPlugin."""
 
     def test_data_initially_empty(self, qapp):
-        import pandas as pd
+        from stoner_measurement.core import TraceData
 
         p = _InstantState()
-        assert isinstance(p.data, pd.DataFrame)
-        assert p.data.empty
+        assert isinstance(p.data, TraceData)
+        assert p.data.df.empty
 
     def test_default_config_values(self, qapp):
         p = _InstantState()
@@ -56,25 +56,29 @@ class TestStateControlDataCollection:
     def test_clear_data_resets_dataframe(self, qapp):
         import pandas as pd
 
+        from stoner_measurement.core import TraceData
+
         p = _InstantState()
-        p._data = pd.DataFrame([{"value": 1.0}])
+        p._data = TraceData(pd.DataFrame({"value": [1.0]}))
         p.clear_data()
-        assert p.data.empty
+        assert p.data.df.empty
 
     def test_clear_data_obeys_clear_filter_false(self, qapp):
         import pandas as pd
 
+        from stoner_measurement.core import TraceData
+
         p = _InstantState()
-        p._data = pd.DataFrame([{"value": 1.0}])
+        p._data = TraceData(pd.DataFrame({"value": [1.0]}))
         p.clear_filter = "False"
         p.clear_data()
-        assert p.data.empty
+        assert p.data.df.empty
 
     def test_collect_noop_when_detached(self, qapp):
         p = _InstantState()
         p.collect_filter = "True"
         p.collect()
-        assert p.data.empty
+        assert p.data.df.empty
 
     def test_collect_appends_row(self, qapp):
         from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -88,10 +92,10 @@ class TestStateControlDataCollection:
         p.value = 3.5
         p.stage = 2
         p.collect()
-        assert not p.data.empty
-        assert p.data.index.tolist() == [0]
-        assert p.data["value"].iloc[0] == 3.5
-        assert p.data["stage"].iloc[0] == 2
+        assert not p.data.df.empty
+        assert p.data.x.tolist() == [3.5]
+        assert p.data.df["iteration"].iloc[0] == 0
+        assert p.data.df["stage"].iloc[0] == 2
         engine.shutdown()
 
     def test_collect_skips_when_filter_false(self, qapp):
@@ -104,7 +108,7 @@ class TestStateControlDataCollection:
         p.ix = 0
         p.value = 1.0
         p.collect()
-        assert p.data.empty
+        assert p.data.df.empty
         engine.shutdown()
 
     def test_collect_multiple_rows(self, qapp):
@@ -120,9 +124,10 @@ class TestStateControlDataCollection:
             p.value = float(i)
             p.stage = i
             p.collect()
-        assert len(p.data) == 3
-        assert p.data.index.tolist() == [0, 1, 2]
-        assert p.data["stage"].tolist() == [0, 1, 2]
+        assert len(p.data.df) == 3
+        assert p.data.x.tolist() == [0.0, 1.0, 2.0]
+        assert p.data.df["iteration"].tolist() == [0, 1, 2]
+        assert p.data.df["stage"].tolist() == [0, 1, 2]
         engine.shutdown()
 
     def test_collect_with_outputs_filter(self, qapp):
@@ -141,9 +146,9 @@ class TestStateControlDataCollection:
         p.ix = 0
         p.value = 2.0
         p.collect(outputs=["counter:Value"])
-        assert not p.data.empty
+        assert not p.data.df.empty
         assert "counter:Value" in p.data.columns
-        assert "value" in p.data.columns
+        assert "iteration" in p.data.columns
         engine.shutdown()
 
     def test_collect_uses_selected_collect_outputs(self, qapp):

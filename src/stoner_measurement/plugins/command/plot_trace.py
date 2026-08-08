@@ -7,7 +7,7 @@ window via a Qt signal.
 Two operating modes are supported:
 
 * **Simple mode** — the user selects a single named trace from the sequence's
-  trace catalogue.  Both axes are taken from the :class:`~stoner_measurement.plugins.trace.TraceData`
+  trace catalogue.  Both axes are taken from the :class:`~stoner_measurement.core.TraceData`
   object that the expression in the catalogue evaluates to.  A **transpose**
   option is available in this mode to swap the x and y axes (and their
   associated error bars and axis labels) when sending data to the plot window.
@@ -39,12 +39,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.plugins.command.base import CommandPlugin
-from stoner_measurement.plugins.trace.base import (
+from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
     COLUMN_ROLE_E,
     COLUMN_ROLE_Y,
 )
+from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
 
@@ -171,7 +171,7 @@ class PlotTraceCommand(CommandPlugin):
         plot_axis_labels (pyqtSignal[str, str]):
             Emitted by :meth:`execute` in simple mode with
             ``(x_label, y_label)`` derived from
-            :class:`~stoner_measurement.plugins.trace.TraceData` metadata.
+            :class:`~stoner_measurement.core.TraceData` metadata.
             Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_default_axis_labels`
             when the plugin is attached to an engine with a plot widget.
@@ -865,7 +865,7 @@ class PlotTraceCommand(CommandPlugin):
         """Return the DataFrame column names for the trace identified by *trace_key*.
 
         Attempts to evaluate the trace expression in the engine namespace and
-        return :attr:`~stoner_measurement.plugins.trace.TraceData.columns` from
+        return :attr:`~stoner_measurement.core.TraceData.columns` from
         the result.  Returns an empty list if the trace has not yet been measured
         or if the evaluation fails.
 
