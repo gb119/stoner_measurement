@@ -708,7 +708,7 @@ class TestFunctionScanWidget:
         for button in widget._preset_buttons:
             assert button.size().width() == 64
             assert button.size().height() == 44
-            assert button.sizePolicy().horizontalPolicy() is QSizePolicy.Policy.Fixed
+            assert button.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
 
     def test_preview_caps_height_at_four_by_three_when_space_is_available(self, qapp):
         widget = FunctionScanWidget(generator=FunctionScanGenerator())
