@@ -167,8 +167,6 @@ class TestReplExecution:
         injected its own ``_printer`` into the engine namespace, causing all
         subsequent print() calls to write to the terminal instead of the console.
         """
-        from stoner_measurement.plugins.trace import DummyPlugin
-
         plugin = DummyPlugin()
         engine.add_plugin("dummy", plugin)
 

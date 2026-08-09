@@ -64,6 +64,7 @@ def configure_chart_legend(tree) -> None:
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
     header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
 
+
 # Plot grid opacity used by pyqtgraph AxisItem.setGrid().
 _PLOT_GRID_ALPHA = 0.15
 

@@ -687,7 +687,7 @@ def test_magnet_controller_sweep_defaults_to_per_minute_rate_timing(monkeypatch,
     monkeypatch.setattr(
         magnet_module,
         "MagnetControllerEngine",
-        type("FakeMagnetControllerEngine", (), {"instance": staticmethod(lambda: _FakeMagnetEngine())}),
+        type("FakeMagnetControllerEngine", (), {"instance": staticmethod(_FakeMagnetEngine)}),
     )
     plugin = MagnetControllerSweepPlugin()
     assert plugin.sweep_rate_time_scale_seconds == 60.0
@@ -698,7 +698,7 @@ def test_temperature_controller_sweep_defaults_to_generous_timeout_and_per_minut
     monkeypatch.setattr(
         temperature_module,
         "TemperatureControllerEngine",
-        type("FakeTemperatureControllerEngine", (), {"instance": staticmethod(lambda: _FakeTemperatureEngine())}),
+        type("FakeTemperatureControllerEngine", (), {"instance": staticmethod(_FakeTemperatureEngine)}),
     )
     plugin = TemperatureControllerSweepPlugin()
     assert plugin.sweep_rate_time_scale_seconds == 60.0

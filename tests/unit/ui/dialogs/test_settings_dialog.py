@@ -12,7 +12,7 @@ def _install_dialog_dependencies(monkeypatch, app_config: dict, toolbar_config: 
     """Patch persistent dependencies used by SettingsDialog construction."""
     saved_configs: list[dict] = []
     monkeypatch.setattr(settings_module, "load_app_config", lambda: app_config)
-    monkeypatch.setattr(settings_module, "save_app_config", lambda config: saved_configs.append(config))
+    monkeypatch.setattr(settings_module, "save_app_config", saved_configs.append)
     monkeypatch.setattr(settings_module, "load_toolbar_config", lambda: toolbar_config or {"buttons": []})
     return saved_configs
 

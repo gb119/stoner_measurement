@@ -50,7 +50,7 @@ import time
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from io import TextIOBase
-from subprocess import SubprocessError, run
+from subprocess import SubprocessError, run  # nosec B404
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
@@ -2013,7 +2013,8 @@ class SequenceEngine(QObject):
                 reports a formatting error.
         """
         try:
-            result = run(  # nosec B603 - invokes the current interpreter with fixed ruff arguments only
+            # Invoke the current interpreter with fixed Ruff arguments only.
+            result = run(  # nosec B603
                 [
                     sys.executable,
                     "-m",

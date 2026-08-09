@@ -1327,8 +1327,7 @@ class TemperatureControlPanel(QWidget):
         xs_out: list[float] = []
         ys_out: list[float] = []
 
-        for idx in range(len(times)):
-            t_end = times[idx]
+        for t_end in times:
             pts = [
                 (t, v)
                 for t, v in zip(times, values, strict=False)

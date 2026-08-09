@@ -1337,7 +1337,10 @@ class CurveFitPlugin(TransformPlugin):
         ns["np"] = np
         ns["numpy"] = np
         ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
-        exec(compile(self.fit_code, "<fit_code>", "exec"), ns)  # noqa: S102  # pylint: disable=exec-used
+        # User-authored fitting code is an explicit feature of this plugin.
+        exec(  # noqa: S102  # nosec B102  # pylint: disable=exec-used
+            compile(self.fit_code, "<fit_code>", "exec"), ns
+        )
         fit_func = ns.get("fit")
         p0_func = ns.get("p0")
         return fit_func, p0_func

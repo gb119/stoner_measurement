@@ -224,7 +224,7 @@ class ArbitraryFunctionScanGenerator(BaseScanGenerator):
         # pylint: disable=exec-used
         compiled_code = compile(self._code, "<scan_code>", "exec")
         # Full builtins are intentional and match the curve_fit plugin contract.
-        exec(compiled_code, namespace)  # noqa: S102
+        exec(compiled_code, namespace)  # noqa: S102  # nosec B102
         scan = namespace.get("scan")
         return scan if callable(scan) else None
 

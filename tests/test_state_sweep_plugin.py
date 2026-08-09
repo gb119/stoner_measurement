@@ -152,8 +152,6 @@ class TestStateSweepPlugin:
         from qtpy.QtWidgets import QCheckBox, QComboBox, QTableWidget
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
-        from stoner_measurement.plugins.state_control import CounterPlugin
-
         engine = SequenceEngine()
         plugin = _TestSweepPlugin()
         counter = CounterPlugin()

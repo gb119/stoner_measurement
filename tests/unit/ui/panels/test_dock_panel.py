@@ -504,7 +504,6 @@ class TestDockPanel:
         assert child_plugin.condition == "manual_condition"
 
     def test_rename_rewrites_cross_references_with_strict_matching(self, qapp):
-        from stoner_measurement.plugins.command import IfCommand
         from stoner_measurement.ui.dock_panel import _PLUGIN_INSTANCE_ROLE
 
         pm = PluginManager()

@@ -46,7 +46,7 @@ def test_execute_makes_selected_controllers_safe(monkeypatch, qapp):
         heater_off=lambda: magnet_calls.append("heater_off"),
     )
     motor_calls = []
-    motor_engine = SimpleNamespace(move_home=lambda direction: motor_calls.append(direction))
+    motor_engine = SimpleNamespace(move_home=motor_calls.append)
     monkeypatch.setattr(
         "stoner_measurement.plugins.command.make_safe.TemperatureControllerEngine.instance",
         lambda: temp_engine,

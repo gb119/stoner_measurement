@@ -53,7 +53,6 @@ def _make_fake_driver(field: float = 1.0, current: float = 10.0):
     from stoner_measurement.instruments.magnet_controller import (
         HeaterState,
         MagnetController,
-        MagnetLimits,
         MagnetState,
         MagnetStatus,
     )
@@ -1719,7 +1718,6 @@ class TestMagnetControlPanel:
         assert calls == [("Ramp Rate", "No instrument connected or read failed.")]
 
     def test_read_limits_updates_limit_widgets(self, monkeypatch, qapp):
-        from stoner_measurement.instruments.magnet_controller import MagnetLimits
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         panel = MagnetControlPanel()
@@ -1765,7 +1763,6 @@ class TestMagnetControlPanel:
         assert calls == [("Magnet Constants & Limits", "No instrument connected or read failed.")]
 
     def test_panel_restores_cached_config_settings_from_engine(self, qapp):
-        from stoner_measurement.instruments.magnet_controller import MagnetLimits
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
         engine = MagnetControllerEngine.instance()

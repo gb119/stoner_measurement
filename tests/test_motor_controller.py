@@ -27,7 +27,9 @@ def test_motor_controller_is_abstract():
     )
 
     with pytest.raises(TypeError):
-        cast(Any, incomplete_motor_controller)(NullTransport(), ScpiProtocol())
+        cast(Any, incomplete_motor_controller)(  # pylint: disable=abstract-class-instantiated
+            NullTransport(), ScpiProtocol()
+        )
 
 
 def test_resolve_relative_motor_move_uses_documented_soft_limit_algorithm():

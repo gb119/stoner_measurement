@@ -20,7 +20,7 @@ class AutoSISpinBox(SISpinBox):
     the automatic state while retaining normal SI units and validation.
     """
 
-    autoChanged = pyqtSignal(bool)
+    autoChanged = pyqtSignal(bool)  # noqa: N815 - preserve Qt signal naming convention
 
     def __init__(self, *args, auto: bool = False, **kwargs) -> None:
         """Initialise the spin box and optionally select automatic mode."""

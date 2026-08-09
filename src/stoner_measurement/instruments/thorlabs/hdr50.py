@@ -570,7 +570,7 @@ class ThorlabsHDR50(MotorController):
             current_angle=self.get_position(),
             target_angle=self._target_angle,
             moving=self.is_moving(),
-            homed=bool(homed()) if callable(homed) else None,
+            homed=bool(homed()) if callable(homed) else None,  # pylint: disable=not-callable
         )
         logger.debug(f"APT Motor {state=}")
         return state

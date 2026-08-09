@@ -278,7 +278,8 @@ class Keithley2182A(Nanovoltmeter):
         token = filter_type.strip().upper()
         if token not in {"REPEAT", "WINDOW", "MOVING"}:
             raise ValueError("Filter type must be 'REPEAT', 'WINDOW', or 'MOVING'.")
-        self.write(f":SENS:VOLT:DFIL:TCON {'REP' if token == 'REPEAT' else 'MOV'}")
+        # REPEAT is an instrument SCPI token, not a credential.
+        self.write(f":SENS:VOLT:DFIL:TCON {'REP' if token == 'REPEAT' else 'MOV'}")  # nosec B105
 
     def get_trigger_delay(self) -> float:
         """Return the trigger delay in seconds."""

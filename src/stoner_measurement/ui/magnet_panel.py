@@ -1416,8 +1416,6 @@ class MagnetControlPanel(QWidget):
     @pyqtSlot()
     def _on_apply_limits(self) -> None:
         """Apply magnet constant and limits from the UI to the engine."""
-        from stoner_measurement.instruments.magnet_controller import MagnetLimits
-
         tesla_per_amp = self._magnet_const_spin.value()
         self._magnet_constant = tesla_per_amp
         self._engine.set_magnet_constant(tesla_per_amp)

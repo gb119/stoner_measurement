@@ -1069,7 +1069,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 self._k6221.enable_output(False)
             except _CLEANUP_EXCEPTIONS as exc:
                 self._log.error(f"{self.__class__.__name__}:Exceptions during cleanup {exc}")
-                pass
             raise
 
         return list(zip(self._sweep_values, voltages, strict=True))

@@ -565,7 +565,7 @@ class TestSteppedScanWidget:
         gen = SteppedScanGenerator(start=0.0, stages=[(1.0, 0.5, True)])
         widget = SteppedScanWidget(generator=gen)
         gen.start = 0.5  # triggers values_changed → _refresh_plot
-        x_green, y_green = widget._green_scatter.getData()
+        _, y_green = widget._green_scatter.getData()
         assert y_green is not None
         assert np.allclose(y_green, gen.values)
 

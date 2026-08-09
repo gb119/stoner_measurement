@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+import stoner_measurement.instruments as instruments
 from stoner_measurement.instruments.protocol import LakeshoreProtocol
 from stoner_measurement.instruments.temperature_controller import (
     AlarmState,
@@ -546,31 +547,17 @@ class TestTemperatureControllerOptional:
 
 class TestTemperatureControllerExports:
     def test_all_types_exported(self):
-        from stoner_measurement.instruments import (
-            AlarmState,
-            ControllerCapabilities,
-            ControlMode,
-            LoopStatus,
-            PIDParameters,
-            RampState,
-            SensorStatus,
-            TemperatureController,
-            TemperatureReading,
-            TemperatureStatus,
-            ZoneEntry,
-        )
-
-        assert AlarmState is not None
-        assert ControllerCapabilities is not None
-        assert ControlMode is not None
-        assert LoopStatus is not None
-        assert PIDParameters is not None
-        assert RampState is not None
-        assert SensorStatus is not None
-        assert TemperatureController is not None
-        assert TemperatureReading is not None
-        assert TemperatureStatus is not None
-        assert ZoneEntry is not None
+        assert instruments.AlarmState is AlarmState
+        assert instruments.ControllerCapabilities is ControllerCapabilities
+        assert instruments.ControlMode is ControlMode
+        assert instruments.LoopStatus is LoopStatus
+        assert instruments.PIDParameters is PIDParameters
+        assert instruments.RampState is RampState
+        assert instruments.SensorStatus is SensorStatus
+        assert instruments.TemperatureController is TemperatureController
+        assert instruments.TemperatureReading is TemperatureReading
+        assert instruments.TemperatureStatus is TemperatureStatus
+        assert instruments.ZoneEntry is ZoneEntry
 
 
 class TestZoneEntry:
