@@ -6,7 +6,15 @@ import threading
 import time
 
 import pytest
-from qtpy.QtWidgets import QComboBox, QDoubleSpinBox, QLabel, QPushButton, QWidget
+from qtpy.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QWidget,
+)
 
 import stoner_measurement.plugins.command.base as command_base
 from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -119,11 +127,81 @@ class TestPlotPointsCommand:
         labels = [label.text() for label in widget.findChildren(QLabel)]
         buttons = widget.findChildren(QPushButton)
 
-        assert {"<b>Option</b>", "<b>Value</b>", "<b>Label</b>", "<b>Y axis</b>", "<b>Colour</b>"}.issubset(
-            set(labels)
-        )
+        assert {
+            "<b>Option</b>",
+            "<b>Value</b>",
+            "<b>Label</b>",
+            "<b>Y axis</b>",
+            "<b>Colour</b>",
+        }.issubset(set(labels))
         assert any(button.text() == "Remove" for button in buttons)
         assert any(button.text() == "(auto)" for button in buttons)
+
+    def test_config_widget_y_series_editors_update_configuration(
+        self, qapp, engine, managed_qt_widget
+    ):
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y", "p:z": "p_z"}
+        command.y_entries = [{"key": "p:y", "label": "My Y", "y_axis": "left"}]
+        widget = managed_qt_widget(command.config_widget())
+        scroll_area = widget.findChild(QScrollArea)
+        grid = scroll_area.widget().layout()
+        assert isinstance(grid, QGridLayout)
+
+        value_combo = grid.itemAtPosition(1, 1).widget()
+        label_combo = grid.itemAtPosition(2, 1).widget()
+        y_axis_combo = grid.itemAtPosition(3, 1).widget()
+        line_style_combo = grid.itemAtPosition(5, 1).widget()
+        point_style_combo = grid.itemAtPosition(6, 1).widget()
+        line_width_spin = grid.itemAtPosition(7, 1).widget()
+        point_size_spin = grid.itemAtPosition(8, 1).widget()
+        assert isinstance(value_combo, QComboBox)
+        assert isinstance(label_combo, QComboBox)
+        assert isinstance(y_axis_combo, QComboBox)
+        assert isinstance(line_style_combo, QComboBox)
+        assert isinstance(point_style_combo, QComboBox)
+        assert isinstance(line_width_spin, QDoubleSpinBox)
+        assert isinstance(point_size_spin, QDoubleSpinBox)
+
+        value_combo.setCurrentText("p:z")
+        label_combo.lineEdit().setText("Edited label")
+        label_combo.lineEdit().editingFinished.emit()
+        y_axis_combo.setEditText("custom-axis")
+        line_style_combo.setCurrentIndex(line_style_combo.findData("dash"))
+        point_style_combo.setCurrentIndex(point_style_combo.findData("circle"))
+        line_width_spin.setValue(2.5)
+        point_size_spin.setValue(9.0)
+
+        assert command.y_entries == [
+            {
+                "key": "p:z",
+                "label": "Edited label",
+                "y_axis": "custom-axis",
+                "line_style": "dash",
+                "point_style": "circle",
+                "line_width": 2.5,
+                "point_size": 9.0,
+            }
+        ]
+
+    def test_config_widget_adds_and_removes_y_series(self, qapp, engine, managed_qt_widget):
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        widget = managed_qt_widget(command.config_widget())
+
+        add_button = next(
+            button for button in widget.findChildren(QPushButton) if button.text() == "Add Y series"
+        )
+        add_button.click()
+        assert command.y_entries == [{"key": "p:x", "label": "x", "y_axis": "left"}]
+
+        remove_button = next(
+            button for button in widget.findChildren(QPushButton) if button.text() == "Remove"
+        )
+        remove_button.click()
+        assert command.y_entries == []
 
     def test_execute_emits_plot_point_for_each_y_series(self, qapp, engine):
         command = PlotPointsCommand()

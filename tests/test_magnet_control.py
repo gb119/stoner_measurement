@@ -182,7 +182,6 @@ def _make_cached_constant_driver(field: float = 1.0, current: float = 10.0):
     from stoner_measurement.instruments.magnet_controller import (
         HeaterState,
         MagnetController,
-        MagnetLimits,
         MagnetState,
         MagnetStatus,
     )

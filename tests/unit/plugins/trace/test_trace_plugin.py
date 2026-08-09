@@ -183,8 +183,6 @@ class TestTracePlugin:
         assert p.data == {}
 
     def test_data_attribute_populated_after_measure(self, qapp):
-        import numpy as np
-
         p = _SimpleTrace()
         result = p.measure({"n": 4})
         assert p.data is result
@@ -272,9 +270,6 @@ class TestTracePlugin:
 
     def test_measure_returns_complete_list(self, qapp):
         """measure() must return a dict mapping channel to TraceData."""
-        import numpy as np
-        import pandas as pd
-
         p = _SimpleTrace()
         result = p.measure({"n": 5})
         assert isinstance(result, dict)

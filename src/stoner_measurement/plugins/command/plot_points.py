@@ -20,6 +20,8 @@ series, it is created automatically (on the right-hand side) when
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 from qtpy.QtCore import Qt
@@ -52,6 +54,42 @@ _DEFAULT_Y_AXIS = "left"
 _LINE_STYLE_OPTIONS = ("solid", "dash", "dot", "dash-dot", "none")
 #: Valid point-style names accepted by the plot widget.
 _POINT_STYLE_OPTIONS = ("none", "circle", "square", "triangle", "diamond", "plus", "cross")
+
+_PLOT_SIGNAL_BINDINGS = (
+    ("plot_point", "append_point"),
+    ("plot_update_queued", "mark_data_update_queued"),
+    ("plot_ensure_y_axis", "ensure_y_axis"),
+    ("plot_ensure_x_axis", "ensure_x_axis"),
+    ("plot_trace_axes", "assign_trace_axes"),
+    ("plot_trace_style", "set_trace_style_from_dict"),
+)
+
+
+@dataclass(frozen=True)
+class _YSeriesWidgets:
+    """Widgets belonging to one configured y-series column."""
+
+    value: QComboBox
+    label: QComboBox
+    y_axis: QComboBox
+    colour: QPushButton
+    line_style: QComboBox
+    point_style: QComboBox
+    line_width: QDoubleSpinBox
+    point_size: QDoubleSpinBox
+    remove: QPushButton
+
+
+@dataclass(frozen=True)
+class _YSeriesEditorContext:
+    """Shared state used while rebuilding the y-series editor grid."""
+
+    container: QWidget
+    layout: QGridLayout
+    value_keys: list[str]
+    y_axis_names: list[str]
+    namespace: dict[str, Any]
+    rebuild: Callable[[], None]
 
 
 def _safe_disconnect(signal: Any, slot: Any) -> None:
@@ -247,52 +285,28 @@ class PlotPointsCommand(CommandPlugin):
             engine (SequenceEngine | None):
                 New owning engine, or ``None`` to detach.
         """
-        if self._sequence_engine_ref is not None:
-            old_pw = getattr(self._sequence_engine_ref, "plot_widget", None)
-            if old_pw is not None:
-                old_append_point = getattr(old_pw, "append_point", None)
-                if old_append_point is not None:
-                    _safe_disconnect(self.plot_point, old_append_point)
-                old_mark_queued = getattr(old_pw, "mark_data_update_queued", None)
-                if old_mark_queued is not None:
-                    _safe_disconnect(self.plot_update_queued, old_mark_queued)
-                old_ensure_y_axis = getattr(old_pw, "ensure_y_axis", None)
-                if old_ensure_y_axis is not None:
-                    _safe_disconnect(self.plot_ensure_y_axis, old_ensure_y_axis)
-                old_ensure_x_axis = getattr(old_pw, "ensure_x_axis", None)
-                if old_ensure_x_axis is not None:
-                    _safe_disconnect(self.plot_ensure_x_axis, old_ensure_x_axis)
-                old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
-                if old_assign_axes is not None:
-                    _safe_disconnect(self.plot_trace_axes, old_assign_axes)
-                old_set_style = getattr(old_pw, "set_trace_style_from_dict", None)
-                if old_set_style is not None:
-                    _safe_disconnect(self.plot_trace_style, old_set_style)
+        old_plot_widget = getattr(self._sequence_engine_ref, "plot_widget", None)
+        if old_plot_widget is not None:
+            self._set_plot_widget_connections(old_plot_widget, connect=False)
 
         self._sequence_engine_ref = engine
 
-        if engine is not None:
-            new_pw = getattr(engine, "plot_widget", None)
-            if new_pw is not None:
-                new_append_point = getattr(new_pw, "append_point", None)
-                if new_append_point is not None:
-                    self.plot_point.connect(new_append_point)
-                new_mark_queued = getattr(new_pw, "mark_data_update_queued", None)
-                if new_mark_queued is not None:
-                    self.plot_update_queued.connect(new_mark_queued)
-                new_ensure_y_axis = getattr(new_pw, "ensure_y_axis", None)
-                if new_ensure_y_axis is not None:
-                    self.plot_ensure_y_axis.connect(new_ensure_y_axis)
-                new_ensure_x_axis = getattr(new_pw, "ensure_x_axis", None)
-                if new_ensure_x_axis is not None:
-                    self.plot_ensure_x_axis.connect(new_ensure_x_axis)
-                new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
-                if new_assign_axes is not None:
-                    self.plot_trace_axes.connect(new_assign_axes)
-                new_set_style = getattr(new_pw, "set_trace_style_from_dict", None)
-                if new_set_style is not None:
-                    self.plot_trace_style.connect(new_set_style)
-                self._ensure_configured_axes_exist(new_pw)
+        new_plot_widget = getattr(engine, "plot_widget", None)
+        if new_plot_widget is not None:
+            self._set_plot_widget_connections(new_plot_widget, connect=True)
+            self._ensure_configured_axes_exist(new_plot_widget)
+
+    def _set_plot_widget_connections(self, plot_widget: Any, *, connect: bool) -> None:
+        """Connect or disconnect all plot signals supported by *plot_widget*."""
+        for signal_name, slot_name in _PLOT_SIGNAL_BINDINGS:
+            slot = getattr(plot_widget, slot_name, None)
+            if slot is None:
+                continue
+            signal = getattr(self, signal_name)
+            if connect:
+                signal.connect(slot)
+            else:
+                _safe_disconnect(signal, slot)
 
     @property
     def name(self) -> str:
@@ -510,7 +524,7 @@ class PlotPointsCommand(CommandPlugin):
         outer_layout: QFormLayout,
         value_keys: list[str],
         y_axis_names: list[str],
-        ns: dict,
+        ns: dict[str, Any],
     ) -> None:
         scroll_area = QScrollArea(outer)
         scroll_area.setWidgetResizable(True)
@@ -525,228 +539,274 @@ class PlotPointsCommand(CommandPlugin):
         scroll_area.setWidget(series_container)
         outer_layout.addRow(scroll_area)
 
-        _ColumnWidgets = tuple  # (value, label, y_axis, colour, line, point, width, size, remove)
-        column_widgets: list[_ColumnWidgets] = []
-
         def _rebuild_columns() -> None:
-            while series_layout.count():
-                item = series_layout.takeAt(0)
-                widget = item.widget()
-                if widget is not None:
-                    widget.setParent(None)
-            column_widgets.clear()
-
-            for row_index, title in enumerate(
-                ("Value", "Label", "Y axis", "Colour", "Line", "Points", "Width", "Pt size", "")
-            ):
-                title_label = QLabel(f"<b>{title}</b>", series_container)
-                series_layout.addWidget(title_label, row_index + 1, 0)
-            series_layout.addWidget(QLabel("<b>Option</b>", series_container), 0, 0)
-
-            def _build_one_column(entry: dict, i: int) -> tuple:
-                grid_column = i + 1
-                series_layout.setColumnStretch(grid_column, 1)
-
-                header = QLabel(f"<b>Series {i + 1}</b>", series_container)
-                series_layout.addWidget(header, 0, grid_column)
-
-                value_combo = QComboBox(series_container)
-                if value_keys:
-                    value_combo.addItems(value_keys)
-                    key = entry.get("key", "")
-                    if key in value_keys:
-                        value_combo.setCurrentText(key)
-                    else:
-                        value_combo.setCurrentIndex(0)
-                        entry["key"] = value_keys[0] if value_keys else ""
-                else:
-                    value_combo.addItem("(no values available)")
-
-                label_entry = QComboBox(series_container)
-                label_entry.setEditable(True)
-                label_entry.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-                label_entry.lineEdit().setText(entry.get("label", ""))
-
-                y_axis_entry = QComboBox(series_container)
-                y_axis_entry.setEditable(True)
-                y_axis_entry.addItems(y_axis_names)
-                entry_y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS)
-                if entry_y_axis in y_axis_names:
-                    y_axis_entry.setCurrentText(entry_y_axis)
-                else:
-                    y_axis_entry.setEditText(entry_y_axis)
-
-                colour_button = QPushButton(series_container)
-                colour_button.setObjectName(f"colour_btn_{i}")
-                colour_button.setToolTip(
-                    "Click to choose a colour. Right-click to reset to automatic (no colour override)."
-                )
-                self._update_colour_button(colour_button, entry.get("colour", ""))
-
-                line_style_combo = QComboBox(series_container)
-                _line_options = ("",) + _LINE_STYLE_OPTIONS
-                for opt in _line_options:
-                    line_style_combo.addItem(opt if opt else "(default)", opt)
-                cur_line = entry.get("line_style", "")
-                _idx = _line_options.index(cur_line) if cur_line in _line_options else 0
-                line_style_combo.setCurrentIndex(_idx)
-
-                point_style_combo = QComboBox(series_container)
-                _point_options = ("",) + _POINT_STYLE_OPTIONS
-                for opt in _point_options:
-                    point_style_combo.addItem(opt if opt else "(default)", opt)
-                cur_point = entry.get("point_style", "")
-                _pidx = _point_options.index(cur_point) if cur_point in _point_options else 0
-                point_style_combo.setCurrentIndex(_pidx)
-
-                line_width_spin = QDoubleSpinBox(series_container)
-                line_width_spin.setRange(0.0, 100.0)
-                line_width_spin.setSingleStep(0.5)
-                line_width_spin.setDecimals(1)
-                line_width_spin.setSpecialValueText("def")
-                line_width_spin.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                line_width_spin.setValue(float(entry.get("line_width", 0.0)))
-
-                point_size_spin = QDoubleSpinBox(series_container)
-                point_size_spin.setRange(0.0, 100.0)
-                point_size_spin.setSingleStep(1.0)
-                point_size_spin.setDecimals(1)
-                point_size_spin.setSpecialValueText("def")
-                point_size_spin.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                point_size_spin.setValue(float(entry.get("point_size", 0.0)))
-
-                remove_btn = QPushButton("Remove", series_container)
-                series_layout.addWidget(value_combo, 1, grid_column)
-                series_layout.addWidget(label_entry, 2, grid_column)
-                series_layout.addWidget(y_axis_entry, 3, grid_column)
-                series_layout.addWidget(colour_button, 4, grid_column)
-                series_layout.addWidget(line_style_combo, 5, grid_column)
-                series_layout.addWidget(point_style_combo, 6, grid_column)
-                series_layout.addWidget(line_width_spin, 7, grid_column)
-                series_layout.addWidget(point_size_spin, 8, grid_column)
-                series_layout.addWidget(remove_btn, 9, grid_column)
-
-                column_widgets.append(
-                    (
-                        value_combo,
-                        label_entry,
-                        y_axis_entry,
-                        colour_button,
-                        line_style_combo,
-                        point_style_combo,
-                        line_width_spin,
-                        point_size_spin,
-                        remove_btn,
-                    )
-                )
-                return column_widgets[-1]
-
-            for i, entry in enumerate(self.y_entries):
-                (
-                    value_combo,
-                    label_entry,
-                    y_axis_entry,
-                    colour_button,
-                    line_style_combo,
-                    point_style_combo,
-                    line_width_spin,
-                    point_size_spin,
-                    remove_btn,
-                ) = _build_one_column(entry, i)
-
-                def _make_key_handler(idx: int) -> Any:
-                    def _apply_key(text: str, _idx: int = idx) -> None:
-                        if text != "(no values available)":
-                            self.y_entries[_idx]["key"] = text
-                            auto = _default_label(text, ns)
-                            current_label = self.y_entries[_idx].get("label", "")
-                            if not current_label or current_label == _default_label(
-                                self.y_entries[_idx].get("key", ""), ns
-                            ):
-                                self.y_entries[_idx]["label"] = auto
-                                column_widgets[_idx][1].lineEdit().setText(auto)
-                    return _apply_key
-
-                def _make_label_handler(idx: int) -> Any:
-                    def _apply_label(_idx: int = idx) -> None:
-                        line_edit = column_widgets[_idx][1].lineEdit()
-                        self.y_entries[_idx]["label"] = line_edit.text().strip() if line_edit else ""
-                    return _apply_label
-
-                def _make_y_axis_handler(idx: int) -> Any:
-                    def _apply_y_axis(text: str, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["y_axis"] = text.strip() or _DEFAULT_Y_AXIS
-                    return _apply_y_axis
-
-                def _make_colour_handler(idx: int) -> Any:
-                    def _apply_colour(_checked: bool = False, _idx: int = idx) -> None:
-                        btn = column_widgets[_idx][3]
-                        current = self.y_entries[_idx].get("colour", "")
-                        chosen = self._choose_colour(current, f"Select colour for series {_idx + 1}", btn)
-                        self.y_entries[_idx]["colour"] = chosen
-                        self._update_colour_button(btn, chosen)
-
-                    def _reset_colour(pos: Any, _idx: int = idx) -> None:
-                        btn = column_widgets[_idx][3]
-                        menu = QMenu(btn)
-                        action = menu.addAction("Auto (clear colour)")
-                        if menu.exec(btn.mapToGlobal(pos)) == action:
-                            self.y_entries[_idx]["colour"] = ""
-                            self._update_colour_button(btn, "")
-
-                    return _apply_colour, _reset_colour
-
-                def _make_line_style_handler(idx: int) -> Any:
-                    def _apply_line_style(_i: int, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["line_style"] = column_widgets[_idx][4].currentData() or ""
-                    return _apply_line_style
-
-                def _make_point_style_handler(idx: int) -> Any:
-                    def _apply_point_style(_i: int, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["point_style"] = column_widgets[_idx][5].currentData() or ""
-                    return _apply_point_style
-
-                def _make_line_width_handler(idx: int) -> Any:
-                    def _apply_line_width(val: float, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["line_width"] = val
-                    return _apply_line_width
-
-                def _make_point_size_handler(idx: int) -> Any:
-                    def _apply_point_size(val: float, _idx: int = idx) -> None:
-                        self.y_entries[_idx]["point_size"] = val
-                    return _apply_point_size
-
-                def _make_remove_handler(idx: int) -> Any:
-                    def _remove(_idx: int = idx) -> None:
-                        del self.y_entries[_idx]
-                        _rebuild_columns()
-                    return _remove
-
-                value_combo.currentTextChanged.connect(_make_key_handler(i))
-                label_entry.lineEdit().editingFinished.connect(_make_label_handler(i))
-                y_axis_entry.currentTextChanged.connect(_make_y_axis_handler(i))
-                _colour_clicked, _colour_reset = _make_colour_handler(i)
-                colour_button.clicked.connect(_colour_clicked)
-                colour_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-                colour_button.customContextMenuRequested.connect(_colour_reset)
-                line_style_combo.currentIndexChanged.connect(_make_line_style_handler(i))
-                point_style_combo.currentIndexChanged.connect(_make_point_style_handler(i))
-                line_width_spin.valueChanged.connect(_make_line_width_handler(i))
-                point_size_spin.valueChanged.connect(_make_point_size_handler(i))
-                remove_btn.clicked.connect(_make_remove_handler(i))
+            context = _YSeriesEditorContext(
+                container=series_container,
+                layout=series_layout,
+                value_keys=value_keys,
+                y_axis_names=y_axis_names,
+                namespace=ns,
+                rebuild=_rebuild_columns,
+            )
+            self._populate_y_series_grid(context)
 
         _rebuild_columns()
 
         add_btn = QPushButton("Add Y series", outer)
-
-        def _add_series() -> None:
-            default_key = value_keys[0] if value_keys else ""
-            default_label = _default_label(default_key, ns) if default_key else ""
-            self.y_entries.append({"key": default_key, "label": default_label, "y_axis": _DEFAULT_Y_AXIS})
-            _rebuild_columns()
-
-        add_btn.clicked.connect(_add_series)
+        add_btn.clicked.connect(partial(self._add_y_series, value_keys, ns, _rebuild_columns))
         outer_layout.addRow(add_btn)
+
+    def _populate_y_series_grid(self, context: _YSeriesEditorContext) -> None:
+        """Recreate all y-series columns and connect their editors."""
+        self._clear_y_series_grid(context.layout)
+        self._add_y_series_headers(context.container, context.layout)
+        for index, entry in enumerate(self.y_entries):
+            widgets = self._create_y_series_widgets(context, entry, index)
+            self._place_y_series_widgets(context, widgets, index)
+            self._connect_y_series_widgets(widgets, index, context.namespace, context.rebuild)
+
+    @staticmethod
+    def _clear_y_series_grid(layout: QGridLayout) -> None:
+        """Detach every widget currently owned by the y-series grid."""
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+
+    @staticmethod
+    def _add_y_series_headers(container: QWidget, layout: QGridLayout) -> None:
+        """Add the fixed option labels down the first grid column."""
+        layout.addWidget(QLabel("<b>Option</b>", container), 0, 0)
+        titles = ("Value", "Label", "Y axis", "Colour", "Line", "Points", "Width", "Pt size", "")
+        for row_index, title in enumerate(titles, start=1):
+            layout.addWidget(QLabel(f"<b>{title}</b>", container), row_index, 0)
+
+    def _create_y_series_widgets(
+        self,
+        context: _YSeriesEditorContext,
+        entry: dict[str, Any],
+        index: int,
+    ) -> _YSeriesWidgets:
+        """Create and initialise the editors for one y-series."""
+        value = self._create_value_combo(context.container, entry, context.value_keys)
+
+        label = QComboBox(context.container)
+        label.setEditable(True)
+        label.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        label.lineEdit().setText(entry.get("label", ""))
+
+        y_axis = self._create_y_axis_combo(context.container, entry, context.y_axis_names)
+
+        colour = QPushButton(context.container)
+        colour.setObjectName(f"colour_btn_{index}")
+        colour.setToolTip(
+            "Click to choose a colour. Right-click to reset to automatic (no colour override)."
+        )
+        self._update_colour_button(colour, entry.get("colour", ""))
+
+        return _YSeriesWidgets(
+            value=value,
+            label=label,
+            y_axis=y_axis,
+            colour=colour,
+            line_style=self._create_style_combo(
+                context.container, _LINE_STYLE_OPTIONS, entry.get("line_style", "")
+            ),
+            point_style=self._create_style_combo(
+                context.container, _POINT_STYLE_OPTIONS, entry.get("point_style", "")
+            ),
+            line_width=self._create_size_spinbox(
+                context.container, entry.get("line_width", 0.0), 0.5
+            ),
+            point_size=self._create_size_spinbox(
+                context.container, entry.get("point_size", 0.0), 1.0
+            ),
+            remove=QPushButton("Remove", context.container),
+        )
+
+    @staticmethod
+    def _create_value_combo(
+        container: QWidget, entry: dict[str, Any], value_keys: list[str]
+    ) -> QComboBox:
+        """Create a catalogue-value combo and normalise an invalid saved key."""
+        combo = QComboBox(container)
+        if not value_keys:
+            combo.addItem("(no values available)")
+            return combo
+        combo.addItems(value_keys)
+        key = entry.get("key", "")
+        if key in value_keys:
+            combo.setCurrentText(key)
+        else:
+            combo.setCurrentIndex(0)
+            entry["key"] = value_keys[0]
+        return combo
+
+    @staticmethod
+    def _create_y_axis_combo(
+        container: QWidget, entry: dict[str, Any], y_axis_names: list[str]
+    ) -> QComboBox:
+        """Create the editable y-axis selector for a series."""
+        combo = QComboBox(container)
+        combo.setEditable(True)
+        combo.addItems(y_axis_names)
+        entry_y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS)
+        if entry_y_axis in y_axis_names:
+            combo.setCurrentText(entry_y_axis)
+        else:
+            combo.setEditText(entry_y_axis)
+        return combo
+
+    @staticmethod
+    def _create_style_combo(
+        container: QWidget, options: tuple[str, ...], current: str
+    ) -> QComboBox:
+        """Create a style selector with an explicit default option."""
+        combo = QComboBox(container)
+        all_options = ("",) + options
+        for option in all_options:
+            combo.addItem(option if option else "(default)", option)
+        combo.setCurrentIndex(all_options.index(current) if current in all_options else 0)
+        return combo
+
+    @staticmethod
+    def _create_size_spinbox(container: QWidget, value: Any, step: float) -> QDoubleSpinBox:
+        """Create a shared line-width or point-size editor."""
+        spinbox = QDoubleSpinBox(container)
+        spinbox.setRange(0.0, 100.0)
+        spinbox.setSingleStep(step)
+        spinbox.setDecimals(1)
+        spinbox.setSpecialValueText("def")
+        spinbox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        spinbox.setValue(float(value))
+        return spinbox
+
+    @staticmethod
+    def _place_y_series_widgets(
+        context: _YSeriesEditorContext, widgets: _YSeriesWidgets, index: int
+    ) -> None:
+        """Place one y-series header and its editors into the grid."""
+        column = index + 1
+        context.layout.setColumnStretch(column, 1)
+        context.layout.addWidget(QLabel(f"<b>Series {index + 1}</b>", context.container), 0, column)
+        ordered_widgets = (
+            widgets.value,
+            widgets.label,
+            widgets.y_axis,
+            widgets.colour,
+            widgets.line_style,
+            widgets.point_style,
+            widgets.line_width,
+            widgets.point_size,
+            widgets.remove,
+        )
+        for row, widget in enumerate(ordered_widgets, start=1):
+            context.layout.addWidget(widget, row, column)
+
+    def _connect_y_series_widgets(
+        self,
+        widgets: _YSeriesWidgets,
+        index: int,
+        namespace: dict[str, Any],
+        rebuild: Callable[[], None],
+    ) -> None:
+        """Connect one y-series column to its backing configuration entry."""
+        widgets.value.currentTextChanged.connect(
+            partial(self._apply_y_key, index, widgets, namespace)
+        )
+        widgets.label.lineEdit().editingFinished.connect(
+            partial(self._apply_y_label, index, widgets)
+        )
+        widgets.y_axis.currentTextChanged.connect(partial(self._apply_y_axis, index))
+        widgets.colour.clicked.connect(partial(self._apply_y_colour, index, widgets))
+        widgets.colour.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        widgets.colour.customContextMenuRequested.connect(
+            partial(self._reset_y_colour, index, widgets)
+        )
+        widgets.line_style.currentIndexChanged.connect(
+            partial(self._apply_y_style, index, "line_style", widgets.line_style)
+        )
+        widgets.point_style.currentIndexChanged.connect(
+            partial(self._apply_y_style, index, "point_style", widgets.point_style)
+        )
+        widgets.line_width.valueChanged.connect(partial(self._apply_y_number, index, "line_width"))
+        widgets.point_size.valueChanged.connect(partial(self._apply_y_number, index, "point_size"))
+        widgets.remove.clicked.connect(partial(self._remove_y_series, index, rebuild))
+
+    def _apply_y_key(
+        self,
+        index: int,
+        widgets: _YSeriesWidgets,
+        namespace: dict[str, Any],
+        text: str,
+    ) -> None:
+        """Store a selected value key and update an automatic label."""
+        if text == "(no values available)":
+            return
+        entry = self.y_entries[index]
+        entry["key"] = text
+        automatic_label = _default_label(text, namespace)
+        current_label = entry.get("label", "")
+        if not current_label or current_label == _default_label(entry.get("key", ""), namespace):
+            entry["label"] = automatic_label
+            widgets.label.lineEdit().setText(automatic_label)
+
+    def _apply_y_label(self, index: int, widgets: _YSeriesWidgets) -> None:
+        """Store the edited legend label for one y-series."""
+        line_edit = widgets.label.lineEdit()
+        self.y_entries[index]["label"] = line_edit.text().strip() if line_edit else ""
+
+    def _apply_y_axis(self, index: int, text: str) -> None:
+        """Store an edited y-axis name, falling back to the default axis."""
+        self.y_entries[index]["y_axis"] = text.strip() or _DEFAULT_Y_AXIS
+
+    def _apply_y_colour(self, index: int, widgets: _YSeriesWidgets, _checked: bool = False) -> None:
+        """Choose and store a colour override for one y-series."""
+        current = self.y_entries[index].get("colour", "")
+        chosen = self._choose_colour(
+            current, f"Select colour for series {index + 1}", widgets.colour
+        )
+        self.y_entries[index]["colour"] = chosen
+        self._update_colour_button(widgets.colour, chosen)
+
+    def _reset_y_colour(self, index: int, widgets: _YSeriesWidgets, pos: Any) -> None:
+        """Offer a context action that clears a colour override."""
+        menu = QMenu(widgets.colour)
+        action = menu.addAction("Auto (clear colour)")
+        if menu.exec(widgets.colour.mapToGlobal(pos)) == action:
+            self.y_entries[index]["colour"] = ""
+            self._update_colour_button(widgets.colour, "")
+
+    def _apply_y_style(self, index: int, field: str, combo: QComboBox, _current_index: int) -> None:
+        """Store a line or point style selected by the user."""
+        self.y_entries[index][field] = combo.currentData() or ""
+
+    def _apply_y_number(self, index: int, field: str, value: float) -> None:
+        """Store a numeric line-width or point-size override."""
+        self.y_entries[index][field] = value
+
+    def _remove_y_series(
+        self, index: int, rebuild: Callable[[], None], _checked: bool = False
+    ) -> None:
+        """Remove one y-series entry and rebuild the editor grid."""
+        del self.y_entries[index]
+        rebuild()
+
+    def _add_y_series(
+        self,
+        value_keys: list[str],
+        namespace: dict[str, Any],
+        rebuild: Callable[[], None],
+        _checked: bool = False,
+    ) -> None:
+        """Append a default y-series entry and rebuild the editor grid."""
+        default_key = value_keys[0] if value_keys else ""
+        default_label = _default_label(default_key, namespace) if default_key else ""
+        self.y_entries.append(
+            {"key": default_key, "label": default_label, "y_axis": _DEFAULT_Y_AXIS}
+        )
+        rebuild()
 
     # ------------------------------------------------------------------
     # Serialisation
@@ -842,7 +902,9 @@ class PlotPointsCommand(CommandPlugin):
             parent (QWidget | None):
                 Parent widget for the dialog, ensuring correct modality.
         """
-        base_colour = QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
+        base_colour = (
+            QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
+        )
         selected = QColorDialog.getColor(
             base_colour,
             parent,
