@@ -172,6 +172,55 @@ class TestStateControlDataCollection:
         assert "instantstate:Voltage" not in p.data.columns
         engine.shutdown()
 
+    def test_collect_can_use_readback_output_as_x_axis(self, qapp):
+        from stoner_measurement.core import COLUMN_ROLE_E, COLUMN_ROLE_Z
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        engine = SequenceEngine()
+        p = _InstantState()
+        counter = CounterPlugin()
+        engine.add_plugin("instantstate", p)
+        engine.add_plugin("counter", counter)
+        engine.update_step_plugin_catalog([p, counter])
+        counter.value = 11.0
+        p.collect_filter = "True"
+        p.meas_flag = True
+        p.value = 2.0
+        p.collect_outputs = ["counter:Value", "instantstate:Voltage"]
+        p.collect_output_roles = {"counter:Value": "x", "instantstate:Voltage": "e"}
+
+        p.collect()
+
+        assert p.data.x.tolist() == [11.0]
+        assert p.data.names["x"] == "counter:Value"
+        assert p.data.df["state"].tolist() == [2.0]
+        assert p.data.names["state"] == "Voltage"
+        assert p.data.column_roles["state"] == COLUMN_ROLE_Z
+        assert p.data.column_roles["instantstate:Voltage"] == COLUMN_ROLE_E
+        engine.shutdown()
+
+    def test_collect_dash_role_leaves_output_auxiliary(self, qapp):
+        from stoner_measurement.core import COLUMN_ROLE_Z
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        engine = SequenceEngine()
+        p = _InstantState()
+        counter = CounterPlugin()
+        engine.add_plugin("instantstate", p)
+        engine.add_plugin("counter", counter)
+        engine.update_step_plugin_catalog([p, counter])
+        p.collect_filter = "True"
+        p.meas_flag = True
+        p.collect_outputs = ["counter:Value"]
+        p.collect_output_roles = {"counter:Value": "-"}
+
+        p.collect()
+
+        assert p.data.column_roles["counter:Value"] == COLUMN_ROLE_Z
+        engine.shutdown()
+
     def test_to_json_includes_data_collection_settings(self, qapp):
         p = _InstantState()
         p.collect_data = True
@@ -179,12 +228,14 @@ class TestStateControlDataCollection:
         p.collect_filter = "custom_expr"
         p.clear_filter = "another_expr"
         p.collect_outputs = ["a:value", "b:value"]
+        p.collect_output_roles = {"a:value": "x", "b:value": "-"}
         d = p.to_json()
         assert d["collect_data"] is True
         assert d["clear_on_start"] is False
         assert d["collect_filter"] == "custom_expr"
         assert d["clear_filter"] == "another_expr"
         assert d["collect_outputs"] == ["a:value", "b:value"]
+        assert d["collect_output_roles"] == {"a:value": "x", "b:value": "-"}
 
     def test_from_json_restores_data_collection_settings(self, qapp):
         from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -195,15 +246,17 @@ class TestStateControlDataCollection:
         p.collect_filter = "my_filter"
         p.clear_filter = "other"
         p.collect_outputs = ["counter:Value"]
+        p.collect_output_roles = {"counter:Value": "x"}
         restored = BasePlugin.from_json(p.to_json())
         assert restored.collect_data is True
         assert restored.clear_on_start is False
         assert restored.collect_filter == "my_filter"
         assert restored.clear_filter == "other"
         assert restored.collect_outputs == ["counter:Value"]
+        assert restored.collect_output_roles == {"counter:Value": "x"}
 
-    def test_scan_config_has_output_catalogue_checkboxes(self, qapp):
-        from qtpy.QtWidgets import QCheckBox, QScrollArea
+    def test_scan_config_has_output_catalogue_table(self, qapp):
+        from qtpy.QtWidgets import QCheckBox, QComboBox, QTableWidget
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
         from stoner_measurement.plugins.state_control import CounterPlugin
@@ -216,14 +269,13 @@ class TestStateControlDataCollection:
         engine.update_step_plugin_catalog([p, counter])
         tabs = p.config_tabs()
         scan_page = tabs[0][1]
-        value_checkbox = next(
-            (
-                check
-                for check in scan_page.findChildren(QCheckBox)
-                if check.text() == "counter:Value"
-            ),
-            None,
-        )
+        table = scan_page.findChild(QTableWidget, "stateOutputSelectionTable")
+        assert table is not None
+        value_row = next(row for row in range(table.rowCount()) if table.item(row, 1).text() == "counter:Value")
+        value_checkbox = table.cellWidget(value_row, 0)
+        role_combo = table.cellWidget(value_row, 2)
+        assert isinstance(value_checkbox, QCheckBox)
+        assert isinstance(role_combo, QComboBox)
         select_all_checkbox = next(
             (
                 check
@@ -232,19 +284,30 @@ class TestStateControlDataCollection:
             ),
             None,
         )
-        scroll_area = next(iter(scan_page.findChildren(QScrollArea)), None)
-        assert value_checkbox is not None
         assert value_checkbox.isChecked()
+        assert role_combo.currentText() == "y"
         assert select_all_checkbox is not None
         assert select_all_checkbox.isChecked()
-        assert scroll_area is not None
         value_checkbox.setChecked(False)
         assert not select_all_checkbox.isChecked()
         assert p.collect_outputs is not None
         assert "counter:Value" not in p.collect_outputs
         select_all_checkbox.setChecked(True)
         assert value_checkbox.isChecked()
+        assert role_combo.currentText() == "y"
         assert p.collect_outputs is None
+        role_combo.setCurrentText("x")
+        assert p.collect_output_roles["counter:Value"] == "x"
+        other_role_combo = next(
+            table.cellWidget(row, 2)
+            for row in range(table.rowCount())
+            if table.item(row, 1).text() == "instantstate:Voltage"
+        )
+        other_role_combo.setCurrentText("x")
+        assert role_combo.currentText() == "-"
+        assert p.collect_output_roles["instantstate:Voltage"] == "x"
+        role_combo.setCurrentText("-")
+        assert p.collect_output_roles["counter:Value"] == "-"
         engine.shutdown()
 
     def test_generate_action_code_includes_clear_when_clear_on_start(self, qapp):

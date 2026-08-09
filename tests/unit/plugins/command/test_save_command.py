@@ -81,6 +81,22 @@ class TestSaveCommand:
         line_edits[0].editingFinished.emit()
         assert cmd.path_expr == "'new/path.txt'"
 
+    def test_config_widget_refreshes_when_trace_catalog_changes(self, qapp, engine):
+        from qtpy.QtWidgets import QCheckBox
+
+        from stoner_measurement.plugins.state_scan import CounterPlugin
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        widget = cmd.config_widget()
+        assert not any(check.text() == "counter.data" for check in widget.findChildren(QCheckBox))
+
+        counter = CounterPlugin()
+        counter.collect_data = True
+        engine.update_step_plugin_catalog([counter])
+
+        assert any(check.text() == "counter.data" for check in widget.findChildren(QCheckBox))
+
     def test_execute_writes_tdi_file(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
@@ -558,10 +574,10 @@ class TestSaveCommand:
 
         root = files[out_file]
         data = root.groups["entry"].groups["data"]
-        assert data.datasets["value_value"].data == [1.0, 2.0, 3.0, 4.0]
-        assert data.datasets["value_signal"].data == [1.0, 2.0, 3.0, 4.0]
-        assert data.datasets["value_value"].resize_calls == [(4,)]
-        assert data.datasets["value_signal"].resize_calls == [(4,)]
+        assert data.datasets["counter_data_value"].data == [1.0, 2.0, 3.0, 4.0]
+        assert data.datasets["counter_data_signal"].data == [1.0, 2.0, 3.0, 4.0]
+        assert data.datasets["counter_data_value"].resize_calls == [(4,)]
+        assert data.datasets["counter_data_signal"].resize_calls == [(4,)]
 
     # ------------------------------------------------------------------
     # Trace selection
@@ -663,12 +679,12 @@ class TestSaveCommand:
         cmd.no_overwrite = False
         out_file = tmp_path / "out.txt"
         cmd.path_expr = repr(str(out_file))
-        cmd.execute(trace="counter:Value")
+        cmd.execute(trace="counter.data")
 
         lines = out_file.read_text().splitlines()
         header = lines[0].split("\t")
-        assert any("Value:Value" in item for item in header)
-        assert any("Value:Signal" in item for item in header)
+        assert any("counter.data:Value" in item for item in header)
+        assert any("counter.data:Signal" in item for item in header)
         assert lines[1].split("\t")[1] == "1.0"
         assert lines[2].split("\t")[1] == "2.0"
 
@@ -683,7 +699,7 @@ class TestSaveCommand:
 
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
-        cmd.trace_selection = {"counter:Value": True}
+        cmd.trace_selection = {"counter.data": True}
         cmd.incremental_save = True
         cmd.no_overwrite = False
         out_file = tmp_path / "out.txt"

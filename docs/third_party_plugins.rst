@@ -343,6 +343,123 @@ Once installed, launch the application normally:
 Your plugin will appear in the sequence builder's plugin list and can be
 dragged into the sequence tree like any built-in plugin.
 
+Sequence engine services
+------------------------
+
+The :class:`~stoner_measurement.core.sequence_engine.SequenceEngine` is the
+shared integration boundary between sequence-step plugins. Plugin code should
+use the public services below rather than retaining private copies of engine
+state or inspecting the sequence editor directly.
+
+Attachment and shared namespace
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When an instance is attached with
+:meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.add_plugin`, the
+engine sets :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
+and binds the plugin's ``instance_name`` in the execution namespace. Use:
+
+* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
+  for a live view of that namespace;
+* :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` to evaluate a
+  user-configured expression against it; and
+* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.log` for messages
+  routed through the sequence log and application log viewer.
+
+``engine_namespace`` returns an empty dict while detached. Configuration
+widgets must therefore tolerate being built before an engine is attached.
+
+Published data catalogues
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Plugins publish discoverable data by implementing
+:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_traces` and
+:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_values`.
+Each method returns ``{display_key: expression}``, where the expression resolves
+against the engine namespace. The engine merges those mappings into the live
+``_traces`` and ``_values`` dictionaries.
+
+The catalogues describe **instances currently present in the measurement
+sequence**. Installed plugin-manager singletons are deliberately excluded.
+Consequently, a consumer must not cache a catalogue at construction time and
+assume that it remains complete.
+
+If a plugin setting changes what ``reported_traces()`` or ``reported_values()``
+returns without changing the sequence tree, call
+``self.sequence_engine.refresh_data_catalogs()`` after applying the setting.
+The state scan/sweep ``collect_data`` property already does this.
+
+Common trace-key conventions are:
+
+* ``"{instance_name}:{channel}"`` for named instrument or transform channels;
+* ``"{instance_name}.data"`` for the one collected table owned by a state scan
+  or state sweep plugin.
+
+Catalogue change signals
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The engine emits a snapshot whenever it rebuilds either catalogue:
+
+* ``SequenceEngine.traces_catalog_changed`` emits ``dict[str, str]`` for
+  ``_traces``;
+* ``SequenceEngine.values_catalog_changed`` emits ``dict[str, str]`` for
+  ``_values``; and
+* ``SequenceEngine.namespace_updated`` indicates a more general namespace
+  mutation.
+
+Trace-consuming configuration widgets should subscribe to
+``traces_catalog_changed`` so their dropdowns or checkboxes update when steps
+are inserted, removed, renamed, or change what they report. Built-in plugins
+use ``bind_trace_catalog_updates`` from
+``stoner_measurement.plugins.trace_catalog_ui`` to scope the connection to the
+widget lifetime:
+
+.. code-block:: python
+
+    from qtpy.QtWidgets import QWidget
+
+    from stoner_measurement.plugins.trace_catalog_ui import (
+        bind_trace_catalog_updates,
+    )
+
+    def config_widget(self, parent=None):
+        widget = QWidget(parent)
+        # Build controls, then populate them from the current snapshot.
+        self._refresh_traces(self.engine_namespace.get("_traces", {}))
+        bind_trace_catalog_updates(self, widget, self._refresh_traces)
+        return widget
+
+The callback must preserve a still-valid user selection, choose a sensible
+default if that selection disappears, and show an empty-state item when the
+catalogue becomes empty. Do not add independent polling or a separate refresh
+button for this purpose.
+
+Snapshots versus live state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``engine.traces_catalog``, ``engine.values_catalog``, and the dict arguments
+emitted by the catalogue signals are snapshot copies. Use them for display and
+selection. Use ``engine_namespace`` or
+:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` when execution
+needs the current value of an expression.
+
+Execution and lifecycle services
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The engine also provides these boundaries to sequence plugins:
+
+* ``has_lifecycle`` plus ``connect()``, ``configure()``, and ``disconnect()``
+  for hardware resources managed around sequence execution;
+* :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.generate_action_code`
+  for rendering the plugin's executable sequence step;
+* ``wait_for_plot_ready`` in the namespace for ordering data production with
+  queued plot updates; and
+* central stop, error, and logging handling during generated-script execution.
+
+Command and transform plugins should normally remain lifecycle-free. Hardware
+plugins should keep transport ownership inside their lifecycle methods rather
+than acquiring devices while building configuration widgets.
+
 Accessing the sequence engine namespace
 ----------------------------------------
 
@@ -370,10 +487,10 @@ can reference them directly:
        is also available as ``self.log`` for convenience.
        Records are forwarded to the application's log viewer.
    * - ``_traces``
-     - Mapping of ``"{instance_name}:{channel}"`` to
-       expressions resolving to :class:`~stoner_measurement.core.TraceData`
-       objects.  This includes instrument traces and collected state
-       scan/sweep tables.
+     - Mapping of display keys to expressions resolving to
+       :class:`~stoner_measurement.core.TraceData` objects. Instrument and
+       transform channels normally use ``"{instance_name}:{channel}"``;
+       collected state scan/sweep tables use ``"{instance_name}.data"``.
    * - ``_values``
      - Mapping of ``"{instance_name}:{quantity}"`` to scalar Python
        expressions (as strings) for every scalar value reported by a plugin.

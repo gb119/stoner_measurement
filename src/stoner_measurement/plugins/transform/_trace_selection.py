@@ -16,6 +16,10 @@ import numpy as np
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLabel, QWidget
 
 from stoner_measurement.core.trace_data import COLUMN_ROLE_Y
+from stoner_measurement.plugins.trace_catalog_ui import (
+    bind_trace_catalog_updates,
+    refresh_trace_source_widgets,
+)
 
 _DEFAULT_COLUMN_OPTION = "(default)"
 
@@ -204,6 +208,17 @@ class TraceChannelSelectionMixin:
 
         _update_enabled(self.advanced_mode)
         ws["advanced_check"].toggled.connect(_update_enabled)
+        bind_trace_catalog_updates(
+            self,
+            ws["trace_combo"],
+            lambda traces: refresh_trace_source_widgets(
+                self,
+                ws,
+                traces,
+                show_column_selector=show_column_selector,
+                prefer_y_channel=True,
+            ),
+        )
 
     def _get_selected_data_arrays(
         self,

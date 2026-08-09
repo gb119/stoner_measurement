@@ -148,8 +148,8 @@ class TestStateSweepPlugin:
         plugin.collect()
         assert plugin.data.df.empty
 
-    def test_sweep_config_has_output_catalogue_checkboxes(self, qapp):
-        from qtpy.QtWidgets import QCheckBox, QScrollArea
+    def test_sweep_config_has_output_catalogue_table(self, qapp):
+        from qtpy.QtWidgets import QCheckBox, QComboBox, QTableWidget
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
         from stoner_measurement.plugins.state_control import CounterPlugin
@@ -162,14 +162,17 @@ class TestStateSweepPlugin:
         engine.update_step_plugin_catalog([plugin, counter])
         tabs = plugin.config_tabs()
         sweep_page = tabs[0][1]
-        value_checkbox = next(
-            (
-                check
-                for check in sweep_page.findChildren(QCheckBox)
-                if check.text() == "counter:Value"
-            ),
-            None,
+        table = sweep_page.findChild(QTableWidget, "stateOutputSelectionTable")
+        assert table is not None
+        value_row = next(
+            row
+            for row in range(table.rowCount())
+            if table.item(row, 1).text() == "counter:Value"
         )
+        value_checkbox = table.cellWidget(value_row, 0)
+        role_combo = table.cellWidget(value_row, 2)
+        assert isinstance(value_checkbox, QCheckBox)
+        assert isinstance(role_combo, QComboBox)
         select_all_checkbox = next(
             (
                 check
@@ -178,19 +181,20 @@ class TestStateSweepPlugin:
             ),
             None,
         )
-        scroll_area = next(iter(sweep_page.findChildren(QScrollArea)), None)
-        assert value_checkbox is not None
         assert value_checkbox.isChecked()
+        assert role_combo.currentText() == "y"
         assert select_all_checkbox is not None
         assert select_all_checkbox.isChecked()
-        assert scroll_area is not None
         value_checkbox.setChecked(False)
         assert not select_all_checkbox.isChecked()
         assert plugin.collect_outputs is not None
         assert "counter:Value" not in plugin.collect_outputs
         select_all_checkbox.setChecked(True)
         assert value_checkbox.isChecked()
+        assert role_combo.currentText() == "y"
         assert plugin.collect_outputs is None
+        role_combo.setCurrentText("x")
+        assert plugin.collect_output_roles["counter:Value"] == "x"
         engine.shutdown()
 
     def test_sweep_config_uses_humanised_generator_names(self, qapp):

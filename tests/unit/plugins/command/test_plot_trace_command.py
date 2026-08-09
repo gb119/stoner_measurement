@@ -135,6 +135,27 @@ class TestPlotTraceCommand:
         combos = widget.findChildren(QComboBox)
         assert len(combos) >= 1
 
+    def test_config_widget_refreshes_when_trace_catalog_changes(self, qapp, engine):
+        from qtpy.QtWidgets import QComboBox
+
+        from stoner_measurement.plugins.state_scan import CounterPlugin
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        widget = cmd.config_widget()
+        trace_combo = next(
+            combo
+            for combo in widget.findChildren(QComboBox)
+            if combo.findText("(no traces available)") >= 0
+        )
+
+        counter = CounterPlugin()
+        counter.collect_data = True
+        engine.update_step_plugin_catalog([counter])
+
+        assert trace_combo.findText("counter.data") >= 0
+        assert cmd.trace_key == "counter.data"
+
     def test_config_widget_has_advanced_checkbox(self, qapp):
         from qtpy.QtWidgets import QCheckBox
 

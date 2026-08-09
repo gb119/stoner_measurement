@@ -45,6 +45,10 @@ from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_Y,
     TraceData,
 )
+from stoner_measurement.plugins.trace_catalog_ui import (
+    bind_trace_catalog_updates,
+    refresh_trace_source_widgets,
+)
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.editor_widget import EditorWidget
@@ -1778,6 +1782,12 @@ class CurveFitPlugin(TransformPlugin):
         ws["x_combo"].currentTextChanged.connect(_apply_x)
         ws["y_combo"].currentTextChanged.connect(_apply_y)
         ws["y_error_edit"].editingFinished.connect(_apply_y_error)
+
+        def _refresh_trace_catalog(traces: dict[str, str]) -> None:
+            refresh_trace_source_widgets(self, ws, traces)
+            self._schedule_param_table_preview_refresh()
+
+        bind_trace_catalog_updates(self, widget, _refresh_trace_catalog)
 
         return widget
 

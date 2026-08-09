@@ -15,15 +15,14 @@ from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QFrame,
-    QLabel,
     QLineEdit,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.plugins.state.base import StatePlugin
+from stoner_measurement.plugins.state.output_selection import OutputSelectionTable
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.sweep import (
     BaseSweepGenerator,
@@ -180,76 +179,32 @@ class _StateSweepPage(QWidget):
 
         collect_filter_edit = QLineEdit(plugin.collect_filter)
         clear_filter_edit = QLineEdit(plugin.clear_filter)
-        output_checks_container = QWidget()
-        output_checks_layout = QVBoxLayout(output_checks_container)
-        output_checks_layout.setContentsMargins(0, 0, 0, 0)
-        output_checks_layout.setSpacing(2)
-        output_checks: dict[str, QCheckBox] = {}
         sync_in_progress = False
         select_all_outputs_check = QCheckBox("Use all catalogue outputs")
         select_all_outputs_check.setChecked(plugin.collect_outputs is None)
         select_all_outputs_check.setToolTip(
-            "Select every output from the catalogue (previous collect-all behaviour)."
+            "Select every catalogue output and use automatic trace roles."
         )
-        output_checks_scroll = QScrollArea()
-        output_checks_scroll.setWidgetResizable(True)
-        output_checks_scroll.setMaximumHeight(180)
-        output_checks_scroll.setWidget(output_checks_container)
+        output_table = OutputSelectionTable(plugin)
 
-        def _available_outputs() -> list[str]:
-            values_catalog = plugin.engine_namespace.get("_values", {})
-            return sorted(str(key) for key in values_catalog)
-
-        def _clear_output_checkboxes() -> None:
-            while output_checks_layout.count() > 0:
-                item = output_checks_layout.takeAt(0)
-                widget = item.widget()
-                if widget is not None:
-                    widget.deleteLater()
-            output_checks.clear()
-
-        def _sync_collect_outputs_from_checkboxes() -> None:
+        def _sync_select_all(all_selected: bool) -> None:
             nonlocal sync_in_progress
             if sync_in_progress:
                 return
-            all_keys = sorted(output_checks)
-            checked_keys = [key for key, check in output_checks.items() if check.isChecked()]
-            plugin.collect_outputs = None if checked_keys == all_keys else checked_keys
             sync_in_progress = True
-            select_all_outputs_check.setChecked(checked_keys == all_keys and bool(all_keys))
+            select_all_outputs_check.setChecked(all_selected)
             sync_in_progress = False
 
         def _apply_select_all_outputs(state: int) -> None:
-            nonlocal sync_in_progress
             if sync_in_progress:
                 return
-            if not state:
-                return
-            sync_in_progress = True
-            for checkbox in output_checks.values():
-                checkbox.setChecked(True)
-            sync_in_progress = False
-            plugin.collect_outputs = None
-
-        def _build_output_checkboxes() -> None:
-            _clear_output_checkboxes()
-            keys = _available_outputs()
-            selected = None if plugin.collect_outputs is None else set(plugin.collect_outputs)
-            if not keys:
-                output_checks_layout.addWidget(QLabel("No value outputs currently available."))
-                select_all_outputs_check.setChecked(False)
-                return
-            for key in keys:
-                checkbox = QCheckBox(key)
-                checkbox.setChecked(selected is None or key in selected)
-                checkbox.stateChanged.connect(_sync_collect_outputs_from_checkboxes)
-                output_checks_layout.addWidget(checkbox)
-                output_checks[key] = checkbox
-            _sync_collect_outputs_from_checkboxes()
+            if state:
+                output_table.select_all_with_heuristics()
 
         refresh_outputs_button = QPushButton("Refresh output list")
-        refresh_outputs_button.clicked.connect(_build_output_checkboxes)
+        refresh_outputs_button.clicked.connect(output_table.refresh)
         select_all_outputs_check.stateChanged.connect(_apply_select_all_outputs)
+        output_table.selection_changed.connect(_sync_select_all)
 
         data_form.addRow("Collect data:", collect_check)
         data_form.addRow("Clear on start:", clear_check)
@@ -257,7 +212,7 @@ class _StateSweepPage(QWidget):
         data_form.addRow("Clear filter:", clear_filter_edit)
         data_form.addRow("Collect all outputs:", select_all_outputs_check)
         data_form.addRow(refresh_outputs_button)
-        data_form.addRow("Collected outputs:", output_checks_scroll)
+        data_form.addRow("Collected outputs:", output_table)
 
         collect_check.stateChanged.connect(lambda state: setattr(plugin, "collect_data", bool(state)))
         clear_check.stateChanged.connect(lambda state: setattr(plugin, "clear_on_start", bool(state)))
@@ -270,7 +225,7 @@ class _StateSweepPage(QWidget):
 
         collect_filter_edit.editingFinished.connect(_apply_collect_filter)
         clear_filter_edit.editingFinished.connect(_apply_clear_filter)
-        _build_output_checkboxes()
+        _sync_select_all(output_table.all_selected)
 
         data_widget = QWidget()
         data_widget.setLayout(data_form)

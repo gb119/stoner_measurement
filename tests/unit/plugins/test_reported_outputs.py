@@ -154,6 +154,12 @@ class TestReportedTraces:
     def test_state_control_plugin_reported_traces_empty(self, qapp):
         assert _InstantState().reported_traces() == {}
 
+    def test_state_control_plugin_reports_instance_data_trace(self, qapp):
+        plugin = _InstantState()
+        plugin.collect_data = True
+
+        assert plugin.reported_traces() == {"instantstate.data": "instantstate.data"}
+
     def test_transform_plugin_reported_values_default_all_outputs(self, qapp):
         p = _ScaleTransform()
         vals = p.reported_values()

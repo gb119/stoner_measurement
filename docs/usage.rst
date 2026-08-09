@@ -102,14 +102,17 @@ returned by ``measure()`` is only for genuinely separate trace tables, which
 may have different x arrays.  Multiple simultaneously acquired outputs on the
 same scan belong in columns of one ``TraceData``.
 
-For a state scan or sweep, *x* is the controlled physical state.  The
-``iteration`` and ``stage`` bookkeeping values are retained as auxiliary
-columns, alongside the selected scalar outputs.  The resulting table is
-published directly in the trace catalogue, so plotting, transforms, and
-saving do not require an intermediate data-to-trace conversion step.  The Save
-command likewise has one trace selection path for both instrument traces and
-collected scan/sweep tables; incremental saving remains available for repeated
-saves as a table grows.
+For a state scan or sweep, *x* is the controlled physical state by default. A
+selected readback output may instead be assigned the explicit ``x`` role when
+the measured value reached is more appropriate than the commanded set-point;
+the commanded value is then retained in an auxiliary ``state`` column. The
+``iteration`` and ``stage`` bookkeeping values are also retained as auxiliary
+columns, alongside the selected scalar outputs. The resulting table is
+published directly in the trace catalogue as ``"{instance_name}.data"``, so
+plotting, transforms, and saving do not require an intermediate data-to-trace
+conversion step. The Save command likewise has one trace selection path for
+both instrument traces and collected scan/sweep tables; incremental saving
+remains available for repeated saves as a table grows.
 
 .. code-block:: python
 

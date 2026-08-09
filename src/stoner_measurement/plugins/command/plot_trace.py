@@ -45,6 +45,10 @@ from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_Y,
 )
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.plugins.trace_catalog_ui import (
+    bind_trace_catalog_updates,
+    refresh_trace_source_widgets,
+)
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
 
@@ -735,6 +739,22 @@ class PlotTraceCommand(CommandPlugin):
             y_axis_combo,
             channel_items,
             colour_button,
+        )
+        source_widgets = {
+            "trace_combo": trace_combo,
+            "column_combo": column_combo,
+            "x_combo": x_combo,
+            "y_combo": y_combo,
+            "channel_items": channel_items,
+        }
+        bind_trace_catalog_updates(
+            self,
+            widget,
+            lambda updated_traces: refresh_trace_source_widgets(
+                self,
+                source_widgets,
+                updated_traces,
+            ),
         )
         return widget
 

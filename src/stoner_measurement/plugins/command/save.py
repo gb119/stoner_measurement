@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.plugins.trace_catalog_ui import bind_trace_catalog_updates
 
 #: Regex matching the start of a Python string literal (with optional prefix).
 _STRING_EXPR_RE = re.compile(r'^(?P<leading>\s*)(?P<prefix>[fFrRbBuU]*)(?P<quote>["\'])')
@@ -934,21 +935,31 @@ class SaveCommand(CommandPlugin):
         traces_layout = QVBoxLayout(traces_container)
         traces_layout.setContentsMargins(4, 4, 4, 4)
 
-        ns = self.engine_namespace or {}
-        traces_catalog: dict[str, str] = ns.get("_traces", {})
+        def _populate_traces(traces_catalog: dict[str, str]) -> None:
+            while traces_layout.count():
+                item = traces_layout.takeAt(0)
+                child = item.widget()
+                if child is not None:
+                    child.deleteLater()
+            if traces_catalog:
+                for trace_key in traces_catalog:
+                    checkbox = QCheckBox(trace_key, traces_container)
+                    checkbox.setChecked(self.trace_selection.get(trace_key, True))
+                    checkbox.stateChanged.connect(
+                        lambda state, key=trace_key: self.trace_selection.update(
+                            {key: bool(state)}
+                        )
+                    )
+                    traces_layout.addWidget(checkbox)
+            else:
+                traces_layout.addWidget(QLabel("<i>No traces available.</i>", traces_container))
+            traces_layout.addStretch()
 
-        if traces_catalog:
-            for trace_key in traces_catalog:
-                cb = QCheckBox(trace_key, traces_container)
-                cb.setChecked(self.trace_selection.get(trace_key, True))
-                cb.stateChanged.connect(lambda state, k=trace_key: self.trace_selection.update({k: bool(state)}))
-                traces_layout.addWidget(cb)
-        else:
-            traces_layout.addWidget(QLabel("<i>No traces available.</i>", traces_container))
-
-        traces_layout.addStretch()
+        traces_catalog: dict[str, str] = self.engine_namespace.get("_traces", {})
+        _populate_traces(traces_catalog)
         traces_container.setLayout(traces_layout)
         traces_scroll.setWidget(traces_container)
+        bind_trace_catalog_updates(self, traces_scroll, _populate_traces)
         return traces_scroll
 
     def to_json(self) -> dict[str, Any]:

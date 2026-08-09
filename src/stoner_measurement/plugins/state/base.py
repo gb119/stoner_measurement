@@ -24,7 +24,13 @@ from typing import Any, SupportsInt
 import pandas as pd
 from qtpy.QtCore import QObject
 
-from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
+from stoner_measurement.core.trace_data import (
+    COLUMN_ROLE_D,
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_Y,
+    COLUMN_ROLE_Z,
+    TraceData,
+)
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.plugins.sequence.base import SequencePlugin
 from stoner_measurement.qt_compat import pyqtSignal
@@ -64,6 +70,11 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             Python expression evaluated by :meth:`clear_data` to decide
             whether the collected data should be cleared.  Defaults to
             ``"True"``.
+        collect_output_roles (dict[str, str]):
+            Per-output role choices from the configuration table. ``"x"``
+            promotes a measured readback to the trace x axis; ``"d"``,
+            ``"y"``, and ``"e"`` set data-column roles; ``"-"`` leaves the
+            role unspecified for the normal fallback heuristics.
         data (TraceData):
             Accumulated measurement data.  The controlled state is the shared
             x axis; ``iteration`` and ``stage`` are auxiliary columns and the
@@ -120,11 +131,12 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.value: float = 0.0
         self.meas_flag: bool = False
         self.stage: int = 0
-        self.collect_data: bool = False
+        self._collect_data: bool = False
         self.clear_on_start: bool = True
         self.collect_filter: str = f"{self.instance_name}.meas_flag"
         self.clear_filter: str = "True"
         self.collect_outputs: list[str] | None = None
+        self.collect_output_roles: dict[str, str] = {}
         # Subclass state metadata may depend on fields initialised after
         # ``super().__init__`` (for example a source-mode selector).
         self._data = TraceData()
@@ -149,6 +161,21 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 The value to coerce and store as the current iteration index.
         """
         self.ix = int(value)
+
+    @property
+    def collect_data(self) -> bool:
+        """Whether this state plugin collects and publishes a trace table."""
+        return self._collect_data
+
+    @collect_data.setter
+    def collect_data(self, enabled: bool) -> None:
+        """Enable collection and refresh the engine catalogues when attached."""
+        new_value = bool(enabled)
+        changed = new_value != getattr(self, "_collect_data", False)
+        self._collect_data = new_value
+        engine = self.sequence_engine
+        if changed and engine is not None:
+            engine.refresh_data_catalogs()
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` and auto-update :attr:`collect_filter`."""
@@ -305,7 +332,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         ``None``).  Both conditions must be met.  Evaluates
         :attr:`collect_filter`; if truthy, appends a row to :attr:`data` at the
         current state value.  The row contains ``iteration`` and ``stage``,
-        followed by evaluated outputs from the engine's values catalogue.
+        followed by evaluated outputs from the engine's values catalogue. If
+        a selected output has an explicit ``"x"`` role, its evaluated readback
+        becomes the x axis and the commanded value is retained in an auxiliary
+        ``state`` column.
 
         Keyword Parameters:
             outputs (list[str] | None):
@@ -351,32 +381,70 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         else:
             keys = [k for k in self.collect_outputs if k in values_cat]
 
-        row: dict[str, Any] = {"iteration": self.ix, "stage": self.stage}
+        output_values: dict[str, Any] = {}
         for key in keys:
             expr = values_cat[key]
             try:
-                row[key] = self.eval(expr)
+                output_values[key] = self.eval(expr)
             except (RuntimeError, SyntaxError, ValueError, NameError, AttributeError) as exc:
                 self.log.warning("collect(): failed to evaluate %r: %s", expr, exc)
-                row[key] = None
+                output_values[key] = None
 
-        new_row = pd.DataFrame([row], index=pd.Index([self.value], name="x"))
+        explicit_x = next(
+            (key for key in keys if self.collect_output_roles.get(key) == "x"),
+            None,
+        )
+        row: dict[str, Any] = {"iteration": self.ix, "stage": self.stage}
+        if explicit_x is None:
+            x_value = self.value
+        else:
+            x_value = output_values.pop(explicit_x)
+            row["state"] = self.value
+        row.update(output_values)
+
+        new_row = pd.DataFrame([row], index=pd.Index([x_value], name="x"))
         frame = new_row if self._data.df.empty else pd.concat([self._data.df, new_row])
-        output_columns = [column for column in frame.columns if column not in {"iteration", "stage"}]
+        output_columns = [
+            column for column in frame.columns if column not in {"iteration", "stage", "state"}
+        ]
         roles = {"iteration": COLUMN_ROLE_Z, "stage": COLUMN_ROLE_Z}
-        roles.update({column: COLUMN_ROLE_Y for column in output_columns})
-        names = {"x": self.state_name, "iteration": "Iteration", "stage": "Stage"}
+        if "state" in frame.columns:
+            roles["state"] = COLUMN_ROLE_Z
+        role_constants = {"d": COLUMN_ROLE_D, "y": COLUMN_ROLE_Y, "e": COLUMN_ROLE_E}
+        for column in output_columns:
+            configured_role = self.collect_output_roles.get(column)
+            if configured_role in role_constants:
+                roles[column] = role_constants[configured_role]
+            elif configured_role == "-":
+                roles[column] = COLUMN_ROLE_Z
+            else:
+                roles[column] = COLUMN_ROLE_Y
+        names = {
+            "x": explicit_x or self.state_name,
+            "iteration": "Iteration",
+            "stage": "Stage",
+        }
+        if "state" in frame.columns:
+            names["state"] = self.state_name
         names.update({column: str(column) for column in output_columns})
         units = {key: "" for key in names}
-        units["x"] = self.units
+        units["state" if explicit_x is not None else "x"] = self.units
         self._data = TraceData(frame, column_roles=roles, names=names, units=units)
+
+    def inferred_output_roles(self, outputs: list[str]) -> dict[str, str]:
+        """Return the automatic roles used when all catalogue outputs are selected.
+
+        The commanded scan or sweep parameter supplies the implicit x axis, so
+        catalogue values retain the existing behaviour of being primary y data.
+        """
+        return dict.fromkeys(outputs, COLUMN_ROLE_Y)
 
     def reported_traces(self) -> dict[str, str]:
         """Expose collected state data through the shared trace catalogue."""
         if not self.collect_data:
             return {}
         variable = self.instance_name
-        return {f"{variable}:{self.state_name}": f"{variable}.data"}
+        return {f"{variable}.data": f"{variable}.data"}
 
     # ------------------------------------------------------------------
     # JSON serialisation (shared fields)
@@ -410,6 +478,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         data["collect_filter"] = self.collect_filter
         data["clear_filter"] = self.clear_filter
         data["collect_outputs"] = None if self.collect_outputs is None else list(self.collect_outputs)
+        data["collect_output_roles"] = dict(self.collect_output_roles)
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -440,6 +509,20 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 self.collect_outputs = [str(item) for item in raw]
             else:
                 self.collect_outputs = None
+        raw_roles = data.get("collect_output_roles", {})
+        if isinstance(raw_roles, dict):
+            valid_roles = {"-", "x", "d", "y", "e"}
+            roles = {
+                str(key): str(role)
+                for key, role in raw_roles.items()
+                if str(role) in valid_roles
+            }
+            x_keys = [key for key, role in roles.items() if role == "x"]
+            for key in x_keys[1:]:
+                del roles[key]
+            self.collect_output_roles = roles
+        else:
+            self.collect_output_roles = {}
 
     # ------------------------------------------------------------------
     # Member plugins

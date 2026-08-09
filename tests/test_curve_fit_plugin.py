@@ -643,6 +643,29 @@ class TestCurveFitSerialization:
 
 
 class TestCurveFitConfigTabs:
+    def test_trace_combo_refreshes_when_catalog_changes(
+        self, qapp, engine, managed_qt_widget
+    ):
+        from qtpy.QtWidgets import QComboBox
+
+        from stoner_measurement.plugins.state_scan import CounterPlugin
+
+        plugin = CurveFitPlugin()
+        engine.add_plugin("curve_fit", plugin)
+        data_tab = managed_qt_widget(plugin.config_tabs()[0][1])
+        trace_combo = next(
+            combo
+            for combo in data_tab.findChildren(QComboBox)
+            if combo.findText("(no traces available)") >= 0
+        )
+
+        counter = CounterPlugin()
+        counter.collect_data = True
+        engine.update_step_plugin_catalog([counter])
+
+        assert trace_combo.findText("counter.data") >= 0
+        assert plugin.trace_key == "counter.data"
+
     def test_has_three_content_tabs(self, qapp):
         p = CurveFitPlugin()
         tabs = p.config_tabs()

@@ -668,6 +668,13 @@ class SequenceEngine(QObject):
     status_changed(str):
         Execution status: ``"Idle"``, ``"Running"``, ``"Paused"``,
         ``"Stopped"``, or ``"Error"``.
+    traces_catalog_changed(dict):
+        Snapshot of the rebuilt trace catalogue after sequence steps change.
+    values_catalog_changed(dict):
+        Snapshot of the rebuilt scalar-value catalogue after sequence steps
+        change.
+    namespace_updated():
+        Emitted after a general mutation of the shared execution namespace.
     script_finished():
         Emitted when a script runs to completion without raising an exception.
 
@@ -688,6 +695,7 @@ class SequenceEngine(QObject):
     error_output = pyqtSignal(str)
     status_changed = pyqtSignal(str)
     execution_progress = pyqtSignal(str)
+    traces_catalog_changed = pyqtSignal(dict)
     values_catalog_changed = pyqtSignal(dict)
     namespace_updated = pyqtSignal()
     script_finished = pyqtSignal()
@@ -1009,6 +1017,7 @@ class SequenceEngine(QObject):
                     values.update(plugin.reported_values())
         self._namespace["_traces"] = traces
         self._namespace["_values"] = values
+        self.traces_catalog_changed.emit(dict(traces))
         self.values_catalog_changed.emit(dict(values))
         self.namespace_updated.emit()
 
@@ -1042,6 +1051,15 @@ class SequenceEngine(QObject):
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
         self._extra_catalog_plugins = [p for p in plugins if isinstance(p, BasePlugin)]
+        self._rebuild_data_catalogs()
+
+    def refresh_data_catalogs(self) -> None:
+        """Rebuild trace/value catalogues after a plugin changes reported outputs.
+
+        Sequence-tree changes call :meth:`update_step_plugin_catalog`. Plugins
+        whose configuration changes the result of ``reported_traces()`` or
+        ``reported_values()`` can call this lighter public boundary instead.
+        """
         self._rebuild_data_catalogs()
 
     def all_plugins(self) -> list[BasePlugin]:

@@ -680,7 +680,7 @@ class TestDataCatalogs:
         plugin.collect_data = True
         engine.update_step_plugin_catalog([plugin])
         cat = engine.traces_catalog
-        key = f"{plugin.instance_name}:{plugin.state_name}"
+        key = f"{plugin.instance_name}.data"
         assert cat[key] == f"{plugin.instance_name}.data"
 
     def test_non_collecting_state_plugin_does_not_report_trace(self, engine):
@@ -689,8 +689,32 @@ class TestDataCatalogs:
         plugin = CounterPlugin()
         plugin.collect_data = False
         engine.update_step_plugin_catalog([plugin])
-        key = f"{plugin.instance_name}:{plugin.state_name}"
+        key = f"{plugin.instance_name}.data"
         assert key not in engine.traces_catalog
+
+    def test_trace_catalog_changed_emits_rebuilt_catalog(self, engine):
+        from stoner_measurement.plugins.state_scan import CounterPlugin
+
+        plugin = CounterPlugin()
+        plugin.collect_data = True
+        catalogs = []
+        engine.traces_catalog_changed.connect(catalogs.append)
+
+        engine.update_step_plugin_catalog([plugin])
+
+        assert catalogs[-1] == {"counter.data": "counter.data"}
+
+    def test_enabling_state_collection_refreshes_trace_catalog(self, engine):
+        from stoner_measurement.plugins.state_scan import CounterPlugin
+
+        plugin = CounterPlugin()
+        engine.add_plugin("counter", plugin)
+        engine.update_step_plugin_catalog([plugin])
+        assert "counter.data" not in engine.traces_catalog
+
+        plugin.collect_data = True
+
+        assert engine.traces_catalog["counter.data"] == "counter.data"
 
     def test_values_catalog_includes_trace_statistics_when_enabled(self, engine):
         plugin = DummyPlugin()
