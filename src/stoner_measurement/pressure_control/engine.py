@@ -603,62 +603,15 @@ class PressureControllerEngine(QObject):
 
     def _build_state(self) -> PressureEngineState:
         now = datetime.now(tz=UTC)
-        readings: dict[int, PressureReading] = {}
-        flow_actual: dict[int, float] = {}
         flow_setpoints: dict[int, float] = dict(self._last_flow_setpoints)
         target_pressures: dict[int, float] = dict(self._last_target_pressures)
         gauge_channel_enabled: dict[int, bool | None] = dict(self._gauge_channel_enabled)
-        interlocks: dict[str, bool | str | int | None] = {}
-        pressure_unit: PressureUnit | str | None = None
         flow_unit: int | str | None = self._last_flow_unit
 
-        if self._driver is not None:
-            try:
-                readings = self._driver.read_all_pressures()
-                pressure_unit = next((reading.unit for reading in readings.values()), None)
-                for channel, reading in readings.items():
-                    if reading.status == PressureStatus.SWITCHED_OFF:
-                        gauge_channel_enabled[channel] = False
-                    else:
-                        gauge_channel_enabled.setdefault(channel, True)
-                capabilities = self._driver.get_capabilities()
-                if capabilities.interlocks:
-                    interlocks = self._driver.read_interlocks()
-                self._pressure_error = False
-            except Exception:
-                self._pressure_error = True
-                logger.exception("PressureControllerEngine: pressure-controller read error")
-
-        if self._mfc_driver is not None:
-            try:
-                caps = self._mfc_driver.get_capabilities()
-                for channel in range(1, caps.channel_count + 1):
-                    flow_actual[channel] = float(
-                        self._mfc_driver.read_actual_value(channel=channel)
-                    )
-                    try:
-                        value = float(self._mfc_driver.read_setpoint(channel=channel))
-                        flow_setpoints.setdefault(channel, value)
-                    except Exception:
-                        logger.debug(
-                            "Failed to read MFC setpoint for channel %s", channel, exc_info=True
-                        )
-                    try:
-                        flow_unit = self._mfc_driver.read_unit(channel=channel)
-                    except Exception:
-                        logger.debug(
-                            "Failed to read MFC engineering unit for channel %s",
-                            channel,
-                            exc_info=True,
-                        )
-                self._last_flow_unit = flow_unit
-                self._last_flow_setpoints = dict(flow_setpoints)
-                for channel, value in target_pressures.items():
-                    flow_setpoints.setdefault(channel, value)
-                self._mfc_error = False
-            except Exception:
-                self._mfc_error = True
-                logger.exception("PressureControllerEngine: mass-flow-controller read error")
+        readings, interlocks, pressure_unit = self._read_pressure_values(gauge_channel_enabled)
+        flow_actual, flow_unit = self._read_mfc_values(
+            flow_setpoints, target_pressures, flow_unit
+        )
 
         reading = PressureEngineReading(
             timestamp=now,
@@ -683,6 +636,82 @@ class PressureControllerEngine(QObject):
             unit=pressure_unit,
             flow_unit=flow_unit,
         )
+
+    def _read_pressure_values(
+        self, gauge_channel_enabled: dict[int, bool | None]
+    ) -> tuple[
+        dict[int, PressureReading],
+        dict[str, bool | str | int | None],
+        PressureUnit | str | None,
+    ]:
+        """Read pressure channels and interlocks, retaining an empty partial result on error."""
+        if self._driver is None:
+            return {}, {}, None
+        try:
+            readings = self._driver.read_all_pressures()
+            pressure_unit = next((reading.unit for reading in readings.values()), None)
+            for channel, reading in readings.items():
+                if reading.status == PressureStatus.SWITCHED_OFF:
+                    gauge_channel_enabled[channel] = False
+                else:
+                    gauge_channel_enabled.setdefault(channel, True)
+            capabilities = self._driver.get_capabilities()
+            interlocks = self._driver.read_interlocks() if capabilities.interlocks else {}
+            self._pressure_error = False
+            return readings, interlocks, pressure_unit
+        except Exception:
+            self._pressure_error = True
+            logger.exception("PressureControllerEngine: pressure-controller read error")
+            return {}, {}, None
+
+    def _read_mfc_values(
+        self,
+        flow_setpoints: dict[int, float],
+        target_pressures: dict[int, float],
+        flow_unit: int | str | None,
+    ) -> tuple[dict[int, float], int | str | None]:
+        """Read all MFC channels, preserving cached optional metadata on error."""
+        mfc_driver = self._mfc_driver
+        if mfc_driver is None:
+            return {}, flow_unit
+        flow_actual: dict[int, float] = {}
+        try:
+            caps = mfc_driver.get_capabilities()
+            for channel in range(1, caps.channel_count + 1):
+                flow_actual[channel] = float(mfc_driver.read_actual_value(channel=channel))
+                flow_unit = self._read_mfc_channel_metadata(
+                    mfc_driver, channel, flow_setpoints, flow_unit
+                )
+            self._last_flow_unit = flow_unit
+            self._last_flow_setpoints = dict(flow_setpoints)
+            for channel, value in target_pressures.items():
+                flow_setpoints.setdefault(channel, value)
+            self._mfc_error = False
+        except Exception:
+            self._mfc_error = True
+            logger.exception("PressureControllerEngine: mass-flow-controller read error")
+        return flow_actual, flow_unit
+
+    def _read_mfc_channel_metadata(
+        self,
+        mfc_driver: MassFlowController,
+        channel: int,
+        flow_setpoints: dict[int, float],
+        flow_unit: int | str | None,
+    ) -> int | str | None:
+        """Read optional setpoint and unit metadata for one MFC channel."""
+        try:
+            value = float(mfc_driver.read_setpoint(channel=channel))
+            flow_setpoints.setdefault(channel, value)
+        except Exception:
+            logger.debug("Failed to read MFC setpoint for channel %s", channel, exc_info=True)
+        try:
+            return mfc_driver.read_unit(channel=channel)
+        except Exception:
+            logger.debug(
+                "Failed to read MFC engineering unit for channel %s", channel, exc_info=True
+            )
+            return flow_unit
 
     def _derive_status(self, *, polling: bool = False) -> PressureEngineStatus:
         if self._status == PressureEngineStatus.STOPPED:

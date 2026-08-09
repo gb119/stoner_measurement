@@ -374,26 +374,9 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
         ns = self.engine_namespace
         values_cat: dict[str, str] = ns.get("_values", {})
-        if outputs is not None:
-            keys = [k for k in outputs if k in values_cat]
-        elif self.collect_outputs is None:
-            keys = list(values_cat.keys())
-        else:
-            keys = [k for k in self.collect_outputs if k in values_cat]
-
-        output_values: dict[str, Any] = {}
-        for key in keys:
-            expr = values_cat[key]
-            try:
-                output_values[key] = self.eval(expr)
-            except (RuntimeError, SyntaxError, ValueError, NameError, AttributeError) as exc:
-                self.log.warning("collect(): failed to evaluate %r: %s", expr, exc)
-                output_values[key] = None
-
-        explicit_x = next(
-            (key for key in keys if self.collect_output_roles.get(key) == "x"),
-            None,
-        )
+        keys = self._resolve_collect_keys(values_cat, outputs)
+        output_values = self._evaluate_collect_outputs(values_cat, keys)
+        explicit_x = next((key for key in keys if self.collect_output_roles.get(key) == "x"), None)
         row: dict[str, Any] = {"iteration": self.ix, "stage": self.stage}
         if explicit_x is None:
             x_value = self.value
@@ -404,6 +387,36 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
         new_row = pd.DataFrame([row], index=pd.Index([x_value], name="x"))
         frame = new_row if self._data.df.empty else pd.concat([self._data.df, new_row])
+        self._data = self._build_collected_trace(frame, explicit_x)
+
+    def _resolve_collect_keys(
+        self, values_cat: dict[str, str], outputs: list[str] | None
+    ) -> list[str]:
+        """Resolve requested output keys against the current values catalogue."""
+        if outputs is not None:
+            requested = outputs
+        elif self.collect_outputs is None:
+            return list(values_cat)
+        else:
+            requested = self.collect_outputs
+        return [key for key in requested if key in values_cat]
+
+    def _evaluate_collect_outputs(
+        self, values_cat: dict[str, str], keys: list[str]
+    ) -> dict[str, Any]:
+        """Evaluate selected catalogue expressions, retaining failed values as ``None``."""
+        output_values: dict[str, Any] = {}
+        for key in keys:
+            expr = values_cat[key]
+            try:
+                output_values[key] = self.eval(expr)
+            except (RuntimeError, SyntaxError, ValueError, NameError, AttributeError) as exc:
+                self.log.warning("collect(): failed to evaluate %r: %s", expr, exc)
+                output_values[key] = None
+        return output_values
+
+    def _build_collected_trace(self, frame: pd.DataFrame, explicit_x: str | None) -> TraceData:
+        """Build collected trace metadata around the accumulated data frame."""
         output_columns = [
             column for column in frame.columns if column not in {"iteration", "stage", "state"}
         ]
@@ -429,7 +442,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         names.update({column: str(column) for column in output_columns})
         units = {key: "" for key in names}
         units["state" if explicit_x is not None else "x"] = self.units
-        self._data = TraceData(frame, column_roles=roles, names=names, units=units)
+        return TraceData(frame, column_roles=roles, names=names, units=units)
 
     def inferred_output_roles(self, outputs: list[str]) -> dict[str, str]:
         """Return the automatic roles used when all catalogue outputs are selected.

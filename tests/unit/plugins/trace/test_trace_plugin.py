@@ -231,8 +231,6 @@ class TestTracePlugin:
         assert p.status is TraceStatus.IDLE
 
     def test_measure_returns_channel_x_y_triples(self, qapp):
-        import numpy as np
-
         p = _SimpleTrace()
         result = p.measure({"n": 3})
         assert isinstance(result, dict)

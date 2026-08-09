@@ -10,6 +10,7 @@ behaviour:
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -153,61 +154,24 @@ class TraceChannelSelectionMixin:
         on_change: Any | None = None,
     ) -> None:
         """Connect widget signals so plugin selection attributes stay in sync."""
-
-        def _trigger_change() -> None:
-            if callable(on_change):
-                on_change()
-
-        def _apply_trace(text: str) -> None:
-            if text != "(no traces available)":
-                self.trace_key = text
-                columns = self._get_trace_columns(self.trace_key)
-                if show_column_selector and ws["column_combo"] is not None:
-                    ws["column_combo"].blockSignals(True)
-                    self._populate_column_combo(ws["column_combo"], self.trace_key)
-                    if self.column_key not in columns:
-                        self.column_key = ""
-                        ws["column_combo"].setCurrentText(_DEFAULT_COLUMN_OPTION)
-                    ws["column_combo"].blockSignals(False)
-            _trigger_change()
-
-        def _apply_column(text: str) -> None:
-            if text != _DEFAULT_COLUMN_OPTION:
-                self.column_key = text
-            else:
-                self.column_key = ""
-            _trigger_change()
-
-        def _apply_advanced(checked: bool) -> None:
-            self.advanced_mode = checked
-            _trigger_change()
-
-        def _apply_x(text: str) -> None:
-            if text != "(no channels available)":
-                self.x_expr = ws["channel_items"].get(text, self.x_expr)
-            _trigger_change()
-
-        def _apply_y(text: str) -> None:
-            if text != "(no channels available)":
-                self.y_expr = ws["channel_items"].get(text, self.y_expr)
-            _trigger_change()
-
-        ws["trace_combo"].currentTextChanged.connect(_apply_trace)
+        ws["trace_combo"].currentTextChanged.connect(
+            partial(self._apply_trace_source, ws, show_column_selector, on_change)
+        )
         if show_column_selector and ws["column_combo"] is not None:
-            ws["column_combo"].currentTextChanged.connect(_apply_column)
-        ws["advanced_check"].toggled.connect(_apply_advanced)
-        ws["x_combo"].currentTextChanged.connect(_apply_x)
-        ws["y_combo"].currentTextChanged.connect(_apply_y)
+            ws["column_combo"].currentTextChanged.connect(
+                partial(self._apply_column_source, on_change)
+            )
+        ws["advanced_check"].toggled.connect(partial(self._apply_advanced_source, on_change))
+        ws["x_combo"].currentTextChanged.connect(
+            partial(self._apply_channel_source, "x_expr", ws["channel_items"], on_change)
+        )
+        ws["y_combo"].currentTextChanged.connect(
+            partial(self._apply_channel_source, "y_expr", ws["channel_items"], on_change)
+        )
 
-        def _update_enabled(advanced: bool) -> None:
-            ws["trace_combo"].setEnabled(not advanced)
-            if show_column_selector and ws["column_combo"] is not None:
-                ws["column_combo"].setEnabled(not advanced)
-            ws["x_combo"].setEnabled(advanced)
-            ws["y_combo"].setEnabled(advanced)
-
-        _update_enabled(self.advanced_mode)
-        ws["advanced_check"].toggled.connect(_update_enabled)
+        update_enabled = partial(self._update_data_source_enabled, ws, show_column_selector)
+        update_enabled(self.advanced_mode)
+        ws["advanced_check"].toggled.connect(update_enabled)
         bind_trace_catalog_updates(
             self,
             ws["trace_combo"],
@@ -219,6 +183,66 @@ class TraceChannelSelectionMixin:
                 prefer_y_channel=True,
             ),
         )
+
+    @staticmethod
+    def _trigger_data_source_change(on_change: Any | None) -> None:
+        """Notify a data-source configuration listener when one is present."""
+        if callable(on_change):
+            on_change()
+
+    def _apply_trace_source(
+        self,
+        ws: dict[str, Any],
+        show_column_selector: bool,
+        on_change: Any | None,
+        text: str,
+    ) -> None:
+        """Apply a trace selection and refresh its available columns."""
+        if text != "(no traces available)":
+            self.trace_key = text
+            columns = self._get_trace_columns(text)
+            column_combo = ws["column_combo"]
+            if show_column_selector and column_combo is not None:
+                column_combo.blockSignals(True)
+                self._populate_column_combo(column_combo, text)
+                if self.column_key not in columns:
+                    self.column_key = ""
+                    column_combo.setCurrentText(_DEFAULT_COLUMN_OPTION)
+                column_combo.blockSignals(False)
+        self._trigger_data_source_change(on_change)
+
+    def _apply_column_source(self, on_change: Any | None, text: str) -> None:
+        """Apply a selected trace column."""
+        self.column_key = "" if text == _DEFAULT_COLUMN_OPTION else text
+        self._trigger_data_source_change(on_change)
+
+    def _apply_advanced_source(self, on_change: Any | None, checked: bool) -> None:
+        """Apply the advanced-mode selection."""
+        self.advanced_mode = checked
+        self._trigger_data_source_change(on_change)
+
+    def _apply_channel_source(
+        self,
+        attribute: str,
+        channel_items: dict[str, str],
+        on_change: Any | None,
+        text: str,
+    ) -> None:
+        """Apply an x or y channel expression selected by its display name."""
+        if text != "(no channels available)":
+            setattr(self, attribute, channel_items.get(text, getattr(self, attribute)))
+        self._trigger_data_source_change(on_change)
+
+    @staticmethod
+    def _update_data_source_enabled(
+        ws: dict[str, Any], show_column_selector: bool, advanced: bool
+    ) -> None:
+        """Enable only the widgets relevant to the selected data-source mode."""
+        ws["trace_combo"].setEnabled(not advanced)
+        if show_column_selector and ws["column_combo"] is not None:
+            ws["column_combo"].setEnabled(not advanced)
+        ws["x_combo"].setEnabled(advanced)
+        ws["y_combo"].setEnabled(advanced)
 
     def _get_selected_data_arrays(
         self,

@@ -64,6 +64,17 @@ _LINE_STYLE_OPTIONS = ("solid", "dash", "dot", "dash-dot", "none")
 #: Valid point-style names accepted by the plot widget.
 _POINT_STYLE_OPTIONS = ("none", "circle", "square", "triangle", "diamond", "plus", "cross")
 
+_PLOT_SIGNAL_BINDINGS = (
+    ("plot_trace", "set_trace"),
+    ("plot_trace_with_errors", "set_trace_with_errors"),
+    ("plot_axis_labels", "set_default_axis_labels"),
+    ("plot_trace_axes", "assign_trace_axes"),
+    ("plot_update_queued", "mark_data_update_queued"),
+    ("plot_ensure_x_axis", "ensure_x_axis"),
+    ("plot_ensure_y_axis", "ensure_y_axis"),
+    ("plot_trace_style", "set_trace_style_from_dict"),
+)
+
 
 def _format_axis_label(name: str, unit: str) -> str:
     """Build an axis label string from a name and unit.
@@ -310,66 +321,28 @@ class PlotTraceCommand(CommandPlugin):
             engine (SequenceEngine | None):
                 New owning engine, or ``None`` to detach.
         """
-        # Disconnect from the old engine's plot widget.
-        if self._sequence_engine_ref is not None:
-            old_pw = getattr(self._sequence_engine_ref, "plot_widget", None)
-            if old_pw is not None:
-                old_set_trace = getattr(old_pw, "set_trace", None)
-                if old_set_trace is not None:
-                    _safe_disconnect(self.plot_trace, old_set_trace)
-                old_set_trace_err = getattr(old_pw, "set_trace_with_errors", None)
-                if old_set_trace_err is not None:
-                    _safe_disconnect(self.plot_trace_with_errors, old_set_trace_err)
-                old_set_labels = getattr(old_pw, "set_default_axis_labels", None)
-                if old_set_labels is not None:
-                    _safe_disconnect(self.plot_axis_labels, old_set_labels)
-                old_assign_axes = getattr(old_pw, "assign_trace_axes", None)
-                if old_assign_axes is not None:
-                    _safe_disconnect(self.plot_trace_axes, old_assign_axes)
-                old_mark_queued = getattr(old_pw, "mark_data_update_queued", None)
-                if old_mark_queued is not None:
-                    _safe_disconnect(self.plot_update_queued, old_mark_queued)
-                old_ensure_x_axis = getattr(old_pw, "ensure_x_axis", None)
-                if old_ensure_x_axis is not None:
-                    _safe_disconnect(self.plot_ensure_x_axis, old_ensure_x_axis)
-                old_ensure_y_axis = getattr(old_pw, "ensure_y_axis", None)
-                if old_ensure_y_axis is not None:
-                    _safe_disconnect(self.plot_ensure_y_axis, old_ensure_y_axis)
-                old_set_style = getattr(old_pw, "set_trace_style_from_dict", None)
-                if old_set_style is not None:
-                    _safe_disconnect(self.plot_trace_style, old_set_style)
+        old_plot_widget = getattr(self._sequence_engine_ref, "plot_widget", None)
+        if old_plot_widget is not None:
+            self._set_plot_widget_connections(old_plot_widget, connect=False)
 
         self._sequence_engine_ref = engine
 
-        # Connect to the new engine's plot widget.
-        if engine is not None:
-            new_pw = getattr(engine, "plot_widget", None)
-            if new_pw is not None:
-                new_set_trace = getattr(new_pw, "set_trace", None)
-                if new_set_trace is not None:
-                    self.plot_trace.connect(new_set_trace)
-                new_set_trace_err = getattr(new_pw, "set_trace_with_errors", None)
-                if new_set_trace_err is not None:
-                    self.plot_trace_with_errors.connect(new_set_trace_err)
-                new_set_labels = getattr(new_pw, "set_default_axis_labels", None)
-                if new_set_labels is not None:
-                    self.plot_axis_labels.connect(new_set_labels)
-                new_assign_axes = getattr(new_pw, "assign_trace_axes", None)
-                if new_assign_axes is not None:
-                    self.plot_trace_axes.connect(new_assign_axes)
-                new_mark_queued = getattr(new_pw, "mark_data_update_queued", None)
-                if new_mark_queued is not None:
-                    self.plot_update_queued.connect(new_mark_queued)
-                new_ensure_x_axis = getattr(new_pw, "ensure_x_axis", None)
-                if new_ensure_x_axis is not None:
-                    self.plot_ensure_x_axis.connect(new_ensure_x_axis)
-                new_ensure_y_axis = getattr(new_pw, "ensure_y_axis", None)
-                if new_ensure_y_axis is not None:
-                    self.plot_ensure_y_axis.connect(new_ensure_y_axis)
-                new_set_style = getattr(new_pw, "set_trace_style_from_dict", None)
-                if new_set_style is not None:
-                    self.plot_trace_style.connect(new_set_style)
-                self._ensure_configured_axes_exist(new_pw)
+        new_plot_widget = getattr(engine, "plot_widget", None)
+        if new_plot_widget is not None:
+            self._set_plot_widget_connections(new_plot_widget, connect=True)
+            self._ensure_configured_axes_exist(new_plot_widget)
+
+    def _set_plot_widget_connections(self, plot_widget: Any, *, connect: bool) -> None:
+        """Connect or disconnect every plot signal supported by *plot_widget*."""
+        for signal_name, slot_name in _PLOT_SIGNAL_BINDINGS:
+            slot = getattr(plot_widget, slot_name, None)
+            if slot is None:
+                continue
+            signal = getattr(self, signal_name)
+            if connect:
+                signal.connect(slot)
+            else:
+                _safe_disconnect(signal, slot)
 
     @property
     def name(self) -> str:

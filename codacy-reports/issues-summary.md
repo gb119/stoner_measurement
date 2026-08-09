@@ -2,7 +2,7 @@
 
 Repository: `gh/gb119/stoner_measurement`
 Branch: `main`
-Analyzed commit: `7dbb0426b502ff28e1dcfaa4918ee26c987dfaf5`
+Analyzed commit: `81367a75586d6c6084fa522e080bd42d0364a417`
 Downloaded: 2026-08-09
 
 ## Refresh Status
@@ -10,53 +10,96 @@ Downloaded: 2026-08-09
 - Codacy authentication succeeded.
 - `HEAD` and `origin/main` matched the analyzed commit when refreshed.
 - The issue list was downloaded with `--branch main --limit 1000`.
-- `codacy-reports/issues.json` is the authoritative raw snapshot.
-- `codacy-reports/issues.csv` was regenerated from the same 35 issues.
+- `codacy-reports/issues.json` is the authoritative 31-issue raw snapshot.
+- `codacy-reports/issues.csv` was regenerated from the same snapshot.
 
 ## Snapshot Totals
 
-- Total: **35** (previously 57; down 22)
-- `Error`: **0** (previously 1)
-- `High`: **0** (previously 2)
-- `Warning`: **32** (previously 34)
-- `Info`: **3** (previously 20)
+- Total: **31** (previously 35; net reduction of 4)
+- `Error`: **0**
+- `High`: **0**
+- `Warning`: **30** (previously 32)
+- `Info`: **1** (previously 3)
 
-## Category Split
+## Category and Pattern Split
 
-- `Complexity`: 27
-- `BestPractice`: 5
-- `CodeStyle`: 3
+- `Complexity` / `Prospector_mccabe`: 25
+- `BestPractice`:
+  - `Semgrep_codacy.python.i18n.no-hardcoded-strftime`: 4
+  - `Agentlinter_structure_modular-files`: 1
+- `CodeStyle` / `PyLintPython3_W0404`: 1
 
-All Security, ErrorProne, and UnusedCode findings cleared. The Pylint/Bandit
-false-positive markers were recognized, as were the genuine style and
-unused-code fixes.
+## Exact Delta From The 35-Issue Snapshot
 
-## Current Pattern Split
+Codacy retired eight previous result IDs and created four new result IDs.
 
-- `Prospector_mccabe`: 27
-- `Semgrep_codacy.python.i18n.no-hardcoded-strftime`: 4
-- `PyLintPython3_W0404`: 3
-- `Agentlinter_structure_modular-files`: 1
+Cleared:
 
-## Changes Since This Snapshot
+- 2 plot-points complexity findings:
+  - `PlotPointsCommand.sequence_engine`: previous complexity 17
+  - `PlotPointsCommand._build_y_series_section`: previous complexity 35
+- 2 redundant imports:
+  - `tests/test_magnet_control.py`: `MagnetLimits`
+  - `tests/unit/plugins/trace/test_trace_plugin.py`: `pandas`
+- 4 previous timestamp result IDs at their old line numbers.
 
-The three remaining `W0404` findings were confirmed as redundant imports and
-removed locally after the download:
+New IDs:
 
-- `tests/test_magnet_control.py`: duplicate `MagnetLimits`
-- `tests/unit/plugins/trace/test_trace_plugin.py`: duplicate `numpy`
-- `tests/unit/plugins/trace/test_trace_plugin.py`: duplicate `pandas`
+- 4 `no-hardcoded-strftime` results at the same four configuration backup
+  statements, shifted down one line by their explanatory comments.
 
-The four timestamp lines already had Semgrep markers, but the rule ID was
-followed by prose on the same directive. They now use an exact
-`# nosemgrep: semgrep_codacy.python.i18n.no-hardcoded-strftime` directive with
-the rationale on the preceding line. This should give Codacy an unambiguous
-rule-specific suppression on the next analysis.
+These four are regenerated copies of the previous false-positive rule/file
+pairs, not four new code defects. The rule-specific `nosemgrep` identifiers
+were not recognised by Codacy. A plain line-scoped `# nosemgrep`, with the
+rationale retained on the preceding line, is the next suppression attempt.
 
-`AGENTS.md` is 107 lines and contains one cohesive repository instruction set.
-The Agentlinter modular-file finding is a low-priority advisory rather than a
-runtime or maintenance defect; no source suppression has been added without a
-documented Agentlinter suppression mechanism.
+The remaining `W0404` is another local `numpy` import in
+`tests/unit/plugins/trace/test_trace_plugin.py`. Its Codacy result ID persisted
+while the reported line moved from the removed duplicate at line 186 to the
+still-present duplicate now at line 234. Remove that import mechanically.
+
+## Pending Working Tranche
+
+The following changes have been completed locally but are not part of the
+downloaded 31-issue snapshot yet:
+
+- replaced all four rule-specific timestamp directives with plain,
+  line-scoped `# nosemgrep` markers;
+- removed the remaining redundant local `numpy` import;
+- reduced `PlotTraceCommand.sequence_engine` below the McCabe threshold;
+- reduced the four small production helpers below the McCabe threshold:
+  - `TraceChannelSelectionMixin._wire_data_source_widgets`;
+  - `PressureControllerEngine._build_state`;
+  - `StatePlugin.collect`;
+  - `_IPythonConsoleWidget._shutdown_kernel`.
+
+If Codacy accepts the four plain suppressions and introduces no replacement
+findings, the next snapshot should contain 21 issues: 20 complexity findings
+and the single Agentlinter advisory.
+
+## Priorities After Reanalysis
+
+### P1: shared or visual UI construction
+
+- `plugins/base_plugin.py::_general_config_widget` (22)
+- `ui/plot_widget.py::axis_changes` (22)
+- `ui/plot_widget.py::_open_axes_dialog` (23)
+- `ui/widgets/round_dial.py::_preferred_label_values` (17)
+
+These have wider UI impact and need concrete widget/interaction regression
+checks, so they follow the narrower production helpers.
+
+### P2: hardware trace-plugin complexity
+
+The Keithley trace configuration methods range from 17 to 36. Refactor them
+only one method at a time, preserving configuration, restoration, trigger,
+and hardware-protocol boundaries. Unit tests cannot replace live instrument
+validation for timing behaviour.
+
+### P3: test-only complexity
+
+The eight test/helper McCabe findings are lowest priority unless they impede
+maintenance or conceal duplicated setup. They do not affect runtime behaviour.
 
 ## Import Policy
 
@@ -67,29 +110,3 @@ documented Agentlinter suppression mechanism.
 - Retain function-local imports only for demonstrated cycles, optional
   dependencies, or deliberate test import-state behaviour.
 - Profile import cost before adopting Python 3.15 explicit lazy imports.
-
-## Plot-Points Complexity Tranche
-
-Completed locally after this snapshot:
-
-- `PlotPointsCommand._build_y_series_section`: McCabe **35 -> 2**.
-- `PlotPointsCommand.sequence_engine`: McCabe **17 -> 3**.
-- Signal wiring now uses one declarative binding table and a shared
-  connect/disconnect helper.
-- The Y-series editor now separates widget creation, layout, signal binding,
-  and configuration updates into focused helpers; no extracted function has
-  McCabe complexity above 6.
-- Added behaviour-level interaction coverage for editing every Y-series field
-  and rebuilding the grid after add/remove operations.
-
-Verification:
-
-- Ruff check and format check passed.
-- Targeted Pylint complexity/error checks: 10.00/10.
-- Focused plot-points tests: 38 passed.
-- Full command-plugin tests: 286 passed, 1 optional-path test skipped.
-
-Together with the local reimport and Semgrep changes, a successful Codacy
-reanalysis should remove nine findings from the 35-issue raw snapshot without
-introducing a replacement complexity hotspot. Refresh Codacy before selecting
-the next complexity target.

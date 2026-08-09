@@ -461,40 +461,63 @@ QToolTip {{
         #   RuntimeError: wrapped C/C++ object of type QTextEdit has been deleted
         # Setting kernel_client to None on the widget disconnects _dispatch and
         # all other channel slots so queued events are silently discarded.
+        console = self._console_for_shutdown()
+        if console is not None:
+            self._disconnect_console_kernel(console)
+        self._stop_kernel_client(kernel_client)
         try:
-            console = self._console
+            self._stop_kernel_manager(kernel_manager)
+        finally:
+            self._kernel_client = None
+            self._kernel_manager = None
+
+    def _console_for_shutdown(self):
+        """Return the embedded console unless its Qt wrapper was never initialised."""
+        try:
+            return self._console
         except AttributeError:
-            console = None
+            return None
         except RuntimeError as exc:
             if not _is_uninitialised_qt_wrapper_error(exc):
                 raise
-            console = None
-        if console is not None:
-            try:
-                console.kernel_client = None
-            except TypeError:
-                # qtconsole raises when its channel slots were already
-                # disconnected by an overlapping channel shutdown.
-                logger.debug("Console kernel client signals were already disconnected")
-            except RuntimeError as exc:
-                if not _is_deleted_qt_wrapper_error(exc):
-                    raise
-                logger.debug("Console widget was already deleted when disconnecting kernel client during shutdown.", exc_info=True)
+            return None
+
+    @staticmethod
+    def _disconnect_console_kernel(console) -> None:
+        """Disconnect queued console slots from the kernel client."""
+        try:
+            console.kernel_client = None
+        except TypeError:
+            # qtconsole raises when its channel slots were already disconnected
+            # by an overlapping channel shutdown.
+            logger.debug("Console kernel client signals were already disconnected")
+        except RuntimeError as exc:
+            if not _is_deleted_qt_wrapper_error(exc):
+                raise
+            logger.debug(
+                "Console widget was already deleted when disconnecting kernel client during shutdown.",
+                exc_info=True,
+            )
+
+    @staticmethod
+    def _stop_kernel_client(kernel_client) -> None:
+        """Stop client channels unless Qt has already deleted the wrapper."""
         try:
             kernel_client.stop_channels()
         except RuntimeError as exc:
             if not _is_deleted_qt_wrapper_error(exc):
                 raise
             logger.debug("QtConsole kernel client was already deleted during shutdown")
+
+    @staticmethod
+    def _stop_kernel_manager(kernel_manager) -> None:
+        """Stop the kernel unless Qt has already deleted the manager wrapper."""
         try:
             kernel_manager.shutdown_kernel()
         except RuntimeError as exc:
             if not _is_deleted_qt_wrapper_error(exc):
                 raise
             logger.debug("QtConsole kernel manager was already deleted during shutdown")
-        finally:
-            self._kernel_client = None
-            self._kernel_manager = None
 
     def __del__(self) -> None:
         """Ensure in-process kernel channels are stopped on garbage collection."""

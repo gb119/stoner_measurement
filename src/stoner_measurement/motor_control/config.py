@@ -35,7 +35,7 @@ def save_motor_controller_config(config: dict[str, Any]) -> Path:
 
     if path.exists():
         # This stable UTC machine filename is deliberately not locale-formatted.
-        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")  # nosemgrep: semgrep_codacy.python.i18n.no-hardcoded-strftime
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")  # nosemgrep
         backup = path.with_name(f"{path.stem}.{timestamp}{path.suffix}")
         path.replace(backup)
 
