@@ -13,6 +13,12 @@ APP_CONFIG_FILENAME = "application.yaml"
 
 KEY_DEFAULT_DATA_DIR = "app/default_data_directory"
 KEY_THEME = "app/theme"
+KEY_FONT_SIZE = "app/font_size"
+KEY_EDITOR_FONT_SIZE = "app/editor_font_size"
+KEY_CONSOLE_FONT_SIZE = "app/console_font_size"
+DEFAULT_FONT_SIZE = 10
+DEFAULT_EDITOR_FONT_SIZE = 10
+DEFAULT_CONSOLE_FONT_SIZE = 9
 
 FEATURE_DEFINITIONS: tuple[dict[str, str], ...] = (
     {"key": "temperature", "label": "Temperature", "config_key": "features/temperature"},
@@ -29,6 +35,9 @@ DEFAULT_APP_CONFIG: dict[str, Any] = {
     "app": {
         "default_data_directory": "C:/Data/",
         "theme": DEFAULT_THEME,
+        "font_size": DEFAULT_FONT_SIZE,
+        "editor_font_size": DEFAULT_EDITOR_FONT_SIZE,
+        "console_font_size": DEFAULT_CONSOLE_FONT_SIZE,
     },
     "features": {
         entry["key"]: True for entry in FEATURE_DEFINITIONS
@@ -97,6 +106,39 @@ def theme_setting(*, config: dict[str, Any] | None = None) -> str:
     """Return the configured theme name."""
     value = str(get_app_config_value(KEY_THEME, DEFAULT_THEME, config=config) or "").strip().lower()
     return value or DEFAULT_THEME
+
+
+def _font_size_setting(
+    key: str,
+    default: int,
+    *,
+    config: dict[str, Any] | None = None,
+) -> int:
+    value = get_app_config_value(key, default, config=config)
+    try:
+        point_size = int(value)
+    except (TypeError, ValueError):
+        point_size = default
+    return max(6, min(48, point_size))
+
+
+def font_size_setting(*, config: dict[str, Any] | None = None) -> int:
+    """Return the configured application UI font size in points."""
+    return _font_size_setting(KEY_FONT_SIZE, DEFAULT_FONT_SIZE, config=config)
+
+
+def editor_font_size_setting(*, config: dict[str, Any] | None = None) -> int:
+    """Return the configured code-editor font size in points."""
+    return _font_size_setting(
+        KEY_EDITOR_FONT_SIZE, DEFAULT_EDITOR_FONT_SIZE, config=config
+    )
+
+
+def console_font_size_setting(*, config: dict[str, Any] | None = None) -> int:
+    """Return the configured console font size in points."""
+    return _font_size_setting(
+        KEY_CONSOLE_FONT_SIZE, DEFAULT_CONSOLE_FONT_SIZE, config=config
+    )
 
 
 def feature_enabled(feature: str, *, config: dict[str, Any] | None = None) -> bool:

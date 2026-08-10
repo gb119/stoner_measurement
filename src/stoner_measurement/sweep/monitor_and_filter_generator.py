@@ -28,6 +28,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.sweep.base import BaseSweepGenerator
+from stoner_measurement.ui.aspect_ratio_widget import set_table_visible_row_count
 from stoner_measurement.ui.widgets import SISpinBox
 
 _DEFAULT_POLL_SECONDS = 0.05
@@ -343,6 +344,7 @@ class MonitorAndFilterSweepWidget(QWidget):
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        set_table_visible_row_count(self._table, 6)
         root.addWidget(self._table)
 
         controls = QHBoxLayout()
@@ -356,6 +358,7 @@ class MonitorAndFilterSweepWidget(QWidget):
         root.addLayout(controls)
 
         root.addWidget(QLabel("Measure flag is set by threshold crossing or timeout.", self))
+        root.addStretch(1)
 
     def _available_catalogue_keys(self) -> list[str]:
         plugin = self._generator.state_sweep

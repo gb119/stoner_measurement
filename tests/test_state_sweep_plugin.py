@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator
 
+import pytest
 from qtpy.QtWidgets import QWidget
 
 import stoner_measurement.ui.generator_json as generator_json_module
@@ -149,7 +150,7 @@ class TestStateSweepPlugin:
         assert plugin.data.df.empty
 
     def test_sweep_config_has_output_catalogue_table(self, qapp):
-        from qtpy.QtWidgets import QCheckBox, QComboBox, QTableWidget
+        from qtpy.QtWidgets import QCheckBox, QComboBox, QPushButton, QTableWidget
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
         engine = SequenceEngine()
@@ -159,8 +160,8 @@ class TestStateSweepPlugin:
         engine.add_plugin("counter", counter)
         engine.update_step_plugin_catalog([plugin, counter])
         tabs = plugin.config_tabs()
-        sweep_page = tabs[0][1]
-        table = sweep_page.findChild(QTableWidget, "stateOutputSelectionTable")
+        data_page = tabs[1][1]
+        table = data_page.findChild(QTableWidget, "stateOutputSelectionTable")
         assert table is not None
         value_row = next(
             row
@@ -174,7 +175,7 @@ class TestStateSweepPlugin:
         select_all_checkbox = next(
             (
                 check
-                for check in sweep_page.findChildren(QCheckBox)
+                for check in data_page.findChildren(QCheckBox)
                 if check.text() == "Use all catalogue outputs"
             ),
             None,
@@ -183,6 +184,15 @@ class TestStateSweepPlugin:
         assert role_combo.currentText() == "y"
         assert select_all_checkbox is not None
         assert select_all_checkbox.isChecked()
+        data_page.resize(900, 1800)
+        data_page.show()
+        qapp.processEvents()
+        refresh_button = next(
+            button
+            for button in data_page.findChildren(QPushButton)
+            if button.text() == "Refresh output list"
+        )
+        assert table.y() - (refresh_button.y() + refresh_button.height()) < 50
         value_checkbox.setChecked(False)
         assert not select_all_checkbox.isChecked()
         assert plugin.collect_outputs is not None
@@ -459,6 +469,33 @@ class TestSweepGenerators:
         assert stages == {0, 1}
         assert points[0][3] is True
 
+    def test_multisegment_ramp_can_start_from_current_value(self, qapp):
+        plugin = _TrackingRampSweep()
+        plugin._state_value = 0.4
+        plugin._target = 0.4
+        plugin.start_from_current_value = True
+        start_commands: list[float] = []
+        original_set_state = plugin.set_state
+
+        def _record_set_state(value: float) -> None:
+            start_commands.append(value)
+            original_set_state(value)
+
+        plugin.set_state = _record_set_state
+        gen = MultiSegmentRampSweepGenerator(
+            start=0.0,
+            segments=[(1.0, 0.2, False)],
+            poll_seconds=0.0,
+            state_sweep=plugin,
+        )
+
+        first_point = next(gen)
+
+        assert start_commands == []
+        assert first_point[0] == 0
+        assert first_point[1] == pytest.approx(0.6)
+        assert first_point[2:] == (0, False)
+
     def test_multisegment_widget_current_marker_tracks_generator(self, qapp):
         plugin = _TrackingRampSweep()
         gen = MultiSegmentRampSweepGenerator(
@@ -600,6 +637,30 @@ class TestSweepGenerators:
 
         gen = MonitorAndFilterSweepGenerator()
         assert math.isinf(gen.estimated_duration())
+
+    def test_monitor_and_filter_table_shows_six_rows_before_scrolling(self, qapp):
+        from qtpy.QtWidgets import QLabel
+
+        rows = [(f"parameter_{index}", False, 1.0) for index in range(7)]
+        widget = MonitorAndFilterSweepGenerator(rows=rows).config_widget()
+        expected_height = (
+            widget._table.horizontalHeader().height()
+            + 6 * widget._table.verticalHeader().defaultSectionSize()
+            + 2 * widget._table.frameWidth()
+        )
+
+        widget.resize(900, 1200)
+        widget.show()
+        qapp.processEvents()
+
+        assert widget._table.height() == expected_height
+        assert widget._table.verticalScrollBar().isVisible()
+        note = next(
+            label
+            for label in widget.findChildren(QLabel)
+            if label.text() == "Measure flag is set by threshold crossing or timeout."
+        )
+        assert note.y() + note.height() < widget.height() / 2
 
     def test_sweep_timeout_scales_with_factor(self, qapp):
         plugin = _TrackingRampSweep()

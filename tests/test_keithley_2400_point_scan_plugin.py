@@ -206,7 +206,7 @@ class TestConfigUi:
         """Settings should expose nested Basic/Advanced tabs matching the trace plugin layout."""
         plugin = _make_plugin()
         tabs = plugin.config_tabs()
-        settings_widget = tabs[1][1]
+        settings_widget = tabs[2][1]
         qtbot.addWidget(settings_widget)
 
         nested_tabs = settings_widget.findChildren(QTabWidget)

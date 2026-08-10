@@ -419,6 +419,13 @@ def apply_theme(app: QApplication, theme: str = DEFAULT_THEME) -> None:
     app.setStyleSheet(theme_stylesheet())
 
 
+def apply_application_font(app: QApplication, point_size: int) -> None:
+    """Set the font inherited by ordinary application widgets."""
+    font = app.font()
+    font.setPointSize(max(6, min(48, int(point_size))))
+    app.setFont(font)
+
+
 def apply_dark_theme(app: QApplication) -> None:
     """Apply the application's dark theme."""
     apply_theme(app, "dark")

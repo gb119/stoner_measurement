@@ -84,6 +84,26 @@ class TestStateControlPlugin:
         assert "Ramp Scan Generator" in labels
         assert "Arbitrary Function Scan Generator" in labels
 
+    def test_stepped_scan_can_start_from_current_value(self, qapp):
+        from stoner_measurement.scan import SteppedScanGenerator
+
+        p = _InstantState()
+        p.set_state(0.25)
+        p.start_from_current_value = True
+        p.scan_generator = SteppedScanGenerator(
+            start=0.0,
+            stages=[(1.0, 0.25, False), (2.0, 0.5, True)],
+            parent=p,
+        )
+
+        points = list(p.scan_points())
+
+        assert [point[1] for point in points] == pytest.approx(
+            [0.25, 0.5, 0.75, 1.0, 1.5, 2.0]
+        )
+        assert [point[2] for point in points] == [False] * 4 + [True] * 2
+        assert p.scan_generator.start == 0.0
+
     def test_is_at_target(self, qapp):
         assert _InstantState().is_at_target() is True
 

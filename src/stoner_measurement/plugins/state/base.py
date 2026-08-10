@@ -133,6 +133,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.stage: int = 0
         self._collect_data: bool = False
         self.clear_on_start: bool = True
+        self.start_from_current_value: bool = False
         self.collect_filter: str = f"{self.instance_name}.meas_flag"
         self.clear_filter: str = "True"
         self.collect_outputs: list[str] | None = None
@@ -488,6 +489,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         data = super().to_json()
         data["collect_data"] = self.collect_data
         data["clear_on_start"] = self.clear_on_start
+        data["start_from_current_value"] = self.start_from_current_value
         data["collect_filter"] = self.collect_filter
         data["clear_filter"] = self.clear_filter
         data["collect_outputs"] = None if self.collect_outputs is None else list(self.collect_outputs)
@@ -510,6 +512,8 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             self.collect_data = bool(data["collect_data"])
         if "clear_on_start" in data:
             self.clear_on_start = bool(data["clear_on_start"])
+        if "start_from_current_value" in data:
+            self.start_from_current_value = bool(data["start_from_current_value"])
         if "collect_filter" in data:
             self.collect_filter = str(data["collect_filter"])
         if "clear_filter" in data:

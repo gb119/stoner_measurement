@@ -19,7 +19,12 @@ from qtpy.QtWidgets import (
     QToolBar,
 )
 
-from stoner_measurement.app_config import default_data_directory, load_app_config, theme_setting
+from stoner_measurement.app_config import (
+    default_data_directory,
+    font_size_setting,
+    load_app_config,
+    theme_setting,
+)
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.resources import (
@@ -44,7 +49,12 @@ from stoner_measurement.ui.icons import (
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
 from stoner_measurement.ui.settings_dialog import SettingsDialog
-from stoner_measurement.ui.theme import colour, status_bar_stylesheet, theme_name
+from stoner_measurement.ui.theme import (
+    apply_application_font,
+    colour,
+    status_bar_stylesheet,
+    theme_name,
+)
 from stoner_measurement.ui.value_watch import ValueWatchWindow
 
 logger = logging.getLogger(__name__)
@@ -265,6 +275,9 @@ class MeasurementApp(QMainWindow):
 
     def _apply_app_config(self) -> None:
         """Apply the current application config to plugin visibility and UI affordances."""
+        app = QApplication.instance()
+        if app is not None:
+            apply_application_font(app, font_size_setting(config=self._app_config))
         self._plugin_manager.set_plugin_filter(self._plugin_is_visible)
         any_engine_visible = False
         for feature, entry in self._feature_ui.items():
@@ -795,21 +808,27 @@ class MeasurementApp(QMainWindow):
         toolbar.setObjectName("mainToolbar")
         toolbar.setIconSize(QSize(32, 32))
         toolbar.setMovable(False)
+        toolbar.setStyleSheet(
+            "QToolBar::separator {"
+            f" background-color: {colour('border_subtle')};"
+            " width: 3px;"
+            " margin: 8px 10px;"
+            "}"
+        )
         self.addToolBar(toolbar)
 
         toolbar.addAction(self._act_new)
-        toolbar.addSeparator()
         toolbar.addAction(self._act_open)
         toolbar.addAction(self._act_save)
         toolbar.addSeparator()
         toolbar.addAction(self._act_run)
         toolbar.addAction(self._act_pause)
         toolbar.addAction(self._act_stop)
-        toolbar.addSeparator()
         toolbar.addAction(self._act_generate)
         toolbar.addSeparator()
         toolbar.addAction(self._act_show_value_watch)
         toolbar.addAction(self._act_show_log)
+        toolbar.addSeparator()
         toolbar.addAction(self._act_show_temp_panel)
         toolbar.addAction(self._act_show_magnet_panel)
         toolbar.addAction(self._act_show_motor_panel)

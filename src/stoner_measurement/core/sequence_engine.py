@@ -141,6 +141,7 @@ class _QtLogHandler(logging.Handler):
 
     def __init__(self, parent: QObject | None = None, level: int = logging.DEBUG) -> None:
         logging.Handler.__init__(self, level)
+        self._qt_closed = False
         self._emitter = _QtLogEmitter(parent)
         self.record_emitted = self._emitter.record_emitted
         if parent is not None:
@@ -183,7 +184,15 @@ class _QtLogHandler(logging.Handler):
             pass
 
     def close(self) -> None:
-        """Close the handler; guard against RuntimeError if Qt object is already deleted."""
+        """Close the handler once, including during late Qt/Python finalization."""
+        if getattr(self, "_qt_closed", False):
+            return
+        # A QObject ``destroyed`` callback can run very late in interpreter
+        # shutdown, after logging.Handler's instance state has been cleared.
+        # There is nothing left for Handler.close() to unregister in that case.
+        if not hasattr(self, "_name"):
+            return
+        self._qt_closed = True
         try:
             super().close()
         except RuntimeError:

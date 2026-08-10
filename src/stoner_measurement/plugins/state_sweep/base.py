@@ -9,7 +9,7 @@ from collections.abc import Callable
 from typing import Any, ClassVar, SupportsInt
 
 import numpy as np
-from qtpy.QtCore import QObject
+from qtpy.QtCore import QObject, Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -44,6 +44,7 @@ class _StateSweepTabContainer(QWidget):
         self._plugin = plugin
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._content: QWidget | None = None
         self._refresh()
         plugin.sweep_generator_changed.connect(self._refresh)
@@ -60,11 +61,12 @@ class _StateSweepTabContainer(QWidget):
 
 
 class _StateSweepPage(QWidget):
-    """Combined configuration page for state-sweep plugins."""
+    """Sweep-generator configuration page for state-sweep plugins."""
 
     def __init__(self, plugin: StateSweepPlugin, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._build_header_section(plugin, layout)
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
@@ -72,7 +74,6 @@ class _StateSweepPage(QWidget):
         layout.addWidget(separator)
         sweep_container = _StateSweepTabContainer(plugin, parent=self)
         layout.addWidget(sweep_container)
-        self._build_data_collection_section(plugin, layout)
 
     def _build_header_section(self, plugin: StateSweepPlugin, layout: QVBoxLayout) -> None:
         """Build name/comment edits, the optional generator combo, and timeout factor."""
@@ -133,6 +134,17 @@ class _StateSweepPage(QWidget):
         )
         header_form.addRow("Timeout factor:", timeout_factor_spin)
 
+        start_from_current_check = QCheckBox()
+        start_from_current_check.setChecked(plugin.start_from_current_value)
+        start_from_current_check.setToolTip(
+            "For multi-segment ramps, skip the move to the configured start and "
+            "begin the first segment at the current measured state."
+        )
+        start_from_current_check.stateChanged.connect(
+            lambda state: setattr(plugin, "start_from_current_value", bool(state))
+        )
+        header_form.addRow("Start from current value:", start_from_current_check)
+
         header_widget = QWidget()
         header_widget.setLayout(header_form)
         layout.addWidget(header_widget)
@@ -163,12 +175,14 @@ class _StateSweepPage(QWidget):
         plugin.sweep_generator_changed.connect(_sync_type_combo)
         header_form.addRow("Generator type:", combo)
 
-    def _build_data_collection_section(self, plugin: StateSweepPlugin, layout: QVBoxLayout) -> None:
-        """Build data collection checkboxes, filter edits, and preceding separator."""
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(sep2)
+
+class _StateSweepDataPage(QWidget):
+    """Data-collection configuration page for a state-sweep plugin."""
+
+    def __init__(self, plugin: StateSweepPlugin, parent: QWidget | None = None) -> None:
+        """Initialise the data page and bind its controls to *plugin*."""
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
 
         data_form = QFormLayout()
 
@@ -212,7 +226,6 @@ class _StateSweepPage(QWidget):
         data_form.addRow("Clear filter:", clear_filter_edit)
         data_form.addRow("Collect all outputs:", select_all_outputs_check)
         data_form.addRow(refresh_outputs_button)
-        data_form.addRow("Collected outputs:", output_table)
 
         collect_check.stateChanged.connect(lambda state: setattr(plugin, "collect_data", bool(state)))
         clear_check.stateChanged.connect(lambda state: setattr(plugin, "clear_on_start", bool(state)))
@@ -227,9 +240,12 @@ class _StateSweepPage(QWidget):
         clear_filter_edit.editingFinished.connect(_apply_clear_filter)
         _sync_select_all(output_table.all_selected)
 
-        data_widget = QWidget()
-        data_widget.setLayout(data_form)
-        layout.addWidget(data_widget)
+        layout.addLayout(data_form)
+        output_form = QFormLayout()
+        output_form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        output_form.addRow("Collected outputs:", output_table)
+        layout.addLayout(output_form)
+        layout.addStretch(1)
 
 
 class StateSweepPlugin(StatePlugin):
@@ -463,6 +479,7 @@ class StateSweepPlugin(StatePlugin):
 
         tabs: list[tuple[str, QWidget]] = [
             (f"{self.name} \u2013 Sweep", _StateSweepPage(self)),
+            (f"{self.name} \u2013 Data", _StateSweepDataPage(self)),
         ]
 
         settings_widget: QWidget = self._plugin_config_tabs() or QWidget()

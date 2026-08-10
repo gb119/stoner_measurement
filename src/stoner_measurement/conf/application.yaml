@@ -1,6 +1,9 @@
 app:
   default_data_directory: "C:/Data/"
   theme: dark
+  font_size: 10
+  editor_font_size: 10
+  console_font_size: 9
 features:
   temperature: true
   magnetic_field: true

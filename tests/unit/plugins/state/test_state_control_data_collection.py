@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.state_control import StateControlPlugin
 
 
@@ -255,8 +256,16 @@ class TestStateControlDataCollection:
         assert restored.collect_outputs == ["counter:Value"]
         assert restored.collect_output_roles == {"counter:Value": "x"}
 
+    def test_start_from_current_value_round_trips(self, qapp):
+        p = _InstantState()
+        p.start_from_current_value = True
+
+        restored = BasePlugin.from_json(p.to_json())
+
+        assert restored.start_from_current_value is True
+
     def test_scan_config_has_output_catalogue_table(self, qapp):
-        from qtpy.QtWidgets import QCheckBox, QComboBox, QTableWidget
+        from qtpy.QtWidgets import QCheckBox, QComboBox, QPushButton, QTableWidget
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
         from stoner_measurement.plugins.state_control import CounterPlugin
@@ -268,8 +277,8 @@ class TestStateControlDataCollection:
         engine.add_plugin("counter", counter)
         engine.update_step_plugin_catalog([p, counter])
         tabs = p.config_tabs()
-        scan_page = tabs[0][1]
-        table = scan_page.findChild(QTableWidget, "stateOutputSelectionTable")
+        data_page = tabs[1][1]
+        table = data_page.findChild(QTableWidget, "stateOutputSelectionTable")
         assert table is not None
         value_row = next(row for row in range(table.rowCount()) if table.item(row, 1).text() == "counter:Value")
         value_checkbox = table.cellWidget(value_row, 0)
@@ -279,7 +288,7 @@ class TestStateControlDataCollection:
         select_all_checkbox = next(
             (
                 check
-                for check in scan_page.findChildren(QCheckBox)
+                for check in data_page.findChildren(QCheckBox)
                 if check.text() == "Use all catalogue outputs"
             ),
             None,
@@ -288,6 +297,15 @@ class TestStateControlDataCollection:
         assert role_combo.currentText() == "y"
         assert select_all_checkbox is not None
         assert select_all_checkbox.isChecked()
+        data_page.resize(900, 1800)
+        data_page.show()
+        qapp.processEvents()
+        refresh_button = next(
+            button
+            for button in data_page.findChildren(QPushButton)
+            if button.text() == "Refresh output list"
+        )
+        assert table.y() - (refresh_button.y() + refresh_button.height()) < 50
         value_checkbox.setChecked(False)
         assert not select_all_checkbox.isChecked()
         assert p.collect_outputs is not None

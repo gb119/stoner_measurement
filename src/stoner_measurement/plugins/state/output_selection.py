@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import QSize, Qt
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QHeaderView,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
 )
@@ -43,7 +44,7 @@ class OutputSelectionTable(QTableWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.setMaximumHeight(180)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.refresh()
 
     @property
@@ -90,6 +91,23 @@ class OutputSelectionTable(QTableWidget):
             self._role_combos[key] = role_combo
         self._sync_in_progress = False
         self._sync_plugin()
+        self._update_height_limit()
+
+    def _update_height_limit(self) -> None:
+        """Cap the table at the height required to show every output row."""
+        self.resizeRowsToContents()
+        content_height = self.horizontalHeader().height() + 2 * self.frameWidth()
+        content_height += sum(self.rowHeight(row) for row in range(self.rowCount()))
+        if self.horizontalScrollBar().isVisible():
+            content_height += self.horizontalScrollBar().height()
+        self._content_height = content_height
+        self.setMaximumHeight(content_height)
+
+    def sizeHint(self) -> QSize:
+        """Prefer the height needed for all rows while remaining shrinkable."""
+        hint = super().sizeHint()
+        hint.setHeight(getattr(self, "_content_height", hint.height()))
+        return hint
 
     def select_all_with_heuristics(self) -> None:
         """Select every output and display the plugin's automatically inferred roles."""

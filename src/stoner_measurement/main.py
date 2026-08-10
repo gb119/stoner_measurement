@@ -5,9 +5,9 @@ import sys
 from qtpy.QtWidgets import QApplication
 
 from stoner_measurement.app import MeasurementApp
-from stoner_measurement.app_config import theme_setting
+from stoner_measurement.app_config import font_size_setting, theme_setting
 from stoner_measurement.ui.icons import make_app_icon
-from stoner_measurement.ui.theme import apply_theme
+from stoner_measurement.ui.theme import apply_application_font, apply_theme
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setOrganizationName("University of Leeds")
     app.setWindowIcon(make_app_icon())
     apply_theme(app, theme_setting())
+    apply_application_font(app, font_size_setting())
 
     window = MeasurementApp()
     window.show()

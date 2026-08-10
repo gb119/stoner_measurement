@@ -477,6 +477,32 @@ class TestMeasurementApp:
         assert len(toolbars) >= 1
         app._engine.shutdown()
 
+    def test_main_toolbar_actions_are_visually_grouped(self, qapp):
+        app = MeasurementApp()
+        try:
+            groups: list[list] = [[]]
+            for action in app._toolbar.actions():
+                if action.isSeparator():
+                    groups.append([])
+                else:
+                    groups[-1].append(action)
+
+            assert groups[:4] == [
+                [app._act_new, app._act_open, app._act_save],
+                [app._act_run, app._act_pause, app._act_stop, app._act_generate],
+                [app._act_show_value_watch, app._act_show_log],
+                [
+                    app._act_show_temp_panel,
+                    app._act_show_magnet_panel,
+                    app._act_show_motor_panel,
+                    app._act_show_pressure_panel,
+                ],
+            ]
+            assert "width: 3px" in app._toolbar.styleSheet()
+            assert colour("border_subtle") in app._toolbar.styleSheet()
+        finally:
+            app._engine.shutdown()
+
     def test_has_status_bar(self, qapp):
         app = MeasurementApp()
         assert app.statusBar() is not None

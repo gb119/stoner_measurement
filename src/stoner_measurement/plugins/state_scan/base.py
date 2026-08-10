@@ -14,10 +14,10 @@ from __future__ import annotations
 import math
 import time
 from abc import abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any, ClassVar
 
-from qtpy.QtCore import QObject
+from qtpy.QtCore import QObject, Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -55,6 +55,7 @@ class _StateScanTabContainer(QWidget):
         self._plugin = plugin
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._content: QWidget | None = None
         self._refresh()
         plugin.scan_generator_changed.connect(self._refresh)
@@ -72,17 +73,17 @@ class _StateScanTabContainer(QWidget):
 
 
 class _StateScanPage(QWidget):
-    """Combined scan configuration page for a state-scan plugin.
+    """Scan-generator configuration page for a state-scan plugin.
 
     Displays the instance-name editor, a scan-generator type selector, a
-    horizontal rule, and the active generator's configuration widget, followed
-    by the data-collection settings.
+    horizontal rule, and the active generator's configuration widget.
     """
 
     def __init__(self, plugin: StateScanPlugin, parent: QWidget | None = None) -> None:
         """Initialise the scan page and bind it to *plugin*."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._build_header_section(plugin, layout)
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
@@ -90,7 +91,6 @@ class _StateScanPage(QWidget):
         layout.addWidget(separator)
         scan_container = _StateScanTabContainer(plugin, parent=self)
         layout.addWidget(scan_container)
-        self._build_data_collection_section(plugin, layout)
 
     def _build_header_section(self, plugin: StateScanPlugin, layout: QVBoxLayout) -> None:
         """Build name and comment edits plus the optional generator combo."""
@@ -134,6 +134,17 @@ class _StateScanPage(QWidget):
         if len(type(plugin)._scan_generator_classes) > 1:
             self._add_generator_combo(plugin, header_form)
 
+        start_from_current_check = QCheckBox()
+        start_from_current_check.setChecked(plugin.start_from_current_value)
+        start_from_current_check.setToolTip(
+            "For stepped scans, retain the first stage target and step size but "
+            "begin at the current measured state instead of the configured start."
+        )
+        start_from_current_check.stateChanged.connect(
+            lambda state: setattr(plugin, "start_from_current_value", bool(state))
+        )
+        header_form.addRow("Start from current value:", start_from_current_check)
+
         header_widget = QWidget()
         header_widget.setLayout(header_form)
         layout.addWidget(header_widget)
@@ -164,12 +175,14 @@ class _StateScanPage(QWidget):
         plugin.scan_generator_changed.connect(_sync_type_combo)
         header_form.addRow("Generator type:", combo)
 
-    def _build_data_collection_section(self, plugin: StateScanPlugin, layout: QVBoxLayout) -> None:
-        """Build data collection checkboxes, filter edits, and preceding separator."""
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(sep2)
+
+class _StateScanDataPage(QWidget):
+    """Data-collection configuration page for a state-scan plugin."""
+
+    def __init__(self, plugin: StateScanPlugin, parent: QWidget | None = None) -> None:
+        """Initialise the data page and bind its controls to *plugin*."""
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
 
         data_form = QFormLayout()
 
@@ -224,7 +237,6 @@ class _StateScanPage(QWidget):
         data_form.addRow("Clear filter:", clear_filter_edit)
         data_form.addRow("Collect all outputs:", select_all_outputs_check)
         data_form.addRow(refresh_outputs_button)
-        data_form.addRow("Collected outputs:", output_table)
 
         def _apply_collect(state: int) -> None:
             plugin.collect_data = bool(state)
@@ -244,9 +256,12 @@ class _StateScanPage(QWidget):
         clear_filter_edit.editingFinished.connect(_apply_clear_filter)
         _sync_select_all(output_table.all_selected)
 
-        data_widget = QWidget()
-        data_widget.setLayout(data_form)
-        layout.addWidget(data_widget)
+        layout.addLayout(data_form)
+        output_form = QFormLayout()
+        output_form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        output_form.addRow("Collected outputs:", output_table)
+        layout.addLayout(output_form)
+        layout.addStretch(1)
 
 
 class StateScanPlugin(StatePlugin):
@@ -440,6 +455,25 @@ class StateScanPlugin(StatePlugin):
         self.scan_generator = cls(parent=self)
         self.scan_generator_changed.emit()
 
+    def scan_points(self) -> Iterator[tuple[int, float, bool, int]]:
+        """Return scan points, optionally rebasing a stepped scan on the live state."""
+        generator = self.scan_generator
+        if not self.start_from_current_value or not isinstance(generator, SteppedScanGenerator):
+            return iter(generator)
+
+        configured_stages = generator.stages
+        runtime_generator = SteppedScanGenerator(
+            start=float(self.get_state()),
+            parent=self,
+        )
+        runtime_generator.units = generator.units
+        if configured_stages:
+            first_target, first_step, _first_count, first_measure = configured_stages[0]
+            runtime_stages = [(first_target, first_step, first_measure)]
+            runtime_stages.extend(configured_stages[1:])
+            runtime_generator.stages = runtime_stages
+        return iter(runtime_generator)
+
     # ------------------------------------------------------------------
     # Configuration tabs
     # ------------------------------------------------------------------
@@ -447,7 +481,7 @@ class StateScanPlugin(StatePlugin):
     def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
         """Return a fixed set of configuration tabs for this plugin.
 
-        Returns a *Scan* tab, a *Settings* tab, and an optional *About* tab.
+        Returns *Scan*, *Data*, and *Settings* tabs, plus an optional *About* tab.
         Widgets are created once and cached.
 
         Keyword Parameters:
@@ -467,6 +501,8 @@ class StateScanPlugin(StatePlugin):
             >>> tabs[0][0]
             'Counter \u2013 Scan'
             >>> tabs[1][0]
+            'Counter \u2013 Data'
+            >>> tabs[2][0]
             'Counter \u2013 Settings'
         """
         if self._cached_config_tabs is not None:
@@ -474,6 +510,7 @@ class StateScanPlugin(StatePlugin):
 
         tabs: list[tuple[str, QWidget]] = [
             (f"{self.name} \u2013 Scan", _StateScanPage(self)),
+            (f"{self.name} \u2013 Data", _StateScanDataPage(self)),
         ]
 
         settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
@@ -544,7 +581,7 @@ class StateScanPlugin(StatePlugin):
         self.connect()
         self.configure()
         try:
-            for self.ix, self.value, self.meas_flag, self.stage in self.scan_generator:
+            for self.ix, self.value, self.meas_flag, self.stage in self.scan_points():
                 self.ramp_to(float(self.value))
                 for sub_step in sub_steps:
                     sub_step()
@@ -685,7 +722,7 @@ class StateScanPlugin(StatePlugin):
             ...     def is_at_target(self): return True
             >>> p = _S()
             >>> lines = p.generate_action_code(1, [], lambda s, i: [])
-            >>> any("for s.ix, s.value, s.meas_flag, s.stage in s.scan_generator:" in line for line in lines)
+            >>> any("for s.ix, s.value, s.meas_flag, s.stage in s.scan_points():" in line for line in lines)
             True
             >>> p.clear_on_start = True
             >>> lines2 = p.generate_action_code(1, [], lambda s, i: [])
@@ -705,7 +742,7 @@ class StateScanPlugin(StatePlugin):
         lines += [
             (
                 f"{prefix}for {var_name}.ix, {var_name}.value, {var_name}.meas_flag, "
-                f"{var_name}.stage in {var_name}.scan_generator:"
+                f"{var_name}.stage in {var_name}.scan_points():"
             ),
             f"{loop_prefix}wait_for_plot_ready()",
             f"{loop_prefix}{var_name}.ramp_to(float({var_name}.value))",

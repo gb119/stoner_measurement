@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -29,8 +30,10 @@ from qtpy.QtWidgets import (
 from stoner_measurement.app_config import (
     FEATURE_DEFINITIONS,
     KEY_DEFAULT_DATA_DIR,
+    KEY_FONT_SIZE,
     KEY_THEME,
     default_data_directory,
+    font_size_setting,
     load_app_config,
     save_app_config,
     set_app_config_value,
@@ -113,6 +116,13 @@ class SettingsDialog(QDialog):
         index = max(0, available_themes().index(saved_theme) if saved_theme in available_themes() else 0)
         self._theme_combo.setCurrentIndex(index)
         form.addRow("Theme:", self._theme_combo)
+
+        self._font_size_spin = QSpinBox(tab)
+        self._font_size_spin.setRange(6, 48)
+        self._font_size_spin.setSuffix(" pt")
+        self._font_size_spin.setValue(font_size_setting(config=app_config))
+        self._font_size_spin.setToolTip("Font size used by standard application widgets.")
+        form.addRow("Application font size:", self._font_size_spin)
         return tab
 
     def _build_features_tab(self, app_config: dict) -> QWidget:
@@ -415,6 +425,7 @@ class SettingsDialog(QDialog):
         config = load_app_config()
         set_app_config_value(config, KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
         set_app_config_value(config, KEY_THEME, self._theme_combo.currentText().strip().lower())
+        set_app_config_value(config, KEY_FONT_SIZE, self._font_size_spin.value())
         for entry in FEATURE_DEFINITIONS:
             set_app_config_value(
                 config,

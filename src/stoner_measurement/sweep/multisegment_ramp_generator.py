@@ -202,16 +202,17 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         if not self._segments:
             return
 
-        plugin.set_state(float(self._start))
-        start_wait_started = time.monotonic()
-        while not plugin.is_at_target():
-            if (
-                self._start_timeout_seconds > 0.0
-                and (time.monotonic() - start_wait_started) > self._start_timeout_seconds
-            ):
-                return
-            if self._poll_seconds > 0.0:
-                time.sleep(self._poll_seconds)
+        if not plugin.start_from_current_value:
+            plugin.set_state(float(self._start))
+            start_wait_started = time.monotonic()
+            while not plugin.is_at_target():
+                if (
+                    self._start_timeout_seconds > 0.0
+                    and (time.monotonic() - start_wait_started) > self._start_timeout_seconds
+                ):
+                    return
+                if self._poll_seconds > 0.0:
+                    time.sleep(self._poll_seconds)
 
         stage_index = 0
         target, rate, measure_flag = self._segments[stage_index]
@@ -287,8 +288,11 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         if not self._segments:
             return 0.0
 
-        total = self._start_timeout_seconds
-        prev = self._start
+        use_current = bool(
+            self.state_sweep is not None and self.state_sweep.start_from_current_value
+        )
+        total = 0.0 if use_current else self._start_timeout_seconds
+        prev = float(self.state_sweep.get_state()) if use_current else self._start
         for target, rate, _ in self._segments:
             if rate <= 0.0:
                 return float("inf")

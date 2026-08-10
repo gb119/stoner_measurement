@@ -374,6 +374,33 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         """Return the single shared-x trace dataset name."""
         return [_TRACE_NAME]
 
+    def reported_values(self) -> dict[str, str]:
+        """Return configured 6221 values and averaged outputs from every SR830.
+
+        Lock-in catalogue names use ``instance.label.output`` so that every
+        selected output remains independently addressable even though the
+        acquired data is stored in one shared multicolumn trace.
+        """
+        var = self.instance_name
+        values = {
+            f"{var}.K6221.offset": f"{var}._waveform_offset",
+            f"{var}.K6221.amplitude": f"{var}._waveform_amplitude",
+            f"{var}.K6221.frequency": f"{var}._waveform_frequency",
+        }
+        if not self._report_channel_statistics:
+            return values
+
+        for index, entry in enumerate(self._lockin_entries):
+            label = entry.label.strip() or f"LIA {index + 1}"
+            multiple_outputs = len(entry.outputs) > 1
+            for output in entry.outputs:
+                column = f"{label} {output.value}" if multiple_outputs else label
+                statistic_key = f"{_TRACE_NAME} {column}"
+                values[f"{var}.{label}.{output.value}"] = (
+                    f"{var}.get_channel_statistic({statistic_key!r}, 'mean')"
+                )
+        return values
+
     def set_scan_generator_class(self, cls) -> None:
         """Replace the scan generator class and update the displayed units."""
         super().set_scan_generator_class(cls)

@@ -70,6 +70,21 @@ class TestQtLogHandler:
 
         assert handler not in logger.handlers
 
+    def test_close_is_safe_after_handler_state_is_partially_finalized(self, qapp):
+        handler = _QtLogHandler()
+        del handler._name
+
+        handler.close()
+
+    def test_parent_destroyed_is_safe_after_explicit_close(self, qapp):
+        from qtpy.QtCore import QObject
+
+        parent = QObject()
+        handler = _QtLogHandler(parent=parent)
+        handler.close()
+
+        parent.destroyed.emit(parent)
+
 
 # ---------------------------------------------------------------------------
 # SequenceEngine logging integration

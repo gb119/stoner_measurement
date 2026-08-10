@@ -78,6 +78,39 @@ class TestDefaults:
         assert plugin._offset_enabled is False
 
 
+class TestReportedValues:
+    def test_catalogue_lists_every_selected_lockin_output_and_6221_value(self, qapp):
+        plugin = _make_plugin()
+        plugin.instance_name = "measure"
+        plugin._lockin_entries = [
+            LockInEntry(label="Rxx", outputs=(LockInOutput.X, LockInOutput.Y)),
+            LockInEntry(label="Rxy", outputs=(LockInOutput.X, LockInOutput.Y)),
+        ]
+
+        values = plugin.reported_values()
+
+        assert values == {
+            "measure.Rxx.X": "measure.get_channel_statistic('Signals Rxx X', 'mean')",
+            "measure.Rxx.Y": "measure.get_channel_statistic('Signals Rxx Y', 'mean')",
+            "measure.Rxy.X": "measure.get_channel_statistic('Signals Rxy X', 'mean')",
+            "measure.Rxy.Y": "measure.get_channel_statistic('Signals Rxy Y', 'mean')",
+            "measure.K6221.offset": "measure._waveform_offset",
+            "measure.K6221.amplitude": "measure._waveform_amplitude",
+            "measure.K6221.frequency": "measure._waveform_frequency",
+        }
+
+    def test_disabling_channel_statistics_retains_6221_values_only(self, qapp):
+        plugin = _make_plugin()
+        plugin.instance_name = "measure"
+        plugin._set_report_channel_statistics(False)
+
+        assert set(plugin.reported_values()) == {
+            "measure.K6221.offset",
+            "measure.K6221.amplitude",
+            "measure.K6221.frequency",
+        }
+
+
 class TestJsonRoundTrip:
     def test_round_trip_preserves_multi_lockin_options(self, qapp):
         plugin = _make_plugin()
