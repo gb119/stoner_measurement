@@ -43,6 +43,11 @@ class TestSettingsDialogBasics:
         assert dialog.windowTitle() == "Preferences"
         assert dialog._data_dir_edit.text() == "C:/Data/Test"
         assert dialog._theme_combo.currentText().lower() == "light"
+        assert dialog._font_size_spin.value() == settings_module.font_size_setting(
+            config=app_config
+        )
+        assert dialog._editor_font_size_spin.value() == 10
+        assert dialog._console_font_size_spin.value() == 9
         assert dialog._feature_checkboxes["temperature"].isChecked() is True
         assert dialog._feature_checkboxes["magnetic_field"].isChecked() is False
 
@@ -76,6 +81,9 @@ class TestSettingsDialogBasics:
 
         dialog._data_dir_edit.setText(f"  {tmp_path / 'runs'}  ")
         dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findText("Light"))
+        dialog._font_size_spin.setValue(12)
+        dialog._editor_font_size_spin.setValue(13)
+        dialog._console_font_size_spin.setValue(11)
         dialog._feature_checkboxes["pressure"].setChecked(False)
         dialog._on_accept()
 
@@ -85,6 +93,9 @@ class TestSettingsDialogBasics:
                 "app": {
                     "default_data_directory": str(tmp_path / "runs"),
                     "theme": "light",
+                    "font_size": 12,
+                    "editor_font_size": 13,
+                    "console_font_size": 11,
                 },
                 "features": {
                     "temperature": True,

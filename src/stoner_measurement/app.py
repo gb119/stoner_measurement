@@ -20,7 +20,9 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.app_config import (
+    console_font_size_setting,
     default_data_directory,
+    editor_font_size_setting,
     font_size_setting,
     load_app_config,
     theme_setting,
@@ -1453,6 +1455,8 @@ class MeasurementApp(QMainWindow):
     def _on_settings(self) -> None:
         """Open the Preferences dialogue."""
         previous_theme = theme_name()
+        previous_editor_font_size = editor_font_size_setting(config=self._app_config)
+        previous_console_font_size = console_font_size_setting(config=self._app_config)
         dlg = SettingsDialog(parent=self)
         if dlg.exec():
             if dlg.toolbar_saved:
@@ -1460,11 +1464,18 @@ class MeasurementApp(QMainWindow):
             self._app_config = load_app_config()
             self._apply_app_config()
             new_theme = theme_setting(config=self._app_config)
-            if new_theme != previous_theme:
+            specialist_font_changed = (
+                editor_font_size_setting(config=self._app_config)
+                != previous_editor_font_size
+                or console_font_size_setting(config=self._app_config)
+                != previous_console_font_size
+            )
+            if new_theme != previous_theme or specialist_font_changed:
                 QMessageBox.information(
                     self,
                     "Restart Required",
-                    "Theme changes will take effect after restarting Stoner Measurement.",
+                    "Theme and code editor/console font changes will take effect "
+                    "after restarting Stoner Measurement.",
                 )
 
     def _on_show_log(self) -> None:

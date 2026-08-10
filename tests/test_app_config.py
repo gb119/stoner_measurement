@@ -24,6 +24,9 @@ def test_load_app_config_merges_defaults_bundled_and_user(monkeypatch, tmp_path)
 
     assert config["app"]["default_data_directory"] == "D:/LabData/"
     assert config["app"]["theme"] == "light"
+    assert config["app"]["font_size"] == app_config.DEFAULT_FONT_SIZE
+    assert config["app"]["editor_font_size"] == app_config.DEFAULT_EDITOR_FONT_SIZE
+    assert config["app"]["console_font_size"] == app_config.DEFAULT_CONSOLE_FONT_SIZE
     assert config["features"]["temperature"] is True
     assert config["features"]["magnetic_field"] is False
     assert config["features"]["pressure"] is False
@@ -49,3 +52,18 @@ def test_set_app_config_value_creates_nested_mapping():
     app_config.set_app_config_value(config, app_config.KEY_DEFAULT_DATA_DIR, "C:/Data/")
 
     assert config == {"app": {"default_data_directory": "C:/Data/"}}
+
+
+def test_font_size_settings_are_independent_and_clamped():
+    config = {
+        "app": {
+            "font_size": 12,
+            "editor_font_size": 14,
+            "console_font_size": 16,
+        }
+    }
+
+    assert app_config.font_size_setting(config=config) == 12
+    assert app_config.editor_font_size_setting(config=config) == 14
+    assert app_config.console_font_size_setting(config=config) == 16
+    assert app_config.font_size_setting(config={"app": {"font_size": 100}}) == 48

@@ -252,7 +252,9 @@ class EditorWidget(QPlainTextEdit):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        font = QFont("Courier New", 10)
+        from stoner_measurement.app_config import editor_font_size_setting
+
+        font = QFont("Courier New", editor_font_size_setting())
         font.setStyleHint(QFont.StyleHint.Monospace)
         self.setFont(font)
 

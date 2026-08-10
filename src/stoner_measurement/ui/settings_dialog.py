@@ -29,10 +29,14 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.app_config import (
     FEATURE_DEFINITIONS,
+    KEY_CONSOLE_FONT_SIZE,
     KEY_DEFAULT_DATA_DIR,
+    KEY_EDITOR_FONT_SIZE,
     KEY_FONT_SIZE,
     KEY_THEME,
+    console_font_size_setting,
     default_data_directory,
+    editor_font_size_setting,
     font_size_setting,
     load_app_config,
     save_app_config,
@@ -123,6 +127,18 @@ class SettingsDialog(QDialog):
         self._font_size_spin.setValue(font_size_setting(config=app_config))
         self._font_size_spin.setToolTip("Font size used by standard application widgets.")
         form.addRow("Application font size:", self._font_size_spin)
+
+        self._editor_font_size_spin = QSpinBox(tab)
+        self._editor_font_size_spin.setRange(6, 48)
+        self._editor_font_size_spin.setSuffix(" pt")
+        self._editor_font_size_spin.setValue(editor_font_size_setting(config=app_config))
+        form.addRow("Code editor font size:", self._editor_font_size_spin)
+
+        self._console_font_size_spin = QSpinBox(tab)
+        self._console_font_size_spin.setRange(6, 48)
+        self._console_font_size_spin.setSuffix(" pt")
+        self._console_font_size_spin.setValue(console_font_size_setting(config=app_config))
+        form.addRow("Console font size:", self._console_font_size_spin)
         return tab
 
     def _build_features_tab(self, app_config: dict) -> QWidget:
@@ -426,6 +442,8 @@ class SettingsDialog(QDialog):
         set_app_config_value(config, KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
         set_app_config_value(config, KEY_THEME, self._theme_combo.currentText().strip().lower())
         set_app_config_value(config, KEY_FONT_SIZE, self._font_size_spin.value())
+        set_app_config_value(config, KEY_EDITOR_FONT_SIZE, self._editor_font_size_spin.value())
+        set_app_config_value(config, KEY_CONSOLE_FONT_SIZE, self._console_font_size_spin.value())
         for entry in FEATURE_DEFINITIONS:
             set_app_config_value(
                 config,

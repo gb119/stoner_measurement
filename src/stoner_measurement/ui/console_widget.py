@@ -71,12 +71,14 @@ class _LegacyConsoleWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        from stoner_measurement.app_config import console_font_size_setting
+
         self._engine: SequenceEngine | None = None
         self._local_ns: dict = {}
 
         self._output = QPlainTextEdit(self)
         self._output.setReadOnly(True)
-        mono = QFont("Courier New", 9)
+        mono = QFont("Courier New", console_font_size_setting())
         mono.setStyleHint(QFont.StyleHint.Monospace)
         self._output.setFont(mono)
         self._output.setMaximumBlockCount(5000)
@@ -269,6 +271,8 @@ class _IPythonConsoleWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        from stoner_measurement.app_config import console_font_size_setting
+
         self._engine: SequenceEngine | None = None
         assert QtInProcessKernelManager is not None
         assert RichJupyterWidget is not None
@@ -301,7 +305,7 @@ class _IPythonConsoleWidget(QWidget):
         self._console.kernel_manager = self._kernel_manager
         self._console.kernel_client = self._kernel_client
 
-        mono = QFont("Courier New", 9)
+        mono = QFont("Courier New", console_font_size_setting())
         mono.setStyleHint(QFont.StyleHint.Monospace)
         self._console.font = mono
         self._console.set_default_style(colors="linux")
