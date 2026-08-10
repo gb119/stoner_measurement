@@ -46,6 +46,7 @@ from stoner_measurement.temperature_control.types import (
     LoopSettings,
     StabilityBand,
     StabilityConfig,
+    StabilityDiagnostics,
     TemperatureChannelReading,
     TemperatureEngineState,
 )
@@ -132,6 +133,8 @@ class TemperatureControllerEngine(QObject):
         self._unstable_since: dict[int, datetime | None] = {}
         # Current stable flags (persisted across polls for hysteresis).
         self._stable: dict[int, bool] = {}
+        self._stability_value_history: dict[int, deque[tuple[datetime, float, float]]] = {}
+        self._stability_diagnostics: dict[int, StabilityDiagnostics] = {}
         self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
 
         self._timer = QTimer(self)
@@ -244,6 +247,8 @@ class TemperatureControllerEngine(QObject):
             self._at_setpoint_since.clear()
             self._unstable_since.clear()
             self._stable.clear()
+            self._stability_value_history.clear()
+            self._stability_diagnostics.clear()
             self._set_status(EngineStatus.CONNECTED)
             self._timer.start()
         logger.info("TemperatureControllerEngine: connected to %s", type(driver).__name__)
@@ -1077,6 +1082,8 @@ class TemperatureControllerEngine(QObject):
         self._at_setpoint_since.clear()
         self._unstable_since.clear()
         self._stable.clear()
+        self._stability_value_history.clear()
+        self._stability_diagnostics.clear()
 
     @property
     def stability_config(self) -> StabilityConfig:
@@ -1235,6 +1242,7 @@ class TemperatureControllerEngine(QObject):
             at_setpoint=at_setpoint,
             stable=stable,
             stability_rate_channels=stability_rate_channels,
+            stability_diagnostics=dict(self._stability_diagnostics),
             engine_status=EngineStatus.POLLING,
         )
 
@@ -1352,8 +1360,31 @@ class TemperatureControllerEngine(QObject):
             rate_reading = _reading_for_channel(readings, cfg.rate_channel)
             pv = tolerance_reading.value if tolerance_reading is not None else sp
             rate = rate_reading.rate_of_change if rate_reading is not None else 0.0
+            difference = pv - sp
 
-            currently_at = abs(pv - sp) < cfg.tolerance_k
+            diagnostic_history = self._stability_value_history.setdefault(lp, deque())
+            diagnostic_history.append((now, difference, rate))
+            while diagnostic_history and (
+                now - diagnostic_history[0][0]
+            ).total_seconds() > cfg.window_s:
+                diagnostic_history.popleft()
+            differences = [sample[1] for sample in diagnostic_history]
+            rates = [sample[2] for sample in diagnostic_history]
+            self._stability_diagnostics[lp] = StabilityDiagnostics(
+                tolerance_channel=tolerance_reading.channel if tolerance_reading else "",
+                rate_channel=rate_reading.channel if rate_reading else "",
+                tolerance_k=cfg.tolerance_k,
+                rate_limit_k_per_min=cfg.min_rate,
+                window_s=cfg.window_s,
+                current_difference_k=difference,
+                min_difference_k=min(differences),
+                max_difference_k=max(differences),
+                current_rate_k_per_min=rate,
+                min_rate_k_per_min=min(rates),
+                max_rate_k_per_min=max(rates),
+            )
+
+            currently_at = abs(difference) < cfg.tolerance_k
             at_setpoint[lp] = currently_at
 
             if currently_at:

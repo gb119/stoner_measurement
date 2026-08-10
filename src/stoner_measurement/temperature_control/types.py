@@ -148,7 +148,25 @@ class TemperatureEngineState:
     at_setpoint: dict[int, bool] = field(default_factory=dict)
     stable: dict[int, bool] = field(default_factory=dict)
     stability_rate_channels: dict[int, str] = field(default_factory=dict)
+    stability_diagnostics: dict[int, StabilityDiagnostics] = field(default_factory=dict)
     engine_status: EngineStatus = EngineStatus.DISCONNECTED
+
+
+@dataclass(frozen=True)
+class StabilityDiagnostics:
+    """Live values used to make one loop's stability decision."""
+
+    tolerance_channel: str
+    rate_channel: str
+    tolerance_k: float
+    rate_limit_k_per_min: float
+    window_s: float
+    current_difference_k: float
+    min_difference_k: float
+    max_difference_k: float
+    current_rate_k_per_min: float
+    min_rate_k_per_min: float
+    max_rate_k_per_min: float
 
 
 @dataclass

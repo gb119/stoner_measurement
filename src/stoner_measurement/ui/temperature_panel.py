@@ -542,6 +542,16 @@ class TemperatureControlPanel(QWidget):
         table_row.addWidget(apply_btn)
         layout.addLayout(table_row)
 
+        self._stab_diagnostics_check = QCheckBox("Show live stability diagnostics")
+        layout.addWidget(self._stab_diagnostics_check)
+        self._stab_diagnostics_label = QLabel()
+        self._stab_diagnostics_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._stab_diagnostics_label.hide()
+        self._stab_diagnostics_check.toggled.connect(self._stab_diagnostics_label.setVisible)
+        layout.addWidget(self._stab_diagnostics_label)
+
         self._populate_stability_table(self._engine.stability_config)
 
         return widget
@@ -744,12 +754,31 @@ class TemperatureControlPanel(QWidget):
         # Update chart buffers and curves.
         self._update_chart(state, now_ts)
 
+        if self._stab_diagnostics_check.isChecked():
+            lines = []
+            for loop, values in sorted(state.stability_diagnostics.items()):
+                lines.append(
+                    f"Loop {loop}: ΔT [{values.tolerance_channel}] "
+                    f"{values.current_difference_k:+.4f} K "
+                    f"(min {values.min_difference_k:+.4f}, max {values.max_difference_k:+.4f}; "
+                    f"limit ±{values.tolerance_k:g})    "
+                    f"rate [{values.rate_channel}] {values.current_rate_k_per_min:+.4f} K/min "
+                    f"(min {values.min_rate_k_per_min:+.4f}, max {values.max_rate_k_per_min:+.4f}; "
+                    f"limit ±{values.rate_limit_k_per_min:g}; {values.window_s:g} s window)"
+                )
+            self._stab_diagnostics_label.setText("\n".join(lines) or "No stability data")
+
         # Status bar
         self._updated_label.setText(
             f"Last updated: {format_local_time(datetime.fromtimestamp(now_ts).astimezone())}"
         )
-        all_at = all(state.at_setpoint.values()) if state.at_setpoint else None
-        all_stable = all(state.stable.values()) if state.stable else None
+        active_loops = {
+            loop for loop, mode in state.loop_modes.items() if mode is not ControlMode.OFF
+        }
+        at_values = [value for loop, value in state.at_setpoint.items() if loop in active_loops]
+        stable_values = [value for loop, value in state.stable.items() if loop in active_loops]
+        all_at = all(at_values) if at_values else None
+        all_stable = all(stable_values) if stable_values else None
         at_colour = "#44aa44" if all_at else ("#cc4444" if all_at is False else "#888888")
         st_colour = "#44aa44" if all_stable else ("#cc4444" if all_stable is False else "#888888")
         self._at_setpoint_label.setText(
