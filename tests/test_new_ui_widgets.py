@@ -490,7 +490,11 @@ class TestMeasurementApp:
             assert groups[:4] == [
                 [app._act_new, app._act_open, app._act_save],
                 [app._act_run, app._act_pause, app._act_stop, app._act_generate],
-                [app._act_show_value_watch, app._act_show_log],
+                [
+                    app._act_show_value_watch,
+                    app._act_show_log,
+                    app._act_show_data_manager,
+                ],
                 [
                     app._act_show_temp_panel,
                     app._act_show_magnet_panel,

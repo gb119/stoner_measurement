@@ -237,11 +237,13 @@ class TestArbitraryFunctionScanWidget:
         widget = ArbitraryFunctionScanWidget(generator=ArbitraryFunctionScanGenerator())
         assert widget._editor.minimumHeight() >= 5 * widget._editor.fontMetrics().lineSpacing()
 
-    def test_preset_buttons_are_compact_and_fixed_width(self, qapp):
+    def test_preset_buttons_have_compact_minimum_and_can_grow(self, qapp):
         widget = ArbitraryFunctionScanWidget(generator=ArbitraryFunctionScanGenerator())
         for button in widget._preset_buttons:
-            assert button.size().width() == 64
-            assert button.size().height() == 44
+            assert button.minimumWidth() == 64
+            assert button.minimumHeight() == 44
+            assert button.maximumWidth() > button.minimumWidth()
+            assert button.maximumHeight() > button.minimumHeight()
             assert button.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
 
     def test_preview_caps_height_at_four_by_three_when_space_is_available(self, qapp):

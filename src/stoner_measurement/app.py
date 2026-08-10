@@ -35,8 +35,10 @@ from stoner_measurement.resources import (
     find_toolbar_icon,
     load_toolbar_config,
 )
+from stoner_measurement.ui.data_manager import DataManagerWindow
 from stoner_measurement.ui.engine_status_indicators import EngineActivityStatusWidget
 from stoner_measurement.ui.icons import (
+    make_data_manager_icon,
     make_generate_icon,
     make_log_icon,
     make_magnet_icon,
@@ -168,6 +170,7 @@ class MeasurementApp(QMainWindow):
             parent=None,
             snap_reference_widget=self._main_window.tabs,
         )
+        self._data_manager = DataManagerWindow(engine=self._engine, parent=None)
 
         # Temperature control panel (hidden initially) -------------------------
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
@@ -696,6 +699,11 @@ class MeasurementApp(QMainWindow):
         self._act_show_value_watch.setStatusTip("Open the live value watch window")
         self._act_show_value_watch.triggered.connect(self._on_show_value_watch)
 
+        self._act_show_data_manager = QAction(make_data_manager_icon(), "Show &Data Manager", self)
+        self._act_show_data_manager.setShortcut(QKeySequence("Ctrl+Shift+D"))
+        self._act_show_data_manager.setStatusTip("Inspect and save completed trace data")
+        self._act_show_data_manager.triggered.connect(self._on_show_data_manager)
+
         self._act_show_temp_panel = QAction(make_temperature_icon(), "Show &Temperature Control", self)
         self._act_show_temp_panel.setStatusTip("Open the temperature controller panel")
         self._act_show_temp_panel.triggered.connect(self._on_show_temp_panel)
@@ -773,6 +781,7 @@ class MeasurementApp(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self._act_show_log)
         view_menu.addAction(self._act_show_value_watch)
+        view_menu.addAction(self._act_show_data_manager)
 
         # Engines menu (contains per-engine submenus)
         self._engines_menu = menu_bar.addMenu("&Engines")
@@ -830,6 +839,7 @@ class MeasurementApp(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self._act_show_value_watch)
         toolbar.addAction(self._act_show_log)
+        toolbar.addAction(self._act_show_data_manager)
         toolbar.addSeparator()
         toolbar.addAction(self._act_show_temp_panel)
         toolbar.addAction(self._act_show_magnet_panel)
@@ -1486,6 +1496,10 @@ class MeasurementApp(QMainWindow):
         """Show the live value-watch window, bringing it to the front if open."""
         self._value_watch.show_and_raise()
 
+    def _on_show_data_manager(self) -> None:
+        """Show the trace Data Manager, bringing it to the front if open."""
+        self._data_manager.show_and_raise()
+
     def _update_window_title(self) -> None:
         """Refresh the window title to reflect the active tab and file."""
         tab_idx = self._main_window.tabs.currentIndex()
@@ -1525,6 +1539,7 @@ class MeasurementApp(QMainWindow):
         settings.setValue("mainWindow/geometry", self.saveGeometry())
 
         for widget in (
+            self._data_manager,
             self._value_watch,
             self._log_viewer,
             self._temp_panel,

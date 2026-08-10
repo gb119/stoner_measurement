@@ -8,6 +8,7 @@ from qtpy.QtWidgets import QHBoxLayout, QSplitter, QTabWidget, QWidget
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.plot_widget import PlotWidget
 from stoner_measurement.ui.script_tab import ScriptTab
 
@@ -64,7 +65,7 @@ class MainWindow(QWidget):
         self._script_tab = ScriptTab(self)
 
         # ---- Tab container ---------------------------------------------
-        self._tabs = QTabWidget(self)
+        self._tabs = FontAwareTabWidget(self)
         self._tabs.setTabPosition(QTabWidget.TabPosition.West)
         self._tabs.addTab(self._splitter, "Measurement")
         self._tabs.addTab(self._script_tab, "Script Editor")

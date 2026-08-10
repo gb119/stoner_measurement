@@ -38,7 +38,6 @@ from qtpy.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -62,6 +61,7 @@ from stoner_measurement.magnet_control.types import (
     MagnetEngineStatus,
 )
 from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.icons import make_magnet_icon
 from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
 from stoner_measurement.ui.theme import (
@@ -271,7 +271,7 @@ class MagnetControlPanel(QWidget):
 
     def _build_ui(self) -> None:
         """Build all UI sections and assemble the tab widget."""
-        self._tabs = QTabWidget(self)
+        self._tabs = FontAwareTabWidget(self)
         self._tabs.addTab(self._build_connection_tab(), "Connection")
         self._tabs.addTab(self._build_config_tab(), "Configuration")
         self._tabs.addTab(self._build_chart_tab(), "Chart")
@@ -667,7 +667,7 @@ class MagnetControlPanel(QWidget):
                 The assembled status bar.
         """
         status_bar = QWidget()
-        status_bar.setFixedHeight(28)
+        status_bar.setMinimumHeight(28)
         bar_layout = QHBoxLayout(status_bar)
         bar_layout.setContentsMargins(4, 2, 4, 2)
         bar_layout.setSpacing(12)

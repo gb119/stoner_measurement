@@ -13,6 +13,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from stoner_measurement.core.plugin_manager import PluginManager
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -66,7 +67,7 @@ class ConfigPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self._tabs = QTabWidget()
+        self._tabs = FontAwareTabWidget()
         self._tabs.setObjectName("configTabs")
         layout.addWidget(self._tabs)
         self.setLayout(layout)

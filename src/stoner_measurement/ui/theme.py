@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from qtpy.QtCore import Qt
 from qtpy.QtGui import QColor, QPalette
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QTabBar
 
 THEMES: dict[str, dict[str, str]] = {
     "dark": {
@@ -140,6 +141,7 @@ THEMES: dict[str, dict[str, str]] = {
     },
 }
 
+
 DEFAULT_THEME = "dark"
 _current_theme_name = DEFAULT_THEME
 
@@ -244,11 +246,7 @@ def apply_pyqtgraph_dark_theme(plot_item, axis_items: dict[str, object]) -> None
 
 def disabled_tab_stylesheet() -> str:
     """Return styling that improves readability of disabled tabs in dark mode."""
-    return (
-        "QTabBar::tab:disabled { "
-        f"color: {colour('tab_disabled_text')}; "
-        "}"
-    )
+    return f"QTabBar::tab:disabled {{ color: {colour('tab_disabled_text')}; }}"
 
 
 def tree_stylesheet() -> str:
@@ -318,7 +316,9 @@ def make_palette() -> QPalette:
     palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, disabled_text)
     palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, disabled_text)
     palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, disabled_text)
-    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.HighlightedText, disabled_text)
+    palette.setColor(
+        QPalette.ColorGroup.Disabled, QPalette.ColorRole.HighlightedText, disabled_text
+    )
 
     return palette
 
@@ -420,10 +420,15 @@ def apply_theme(app: QApplication, theme: str = DEFAULT_THEME) -> None:
 
 
 def apply_application_font(app: QApplication, point_size: int) -> None:
-    """Set the font inherited by ordinary application widgets."""
+    """Set the application font and refresh font-dependent widget geometry."""
     font = app.font()
     font.setPointSize(max(6, min(48, int(point_size))))
     app.setFont(font)
+    for widget in app.allWidgets():
+        if isinstance(widget, QTabBar):
+            widget.setElideMode(Qt.TextElideMode.ElideNone)
+            widget.setUsesScrollButtons(True)
+        widget.updateGeometry()
 
 
 def apply_dark_theme(app: QApplication) -> None:

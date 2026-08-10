@@ -63,7 +63,7 @@ class PercentSliderWidget(QWidget):
         self._spinbox.setDecimals(1)
         self._spinbox.setSuffix(" %")
         self._spinbox.setSingleStep(1.0)
-        self._spinbox.setFixedWidth(80)
+        self._spinbox.setMinimumWidth(80)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

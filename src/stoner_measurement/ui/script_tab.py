@@ -5,11 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QMessageBox, QSplitter, QVBoxLayout, QWidget
 
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.console_widget import ConsoleWidget
 from stoner_measurement.ui.editor_widget import EditorWidget
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 
 # ---------------------------------------------------------------------------
 # Per-script pane
@@ -206,7 +207,7 @@ class ScriptTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self._script_tabs = QTabWidget(self)
+        self._script_tabs = FontAwareTabWidget(self)
         self._script_tabs.setTabsClosable(True)
         self._script_tabs.tabCloseRequested.connect(self._on_close_tab)
         self._script_tabs.currentChanged.connect(lambda _: self.current_tab_changed.emit())

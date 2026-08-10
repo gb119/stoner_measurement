@@ -338,7 +338,7 @@ class LogViewerWindow(QWidget):
         self._output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self._btn_clear = QPushButton("Clear", self)
-        self._btn_clear.setFixedWidth(70)
+        self._btn_clear.setMinimumWidth(70)
         self._btn_clear.clicked.connect(self.clear)
 
         self._btn_pause = QPushButton("Pause", self)
@@ -346,7 +346,7 @@ class LogViewerWindow(QWidget):
         self._btn_pause.toggled.connect(self._toggle_pause)
 
         self._btn_close = QPushButton("Close", self)
-        self._btn_close.setFixedWidth(70)
+        self._btn_close.setMinimumWidth(70)
         self._btn_close.clicked.connect(self.hide)
 
         self._display_level = self._build_level_combo(self)

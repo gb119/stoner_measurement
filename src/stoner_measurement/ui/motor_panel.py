@@ -18,7 +18,6 @@ from qtpy.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -38,6 +37,7 @@ from stoner_measurement.motor_control.types import (
     MotorEngineStatus,
 )
 from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.theme import indicator_label_stylesheet
 from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
@@ -139,7 +139,7 @@ class MotorControlPanel(QWidget):
         self._sync_existing_connection_state()
 
     def _build_ui(self) -> None:
-        self._tabs = QTabWidget(self)
+        self._tabs = FontAwareTabWidget(self)
         self._tabs.addTab(self._build_connection_tab(), "Connection")
         self._tabs.addTab(self._build_control_tab(), "Control")
 
@@ -412,7 +412,7 @@ class MotorControlPanel(QWidget):
 
     def _build_status_bar(self) -> QWidget:
         status_bar = QWidget()
-        status_bar.setFixedHeight(28)
+        status_bar.setMinimumHeight(28)
         # Keep the control tab columns wide enough for the longest live
         # direction text so polling updates cannot make the dial shuffle.
         status_bar.setMinimumWidth(_STATUS_BAR_MINIMUM_WIDTH)

@@ -22,7 +22,6 @@ from qtpy.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -48,6 +47,7 @@ from stoner_measurement.resources import (
     save_toolbar_config,
     user_config_root,
 )
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.theme import DEFAULT_THEME, available_themes
 
 _ROW_TYPE_SEPARATOR = "__separator__"
@@ -76,7 +76,7 @@ class SettingsDialog(QDialog):
         self._feature_checkboxes: dict[str, QCheckBox] = {}
         app_config = load_app_config()
 
-        tabs = QTabWidget(self)
+        tabs = FontAwareTabWidget(self)
         tabs.addTab(self._build_general_tab(app_config), "General")
         tabs.addTab(self._build_features_tab(app_config), "Features")
         tabs.addTab(self._build_toolbar_tab(), "Toolbar")
@@ -105,7 +105,7 @@ class SettingsDialog(QDialog):
         self._data_dir_edit.setText(default_data_directory(config=app_config))
 
         data_dir_browse = QPushButton("Browse...", tab)
-        data_dir_browse.setFixedWidth(80)
+        data_dir_browse.setMinimumWidth(80)
         data_dir_browse.clicked.connect(self._browse_data_dir)
 
         data_dir_row = QHBoxLayout()
@@ -240,7 +240,7 @@ class SettingsDialog(QDialog):
             edit.setPlaceholderText(placeholder)
         edit.setEnabled(enabled)
         browse = QPushButton("...", cell)
-        browse.setFixedWidth(32)
+        browse.setMinimumWidth(32)
         browse.setEnabled(enabled)
         browse.clicked.connect(lambda: browse_callback(edit))
         layout.addWidget(edit)

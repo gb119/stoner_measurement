@@ -88,7 +88,7 @@ class _LegacyConsoleWidget(QWidget):
         self._input.setFont(mono)
 
         self._run_btn = QPushButton("Run", self)
-        self._run_btn.setFixedWidth(60)
+        self._run_btn.setMinimumWidth(60)
 
         input_row = QHBoxLayout()
         input_row.setContentsMargins(0, 0, 0, 0)

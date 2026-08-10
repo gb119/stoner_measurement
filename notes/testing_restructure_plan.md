@@ -886,3 +886,27 @@ Result:
   and current-source validation.
 - Verified this coverage together with the existing 2400, 6221/2182A,
   measurement-setting, and secondary-nanovoltmeter suites.
+
+## Data Manager UI Coverage
+
+- Added focused `tests/unit/ui/test_data_manager.py` coverage for catalogue-to-row
+  rendering, rows-by-columns summaries, detailed column tooltips, selection
+  preservation, and background TDI snapshot saving.
+- Kept the existing application-shell toolbar grouping assertion in
+  `tests/test_new_ui_widgets.py` aligned with the new Data Manager action; that
+  broader application tranche remains a future migration candidate.
+- Verified the focused Data Manager, Save command, and application-shell set
+  (138 passed, 1 skipped), then the full suite (2,852 passed, 1 skipped).
+
+## Font-Aware UI Sizing Coverage
+
+- Replaced hard pixel caps on text-bearing buttons, spin boxes, controller
+  status rows, and scan preset buttons with minimum dimensions so Qt can grow
+  them from their current font metrics.
+- Added application-wide tab sizing that reserves each label's selected
+  demi-bold width and keeps non-elided labels available through scroll buttons.
+- Added focused large-font checks in
+  `tests/unit/ui/test_font_aware_sizing.py`.
+- Verified 338 focused tab and panel tests, including stable selected and
+  unselected widths for a large demi-bold label. The combined suite also
+  completed cleanly: 2,855 tests passed and 1 was skipped.

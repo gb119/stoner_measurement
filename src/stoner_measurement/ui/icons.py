@@ -212,6 +212,74 @@ def make_watch_icon(size: int = 32) -> QIcon:
     return QIcon(QPixmap.fromImage(img))
 
 
+def make_data_manager_icon(size: int = 32) -> QIcon:
+    """Create a database-and-gear icon for the Data Manager window."""
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    outline = QColor(colour("plot_foreground"))
+    database = QColor("#4f9dea")
+    gear = QColor("#ffc861")
+    centre = QColor("#f28c28")
+    pen = painter.pen()
+    pen.setColor(outline)
+    pen.setWidthF(max(1.4, size * 0.07))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+
+    # Database cylinder behind the gear.
+    db_left = size * 0.10
+    db_top = size * 0.10
+    db_width = size * 0.58
+    db_height = size * 0.66
+    ellipse_height = size * 0.18
+    body_path = QPainterPath()
+    body_path.moveTo(db_left, db_top + ellipse_height / 2)
+    body_path.lineTo(db_left, db_top + db_height - ellipse_height / 2)
+    body_path.cubicTo(
+        db_left,
+        db_top + db_height,
+        db_left + db_width,
+        db_top + db_height,
+        db_left + db_width,
+        db_top + db_height - ellipse_height / 2,
+    )
+    body_path.lineTo(db_left + db_width, db_top + ellipse_height / 2)
+    painter.setBrush(database)
+    painter.drawPath(body_path)
+    painter.drawEllipse(QRectF(db_left, db_top, db_width, ellipse_height))
+    for fraction in (0.42, 0.68):
+        y_pos = db_top + db_height * fraction
+        painter.drawArc(
+            QRectF(db_left, y_pos - ellipse_height / 2, db_width, ellipse_height),
+            180 * 16,
+            180 * 16,
+        )
+
+    # Compact cog in the foreground, echoing the supplied artwork.
+    centre_point = QPointF(size * 0.70, size * 0.70)
+    gear_points = []
+    for index in range(24):
+        angle = -math.pi / 2 + index * math.pi / 12
+        radius = size * (0.27 if index % 2 == 0 else 0.21)
+        gear_points.append(
+            QPointF(
+                centre_point.x() + radius * math.cos(angle),
+                centre_point.y() + radius * math.sin(angle),
+            )
+        )
+    painter.setBrush(gear)
+    painter.drawPolygon(QPolygonF(gear_points))
+    painter.setBrush(centre)
+    painter.drawEllipse(centre_point, size * 0.075, size * 0.075)
+
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
 def make_app_icon() -> QIcon:
     """Create the application icon from the bundled logo image.
 

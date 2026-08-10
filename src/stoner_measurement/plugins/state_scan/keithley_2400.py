@@ -42,6 +42,7 @@ from stoner_measurement.instruments.source_meter import (
 )
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.state_scan.base import StateScanPlugin
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.widgets import FILTER_GPIB, SISpinBox, VisaResourceComboBox
 
 _CLEANUP_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -598,9 +599,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(4, 4, 4, 4)
 
-        from qtpy.QtWidgets import QTabWidget
-
-        tab_widget = QTabWidget()
+        tab_widget = FontAwareTabWidget()
         root_layout.addWidget(tab_widget)
 
         basic_page = QWidget()

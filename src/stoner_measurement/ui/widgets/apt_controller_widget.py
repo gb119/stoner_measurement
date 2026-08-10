@@ -134,7 +134,7 @@ class AptControllerComboBox(QWidget):
         self._combo.currentTextChanged.connect(lambda _text: self.serial_changed.emit(self.current_serial()))
         layout.addWidget(self._combo)
         self._refresh_button = QPushButton("Refresh", self)
-        self._refresh_button.setFixedWidth(70)
+        self._refresh_button.setMinimumWidth(70)
         self._refresh_button.setToolTip("Re-scan for attached Thorlabs APT motor controllers")
         self._refresh_button.clicked.connect(self.refresh)
         layout.addWidget(self._refresh_button)

@@ -415,7 +415,7 @@ class ArbitraryFunctionScanWidget(QWidget):
         button: _ArbitraryPresetButton,
     ) -> None:
         """Add one consistently sized button to the preset row."""
-        button.setFixedSize(_PRESET_BUTTON_SIZE)
+        button.setMinimumSize(_PRESET_BUTTON_SIZE)
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         layout.addWidget(button)
         self._preset_buttons.append(button)

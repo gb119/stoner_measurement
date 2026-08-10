@@ -30,7 +30,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QSpinBox,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -66,6 +65,7 @@ from stoner_measurement.plugins.trace.base import (
     TraceStatus,
 )
 from stoner_measurement.scan import FunctionScanGenerator
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.widgets import FILTER_GPIB, SISpinBox, VisaResourceComboBox
 
 _TIMEOUT_FACTOR: float = 5.0
@@ -1057,7 +1057,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(4, 4, 4, 4)
 
-        tab_widget = QTabWidget()
+        tab_widget = FontAwareTabWidget()
         root_layout.addWidget(tab_widget)
 
         basic_page = QWidget()

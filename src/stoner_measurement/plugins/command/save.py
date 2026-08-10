@@ -555,10 +555,7 @@ class SaveCommand(CommandPlugin):
         trace_keys, effective_no_overwrite = self._resolve_effective_options(
             trace=trace, no_overwrite=no_overwrite
         )
-        ns = self.engine_namespace
-        metadata = self._build_metadata(ns=ns)
-        columns = self._build_trace_columns(ns=ns, trace_keys=trace_keys)
-        payload = SavePayload(metadata=metadata, columns=columns)
+        payload = self.build_payload(trace_keys=trace_keys)
         writer = self._writer()
 
         if self.incremental_save and writer.supports_incremental:
@@ -577,6 +574,27 @@ class SaveCommand(CommandPlugin):
                 data_rows=self._data_row_count(payload.columns),
             )
         self.log.info("Data saved to %s", dest)
+
+    def build_payload(self, *, trace_keys: set[str] | None = None) -> SavePayload:
+        """Take an independent snapshot of selected data ready for writing.
+
+        The returned arrays are copies, so a caller may pass the payload to a
+        background writer without retaining a live view of data that the
+        sequence engine may continue to update.
+
+        Keyword Args:
+            trace_keys (set[str] | None):
+                Trace catalogue keys to include. ``None`` applies the command's
+                configured :attr:`trace_selection` mapping.
+
+        Returns:
+            (SavePayload):
+                Metadata and numeric columns detached from the live namespace.
+        """
+        ns = self.engine_namespace
+        metadata = self._build_metadata(ns=ns)
+        columns = self._build_trace_columns(ns=ns, trace_keys=trace_keys)
+        return SavePayload(metadata=metadata, columns=columns)
 
     def _writer(self) -> BaseSaveWriter:
         """Return the configured save writer instance."""
@@ -674,12 +692,12 @@ class SaveCommand(CommandPlugin):
             try:
                 trace_data = self.eval(expr)
                 channel_name = trace_key.split(":", 1)[-1]
-                x_values = np.asarray(trace_data.x, dtype=float)
+                x_values = np.array(trace_data.x, dtype=float, copy=True)
                 x_label = (trace_data.names or {}).get("x") or "x"
                 x_units = (trace_data.units or {}).get("x", "")
                 columns.append((f"{channel_name}:{x_label} ({x_units})", x_values))
                 for column_name in trace_data.df.columns:
-                    values = trace_data.df[column_name].to_numpy(dtype=float)
+                    values = trace_data.df[column_name].to_numpy(dtype=float, copy=True)
                     label = (trace_data.names or {}).get(column_name) or str(column_name)
                     units = (trace_data.units or {}).get(column_name, "")
                     columns.append((f"{channel_name}:{label} ({units})", values))
@@ -864,7 +882,7 @@ class SaveCommand(CommandPlugin):
                 self.path_expr = expr
 
         browse_btn = QPushButton("Browse…", widget)
-        browse_btn.setFixedWidth(80)
+        browse_btn.setMinimumWidth(80)
         browse_btn.setToolTip("Open a file dialog to choose the save path.")
         browse_btn.clicked.connect(_browse_path)
 

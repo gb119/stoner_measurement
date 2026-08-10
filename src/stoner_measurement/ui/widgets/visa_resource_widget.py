@@ -477,7 +477,7 @@ class VisaResourceComboBox(QWidget):
         layout.addWidget(self._combo)
 
         self._refresh_btn = QPushButton("Refresh", self)
-        self._refresh_btn.setFixedWidth(70)
+        self._refresh_btn.setMinimumWidth(70)
         self._refresh_btn.setToolTip("Re-scan for available VISA resources")
         self._refresh_btn.clicked.connect(self.refresh)
         layout.addWidget(self._refresh_btn)

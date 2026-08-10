@@ -20,7 +20,6 @@ from qtpy.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -37,6 +36,7 @@ from stoner_measurement.instruments.pressure_controller import (
 from stoner_measurement.pressure_control.engine import PressureControllerEngine
 from stoner_measurement.pressure_control.types import PressureEngineState, PressureEngineStatus
 from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
 from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
@@ -138,7 +138,7 @@ class PressureControlPanel(QWidget):
         self._sync_existing_connection_state()
 
     def _build_ui(self) -> None:
-        self._tabs = QTabWidget(self)
+        self._tabs = FontAwareTabWidget(self)
         self._tabs.addTab(self._build_connection_tab(), "Connection")
         self._tabs.addTab(self._build_monitor_tab(), "Monitor")
         self._tabs.addTab(self._build_chart_tab(), "Chart")
@@ -453,7 +453,7 @@ class PressureControlPanel(QWidget):
 
     def _build_status_bar(self) -> QWidget:
         status_bar = QWidget()
-        status_bar.setFixedHeight(28)
+        status_bar.setMinimumHeight(28)
         layout = QHBoxLayout(status_bar)
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setSpacing(12)

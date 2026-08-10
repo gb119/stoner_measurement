@@ -32,7 +32,6 @@ from qtpy.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -46,6 +45,7 @@ from stoner_measurement.ui.axis_mappings import (
     transform_values,
     validate_scale,
 )
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.theme import (
     apply_pyqtgraph_dark_theme,
     button_swatch_stylesheet,
@@ -259,7 +259,7 @@ class AxesConfigDialog(QDialog):
         self._add_label_inputs: dict[str, QLineEdit] = {}
 
         root = QVBoxLayout(self)
-        tabs = QTabWidget(self)
+        tabs = FontAwareTabWidget(self)
         tabs.addTab(self._build_axis_tab("x", x_axes), "X Axes")
         tabs.addTab(self._build_axis_tab("y", y_axes), "Y Axes")
         help_text = (

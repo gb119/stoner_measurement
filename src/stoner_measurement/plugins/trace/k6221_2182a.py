@@ -37,7 +37,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QSpinBox,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -73,6 +72,7 @@ from stoner_measurement.scan import (
     ListScanGenerator,
     SteppedScanGenerator,
 )
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     SIComboBox,
@@ -1869,7 +1869,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         root_layout.addStretch()
 
-        pages = QTabWidget()
+        pages = FontAwareTabWidget()
         pages.setObjectName("nanovoltmeter_settings_pages")
         secondary_page = self._secondary_config_page()
         for signal in (

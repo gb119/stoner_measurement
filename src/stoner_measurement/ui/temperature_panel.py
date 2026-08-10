@@ -49,7 +49,6 @@ from qtpy.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -76,6 +75,7 @@ from stoner_measurement.temperature_control.types import (
     StabilityConfig,
     TemperatureEngineState,
 )
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.icons import make_temperature_icon
 from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
 from stoner_measurement.ui.theme import (
@@ -265,7 +265,7 @@ class TemperatureControlPanel(QWidget):
 
     def _build_ui(self) -> None:
         """Build all UI sections and assemble the tab widget."""
-        self._tabs = QTabWidget(self)
+        self._tabs = FontAwareTabWidget(self)
         self._tabs.setStyleSheet(disabled_tab_stylesheet())
 
         self._tabs.addTab(self._build_connection_tab(), "Connection")
@@ -666,7 +666,7 @@ class TemperatureControlPanel(QWidget):
                 The assembled status bar.
         """
         status_bar = QWidget()
-        status_bar.setFixedHeight(28)
+        status_bar.setMinimumHeight(28)
         layout = QHBoxLayout(status_bar)
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setSpacing(12)

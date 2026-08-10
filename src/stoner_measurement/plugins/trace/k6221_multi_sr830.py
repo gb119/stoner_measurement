@@ -25,7 +25,6 @@ from qtpy.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTableWidget,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -48,6 +47,7 @@ from stoner_measurement.instruments.srs.sr830 import SRS830
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
 from stoner_measurement.scan import FunctionScanGenerator, ListScanGenerator, SteppedScanGenerator
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     AutoSISpinBox,
@@ -792,7 +792,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        tab_widget = QTabWidget()
+        tab_widget = FontAwareTabWidget()
 
         # ---- Tab 1: Source & Common ----
         source_common_page = QWidget()

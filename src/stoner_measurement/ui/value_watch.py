@@ -533,7 +533,7 @@ class ValueWatchWindow(QtWidgets.QWidget):
         self._snap_reference_widget = snap_reference_widget
 
         self._btn_close = QtWidgets.QPushButton("Close", self)
-        self._btn_close.setFixedWidth(70)
+        self._btn_close.setMinimumWidth(70)
         self._btn_close.clicked.connect(self.hide)
 
         self._btn_config = QtWidgets.QPushButton(_CONFIG_BUTTON_TEXT, self)
