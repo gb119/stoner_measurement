@@ -76,4 +76,9 @@ on status bbar right hand side.
 7. Selecting a new Y value in the plot-points plugin config table  should update the the
   plot label setting - only if the user has manually edited the plot label should the label differ from the
   Y value. (see new feature about renaming plots as well)
+8. When asked to create resistance channels, the 6221-multi SR830 trace plugin is not exporting them as values when 
+  asked to average channel data - so the resistance versions are not available to plot with plot_points!
+9. When saving files, metadata is included for all plugins in memory, not limiting it to just the plugins in
+  the sequence steps. Also it would be good to save the all the outputs in the outputs catalogue into the
+  metadata.
   
