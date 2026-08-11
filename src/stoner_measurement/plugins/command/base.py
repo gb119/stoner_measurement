@@ -6,8 +6,9 @@ Examples include saving collected data to disc, sending trace data to a plot
 window, or emitting a point to a live scatter graph.
 
 A :class:`CommandPlugin` has access to the full sequence engine namespace
-(including all registered plugin instances and numpy functions) but produces
-no output data of its own.
+(including all registered plugin instances and numpy functions). Most command
+plugins produce no output data, although commands that snapshot controller
+state may override :meth:`reported_values` to publish scalar results.
 
 Unlike the instrument-oriented plugin sub-types, command plugins do **not**
 require a scan generator and are always leaf nodes in the sequence tree.
@@ -374,11 +375,11 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         return {}
 
     def reported_values(self) -> dict[str, str]:
-        """Command plugins produce no scalar data values.
+        """Return the default empty scalar-output catalogue.
 
         Returns:
             (dict[str, str]):
-                Always an empty dict.
+                An empty dict. Concrete commands may override this method.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication

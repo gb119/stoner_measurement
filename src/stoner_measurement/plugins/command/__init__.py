@@ -24,13 +24,19 @@ from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.command.if_command import IfCommand
 from stoner_measurement.plugins.command.make_safe import MakeSafeCommand
 from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
+from stoner_measurement.plugins.command.plot_points import PlotPointsCommand
+from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
 from stoner_measurement.plugins.command.pressure_gauge_channel import (
     PressureGaugeChannelCommand,
 )
-from stoner_measurement.plugins.command.plot_points import PlotPointsCommand
-from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
-from stoner_measurement.plugins.command.pressure_set_flow import PressureSetFlowCommand
+from stoner_measurement.plugins.command.pressure_set_flow import (
+    PressureSetFlowCommand,
+    SetFlowCommand,
+)
 from stoner_measurement.plugins.command.save import SaveCommand
+from stoner_measurement.plugins.command.set_field import SetFieldCommand
+from stoner_measurement.plugins.command.set_position import SetPositionCommand
+from stoner_measurement.plugins.command.set_temperature import SetTemperatureCommand
 from stoner_measurement.plugins.command.status import StatusCommand
 from stoner_measurement.plugins.command.wait import WaitCommand
 
@@ -46,6 +52,10 @@ __all__ = [
     "PressureGaugeChannelCommand",
     "PressureSetFlowCommand",
     "SaveCommand",
+    "SetFieldCommand",
+    "SetFlowCommand",
+    "SetPositionCommand",
+    "SetTemperatureCommand",
     "StatusCommand",
     "WaitCommand",
 ]

@@ -2,22 +2,36 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from qtpy.QtWidgets import QLineEdit
 
 from stoner_measurement.plugins.command.pressure_gauge_channel import PressureGaugeChannelCommand
 from stoner_measurement.plugins.command.pressure_set_flow import PressureSetFlowCommand
+from stoner_measurement.ui.widgets import SISpinBox
 
 
 class _FakePressureEngine:
     def __init__(self) -> None:
+        self.connected_mfc_driver = object()
         self.flow_calls: list[tuple[int, float]] = []
         self.gauge_calls: list[tuple[int, bool]] = []
+        self.state = SimpleNamespace(
+            flow_actual={2: 2.5},
+            flow_setpoints={2: 2.5},
+        )
 
     def set_flow_rate(self, channel: int, value: float) -> None:
         self.flow_calls.append((channel, value))
 
     def set_gauge_channel_enabled(self, channel: int, enabled: bool) -> None:
         self.gauge_calls.append((channel, enabled))
+
+    def read_controller_state(self):
+        return self.state
+
+    def get_engine_state(self):
+        return self.state
 
 
 def test_pressure_set_flow_executes_runtime_expressions(monkeypatch, qapp, engine):
@@ -28,7 +42,8 @@ def test_pressure_set_flow_executes_runtime_expressions(monkeypatch, qapp, engin
     )
     command = PressureSetFlowCommand()
     command.channel_expr = "flow_channel"
-    command.flow_expr = "base_flow * 2"
+    command.setpoint_expr = "base_flow * 2"
+    command.wait_expr = "False"
     engine.add_plugin("set_flow", command)
     engine._namespace.update({"flow_channel": 2, "base_flow": 1.25})  # noqa: SLF001
     command.execute()
@@ -53,13 +68,18 @@ def test_pressure_gauge_channel_executes_runtime_expressions(monkeypatch, qapp, 
 def test_pressure_set_flow_config_widget_updates_expressions(qapp):
     command = PressureSetFlowCommand()
     widget = command.config_widget()
-    edits = widget.findChildren(QLineEdit)
-    edits[0].setText("2")
-    edits[1].setText("1.5")
-    edits[0].editingFinished.emit()
-    edits[1].editingFinished.emit()
-    assert command.channel_expr == "2"
-    assert command.flow_expr == "1.5"
+    channel = widget.findChild(SISpinBox, "mfc_channel_expression")
+    setpoint = widget.findChild(SISpinBox, "setpoint_expression")
+    wait = widget.findChild(QLineEdit, "wait_expression")
+    channel.lineEdit().setText("selected_channel")
+    channel.editingFinished.emit()
+    setpoint.lineEdit().setText("base_flow * 2")
+    setpoint.editingFinished.emit()
+    wait.setText("do_wait")
+    wait.editingFinished.emit()
+    assert command.channel_expr == "selected_channel"
+    assert command.setpoint_expr == "base_flow * 2"
+    assert command.wait_expr == "do_wait"
 
 
 def test_pressure_gauge_command_has_pressure_feature(qapp):
