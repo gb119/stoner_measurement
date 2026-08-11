@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from qtpy.QtCore import Qt
 from qtpy.QtGui import QFont, QFontMetrics
 from qtpy.QtWidgets import QWidget
 
@@ -62,7 +63,7 @@ def test_tabs_reserve_bold_selected_label_width(qapp, managed_qt_widget):
 
         assert unselected_width >= bold_text_width + 24
         assert tabs.tabBar().tabRect(1).width() == unselected_width
-        assert tabs.tabBar().elideMode().name == "ElideNone"
+        assert tabs.tabBar().elideMode() == Qt.TextElideMode.ElideNone
         assert tabs.tabBar().usesScrollButtons()
     finally:
         qapp.setFont(original_font)
