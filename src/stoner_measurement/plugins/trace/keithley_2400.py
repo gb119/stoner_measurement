@@ -242,28 +242,28 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._smu: Keithley2400 | None = None
 
         self._source_mode: SweepSourceMode = SweepSourceMode.CURRENT
-        self._compliance: float = 10.0
+        self._compliance: float | str = 10.0
         self._compliance_mode: ComplianceMode = ComplianceMode.FIXED
-        self._compliance_resistance: float = 1000.0
+        self._compliance_resistance: float | str = 1000.0
         self._nplc: float = 1.0
-        self._source_delay: float = 0.01
-        self._trigger_delay: float = 0.0
+        self._source_delay: float | str = 0.01
+        self._trigger_delay: float | str = 0.0
         self._enable_output_during_measurement: bool = True
         self._differential_mode: bool = False
         self._differential_conductance: bool = False
-        self._delta_current: float = 1e-6
+        self._delta_current: float | str = 1e-6
 
         self._trigger_routing: TriggerRouting = TriggerRouting.IMMEDIATE
         self._trigger_count_override: int = 0
         self._arm_count: int = 1
-        self._timer_interval: float = 0.1
+        self._timer_interval: float | str = 0.1
         self._enable_trigger_out: bool = True
         self._trigger_out_line: int = 2
         self._trigger_in_line: int = 1
         self._source_range_mode: RangeMode = RangeMode.AUTO
-        self._source_range: float = 1.0
+        self._source_range: float | str = 1.0
         self._sense_range_mode: RangeMode = RangeMode.AUTO
-        self._sense_range: float = 1.0
+        self._sense_range: float | str = 1.0
         self._connection_mode: ConnectionMode = ConnectionMode.FOUR_WIRE
         self._terminal_mode: TerminalMode = TerminalMode.FRONT
         self._filter_enabled: bool = False
@@ -279,19 +279,19 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._secondary_voltage_range: float = 0.0
         self._secondary_filter_type: str = "OFF"
         self._secondary_filter_count: int = 10
-        self._secondary_trigger_delay: float = 0.0
+        self._secondary_trigger_delay: float | str = 0.0
         self._secondary_line_sync: bool = False
         self._secondary_autozero: bool = True
         self._secondary_analog_filter: bool = False
         self._secondary_relative_enabled: bool = False
-        self._secondary_relative_value: float = 0.0
+        self._secondary_relative_value: float | str = 0.0
         self._secondary_digits: int = 8
         self._secondary_nanovoltmeter: Nanovoltmeter | None = None
         self._secondary_voltages: tuple[float, ...] | None = None
 
         self._sweep_values: tuple[float, ...] | None = None
         self._nominal_sweep_values: tuple[float, ...] | None = None
-        self.scan_generator = FunctionScanGenerator()
+        self.scan_generator = FunctionScanGenerator(parent=self)
         self._apply_initial_config()
 
     @property
@@ -434,6 +434,14 @@ class Keithley2400SweepPlugin(TracePlugin):
 
         self._set_status(TraceStatus.CONFIGURING)
         try:
+            compliance = self.eval_float(self._compliance)
+            compliance_resistance = self.eval_float(self._compliance_resistance)
+            source_delay = self.eval_float(self._source_delay)
+            trigger_delay = self.eval_float(self._trigger_delay)
+            delta_current = self.eval_float(self._delta_current)
+            source_range = self.eval_float(self._source_range)
+            sense_range = self.eval_float(self._sense_range)
+            timer_interval = self.eval_float(self._timer_interval)
             nominal_values = tuple(float(v) for v in self.scan_generator.generate())
             if not nominal_values:
                 raise ValueError("Scan generator produced no points.")
@@ -442,7 +450,7 @@ class Keithley2400SweepPlugin(TracePlugin):
 
             self._nominal_sweep_values = nominal_values
             self._sweep_values = (
-                tuple(modulate_current_sweep(np.asarray(nominal_values), self._delta_current))
+                tuple(modulate_current_sweep(np.asarray(nominal_values), delta_current))
                 if self._differential_mode
                 else nominal_values
             )
@@ -467,10 +475,10 @@ class Keithley2400SweepPlugin(TracePlugin):
                 self._source_range_mode is RangeMode.AUTO, instrument_mode
             )
             if self._source_range_mode is RangeMode.FIXED:
-                self._smu.set_source_range(self._source_range, instrument_mode)
+                self._smu.set_source_range(source_range, instrument_mode)
             self._smu.set_sense_autorange(self._sense_range_mode is RangeMode.AUTO, instrument_mode)
             if self._sense_range_mode is RangeMode.FIXED:
-                self._smu.set_sense_range(self._sense_range, instrument_mode)
+                self._smu.set_sense_range(sense_range, instrument_mode)
             self._smu.set_filter_enabled(self._filter_enabled, instrument_mode)
             self._smu.set_filter_count(self._filter_count, instrument_mode)
             self._smu.set_filter_type(self._filter_type, instrument_mode)
@@ -482,15 +490,15 @@ class Keithley2400SweepPlugin(TracePlugin):
                 SourceSweepConfiguration(
                     spacing=SweepSpacing.LIST,
                     values=values,
-                    delay=self._source_delay,
+                    delay=source_delay,
                 )
             )
             if self._compliance_mode is ComplianceMode.RESISTANCE:
-                if self._compliance_resistance <= 0.0:
+                if compliance_resistance <= 0.0:
                     raise ValueError("Compliance resistance must be positive.")
                 if self._source_mode is SweepSourceMode.CURRENT:
                     compliance_limit = (
-                        max(abs(float(v)) for v in values) * self._compliance_resistance
+                        max(abs(float(v)) for v in values) * compliance_resistance
                     )
                 else:
                     min_abs_voltage = min(
@@ -498,10 +506,10 @@ class Keithley2400SweepPlugin(TracePlugin):
                         for v in values
                         if not math.isclose(float(v), 0.0, abs_tol=1e-30)
                     )
-                    compliance_limit = min_abs_voltage / self._compliance_resistance
+                    compliance_limit = min_abs_voltage / compliance_resistance
                 self._smu.set_compliance(compliance_limit)
             else:
-                self._smu.set_compliance(self._compliance)
+                self._smu.set_compliance(compliance)
             self._smu.configure_buffer(n_points, elements=_BUFFER_ELEMENTS)
 
             if self._secondary_enabled:
@@ -531,7 +539,7 @@ class Keithley2400SweepPlugin(TracePlugin):
                 TriggerModelConfiguration(
                     trigger_source=trigger_source,
                     trigger_count=trigger_count,
-                    trigger_delay=self._trigger_delay,
+                    trigger_delay=trigger_delay,
                     arm_source=TriggerSource.IMM,
                     arm_count=1 if self._secondary_enabled else self._arm_count,
                 )
@@ -555,7 +563,7 @@ class Keithley2400SweepPlugin(TracePlugin):
                 self._smu.write(f":ARM:TCON:ILIN {self._trigger_in_line}")
             elif self._trigger_routing is TriggerRouting.TIMER:
                 self._smu.write(":ARM:SOUR TIM")
-                self._smu.write(f":ARM:TIM {self._timer_interval}")
+                self._smu.write(f":ARM:TIM {timer_interval}")
             else:
                 self._smu.write(":ARM:SOUR IMM")
 
@@ -604,14 +612,18 @@ class Keithley2400SweepPlugin(TracePlugin):
         if capabilities.supports_analog_filter:
             meter.set_analog_filter_enabled(self._secondary_analog_filter)
         if capabilities.supports_relative:
-            meter.set_relative_value(self._secondary_relative_value)  # type: ignore[attr-defined]
+            meter.set_relative_value(  # type: ignore[attr-defined]
+                self.eval_float(self._secondary_relative_value)
+            )
             meter.set_relative_enabled(self._secondary_relative_enabled)
         meter.clear_buffer()
         meter.set_buffer_size(count)
         meter.set_buffer_feed_sense()
         meter.set_buffer_feed_continuous_next()
         meter.set_trigger_source(NanovoltmeterTriggerSource.EXT)
-        meter.set_trigger_delay(self._secondary_trigger_delay)  # type: ignore[attr-defined]
+        meter.set_trigger_delay(  # type: ignore[attr-defined]
+            self.eval_float(self._secondary_trigger_delay)
+        )
         meter.set_trigger_count(count)
 
     def _secondary_measurement_time(self) -> float:
@@ -626,7 +638,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             capabilities.analog_filter_time_multiplier if self._secondary_analog_filter else 1.0
         )
         return (
-            self._secondary_trigger_delay
+            self.eval_float(self._secondary_trigger_delay)
             + self._secondary_nplc * _LINE_PERIOD_50HZ * filter_multiplier * analog_multiplier
         )
 
@@ -641,7 +653,11 @@ class Keithley2400SweepPlugin(TracePlugin):
             raise RuntimeError("Not configured — call configure() before measure().")
 
         n_points = len(self._sweep_values)
-        point_time = _LINE_PERIOD_50HZ * self._nplc + self._source_delay + self._trigger_delay
+        point_time = (
+            _LINE_PERIOD_50HZ * self._nplc
+            + self.eval_float(self._source_delay)
+            + self.eval_float(self._trigger_delay)
+        )
         if self._secondary_enabled:
             point_time += self._secondary_measurement_time()
         timeout = max(_TIMEOUT_MIN, n_points * point_time * _TIMEOUT_FACTOR)
@@ -730,7 +746,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             reduced = reduce_differential_readings(
                 np.asarray(self._nominal_sweep_values),
                 voltage,
-                self._delta_current,
+                self.eval_float(self._delta_current),
                 conductance=self._differential_conductance,
             )
             current = reduced.current
@@ -790,7 +806,7 @@ class Keithley2400SweepPlugin(TracePlugin):
                 secondary_reduced = reduce_differential_readings(
                     np.asarray(self._nominal_sweep_values),
                     secondary_voltage,
-                    self._delta_current,
+                    self.eval_float(self._delta_current),
                     conductance=self._differential_conductance,
                 )
                 secondary_voltage = secondary_reduced.voltage
@@ -861,7 +877,11 @@ class Keithley2400SweepPlugin(TracePlugin):
         ]
         timestamp = np.array(raw_time, dtype=float)
         if np.isnan(timestamp).all():
-            point_time = self._nplc * _LINE_PERIOD_50HZ + self._source_delay + self._trigger_delay
+            point_time = (
+                self._nplc * _LINE_PERIOD_50HZ
+                + self.eval_float(self._source_delay)
+                + self.eval_float(self._trigger_delay)
+            )
             timestamp = np.arange(n_points, dtype=float) * point_time
         return current, voltage, resistance, power, timestamp
 
@@ -961,13 +981,13 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._compliance_mode = ComplianceMode(
             str(data.get("compliance_mode", self._compliance_mode.value))
         )
-        self._compliance = float(data.get("compliance", self._compliance))
-        self._compliance_resistance = float(
-            data.get("compliance_resistance", self._compliance_resistance)
+        self._compliance = data.get("compliance", self._compliance)
+        self._compliance_resistance = data.get(
+            "compliance_resistance", self._compliance_resistance
         )
         self._nplc = float(data.get("nplc", self._nplc))
-        self._source_delay = float(data.get("source_delay", self._source_delay))
-        self._trigger_delay = float(data.get("trigger_delay", self._trigger_delay))
+        self._source_delay = data.get("source_delay", self._source_delay)
+        self._trigger_delay = data.get("trigger_delay", self._trigger_delay)
         self._enable_output_during_measurement = bool(
             data.get("enable_output_during_measurement", self._enable_output_during_measurement)
         )
@@ -978,18 +998,18 @@ class Keithley2400SweepPlugin(TracePlugin):
             data.get("trigger_count_override", self._trigger_count_override)
         )
         self._arm_count = int(data.get("arm_count", self._arm_count))
-        self._timer_interval = float(data.get("timer_interval", self._timer_interval))
+        self._timer_interval = data.get("timer_interval", self._timer_interval)
         self._enable_trigger_out = bool(data.get("enable_trigger_out", self._enable_trigger_out))
         self._trigger_out_line = int(data.get("trigger_out_line", self._trigger_out_line))
         self._trigger_in_line = int(data.get("trigger_in_line", self._trigger_in_line))
         self._source_range_mode = RangeMode(
             str(data.get("source_range_mode", self._source_range_mode.value))
         )
-        self._source_range = float(data.get("source_range", self._source_range))
+        self._source_range = data.get("source_range", self._source_range)
         self._sense_range_mode = RangeMode(
             str(data.get("sense_range_mode", self._sense_range_mode.value))
         )
-        self._sense_range = float(data.get("sense_range", self._sense_range))
+        self._sense_range = data.get("sense_range", self._sense_range)
         self._connection_mode = ConnectionMode(
             str(data.get("connection_mode", self._connection_mode.value))
         )
@@ -1007,7 +1027,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             self._differential_conductance = bool(
                 data.get("differential_conductance", self._differential_conductance)
             )
-            self._delta_current = float(data.get("delta_current", self._delta_current))
+            self._delta_current = data.get("delta_current", self._delta_current)
         secondary = data.get("secondary_nanovoltmeter", {})
         if not isinstance(secondary, dict):
             return
@@ -1035,8 +1055,8 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._secondary_filter_count = int(
             secondary.get("filter_count", self._secondary_filter_count)
         )
-        self._secondary_trigger_delay = float(
-            secondary.get("trigger_delay", self._secondary_trigger_delay)
+        self._secondary_trigger_delay = secondary.get(
+            "trigger_delay", self._secondary_trigger_delay
         )
         self._secondary_line_sync = bool(secondary.get("line_sync", self._secondary_line_sync))
         self._secondary_autozero = bool(secondary.get("autozero", self._secondary_autozero))
@@ -1046,8 +1066,8 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._secondary_relative_enabled = bool(
             secondary.get("relative_enabled", self._secondary_relative_enabled)
         )
-        self._secondary_relative_value = float(
-            secondary.get("relative_value", self._secondary_relative_value)
+        self._secondary_relative_value = secondary.get(
+            "relative_value", self._secondary_relative_value
         )
         self._secondary_digits = int(secondary.get("digits", self._secondary_digits))
 
@@ -1098,6 +1118,7 @@ class Keithley2400SweepPlugin(TracePlugin):
 
         compliance_label = QLabel(compliance_text)
         compliance_sb = SISpinBox(
+            allow_expressions=True,
             suffix="A" if self._source_mode is SweepSourceMode.VOLTAGE else "V",
             value=self._compliance,
         )
@@ -1109,7 +1130,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         compliance_r_label = QLabel(
             "Min resistance:" if self._source_mode is SweepSourceMode.VOLTAGE else "Max resistance:"
         )
-        compliance_r_sb = SISpinBox(suffix="Ω", value=self._compliance_resistance)
+        compliance_r_sb = SISpinBox(
+            suffix="Ω", value=self._compliance_resistance, allow_expressions=True
+        )
         compliance_r_sb.setMinimum(1e-9)
         compliance_r_sb.setMaximum(1e12)
         compliance_r_sb.valueChanged.connect(
@@ -1158,12 +1181,16 @@ class Keithley2400SweepPlugin(TracePlugin):
             lambda idx: setattr(self, "_nplc", float(nplc_combo.itemData(idx)))
         )
 
-        source_delay_sb = SISpinBox(suffix="s", value=self._source_delay)
+        source_delay_sb = SISpinBox(
+            suffix="s", value=self._source_delay, allow_expressions=True
+        )
         source_delay_sb.setMinimum(0.0)
         source_delay_sb.setMaximum(9999.0)
         source_delay_sb.valueChanged.connect(lambda value: setattr(self, "_source_delay", value))
 
-        trigger_delay_sb = SISpinBox(suffix="s", value=self._trigger_delay)
+        trigger_delay_sb = SISpinBox(
+            suffix="s", value=self._trigger_delay, allow_expressions=True
+        )
         trigger_delay_sb.setMinimum(0.0)
         trigger_delay_sb.setMaximum(9999.0)
         trigger_delay_sb.valueChanged.connect(lambda value: setattr(self, "_trigger_delay", value))
@@ -1184,7 +1211,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         differential_conductance.setObjectName("differential_conductance")
         differential_conductance.setChecked(self._differential_conductance)
         differential_conductance.setEnabled(self._differential_mode)
-        delta_current = SISpinBox(suffix="A", value=self._delta_current)
+        delta_current = SISpinBox(
+            suffix="A", value=self._delta_current, allow_expressions=True
+        )
         delta_current.setObjectName("delta_current")
         delta_current.setMinimum(1e-15)
         delta_current.setMaximum(10.0)
@@ -1224,6 +1253,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             0 if self._source_range_mode is RangeMode.AUTO else 1
         )
         source_range_sb = SISpinBox(
+            allow_expressions=True,
             suffix="V" if self._source_mode is SweepSourceMode.VOLTAGE else "A",
             value=self._source_range,
         )
@@ -1237,6 +1267,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         sense_range_mode_combo.addItem("Fixed", RangeMode.FIXED)
         sense_range_mode_combo.setCurrentIndex(0 if self._sense_range_mode is RangeMode.AUTO else 1)
         sense_range_sb = SISpinBox(
+            allow_expressions=True,
             suffix="A" if self._source_mode is SweepSourceMode.VOLTAGE else "V",
             value=self._sense_range,
         )
@@ -1290,7 +1321,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         arm_count_sb.setMaximum(100000)
         arm_count_sb.setValue(self._arm_count)
 
-        timer_sb = SISpinBox(suffix="s", value=self._timer_interval)
+        timer_sb = SISpinBox(
+            suffix="s", value=self._timer_interval, allow_expressions=True
+        )
         timer_sb.setMinimum(1e-6)
         timer_sb.setMaximum(9999.0)
         timer_sb.setEnabled(self._trigger_routing is TriggerRouting.TIMER)
@@ -1462,7 +1495,9 @@ class Keithley2400SweepPlugin(TracePlugin):
 
         nplc = QComboBox()
         nplc.setObjectName("secondary_nplc")
-        trigger_delay = SISpinBox(suffix="s", value=self._secondary_trigger_delay)
+        trigger_delay = SISpinBox(
+            suffix="s", value=self._secondary_trigger_delay, allow_expressions=True
+        )
         trigger_delay.setObjectName("secondary_trigger_delay")
         trigger_delay.setMinimum(0.0)
         trigger_delay.setMaximum(999.999)
@@ -1524,7 +1559,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         relative_enabled = QCheckBox("Enabled")
         relative_enabled.setObjectName("secondary_relative_enabled")
         relative_enabled.setChecked(self._secondary_relative_enabled)
-        relative_value = SISpinBox(suffix="V", value=self._secondary_relative_value)
+        relative_value = SISpinBox(
+            suffix="V", value=self._secondary_relative_value, allow_expressions=True
+        )
         relative_value.setObjectName("secondary_relative_value")
         relative_row = QWidget()
         relative_layout = QHBoxLayout(relative_row)

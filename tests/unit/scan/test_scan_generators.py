@@ -615,6 +615,27 @@ class TestFunctionScanWidget:
         _x, y = widget._curve.getData()
         assert np.allclose(y, gen.values)
 
+    def test_unresolved_expression_logs_and_renders_nan_preview(self, qapp, caplog, monkeypatch):
+        """An unresolved runtime expression produces a stable NaN waveform."""
+        gen = FunctionScanGenerator(num_points=10)
+        widget = FunctionScanWidget(generator=gen)
+
+        with caplog.at_level("WARNING", logger="stoner_measurement.scan.function_generator"):
+            widget._amplitude_spin.setValue("x")
+
+        x_values, y_values = widget._curve.getData()
+        assert gen.amplitude == "x"
+        assert len(x_values) == len(y_values) == gen.num_points
+        assert np.isnan(y_values).all()
+        assert "using NaNs" in caplog.text
+
+        monkeypatch.setattr(
+            gen,
+            "eval_float",
+            lambda value: 2.0 if value == "x" else float(value),
+        )
+        assert np.isfinite(gen.values).all()
+
     def test_current_point_marker_tracks_iteration(self, qapp):
         gen = FunctionScanGenerator(num_points=5)
         widget = FunctionScanWidget(generator=gen)

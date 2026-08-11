@@ -675,6 +675,27 @@ class TestSweepGenerators:
         # 0.05 * (1 segment + 1 startup phase) = 0.1, then scaled by 3.0.
         assert plugin.sweep_timeout == 540.3
 
+    def test_sweep_timeout_factor_expression_is_resolved_at_use(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        plugin = _TrackingRampSweep()
+        plugin.sweep_generator = MultiSegmentRampSweepGenerator(
+            start=0.0,
+            segments=[(1.0, 1.0, True)],
+            state_sweep=plugin,
+            parent=plugin,
+        )
+        plugin.sweep_timeout_factor = "timeout_multiplier"
+        engine = SequenceEngine()
+        engine.add_plugin("tracking", plugin)
+        plugin.engine_namespace["timeout_multiplier"] = 2.0
+        try:
+            assert plugin.sweep_timeout == pytest.approx(
+                plugin.sweep_generator.estimated_duration() * 2.0
+            )
+        finally:
+            engine.shutdown()
+
     def test_state_sweep_plugin_uses_configurable_timeout_default(self, qapp):
         plugin = _TrackingRampSweep()
         assert plugin.default_sweep_timeout_factor == 3.0

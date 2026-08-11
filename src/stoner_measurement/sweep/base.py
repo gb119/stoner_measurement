@@ -87,6 +87,14 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         """Return the human-friendly generator summary."""
         return str(self)
 
+    def eval_float(self, value: float | int | str) -> float:
+        """Resolve a numeric sweep setting through the owning plugin."""
+        if not isinstance(value, str):
+            return float(value)
+        if self.state_sweep is None:
+            return float(value)
+        return self.state_sweep.eval_float(value)
+
     @property
     def state_sweep(self) -> StateSweepPlugin | None:
         """Return the owning state-sweep plugin.

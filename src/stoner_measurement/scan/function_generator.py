@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import enum
 import json
+import logging
 
 import numpy as np
 import pyqtgraph as pg
@@ -48,6 +49,8 @@ _PRESET_PARAMETER_KEYS = (
     "periods",
     "num_points",
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _preset_settings() -> QSettings:
@@ -155,23 +158,24 @@ class FunctionScanGenerator(BaseScanGenerator):
         self,
         *,
         waveform: WaveformType = WaveformType.SINE,
-        amplitude: float = 1.0,
-        offset: float = 0.0,
-        phase: float = 0.0,
-        exponent: float = 1.0,
-        periods: float = 1.0,
+        amplitude: float | str = 1.0,
+        offset: float | str = 0.0,
+        phase: float | str = 0.0,
+        exponent: float | str = 1.0,
+        periods: float | str = 1.0,
         num_points: int = 100,
         parent: QObject | None = None,
     ) -> None:
         """Initialise the function scan generator with the given parameters."""
         super().__init__(parent)
         self._waveform = WaveformType(waveform)
-        self._amplitude = float(amplitude)
-        self._offset = float(offset)
-        self._phase = float(phase)
-        self._exponent = float(exponent)
-        self._periods = max(1e-9, float(periods))
+        self._amplitude = amplitude
+        self._offset = offset
+        self._phase = phase
+        self._exponent = exponent
+        self._periods = periods if isinstance(periods, str) else max(1e-9, float(periods))
         self._num_points = max(2, int(num_points))
+        self._generation_failed = False
 
     # ------------------------------------------------------------------
     # Properties
@@ -188,43 +192,43 @@ class FunctionScanGenerator(BaseScanGenerator):
         self._invalidate_cache()
 
     @property
-    def amplitude(self) -> float:
+    def amplitude(self) -> float | str:
         """Peak-to-centre amplitude of the waveform."""
         return self._amplitude
 
     @amplitude.setter
-    def amplitude(self, value: float) -> None:
-        self._amplitude = float(value)
+    def amplitude(self, value: float | str) -> None:
+        self._amplitude = value
         self._invalidate_cache()
 
     @property
-    def offset(self) -> float:
+    def offset(self) -> float | str:
         """DC offset added to the waveform."""
         return self._offset
 
     @offset.setter
-    def offset(self, value: float) -> None:
-        self._offset = float(value)
+    def offset(self, value: float | str) -> None:
+        self._offset = value
         self._invalidate_cache()
 
     @property
-    def phase(self) -> float:
+    def phase(self) -> float | str:
         """Phase shift in degrees."""
         return self._phase
 
     @phase.setter
-    def phase(self, value: float) -> None:
-        self._phase = float(value)
+    def phase(self, value: float | str) -> None:
+        self._phase = value
         self._invalidate_cache()
 
     @property
-    def exponent(self) -> float:
+    def exponent(self) -> float | str:
         """Power-law exponent applied before amplitude/offset scaling."""
         return self._exponent
 
     @exponent.setter
-    def exponent(self, value: float) -> None:
-        self._exponent = float(value)
+    def exponent(self, value: float | str) -> None:
+        self._exponent = value
         self._invalidate_cache()
 
     @property
@@ -238,13 +242,13 @@ class FunctionScanGenerator(BaseScanGenerator):
         self._invalidate_cache()
 
     @property
-    def periods(self) -> float:
+    def periods(self) -> float | str:
         """Number of complete periods spanned by the sequence (> 0)."""
         return self._periods
 
     @periods.setter
-    def periods(self, value: float) -> None:
-        self._periods = max(1e-9, float(value))
+    def periods(self, value: float | str) -> None:
+        self._periods = value if isinstance(value, str) else max(1e-9, float(value))
         self._invalidate_cache()
 
     # ------------------------------------------------------------------
@@ -274,8 +278,23 @@ class FunctionScanGenerator(BaseScanGenerator):
             >>> abs(arr[0]) < 1e-9  # sine starts at 0
             True
         """
-        phase_rad = np.deg2rad(self._phase)
-        x = np.linspace(0.0, 2.0 * np.pi * self._periods, self._num_points) + phase_rad
+        self._generation_failed = False
+        try:
+            amplitude = self.eval_float(self._amplitude)
+            offset = self.eval_float(self._offset)
+            phase = self.eval_float(self._phase)
+            exponent = self.eval_float(self._exponent)
+            periods = max(1e-9, self.eval_float(self._periods))
+        except Exception as exc:  # noqa: BLE001 - an unresolved waveform is representable
+            self._generation_failed = True
+            logger.warning(
+                "Function scan waveform could not be generated; using NaNs until its runtime "
+                "expression can be evaluated: %s",
+                exc,
+            )
+            return np.full(self._num_points, np.nan, dtype=float)
+        phase_rad = np.deg2rad(phase)
+        x = np.linspace(0.0, 2.0 * np.pi * periods, self._num_points) + phase_rad
         wf = self._waveform
         if wf is WaveformType.SINE:
             wave = np.sin(x)
@@ -291,8 +310,16 @@ class FunctionScanGenerator(BaseScanGenerator):
             wave = 2.0 * ((x / (2.0 * np.pi)) % 1.0) - 1.0
         else:
             wave = np.zeros(self._num_points)
-        wave = np.sign(wave) * np.abs(wave) ** self._exponent
-        return self._amplitude * wave + self._offset
+        wave = np.sign(wave) * np.abs(wave) ** exponent
+        return amplitude * wave + offset
+
+    @property
+    def values(self) -> np.ndarray:
+        """Return waveform values without caching a failed NaN placeholder."""
+        values = super().values
+        if self._generation_failed:
+            self._cache = None
+        return values
 
     def measure_flags(self) -> np.ndarray:
         """Return per-point measure flags for the waveform sequence.
@@ -316,10 +343,13 @@ class FunctionScanGenerator(BaseScanGenerator):
 
     def _representation_details(self) -> str:
         """Return the main waveform parameters and point count."""
+        def display(value: float | str) -> str:
+            return value if isinstance(value, str) else f"{value:g}"
+
         return (
-            f"{self._waveform.value}, amplitude={self._amplitude:g}, "
-            f"offset={self._offset:g}, phase={self._phase:g} degrees, "
-            f"periods={self._periods:g}, exponent={self._exponent:g}, "
+            f"{self._waveform.value}, amplitude={display(self._amplitude)}, "
+            f"offset={display(self._offset)}, phase={display(self._phase)} degrees, "
+            f"periods={display(self._periods)}, exponent={display(self._exponent)}, "
             f"{self._num_points} points"
         )
 
@@ -408,11 +438,11 @@ class FunctionScanGenerator(BaseScanGenerator):
         waveform = WaveformType(data.get("waveform", WaveformType.SINE.value))
         instance = cls(
             waveform=waveform,
-            amplitude=float(data.get("amplitude", 1.0)),
-            offset=float(data.get("offset", 0.0)),
-            phase=float(data.get("phase", 0.0)),
-            exponent=float(data.get("exponent", 1.0)),
-            periods=float(data.get("periods", 1.0)),
+            amplitude=data.get("amplitude", 1.0),
+            offset=data.get("offset", 0.0),
+            phase=data.get("phase", 0.0),
+            exponent=data.get("exponent", 1.0),
+            periods=data.get("periods", 1.0),
             num_points=int(data.get("num_points", 100)),
             parent=parent,
         )
@@ -480,7 +510,7 @@ class FunctionScanWidget(QWidget):
         self._parameter_grid.setColumnStretch(3, 1)
         controls_layout.addLayout(self._parameter_grid)
 
-        self._amplitude_spin = SISpinBox()
+        self._amplitude_spin = SISpinBox(allow_expressions=True)
         self._amplitude_spin.setOpts(
             bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True
         )
@@ -489,7 +519,7 @@ class FunctionScanWidget(QWidget):
         self._parameter_grid.addWidget(QLabel("Amplitude:"), 0, 0)
         self._parameter_grid.addWidget(self._amplitude_spin, 0, 1)
 
-        self._offset_spin = SISpinBox()
+        self._offset_spin = SISpinBox(allow_expressions=True)
         self._offset_spin.setOpts(
             bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True
         )
@@ -498,14 +528,14 @@ class FunctionScanWidget(QWidget):
         self._parameter_grid.addWidget(QLabel("Offset:"), 0, 2)
         self._parameter_grid.addWidget(self._offset_spin, 0, 3)
 
-        self._phase_spin = SISpinBox()
+        self._phase_spin = SISpinBox(allow_expressions=True)
         self._phase_spin.setOpts(bounds=(-360.0, 360.0), step=1.0, decimals=2)
         self._phase_spin.setValue(self._generator.phase)
         self._phase_spin.setToolTip("Phase shift in degrees")
         self._parameter_grid.addWidget(QLabel("Phase (°):"), 2, 0)
         self._parameter_grid.addWidget(self._phase_spin, 2, 1)
 
-        self._exponent_spin = SISpinBox()
+        self._exponent_spin = SISpinBox(allow_expressions=True)
         self._exponent_spin.setOpts(
             bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4
         )
@@ -521,7 +551,7 @@ class FunctionScanWidget(QWidget):
         self._parameter_grid.addWidget(QLabel("Points:"), 1, 0)
         self._parameter_grid.addWidget(self._points_spin, 1, 1)
 
-        self._periods_spin = SISpinBox()
+        self._periods_spin = SISpinBox(allow_expressions=True)
         self._periods_spin.setOpts(bounds=(0.01, 1000.0), step=0.5, decimals=2)
         self._periods_spin.setValue(self._generator.periods)
         self._periods_spin.setToolTip("Number of complete periods in the scan")
@@ -766,19 +796,19 @@ class FunctionScanWidget(QWidget):
         """Update generator waveform from combo box selection."""
         self._generator.waveform = self._waveform_combo.itemData(index)
 
-    def _on_amplitude_changed(self, value: float) -> None:
+    def _on_amplitude_changed(self, value: float | str) -> None:
         """Update generator amplitude."""
         self._generator.amplitude = value
 
-    def _on_offset_changed(self, value: float) -> None:
+    def _on_offset_changed(self, value: float | str) -> None:
         """Update generator offset."""
         self._generator.offset = value
 
-    def _on_phase_changed(self, value: float) -> None:
+    def _on_phase_changed(self, value: float | str) -> None:
         """Update generator phase."""
         self._generator.phase = value
 
-    def _on_exponent_changed(self, value: float) -> None:
+    def _on_exponent_changed(self, value: float | str) -> None:
         """Update generator exponent."""
         self._generator.exponent = value
 
@@ -786,7 +816,7 @@ class FunctionScanWidget(QWidget):
         """Update generator num_points."""
         self._generator.num_points = value
 
-    def _on_periods_changed(self, value: float) -> None:
+    def _on_periods_changed(self, value: float | str) -> None:
         """Update generator periods."""
         self._generator.periods = value
 

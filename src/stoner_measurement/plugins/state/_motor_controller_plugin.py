@@ -57,8 +57,8 @@ class MotorControllerPluginMixin:
         return frozenset({"motor_position"})
 
     def _init_motor_controller_plugin(self) -> None:
-        self.velocity: float = 10.0
-        self.acceleration: float = 10.0
+        self.velocity: float | str = 10.0
+        self.acceleration: float | str = 10.0
         self.direction: MotorMoveDirection = MotorMoveDirection.SHORTEST
         self.report_outputs: list[str] | None = None
 
@@ -99,8 +99,8 @@ class MotorControllerPluginMixin:
         """Push the configured velocity and acceleration into the engine."""
         engine = self._ensure_connected()
         if self._uses_velocity_setting():
-            engine.set_velocity(self.velocity)
-        engine.set_acceleration(self.acceleration)
+            engine.set_velocity(self.eval_float(self.velocity))
+        engine.set_acceleration(self.eval_float(self.acceleration))
 
     def disconnect(self) -> None:
         """Leave the shared engine running."""
@@ -109,8 +109,8 @@ class MotorControllerPluginMixin:
         """Move the controller to the requested absolute angular set-point."""
         engine = self._ensure_connected()
         if self._uses_velocity_setting():
-            engine.set_velocity(self.velocity)
-        engine.set_acceleration(self.acceleration)
+            engine.set_velocity(self.eval_float(self.velocity))
+        engine.set_acceleration(self.eval_float(self.acceleration))
         engine.move_to_angle(float(value), direction=self.direction)
 
     def set_target(self, value: float) -> None:
@@ -187,9 +187,9 @@ class MotorControllerPluginMixin:
 
     def _restore_motor_settings(self, data: dict[str, object]) -> None:
         if "velocity" in data:
-            self.velocity = max(0.0, float(data["velocity"]))
+            self.velocity = data["velocity"]  # type: ignore[assignment]
         if "acceleration" in data:
-            self.acceleration = max(0.0, float(data["acceleration"]))
+            self.acceleration = data["acceleration"]  # type: ignore[assignment]
         if "direction" in data:
             self.direction = _normalise_direction(data["direction"])
         if "report_outputs" in data:
@@ -214,19 +214,19 @@ class _MotorControllerSettingsWidget(QWidget):
         form = QFormLayout()
 
         if self._plugin._uses_velocity_setting():
-            self._velocity_spin = SISpinBox()
+            self._velocity_spin = SISpinBox(allow_expressions=True)
             self._velocity_spin.setOpts(bounds=(0.001, 10000.0), decimals=3, suffix="°/s", step=1.0)
             self._velocity_spin.setValue(self._plugin.velocity)
             self._velocity_spin.sigValueChanged.connect(
-                lambda sb: setattr(self._plugin, "velocity", max(0.0, float(sb.value())))
+                lambda sb: setattr(self._plugin, "velocity", sb.value())
             )
             form.addRow("Velocity:", self._velocity_spin)
 
-        self._acceleration_spin = SISpinBox()
+        self._acceleration_spin = SISpinBox(allow_expressions=True)
         self._acceleration_spin.setOpts(bounds=(0.001, 10000.0), decimals=3, suffix="°/s²", step=1.0)
         self._acceleration_spin.setValue(self._plugin.acceleration)
         self._acceleration_spin.sigValueChanged.connect(
-            lambda sb: setattr(self._plugin, "acceleration", max(0.0, float(sb.value())))
+            lambda sb: setattr(self._plugin, "acceleration", sb.value())
         )
         form.addRow("Acceleration:", self._acceleration_spin)
 

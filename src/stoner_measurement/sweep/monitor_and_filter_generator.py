@@ -68,21 +68,21 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
     def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
-        rows: list[tuple[str, bool, float]] | None = None,
-        timeout: float = 1.0,
+        rows: list[tuple[str, bool, float | str]] | None = None,
+        timeout: float | str = 1.0,
         termination_condition: str = "",
         poll_seconds: float = _DEFAULT_POLL_SECONDS,
         state_sweep=None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(state_sweep=state_sweep, parent=parent)
-        self._rows: list[tuple[str, bool, float]] = rows or [("", False, 0.0)]
-        self._timeout = max(0.0, float(timeout))
+        self._rows: list[tuple[str, bool, float | str]] = rows or [("", False, 0.0)]
+        self._timeout = timeout
         self._termination_condition = str(termination_condition)
         self._poll_seconds = max(0.0, float(poll_seconds))
 
     @property
-    def rows(self) -> list[tuple[str, bool, float]]:
+    def rows(self) -> list[tuple[str, bool, float | str]]:
         """Return configured monitor rows.
 
         Returns:
@@ -92,21 +92,21 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
         return list(self._rows)
 
     @rows.setter
-    def rows(self, value: list[tuple[str, bool, float]]) -> None:
+    def rows(self, value: list[tuple[str, bool, float | str]]) -> None:
         """Set configured monitor rows.
 
         Args:
             value (list[tuple[str, bool, float]]):
                 Monitor rows as ``(expression, percent, limit)`` tuples.
         """
-        cleaned: list[tuple[str, bool, float]] = []
+        cleaned: list[tuple[str, bool, float | str]] = []
         for expr, as_percent, limit in value:
-            cleaned.append((str(expr), bool(as_percent), float(limit)))
+            cleaned.append((str(expr), bool(as_percent), limit))
         self._rows = cleaned or [("", False, 0.0)]
         self._invalidate()
 
     @property
-    def timeout(self) -> float:
+    def timeout(self) -> float | str:
         """Return timeout between forced measurements.
 
         Returns:
@@ -116,14 +116,14 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
         return self._timeout
 
     @timeout.setter
-    def timeout(self, value: float) -> None:
+    def timeout(self, value: float | str) -> None:
         """Set timeout between forced measurements.
 
         Args:
             value (float):
                 Timeout in seconds.
         """
-        self._timeout = max(0.0, float(value))
+        self._timeout = value
         self._invalidate()
 
     @property
@@ -241,11 +241,14 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
             ):
                 if current is None or baseline is None:
                     continue
-                if self._change_exceeds_limit(current, baseline, use_percent, float(limit)):
+                if self._change_exceeds_limit(
+                    current, baseline, use_percent, self.eval_float(limit)
+                ):
                     triggered_index = idx
                     break
 
-            timeout_triggered = self._timeout <= 0.0 or (time.monotonic() - last_measure_time) >= self._timeout
+            timeout = self.eval_float(self._timeout)
+            timeout_triggered = timeout <= 0.0 or (time.monotonic() - last_measure_time) >= timeout
             measure_flag = triggered_index is not None or timeout_triggered
 
             if measure_flag:
@@ -277,7 +280,7 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
         count = len(self._rows)
         return (
             f"{count} {'monitor' if count == 1 else 'monitors'}, "
-            f"timeout={self._timeout:g} seconds"
+            f"timeout={self._timeout} seconds"
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -305,10 +308,13 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
             (MonitorAndFilterSweepGenerator):
                 Reconstructed generator instance.
         """
-        rows = [(str(expr), bool(use_percent), float(limit)) for expr, use_percent, limit in data.get("rows", [])]
+        rows = [
+            (str(expr), bool(use_percent), limit)
+            for expr, use_percent, limit in data.get("rows", [])
+        ]
         return cls(
             rows=rows,
-            timeout=float(data.get("timeout", 1.0)),
+            timeout=data.get("timeout", 1.0),
             termination_condition=str(data.get("termination_condition", "")),
             poll_seconds=float(data.get("poll_seconds", _DEFAULT_POLL_SECONDS)),
             state_sweep=state_sweep,
@@ -329,7 +335,7 @@ class MonitorAndFilterSweepWidget(QWidget):
         root = QVBoxLayout(self)
 
         form = QFormLayout()
-        self._timeout_spin = SISpinBox()
+        self._timeout_spin = SISpinBox(allow_expressions=True)
         self._timeout_spin.setOpts(bounds=(0.0, 1e9), decimals=6, suffix="s")
         self._timeout_spin.valueChanged.connect(self._on_timeout_changed)
         form.addRow("Timeout:", self._timeout_spin)
@@ -382,10 +388,10 @@ class MonitorAndFilterSweepWidget(QWidget):
         check.stateChanged.connect(self._sync_rows_from_table)
         return check
 
-    def _build_limit_spin(self, value: float) -> SISpinBox:
-        spin = SISpinBox(self._table)
+    def _build_limit_spin(self, value: float | str) -> SISpinBox:
+        spin = SISpinBox(self._table, allow_expressions=True)
         spin.setOpts(bounds=(0.0, _SPINBOX_MAX_ABS), decimals=6)
-        spin.setValue(float(value))
+        spin.setValue(value)
         spin.valueChanged.connect(self._sync_rows_from_table)
         return spin
 
@@ -419,19 +425,19 @@ class MonitorAndFilterSweepWidget(QWidget):
             self._table.setCellWidget(row, 2, self._build_limit_spin(limit))
 
     def _sync_rows_from_table(self) -> None:
-        rows: list[tuple[str, bool, float]] = []
+        rows: list[tuple[str, bool, float | str]] = []
         for row in range(self._table.rowCount()):
             combo = self._table.cellWidget(row, 0)
             check = self._table.cellWidget(row, 1)
             spin = self._table.cellWidget(row, 2)
             expression = combo.currentText().strip() if isinstance(combo, QComboBox) else ""
             use_percent = check.isChecked() if isinstance(check, QCheckBox) else False
-            limit = float(spin.value()) if isinstance(spin, SISpinBox) else 0.0
+            limit = spin.value() if isinstance(spin, SISpinBox) else 0.0
             rows.append((expression, use_percent, limit))
         self._generator.rows = rows
 
-    def _on_timeout_changed(self, value: float) -> None:
-        self._generator.timeout = float(value)
+    def _on_timeout_changed(self, value: float | str) -> None:
+        self._generator.timeout = value
 
     def _on_termination_changed(self) -> None:
         self._generator.termination_condition = self._termination_edit.text().strip()

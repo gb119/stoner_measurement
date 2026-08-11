@@ -72,12 +72,12 @@ class ListScanGenerator(BaseScanGenerator):
     def __init__(
         self,
         *,
-        stages: list[tuple[float, bool]] | None = None,
+        stages: list[tuple[float | str, bool]] | None = None,
         parent: QObject | None = None,
     ) -> None:
         """Initialise the list scan generator."""
         super().__init__(parent)
-        self._stages: list[tuple[float, bool]] = []
+        self._stages: list[tuple[float | str, bool]] = []
         if stages:
             self.stages = stages
 
@@ -86,13 +86,13 @@ class ListScanGenerator(BaseScanGenerator):
     # ------------------------------------------------------------------
 
     @property
-    def stages(self) -> list[tuple[float, bool]]:
+    def stages(self) -> list[tuple[float | str, bool]]:
         """Ordered list of ``(target, measure)`` stage definitions."""
         return list(self._stages)
 
     @stages.setter
-    def stages(self, value: list[tuple[float, bool]]) -> None:
-        self._stages = [(float(t), bool(m)) for t, m in value]
+    def stages(self, value: list[tuple[float | str, bool]]) -> None:
+        self._stages = [(t, bool(m)) for t, m in value]
         self._invalidate_cache()
 
     # ------------------------------------------------------------------
@@ -116,7 +116,7 @@ class ListScanGenerator(BaseScanGenerator):
         """
         if not self._stages:
             return np.array([], dtype=float)
-        return np.array([t for t, _ in self._stages], dtype=float)
+        return np.array([self.eval_float(t) for t, _ in self._stages], dtype=float)
 
     def measure_flags(self) -> np.ndarray:
         """Return per-point measure flags for the list sequence.
@@ -212,7 +212,7 @@ class ListScanGenerator(BaseScanGenerator):
             >>> restored.stages
             [(1.0, True), (3.0, False)]
         """
-        stages = [(float(t), bool(m)) for t, m in data.get("stages", [])]
+        stages = [(t, bool(m)) for t, m in data.get("stages", [])]
         instance = cls(stages=stages, parent=parent)
         instance.units = str(data.get("units", ""))
         return instance
@@ -387,7 +387,7 @@ class ListScanWidget(QWidget):
             row = self._table.rowCount()
             self._table.insertRow(row)
 
-            target_spin = SISpinBox()
+            target_spin = SISpinBox(allow_expressions=True)
             target_spin.setOpts(
                 bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS),
                 step=0.1,
@@ -395,7 +395,7 @@ class ListScanWidget(QWidget):
                 siPrefix=True,
                 suffix=self._generator.units,
             )
-            target_spin.setValue(float(target))
+            target_spin.setValue(target)
             target_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)
 

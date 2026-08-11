@@ -43,7 +43,7 @@ class MagnetControllerPluginMixin:
         return frozenset({"magnetic_field"})
 
     def _init_magnet_controller_plugin(self) -> None:
-        self.ramp_rate: float = 0.1
+        self.ramp_rate: float | str = 0.1
         self.use_plugin_ramp_rate: bool = True
         self.report_outputs: list[str] | None = None
 
@@ -89,7 +89,7 @@ class MagnetControllerPluginMixin:
     def configure(self) -> None:
         self._raise_if_quenched(self._engine_state())
         if self.use_plugin_ramp_rate:
-            self._engine().set_ramp_rate_field(self.ramp_rate)
+            self._engine().set_ramp_rate_field(self.eval_float(self.ramp_rate))
 
     def disconnect(self) -> None:
         """Leave the shared engine running."""
@@ -98,7 +98,7 @@ class MagnetControllerPluginMixin:
         engine = self._ensure_connected()
         self._raise_if_quenched(self._engine_state(refresh=True))
         if self.use_plugin_ramp_rate:
-            engine.set_ramp_rate_field(self.ramp_rate)
+            engine.set_ramp_rate_field(self.eval_float(self.ramp_rate))
         engine.ramp_to_field(float(value))
 
     def set_target(self, value: float) -> None:
@@ -176,7 +176,7 @@ class MagnetControllerPluginMixin:
 
     def _restore_magnet_settings(self, data: dict[str, object]) -> None:
         if "ramp_rate" in data:
-            self.ramp_rate = max(0.0, float(data["ramp_rate"]))
+            self.ramp_rate = data["ramp_rate"]  # type: ignore[assignment]
         if "report_outputs" in data:
             raw = data["report_outputs"]
             self.report_outputs = _normalise_outputs(raw if isinstance(raw, list) else None)
@@ -198,7 +198,13 @@ class _MagnetControllerSettingsWidget(QWidget):
         root = QVBoxLayout(self)
         form = QFormLayout()
 
-        self._ramp_rate_spin = SISpinBox()
+        self._ramp_rate_spin = SISpinBox(allow_expressions=True)
+        self._ramp_rate_spin.setOpts(bounds=(0.0, 1e9), decimals=6)
+        self._ramp_rate_spin.setValue(self._plugin.ramp_rate)
+        self._ramp_rate_spin.sigValueChanged.connect(
+            lambda spin: setattr(self._plugin, "ramp_rate", spin.value())
+        )
+        form.addRow("Ramp rate:", self._ramp_rate_spin)
         outputs_row = QHBoxLayout()
         selected = set(_OUTPUT_OPTIONS if self._plugin.report_outputs is None else self._plugin.report_outputs)
         for name in _OUTPUT_OPTIONS:

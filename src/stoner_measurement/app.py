@@ -1400,7 +1400,13 @@ class MeasurementApp(QMainWindow):
         for step in steps:
             _inject_step(step)
 
-        code, line_map = self._engine.generate_sequence_code(steps, plugins, return_line_map=True)
+        try:
+            code, line_map = self._engine.generate_sequence_code(
+                steps, plugins, return_line_map=True
+            )
+        except Exception:  # noqa: BLE001 - keep Qt action exceptions out of the terminal
+            logger.exception("Unable to generate sequence code")
+            return None
         script_tab = self._main_window.script_tab
         pane = script_tab.current_pane()
         if pane is None or pane.customised:

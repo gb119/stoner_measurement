@@ -491,6 +491,32 @@ class BasePlugin(ABC):
             else:
                 ns["print"] = saved_print
 
+    def eval_float(self, expr: str | float | int) -> float:
+        """Resolve a numeric literal or expression to a floating-point value.
+
+        When attached to a sequence engine, string values are evaluated in the
+        live engine namespace via :meth:`eval`.  Numeric values are converted
+        directly, so callers can use one path for settings loaded from either
+        older numeric JSON or newer expression strings.
+
+        Args:
+            expr (str | float | int):
+                Numeric value or Python expression producing one.
+
+        Returns:
+            (float): The resolved floating-point value.
+
+        Raises:
+            RuntimeError:
+                If the plugin is not attached to a sequence engine.
+            Exception:
+                Any expression-evaluation or conversion error raised while
+                attached to an engine.
+        """
+        if not isinstance(expr, str):
+            return float(expr)
+        return float(self.eval(expr))
+
     @property
     @abstractmethod
     def name(self) -> str:

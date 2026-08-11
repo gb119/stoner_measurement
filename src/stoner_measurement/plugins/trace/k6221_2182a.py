@@ -344,26 +344,26 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         # Source settings
         self._compliance_mode: ComplianceMode = ComplianceMode.VOLTAGE
-        self._compliance: float = 10.0
-        self._compliance_resistance: float = 1000.0
-        self._source_delay: float = 1e-3
+        self._compliance: float | str = 10.0
+        self._compliance_resistance: float | str = 1000.0
+        self._source_delay: float | str = 1e-3
         self._source_range_mode: SourceRangeMode = SourceRangeMode.BEST
-        self._source_range: float = 1e-3
+        self._source_range: float | str = 1e-3
         self._differential_mode: bool = False
         self._differential_conductance: bool = False
-        self._delta_current: float = 1e-6
+        self._delta_current: float | str = 1e-6
 
         # 2182A measurement settings
         self._nplc: float = 1.0
         self._voltage_range: float = 0.0
         self._filter_type: DigitalFilterType = DigitalFilterType.OFF
         self._filter_count: int = 10
-        self._trigger_delay: float = 0.0
+        self._trigger_delay: float | str = 0.0
         self._line_sync: bool = False
         self._autozero: bool = True
         self._analog_filter: bool = False
         self._relative_enabled: bool = False
-        self._relative_value: float = 0.0
+        self._relative_value: float | str = 0.0
         self._digits: int = 8
 
         # Secondary nanovoltmeter measurement settings
@@ -371,12 +371,12 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._secondary_voltage_range: float = 0.0
         self._secondary_filter_type: str = "OFF"
         self._secondary_filter_count: int = 10
-        self._secondary_trigger_delay: float = 0.0
+        self._secondary_trigger_delay: float | str = 0.0
         self._secondary_line_sync: bool = False
         self._secondary_autozero: bool = True
         self._secondary_analog_filter: bool = False
         self._secondary_relative_enabled: bool = False
-        self._secondary_relative_value: float = 0.0
+        self._secondary_relative_value: float | str = 0.0
         self._secondary_digits: int = 8
 
         # Trigger-link line assignments
@@ -562,7 +562,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             reduced = reduce_differential_readings(
                 self._nominal_sweep_values,
                 v_arr,
-                self._delta_current,
+                self.eval_float(self._delta_current),
                 conductance=self._differential_conductance,
             )
             i_arr = reduced.current
@@ -616,7 +616,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 secondary_reduced = reduce_differential_readings(
                     self._nominal_sweep_values,
                     secondary,
-                    self._delta_current,
+                    self.eval_float(self._delta_current),
                     conductance=self._differential_conductance,
                 )
                 secondary = secondary_reduced.voltage
@@ -786,9 +786,16 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         self._set_status(TraceStatus.CONFIGURING)
         try:
+            compliance = self.eval_float(self._compliance)
+            compliance_resistance = self.eval_float(self._compliance_resistance)
+            source_delay = self.eval_float(self._source_delay)
+            source_range = self.eval_float(self._source_range)
+            delta_current = self.eval_float(self._delta_current)
+            trigger_delay = self.eval_float(self._trigger_delay)
+            relative_value = self.eval_float(self._relative_value)
             self._nominal_sweep_values = np.asarray(self.scan_generator.generate(), dtype=float)
             self._sweep_values = (
-                modulate_current_sweep(self._nominal_sweep_values, self._delta_current)
+                modulate_current_sweep(self._nominal_sweep_values, delta_current)
                 if self._differential_mode
                 else self._nominal_sweep_values.copy()
             )
@@ -806,13 +813,13 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # batching into 100-point chunks automatically.
             self._k6221.configure_custom_sweep(
                 tuple(float(v) for v in self._sweep_values),
-                delay=self._source_delay,
+                delay=source_delay,
             )
 
             # ---- 6221: per-point compliance ----
             if self._compliance_mode is ComplianceMode.RESISTANCE:
                 comp_values = [
-                    abs(float(v)) * self._compliance_resistance for v in self._sweep_values
+                    abs(float(v)) * compliance_resistance for v in self._sweep_values
                 ]
                 max_comp = max(comp_values) if comp_values else 0.0
                 if max_comp > _6221_MAX_COMPLIANCE_V:
@@ -822,14 +829,14 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                         "Reduce the compliance resistance or the sweep currents."
                     )
             else:
-                comp_values = [self._compliance] * n
+                comp_values = [compliance] * n
             self._k6221.configure_list_compliance(comp_values)
 
             # ---- 6221: output range ----
             if self._source_range_mode is SourceRangeMode.AUTO:
                 self._k6221.set_sweep_range_mode("AUTO")
             elif self._source_range_mode is SourceRangeMode.FIXED:
-                self._k6221.set_fixed_range(self._source_range)
+                self._k6221.set_fixed_range(source_range)
             else:
                 self._k6221.set_sweep_range_mode("BEST")
             self._k6221.set_sweep_count(1)
@@ -866,7 +873,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 self._k2182a.set_filter_type(self._filter_type.name)
 
             self._k2182a.set_analog_filter_enabled(self._analog_filter)
-            self._k2182a.set_relative_value(self._relative_value)
+            self._k2182a.set_relative_value(relative_value)
             self._k2182a.set_relative_enabled(self._relative_enabled)
 
             # ---- 2182A: trace buffer ----
@@ -877,7 +884,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # ---- 2182A: trigger ----
             self._k2182a.set_trigger_source(NanovoltmeterTriggerSource.EXT)
-            self._k2182a.set_trigger_delay(self._trigger_delay)
+            self._k2182a.set_trigger_delay(trigger_delay)
             self._k2182a.set_trigger_count(n)
 
             if self._secondary_enabled:
@@ -908,7 +915,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         """Apply one meter's measurement, buffer, and trigger settings."""
 
         def get(name: str) -> Any:
-            return getattr(self, f"{prefix}{name}")
+            value = getattr(self, f"{prefix}{name}")
+            if name in {"relative_value", "trigger_delay"}:
+                return self.eval_float(value)
+            return value
 
         capabilities = meter.get_capabilities()
         if capabilities.supports_safe_reset:
@@ -1007,8 +1017,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         )
         point_time = (
             self._nplc * _LINE_PERIOD * filter_conversions
-            + self._source_delay
-            + self._trigger_delay
+            + self.eval_float(self._source_delay)
+            + self.eval_float(self._trigger_delay)
         )
         if (
             self._secondary_enabled
@@ -1108,7 +1118,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         )
         analog_multiplier = 2 if self._analog_filter else 1
         return (
-            self._trigger_delay + self._nplc * _LINE_PERIOD * filter_multiplier * analog_multiplier
+            self.eval_float(self._trigger_delay)
+            + self._nplc * _LINE_PERIOD * filter_multiplier * analog_multiplier
         )
 
     def _secondary_measurement_time(self) -> float:
@@ -1123,7 +1134,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             capabilities.analog_filter_time_multiplier if self._secondary_analog_filter else 1.0
         )
         return (
-            self._secondary_trigger_delay
+            self.eval_float(self._secondary_trigger_delay)
             + self._secondary_nplc * _LINE_PERIOD * filter_multiplier * analog_multiplier
         )
 
@@ -1135,7 +1146,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         ):
             return None
         secondary_time = self._secondary_measurement_time()
-        trigger_interval = self._primary_measurement_time() + self._source_delay
+        trigger_interval = self._primary_measurement_time() + self.eval_float(self._source_delay)
         if secondary_time <= trigger_interval:
             return None
         return (
@@ -1285,11 +1296,11 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 comp_mode_str,
                 self._compliance_mode.value,
             )
-        self._compliance = float(data.get("compliance", self._compliance))
-        self._compliance_resistance = float(
-            data.get("compliance_resistance", self._compliance_resistance)
+        self._compliance = data.get("compliance", self._compliance)
+        self._compliance_resistance = data.get(
+            "compliance_resistance", self._compliance_resistance
         )
-        self._source_delay = float(data.get("source_delay", self._source_delay))
+        self._source_delay = data.get("source_delay", self._source_delay)
         range_mode_str = data.get("source_range_mode", self._source_range_mode.value)
         try:
             self._source_range_mode = SourceRangeMode(range_mode_str)
@@ -1305,7 +1316,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             self._differential_conductance = bool(
                 data.get("differential_conductance", self._differential_conductance)
             )
-            self._delta_current = float(data.get("delta_current", self._delta_current))
+            self._delta_current = data.get("delta_current", self._delta_current)
         self._nplc = float(data.get("nplc", self._nplc))
         self._voltage_range = float(data.get("voltage_range", self._voltage_range))
         filter_type_str = data.get("filter_type")
@@ -1332,12 +1343,12 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                     self._filter_type.value,
                 )
         self._filter_count = int(data.get("filter_count", self._filter_count))
-        self._trigger_delay = float(data.get("trigger_delay", self._trigger_delay))
+        self._trigger_delay = data.get("trigger_delay", self._trigger_delay)
         self._line_sync = bool(data.get("line_sync", self._line_sync))
         self._autozero = bool(data.get("autozero", self._autozero))
         self._analog_filter = bool(data.get("analog_filter", self._analog_filter))
         self._relative_enabled = bool(data.get("relative_enabled", self._relative_enabled))
-        self._relative_value = float(data.get("relative_value", self._relative_value))
+        self._relative_value = data.get("relative_value", self._relative_value)
         self._digits = int(data.get("digits", self._digits))
         self._output_tlink = int(data.get("output_tlink", self._output_tlink))
         self._input_tlink = int(data.get("input_tlink", self._input_tlink))
@@ -1393,8 +1404,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._secondary_filter_count = int(
             secondary.get("filter_count", self._secondary_filter_count)
         )
-        self._secondary_trigger_delay = float(
-            secondary.get("trigger_delay", self._secondary_trigger_delay)
+        self._secondary_trigger_delay = secondary.get(
+            "trigger_delay", self._secondary_trigger_delay
         )
         self._secondary_line_sync = bool(secondary.get("line_sync", self._secondary_line_sync))
         self._secondary_autozero = bool(secondary.get("autozero", self._secondary_autozero))
@@ -1404,8 +1415,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._secondary_relative_enabled = bool(
             secondary.get("relative_enabled", self._secondary_relative_enabled)
         )
-        self._secondary_relative_value = float(
-            secondary.get("relative_value", self._secondary_relative_value)
+        self._secondary_relative_value = secondary.get(
+            "relative_value", self._secondary_relative_value
         )
         self._secondary_digits = int(secondary.get("digits", self._secondary_digits))
 
@@ -1524,6 +1535,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         compliance_level_label = QLabel("Level (V):" if is_voltage_compliance else "Level (Ω):")
         compliance_level_label.setObjectName("compliance_level_label")
         compliance_level_sb = SISpinBox(
+            allow_expressions=True,
             suffix="V" if is_voltage_compliance else "Ω",
             value=self._compliance if is_voltage_compliance else self._compliance_resistance,
         )
@@ -1554,7 +1566,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         comp_mode_combo.currentIndexChanged.connect(_on_comp_mode_changed)
 
-        delay_sb = SISpinBox(suffix="s", value=self._source_delay)
+        delay_sb = SISpinBox(
+            suffix="s", value=self._source_delay, allow_expressions=True
+        )
         delay_sb.setMinimum(1e-3)
         delay_sb.setMaximum(9999.0)
         delay_sb.setToolTip("Settling delay after each source step before triggering the 2182A.")
@@ -1597,7 +1611,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         differential_conductance.setObjectName("differential_conductance")
         differential_conductance.setChecked(self._differential_conductance)
         differential_conductance.setEnabled(self._differential_mode)
-        delta_current = SISpinBox(suffix="A", value=self._delta_current)
+        delta_current = SISpinBox(
+            suffix="A", value=self._delta_current, allow_expressions=True
+        )
         delta_current.setObjectName("delta_current")
         delta_current.setMinimum(1e-15)
         delta_current.setMaximum(0.1)
@@ -1680,7 +1696,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         digits_combo.setCurrentIndex(_digits_idx)
         digits_combo.setToolTip("Number of display and data digits for the 2182A.")
 
-        trigger_delay_sb = SISpinBox(suffix="s", value=self._trigger_delay)
+        trigger_delay_sb = SISpinBox(
+            suffix="s", value=self._trigger_delay, allow_expressions=True
+        )
         trigger_delay_sb.setObjectName("trigger_delay")
         trigger_delay_sb.setMinimum(0.0)
         trigger_delay_sb.setMaximum(999999.999)
@@ -1764,7 +1782,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             "Enable 2182A relative (REL) mode — subtracts a reference reading from each measurement."
         )
 
-        relative_value_sb = SISpinBox(suffix="V", value=self._relative_value)
+        relative_value_sb = SISpinBox(
+            suffix="V", value=self._relative_value, allow_expressions=True
+        )
         relative_value_sb.setObjectName("relative_value")
         relative_value_sb.setMinimum(-120.0)
         relative_value_sb.setMaximum(120.0)
@@ -1956,7 +1976,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 key=lambda index: abs(nplc.itemData(index) - self._secondary_nplc),
             )
         )
-        trigger_delay = SISpinBox(suffix="s", value=self._secondary_trigger_delay)
+        trigger_delay = SISpinBox(
+            suffix="s", value=self._secondary_trigger_delay, allow_expressions=True
+        )
         trigger_delay.setObjectName("secondary_trigger_delay")
         trigger_delay.setMinimum(0.0)
         trigger_delay.setMaximum(999999.999)
@@ -2024,7 +2046,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         relative_enabled = QCheckBox("Enabled")
         relative_enabled.setObjectName("secondary_relative_enabled")
         relative_enabled.setChecked(self._secondary_relative_enabled)
-        relative_value = SISpinBox(suffix="V", value=self._secondary_relative_value)
+        relative_value = SISpinBox(
+            suffix="V", value=self._secondary_relative_value, allow_expressions=True
+        )
         relative_value.setObjectName("secondary_relative_value")
         relative_value.setMinimum(-120.0)
         relative_value.setMaximum(120.0)

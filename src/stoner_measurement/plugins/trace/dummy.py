@@ -11,12 +11,13 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from qtpy.QtWidgets import QFormLayout, QLineEdit, QWidget
+from qtpy.QtWidgets import QFormLayout, QWidget
 from scipy.constants import Boltzmann as kb
 
 from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
 from stoner_measurement.scan import FunctionScanGenerator
+from stoner_measurement.ui.widgets import SISpinBox
 
 
 class DummyPlugin(TracePlugin):
@@ -77,7 +78,7 @@ class DummyPlugin(TracePlugin):
         self._normal_resistance: str = "1.0"
         self._noise_level: str = "0.0"
         self._rounding_level = "0.0"
-        self.scan_generator = FunctionScanGenerator()
+        self.scan_generator = FunctionScanGenerator(parent=self)
         self._apply_initial_config()
 
     @property
@@ -185,7 +186,7 @@ class DummyPlugin(TracePlugin):
                 The evaluated result.
         """
         try:
-            return float(self.eval(str(expr)))
+            return self.eval_float(expr)
         except RuntimeError:
             return float(expr)
 
@@ -322,10 +323,10 @@ class DummyPlugin(TracePlugin):
     def _plugin_config_tabs(self) -> QWidget:
         """Return a settings widget with expression-string controls for *I_c*, *R_n*, and *V_n*.
 
-        Creates a :class:`~PyQt6.QtWidgets.QFormLayout` with three
-        :class:`~PyQt6.QtWidgets.QLineEdit` widgets, each accepting a Python
-        expression string that will be evaluated via the sequence engine
-        namespace at measurement time:
+        Creates a :class:`~PyQt6.QtWidgets.QFormLayout` with SI-aware spin
+        boxes, each accepting either a physical value or a Python expression
+        string that will be evaluated via the sequence engine namespace at
+        measurement time:
 
         * **I_c** — critical current in A (default ``"1.0"``).
         * **R_n** — normal-state resistance in Ω (default ``"1.0"``).
@@ -351,29 +352,37 @@ class DummyPlugin(TracePlugin):
             "are supported."
         )
 
-        i_c_edit = QLineEdit(self._critical_current)
+        i_c_edit = SISpinBox(
+            value=self._critical_current, suffix="A", siPrefix=True, allow_expressions=True
+        )
         i_c_edit.setToolTip(tooltip)
 
-        r_n_edit = QLineEdit(self._normal_resistance)
+        r_n_edit = SISpinBox(
+            value=self._normal_resistance, suffix="Ω", siPrefix=True, allow_expressions=True
+        )
         r_n_edit.setToolTip(tooltip)
 
-        v_n_edit = QLineEdit(self._noise_level)
+        v_n_edit = SISpinBox(
+            value=self._noise_level, suffix="V", siPrefix=True, allow_expressions=True
+        )
         v_n_edit.setToolTip(tooltip + " Use '0.0' for noiseless output.")
 
-        rounding_edit = QLineEdit(self._rounding_level)
+        rounding_edit = SISpinBox(
+            value=self._rounding_level, suffix="K", siPrefix=True, allow_expressions=True
+        )
         rounding_edit.setToolTip(tooltip + " Set scale for Ic variation.")
 
         def _update_i_c() -> None:
-            self._critical_current = i_c_edit.text().strip()
+            self._critical_current = str(i_c_edit.value())
 
         def _update_r_n() -> None:
-            self._normal_resistance = r_n_edit.text().strip()
+            self._normal_resistance = str(r_n_edit.value())
 
         def _update_v_n() -> None:
-            self._noise_level = v_n_edit.text().strip()
+            self._noise_level = str(v_n_edit.value())
 
         def _update_rounding() -> None:
-            self._rounding_level = rounding_edit.text().strip()
+            self._rounding_level = str(rounding_edit.value())
 
         i_c_edit.editingFinished.connect(_update_i_c)
         r_n_edit.editingFinished.connect(_update_r_n)

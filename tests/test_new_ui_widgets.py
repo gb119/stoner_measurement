@@ -759,6 +759,39 @@ class TestMeasurementApp:
         assert len(text) > 0
         app._engine.shutdown()
 
+    def test_generate_code_logs_generation_exception(self, qapp, monkeypatch, caplog):
+        """Generation failures are recorded in the application log, not raised by Qt."""
+        app = MeasurementApp()
+        monkeypatch.setattr(
+            app._engine,
+            "generate_sequence_code",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(NameError("missing_value")),
+        )
+
+        with caplog.at_level("ERROR", logger="stoner_measurement.app"):
+            generated = app._generate_to_script_tab(switch_to_editor=True)
+
+        assert generated is None
+        assert "Unable to generate sequence code" in caplog.text
+        assert "missing_value" in caplog.text
+        app._engine.shutdown()
+
+    def test_generate_code_preserves_unresolved_dummy_scan_expression(self, qapp):
+        """Runtime expressions remain in generated code without being evaluated."""
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        app = MeasurementApp()
+        dummy = DummyPlugin()
+        dummy.scan_generator.amplitude = "x"
+        app._main_window.dock_panel.load_sequence([dummy])
+
+        generated = app._generate_to_script_tab(switch_to_editor=True)
+
+        assert generated is not None
+        code, _line_map = generated
+        assert '"amplitude": "x"' in code
+        app._engine.shutdown()
+
     def test_run_from_measurement_shows_dialog_and_skips_invalid_generated_code(self, qapp, monkeypatch):
         app = MeasurementApp()
         warnings: list[tuple[str, str]] = []

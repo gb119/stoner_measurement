@@ -93,14 +93,17 @@ class SteppedScanGenerator(BaseScanGenerator):
     def __init__(
         self,
         *,
-        start: float = 0.0,
-        stages: list[tuple[float, float, bool] | tuple[float, float, int, bool]] | None = None,
+        start: float | str = 0.0,
+        stages: list[
+            tuple[float | str, float, bool] | tuple[float | str, float, int, bool]
+        ]
+        | None = None,
         parent: QObject | None = None,
     ) -> None:
         """Initialise the stepped scan generator."""
         super().__init__(parent)
-        self._start = float(start)
-        self._stages: list[tuple[float, int, bool]] = []
+        self._start = start
+        self._stages: list[tuple[float | str, int, bool]] = []
         if stages:
             self.stages = stages  # use setter for validation
 
@@ -109,34 +112,42 @@ class SteppedScanGenerator(BaseScanGenerator):
     # ------------------------------------------------------------------
 
     @property
-    def start(self) -> float:
+    def start(self) -> float | str:
         """Initial scan value."""
         return self._start
 
     @start.setter
-    def start(self, value: float) -> None:
-        self._start = float(value)
+    def start(self, value: float | str) -> None:
+        self._start = value
         self._invalidate_cache()
 
     @property
-    def stages(self) -> list[tuple[float, float, int, bool]]:
+    def stages(self) -> list[tuple[float | str, float, int, bool]]:
         """Ordered list of ``(target, step_size, num_steps, measure)`` stage definitions."""
-        result: list[tuple[float, float, int, bool]] = []
-        current = self._start
+        result: list[tuple[float | str, float, int, bool]] = []
+        current = self.eval_float(self._start)
         for target, num_steps, measure in self._stages:
+            target_value = self.eval_float(target)
             result.append(
-                (target, self._step_size_for_stage(current, target, num_steps), num_steps, measure)
+                (
+                    target,
+                    self._step_size_for_stage(current, target_value, num_steps),
+                    num_steps,
+                    measure,
+                )
             )
-            current = target
+            current = target_value
         return result
 
     @stages.setter
     def stages(
         self,
-        value: list[tuple[float, float, bool] | tuple[float, float, int, bool]],
+        value: list[
+            tuple[float | str, float, bool] | tuple[float | str, float, int, bool]
+        ],
     ) -> None:
-        stages: list[tuple[float, int, bool]] = []
-        current = self._start
+        stages: list[tuple[float | str, int, bool]] = []
+        current = self.eval_float(self._start)
         for i, stage in enumerate(value):
             if len(stage) == 3:
                 target, step, measure = stage
@@ -145,9 +156,9 @@ class SteppedScanGenerator(BaseScanGenerator):
                     raise ValueError(
                         f"Step size must be non-negative; stage {i} has step={step!r}."
                     )
-                target_value = float(target)
+                target_value = self.eval_float(target)
                 num_steps = self._step_count_from_step_size(current, target_value, step_value)
-                stages.append((target_value, num_steps, bool(measure)))
+                stages.append((target, num_steps, bool(measure)))
                 current = target_value
                 continue
             if len(stage) != 4:
@@ -159,8 +170,8 @@ class SteppedScanGenerator(BaseScanGenerator):
             step_value = float(step)
             if step_value < 0:
                 raise ValueError(f"Step size must be non-negative; stage {i} has step={step!r}.")
-            target_value = float(target)
-            stages.append((target_value, self._normalise_step_count(num_steps), bool(measure)))
+            target_value = self.eval_float(target)
+            stages.append((target, self._normalise_step_count(num_steps), bool(measure)))
             current = target_value
         self._stages = stages
         self._invalidate_cache()
@@ -195,15 +206,16 @@ class SteppedScanGenerator(BaseScanGenerator):
     def _stage_points(self) -> list[tuple[np.ndarray, bool, int]]:
         """Compute per-stage scan point arrays."""
         result: list[tuple[np.ndarray, bool, int]] = []
-        current = self._start
+        current = self.eval_float(self._start)
         for stage_index, (target, num_steps, measure) in enumerate(self._stages):
-            distance = abs(target - current)
+            target_value = self.eval_float(target)
+            distance = abs(target_value - current)
             if distance == 0.0:
                 pts = np.full(num_steps, current, dtype=float)
             else:
-                pts = np.linspace(current, target, num_steps + 1)[1:]
+                pts = np.linspace(current, target_value, num_steps + 1)[1:]
             result.append((pts, measure, stage_index))
-            current = float(target)
+            current = target_value
         return result
 
     # ------------------------------------------------------------------
@@ -227,8 +239,10 @@ class SteppedScanGenerator(BaseScanGenerator):
         """
         stage_data = self._stage_points()
         if not stage_data:
-            return np.array([self._start], dtype=float)
-        arrays = [np.array([self._start], dtype=float)] + [pts for pts, _, _ in stage_data]
+            return np.array([self.eval_float(self._start)], dtype=float)
+        arrays = [np.array([self.eval_float(self._start)], dtype=float)] + [
+            pts for pts, _, _ in stage_data
+        ]
         return np.concatenate(arrays)
 
     def measure_flags(self) -> np.ndarray:
@@ -357,7 +371,7 @@ class SteppedScanGenerator(BaseScanGenerator):
             [(4.0, 1.0, 2, False)]
         """
         instance = cls(
-            start=float(data.get("start", 0.0)),
+            start=data.get("start", 0.0),
             stages=[tuple(stage) for stage in data.get("stages", [])],
             parent=parent,
         )
@@ -419,7 +433,7 @@ class SteppedScanWidget(QWidget):
         stages_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         start_form = QFormLayout()
-        self._start_spin = SISpinBox()
+        self._start_spin = SISpinBox(allow_expressions=True)
         self._start_spin.setOpts(
             bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), step=0.1, decimals=4, siPrefix=True
         )
@@ -579,7 +593,7 @@ class SteppedScanWidget(QWidget):
             row = self._table.rowCount()
             self._table.insertRow(row)
 
-            target_spin = SISpinBox()
+            target_spin = SISpinBox(allow_expressions=True)
             target_spin.setOpts(
                 bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS),
                 step=0.1,
@@ -587,7 +601,7 @@ class SteppedScanWidget(QWidget):
                 siPrefix=True,
                 suffix=self._generator.units,
             )
-            target_spin.setValue(float(target))
+            target_spin.setValue(target)
             target_spin.valueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)
 
@@ -632,7 +646,7 @@ class SteppedScanWidget(QWidget):
             self._table.removeRow(row)
         self._on_table_changed()
 
-    def _on_start_changed(self, value: float) -> None:
+    def _on_start_changed(self, value: float | str) -> None:
         """Update generator start value."""
         self._generator.start = value
         self._sync_table_to_generator()

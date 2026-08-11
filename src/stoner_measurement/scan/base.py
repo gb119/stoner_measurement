@@ -114,6 +114,21 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         """Return the human-friendly generator summary."""
         return str(self)
 
+    def eval_float(self, value: float | int | str) -> float:
+        """Resolve a numeric scan setting through the owning plugin.
+
+        Numeric values remain usable for detached generators and previews.
+        Expression strings require a parent plugin attached to a sequence
+        engine, ensuring evaluation occurs when scan values are generated.
+        """
+        if not isinstance(value, str):
+            return float(value)
+        owner = self.parent()
+        evaluator = getattr(owner, "eval_float", None)
+        if evaluator is None:
+            return float(value)
+        return float(evaluator(value))
+
     # ------------------------------------------------------------------
     # Units property
     # ------------------------------------------------------------------

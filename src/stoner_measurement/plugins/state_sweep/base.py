@@ -120,7 +120,7 @@ class _StateSweepPage(QWidget):
         if len(type(plugin)._sweep_generator_classes) > 1:
             self._add_generator_combo(plugin, header_form)
 
-        timeout_factor_spin = SISpinBox()
+        timeout_factor_spin = SISpinBox(allow_expressions=True)
         timeout_factor_spin.setOpts(bounds=(0.1, _SPINBOX_MAX_ABS), decimals=2, step=0.1)
         timeout_factor_spin.setValue(plugin.sweep_timeout_factor)
         timeout_factor_spin.setToolTip(
@@ -130,7 +130,7 @@ class _StateSweepPage(QWidget):
             "effect when the sweep generator cannot estimate its duration."
         )
         timeout_factor_spin.sigValueChanged.connect(
-            lambda sb: setattr(plugin, "sweep_timeout_factor", max(0.1, float(sb.value())))
+            lambda sb: setattr(plugin, "sweep_timeout_factor", sb.value())
         )
         header_form.addRow("Timeout factor:", timeout_factor_spin)
 
@@ -319,7 +319,7 @@ class StateSweepPlugin(StatePlugin):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.sweep_generator: BaseSweepGenerator = self._sweep_generator_class(state_sweep=self, parent=self)
-        self.sweep_timeout_factor: float = self.default_sweep_timeout_factor
+        self.sweep_timeout_factor: float | str = self.default_sweep_timeout_factor
         self._sweep_start_time: float = 0.0
         self._sweep_deadline: float = float("inf")
         self.ix = -1
@@ -400,7 +400,7 @@ class StateSweepPlugin(StatePlugin):
             >>> p.sweep_timeout
             540.3
         """
-        return self.sweep_generator.estimated_duration() * self.sweep_timeout_factor
+        return self.sweep_generator.estimated_duration() * self.eval_float(self.sweep_timeout_factor)
 
     # ------------------------------------------------------------------
     # JSON serialisation
@@ -445,7 +445,7 @@ class StateSweepPlugin(StatePlugin):
             self.sweep_generator = BaseSweepGenerator.from_json(data["sweep_generator"], state_sweep=self, parent=self)
             self.sweep_generator_changed.emit()
         if "sweep_timeout_factor" in data:
-            self.sweep_timeout_factor = max(0.1, float(data["sweep_timeout_factor"]))
+            self.sweep_timeout_factor = data["sweep_timeout_factor"]
 
     # ------------------------------------------------------------------
     # Sweep generator management

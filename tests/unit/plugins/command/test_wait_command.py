@@ -43,21 +43,20 @@ class TestWaitCommand:
         assert isinstance(WaitCommand().config_widget(), QWidget)
 
     def test_config_widget_has_lineedit(self, qapp):
-        from qtpy.QtWidgets import QLineEdit
+        from stoner_measurement.ui.widgets import SISpinBox
 
         widget = WaitCommand().config_widget()
-        edits = widget.findChildren(QLineEdit)
-        assert len(edits) >= 1
+        assert len(widget.findChildren(SISpinBox)) == 1
 
     def test_config_widget_updates_delay_expr(self, qapp):
-        from qtpy.QtWidgets import QLineEdit
+        from stoner_measurement.ui.widgets import SISpinBox
 
         command = WaitCommand()
         widget = command.config_widget()
-        edit = widget.findChildren(QLineEdit)[0]
-        edit.setText("3.0")
-        edit.editingFinished.emit()
-        assert command.delay_expr == "3.0"
+        spin = widget.findChild(SISpinBox)
+        spin.lineEdit().setText("settling_time * 2")
+        spin.editingFinished.emit()
+        assert command.delay_expr == "settling_time * 2"
 
     def test_execute_with_explicit_delay_sleeps(self, qapp):
         command = WaitCommand()
@@ -75,8 +74,9 @@ class TestWaitCommand:
 
     def test_execute_uses_delay_expr_when_attached(self, qapp, engine):
         command = WaitCommand()
-        command.delay_expr = "0.1"
+        command.delay_expr = "settling_time * 2"
         engine.add_plugin("wait", command)
+        command.engine_namespace["settling_time"] = 0.05
         started = time.monotonic()
         command.execute()
         elapsed = time.monotonic() - started

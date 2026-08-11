@@ -354,6 +354,23 @@ class TestBasePluginEval:
         assert plugin.eval("_x * 6") == 42
         engine.shutdown()
 
+    def test_eval_float_resolves_numeric_expression(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+        plugin.engine_namespace["base_value"] = 0.25
+
+        assert plugin.eval_float("base_value * 2") == pytest.approx(0.5)
+        assert plugin.eval_float(2) == pytest.approx(2.0)
+        engine.shutdown()
+
+    def test_eval_float_requires_engine(self):
+        plugin = _MinimalPlugin()
+        with pytest.raises(RuntimeError, match="not attached to a sequence engine"):
+            plugin.eval_float("1.0")
+
     def test_eval_numpy_sin_with_engine(self, qapp):
         import numpy as np
 

@@ -10,9 +10,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
+from qtpy.QtWidgets import QFormLayout, QLabel, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.ui.widgets import SISpinBox
 
 
 class WaitCommand(CommandPlugin):
@@ -113,7 +114,7 @@ class WaitCommand(CommandPlugin):
             True
         """
         if delay is None:
-            delay = float(self.eval(self.delay_expr))
+            delay = self.eval_float(self.delay_expr)
         time.sleep(delay)
 
     def __call__(self, *, delay: float | None = None) -> None:
@@ -140,9 +141,10 @@ class WaitCommand(CommandPlugin):
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a settings widget with a delay-expression editor.
 
-        Displays a :class:`~PyQt6.QtWidgets.QFormLayout` containing a
-        :class:`~PyQt6.QtWidgets.QLineEdit` that accepts a Python expression
-        string for the sleep duration, and a brief description label.
+        Displays a :class:`~PyQt6.QtWidgets.QFormLayout` containing an
+        :class:`~stoner_measurement.ui.widgets.SISpinBox` that accepts either
+        an SI-aware duration or a Python expression string, and a brief
+        description label.
 
         Keyword Parameters:
             parent (QWidget | None):
@@ -163,7 +165,13 @@ class WaitCommand(CommandPlugin):
         widget = QWidget(parent)
         layout = QFormLayout(widget)
 
-        delay_edit = QLineEdit(self.delay_expr, widget)
+        delay_edit = SISpinBox(
+            widget,
+            value=self.delay_expr,
+            suffix="s",
+            siPrefix=True,
+            allow_expressions=True,
+        )
         delay_edit.setToolTip(
             "Python expression evaluated in the sequence engine namespace. "
             "Must produce a numeric value (seconds). "
@@ -171,7 +179,7 @@ class WaitCommand(CommandPlugin):
         )
 
         def _apply() -> None:
-            self.delay_expr = delay_edit.text().strip()
+            self.delay_expr = str(delay_edit.value())
 
         delay_edit.editingFinished.connect(_apply)
         layout.addRow("Delay expression:", delay_edit)

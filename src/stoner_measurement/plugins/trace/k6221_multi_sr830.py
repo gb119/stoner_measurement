@@ -310,19 +310,19 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         self._6221_resource: str = "GPIB0::13::INSTR"
         self._scan_mode: WaveformScanMode = WaveformScanMode.OFFSET
-        self._waveform_amplitude: float = 1e-3
-        self._waveform_offset: float = 0.0
-        self._waveform_frequency: float = 367.0
+        self._waveform_amplitude: float | str = 1e-3
+        self._waveform_offset: float | str = 0.0
+        self._waveform_frequency: float | str = 367.0
         self._phase_marker_tlink: int = 4
 
         self._time_constant: float = 0.3
         self._filter_slope: int = 12
         self._input_coupling: LockInInputCoupling = LockInInputCoupling.AC
         self._line_filter: LockInLineFilter = LockInLineFilter.NONE
-        self._read_rate_multiple: float = 3.0
+        self._read_rate_multiple: float | str = 3.0
         self._auto_sensitivity_enabled: bool = False
-        self._auto_sensitivity_low: float = 0.1
-        self._auto_sensitivity_high: float = 0.9
+        self._auto_sensitivity_low: float | str = 0.1
+        self._auto_sensitivity_high: float | str = 0.9
         self._offset_enabled: bool = False
         self._source_range_mode: str = "BEST"
 
@@ -633,9 +633,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
             self._k6221.reset()
             self._k6221.set_waveform(CurrentWaveform.SINE)
-            self._k6221.set_waveform_amplitude(self._waveform_amplitude)
-            self._k6221.set_offset_current(self._waveform_offset)
-            self._k6221.set_frequency(self._waveform_frequency)
+            self._k6221.set_waveform_amplitude(self.eval_float(self._waveform_amplitude))
+            self._k6221.set_offset_current(self.eval_float(self._waveform_offset))
+            self._k6221.set_frequency(self.eval_float(self._waveform_frequency))
             self._k6221.set_phase_marker_output_line(self._phase_marker_tlink)
             self._k6221.enable_phase_marker(True)
             self._apply_source_range()
@@ -707,7 +707,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     def _wait_for_offset_stability(self) -> None:
         """Wait at least three filter time constants before deriving an offset."""
-        wait_time = max(self._read_rate_multiple, 3.0) * self._time_constant
+        wait_time = max(self.eval_float(self._read_rate_multiple), 3.0) * self._time_constant
         if wait_time > 0.0:
             time.sleep(wait_time)
 
@@ -860,9 +860,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._scan_mode,
             "scan_mode",
         )
-        self._waveform_amplitude = float(data.get("waveform_amplitude", self._waveform_amplitude))
-        self._waveform_offset = float(data.get("waveform_offset", self._waveform_offset))
-        self._waveform_frequency = float(data.get("waveform_frequency", self._waveform_frequency))
+        self._waveform_amplitude = data.get("waveform_amplitude", self._waveform_amplitude)
+        self._waveform_offset = data.get("waveform_offset", self._waveform_offset)
+        self._waveform_frequency = data.get("waveform_frequency", self._waveform_frequency)
         self._phase_marker_tlink = int(data.get("phase_marker_tlink", self._phase_marker_tlink))
         self._time_constant = float(data.get("time_constant", self._time_constant))
         self._filter_slope = int(data.get("filter_slope", self._filter_slope))
@@ -878,10 +878,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self._line_filter,
             "line_filter",
         )
-        self._read_rate_multiple = float(data.get("read_rate_multiple", self._read_rate_multiple))
+        self._read_rate_multiple = data.get("read_rate_multiple", self._read_rate_multiple)
         self._auto_sensitivity_enabled = bool(data.get("auto_sensitivity_enabled", self._auto_sensitivity_enabled))
-        self._auto_sensitivity_low = float(data.get("auto_sensitivity_low", self._auto_sensitivity_low))
-        self._auto_sensitivity_high = float(data.get("auto_sensitivity_high", self._auto_sensitivity_high))
+        self._auto_sensitivity_low = data.get("auto_sensitivity_low", self._auto_sensitivity_low)
+        self._auto_sensitivity_high = data.get("auto_sensitivity_high", self._auto_sensitivity_high)
         saved_offset_preference = data.get("offset_enabled")
         self._source_range_mode = str(data.get("source_range_mode", self._source_range_mode))
         self._resistance_enabled = bool(data.get("resistance_enabled", self._resistance_enabled))
@@ -923,20 +923,32 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         scan_mode_combo.addItem("Scan frequency", WaveformScanMode.FREQUENCY)
         scan_mode_combo.setCurrentIndex(scan_mode_combo.findData(self._scan_mode))
 
-        amplitude_sb = SISpinBox(suffix="A", siPrefix=True, value=self._waveform_amplitude)
+        amplitude_sb = SISpinBox(
+            suffix="A",
+            siPrefix=True,
+            value=self._waveform_amplitude,
+            allow_expressions=True,
+        )
         amplitude_sb.setMinimum(0.0)
         amplitude_sb.setMaximum(1.0)
-        amplitude_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_amplitude", float(value)))
+        amplitude_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_amplitude", value))
 
-        offset_sb = SISpinBox(suffix="A", siPrefix=True, value=self._waveform_offset)
+        offset_sb = SISpinBox(
+            suffix="A", siPrefix=True, value=self._waveform_offset, allow_expressions=True
+        )
         offset_sb.setMinimum(-1.0)
         offset_sb.setMaximum(1.0)
-        offset_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_offset", float(value)))
+        offset_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_offset", value))
 
-        frequency_sb = SISpinBox(suffix="Hz", siPrefix=True, value=self._waveform_frequency)
+        frequency_sb = SISpinBox(
+            suffix="Hz",
+            siPrefix=True,
+            value=self._waveform_frequency,
+            allow_expressions=True,
+        )
         frequency_sb.setMinimum(1e-3)
         frequency_sb.setMaximum(1e6)
-        frequency_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_frequency", float(value)))
+        frequency_sb.valueChanged.connect(lambda value: setattr(self, "_waveform_frequency", value))
 
         phase_combo = QComboBox()
         for line in range(1, 7):
@@ -1007,26 +1019,32 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lambda index: setattr(self, "_line_filter", line_filter_combo.itemData(index))
         )
 
-        read_multiple_sb = SISpinBox(value=self._read_rate_multiple)
+        read_multiple_sb = SISpinBox(
+            value=self._read_rate_multiple, allow_expressions=True
+        )
         read_multiple_sb.setMinimum(0.0)
         read_multiple_sb.setMaximum(1000.0)
-        read_multiple_sb.valueChanged.connect(lambda value: setattr(self, "_read_rate_multiple", float(value)))
+        read_multiple_sb.valueChanged.connect(lambda value: setattr(self, "_read_rate_multiple", value))
 
         auto_enabled = QCheckBox("Enable auto-sensitivity")
         auto_enabled.setChecked(self._auto_sensitivity_enabled)
         auto_enabled.toggled.connect(lambda checked: setattr(self, "_auto_sensitivity_enabled", bool(checked)))
 
-        auto_low_sb = SISpinBox(value=self._auto_sensitivity_low)
+        auto_low_sb = SISpinBox(
+            value=self._auto_sensitivity_low, allow_expressions=True
+        )
         auto_low_sb.setMinimum(0.0)
         auto_low_sb.setMaximum(1.0)
         auto_low_sb.setSingleStep(0.05)
-        auto_low_sb.valueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_low", float(value)))
+        auto_low_sb.valueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_low", value))
 
-        auto_high_sb = SISpinBox(value=self._auto_sensitivity_high)
+        auto_high_sb = SISpinBox(
+            value=self._auto_sensitivity_high, allow_expressions=True
+        )
         auto_high_sb.setMinimum(0.0)
         auto_high_sb.setMaximum(1.0)
         auto_high_sb.setSingleStep(0.05)
-        auto_high_sb.valueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_high", float(value)))
+        auto_high_sb.valueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_high", value))
 
         common_form.addRow("Time constant:", time_constant_combo)
         common_form.addRow("Filter slope:", slope_combo)
@@ -1376,23 +1394,28 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return specs
 
     def _validate_configuration(self) -> None:
+        waveform_amplitude = self.eval_float(self._waveform_amplitude)
+        waveform_frequency = self.eval_float(self._waveform_frequency)
+        read_rate_multiple = self.eval_float(self._read_rate_multiple)
+        auto_sensitivity_low = self.eval_float(self._auto_sensitivity_low)
+        auto_sensitivity_high = self.eval_float(self._auto_sensitivity_high)
         if not self._6221_resource.strip():
             raise ValueError("A 6221 resource must be configured.")
         if not self._lockin_entries:
             raise ValueError("At least one SR830 lock-in entry must be configured.")
-        if self._waveform_amplitude < 0.0:
+        if waveform_amplitude < 0.0:
             raise ValueError("Waveform amplitude must be non-negative.")
-        if self._waveform_frequency <= 0.0:
+        if waveform_frequency <= 0.0:
             raise ValueError("Waveform frequency must be positive.")
         if not 1 <= self._phase_marker_tlink <= 6:
             raise ValueError("Phase-marker trigger-link line must be in the range 1..6.")
-        if self._read_rate_multiple < 0.0:
+        if read_rate_multiple < 0.0:
             raise ValueError("Read cooldown multiple must be non-negative.")
-        if not 0.0 <= self._auto_sensitivity_low <= 1.0:
+        if not 0.0 <= auto_sensitivity_low <= 1.0:
             raise ValueError("Auto-sensitivity low threshold must lie between 0 and 1.")
-        if not 0.0 <= self._auto_sensitivity_high <= 1.0:
+        if not 0.0 <= auto_sensitivity_high <= 1.0:
             raise ValueError("Auto-sensitivity high threshold must lie between 0 and 1.")
-        if self._auto_sensitivity_low >= self._auto_sensitivity_high:
+        if auto_sensitivity_low >= auto_sensitivity_high:
             raise ValueError("Auto-sensitivity low threshold must be lower than the high threshold.")
         if self._filter_slope not in _SR830_FILTER_SLOPES:
             raise ValueError(f"Filter slope must be one of {_SR830_FILTER_SLOPES!r}.")
@@ -1457,12 +1480,22 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         """
         sweep = self._sweep_values
         if self._scan_mode is WaveformScanMode.AMPLITUDE:
-            max_amp = float(np.max(np.abs(sweep))) if sweep is not None and sweep.size > 0 else abs(self._waveform_amplitude)
-            return max_amp + abs(self._waveform_offset)
+            max_amp = (
+                float(np.max(np.abs(sweep)))
+                if sweep is not None and sweep.size > 0
+                else abs(self.eval_float(self._waveform_amplitude))
+            )
+            return max_amp + abs(self.eval_float(self._waveform_offset))
         if self._scan_mode is WaveformScanMode.OFFSET:
-            max_off = float(np.max(np.abs(sweep))) if sweep is not None and sweep.size > 0 else abs(self._waveform_offset)
-            return abs(self._waveform_amplitude) + max_off
-        return abs(self._waveform_amplitude) + abs(self._waveform_offset)
+            max_off = (
+                float(np.max(np.abs(sweep)))
+                if sweep is not None and sweep.size > 0
+                else abs(self.eval_float(self._waveform_offset))
+            )
+            return abs(self.eval_float(self._waveform_amplitude)) + max_off
+        return abs(self.eval_float(self._waveform_amplitude)) + abs(
+            self.eval_float(self._waveform_offset)
+        )
 
     def _run_auto_phase(self, output_off:bool = False) -> None:
         """Enable the 6221 output, settle, and run auto-phase for entries that request it."""
@@ -1472,7 +1505,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             raise RuntimeError("Not connected.")
         self._k6221.enable_output(True)
         try:
-            wait_time = self._time_constant * self._read_rate_multiple
+            wait_time = self._time_constant * self.eval_float(self._read_rate_multiple)
             if wait_time > 0.0:
                 time.sleep(wait_time)
             phase_lockins = [
@@ -1542,7 +1575,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _wait_for_read_cooldown(self) -> None:
         if not self._last_read_at:
             return
-        cooldown = self._time_constant * self._read_rate_multiple
+        cooldown = self._time_constant * self.eval_float(self._read_rate_multiple)
         if cooldown <= 0.0:
             return
         remaining = cooldown - (time.monotonic() - max(self._last_read_at.values()))
@@ -1686,9 +1719,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         except ValueError:
             return
         new_index = index
-        if ratio < self._auto_sensitivity_low and index > 0:
+        if ratio < self.eval_float(self._auto_sensitivity_low) and index > 0:
             new_index = index - 1
-        elif ratio > self._auto_sensitivity_high and index < len(sensitivities) - 1:
+        elif ratio > self.eval_float(self._auto_sensitivity_high) and index < len(sensitivities) - 1:
             new_index = index + 1
         if new_index != index:
             new_sensitivity = sensitivities[new_index]
@@ -1737,7 +1770,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _current_amplitude_for_point(self, scan_value: float) -> float:
         if self._scan_mode is WaveformScanMode.AMPLITUDE:
             return abs(scan_value)
-        return abs(self._waveform_amplitude)
+        return abs(self.eval_float(self._waveform_amplitude))
 
     def _convert_to_resistance(self, signal: float, amplitude: float) -> float:
         """Convert an RMS lock-in voltage reading into resistance using the 6221 peak current amplitude."""

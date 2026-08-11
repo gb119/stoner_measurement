@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from stoner_measurement.plugins.trace import DummyPlugin, TraceStatus
-from stoner_measurement.scan import SteppedScanGenerator
+from stoner_measurement.scan import SteppedScanGenerator, WaveformType
 
 
 def _make_scan(plugin, end=0.4, step=0.1):
@@ -192,6 +192,20 @@ class TestDummyPlugin:
         widget = plugin._plugin_config_tabs()
         qtbot.addWidget(widget)
         assert isinstance(widget, QWidget)
+
+    def test_plugin_config_uses_expression_si_spinboxes(self, qapp, qtbot):
+        """Physical settings share the SI-aware expression editor."""
+        from stoner_measurement.ui.widgets import SISpinBox
+
+        plugin = DummyPlugin()
+        widget = plugin._plugin_config_tabs()
+        qtbot.addWidget(widget)
+        spins = widget.findChildren(SISpinBox)
+
+        assert [spin.opts["suffix"] for spin in spins] == ["A", "Ω", "V", "K"]
+        spins[0].lineEdit().setText("base_current * 2")
+        spins[0].editingFinished.emit()
+        assert plugin._critical_current == "base_current * 2"
 
     def test_set_scan_generator_class(self, qapp):
         from stoner_measurement.scan import FunctionScanGenerator
@@ -389,6 +403,8 @@ class TestDummyPlugin:
         try:
             # The engine namespace has numpy functions; 'sqrt(4.0)' should give 2.0
             assert abs(plugin._eval_expr("sqrt(4.0)") - 2.0) < 1e-9
+            plugin.engine_namespace["base_current"] = 0.25
+            assert abs(plugin._eval_expr("base_current * 2") - 0.5) < 1e-9
             # A plain numeric string also works
             assert abs(plugin._eval_expr("1e-3") - 0.001) < 1e-9
         finally:
@@ -399,6 +415,25 @@ class TestDummyPlugin:
         plugin = DummyPlugin()
         assert abs(plugin._eval_expr("1.5") - 1.5) < 1e-9
         assert abs(plugin._eval_expr("1e-3") - 0.001) < 1e-9
+
+    def test_scan_spinbox_expression_is_evaluated_when_values_are_generated(
+        self, qapp, engine
+    ):
+        """Scan settings retain expressions until the generator needs values."""
+        plugin = DummyPlugin()
+        engine.add_plugin("dummy", plugin)
+        plugin.engine_namespace["scan_amplitude"] = 2.5
+        plugin.scan_generator.waveform = WaveformType.SINE
+        plugin.scan_generator.amplitude = "scan_amplitude"
+        plugin.scan_generator.offset = 0.0
+        plugin.scan_generator.phase = 0.0
+        plugin.scan_generator.exponent = 1.0
+        plugin.scan_generator.periods = 1.0
+        plugin.scan_generator.num_points = 4
+
+        values = plugin.scan_generator.generate()
+
+        assert max(abs(values)) == pytest.approx(2.165063509461097)
 
     # ------------------------------------------------------------------
     # JSON serialisation — settings tab

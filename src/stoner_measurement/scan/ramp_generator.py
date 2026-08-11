@@ -62,39 +62,39 @@ class RampScanGenerator(BaseScanGenerator):
     def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
-        start: float = 0.0,
-        end: float = 1.0,
+        start: float | str = 0.0,
+        end: float | str = 1.0,
         num_points: int = 100,
         mode: RampMode = RampMode.LINEAR,
-        base: float = math.e,
+        base: float | str = math.e,
         parent: QObject | None = None,
     ) -> None:
         """Initialise the ramp scan generator."""
         super().__init__(parent)
-        self._start = float(start)
-        self._end = float(end)
+        self._start = start
+        self._end = end
         self._num_points = max(2, int(num_points))
         self._mode = RampMode(mode)
-        self._base = float(base)
+        self._base = base
 
     @property
-    def start(self) -> float:
+    def start(self) -> float | str:
         """Start value of the ramp."""
         return self._start
 
     @start.setter
-    def start(self, value: float) -> None:
-        self._start = float(value)
+    def start(self, value: float | str) -> None:
+        self._start = value
         self._invalidate_cache()
 
     @property
-    def end(self) -> float:
+    def end(self) -> float | str:
         """End value of the ramp."""
         return self._end
 
     @end.setter
-    def end(self, value: float) -> None:
-        self._end = float(value)
+    def end(self, value: float | str) -> None:
+        self._end = value
         self._invalidate_cache()
 
     @property
@@ -118,45 +118,47 @@ class RampScanGenerator(BaseScanGenerator):
         self._invalidate_cache()
 
     @property
-    def base(self) -> float:
+    def base(self) -> float | str:
         """Base parameter used in non-linear ramp modes."""
         return self._base
 
     @base.setter
-    def base(self, value: float) -> None:
-        self._base = float(value)
+    def base(self, value: float | str) -> None:
+        self._base = value
         self._invalidate_cache()
 
-    def _linear_values(self) -> np.ndarray:
+    def _linear_values(self, start: float, end: float) -> np.ndarray:
         """Return a linear ramp from start to end."""
-        return np.linspace(self._start, self._end, self._num_points, dtype=float)
+        return np.linspace(start, end, self._num_points, dtype=float)
 
-    def _nonlinear_offset(self) -> float:
+    def _nonlinear_offset(self, start: float, end: float) -> float:
         """Return an offset that keeps transformed endpoints in-domain."""
-        return min(self._start, self._end) - 1.0
+        return min(start, end) - 1.0
 
     def generate(self) -> np.ndarray:
         """Compute the ramp sequence."""
-        if self._num_points < 2 or abs(self._end - self._start) < _BASE_EPS:
-            return self._linear_values()
+        start = self.eval_float(self._start)
+        end = self.eval_float(self._end)
+        if self._num_points < 2 or abs(end - start) < _BASE_EPS:
+            return self._linear_values(start, end)
 
         mode = self._mode
-        base = self._base
+        base = self.eval_float(self._base)
         if mode is RampMode.LINEAR:
-            return self._linear_values()
+            return self._linear_values(start, end)
 
         if base <= 0.0 or (
             mode in (RampMode.EXPONENTIAL, RampMode.LOGARITHMIC) and abs(base - 1.0) < _BASE_EPS
         ):
-            return self._linear_values()
+            return self._linear_values(start, end)
         if mode is RampMode.POWER and abs(base) < _BASE_EPS:
-            return self._linear_values()
+            return self._linear_values(start, end)
 
-        offset = self._nonlinear_offset()
-        start_s = self._start - offset
-        end_s = self._end - offset
+        offset = self._nonlinear_offset(start, end)
+        start_s = start - offset
+        end_s = end - offset
         if start_s <= 0.0 or end_s <= 0.0:
-            return self._linear_values()
+            return self._linear_values(start, end)
 
         if mode is RampMode.EXPONENTIAL:
             x_start = math.log(start_s, base)
@@ -181,7 +183,9 @@ class RampScanGenerator(BaseScanGenerator):
 
     def _representation_details(self) -> str:
         """Return the ramp shape, range, and point count."""
-        return f"{self._mode.value}, {self._start:g} to {self._end:g}, {self._num_points} points"
+        start = self._start if isinstance(self._start, str) else f"{self._start:g}"
+        end = self._end if isinstance(self._end, str) else f"{self._end:g}"
+        return f"{self._mode.value}, {start} to {end}, {self._num_points} points"
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a :class:`RampScanWidget` configured for this generator."""
@@ -204,11 +208,11 @@ class RampScanGenerator(BaseScanGenerator):
         """Reconstruct a :class:`RampScanGenerator` from serialised *data*."""
         mode = RampMode(data.get("mode", RampMode.LINEAR.value))
         instance = cls(
-            start=float(data.get("start", 0.0)),
-            end=float(data.get("end", 1.0)),
+            start=data.get("start", 0.0),
+            end=data.get("end", 1.0),
             num_points=int(data.get("num_points", 100)),
             mode=mode,
-            base=float(data.get("base", math.e)),
+            base=data.get("base", math.e),
             parent=parent,
         )
         instance.units = str(data.get("units", ""))
@@ -250,7 +254,7 @@ class RampScanWidget(QWidget):
         self._parameter_grid.setColumnStretch(3, 1)
         controls_layout.addLayout(self._parameter_grid)
 
-        self._start_spin = SISpinBox()
+        self._start_spin = SISpinBox(allow_expressions=True)
         self._start_spin.setOpts(
             bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True
         )
@@ -258,7 +262,7 @@ class RampScanWidget(QWidget):
         self._parameter_grid.addWidget(QLabel("Start:"), 0, 0)
         self._parameter_grid.addWidget(self._start_spin, 0, 1)
 
-        self._end_spin = SISpinBox()
+        self._end_spin = SISpinBox(allow_expressions=True)
         self._end_spin.setOpts(
             bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True
         )
@@ -272,7 +276,7 @@ class RampScanWidget(QWidget):
         self._parameter_grid.addWidget(QLabel("Points:"), 1, 0)
         self._parameter_grid.addWidget(self._points_spin, 1, 1)
 
-        self._base_spin = SISpinBox()
+        self._base_spin = SISpinBox(allow_expressions=True)
         self._base_spin.setOpts(
             bounds=(-_SPINBOX_MAX_ABS, _SPINBOX_MAX_ABS), decimals=6, siPrefix=True
         )
@@ -334,11 +338,11 @@ class RampScanWidget(QWidget):
         for spin in (self._start_spin, self._end_spin):
             spin.setOpts(suffix=units)
 
-    def _on_start_changed(self, value: float) -> None:
+    def _on_start_changed(self, value: float | str) -> None:
         """Update generator start."""
         self._generator.start = value
 
-    def _on_end_changed(self, value: float) -> None:
+    def _on_end_changed(self, value: float | str) -> None:
         """Update generator end."""
         self._generator.end = value
 
@@ -350,7 +354,7 @@ class RampScanWidget(QWidget):
         """Update generator mode."""
         self._generator.mode = self._mode_combo.itemData(index)
 
-    def _on_base_changed(self, value: float) -> None:
+    def _on_base_changed(self, value: float | str) -> None:
         """Update generator base."""
         self._generator.base = value
 

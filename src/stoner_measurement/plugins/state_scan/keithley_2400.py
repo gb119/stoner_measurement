@@ -207,25 +207,25 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         self._smu: Keithley2400 | None = None
 
         self._source_mode: SweepSourceMode = SweepSourceMode.CURRENT
-        self._compliance: float = 10.0
+        self._compliance: float | str = 10.0
         self._compliance_mode: ComplianceMode = ComplianceMode.FIXED
-        self._compliance_resistance: float = 1000.0
+        self._compliance_resistance: float | str = 1000.0
         self._nplc: float = 1.0
-        self._source_delay: float = 0.01
-        self._trigger_delay: float = 0.0
+        self._source_delay: float | str = 0.01
+        self._trigger_delay: float | str = 0.0
         self._enable_output_during_measurement: bool = True
 
         self._trigger_routing: TriggerRouting = TriggerRouting.IMMEDIATE
         self._trigger_count_override: int = 0
         self._arm_count: int = 1
-        self._timer_interval: float = 0.1
+        self._timer_interval: float | str = 0.1
         self._enable_trigger_out: bool = True
         self._trigger_out_line: int = 2
         self._trigger_in_line: int = 1
         self._source_range_mode: RangeMode = RangeMode.AUTO
-        self._source_range: float = 1.0
+        self._source_range: float | str = 1.0
         self._sense_range_mode: RangeMode = RangeMode.AUTO
-        self._sense_range: float = 1.0
+        self._sense_range: float | str = 1.0
         self._connection_mode: ConnectionMode = ConnectionMode.FOUR_WIRE
         self._terminal_mode: TerminalMode = TerminalMode.FRONT
         self._filter_enabled: bool = False
@@ -281,7 +281,13 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
                 A timeout in seconds based on configured delays, with a
                 conservative minimum.
         """
-        return max(10.0, self._source_delay + self._trigger_delay + self._timer_interval + 5.0)
+        return max(
+            10.0,
+            self.eval_float(self._source_delay)
+            + self.eval_float(self._trigger_delay)
+            + self.eval_float(self._timer_interval)
+            + 5.0,
+        )
 
     def connect(self) -> None:
         """Open the SMU connection and verify its identity.
@@ -319,6 +325,12 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         if self._smu is None:
             raise RuntimeError("Not connected — call connect() before configure().")
 
+        source_range = self.eval_float(self._source_range)
+        sense_range = self.eval_float(self._sense_range)
+        source_delay = self.eval_float(self._source_delay)
+        trigger_delay = self.eval_float(self._trigger_delay)
+        timer_interval = self.eval_float(self._timer_interval)
+
         self._smu.reset()
         self._smu.check_error_queue(raise_on_error=False)
         instrument_mode = SourceMode.VOLT if self._source_mode is SweepSourceMode.VOLTAGE else SourceMode.CURR
@@ -331,15 +343,15 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         self._smu.set_remote_sense(self._connection_mode is ConnectionMode.FOUR_WIRE)
         self._smu.set_source_autorange(self._source_range_mode is RangeMode.AUTO, instrument_mode)
         if self._source_range_mode is RangeMode.FIXED:
-            self._smu.set_source_range(self._source_range, instrument_mode)
+            self._smu.set_source_range(source_range, instrument_mode)
         self._smu.set_sense_autorange(self._sense_range_mode is RangeMode.AUTO, instrument_mode)
         if self._sense_range_mode is RangeMode.FIXED:
-            self._smu.set_sense_range(self._sense_range, instrument_mode)
+            self._smu.set_sense_range(sense_range, instrument_mode)
         self._smu.set_filter_enabled(self._filter_enabled, instrument_mode)
         self._smu.set_filter_count(self._filter_count, instrument_mode)
         self._smu.set_filter_type(self._filter_type, instrument_mode)
         self._smu.set_median_filter_enabled(self._median_filter_enabled, instrument_mode)
-        self._smu.set_source_delay(self._source_delay)
+        self._smu.set_source_delay(source_delay)
         self._smu.set_format_data_ascii()
         self._smu.set_format_elements(_POINT_ELEMENTS)
         self._smu.reset_timestamp()
@@ -355,7 +367,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
             TriggerModelConfiguration(
                 trigger_source=trigger_source,
                 trigger_count=self._trigger_count_override if self._trigger_count_override > 0 else 1,
-                trigger_delay=self._trigger_delay,
+                trigger_delay=trigger_delay,
                 arm_source=TriggerSource.IMM,
                 arm_count=max(1, int(self._arm_count)),
             )
@@ -369,7 +381,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
             self._smu.write(f":ARM:TCON:ILIN {self._trigger_in_line}")
         elif self._trigger_routing is TriggerRouting.TIMER:
             self._smu.write(":ARM:SOUR TIM")
-            self._smu.write(f":ARM:TIM {self._timer_interval}")
+            self._smu.write(f":ARM:TIM {timer_interval}")
         else:
             self._smu.write(":ARM:SOUR IMM")
 
@@ -428,19 +440,21 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         instrument_mode = SourceMode.VOLT if self._source_mode is SweepSourceMode.VOLTAGE else SourceMode.CURR
         target = float(value)
         self._target_value = target
+        compliance = self.eval_float(self._compliance)
+        compliance_resistance = self.eval_float(self._compliance_resistance)
 
         if self._compliance_mode is ComplianceMode.RESISTANCE:
-            if self._compliance_resistance <= 0.0:
+            if compliance_resistance <= 0.0:
                 raise ValueError("Compliance resistance must be positive.")
             if self._source_mode is SweepSourceMode.VOLTAGE and math.isclose(target, 0.0, abs_tol=1e-30):
                 raise ValueError("Voltage-source resistance compliance is undefined at zero source voltage.")
             self._smu.set_compliance_from_resistance(
-                self._compliance_resistance,
+                compliance_resistance,
                 source_level=target,
                 source_mode=instrument_mode,
             )
         else:
-            self._smu.set_compliance(self._compliance, instrument_mode)
+            self._smu.set_compliance(compliance, instrument_mode)
 
         if self._enable_output_during_measurement:
             self._smu.enable_output(True)
@@ -561,25 +575,27 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         self._resource = str(data.get("resource", self._resource))
         self._source_mode = SweepSourceMode(str(data.get("source_mode", self._source_mode.value)))
         self._compliance_mode = ComplianceMode(str(data.get("compliance_mode", self._compliance_mode.value)))
-        self._compliance = float(data.get("compliance", self._compliance))
-        self._compliance_resistance = float(data.get("compliance_resistance", self._compliance_resistance))
+        self._compliance = data.get("compliance", self._compliance)
+        self._compliance_resistance = data.get(
+            "compliance_resistance", self._compliance_resistance
+        )
         self._nplc = float(data.get("nplc", self._nplc))
-        self._source_delay = float(data.get("source_delay", self._source_delay))
-        self._trigger_delay = float(data.get("trigger_delay", self._trigger_delay))
+        self._source_delay = data.get("source_delay", self._source_delay)
+        self._trigger_delay = data.get("trigger_delay", self._trigger_delay)
         self._enable_output_during_measurement = bool(
             data.get("enable_output_during_measurement", self._enable_output_during_measurement)
         )
         self._trigger_routing = TriggerRouting(str(data.get("trigger_routing", self._trigger_routing.value)))
         self._trigger_count_override = int(data.get("trigger_count_override", self._trigger_count_override))
         self._arm_count = int(data.get("arm_count", self._arm_count))
-        self._timer_interval = float(data.get("timer_interval", self._timer_interval))
+        self._timer_interval = data.get("timer_interval", self._timer_interval)
         self._enable_trigger_out = bool(data.get("enable_trigger_out", self._enable_trigger_out))
         self._trigger_out_line = int(data.get("trigger_out_line", self._trigger_out_line))
         self._trigger_in_line = int(data.get("trigger_in_line", self._trigger_in_line))
         self._source_range_mode = RangeMode(str(data.get("source_range_mode", self._source_range_mode.value)))
-        self._source_range = float(data.get("source_range", self._source_range))
+        self._source_range = data.get("source_range", self._source_range)
         self._sense_range_mode = RangeMode(str(data.get("sense_range_mode", self._sense_range_mode.value)))
-        self._sense_range = float(data.get("sense_range", self._sense_range))
+        self._sense_range = data.get("sense_range", self._sense_range)
         self._connection_mode = ConnectionMode(str(data.get("connection_mode", self._connection_mode.value)))
         self._terminal_mode = TerminalMode(str(data.get("terminal_mode", self._terminal_mode.value)))
         self._filter_enabled = bool(data.get("filter_enabled", self._filter_enabled))
@@ -633,6 +649,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         )
         compliance_label = QLabel(compliance_text)
         compliance_sb = SISpinBox(
+            allow_expressions=True,
             suffix="A" if self._source_mode is SweepSourceMode.VOLTAGE else "V",
             value=self._compliance,
         )
@@ -644,7 +661,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         compliance_r_label = QLabel(
             "Min resistance:" if self._source_mode is SweepSourceMode.VOLTAGE else "Max resistance:"
         )
-        compliance_r_sb = SISpinBox(suffix="Ω", value=self._compliance_resistance)
+        compliance_r_sb = SISpinBox(
+            suffix="Ω", value=self._compliance_resistance, allow_expressions=True
+        )
         compliance_r_sb.setMinimum(1e-9)
         compliance_r_sb.setMaximum(1e12)
         compliance_r_sb.valueChanged.connect(lambda value: setattr(self, "_compliance_resistance", value))
@@ -687,12 +706,16 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         nplc_combo.setCurrentIndex(nplc_index)
         nplc_combo.currentIndexChanged.connect(lambda idx: setattr(self, "_nplc", float(nplc_combo.itemData(idx))))
 
-        source_delay_sb = SISpinBox(suffix="s", value=self._source_delay)
+        source_delay_sb = SISpinBox(
+            suffix="s", value=self._source_delay, allow_expressions=True
+        )
         source_delay_sb.setMinimum(0.0)
         source_delay_sb.setMaximum(9999.0)
         source_delay_sb.valueChanged.connect(lambda value: setattr(self, "_source_delay", value))
 
-        trigger_delay_sb = SISpinBox(suffix="s", value=self._trigger_delay)
+        trigger_delay_sb = SISpinBox(
+            suffix="s", value=self._trigger_delay, allow_expressions=True
+        )
         trigger_delay_sb.setMinimum(0.0)
         trigger_delay_sb.setMaximum(9999.0)
         trigger_delay_sb.valueChanged.connect(lambda value: setattr(self, "_trigger_delay", value))
@@ -719,6 +742,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         source_range_mode_combo.addItem("Fixed", RangeMode.FIXED)
         source_range_mode_combo.setCurrentIndex(0 if self._source_range_mode is RangeMode.AUTO else 1)
         source_range_sb = SISpinBox(
+            allow_expressions=True,
             suffix="V" if self._source_mode is SweepSourceMode.VOLTAGE else "A",
             value=self._source_range,
         )
@@ -732,6 +756,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         sense_range_mode_combo.addItem("Fixed", RangeMode.FIXED)
         sense_range_mode_combo.setCurrentIndex(0 if self._sense_range_mode is RangeMode.AUTO else 1)
         sense_range_sb = SISpinBox(
+            allow_expressions=True,
             suffix="A" if self._source_mode is SweepSourceMode.VOLTAGE else "V",
             value=self._sense_range,
         )
@@ -784,7 +809,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         arm_count_sb.setMaximum(100000)
         arm_count_sb.setValue(self._arm_count)
 
-        timer_sb = SISpinBox(suffix="s", value=self._timer_interval)
+        timer_sb = SISpinBox(
+            suffix="s", value=self._timer_interval, allow_expressions=True
+        )
         timer_sb.setMinimum(1e-6)
         timer_sb.setMaximum(9999.0)
         timer_sb.setEnabled(self._trigger_routing is TriggerRouting.TIMER)
