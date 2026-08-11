@@ -26,18 +26,20 @@ on status bbar right hand side.
 15. Magnet controller panel should show the actual and target rates.
 16. Lakeshore 625 - driver reads FLDS?/LIMIT? values from instrument for field-current constant and limits. DONE
 17. Lakeshore 625 driver uses OPST? instead of invalid RDGST? and maps the documented operation-status bits. DONE
+18.Right clicking on the status indicators for the engines in the status bar should allow the engines to be stopped,
+   restarted, disconnected, or reconnected.
+19. Magnet control panel and engine - need switch heater to understand transition states - DONE
+20. Lakeshroe 625 - check that it can read the field-current constant from the supply and limits. - DONE
+21. Keithley 6221-lockins: separate entries to specify multiple channels to read per lockin, - DONE
+   remove current calcualtion - DONE
+22. Implement temperature stability as a table (Below T, tolerance, toleramce_sensor, time, stability_rate,
+    stability_sensor, hold_off_time) - DONE
+23. Related, make stability critiera use specific sensors. DONE
 
 ## Done, but needs testing
 
-1. Magnet control panel and engine - need switch heater to understand transition states - DONE NEEDS TESTING
-2. Lakeshroe 625 - check that it can read the field-current constant from the supply and limits. - DONE NEEDS TESTING
-3. Keithley 6221-lockins: separate entries to specify multiple channels to read per lockin, - DONE but needs fixing
-   remove current calcualtion - DONE NEEDS TESTING
 4. Implement K24x0 trace and scan plugins. - DONE - Needs testing with hardware
 5. ITC503 driver temperature conversion table. - DONE NEEDS HARDWARE TESTING
-6. Implement temperature stability as a table (Below T, tolerance, toleramce_sensor, time, stability_rate,
-    stability_sensor, hold_off_time) - DONE NEEDS TESTING
-7. Related, make stability critiera use specific sensors. DONE NEEDS TESTING
 
 ## Partially done, needs more work
 
@@ -57,9 +59,8 @@ on status bbar right hand side.
 3. The log window could do with a regexp filter as well that would allow finer-grained filtering of log entries of
    interest, such as comms traffic from a sepcific address or even a specific command. The failed state should be
    reflected in the statys bar indicators.
-4. Right clicking on the status indicators for the engines in the status bar should allow the engines to be stopped,
-   restarted, disconnected, or reconnected.
-
+4. Plot widget should support plot renaming in a programmatic api - if a command plugin requests a plot to be
+  renamed, the plot widget should do this (e.g. changing the label on the plot-points command).
 ## Bugs
 
 1. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.
@@ -68,3 +69,11 @@ on status bbar right hand side.
 3. Oxofrd IPS120 not reading limits properly.
 4. Oxford IPS120, not allowing control of persistent switch heater - both buttons grayed out even though it detects
   the switch heater on/off state
+5. Layout of 6221-SR830 Trace config page - pack to top of tab. Possibly other trace plugins?
+6. SR830 - Autogain not working correctly, also check overload status during config.
+6. Instrument address widget, text contrast in dark mode when connecting/connected status is not readable
+  use dark text or darken the startus colour.
+7. Selecting a new Y value in the plot-points plugin config table  should update the the
+  plot label setting - only if the user has manually edited the plot label should the label differ from the
+  Y value. (see new feature about renaming plots as well)
+  
