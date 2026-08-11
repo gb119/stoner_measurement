@@ -23,7 +23,7 @@ from stoner_measurement.qt_compat import pyqtSignal
 
 #: Stylesheet templates for each connection status.  ``{bg}`` is replaced
 #: with the actual background colour token.
-_STYLE_TEMPLATE = "QComboBox {{ background-color: {bg}; }}"
+_STYLE_TEMPLATE = "QComboBox {{ background-color: {bg}; color: #202020; }}"
 
 #: Mapping from status to background colour CSS token.
 _STATUS_COLOURS: dict[str, str] = {

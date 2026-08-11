@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.magnet_controller import (
     HeaterState,
     MagnetController,
@@ -33,6 +34,34 @@ _TERMINAL_RAMP_STATES = {
 }
 
 _SECONDS_PER_MINUTE = 60.0
+
+
+class Lakeshore625Protocol(LakeshoreProtocol):
+    """Model-625 protocol with IEEE-488 command-error register handling."""
+
+    @property
+    def errors_in_response(self) -> bool:
+        return False
+
+    @property
+    def error_query(self) -> str:
+        return "*ESR?"
+
+    def check_error(self, response: str, *, command: str | None = None) -> None:
+        super().check_error(response, command=command)
+        try:
+            event_status = int(response.strip())
+        except ValueError as exc:
+            raise InstrumentError(
+                f"Lakeshore 625 returned invalid event-status response {response!r}",
+                command=command,
+            ) from exc
+        if event_status:
+            raise InstrumentError(
+                "Lakeshore 625 reported a command or execution error",
+                command=command,
+                error_code=event_status,
+            )
 
 
 class Lakeshore625(MagnetController, MagnetSupply):
@@ -74,7 +103,7 @@ class Lakeshore625(MagnetController, MagnetSupply):
                 Protocol instance. Uses :class:`LakeshoreProtocol` when omitted.
         """
         transport._use_mav=False
-        super().__init__(transport=transport, protocol=protocol if protocol is not None else LakeshoreProtocol())
+        super().__init__(transport=transport, protocol=protocol if protocol is not None else Lakeshore625Protocol())
         self._magnet_constant = 1.0
         self._limits = MagnetLimits(max_current=0.0, max_field=None, max_ramp_rate=None)
 
@@ -139,6 +168,15 @@ class Lakeshore625(MagnetController, MagnetSupply):
                 Snapshot of controller state and key readings.
         """
         raw = self.query("OPST?").strip()
+        hardware_errors, operational_errors, psh_errors = self._read_error_status()
+        if hardware_errors or operational_errors or psh_errors:
+            message = (
+                "Lakeshore 625 critical error status: "
+                f"hardware=0x{hardware_errors:02X}, operational=0x{operational_errors:02X}, "
+                f"PSH=0x{psh_errors:02X}"
+            )
+            self._comms_logger.critical(message)
+            raise InstrumentError(message, command="ERST?")
         try:
             bits = int(raw)
         except ValueError:
@@ -177,6 +215,17 @@ class Lakeshore625(MagnetController, MagnetSupply):
             persistent_current=persistent_current,
             message=raw,
         )
+
+    def _read_error_status(self) -> tuple[int, int, int]:
+        """Return current hardware, operational, and PSH error registers."""
+        fields = _parse_csv(self.query("ERST?"), expected=3)
+        try:
+            return tuple(int(field) for field in fields)  # type: ignore[return-value]
+        except ValueError as exc:
+            raise InstrumentError(
+                f"Lakeshore 625 returned invalid error status {fields!r}",
+                command="ERST?",
+            ) from exc
 
     @property
     def magnet_constant(self) -> float:

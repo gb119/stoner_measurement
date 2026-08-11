@@ -6,6 +6,7 @@ import logging
 
 import pytest
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.lakeshore import Lakeshore525, Lakeshore625
 from stoner_measurement.instruments.magnet_controller import (
     HeaterState,
@@ -25,6 +26,28 @@ def _null(responses=None):
 
 
 class TestLakeshore625:
+    def test_command_error_register_is_logged_and_raised(self, caplog, monkeypatch):
+        t = _null(responses=[b"2.5\r\n", b"32\r\n", b"0\r\n"])
+        m = Lakeshore625(transport=t)
+        monkeypatch.setattr(t, "read_status_byte", lambda: 4)
+
+        with caplog.at_level(logging.ERROR, logger="stoner_measurement.sequence.comms"):
+            with pytest.raises(InstrumentError, match="command or execution error"):
+                _ = m.current
+
+        assert t.write_log[:2] == [b"RDGI?\r\n", b"*ESR?\r\n"]
+        assert any("command error" in record.getMessage() for record in caplog.records)
+
+    def test_hardware_error_register_is_critical_and_raised(self, caplog):
+        t = _null(responses=[b"0\r\n", b"1,0,0\r\n"])
+        m = Lakeshore625(transport=t)
+
+        with caplog.at_level(logging.CRITICAL, logger="stoner_measurement.sequence.comms"):
+            with pytest.raises(InstrumentError, match="hardware=0x01"):
+                _ = m.status
+
+        assert any(record.levelno == logging.CRITICAL for record in caplog.records)
+
     def test_default_protocol_is_lakeshore(self):
         m = Lakeshore625(transport=NullTransport())
         assert isinstance(m.protocol, LakeshoreProtocol)
@@ -122,7 +145,7 @@ class TestLakeshore625:
     def test_status_maps_heater_transition_states(self):
         for psh_reply, expected in ((b"2\r\n", HeaterState.COOLING), (b"3\r\n", HeaterState.WARMING)):
             t = _null(
-                responses=[b"2\r\n", psh_reply, b"1.1\r\n", b"0.3\r\n", b"0.2\r\n", b"1.1\r\n", b"0.1\r\n"]
+                responses=[b"2\r\n", b"0,0,0\r\n", psh_reply, b"1.1\r\n", b"0.3\r\n", b"0.2\r\n", b"1.1\r\n", b"0.1\r\n"]
             )
             m = Lakeshore625(transport=t)
             status = m.status
@@ -133,6 +156,7 @@ class TestLakeshore625:
         t = _null(
             responses=[
                 b"2\r\n",
+                b"0,0,0\r\n",
                 b"0\r\n",
                 b"1.1\r\n",
                 b"0.3\r\n",
@@ -154,6 +178,7 @@ class TestLakeshore625:
         assert status.persistent is True
         assert t.write_log == [
             b"OPST?\r\n",
+            b"ERST?\r\n",
             b"PSH?\r\n",
             b"RDGI?\r\n",
             b"RDGF?\r\n",
@@ -167,6 +192,7 @@ class TestLakeshore625:
         t = _null(
             responses=[
                 b"0\r\n",
+                b"0,0,0\r\n",
                 b"0.5\r\n",
                 b"0.1\r\n",
                 b"0.1\r\n",
@@ -184,6 +210,7 @@ class TestLakeshore625:
         t = _null(
             responses=[
                 b"1\r\n",
+                b"0,0,0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
@@ -200,6 +227,7 @@ class TestLakeshore625:
         t = _null(
             responses=[
                 b"6\r\n",
+                b"0,0,0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
@@ -216,6 +244,7 @@ class TestLakeshore625:
         t = _null(
             responses=[
                 b"not-an-int\r\n",
+                b"0,0,0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
@@ -233,6 +262,7 @@ class TestLakeshore625:
         t = _null(
             responses=[
                 b"16\r\n",
+                b"0,0,0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",
                 b"0.0\r\n",

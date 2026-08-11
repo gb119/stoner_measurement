@@ -1918,6 +1918,52 @@ class PlotWidget(QWidget):
         self._trace_visible.pop(trace_name, None)
         self._refresh_trace_and_axis_controls()
 
+    @pyqtSlot(str, str)
+    def rename_trace(self, old_name: str, new_name: str) -> None:
+        """Rename a trace without losing its data, axes, style, or visibility.
+
+        Missing source traces are ignored so command plugins may request a
+        rename before their first point has been plotted. Renaming onto an
+        existing trace is rejected to avoid silently merging or overwriting
+        data.
+
+        Args:
+            old_name (str):
+                Current trace name.
+            new_name (str):
+                Replacement trace name.
+
+        Raises:
+            ValueError:
+                If *new_name* is empty or already belongs to another trace.
+        """
+        old_name = old_name.strip()
+        new_name = new_name.strip()
+        if not new_name:
+            raise ValueError("Trace name cannot be empty.")
+        if old_name == new_name or old_name not in self._traces:
+            return
+        if new_name in self._traces:
+            raise ValueError(f"Trace {new_name!r} already exists.")
+
+        for mapping in (
+            self._traces,
+            self._trace_data,
+            self._error_bar_items,
+            self._trace_error_data,
+            self._trace_axes,
+            self._trace_style,
+            self._trace_line_width,
+            self._trace_point_size,
+            self._trace_visible,
+        ):
+            if old_name in mapping:
+                mapping[new_name] = mapping.pop(old_name)
+
+        self._traces[new_name].opts["name"] = new_name
+        self._trace_controls_state = None
+        self._refresh_trace_and_axis_controls()
+
     def clear_all(self) -> None:
         """Remove all traces and their data.
 

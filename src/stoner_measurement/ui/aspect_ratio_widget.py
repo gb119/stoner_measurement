@@ -10,8 +10,9 @@ def set_table_visible_row_count(table: QTableWidget, row_count: int) -> None:
     """Fix *table* height to its header plus exactly *row_count* body rows."""
     if row_count < 0:
         raise ValueError("row_count must not be negative")
+    header_height = 0 if table.horizontalHeader().isHidden() else table.horizontalHeader().height()
     height = (
-        table.horizontalHeader().height()
+        header_height
         + row_count * table.verticalHeader().defaultSectionSize()
         + 2 * table.frameWidth()
     )

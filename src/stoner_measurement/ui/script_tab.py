@@ -336,6 +336,12 @@ class ScriptTab(QWidget):
         widget = self._script_tabs.currentWidget()
         return widget if isinstance(widget, _ScriptPane) else None
 
+    def close_current_tab(self) -> None:
+        """Close the active script tab, prompting first if it has unsaved changes."""
+        index = self._script_tabs.currentIndex()
+        if index >= 0:
+            self._on_close_tab(index)
+
     # ------------------------------------------------------------------
     # Public API (compatibility + convenience)
     # ------------------------------------------------------------------

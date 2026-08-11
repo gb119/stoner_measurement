@@ -185,6 +185,46 @@ class TestPlotPointsCommand:
             }
         ]
 
+    def test_editing_series_label_renames_existing_plot_trace(
+        self, qapp, engine, managed_qt_widget
+    ):
+        plot_widget = self.make_plot_widget()
+        engine.plot_widget = plot_widget
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        command.y_entries = [{"key": "p:y", "label": "Old label", "y_axis": "left"}]
+        plot_widget.append_point("Old label", 1.0, 2.0)
+        widget = managed_qt_widget(command.config_widget())
+        grid = widget.findChild(QScrollArea).widget().layout()
+        label_combo = grid.itemAtPosition(2, 1).widget()
+
+        label_combo.lineEdit().setText("New label")
+        label_combo.lineEdit().editingFinished.emit()
+
+        assert plot_widget.trace_names == ["New label"]
+        assert plot_widget.x_data("New label") == [1.0]
+        assert plot_widget.y_data("New label") == [2.0]
+
+    def test_automatic_label_change_renames_existing_plot_trace(
+        self, qapp, engine, managed_qt_widget
+    ):
+        plot_widget = self.make_plot_widget()
+        engine.plot_widget = plot_widget
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y", "p:z": "p_z"}
+        command.y_entries = [{"key": "p:y", "label": "y", "y_axis": "left"}]
+        plot_widget.append_point("y", 1.0, 2.0)
+        widget = managed_qt_widget(command.config_widget())
+        grid = widget.findChild(QScrollArea).widget().layout()
+        value_combo = grid.itemAtPosition(1, 1).widget()
+
+        value_combo.setCurrentText("p:z")
+
+        assert command.y_entries[0]["label"] == "z"
+        assert plot_widget.trace_names == ["z"]
+
     def test_config_widget_adds_and_removes_y_series(self, qapp, engine, managed_qt_widget):
         command = PlotPointsCommand()
         engine.add_plugin("plot_points", command)

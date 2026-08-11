@@ -8,14 +8,24 @@ from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import pytest
-from qtpy.QtWidgets import QCheckBox, QTableWidget, QTabWidget, QWidget
+from qtpy.QtWidgets import (
+    QCheckBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetSelectionRange,
+    QTabWidget,
+    QWidget,
+)
 
 from stoner_measurement.instruments.lockin_amplifier import (
     LockInExpandFactor,
+    LockInInputCoupling,
     LockInLineFilter,
     LockinRefenceEdge,
     LockInReferenceSource,
+    LockInReserveMode,
 )
+from stoner_measurement.instruments.srs import SRS830LIAStatus
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
@@ -25,7 +35,7 @@ from stoner_measurement.plugins.trace import (
     WaveformScanMode,
 )
 from stoner_measurement.plugins.trace.k6221_multi_sr830 import LockInEntry, LockInReading
-from stoner_measurement.ui.widgets import AutoSISpinBox
+from stoner_measurement.ui.widgets import AutoSISpinBox, SIComboBox
 
 
 def _make_plugin() -> Keithley6221_MultiSR830Plugin:
@@ -218,7 +228,7 @@ class TestUi:
         tables = settings_widget.findChildren(QTableWidget)
         assert tables
         table = tables[0]
-        assert table.rowCount() == 13
+        assert table.rowCount() == 12
         assert table.columnCount() == 1
 
         # Remove button disabled when only one lock-in
@@ -233,7 +243,7 @@ class TestUi:
         # Offset checkbox present
         checkboxes = settings_widget.findChildren(QCheckBox)
         texts = [cb.text() for cb in checkboxes]
-        assert any("Offset" in t for t in texts)
+        assert any("offset" in text.casefold() for text in texts)
 
         output_checks = _output_checks(table)
         assert set(output_checks) == {"X", "Y", "R", "THETA"}
@@ -273,23 +283,105 @@ class TestUi:
         output_checks["X"].click()
 
         assert plugin._lockin_entries[0].outputs == (LockInOutput.X,)
+        assert plugin.scan_generator.stages == [(0.0, True)]
 
-    def test_checkbox_cells_use_transparent_backgrounds(self, qapp):
+    def test_boolean_cells_stay_neutral_when_column_is_selected(self, qapp):
         plugin = _make_plugin()
         tabs = plugin.config_tabs()
         settings_widget = tabs[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
 
         output_checks = _output_checks(table)
-        auto_sens_check = table.cellWidget(_row_with_label(table, "Auto-sensitivity"), 0)
         phase_spin = table.cellWidget(_row_with_label(table, "Phase (\u00b0)"), 0)
         offset_spin = table.cellWidget(_row_with_label(table, "Offset (%)"), 0)
+        label_edit = table.cellWidget(_row_with_label(table, "Label"), 0)
 
-        assert auto_sens_check.styleSheet() == "background: transparent;"
+        table.selectColumn(0)
+
         assert isinstance(phase_spin, AutoSISpinBox)
         assert isinstance(offset_spin, AutoSISpinBox)
         assert output_checks
         assert all(cb.styleSheet() == "background: transparent;" for cb in output_checks.values())
+        assert "alternate_base" not in table.styleSheet()
+        assert "background-color" in label_edit.styleSheet()
+        assert all("background-color" not in cb.styleSheet() for cb in output_checks.values())
+
+    def test_auto_sensitivity_has_no_redundant_boolean_row(self, qapp):
+        plugin = _make_plugin()
+        table = plugin.config_tabs()[1][1].findChildren(QTableWidget)[0]
+        labels = [table.verticalHeaderItem(row).text() for row in range(table.rowCount())]
+
+        assert "Sensitivity" in labels
+        assert "Auto-sensitivity" not in labels
+
+    def test_lockin_table_uses_only_its_row_height_and_tab_stretches_below_controls(self, qapp):
+        plugin = _make_plugin()
+        settings = plugin.config_tabs()[1][1]
+        table = settings.findChildren(QTableWidget)[0]
+        lockins_page = table.parentWidget()
+        while lockins_page is not None and lockins_page.layout() is None:
+            lockins_page = lockins_page.parentWidget()
+
+        expected_height = (
+            table.horizontalHeader().height()
+            + table.rowCount() * table.verticalHeader().defaultSectionSize()
+            + 2 * table.frameWidth()
+        )
+        assert table.minimumHeight() == expected_height
+        assert table.maximumHeight() == expected_height
+        assert lockins_page is not None
+        assert lockins_page.layout().itemAt(lockins_page.layout().count() - 1).spacerItem() is not None
+
+    def test_offset_compensation_control_explains_software_only_correction(self, qapp):
+        plugin = _make_plugin()
+        settings = plugin.config_tabs()[1][1]
+        checkbox = next(
+            control
+            for control in settings.findChildren(QCheckBox)
+            if control.text() == "Add offset to readings"
+        )
+
+        assert "does not change the lock-in settings" in checkbox.toolTip()
+
+    def test_nonzero_manual_offset_enables_adding_offset_to_readings(self, qapp):
+        plugin = _make_plugin()
+        settings = plugin.config_tabs()[1][1]
+        table = settings.findChildren(QTableWidget)[0]
+        checkbox = next(
+            control for control in settings.findChildren(QCheckBox) if control.text() == "Add offset to readings"
+        )
+        offset_spin = table.cellWidget(_row_with_label(table, "Offset (%)"), 0)
+
+        assert checkbox.isChecked() is False
+        offset_spin.setValue(5.0)
+
+        assert plugin._offset_enabled is True
+        assert checkbox.isChecked() is True
+
+    def test_restore_without_saved_preference_enables_nonzero_offset(self, qapp):
+        plugin = _make_plugin()
+        data = plugin.to_json()
+        data.pop("offset_enabled")
+        data["lockins"][0]["offset_pct"] = 5.0
+
+        restored = BasePlugin.from_json(data)
+
+        assert restored._offset_enabled is True
+
+    def test_sensitivity_combo_starts_with_auto_and_numeric_selection_disables_it(self, qapp):
+        plugin = _make_plugin()
+        settings_widget = plugin.config_tabs()[1][1]
+        table = settings_widget.findChildren(QTableWidget)[0]
+        combo = table.cellWidget(_row_with_label(table, "Sensitivity"), 0)
+
+        assert isinstance(combo, SIComboBox)
+        assert combo.itemText(0) == "Auto"
+        assert combo.currentIndex() == 0
+
+        combo.setFloatValue(1e-3)
+
+        assert plugin._lockin_entries[0].auto_sensitivity is False
+        assert plugin._lockin_entries[0].sensitivity == pytest.approx(1e-3)
 
     def test_offset_spinbox_auto_state_updates_entry(self, qapp):
         plugin = _make_plugin()
@@ -313,8 +405,106 @@ class TestUi:
         assert plugin._lockin_entries[0].phase is None
         assert phase_spin.lineEdit().text() == "Auto"
 
+    def test_read_and_auto_offset_buttons_require_selection_and_accept_multiple_columns(self, qapp):
+        plugin = _make_plugin()
+        plugin._lockin_entries.append(LockInEntry(label="LIA 2", resource="GPIB0::9::INSTR"))
+        settings = plugin.config_tabs()[1][1]
+        table = settings.findChildren(QTableWidget)[0]
+        buttons = {button.text(): button for button in settings.findChildren(QPushButton)}
+
+        assert buttons["Read Lockin"].isEnabled() is False
+        assert buttons["Run auto-offset"].isEnabled() is False
+
+        table.setRangeSelected(QTableWidgetSelectionRange(0, 0, table.rowCount() - 1, 1), True)
+
+        assert buttons["Read Lockin"].isEnabled() is True
+        assert buttons["Run auto-offset"].isEnabled() is True
+        plugin.auto_offset_temporary_lockins = MagicMock()
+        buttons["Run auto-offset"].click()
+        plugin.auto_offset_temporary_lockins.assert_called_once_with([0, 1])
+
+    def test_read_lockin_updates_source_common_and_selected_entry_controls(self, qapp):
+        plugin = _make_plugin()
+        settings = plugin.config_tabs()[1][1]
+        table = settings.findChildren(QTableWidget)[0]
+        read_button = next(button for button in settings.findChildren(QPushButton) if button.text() == "Read Lockin")
+        plugin.read_temporary_instrument_settings = MagicMock(
+            return_value=(
+                {"amplitude": 2e-3, "offset": 1e-4, "frequency": 123.0},
+                [
+                    (
+                        0,
+                        {
+                            "time_constant": 1.0,
+                            "filter_slope": 24,
+                            "input_coupling": LockInInputCoupling.DC,
+                            "line_filter": LockInLineFilter.BOTH,
+                            "sensitivity": 5e-3,
+                            "harmonic": 3,
+                            "phase": 12.5,
+                            "reserve_mode": LockInReserveMode.LOW_NOISE,
+                            "offsets": {"X": (4.0, LockInExpandFactor.X10)},
+                        },
+                    )
+                ],
+            )
+        )
+
+        table.selectColumn(0)
+        read_button.click()
+
+        plugin.read_temporary_instrument_settings.assert_called_once_with([0])
+        assert plugin._waveform_amplitude == pytest.approx(2e-3)
+        assert plugin._waveform_offset == pytest.approx(1e-4)
+        assert plugin._waveform_frequency == pytest.approx(123.0)
+        assert plugin._time_constant == pytest.approx(1.0)
+        assert plugin._filter_slope == 24
+        assert plugin._input_coupling is LockInInputCoupling.DC
+        assert plugin._line_filter is LockInLineFilter.BOTH
+        entry = plugin._lockin_entries[0]
+        assert entry.sensitivity == pytest.approx(5e-3)
+        assert entry.auto_sensitivity is False
+        assert entry.harmonic == 3
+        assert entry.phase == pytest.approx(12.5)
+        assert entry.offset_pct == pytest.approx(4.0)
+        assert entry.expand is LockInExpandFactor.X10
+        assert entry.reserve_mode is LockInReserveMode.LOW_NOISE
+
 
 class TestConfiguration:
+    def test_configure_auto_sensitivity_waits_for_agan_and_reads_back_range(self, qapp):
+        plugin = _make_plugin()
+        plugin._time_constant = 1e-5
+        plugin._read_rate_multiple = 0.0
+        plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
+        plugin._k6221 = MagicMock()
+        lockin = MagicMock()
+        lockin.get_sensitivity.return_value = 2e-3
+        lockin.read_lia_status.return_value = SRS830LIAStatus.NONE
+        plugin._lockins = [lockin]
+
+        plugin.configure()
+
+        lockin.auto_gain.assert_called_once_with()
+        lockin.get_sensitivity.assert_called_once_with()
+        assert plugin._lockin_entries[0].sensitivity == pytest.approx(2e-3)
+
+    def test_configure_aborts_when_lockin_reports_overload(self, qapp):
+        plugin = _make_plugin()
+        plugin._time_constant = 1e-5
+        plugin._read_rate_multiple = 0.0
+        plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
+        plugin._k6221 = MagicMock()
+        lockin = MagicMock()
+        lockin.get_sensitivity.return_value = 1e-3
+        lockin.read_lia_status.return_value = SRS830LIAStatus.INPUT_OR_RESERVE_OVERLOAD
+        plugin._lockins = [lockin]
+
+        with pytest.raises(RuntimeError, match="overloaded after configuration"):
+            plugin.configure()
+
+        assert plugin.status is TraceStatus.ERROR
+
     def test_configure_auto_phase_uses_phase_state(self, qapp):
         plugin = _make_plugin()
         plugin._time_constant = 1e-5
@@ -564,6 +754,29 @@ class TestAutoOffset:
         assert plugin._lockin_entries[0].auto_offsets == {"X": pytest.approx(15.0)}
         plugin._k6221.enable_output.assert_any_call(True)
         plugin._k6221.enable_output.assert_called_with(False)
+
+    def test_auto_offset_waits_at_least_three_time_constants_before_aoff(self, qapp):
+        plugin = _make_plugin()
+        plugin._time_constant = 2.0
+        plugin._read_rate_multiple = 0.5
+        plugin._k6221 = MagicMock()
+        events = []
+        plugin._k6221.enable_output.side_effect = lambda enabled: events.append(("output", enabled))
+        lockin = MagicMock()
+        lockin.auto_offset_channel.side_effect = lambda channel: events.append(("aoff", channel))
+        lockin.get_output_offset.return_value = (5.0, LockInExpandFactor.X1)
+        plugin._lockins = [lockin]
+        plugin._lockin_entries = [
+            LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,))
+        ]
+
+        with patch("stoner_measurement.plugins.trace.k6221_multi_sr830.time.sleep") as sleep:
+            plugin.auto_offset()
+
+        sleep.assert_called_once_with(6.0)
+        assert events.index(("output", True)) < next(
+            index for index, event in enumerate(events) if event[0] == "aoff"
+        )
 
     def test_auto_offset_clears_previous_offsets(self, qapp):
         plugin = _make_plugin()

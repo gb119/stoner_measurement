@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+from qtpy.QtCore import Qt
 
 from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.trace import TracePlugin, TraceStatus
@@ -162,6 +163,19 @@ class TestTracePlugin:
         container = _ScanTabContainer(p)
         p.set_scan_generator_class(SteppedScanGenerator)
         assert isinstance(container, QWidget)
+
+    def test_scan_page_and_generator_container_pack_contents_at_top(self, qapp):
+        from stoner_measurement.plugins.trace import _ScanTabContainer
+        from stoner_measurement.scan import ListScanGenerator
+
+        p = _SimpleTrace()
+        p.set_scan_generator_class(ListScanGenerator)
+        scan_page = p.config_tabs()[0][1]
+        scan_container = scan_page.findChild(_ScanTabContainer)
+
+        assert scan_page.layout().alignment() & Qt.AlignmentFlag.AlignTop
+        assert scan_container is not None
+        assert scan_container.layout().alignment() & Qt.AlignmentFlag.AlignTop
 
     def test_statistics_switch_is_immediately_above_scan_generator(self, qapp):
         from qtpy.QtWidgets import QWidget

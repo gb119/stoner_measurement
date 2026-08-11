@@ -69,6 +69,39 @@ class TestPlotWidget:
         widget = self.make_plot_widget()
         widget.remove_trace("nonexistent")  # should not raise
 
+    def test_rename_trace_preserves_data_axes_style_and_visibility(self, qapp):
+        widget = self.make_plot_widget()
+        widget.add_y_axis("right_data", "Right data")
+        widget.append_point("old", 1.0, 2.0)
+        widget.assign_trace_axes("old", y_axis="right_data")
+        widget.set_trace_style("old", colour="#123456", line_style="dot")
+        widget.set_trace_visible("old", False)
+
+        widget.rename_trace("old", "new")
+
+        assert widget.trace_names == ["new"]
+        assert widget.x_data("new") == [1.0]
+        assert widget.y_data("new") == [2.0]
+        assert widget._trace_axes["new"] == ("bottom", "right_data")
+        assert widget.trace_style("new")["colour"] == "#123456"
+        assert widget._trace_visible["new"] is False
+        assert widget._traces["new"].name() == "new"
+
+    def test_rename_trace_rejects_collision_and_empty_name(self, qapp):
+        widget = self.make_plot_widget()
+        widget.append_point("old", 1.0, 2.0)
+        widget.append_point("existing", 3.0, 4.0)
+
+        with pytest.raises(ValueError, match="already exists"):
+            widget.rename_trace("old", "existing")
+        with pytest.raises(ValueError, match="cannot be empty"):
+            widget.rename_trace("old", "  ")
+
+    def test_rename_missing_trace_is_noop(self, qapp):
+        widget = self.make_plot_widget()
+        widget.rename_trace("missing", "new")
+        assert widget.trace_names == []
+
     def test_clear_all(self, qapp):
         widget = self.make_plot_widget()
         widget.append_point("a", 1.0, 2.0)

@@ -35,11 +35,34 @@ on status bbar right hand side.
 22. Implement temperature stability as a table (Below T, tolerance, toleramce_sensor, time, stability_rate,
     stability_sensor, hold_off_time) - DONE
 23. Related, make stability critiera use specific sensors. DONE
+24. Engines auto-connect using persisted settings when a plugin requests connected hardware, with the attempt logged.
+    DONE - Tested with hardware
+25. The log window supports regular-expression filtering for fine-grained message and communications filtering. DONE
+26. Plot widget supports programmatic trace renaming without losing data, axes, style, errors, or visibility. Plot-points
+    uses this API when a configured series label changes. DONE
 
 ## Done, but needs testing
 
 4. Implement K24x0 trace and scan plugins. - DONE - Needs testing with hardware
 5. ITC503 driver temperature conversion table. - DONE NEEDS HARDWARE TESTING
+6. Lakeshore 625 command errors are detected through STB/`*ESR?`; hardware, operational, and PSH faults are checked
+   through `ERST?`, logged as critical, and abort operation. - DONE - Needs hardware testing
+7. Lakeshore 625 uses the supported `RATE`/`RATE?` command in A/s and converts the public current/field ramp-rate
+   interfaces to per-minute units. - DONE - Needs hardware testing
+8. Oxford IPS120 reads safe-current limits from R21/R22. - DONE - Needs hardware testing
+9. Oxford IPS120 persistent-switch heater controls are enabled for stable heater states when the supply is at a safe
+   current. - DONE - Needs hardware testing
+10. Shared trace-plugin scan configuration pages, including every scan-generator type, pack controls from the top and
+    leave surplus vertical space only at the bottom. - DONE - Needs visual testing
+11. The 6221-multiple-SR830 sensitivity selector now starts with an explicit Auto option. Auto configuration runs
+    `AGAN`, waits for IFC completion, reads back the selected sensitivity, and aborts if `LIAS?` reports overload.
+    - DONE - Needs hardware testing
+12. Instrument address widgets force dark foreground text on connecting, connected, and error status backgrounds for
+    dark-mode contrast. - DONE - Needs visual testing
+13. Plot-points automatically updates an unedited plot label when its Y value changes, while preserving manually edited
+    labels. - DONE
+14. 6221-multiple-SR830 resistance-derived channel averages are exported through the values catalogue. - DONE
+15. Save metadata is limited to plugins used by sequence steps and includes the outputs catalogue. - DONE
 
 ## Partially done, needs more work
 
@@ -50,35 +73,11 @@ on status bbar right hand side.
 
 ## New Ideas
 
-1. The engines should attempt to auto-connect with persisted settings when a plugin requests something that requires
-   a connection. This should be logged as an info warning.
-2. The engines should log reasons for disconnecting as info level, or error level if not the result of user request.
+1. The engines should log reasons for disconnecting as info level, or error level if not the result of user request.
    In the latter case they should atempt to auto-reconnect. If reconnection fails 5 times without a successful
    connection then engine should enter a failed state and require the user to reconnect via the panel. The failed
-   state needs to be logged as an error.
-3. The log window could do with a regexp filter as well that would allow finer-grained filtering of log entries of
-   interest, such as comms traffic from a sepcific address or even a specific command. The failed state should be
-   reflected in the statys bar indicators.
-4. Plot widget should support plot renaming in a programmatic api - if a command plugin requests a plot to be
-  renamed, the plot widget should do this (e.g. changing the label on the plot-points command).
+   state needs to be logged as an error and reflected in the status-bar indicators.
 ## Bugs
 
-1. Lakeshore 625 driver/transport/protocol doesn't seem to check STB for errors or deal with error situations.
-2. Lakeshore625 is sending RATEF and RATEI commands, plus query variants, but
-   only RATE[?] is supported and that only works with the ramp rate in A/s.
-3. Oxofrd IPS120 not reading limits properly.
-4. Oxford IPS120, not allowing control of persistent switch heater - both buttons grayed out even though it detects
-  the switch heater on/off state
-5. Layout of 6221-SR830 Trace config page - pack to top of tab. Possibly other trace plugins?
-6. SR830 - Autogain not working correctly, also check overload status during config.
-6. Instrument address widget, text contrast in dark mode when connecting/connected status is not readable
-  use dark text or darken the startus colour.
-7. Selecting a new Y value in the plot-points plugin config table  should update the the
-  plot label setting - only if the user has manually edited the plot label should the label differ from the
-  Y value. (see new feature about renaming plots as well)
-8. When asked to create resistance channels, the 6221-multi SR830 trace plugin is not exporting them as values when 
-  asked to average channel data - so the resistance versions are not available to plot with plot_points!
-9. When saving files, metadata is included for all plugins in memory, not limiting it to just the plugins in
-  the sequence steps. Also it would be good to save the all the outputs in the outputs catalogue into the
-  metadata.
+No currently confirmed bugs. Items awaiting hardware or visual confirmation are listed above.
   

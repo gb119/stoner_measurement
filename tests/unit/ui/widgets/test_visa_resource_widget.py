@@ -95,18 +95,21 @@ class TestVisaResourceComboBox:
         w.set_status(VisaResourceStatus.CONNECTED)
         assert w.status is VisaResourceStatus.CONNECTED
         assert "90ee90" in w.combo.styleSheet().lower()
+        assert "color: #202020" in w.combo.styleSheet().lower()
 
     def test_set_status_connecting(self, qapp):
         w = VisaResourceComboBox()
         w.set_status(VisaResourceStatus.CONNECTING)
         assert w.status is VisaResourceStatus.CONNECTING
         assert "ffd580" in w.combo.styleSheet().lower()
+        assert "color: #202020" in w.combo.styleSheet().lower()
 
     def test_set_status_error(self, qapp):
         w = VisaResourceComboBox()
         w.set_status(VisaResourceStatus.ERROR)
         assert w.status is VisaResourceStatus.ERROR
         assert "ffaaaa" in w.combo.styleSheet().lower()
+        assert "color: #202020" in w.combo.styleSheet().lower()
 
     def test_set_status_disconnected_clears_stylesheet(self, qapp):
         w = VisaResourceComboBox()

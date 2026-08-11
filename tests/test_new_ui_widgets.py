@@ -694,6 +694,27 @@ class TestMeasurementApp:
         assert app._main_window.script_tab.text == ""
         app._engine.shutdown()
 
+    def test_close_script_tab_action_has_shortcuts_and_tracks_active_main_tab(self, qapp):
+        app = MeasurementApp()
+        try:
+            action = app._act_close_script_tab
+            assert {shortcut.toString() for shortcut in action.shortcuts()} == {"Ctrl+F4", "Ctrl+W"}
+            assert action.isEnabled() is False
+
+            app._main_window.tabs.setCurrentIndex(app._TAB_EDITOR)
+            assert action.isEnabled() is True
+            script_tab = app._main_window.script_tab
+            script_tab.new_tab()
+            initial_count = script_tab._script_tabs.count()
+
+            action.trigger()
+
+            assert script_tab._script_tabs.count() == initial_count - 1
+            app._main_window.tabs.setCurrentIndex(app._TAB_MEASUREMENT)
+            assert action.isEnabled() is False
+        finally:
+            app._engine.shutdown()
+
     def test_run_action_starts_engine(self, qapp):
         app = MeasurementApp()
         # With an empty editor, run_script is a no-op that does not raise

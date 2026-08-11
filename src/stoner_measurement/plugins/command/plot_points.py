@@ -62,6 +62,7 @@ _PLOT_SIGNAL_BINDINGS = (
     ("plot_ensure_x_axis", "ensure_x_axis"),
     ("plot_trace_axes", "assign_trace_axes"),
     ("plot_trace_style", "set_trace_style_from_dict"),
+    ("plot_rename_trace", "rename_trace"),
 )
 
 
@@ -235,6 +236,8 @@ class PlotPointsCommand(CommandPlugin):
     plot_trace_axes = pyqtSignal(str, str, str)
     #: Signal emitted by execute() to set trace style — (trace_name, style_dict).
     plot_trace_style = pyqtSignal(str, object)
+    #: Signal emitted when a configured series label changes — (old_name, new_name).
+    plot_rename_trace = pyqtSignal(str, str)
 
     def __init__(self, parent=None) -> None:
         """Initialise with default configuration."""
@@ -745,17 +748,24 @@ class PlotPointsCommand(CommandPlugin):
         if text == "(no values available)":
             return
         entry = self.y_entries[index]
-        entry["key"] = text
+        old_key = entry.get("key", "")
+        old_label = entry.get("label", "")
         automatic_label = _default_label(text, namespace)
-        current_label = entry.get("label", "")
-        if not current_label or current_label == _default_label(entry.get("key", ""), namespace):
+        entry["key"] = text
+        if not old_label or old_label == _default_label(old_key, namespace):
             entry["label"] = automatic_label
             widgets.label.lineEdit().setText(automatic_label)
+            if old_label and old_label != automatic_label:
+                self.plot_rename_trace.emit(old_label, automatic_label)
 
     def _apply_y_label(self, index: int, widgets: _YSeriesWidgets) -> None:
         """Store the edited legend label for one y-series."""
         line_edit = widgets.label.lineEdit()
-        self.y_entries[index]["label"] = line_edit.text().strip() if line_edit else ""
+        new_label = line_edit.text().strip() if line_edit else ""
+        old_label = self.y_entries[index].get("label", "")
+        self.y_entries[index]["label"] = new_label
+        if old_label and new_label and old_label != new_label:
+            self.plot_rename_trace.emit(old_label, new_label)
 
     def _apply_y_axis(self, index: int, text: str) -> None:
         """Store an edited y-axis name, falling back to the default axis."""

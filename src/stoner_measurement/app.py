@@ -614,6 +614,12 @@ class MeasurementApp(QMainWindow):
         self._act_save_as.setShortcut(QKeySequence.StandardKey.SaveAs)
         self._act_save_as.triggered.connect(self._on_save_as)
 
+        self._act_close_script_tab = QAction("&Close Script Tab", self)
+        self._act_close_script_tab.setShortcuts([QKeySequence("Ctrl+F4"), QKeySequence("Ctrl+W")])
+        self._act_close_script_tab.setStatusTip("Close the current script tab")
+        self._act_close_script_tab.setEnabled(False)
+        self._act_close_script_tab.triggered.connect(self._main_window.script_tab.close_current_tab)
+
         self._act_exit = QAction("E&xit", self)
         self._act_exit.setShortcut(QKeySequence.StandardKey.Quit)
         self._act_exit.setStatusTip("Exit the application")
@@ -754,6 +760,7 @@ class MeasurementApp(QMainWindow):
         file_menu.addAction(self._act_open)
         file_menu.addAction(self._act_save)
         file_menu.addAction(self._act_save_as)
+        file_menu.addAction(self._act_close_script_tab)
         file_menu.addSeparator()
         file_menu.addAction(self._act_exit)
 
@@ -928,6 +935,7 @@ class MeasurementApp(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         """Update action labels and status tips when the active tab changes."""
         if index == self._TAB_MEASUREMENT:
+            self._act_close_script_tab.setEnabled(False)
             self._act_new.setText("&New Sequence")
             self._act_new.setStatusTip("Clear the measurement sequence and start a new one")
             self._act_open.setText("&Open Sequence…")
@@ -947,6 +955,7 @@ class MeasurementApp(QMainWindow):
             self._act_paste.setText("&Paste Step")
             self._act_paste.setStatusTip("Paste the sequence step from the clipboard")
         elif index == self._TAB_EDITOR:
+            self._act_close_script_tab.setEnabled(True)
             self._act_new.setText("&New Script")
             self._act_new.setStatusTip("Clear the sequence editor and start a new script")
             self._act_open.setText("&Open Script…")

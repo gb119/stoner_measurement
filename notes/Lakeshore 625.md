@@ -221,6 +221,31 @@ OPSTE
 This allows software to poll or receive asynchronous notification of faults instead of repeatedly querying instrument
 state.
 
+### Driver error-handling policy
+
+The Model 625 has two distinct error paths and the driver handles both:
+
+* IEEE-488 command and execution errors are reported through the Standard Event
+  Status Register. The driver checks the status-byte ESB summary where serial
+  polling is supported and reads `*ESR?` when it is asserted. On transports
+  without serial polling, it reads `*ESR?` directly. A non-zero result is logged
+  as an error and raises `InstrumentError`, because it normally identifies an
+  invalid command or another software/configuration fault.
+* Magnet and supply faults are read from `ERST?`, whose three integer fields are
+  the current hardware, operational, and persistent-switch-heater error
+  registers. Any non-zero field is logged at critical level and raises
+  `InstrumentError`; continuing a sequence is unsafe. Operational bit 5 is the
+  magnet-quench indication and bit 6 indicates discharge through the crowbar.
+  `ERSTR?` is the latched event form and clears when read, so routine polling
+  uses the non-clearing `ERST?` form.
+
+This follows section 5.1.4.3 and the `ERST?`/`ERSTR?` command entries in the
+Lake Shore Model 625 user manual. Operational errors include crowbar discharge,
+quench, remote inhibit, excessive internal temperature, high line voltage,
+external-programming error, and calibration error. Hardware errors cannot be
+cleared by software; operational and PSH errors can be cleared with `ERRCL`
+after the underlying condition has been addressed.
+
 ---
 
 ## Typical remote control workflow

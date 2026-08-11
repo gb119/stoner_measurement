@@ -321,7 +321,7 @@ class TestListScanWidget:
         gen = ListScanGenerator()
         widget = ListScanWidget(generator=gen)
         widget._add_btn.click()
-        assert len(gen.stages) == 1
+        assert gen.stages == [(0.0, True)]
 
     def test_remove_point_button_removes_selected_row(self, qapp):
         gen = ListScanGenerator()

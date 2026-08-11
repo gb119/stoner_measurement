@@ -54,7 +54,7 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
-from qtpy.QtCore import QObject
+from qtpy.QtCore import QObject, Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -139,6 +139,7 @@ class _ScanTabContainer(QWidget):
         self._plugin = plugin
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._content: QWidget | None = None
         self._refresh()
         plugin.scan_generator_changed.connect(self._refresh)
@@ -171,6 +172,7 @@ class _ScanPage(QWidget):
         """Initialise the scan page and bind it to *plugin*."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # --- Header form: instance name + optional generator selector ---
         header_form = QFormLayout()

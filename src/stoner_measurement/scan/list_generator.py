@@ -37,7 +37,7 @@ from stoner_measurement.ui.generator_json import (
 from stoner_measurement.ui.widgets import SISpinBox
 
 _SPINBOX_MAX_ABS = 1e9
-_DEFAULT_TARGET = 1.0
+_DEFAULT_TARGET = 0.0
 _CURRENT_ROW_STYLE = "background-color: rgb(255, 220, 0);"
 
 
