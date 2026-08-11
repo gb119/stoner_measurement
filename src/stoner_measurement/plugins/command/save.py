@@ -282,33 +282,6 @@ def _ensure_string_expr(text: str) -> str:
     return repr(text)
 
 
-def _runtime_path_expr(expression: str) -> str:
-    """Promote a path string containing replacement fields to an f-string.
-
-    Plain and raw string literals containing ``{`` are promoted immediately
-    before evaluation. Existing ``f``/``fr``/``rf`` literals and expressions
-    that are not string literals are returned unchanged.
-    """
-    if "{" not in expression:
-        return expression
-
-    match = _STRING_EXPR_RE.match(expression)
-    if match is None:
-        return expression
-
-    prefix = match.group("prefix")
-    if "f" in prefix.lower():
-        return expression
-
-    # Only plain and raw strings can be promoted by prepending ``f``. Python
-    # does not permit f-strings to be combined with the ``b`` or ``u`` prefix.
-    if prefix.lower() not in {"", "r"}:
-        return expression
-
-    prefix_start = match.start("prefix")
-    return f"{expression[:prefix_start]}f{expression[prefix_start:]}"
-
-
 def _flatten_to_metadata(obj: Any, prefix: str = "") -> list[str]:
     """Recursively flatten a nested dict or list into TDI metadata cell strings.
 
@@ -625,7 +598,7 @@ class SaveCommand(CommandPlugin):
 
     def _resolve_original_destination(self) -> pathlib.Path:
         """Evaluate :attr:`path_expr` and resolve it to the configured output path."""
-        path_val = self.eval(_runtime_path_expr(self.path_expr))
+        path_val = self.eval(self.path_expr)
         if not isinstance(path_val, str):
             raise TypeError(f"SaveCommand.path_expr must evaluate to a str, got {type(path_val).__name__!r}")
 

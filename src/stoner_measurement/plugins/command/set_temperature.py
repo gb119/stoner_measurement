@@ -12,7 +12,58 @@ from stoner_measurement.temperature_control.engine import TemperatureControllerE
 
 
 class SetTemperatureCommand(SetEngineStateCommand):
-    """Set one temperature-control loop and optionally wait until it reaches setpoint."""
+    """Set a temperature-control loop target during a sequence.
+
+    Use this command to change the setpoint of one loop on the active
+    temperature controller. If necessary, the command connects the preferred
+    configured controller before setting the target. It can either continue
+    immediately or hold sequence execution until the controller reports that
+    the selected loop is at its setpoint.
+
+    The configuration tab provides **Control loop**, **Setpoint expression**,
+    and **Wait expression** controls. The setpoint is in kelvin and may be a
+    number or an expression evaluated in the sequence namespace when the step
+    runs. The wait expression defaults to ``True``; set it to ``False`` or to
+    another Boolean expression to continue after the first state read.
+
+    When execution finishes, the command publishes **Temperature**,
+    **Setpoint**, **Heater Output**, **At Setpoint**, and **Stable** scalar
+    outputs from the final controller state. Boolean outputs are represented
+    as ``1.0`` or ``0.0``. They can be selected by later sequence steps or read
+    with :meth:`output_value` in the console.
+
+    Attributes:
+        control_loop (int):
+            One-based controller loop to update. Defaults to ``1``.
+        setpoint_expr (str):
+            Numeric expression for the target temperature in kelvin. Defaults
+            to ``"300.0"``.
+        wait_expr (str):
+            Boolean expression controlling whether execution waits for the
+            selected loop to reach its setpoint. Defaults to ``"True"``.
+        instance_name (str):
+            Inherited sequence-instance name used to identify the command and
+            its published scalar outputs.
+        sequence_engine (SequenceEngine | None):
+            Inherited reference to the sequence engine and its live namespace.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        Configure an instance from the QtConsole before running its sequence
+        step::
+
+            set_temperature.control_loop = 2
+            set_temperature.setpoint_expr = "base_temperature + 5"
+            set_temperature.wait_expr = "settle_before_measurement"
+
+        After execution, inspect the captured state::
+
+            set_temperature.output_value("Temperature")
+            set_temperature.output_value("Stable")
+    """
 
     setpoint_suffix = "K"
 

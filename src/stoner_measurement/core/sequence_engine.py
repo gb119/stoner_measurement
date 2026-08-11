@@ -1120,6 +1120,16 @@ class SequenceEngine(QObject):
                 seen.add(id(plugin))
         return result
 
+    def step_plugins(self) -> list[BasePlugin]:
+        """Return the plugin instances currently present in the sequence tree.
+
+        Unlike :meth:`all_plugins`, this excludes plugin-manager/base instances
+        registered via :meth:`add_plugin`. The returned list follows sequence
+        order and is a shallow copy, so callers cannot mutate the engine's
+        catalogue directly.
+        """
+        return list(self._extra_catalog_plugins)
+
     def sequence_plugins(self) -> list[BasePlugin]:
         """Return the plugin instances that are actually part of the current sequence.
 

@@ -14,7 +14,59 @@ from stoner_measurement.plugins.state._motor_controller_plugin import _normalise
 
 
 class SetPositionCommand(SetEngineStateCommand):
-    """Set absolute motor position and optionally wait until it reaches its target."""
+    """Move the motor to an absolute angular position during a sequence.
+
+    Use this command to set the target angle of the active motor controller. If
+    necessary, the command connects the preferred configured controller before
+    requesting the move. It can either continue after the first state read or
+    hold sequence execution until the motor engine reports that the target has
+    been reached.
+
+    The configuration tab provides **Direction**, **Setpoint expression**, and
+    **Wait expression** controls. Direction can be clockwise,
+    counter-clockwise, or the shortest route. The setpoint is in degrees and
+    may be a number or an expression evaluated in the sequence namespace when
+    the step runs. The wait expression defaults to ``True``.
+
+    When execution finishes, the command publishes **Position**, **Target
+    Position**, **Angular Rate**, **At Target**, and **Stable** scalar outputs
+    from the final controller state. Boolean outputs are represented as ``1.0``
+    or ``0.0``.
+
+    Attributes:
+        direction (MotorMoveDirection):
+            Direction used for the absolute move. Defaults to
+            :attr:`MotorMoveDirection.SHORTEST`.
+        setpoint_expr (str):
+            Numeric expression for the target position in degrees. Defaults to
+            ``"0.0"``.
+        wait_expr (str):
+            Boolean expression controlling whether execution waits for the
+            target position. Defaults to ``"True"``.
+        instance_name (str):
+            Inherited sequence-instance name used to identify the command and
+            its published scalar outputs.
+        sequence_engine (SequenceEngine | None):
+            Inherited reference to the sequence engine and its live namespace.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        Configure a move from the QtConsole::
+
+            from stoner_measurement.instruments.motor_controller import (
+                MotorMoveDirection,
+            )
+            set_position.setpoint_expr = "sample_angle + 90"
+            set_position.direction = MotorMoveDirection.CLOCKWISE
+            set_position.wait_expr = "True"
+
+        Read the captured position after execution::
+
+            set_position.output_value("Position")
+    """
 
     setpoint_suffix = "°"
 

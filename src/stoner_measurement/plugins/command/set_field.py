@@ -9,7 +9,54 @@ from stoner_measurement.plugins.command.set_engine_state import SetEngineStateCo
 
 
 class SetFieldCommand(SetEngineStateCommand):
-    """Set magnetic field and optionally wait until the engine reports it at target."""
+    """Set the magnetic-field target during a sequence.
+
+    Use this command to ramp the active magnet controller to a new field. If
+    necessary, the command connects the preferred configured controller before
+    starting the ramp. It can either continue after the first state read or
+    hold sequence execution until the magnet engine reports that the target
+    has been reached.
+
+    The configuration tab provides **Setpoint expression** and **Wait
+    expression** controls. The setpoint is in tesla and may be a number or an
+    expression evaluated in the sequence namespace when the step runs. The
+    wait expression defaults to ``True``; use ``False`` or another Boolean
+    expression when the ramp should proceed concurrently with later steps.
+
+    When execution finishes, the command publishes **Field**, **Target Field**,
+    **Current**, **Voltage**, **At Target**, and **Stable** scalar outputs from
+    the final controller state. Boolean outputs are represented as ``1.0`` or
+    ``0.0``. A reported quench stops the command with an error both before the
+    ramp and while waiting.
+
+    Attributes:
+        setpoint_expr (str):
+            Numeric expression for the target field in tesla. Defaults to
+            ``"0.0"``.
+        wait_expr (str):
+            Boolean expression controlling whether execution waits for the
+            field target. Defaults to ``"True"``.
+        instance_name (str):
+            Inherited sequence-instance name used to identify the command and
+            its published scalar outputs.
+        sequence_engine (SequenceEngine | None):
+            Inherited reference to the sequence engine and its live namespace.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        Configure a field step from the QtConsole::
+
+            set_field.setpoint_expr = "maximum_field / 2"
+            set_field.wait_expr = "wait_for_magnet"
+
+        After execution, inspect the final readback::
+
+            set_field.output_value("Field")
+            set_field.output_value("At Target")
+    """
 
     setpoint_suffix = "T"
 

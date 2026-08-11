@@ -43,6 +43,31 @@ if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
 
 
+_STRING_EXPR_RE = re.compile(r'^(?P<leading>\s*)(?P<prefix>[fFrRbBuU]*)(?P<quote>["\'])')
+
+
+def _runtime_string_expr(expression: str) -> str:
+    """Promote a templated string literal to an f-string for runtime evaluation.
+
+    Plain and raw string literals containing replacement fields are promoted
+    immediately before evaluation. Existing f-strings, non-string expressions,
+    and incompatible byte/Unicode-prefixed literals are returned unchanged.
+    """
+    if "{" not in expression:
+        return expression
+
+    match = _STRING_EXPR_RE.match(expression)
+    if match is None:
+        return expression
+
+    prefix = match.group("prefix")
+    if "f" in prefix.lower() or prefix.lower() not in {"", "r"}:
+        return expression
+
+    prefix_start = match.start("prefix")
+    return f"{expression[:prefix_start]}f{expression[prefix_start:]}"
+
+
 # ---------------------------------------------------------------------------
 # Docstring-to-HTML helper
 # ---------------------------------------------------------------------------
@@ -426,6 +451,14 @@ class BasePlugin(ABC):
         used as the interpreter symbol table, so expressions like ``"sqrt(x)"``
         or ``"linspace(0, field_max, 100)"`` work without any additional imports.
 
+        Plain and raw string literals containing replacement fields are
+        promoted to f-strings immediately before evaluation. For example,
+        ``'Run {index}'`` interpolates without an explicit ``f`` prefix while
+        leaving the stored expression unchanged. If the initial text is not
+        syntactically valid Python, it is retried as a quoted string and the
+        same template promotion is applied. Errors from syntactically valid
+        expressions are not converted into strings.
+
         This method must only be called while the plugin is attached to a
         sequence engine (i.e. :attr:`sequence_engine` is not ``None``).
 
@@ -440,10 +473,9 @@ class BasePlugin(ABC):
         Raises:
             RuntimeError:
                 If the plugin is not currently attached to a sequence engine.
-            SyntaxError:
-                If *expr* is not a valid Python expression.
             Exception:
-                Any exception raised during evaluation of *expr*.
+                Any runtime error raised by a valid expression, or an error
+                raised while evaluating the quoted-string fallback.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -484,7 +516,14 @@ class BasePlugin(ABC):
         saved_print = ns.get("print", _sentinel)
         try:
             interp = asteval.Interpreter(symtable=ns, use_numpy=False)
-            return interp.eval(expr, raise_errors=True)
+            try:
+                return interp.eval(_runtime_string_expr(expr), raise_errors=True)
+            except SyntaxError:
+                # Free-form string settings may be entered without Python
+                # quotes. Only syntax failures take this path: valid Python
+                # expressions that fail at runtime must retain their error.
+                fallback_expr = _runtime_string_expr(repr(expr))
+                return interp.eval(fallback_expr, raise_errors=True)
         finally:
             if saved_print is _sentinel:
                 ns.pop("print", None)

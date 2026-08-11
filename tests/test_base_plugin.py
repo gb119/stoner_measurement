@@ -319,13 +319,12 @@ class TestBasePluginEval:
         with pytest.raises(RuntimeError, match="not attached to a sequence engine"):
             plugin.eval("1 + 1")
 
-    def test_eval_raises_syntax_error(self, qapp):
+    def test_eval_treats_invalid_python_as_literal_text(self, qapp):
         from stoner_measurement.core.sequence_engine import SequenceEngine
         engine = SequenceEngine()
         plugin = _MinimalPlugin()
         engine.add_plugin("minimal", plugin)
-        with pytest.raises(SyntaxError):
-            plugin.eval("def")
+        assert plugin.eval("def") == "def"
         engine.shutdown()
 
     def test_eval_raises_exception_from_expression(self, qapp):
@@ -352,6 +351,91 @@ class TestBasePluginEval:
         engine.add_plugin("minimal", plugin)
         engine._namespace["_x"] = 7
         assert plugin.eval("_x * 6") == 42
+        engine.shutdown()
+
+    @pytest.mark.parametrize("prefix", ["", "r", "f", "fr", "rf", "F", "FR", "RF"])
+    def test_eval_interpolates_string_literal_replacement_fields(self, qapp, prefix):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+        plugin.engine_namespace["run_index"] = 7
+        expression = f"{prefix}'Run {{run_index:03d}}'"
+
+        assert plugin.eval(expression) == "Run 007"
+        engine.shutdown()
+
+    def test_eval_does_not_promote_non_string_expression_containing_braces(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+
+        assert plugin.eval("{'value': 3}") == {"value": 3}
+        engine.shutdown()
+
+    @pytest.mark.parametrize(
+        ("expression", "expected"),
+        [("b'{value}'", b"{value}"), ("u'{value}'", "{value}")],
+    )
+    def test_eval_leaves_incompatible_string_prefixes_unchanged(self, qapp, expression, expected):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+        plugin.engine_namespace["value"] = 3
+
+        assert plugin.eval(expression) == expected
+        engine.shutdown()
+
+    def test_eval_does_not_modify_stored_string_expression(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+        plugin.engine_namespace["sample"] = "A"
+        expression = "'Sample {sample}'"
+
+        assert plugin.eval(expression) == "Sample A"
+        assert expression == "'Sample {sample}'"
+        engine.shutdown()
+
+    def test_eval_treats_syntactically_invalid_expression_as_templated_text(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+        plugin.engine_namespace["run_index"] = 7
+
+        assert plugin.eval("Run {run_index:03d}") == "Run 007"
+        assert plugin.eval("Ready to run") == "Ready to run"
+        engine.shutdown()
+
+    def test_eval_does_not_fallback_after_runtime_name_error(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+
+        with pytest.raises(NameError):
+            plugin.eval("missing_name")
+        engine.shutdown()
+
+    def test_eval_reports_error_when_fallback_template_fails(self, qapp):
+        from stoner_measurement.core.sequence_engine import SequenceEngine
+
+        engine = SequenceEngine()
+        plugin = _MinimalPlugin()
+        engine.add_plugin("minimal", plugin)
+
+        with pytest.raises(NameError):
+            plugin.eval("Run {missing_name}")
         engine.shutdown()
 
     def test_eval_float_resolves_numeric_expression(self, qapp):

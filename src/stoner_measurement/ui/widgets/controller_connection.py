@@ -11,6 +11,7 @@ from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
     parse_serial_address,
 )
+from stoner_measurement.ui.theme import contrasting_text_colour
 from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceStatus
 
 _STATUS_BACKGROUND = {
@@ -60,10 +61,13 @@ def _transport_index_from_name(panel, transport: str) -> int:
     return -1
 
 def _set_widget_background(widget: QWidget, status: VisaResourceStatus) -> None:
-    """Apply a connection-status background colour to a generic widget."""
+    """Apply an accessible connection-status colour pair to a generic widget."""
     colour = _STATUS_BACKGROUND.get(status, "")
     if colour:
-        widget.setStyleSheet(f"QWidget {{ background-color: {colour}; }}")
+        foreground = contrasting_text_colour(colour)
+        widget.setStyleSheet(
+            f"QWidget {{ background-color: {colour}; color: {foreground}; }}"
+        )
     else:
         widget.setStyleSheet("")
 

@@ -282,14 +282,34 @@ def button_swatch_stylesheet(background_colour: str, foreground_colour: str) -> 
     )
 
 
+def relative_luminance(colour_value: str) -> float:
+    """Return WCAG relative luminance for an sRGB colour."""
+    parsed = QColor(colour_value)
+    if not parsed.isValid():
+        return 0.0
+
+    def _linear(channel: int) -> float:
+        srgb = channel / 255.0
+        return srgb / 12.92 if srgb <= 0.04045 else ((srgb + 0.055) / 1.055) ** 2.4
+
+    red, green, blue, _alpha = parsed.getRgb()
+    return (0.2126 * _linear(red)) + (0.7152 * _linear(green)) + (0.0722 * _linear(blue))
+
+
+def contrast_ratio(first_colour: str, second_colour: str) -> float:
+    """Return the WCAG contrast ratio between two sRGB colours."""
+    first = relative_luminance(first_colour)
+    second = relative_luminance(second_colour)
+    lighter, darker = max(first, second), min(first, second)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 def contrasting_text_colour(background_colour: str) -> str:
-    """Return black or white depending on the colour luminance."""
-    colour_value = QColor(background_colour)
-    if not colour_value.isValid():
+    """Return black or white, choosing the higher WCAG contrast ratio."""
+    if not QColor(background_colour).isValid():
         return "#ffffff"
-    red, green, blue, _alpha = colour_value.getRgb()
-    luminance = (0.299 * red) + (0.587 * green) + (0.114 * blue)
-    return "#202020" if luminance > 186 else "#ffffff"
+    candidates = ("#000000", "#ffffff")
+    return max(candidates, key=lambda candidate: contrast_ratio(candidate, background_colour))
 
 
 def make_palette() -> QPalette:

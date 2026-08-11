@@ -13,7 +13,59 @@ from stoner_measurement.ui.widgets import SISpinBox
 
 
 class PressureSetFlowCommand(SetEngineStateCommand):
-    """Set one MFC channel and optionally wait for actual flow to reach its target."""
+    """Set a mass-flow-controller channel target during a sequence.
+
+    Use this command to change the requested flow on one channel of the active
+    mass flow controller (MFC). If necessary, the command connects the
+    preferred configured MFC before setting the target. It can either continue
+    after the first state read or wait until the measured flow is within the
+    configured absolute tolerance of the requested flow.
+
+    The configuration tab provides **MFC channel expression**, **Flow tolerance
+    expression**, **Setpoint expression**, and **Wait expression** controls.
+    Each numeric field may use values from the sequence namespace and is
+    evaluated when the step runs. Flow values use the units reported by the
+    configured controller. The wait expression defaults to ``True``.
+
+    When execution finishes, the command publishes **Flow**, **Flow Setpoint**,
+    and **At Target** scalar outputs from the selected channel's final state.
+    **At Target** is represented as ``1.0`` or ``0.0``.
+
+    Attributes:
+        channel_expr (str):
+            Integer expression selecting the one-based MFC channel. Defaults
+            to ``"1"``.
+        setpoint_expr (str):
+            Numeric expression for the requested flow. Defaults to ``"0.0"``.
+        tolerance_expr (str):
+            Numeric expression for the non-negative absolute flow tolerance.
+            Defaults to ``"0.01"``.
+        wait_expr (str):
+            Boolean expression controlling whether execution waits for the
+            measured flow to reach the target. Defaults to ``"True"``.
+        instance_name (str):
+            Inherited sequence-instance name used to identify the command and
+            its published scalar outputs.
+        sequence_engine (SequenceEngine | None):
+            Inherited reference to the sequence engine and its live namespace.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        Configure a channel from the QtConsole::
+
+            set_flow.channel_expr = "gas_channel"
+            set_flow.setpoint_expr = "requested_flow"
+            set_flow.tolerance_expr = "0.02"
+            set_flow.wait_expr = "wait_for_flow"
+
+        After execution, inspect the measured flow::
+
+            set_flow.output_value("Flow")
+            set_flow.output_value("At Target")
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
