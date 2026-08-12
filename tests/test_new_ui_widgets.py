@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any, cast
+
+import pytest
 
 from stoner_measurement.app import (
     _STATUS_BACKGROUND_DEFAULT_COLOR,
@@ -459,6 +462,16 @@ class TestEngineActivityStatusWidget:
 
 
 class TestMeasurementApp:
+    @pytest.fixture(autouse=True)
+    def _manage_measurement_apps(self, monkeypatch, managed_qt_widget):
+        """Retain and deterministically close every application made by a test."""
+        app_class = MeasurementApp
+
+        def make_managed_app():
+            return managed_qt_widget(app_class())
+
+        monkeypatch.setattr(sys.modules[__name__], "MeasurementApp", make_managed_app)
+
     def test_has_menu_bar(self, qapp):
         app = MeasurementApp()
         mb = app.menuBar()
@@ -476,6 +489,21 @@ class TestMeasurementApp:
         toolbars = app.findChildren(QToolBar)
         assert len(toolbars) >= 1
         app._engine.shutdown()
+
+    def test_shutdown_closes_main_window(self, qapp, monkeypatch):
+        app = MeasurementApp()
+        close_calls = []
+        original_close = app._main_window.close
+
+        def close_main_window():
+            close_calls.append(True)
+            return original_close()
+
+        monkeypatch.setattr(app._main_window, "close", close_main_window)
+
+        app.shutdown()
+
+        assert close_calls == [True]
 
     def test_main_toolbar_actions_are_visually_grouped(self, qapp):
         app = MeasurementApp()
@@ -952,6 +980,4 @@ class TestMeasurementApp:
 
 
 if __name__ == "__main__":
-    import pytest
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

@@ -1554,6 +1554,7 @@ class MeasurementApp(QMainWindow):
         settings.setValue("mainWindow/geometry", self.saveGeometry())
 
         for widget in (
+            self._main_window,
             self._data_manager,
             self._value_watch,
             self._log_viewer,

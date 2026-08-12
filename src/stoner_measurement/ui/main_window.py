@@ -84,7 +84,8 @@ class MainWindow(QWidget):
             self._splitter.setSizes([quarter, total - 2 * quarter, quarter])
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        """Close the plot scene before Qt destroys the containing window."""
+        """Close lifecycle-sensitive children before destroying the window."""
+        self._script_tab.close()
         self._plot_widget.close()
         super().closeEvent(event)
 
