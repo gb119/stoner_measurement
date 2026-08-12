@@ -28,7 +28,7 @@ def _cell_line_edit(dialog: SettingsDialog, row: int, column: int) -> QLineEdit:
 class TestSettingsDialogBasics:
     def test_creates_dialog_with_saved_settings(self, qapp, monkeypatch):
         app_config = {
-            "app": {"default_data_directory": "C:/Data/Test", "theme": "light"},
+            "app": {"default_data_directory": "C:/Data/Test", "rig": "Rig-A", "theme": "light"},
             "features": {
                 "temperature": True,
                 "magnetic_field": False,
@@ -42,6 +42,7 @@ class TestSettingsDialogBasics:
 
         assert dialog.windowTitle() == "Preferences"
         assert dialog._data_dir_edit.text() == "C:/Data/Test"
+        assert dialog._rig_edit.text() == "Rig-A"
         assert dialog._theme_combo.currentText().lower() == "light"
         assert dialog._font_size_spin.value() == settings_module.font_size_setting(
             config=app_config
@@ -80,6 +81,7 @@ class TestSettingsDialogBasics:
         dialog = SettingsDialog()
 
         dialog._data_dir_edit.setText(f"  {tmp_path / 'runs'}  ")
+        dialog._rig_edit.setText("  Cryostat-2  ")
         dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findText("Light"))
         dialog._font_size_spin.setValue(12)
         dialog._editor_font_size_spin.setValue(13)
@@ -92,6 +94,7 @@ class TestSettingsDialogBasics:
             {
                 "app": {
                     "default_data_directory": str(tmp_path / "runs"),
+                    "rig": "Cryostat-2",
                     "theme": "light",
                     "font_size": 12,
                     "editor_font_size": 13,

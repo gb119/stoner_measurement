@@ -117,7 +117,7 @@ class Keithley6221(CurrentSource):
             [b'*RST\\n']
             >>> instr.disconnect()
         """
-        self.write("*RST", slow=2000)
+        self.write("*RST", slow=500)
 
     def state(self)->_K6221_STATE:
         """Determine the state of the 6221 through status queries."""

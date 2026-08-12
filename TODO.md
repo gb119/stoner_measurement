@@ -38,8 +38,8 @@ on status bbar right hand side.
 24. Engines auto-connect using persisted settings when a plugin requests connected hardware, with the attempt logged.
     DONE - Tested with hardware
 25. The log window supports regular-expression filtering for fine-grained message and communications filtering. DONE
-26. Plot widget supports programmatic trace renaming without losing data, axes, style, errors, or visibility. Plot-points
-    uses this API when a configured series label changes. DONE
+26. Plot widget supports programmatic trace renaming without losing data, axes, style, errors, or visibility.
+    Plot-points ses this API when a configured series label changes. DONE
 
 ## Done, but needs testing
 
@@ -77,7 +77,7 @@ on status bbar right hand side.
    In the latter case they should atempt to auto-reconnect. If reconnection fails 5 times without a successful
    connection then engine should enter a failed state and require the user to reconnect via the panel. The failed
    state needs to be logged as an error and reflected in the status-bar indicators.
+
 ## Bugs
 
 No currently confirmed bugs. Items awaiting hardware or visual confirmation are listed above.
-  

@@ -15,15 +15,22 @@ home directory if no setting has been saved yet.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from qtpy.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QFormLayout,
+    QHBoxLayout,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -134,7 +141,26 @@ class DetailsCommand(CommandPlugin):
         self.sample: str = ""
         self.project: str = ""
         self.notes: str = ""
+        self._metadata_reserved_names = frozenset(dir(self))
+        self.metadata_expressions: list[dict[str, str]] = []
         self.show_validation_error.connect(self._display_validation_error)
+
+    @property
+    def date(self) -> str:
+        """Current local date formatted as ``YYYYMMDD``."""
+        return datetime.now().strftime("%Y%m%d")
+
+    @property
+    def time(self) -> str:
+        """Current local time formatted as ``HHmmss`` at access time."""
+        return datetime.now().strftime("%H%M%S")
+
+    @property
+    def rig(self) -> str:
+        """Return the rig name from this machine's application configuration."""
+        from stoner_measurement.app_config import rig_setting
+
+        return rig_setting()
 
     def _display_validation_error(self, message: str) -> None:
         """Display a blocking validation warning dialog."""
@@ -253,10 +279,115 @@ class DetailsCommand(CommandPlugin):
             f"{prefix}{inst}.sample = {_quoted(self.sample)}",
             f"{prefix}{inst}.project = {_quoted(self.project)}",
             f"{prefix}{inst}.notes = {_quoted(self.notes)}",
-            f"{prefix}{inst}.configure()",
-            "",
         ]
+        seen: set[str] = set()
+        for item in self.metadata_expressions:
+            name = item["name"].strip()
+            expression = item["expression"].strip()
+            error = self._metadata_name_error(name)
+            if name in seen:
+                error = f"Duplicate metadata name: {name!r}."
+            if not expression:
+                error = "A value expression is required."
+            if error:
+                raise ValueError(error)
+            seen.add(name)
+            lines.append(f"{prefix}{inst}.{name} = {expression}")
+        lines.extend((f"{prefix}{inst}.configure()", ""))
         return lines
+
+    def config_tabs(self, parent: QWidget | None = None) -> list[tuple[str, QWidget]]:
+        """Return Details, Metadata, General, and optional About tabs."""
+
+        def _build_tabs() -> list[tuple[str, QWidget]]:
+            tabs = [
+                (self.name, self.config_widget(parent=parent)),
+                ("Metadata", self._metadata_config_widget(parent=parent)),
+                ("General", self._general_config_widget(parent=parent)),
+            ]
+            about_tab = self._make_about_tab()
+            if about_tab is not None:
+                tabs.append(about_tab)
+            return tabs
+
+        return self._get_cached_config_tabs(_build_tabs)
+
+    def _metadata_name_error(self, name: str) -> str | None:
+        """Return a validation message for an invalid custom attribute name."""
+        if not name.isidentifier() or name.startswith("_"):
+            return "Names must be valid Python identifiers and must not start with an underscore."
+        configured_names = {item["name"] for item in self.metadata_expressions}
+        if name in self._metadata_reserved_names or (
+            hasattr(self, name) and name not in configured_names
+        ):
+            return f"{name!r} clashes with an existing Details attribute."
+        return None
+
+    def _metadata_config_widget(self, parent: QWidget | None = None) -> QWidget:
+        """Build the table used to configure runtime metadata expressions."""
+        widget = QWidget(parent)
+        layout = QVBoxLayout(widget)
+        table = QTableWidget(0, 2, widget)
+        table.setObjectName("detailsMetadataTable")
+        table.setHorizontalHeaderLabels(["Name", "Value expression"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.verticalHeader().setVisible(False)
+        table.setMinimumHeight(table.verticalHeader().defaultSectionSize() * 6 + 45)
+        layout.addWidget(table)
+
+        def sync() -> None:
+            entries: list[dict[str, str]] = []
+            seen: set[str] = set()
+            for row in range(table.rowCount()):
+                name_item = table.item(row, 0)
+                expr_item = table.item(row, 1)
+                name = name_item.text().strip() if name_item else ""
+                expression = expr_item.text().strip() if expr_item else ""
+                error = self._metadata_name_error(name) if name else "Name is required."
+                if name in seen:
+                    error = f"Duplicate metadata name: {name!r}."
+                if not expression:
+                    error = "A value expression is required."
+                if error:
+                    if name_item is not None:
+                        name_item.setToolTip(error)
+                    continue
+                name_item.setToolTip("")
+                seen.add(name)
+                entries.append({"name": name, "expression": expression})
+            self.metadata_expressions = entries
+
+        def add_row(name: str = "", expression: str = "") -> None:
+            row = table.rowCount()
+            table.insertRow(row)
+            table.setItem(row, 0, QTableWidgetItem(name))
+            table.setItem(row, 1, QTableWidgetItem(expression))
+
+        table.blockSignals(True)
+        for entry in self.metadata_expressions:
+            add_row(entry["name"], entry["expression"])
+        table.blockSignals(False)
+
+        buttons = QHBoxLayout()
+        add_button = QPushButton("Add", widget)
+        remove_button = QPushButton("Remove", widget)
+        buttons.addWidget(add_button)
+        buttons.addWidget(remove_button)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
+
+        def remove_selected() -> None:
+            row = table.currentRow()
+            if row >= 0:
+                table.removeRow(row)
+                sync()
+
+        add_button.clicked.connect(lambda: add_row())
+        remove_button.clicked.connect(remove_selected)
+        table.itemChanged.connect(lambda _item: sync())
+        return widget
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return a settings widget with user, sample, project, and notes fields.
@@ -366,6 +497,7 @@ class DetailsCommand(CommandPlugin):
         d["sample"] = self.sample
         d["project"] = self.project
         d["notes"] = self.notes
+        d["metadata_expressions"] = [dict(item) for item in self.metadata_expressions]
         return d
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -383,3 +515,9 @@ class DetailsCommand(CommandPlugin):
             self.project = data["project"]
         if "notes" in data:
             self.notes = data["notes"]
+        if "metadata_expressions" in data:
+            self.metadata_expressions = [
+                {"name": str(item["name"]), "expression": str(item["expression"])}
+                for item in data["metadata_expressions"]
+                if isinstance(item, dict) and "name" in item and "expression" in item
+            ]

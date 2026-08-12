@@ -44,8 +44,8 @@ class TestSaveCommand:
     def test_plugin_type(self, qapp):
         assert SaveCommand().plugin_type == "command"
 
-    def test_has_lifecycle_false(self, qapp):
-        assert SaveCommand().has_lifecycle is False
+    def test_has_lifecycle_true_for_per_run_save_session(self, qapp):
+        assert SaveCommand().has_lifecycle is True
 
     def test_default_path_expr(self, qapp):
         assert SaveCommand().path_expr == "'data/output.txt'"
@@ -741,6 +741,54 @@ class TestSaveCommand:
         assert versioned.exists()
         assert not (tmp_path / "out_002.txt").exists()
         assert versioned.read_text(encoding="utf-8").splitlines()[-1].split("\t")[1] == "40.0"
+
+    def test_incremental_no_overwrite_selects_new_file_after_reconnect(
+        self, qapp, engine, tmp_path
+    ):
+        from stoner_measurement.plugins.state_control import CounterPlugin
+
+        counter = CounterPlugin()
+        counter.collect_data = True
+        engine.add_plugin("counter", counter)
+        engine.update_step_plugin_catalog([counter])
+        _set_collected_state_data(counter, [0.0, 1.0])
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        cmd.trace_selection = {"counter.data": True}
+        cmd.incremental_save = True
+        cmd.no_overwrite = True
+        out_file = tmp_path / "out.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        cmd.connect()
+        cmd.execute()
+        _set_collected_state_data(counter, [0.0, 1.0, 2.0])
+        cmd.execute()
+
+        cmd.connect()
+        cmd.execute()
+
+        assert out_file.exists()
+        assert (tmp_path / "out_001.txt").exists()
+        assert not (tmp_path / "out_002.txt").exists()
+
+        def saved_values(path):
+            return [
+                cells[1]
+                for line in path.read_text(encoding="utf-8").splitlines()[1:]
+                if len(cells := line.split("\t")) > 1 and cells[1]
+            ]
+
+        assert saved_values(out_file) == ["0.0", "1.0", "2.0"]
+        assert saved_values(tmp_path / "out_001.txt") == ["0.0", "1.0", "2.0"]
+
+    def test_generated_sequence_connects_save_before_repeated_calls(self, qapp, engine):
+        cmd = SaveCommand()
+        code = engine.generate_sequence_code([cmd, cmd], {"save": cmd})
+        assert code.count("save.connect()") == 1
+        assert code.count("save()") == 2
+        assert code.index("save.connect()") < code.index("save()")
 
     # ------------------------------------------------------------------
     # Config widget — new controls

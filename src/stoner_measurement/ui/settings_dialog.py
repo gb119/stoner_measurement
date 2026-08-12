@@ -32,12 +32,14 @@ from stoner_measurement.app_config import (
     KEY_DEFAULT_DATA_DIR,
     KEY_EDITOR_FONT_SIZE,
     KEY_FONT_SIZE,
+    KEY_RIG,
     KEY_THEME,
     console_font_size_setting,
     default_data_directory,
     editor_font_size_setting,
     font_size_setting,
     load_app_config,
+    rig_setting,
     save_app_config,
     set_app_config_value,
     theme_setting,
@@ -113,6 +115,12 @@ class SettingsDialog(QDialog):
         data_dir_row.addWidget(self._data_dir_edit)
         data_dir_row.addWidget(data_dir_browse)
         form.addRow("Default data directory:", data_dir_row)
+
+        self._rig_edit = QLineEdit(tab)
+        self._rig_edit.setPlaceholderText("Local measurement rig name")
+        self._rig_edit.setText(rig_setting(config=app_config))
+        self._rig_edit.setToolTip("Available to measurement scripts as details.rig.")
+        form.addRow("Measurement rig:", self._rig_edit)
 
         self._theme_combo = QComboBox(tab)
         self._theme_combo.addItems([name.capitalize() for name in available_themes()])
@@ -440,6 +448,7 @@ class SettingsDialog(QDialog):
         """Write the current field values to the user application config."""
         config = load_app_config()
         set_app_config_value(config, KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
+        set_app_config_value(config, KEY_RIG, self._rig_edit.text().strip())
         set_app_config_value(config, KEY_THEME, self._theme_combo.currentText().strip().lower())
         set_app_config_value(config, KEY_FONT_SIZE, self._font_size_spin.value())
         set_app_config_value(config, KEY_EDITOR_FONT_SIZE, self._editor_font_size_spin.value())

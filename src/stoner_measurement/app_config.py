@@ -12,6 +12,7 @@ from stoner_measurement.ui.theme import DEFAULT_THEME
 APP_CONFIG_FILENAME = "application.yaml"
 
 KEY_DEFAULT_DATA_DIR = "app/default_data_directory"
+KEY_RIG = "app/rig"
 KEY_THEME = "app/theme"
 KEY_FONT_SIZE = "app/font_size"
 KEY_EDITOR_FONT_SIZE = "app/editor_font_size"
@@ -34,6 +35,7 @@ FEATURE_KEYS: dict[str, str] = {
 DEFAULT_APP_CONFIG: dict[str, Any] = {
     "app": {
         "default_data_directory": "C:/Data/",
+        "rig": "",
         "theme": DEFAULT_THEME,
         "font_size": DEFAULT_FONT_SIZE,
         "editor_font_size": DEFAULT_EDITOR_FONT_SIZE,
@@ -100,6 +102,11 @@ def set_app_config_value(config: dict[str, Any], key: str, value: Any) -> dict[s
 def default_data_directory(*, config: dict[str, Any] | None = None) -> str:
     """Return the configured default data directory."""
     return str(get_app_config_value(KEY_DEFAULT_DATA_DIR, "", config=config) or "").strip()
+
+
+def rig_setting(*, config: dict[str, Any] | None = None) -> str:
+    """Return the local measurement-rig identifier."""
+    return str(get_app_config_value(KEY_RIG, "", config=config) or "").strip()
 
 
 def theme_setting(*, config: dict[str, Any] | None = None) -> str:

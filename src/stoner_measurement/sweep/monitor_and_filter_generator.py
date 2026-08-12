@@ -21,12 +21,14 @@ from qtpy.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QProgressBar,
     QPushButton,
     QTableWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.sweep.base import BaseSweepGenerator
 from stoner_measurement.ui.aspect_ratio_widget import set_table_visible_row_count
 from stoner_measurement.ui.widgets import SISpinBox
@@ -64,6 +66,9 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
         The yielded stage index is always ``0`` because this generator does not
         have multiple sweep segments.
     """
+
+    progress_updated = pyqtSignal(float, float)
+    measurement_triggered = pyqtSignal(int)
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -248,14 +253,22 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
                     break
 
             timeout = self.eval_float(self._timeout)
-            timeout_triggered = timeout <= 0.0 or (time.monotonic() - last_measure_time) >= timeout
+            elapsed = time.monotonic() - last_measure_time
+            timeout_triggered = timeout <= 0.0 or elapsed >= timeout
             measure_flag = triggered_index is not None or timeout_triggered
 
             if measure_flag:
                 baseline_values = current_values
                 last_measure_time = time.monotonic()
+                self.measurement_triggered.emit(
+                    triggered_index if triggered_index is not None else -1
+                )
+                self.progress_updated.emit(0.0, timeout)
             elif all(v is None for v in baseline_values):
                 baseline_values = current_values
+                self.progress_updated.emit(elapsed, timeout)
+            else:
+                self.progress_updated.emit(elapsed, timeout)
 
             yield (triggered_index if triggered_index is not None else -1), current_state, 0, measure_flag
 
@@ -340,6 +353,12 @@ class MonitorAndFilterSweepWidget(QWidget):
         self._timeout_spin.valueChanged.connect(self._on_timeout_changed)
         form.addRow("Timeout:", self._timeout_spin)
 
+        self._progress = QProgressBar(self)
+        self._progress.setRange(0, 1000)
+        self._progress.setValue(0)
+        self._progress.setFormat("0.0 / 0.0 s")
+        form.addRow("Time since measurement:", self._progress)
+
         self._termination_edit = QLineEdit(self)
         self._termination_edit.editingFinished.connect(self._on_termination_changed)
         form.addRow("Termination condition:", self._termination_edit)
@@ -365,6 +384,9 @@ class MonitorAndFilterSweepWidget(QWidget):
 
         root.addWidget(QLabel("Measure flag is set by threshold crossing or timeout.", self))
         root.addStretch(1)
+
+        self._generator.progress_updated.connect(self._update_progress)
+        self._generator.measurement_triggered.connect(self._show_trigger)
 
     def _available_catalogue_keys(self) -> list[str]:
         plugin = self._generator.state_sweep
@@ -441,3 +463,22 @@ class MonitorAndFilterSweepWidget(QWidget):
 
     def _on_termination_changed(self) -> None:
         self._generator.termination_condition = self._termination_edit.text().strip()
+
+    def _update_progress(self, elapsed: float, timeout: float) -> None:
+        """Update elapsed-time feedback from the generator's latest evaluation."""
+        safe_elapsed = max(0.0, float(elapsed))
+        safe_timeout = max(0.0, float(timeout))
+        fraction = 1.0 if safe_timeout <= 0.0 else min(1.0, safe_elapsed / safe_timeout)
+        self._progress.setValue(round(fraction * self._progress.maximum()))
+        self._progress.setFormat(f"{safe_elapsed:.1f} / {safe_timeout:.1f} s")
+
+    def _show_trigger(self, row: int) -> None:
+        """Highlight the filter row or timeout control that triggered collection."""
+        highlight = "background-color: palette(highlight); color: palette(highlighted-text);"
+        self._timeout_spin.setStyleSheet(highlight if row < 0 else "")
+        for table_row in range(self._table.rowCount()):
+            style = highlight if table_row == row else ""
+            for column in range(self._table.columnCount()):
+                cell_widget = self._table.cellWidget(table_row, column)
+                if cell_widget is not None:
+                    cell_widget.setStyleSheet(style)

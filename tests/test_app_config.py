@@ -67,3 +67,7 @@ def test_font_size_settings_are_independent_and_clamped():
     assert app_config.editor_font_size_setting(config=config) == 14
     assert app_config.console_font_size_setting(config=config) == 16
     assert app_config.font_size_setting(config={"app": {"font_size": 100}}) == 48
+
+
+def test_rig_setting_is_trimmed():
+    assert app_config.rig_setting(config={"app": {"rig": "  Rig-A  "}}) == "Rig-A"

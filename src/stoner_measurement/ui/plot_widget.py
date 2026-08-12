@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -46,6 +47,7 @@ from stoner_measurement.ui.axis_mappings import (
     validate_scale,
 )
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
+from stoner_measurement.ui.icons import make_home_icon
 from stoner_measurement.ui.theme import (
     apply_pyqtgraph_dark_theme,
     button_swatch_stylesheet,
@@ -658,6 +660,7 @@ class PlotWidget(QWidget):
         self._mouse_axis_coupling_active = False
         self._active_mouse_view_box: pg.ViewBox | None = None
         self._updating_mouse_axis_coupling = False
+        self._autoscale_new_data = True
         # Colour cycle for auto-assignment
         self._colour_cycle = cycle(_TRACE_COLOURS)
 
@@ -700,12 +703,50 @@ class PlotWidget(QWidget):
         controls = QHBoxLayout()
         self._configure_axes_button = QPushButton("Configure Axes…", self)
         self._configure_axes_button.clicked.connect(self._open_axes_dialog)
-        self._home_button = QPushButton("Home", self)
+        style = self.style()
+        self._home_button = QPushButton(self)
+        self._home_button.setIcon(make_home_icon())
+        self._home_button.setToolTip("Fit all plotted data in the view")
+        self._home_button.setAccessibleName("Home")
         self._home_button.clicked.connect(self.reset_all_view_ranges)
+        self._autoscale_button = QPushButton(self)
+        self._autoscale_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        )
+        self._autoscale_button.setToolTip("Autoscale when new data is plotted")
+        self._autoscale_button.setAccessibleName("Autoscale new data")
+        self._autoscale_button.setCheckable(True)
+        self._autoscale_button.setChecked(True)
+        self._autoscale_button.setStyleSheet(
+            "QPushButton:checked { "
+            f"background-color: {colour('highlight')}; "
+            f"color: {colour('highlighted_text')}; "
+            f"border: 2px solid {colour('link')}; "
+            "}"
+        )
+        self._autoscale_button.toggled.connect(self._set_autoscale_new_data)
+        self._clear_button = QPushButton(self)
+        self._clear_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_DialogDiscardButton)
+        )
+        self._clear_button.setToolTip("Clear all plotted data")
+        self._clear_button.setAccessibleName("Clear plot")
+        self._clear_button.clicked.connect(self.clear_all)
         controls.addWidget(self._configure_axes_button)
         controls.addWidget(self._home_button)
+        controls.addWidget(self._autoscale_button)
+        controls.addWidget(self._clear_button)
         controls.addStretch(1)
         layout.addLayout(controls)
+
+    def _set_autoscale_new_data(self, enabled: bool) -> None:
+        """Control whether incoming data is allowed to change the visible ranges."""
+        self._autoscale_new_data = bool(enabled)
+        if enabled:
+            self._refresh_all_auto_ranges()
+            return
+        for view_box in self._pair_view_boxes.values():
+            view_box.enableAutoRange(enable=False)
 
     def _setup_trace_table(self, layout: QVBoxLayout) -> None:
         """Create and configure the trace table widget and add to layout."""
@@ -1399,6 +1440,8 @@ class PlotWidget(QWidget):
         self._plot_item.scene().addItem(view_box)
         self._register_view_box_signals(view_box)
         view_box.enableAutoRange()
+        if not self._autoscale_new_data:
+            view_box.enableAutoRange(enable=False)
 
         self._pair_view_boxes[(x_axis, y_axis)] = view_box
         self._sync_view_box_geometry()
@@ -1508,6 +1551,8 @@ class PlotWidget(QWidget):
 
     def _refresh_auto_ranges_for_trace(self, trace_name: str) -> None:
         """Update auto-ranged axes for the axis pair used by one trace."""
+        if not self._autoscale_new_data:
+            return
         x_axis, y_axis = self._trace_axes.get(trace_name, ("bottom", "left"))
         view_box = self._pair_view_boxes.get((x_axis, y_axis), self._plot_item.vb)
         self._refresh_auto_ranges_for_view_box(view_box, x_axis, y_axis)
@@ -2146,6 +2191,9 @@ class PlotWidget(QWidget):
             view_box.enableAutoRange()
             view_box.autoRange()
         self._refresh_all_auto_ranges()
+        if not self._autoscale_new_data:
+            for view_box in self._pair_view_boxes.values():
+                view_box.enableAutoRange(enable=False)
 
     def set_axis_range(
         self, name: str, minimum: float | None = None, maximum: float | None = None

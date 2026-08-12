@@ -83,7 +83,7 @@ class Keithley2182A(Nanovoltmeter):
             [b'*RST\\n']
             >>> instr.disconnect()
         """
-        self.write("*RST", slow=2000)
+        self.write("*RST", slow=500)
 
     @staticmethod
     def _parse_csv_floats(values: str) -> tuple[float, ...]:

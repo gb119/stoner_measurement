@@ -11,6 +11,7 @@ from stoner_measurement.plugins.transform.fourier_transform import (
     FourierTransformPlugin,
 )
 from stoner_measurement.plugins.transform.savgol_filter import SavitzkyGolayPlugin
+from stoner_measurement.plugins.transform.voltage_offset import XOffsetRemovalPlugin
 from stoner_measurement.plugins.transform.window_filter import WindowFilterPlugin
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "FourierTransformPlugin",
     "SavitzkyGolayPlugin",
     "WindowFilterPlugin",
+    "XOffsetRemovalPlugin",
     "TransformPlugin",
 ]

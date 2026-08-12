@@ -134,6 +134,48 @@ class TestPlotWidget:
         widget = self.make_plot_widget()
         assert widget._configure_axes_button.text() == "Configure Axes…"
 
+    def test_plot_control_buttons_use_icons_and_accessible_names(self, qapp):
+        widget = self.make_plot_widget()
+
+        assert widget._home_button.text() == ""
+        assert not widget._home_button.icon().isNull()
+        assert widget._home_button.accessibleName() == "Home"
+        assert not widget._autoscale_button.icon().isNull()
+        assert widget._autoscale_button.isCheckable()
+        assert widget._autoscale_button.isChecked()
+        assert "QPushButton:checked" in widget._autoscale_button.styleSheet()
+        assert "background-color" in widget._autoscale_button.styleSheet()
+        assert not widget._clear_button.icon().isNull()
+
+    def test_autoscale_button_controls_range_updates_for_new_data(self, qapp):
+        widget = self.make_plot_widget()
+        view_box = widget._plot_item.vb
+
+        widget.append_point("sig", 0.0, 0.0)
+        widget._autoscale_button.click()
+        assert widget._autoscale_new_data is False
+        assert view_box.state["autoRange"] == [False, False]
+
+        widget.append_point("sig", 100.0, 100.0)
+        assert view_box.state["autoRange"] == [False, False]
+
+        widget._autoscale_button.click()
+        assert widget._autoscale_new_data is True
+        assert view_box.viewRange()[0][1] >= 100.0
+        assert view_box.viewRange()[1][1] >= 100.0
+
+        widget.append_point("sig", 200.0, 200.0)
+        assert view_box.viewRange()[0][1] >= 200.0
+        assert view_box.viewRange()[1][1] >= 200.0
+
+    def test_clear_button_removes_all_plotted_data(self, qapp):
+        widget = self.make_plot_widget()
+        widget.append_point("sig", 1.0, 2.0)
+
+        widget._clear_button.click()
+
+        assert widget.trace_names == []
+
     def test_axes_config_dialog_creates_and_collects_changes(self, qapp):
         dialog = AxesConfigDialog(
             x_axes=[

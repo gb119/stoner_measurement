@@ -136,6 +136,47 @@ def make_run_icon(size: int = 32) -> QIcon:
     return QIcon(QPixmap.fromImage(img))
 
 
+def make_home_icon(size: int = 32) -> QIcon:
+    """Create a browser-style home icon without directory-folder decoration."""
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(img)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(colour("button_text")))
+
+    margin = size * 0.14
+    roof_bottom = size * 0.48
+    painter.drawPolygon(
+        QPolygonF(
+            [
+                QPointF(margin, roof_bottom),
+                QPointF(size / 2.0, margin),
+                QPointF(size - margin, roof_bottom),
+            ]
+        )
+    )
+    body_left = size * 0.25
+    body_top = size * 0.43
+    body_width = size * 0.5
+    body_height = size * 0.4
+    painter.drawRect(QRectF(body_left, body_top, body_width, body_height))
+
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+    door_width = size * 0.15
+    door_height = size * 0.24
+    painter.drawRect(
+        QRectF(
+            (size - door_width) / 2.0,
+            body_top + body_height - door_height,
+            door_width,
+            door_height,
+        )
+    )
+    painter.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
 def make_pause_icon(size: int = 32) -> QIcon:
     """Create a dark-mode-friendly pause icon."""
     img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)

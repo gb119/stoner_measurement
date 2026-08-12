@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from qtpy.QtWidgets import QComboBox, QLineEdit, QPlainTextEdit, QWidget
+from qtpy.QtWidgets import QComboBox, QLineEdit, QPlainTextEdit, QTableWidget, QWidget
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command.details import DetailsCommand
@@ -25,6 +25,16 @@ class TestDetailsCommand:
         assert command.sample == ""
         assert command.project == ""
         assert command.notes == ""
+        assert command.metadata_expressions == []
+
+    def test_dynamic_date_and_time_formats(self, qapp):
+        command = DetailsCommand()
+        assert len(command.date) == 8 and command.date.isdigit()
+        assert len(command.time) == 6 and command.time.isdigit()
+
+    def test_rig_reads_local_application_setting(self, qapp, monkeypatch):
+        monkeypatch.setattr("stoner_measurement.app_config.rig_setting", lambda: "Rig-A")
+        assert DetailsCommand().rig == "Rig-A"
 
     def test_generate_action_code_assignments(self, qapp):
         command = DetailsCommand()
@@ -58,18 +68,39 @@ class TestDetailsCommand:
         lines = command.generate_action_code(0, [], lambda source, indent: [])
         assert '\\"' in lines[0]
 
+    def test_generate_action_code_includes_runtime_metadata_expressions(self, qapp):
+        command = DetailsCommand()
+        command.metadata_expressions = [
+            {"name": "run_label", "expression": "f'{details.date}-{index}'"}
+        ]
+        lines = command.generate_action_code(0, [], lambda source, indent: [])
+        assert "details.run_label = f'{details.date}-{index}'" in lines
+        assert lines.index("details.run_label = f'{details.date}-{index}'") < lines.index(
+            "details.configure()"
+        )
+
+    def test_generate_action_code_rejects_invalid_metadata_name(self, qapp):
+        command = DetailsCommand()
+        command.metadata_expressions = [{"name": "date", "expression": "123"}]
+        with pytest.raises(ValueError, match="clashes"):
+            command.generate_action_code(0, [], lambda source, indent: [])
+
     def test_to_json_fields(self, qapp):
         command = DetailsCommand()
         command.user = "Alice"
         command.sample = "S1"
         command.project = "P1"
         command.notes = "notes"
+        command.metadata_expressions = [{"name": "field", "expression": "magnet.field"}]
         data = command.to_json()
         assert data["type"] == "command"
         assert data["user"] == "Alice"
         assert data["sample"] == "S1"
         assert data["project"] == "P1"
         assert data["notes"] == "notes"
+        assert data["metadata_expressions"] == [
+            {"name": "field", "expression": "magnet.field"}
+        ]
 
     def test_restore_from_json(self, qapp):
         command = DetailsCommand()
@@ -77,12 +108,40 @@ class TestDetailsCommand:
         command.sample = "S1"
         command.project = "P1"
         command.notes = "notes text"
+        command.metadata_expressions = [{"name": "temperature", "expression": "4.2"}]
         restored = BasePlugin.from_json(command.to_json())
         assert isinstance(restored, DetailsCommand)
         assert restored.user == "Alice"
         assert restored.sample == "S1"
         assert restored.project == "P1"
         assert restored.notes == "notes text"
+        assert restored.metadata_expressions == [
+            {"name": "temperature", "expression": "4.2"}
+        ]
+
+    def test_config_tabs_include_metadata_table(self, qapp):
+        command = DetailsCommand()
+        tabs = command.config_tabs()
+        assert [title for title, _widget in tabs][:3] == ["Details", "Metadata", "General"]
+        assert tabs[1][1].findChild(QTableWidget, "detailsMetadataTable") is not None
+
+    def test_metadata_table_restores_all_configured_rows(self, qapp):
+        command = DetailsCommand()
+        command.metadata_expressions = [
+            {"name": "wafer", "expression": "'A1'"},
+            {"name": "run_number", "expression": "index"},
+        ]
+        table = command.config_tabs()[1][1].findChild(QTableWidget, "detailsMetadataTable")
+        assert table is not None
+        assert table.rowCount() == 2
+
+    @pytest.mark.parametrize("name", ["not valid", "_private", "date", "time", "rig", "user"])
+    def test_metadata_rejects_invalid_or_reserved_names(self, qapp, name):
+        command = DetailsCommand()
+        assert command._metadata_name_error(name) is not None
+
+    def test_metadata_accepts_new_python_attribute_name(self, qapp):
+        assert DetailsCommand()._metadata_name_error("wafer_number") is None
 
     def test_config_widget_returns_widget(self, qapp):
         assert isinstance(DetailsCommand().config_widget(), QWidget)

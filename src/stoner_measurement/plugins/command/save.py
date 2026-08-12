@@ -416,7 +416,7 @@ class SaveCommand(CommandPlugin):
         >>> cmd.plugin_type
         'command'
         >>> cmd.has_lifecycle
-        False
+        True
         >>> cmd.no_overwrite
         True
     """
@@ -430,6 +430,21 @@ class SaveCommand(CommandPlugin):
         self.save_format: str = TdiSaveWriter.format_id
         self.incremental_save: bool = False
         self._incremental_files: dict[str, dict[str, str | int]] = {}
+
+    @property
+    def has_lifecycle(self) -> bool:
+        """Participate in lifecycle setup so each script starts a new save session."""
+        return True
+
+    def connect(self) -> None:
+        """Start a new save session, forgetting incremental files from earlier runs."""
+        self._incremental_files.clear()
+
+    def configure(self) -> None:
+        """No-op lifecycle hook; Save has no hardware to configure."""
+
+    def disconnect(self) -> None:
+        """No-op lifecycle hook; Save has no hardware to disconnect."""
 
     @property
     def name(self) -> str:
