@@ -13,9 +13,7 @@ insert new steps at any position or into a sub-sequence.
 
 from __future__ import annotations
 
-import builtins
 import json
-import keyword
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -44,6 +42,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.core.plugin_manager import PluginManager
+from stoner_measurement.plugins.base_plugin import is_reserved_instance_name
 from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
@@ -103,8 +102,6 @@ QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {
     border-bottom: 1px solid gray;
 }
 """
-
-_RESERVED_INSTANCE_NAMES: frozenset[str] = frozenset(keyword.kwlist) | frozenset(dir(builtins))
 
 
 def _apply_disabled_appearance(item: QTreeWidgetItem, disabled: bool) -> None:
@@ -1466,8 +1463,8 @@ class DockPanel(QWidget):
 
     @staticmethod
     def _is_reserved_instance_name(name: str) -> bool:
-        """Return ``True`` when *name* is a Python keyword or builtin name."""
-        return name in _RESERVED_INSTANCE_NAMES
+        """Return whether *name* is reserved by Python or the application."""
+        return is_reserved_instance_name(name)
 
     @staticmethod
     def _step_label(plugin: BasePlugin) -> str:

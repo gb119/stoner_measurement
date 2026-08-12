@@ -80,6 +80,15 @@ $env:QT_QPA_FONTDIR = "C:\Windows\Fonts"
 Without `QT_QPA_FONTDIR`, Qt's offscreen platform may discover no system fonts
 and render labels, button text, and editor content as square placeholder glyphs.
 
+## Qt Configuration Pages
+
+- Top-pack configuration-page controls: add widgets and layouts at their
+  natural size, then add one stretch at the bottom of the page layout.
+- Do not place stretch space between configuration controls or allow a table,
+  text editor, or other expanding widget to consume otherwise empty vertical
+  space unintentionally. Give intentionally bounded controls an explicit
+  height based on their visible content.
+
 ## Codacy
 
 Use Codacy through the conda environment:

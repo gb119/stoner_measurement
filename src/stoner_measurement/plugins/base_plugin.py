@@ -23,9 +23,11 @@ sub-types: :class:`~stoner_measurement.plugins.trace.base.TracePlugin`,
 
 from __future__ import annotations
 
+import builtins
 import html as _html_mod
 import importlib
 import inspect
+import keyword
 import logging
 import re
 from abc import ABC, ABCMeta, abstractmethod
@@ -44,6 +46,47 @@ if TYPE_CHECKING:
 
 
 _STRING_EXPR_RE = re.compile(r'^(?P<leading>\s*)(?P<prefix>[fFrRbBuU]*)(?P<quote>["\'])')
+
+# Names owned by the sequence runtime or by the on-disk metadata schema. These
+# must not be replaced by plugin instances even though they are valid Python
+# identifiers and are not necessarily Python keywords or builtins.
+_APPLICATION_RESERVED_INSTANCE_NAMES = frozenset(
+    {
+        "__builtins__",
+        "__doc__",
+        "__loader__",
+        "__name__",
+        "__package__",
+        "__spec__",
+        "_traces",
+        "_values",
+        "log",
+        "np",
+        "numpy",
+        "outputs",
+        "sequence",
+        "wait_for_plot_ready",
+    }
+)
+RESERVED_INSTANCE_NAMES = (
+    frozenset(keyword.kwlist)
+    | frozenset(dir(builtins))
+    | _APPLICATION_RESERVED_INSTANCE_NAMES
+)
+
+
+def instance_name_validation_error(value: object) -> str | None:
+    """Return an explanation when *value* cannot be used as an instance name."""
+    if not isinstance(value, str) or not value or not value.isidentifier():
+        return f"instance_name must be a valid Python identifier, got {value!r}"
+    if value in RESERVED_INSTANCE_NAMES:
+        return f"instance_name {value!r} is reserved by Python or the application"
+    return None
+
+
+def is_reserved_instance_name(value: str) -> bool:
+    """Return whether *value* is reserved by Python or the application."""
+    return value in RESERVED_INSTANCE_NAMES
 
 
 def _runtime_string_expr(expression: str) -> str:
@@ -602,10 +645,12 @@ class BasePlugin(ABC):
 
         Raises:
             ValueError:
-                If *value* is not a valid Python identifier.
+                If *value* is not a valid Python identifier or is reserved by
+                Python or the application runtime.
         """
-        if not value or not value.isidentifier():
-            raise ValueError(f"instance_name must be a valid Python identifier, got {value!r}")
+        error = instance_name_validation_error(value)
+        if error is not None:
+            raise ValueError(error)
         old = self.instance_name
         if value == old:
             return
@@ -827,16 +872,15 @@ class BasePlugin(ABC):
 
         def _apply() -> None:
             new_name = name_edit.text().strip()
-            if new_name and new_name.isidentifier():
+            error = instance_name_validation_error(new_name)
+            if error is None:
                 name_edit.setStyleSheet("")
                 self.instance_name = new_name
             else:
                 # Highlight the field and revert to the current valid value.
                 name_edit.setStyleSheet(validation_error_lineedit_stylesheet())
                 name_edit.setToolTip(
-                    f"{new_name!r} is not a valid Python identifier. "
-                    "Use only letters, digits and underscores, "
-                    "and do not start with a digit."
+                    error
                 )
                 name_edit.setText(self.instance_name)
 

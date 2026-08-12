@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from stoner_measurement.plugins.command import SaveCommand
+from stoner_measurement.plugins.command.save import _flatten_to_metadata
 
 
 def _set_collected_state_data(counter, values: list[float]) -> None:
@@ -32,12 +33,28 @@ def _set_collected_state_data(counter, values: list[float]) -> None:
         units={"x": counter.units},
     )
 
+
 # ---------------------------------------------------------------------------
 # SaveCommand
 # ---------------------------------------------------------------------------
 
 
 class TestSaveCommand:
+    def test_flattened_metadata_sorts_dictionary_keys_but_preserves_list_order(self):
+        metadata = {
+            "z_plugin": {"z_field": 2, "a_field": 1},
+            "sequence": ["z_plugin", "a_plugin"],
+            "a_plugin": {"instance_name": "a_plugin"},
+        }
+
+        assert _flatten_to_metadata(metadata) == [
+            "a_plugin.instance_name{str}='a_plugin'",
+            "sequence[0]{str}='z_plugin'",
+            "sequence[1]{str}='a_plugin'",
+            "z_plugin.a_field{int}=1",
+            "z_plugin.z_field{int}=2",
+        ]
+
     def test_name(self, qapp):
         assert SaveCommand().name == "Save"
 
@@ -150,13 +167,14 @@ class TestSaveCommand:
         header = out_file.read_text().splitlines()[0].split("\t")
         # First cell is "TDI Format 2.0"; remaining cells are channel headers.
         assert header[0] == "TDI Format 2.0"
-        # Headers use "{channel_name}:{axis_label} ({units})" format.
-        # The instance_name prefix ("dummy:") is dropped; "Dummy" is the channel name.
-        assert any("Dummy:" in h for h in header[1:])
+        # Headers use the canonical "{instance}:{trace}:{column} ({units})" format.
+        assert "dummy:Dummy:I (A)" in header[1:]
+        assert "dummy:Dummy:V (V)" in header[1:]
 
     def test_execute_tdi_metadata_in_column_zero(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
+        engine.update_step_plugin_catalog([cmd])
         out_file = tmp_path / "out.txt"
         cmd.path_expr = repr(str(out_file))
         cmd.execute()
@@ -169,12 +187,15 @@ class TestSaveCommand:
     def test_execute_tdi_plugin_state_flattened(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
+        engine.update_step_plugin_catalog([cmd])
         out_file = tmp_path / "out.txt"
         cmd.path_expr = repr(str(out_file))
         cmd.execute()
 
         text = out_file.read_text()
-        # The save plugin's instance_name should appear in flattened metadata.
+        # Sequence order is a compact list of instance names; configuration is
+        # directly addressable by that unique instance name at the root.
+        assert "sequence[0]{str}='save'" in text
         assert "save.instance_name{str}='save'" in text
 
     def test_execute_tdi_step_plugin_state_flattened(self, qapp, engine, tmp_path):
@@ -185,19 +206,22 @@ class TestSaveCommand:
         in_sequence.instance_name = "step_in_seq"
         not_in_sequence = DummyPlugin()
         not_in_sequence.instance_name = "step_not_in_seq"
-        engine.update_step_plugin_catalog([in_sequence, not_in_sequence])
-        # Build a sequence that includes only in_sequence
-        engine.generate_sequence_code([in_sequence], {"step_in_seq": in_sequence})
+        engine.add_plugin("available_but_unused", not_in_sequence)
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)
+        engine.update_step_plugin_catalog([in_sequence, cmd])
         out_file = tmp_path / "out.txt"
         cmd.path_expr = repr(str(out_file))
         cmd.execute()
 
         text = out_file.read_text()
-        # Only the plugin that was part of the sequence should appear in metadata.
-        assert "step_in_seq.instance_name" in text
-        assert "step_not_in_seq.instance_name" not in text
+        # Only instances in the linear sequence list are included; registered
+        # plugin types that are merely available in memory are excluded.
+        assert "sequence[0]{str}='step_in_seq'" in text
+        assert "sequence[1]{str}='save'" in text
+        assert "step_in_seq.instance_name{str}='step_in_seq'" in text
+        assert "save.instance_name{str}='save'" in text
+        assert "step_not_in_seq" not in text
 
     def test_execute_tdi_values_in_metadata(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
@@ -210,7 +234,7 @@ class TestSaveCommand:
         cmd.execute()
 
         text = out_file.read_text()
-        assert "test:reading" in text
+        assert "outputs.test:reading{float}=42.0" in text
 
     def test_execute_tdi_numerical_data_rows(self, qapp, engine, tmp_path):
         from stoner_measurement.plugins.trace import DummyPlugin
@@ -259,9 +283,9 @@ class TestSaveCommand:
         columns = cmd._build_trace_columns(ns=engine._namespace, trace_keys=None)
 
         assert [name for name, _values in columns] == [
-            "IV:Current (A)",
-            "IV:Voltage (V)",
-            "IV:Resistance (Ω)",
+            "source:IV:Current (A)",
+            "source:IV:Voltage (V)",
+            "source:IV:Resistance (Ω)",
         ]
 
     def test_execute_creates_parent_dirs(self, qapp, engine, tmp_path):
@@ -635,8 +659,10 @@ class TestSaveCommand:
     # Trace column header format
     # ------------------------------------------------------------------
 
-    def test_trace_column_header_uses_channel_name_not_instance_name(self, qapp, engine, tmp_path):
-        """Column headers must use channel name only, not instance_name:channel_name."""
+    def test_trace_column_header_uses_canonical_instance_trace_column_name(
+        self, qapp, engine, tmp_path
+    ):
+        """Column headers include the unique instance, trace, and column names."""
         from stoner_measurement.plugins.trace import DummyPlugin
         from stoner_measurement.scan import SteppedScanGenerator
 
@@ -656,10 +682,8 @@ class TestSaveCommand:
         cmd.execute()
 
         header = out_file.read_text().splitlines()[0].split("\t")
-        # Headers must NOT start with the instance name "dummy:".
-        assert not any(h.startswith("dummy:") for h in header[1:])
-        # Headers must start with the channel name "Dummy:".
-        assert any(h.startswith("Dummy:") for h in header[1:])
+        assert "dummy:Dummy:I (A)" in header[1:]
+        assert "dummy:Dummy:V (V)" in header[1:]
 
     # ------------------------------------------------------------------
     # Collected state traces
@@ -873,6 +897,46 @@ class TestSaveCommand:
         expected = tmp_path / "subdir" / "out.txt"
         assert expected.exists()
 
+    def test_execute_interpolates_placeholders_after_joining_preference_path(
+        self, qapp, engine, tmp_path
+    ):
+        """Replacement fields in the preference-sourced root use the engine namespace."""
+        from unittest.mock import patch
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        engine._namespace["project"] = "alpha"  # noqa: SLF001
+        cmd.path_expr = "'out.txt'"
+        configured_root = tmp_path / "project_{project}"
+
+        with patch(
+            "stoner_measurement.app_config.default_data_directory",
+            return_value=str(configured_root),
+        ):
+            cmd.execute()
+
+        assert (tmp_path / "project_alpha" / "out.txt").exists()
+
+    def test_execute_joins_existing_fstring_before_evaluating_full_path(
+        self, qapp, engine, tmp_path
+    ):
+        """Both root and explicit filename f-string fields interpolate in one full path."""
+        from unittest.mock import patch
+
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        engine._namespace.update(project="alpha", run_index=7)  # noqa: SLF001
+        cmd.path_expr = "f'run_{run_index:03d}.txt'"
+        configured_root = tmp_path / "project_{project}"
+
+        with patch(
+            "stoner_measurement.app_config.default_data_directory",
+            return_value=str(configured_root),
+        ):
+            cmd.execute()
+
+        assert (tmp_path / "project_alpha" / "run_007.txt").exists()
+
     def test_execute_absolute_path_ignores_data_directory(self, qapp, engine, tmp_path):
         """An absolute path_expr must not be prefixed with the data directory."""
         from unittest.mock import patch
@@ -916,9 +980,7 @@ class TestSaveCommand:
         assert cmd.path_expr == f"r'{template}'"
 
     @pytest.mark.parametrize("prefix", ["f", "fr", "rf", "F", "FR", "RF"])
-    def test_execute_leaves_existing_fstring_prefix_unchanged(
-        self, qapp, engine, tmp_path, prefix
-    ):
+    def test_execute_leaves_existing_fstring_prefix_unchanged(self, qapp, engine, tmp_path, prefix):
         """Existing f-string prefixes should not receive a second ``f``."""
         cmd = SaveCommand()
         engine.add_plugin("save", cmd)

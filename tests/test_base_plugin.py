@@ -211,6 +211,23 @@ class TestDocstringToHtml:
         assert "<b>" not in html or "a" not in html  # no spurious bold
 
 class TestBasePluginDefaults:
+    @pytest.mark.parametrize("name", ["for", "list", "sequence", "outputs", "_values", "np"])
+    def test_instance_name_rejects_reserved_names(self, name):
+        plugin = _MinimalPlugin()
+
+        with pytest.raises(ValueError, match="reserved by Python or the application"):
+            plugin.instance_name = name
+
+        assert plugin.instance_name == "minimal"
+
+    def test_from_json_rejects_reserved_instance_name(self):
+        plugin = _MinimalPlugin()
+        payload = plugin.to_json()
+        payload["instance_name"] = "outputs"
+
+        with pytest.raises(ValueError, match="reserved by Python or the application"):
+            BasePlugin.from_json(payload)
+
     def test_config_widget_returns_label(self, qapp):
         plugin = _MinimalPlugin()
         from qtpy.QtWidgets import QLabel

@@ -20,6 +20,7 @@ from stoner_measurement.core.trace_data import COLUMN_ROLE_Y
 from stoner_measurement.plugins.trace_catalog_ui import (
     bind_trace_catalog_updates,
     refresh_trace_source_widgets,
+    trace_channel_items,
 )
 
 _DEFAULT_COLUMN_OPTION = "(default)"
@@ -74,10 +75,7 @@ class TraceChannelSelectionMixin:
     ) -> dict[str, Any]:
         """Create trace/channel selection widgets for a transform data tab."""
         trace_keys = list(traces.keys())
-        channel_items: dict[str, str] = {}
-        for key, expr in traces.items():
-            channel_items[f"{key} (x)"] = f"{expr}.x"
-            channel_items[f"{key} (y)"] = f"{expr}.y"
+        channel_items = trace_channel_items(self, traces)
         channel_names = list(channel_items.keys())
 
         trace_combo = QComboBox(widget)
@@ -109,7 +107,11 @@ class TraceChannelSelectionMixin:
             y_combo.addItems(channel_names)
             if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
                 default_y_index = next(
-                    (index for index, name in enumerate(channel_names) if name.endswith(" (y)")),
+                    (
+                        index
+                        for index, name in enumerate(channel_names)
+                        if not channel_items[name].endswith(".x")
+                    ),
                     0,
                 )
                 self.y_expr = channel_items[channel_names[default_y_index]]

@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import pytest
-from qtpy.QtWidgets import QComboBox, QLineEdit, QPlainTextEdit, QTableWidget, QWidget
+from qtpy.QtWidgets import (
+    QComboBox,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QTableWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command.details import DetailsCommand
+from stoner_measurement.ui.theme import colour
 
 
 class TestDetailsCommand:
@@ -74,10 +83,62 @@ class TestDetailsCommand:
             {"name": "run_label", "expression": "f'{details.date}-{index}'"}
         ]
         lines = command.generate_action_code(0, [], lambda source, indent: [])
-        assert "details.run_label = f'{details.date}-{index}'" in lines
-        assert lines.index("details.run_label = f'{details.date}-{index}'") < lines.index(
-            "details.configure()"
-        )
+        assignment = 'details.run_label = details.eval_metadata("f\'{details.date}-{index}\'")'
+        assert assignment in lines
+        assert lines.index(assignment) < lines.index("details.configure()")
+
+    @pytest.mark.parametrize(
+        ("expression", "expected"),
+        [
+            ("2 + 3", 5),
+            ("Run {index:03d}", "Run 007"),
+            ("'Sample {sample}'", "Sample A"),
+            ("unquoted_label", "unquoted_label"),
+        ],
+    )
+    def test_metadata_values_follow_shared_runtime_evaluation(
+        self, qapp, qtbot, engine, expression, expected
+    ):
+        command = DetailsCommand()
+        command.user = "Alice"
+        command.sample = "S1"
+        command.project = "P1"
+        engine.add_plugin("details", command)
+        engine._namespace.update(index=7, sample="A")
+
+        assert command.eval_metadata(expression) == expected
+
+        command.metadata_expressions = [{"name": "result", "expression": expression}]
+        lines = command.generate_action_code(0, [], lambda source, indent: [])
+        assert f"details.result = details.eval_metadata({expression!r})" in lines
+
+        errors: list[str] = []
+        engine.error_output.connect(errors.append)
+        with qtbot.waitSignal(engine.script_finished, timeout=5000):
+            engine.run_script("\n".join(lines), customised=False)
+
+        assert errors == []
+        assert getattr(command, "result") == expected
+
+    def test_metadata_unknown_identifier_warns_before_literal_fallback(
+        self, qapp, engine, caplog
+    ):
+        command = DetailsCommand()
+        engine.add_plugin("details", command)
+
+        with caplog.at_level("WARNING"):
+            result = command.eval_metadata("missing_runtime_name")
+
+        assert result == "missing_runtime_name"
+        assert "unknown identifier" in caplog.text
+        assert "treating it as literal text" in caplog.text
+
+    def test_metadata_does_not_hide_non_name_runtime_errors(self, qapp, engine):
+        command = DetailsCommand()
+        engine.add_plugin("details", command)
+
+        with pytest.raises(ZeroDivisionError):
+            command.eval_metadata("1 / 0")
 
     def test_generate_action_code_rejects_invalid_metadata_name(self, qapp):
         command = DetailsCommand()
@@ -119,11 +180,79 @@ class TestDetailsCommand:
             {"name": "temperature", "expression": "4.2"}
         ]
 
-    def test_config_tabs_include_metadata_table(self, qapp):
+    def test_config_tabs_have_general_metadata_and_standard_about_tabs(
+        self, qapp, managed_qt_widget
+    ):
         command = DetailsCommand()
         tabs = command.config_tabs()
-        assert [title for title, _widget in tabs][:3] == ["Details", "Metadata", "General"]
+        for _title, widget in tabs:
+            managed_qt_widget(widget)
+        assert [title for title, _widget in tabs] == [
+            "General",
+            "Metadata",
+            "Details – About",
+        ]
         assert tabs[1][1].findChild(QTableWidget, "detailsMetadataTable") is not None
+
+    def test_general_tab_combines_identity_and_fixed_details_at_top(
+        self, qapp, managed_qt_widget
+    ):
+        command = DetailsCommand()
+        general = managed_qt_widget(command.config_tabs()[0][1])
+
+        assert general.findChild(QLineEdit, "detailsUserEdit") is not None
+        assert general.findChild(QLineEdit, "detailsSampleEdit") is not None
+        assert general.findChild(QComboBox, "detailsProjectCombo") is not None
+        notes = general.findChild(QPlainTextEdit, "detailsNotesEdit")
+        assert notes is not None
+        assert notes.minimumHeight() == notes.maximumHeight()
+        assert notes.height() >= notes.fontMetrics().lineSpacing() * 8
+
+        layout = general.layout()
+        assert isinstance(layout, QVBoxLayout)
+        assert layout.itemAt(layout.count() - 1).spacerItem() is not None
+
+    def test_metadata_tab_has_fixed_six_row_table_buttons_and_top_packing(
+        self, qapp, managed_qt_widget
+    ):
+        command = DetailsCommand()
+        metadata = managed_qt_widget(command.config_tabs()[1][1])
+        table = metadata.findChild(QTableWidget, "detailsMetadataTable")
+        assert table is not None
+        assert table.verticalHeader().isHidden() is False
+        assert table.minimumHeight() == table.maximumHeight()
+        expected_height = (
+            table.horizontalHeader().sizeHint().height()
+            + table.verticalHeader().defaultSectionSize() * 6
+            + 2 * table.frameWidth()
+        )
+        assert table.height() == expected_height
+        assert metadata.findChild(QPushButton, "detailsMetadataAddButton") is not None
+        assert metadata.findChild(QPushButton, "detailsMetadataRemoveButton") is not None
+
+        layout = metadata.layout()
+        assert isinstance(layout, QVBoxLayout)
+        assert layout.itemAt(layout.count() - 1).spacerItem() is not None
+
+    def test_metadata_table_uses_subtle_row_selection_during_editing(
+        self, qapp, managed_qt_widget
+    ):
+        command = DetailsCommand()
+        metadata = managed_qt_widget(command.config_tabs()[1][1])
+        table = metadata.findChild(QTableWidget, "detailsMetadataTable")
+        add_button = metadata.findChild(QPushButton, "detailsMetadataAddButton")
+        assert table is not None
+        assert add_button is not None
+
+        add_button.click()
+        qapp.processEvents()
+
+        assert table.rowCount() == 1
+        assert table.currentRow() == 0
+        assert {index.row() for index in table.selectedIndexes()} == {0}
+        assert table.findChild(QLineEdit) is not None
+        assert colour("tab_selected_background") in table.styleSheet()
+        assert colour("text") in table.styleSheet()
 
     def test_metadata_table_restores_all_configured_rows(self, qapp):
         command = DetailsCommand()

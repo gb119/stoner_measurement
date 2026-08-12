@@ -21,6 +21,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.plugins.base_plugin import instance_name_validation_error
 from stoner_measurement.plugins.state.base import StatePlugin
 from stoner_measurement.plugins.state.output_selection import OutputSelectionTable
 from stoner_measurement.qt_compat import pyqtSignal
@@ -86,19 +87,13 @@ class _StateSweepPage(QWidget):
 
         def _apply_name() -> None:
             new_name = name_edit.text().strip()
-            if new_name and new_name.isidentifier():
+            error = instance_name_validation_error(new_name)
+            if error is None:
                 name_edit.setStyleSheet("")
                 plugin.instance_name = new_name
-            elif not new_name:
-                name_edit.setStyleSheet("border: 1px solid red;")
-                name_edit.setToolTip("Instance name cannot be empty.")
-                name_edit.setText(plugin.instance_name)
             else:
                 name_edit.setStyleSheet("border: 1px solid red;")
-                name_edit.setToolTip(
-                    f"{new_name!r} is not a valid Python identifier. "
-                    "Use only letters, digits and underscores, and do not start with a digit."
-                )
+                name_edit.setToolTip(error)
                 name_edit.setText(plugin.instance_name)
 
         name_edit.editingFinished.connect(_apply_name)

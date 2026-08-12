@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from qtpy.QtWidgets import QLabel, QLineEdit, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
@@ -300,8 +301,9 @@ class TestDockPanel:
         # The name must be reverted to the original value.
         assert steps[0].instance_name == name_before
 
-    def test_rename_to_builtin_name_reverted(self, qapp, monkeypatch):
-        """Renaming a step to a builtin name is rejected and reverted."""
+    @pytest.mark.parametrize("reserved_name", ["list", "sequence", "outputs"])
+    def test_rename_to_reserved_name_rejected(self, qapp, reserved_name):
+        """Python and application-reserved instance names are rejected."""
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
         panel = DockPanel(plugin_manager=pm)
@@ -312,12 +314,8 @@ class TestDockPanel:
         step_plugin = panel.sequence_steps[0]
         name_before = step_plugin.instance_name
 
-        monkeypatch.setattr(
-            "stoner_measurement.ui.dock_panel.QMessageBox.warning",
-            lambda *args, **kwargs: None,
-        )
-
-        step_plugin.instance_name = "list"
+        with pytest.raises(ValueError, match="reserved by Python or the application"):
+            step_plugin.instance_name = reserved_name
 
         assert step_plugin.instance_name == name_before
 

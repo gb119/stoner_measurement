@@ -97,7 +97,9 @@ class TestWindowFilterPlugin:
 
         x = np.arange(5, dtype=float)
         trace = TraceData(
-            df=pd.DataFrame({"y1": np.zeros(5), "y2": np.arange(5, dtype=float)}, index=pd.Index(x, name="x")),
+            df=pd.DataFrame(
+                {"y1": np.zeros(5), "y2": np.arange(5, dtype=float)}, index=pd.Index(x, name="x")
+            ),
             column_roles={"y1": COLUMN_ROLE_Y, "y2": COLUMN_ROLE_Y},
         )
         engine._namespace["_trace_obj"] = trace
@@ -257,18 +259,43 @@ class TestFourierTransformPlugin:
     def test_data_source_widgets_default_y_expression_uses_y_channel(self, engine, qapp):
         plugin = FourierTransformPlugin()
         engine.add_plugin("fourier_transform", plugin)
-        engine._namespace["_traces"] = {"trace": "_trace"}
+        engine._namespace["_traces"] = {"dummy:Dummy": "_trace"}
         engine._namespace["_trace"] = TraceData(
-            df=pd.DataFrame({"y": np.arange(3, dtype=float)}, index=pd.Index(np.arange(3, dtype=float), name="x")),
-            column_roles={"y": COLUMN_ROLE_Y},
+            df=pd.DataFrame(
+                {"V": np.arange(3, dtype=float), "R": np.arange(3, dtype=float) + 1.0},
+                index=pd.Index(np.arange(3, dtype=float), name="x"),
+            ),
+            column_roles={"V": COLUMN_ROLE_Y},
+            names={"x": "I", "V": "V", "R": "R"},
+            units={"x": "A", "V": "V", "R": "Ω"},
         )
 
         widget = QWidget()
         ws = plugin._create_data_source_widgets(widget, engine._namespace["_traces"])
 
-        assert ws["y_combo"].currentText().endswith(" (y)")
+        assert ws["x_combo"].currentText() == "dummy:Dummy:I (A)"
+        assert ws["y_combo"].currentText() == "dummy:Dummy:V (V)"
+        assert ws["channel_items"] == {
+            "dummy:Dummy:I (A)": "_trace.x",
+            "dummy:Dummy:V (V)": "_trace.df['V'].to_numpy()",
+            "dummy:Dummy:R (Ω)": "_trace.df['R'].to_numpy()",
+        }
+        assert plugin.eval(ws["channel_items"]["dummy:Dummy:R (Ω)"]).tolist() == [1.0, 2.0, 3.0]
+
+    def test_data_source_widgets_use_configured_labels_before_acquisition(self, engine, qapp):
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        source = DummyPlugin()
+        engine.add_plugin("dummy", source)
+        engine.update_step_plugin_catalog([source])
+        plugin = FourierTransformPlugin()
+        engine.add_plugin("fourier_transform", plugin)
+
+        widget = QWidget()
+        ws = plugin._create_data_source_widgets(widget, engine.traces_catalog)
+
+        assert list(ws["channel_items"]) == ["dummy:Dummy:I (A)", "dummy:Dummy:V (V)"]
 
 
 if __name__ == "__main__":
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

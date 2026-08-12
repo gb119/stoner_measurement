@@ -8,6 +8,7 @@ measurements and collected state scan/sweep data use the same save path.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import pathlib
 import re
@@ -282,6 +283,27 @@ def _ensure_string_expr(text: str) -> str:
     return repr(text)
 
 
+def _literal_path_expression_value(expression: str) -> str | None:
+    """Return literal path text without evaluating f-string replacements.
+
+    Existing ``f`` prefixes are removed while preserving a compatible raw
+    prefix, allowing the preference root and configured filename to be joined
+    before the complete path is interpolated. Non-literal expressions return
+    ``None`` and remain handled by the normal runtime evaluator.
+    """
+    match = _STRING_EXPR_RE.match(expression)
+    if match is None:
+        return None
+    prefix = match.group("prefix")
+    without_f = "".join(char for char in prefix if char.lower() != "f")
+    literal = f"{expression[:match.start('prefix')]}{without_f}{expression[match.end('prefix'):]}"
+    try:
+        value = ast.literal_eval(literal)
+    except (SyntaxError, ValueError):
+        return None
+    return value if isinstance(value, str) else None
+
+
 def _flatten_to_metadata(obj: Any, prefix: str = "") -> list[str]:
     """Recursively flatten a nested dict or list into TDI metadata cell strings.
 
@@ -317,7 +339,8 @@ def _flatten_to_metadata(obj: Any, prefix: str = "") -> list[str]:
     """
     entries: list[str] = []
     if isinstance(obj, dict):
-        for k, v in obj.items():
+        for k in sorted(obj, key=str):
+            v = obj[k]
             child = f"{prefix}.{k}" if prefix else str(k)
             entries.extend(_flatten_to_metadata(v, child))
     elif isinstance(obj, list):
@@ -365,10 +388,12 @@ class SaveCommand(CommandPlugin):
     * The top-left cell (row 0, column 0) contains ``"TDI Format 2.0"``.
     * The remaining cells of row 0 are trace column headers with the form
       ``"{channel_name}:{axis_label} ({axis_units})"``.
-    * The remaining cells of column 0 (rows 1 onwards) hold flattened metadata
-      from every plugin plus current scalar readings. Nested dicts are
-         flattened using ``.`` separators; list items use ``[{index}]``
-         notation.
+    * The remaining cells of column 0 (rows 1 onwards) hold a flattened
+      metadata snapshot. ``sequence`` is the ordered list of unique instance
+      names; each named instance's serialised configuration is a top-level
+      item, alongside an ``outputs`` dictionary of evaluated scalar readings.
+      Nested dicts are flattened using ``.`` separators; list items use
+      ``[{index}]`` notation.
     * The remaining cells (rows 1 onwards, columns 1 onwards) contain the
       numerical data from each column.
 
@@ -379,14 +404,15 @@ class SaveCommand(CommandPlugin):
 
     Attributes:
         path_expr (str):
-            Python expression string that evaluates to the file path.
+            Python expression string that evaluates to the filename or path.
             Plain or raw string literals containing ``{`` are automatically
             evaluated as f-strings, so an explicit ``f`` prefix is optional.
-            Defaults to ``"'data/output.txt'"``. When the expression evaluates
-            to a relative path it is resolved against the default data
-            directory configured in the application settings. If no default
-            data directory is set the path is relative to the current working
-            directory.
+            Defaults to ``"'data/output.txt'"``. A relative value is first
+            joined to the default data directory configured in the application
+            settings, then the complete path is evaluated for replacement
+            fields. This allows placeholders in either the preference-sourced
+            directory or this command's filename. If no default data directory
+            is set the path is relative to the current working directory.
         trace_selection (dict[str, bool]):
             Per-trace enable flags for trace mode.  Keys are trace catalogue
             keys (``"{instance_name}:{channel_name}"``).  A key mapping to
@@ -498,8 +524,10 @@ class SaveCommand(CommandPlugin):
           data column.
         * **Column 0 (rows 1+)** — flattened metadata entries of the form
           ``"{key}{typename}={repr(value)}"`` collected from the ``to_json()``
-          state of every plugin registered with the engine, followed by the
-          current scalar readings from the ``_values`` catalog.
+          state of each plugin instance in the current sequence. ``sequence``
+          stores their instance names in order, each instance name maps to its
+          serialised configuration at the metadata root, and ``outputs`` maps
+          catalogue keys to evaluated current scalar readings.
         * **Remaining cells** — numerical data from each data column.
 
         Keyword Parameters:
@@ -612,8 +640,10 @@ class SaveCommand(CommandPlugin):
         return dest
 
     def _resolve_original_destination(self) -> pathlib.Path:
-        """Evaluate :attr:`path_expr` and resolve it to the configured output path."""
-        path_val = self.eval(self.path_expr)
+        """Join the configured root and filename, then evaluate the complete path."""
+        path_val = _literal_path_expression_value(self.path_expr)
+        if path_val is None:
+            path_val = self.eval(self.path_expr)
         if not isinstance(path_val, str):
             raise TypeError(f"SaveCommand.path_expr must evaluate to a str, got {type(path_val).__name__!r}")
 
@@ -625,7 +655,13 @@ class SaveCommand(CommandPlugin):
             if data_dir:
                 dest = pathlib.Path(data_dir) / dest
 
-        return dest
+        full_path = self.eval(repr(str(dest)))
+        if not isinstance(full_path, str):
+            raise TypeError(
+                "SaveCommand complete path must evaluate to a str, "
+                f"got {type(full_path).__name__!r}"
+            )
+        return pathlib.Path(full_path)
 
     def _next_available_destination(self, dest: pathlib.Path) -> pathlib.Path:
         """Return *dest* or a numeric-suffixed variant that does not exist."""
@@ -642,25 +678,24 @@ class SaveCommand(CommandPlugin):
         return dest
 
     def _build_metadata(self, *, ns: dict[str, Any]) -> list[str]:
-        """Build flattened metadata strings for the first output column."""
+        """Snapshot the current sequence configuration and evaluated outputs."""
         engine = self.sequence_engine
         if engine is None:
             raise RuntimeError("SaveCommand must be attached to a SequenceEngine before execute()")
 
-        metadata: list[str] = []
-        for plugin in engine.sequence_plugins():
-            state = plugin.to_json()
-            prefix = str(state.get("instance_name", plugin.instance_name))
-            metadata.extend(_flatten_to_metadata(state, prefix))
-
+        plugins = engine.step_plugins()
+        sequence = [plugin.instance_name for plugin in plugins]
+        metadata: dict[str, Any] = {"sequence": sequence}
+        metadata.update((plugin.instance_name, plugin.to_json()) for plugin in plugins)
+        outputs: dict[str, Any] = {}
         values_catalog: dict[str, str] = ns.get("_values", {})
         for key, expr in values_catalog.items():
             try:
-                val = self.eval(expr)
-                metadata.extend(_flatten_to_metadata(val, key))
+                outputs[key] = self.eval(expr)
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 self.log.debug("Failed to evaluate value %r: %s", key, exc)
-        return metadata
+        metadata["outputs"] = outputs
+        return _flatten_to_metadata(metadata)
 
     def _build_trace_columns(
         self,
@@ -679,16 +714,15 @@ class SaveCommand(CommandPlugin):
                 continue
             try:
                 trace_data = self.eval(expr)
-                channel_name = trace_key.split(":", 1)[-1]
                 x_values = np.array(trace_data.x, dtype=float, copy=True)
                 x_label = (trace_data.names or {}).get("x") or "x"
                 x_units = (trace_data.units or {}).get("x", "")
-                columns.append((f"{channel_name}:{x_label} ({x_units})", x_values))
+                columns.append((f"{trace_key}:{x_label} ({x_units})", x_values))
                 for column_name in trace_data.df.columns:
                     values = trace_data.df[column_name].to_numpy(dtype=float, copy=True)
                     label = (trace_data.names or {}).get(column_name) or str(column_name)
                     units = (trace_data.units or {}).get(column_name, "")
-                    columns.append((f"{channel_name}:{label} ({units})", values))
+                    columns.append((f"{trace_key}:{label} ({units})", values))
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 self.log.debug("Failed to evaluate trace %r: %s", trace_key, exc)
         return columns

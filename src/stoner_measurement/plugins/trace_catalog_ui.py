@@ -49,13 +49,58 @@ def bind_trace_catalog_updates(
     widget._trace_catalog_bindings = bindings  # type: ignore[attr-defined]
 
 
-def trace_channel_items(traces: dict[str, str]) -> dict[str, str]:
-    """Return labelled x/y expressions for every trace catalogue entry."""
-    return {
-        f"{key} ({axis})": f"{expression}.{axis}"
-        for key, expression in traces.items()
-        for axis in ("x", "y")
-    }
+def _channel_label(trace_key: str, column: Any, *, names: dict, units: dict) -> str:
+    """Return the canonical ``trace:column (unit)`` channel label."""
+    name = names.get(column) or str(column)
+    unit = units.get(column, "")
+    return f"{trace_key}:{name} ({unit})"
+
+
+def _configured_trace_channels(
+    plugin: Any, trace_key: str, expression: str
+) -> dict[str, str] | None:
+    """Return configured x/y labels when a trace has not been acquired yet."""
+    producer_name = expression.partition(".")[0]
+    producer = plugin.engine_namespace.get(producer_name)
+    if producer is None:
+        return None
+    try:
+        return {
+            f"{trace_key}:{producer.x_label} ({producer.x_units})": f"{expression}.x",
+            f"{trace_key}:{producer.y_label} ({producer.y_units})": f"{expression}.y",
+        }
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def trace_channel_items(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
+    """Return canonical expressions for every available column in each trace.
+
+    Live :class:`TraceData` metadata supplies the human-readable column names
+    and units.  A trace that is not currently evaluable retains the legacy
+    x/y choices until data become available.
+    """
+    items: dict[str, str] = {}
+    for trace_key, expression in traces.items():
+        try:
+            trace_data = plugin.eval(expression)
+            frame = trace_data.df
+            names = dict(getattr(trace_data, "names", {}) or {})
+            units = dict(getattr(trace_data, "units", {}) or {})
+        except Exception:  # noqa: BLE001  # the catalogue may precede acquisition
+            configured = _configured_trace_channels(plugin, trace_key, expression)
+            if configured is not None:
+                items.update(configured)
+            else:
+                items[f"{trace_key} (x)"] = f"{expression}.x"
+                items[f"{trace_key} (y)"] = f"{expression}.y"
+            continue
+
+        items[_channel_label(trace_key, "x", names=names, units=units)] = f"{expression}.x"
+        for column in frame.columns:
+            label = _channel_label(trace_key, column, names=names, units=units)
+            items[label] = f"{expression}.df[{column!r}].to_numpy()"
+    return items
 
 
 def refresh_trace_source_widgets(
@@ -89,7 +134,7 @@ def refresh_trace_source_widgets(
             plugin.column_key = ""
         column_combo.blockSignals(False)
 
-    items = trace_channel_items(traces)
+    items = trace_channel_items(plugin, traces)
     widgets["channel_items"].clear()
     widgets["channel_items"].update(items)
     _refresh_channel_combo(plugin, widgets["x_combo"], items, "x_expr", preferred_axis="x")
@@ -125,10 +170,16 @@ def _refresh_channel_combo(
         None,
     )
     if selected_name is None and preferred_axis is not None:
-        selected_name = next(
-            (name for name in items if name.endswith(f" ({preferred_axis})")),
-            None,
-        )
+        if preferred_axis == "x":
+            selected_name = next(
+                (name for name, expression in items.items() if expression.endswith(".x")),
+                None,
+            )
+        else:
+            selected_name = next(
+                (name for name, expression in items.items() if not expression.endswith(".x")),
+                None,
+            )
     selected_name = selected_name or next(iter(items))
     combo.setCurrentText(selected_name)
     setattr(plugin, attribute, items[selected_name])

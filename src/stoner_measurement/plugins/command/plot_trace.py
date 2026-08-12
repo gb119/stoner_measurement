@@ -48,6 +48,7 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.trace_catalog_ui import (
     bind_trace_catalog_updates,
     refresh_trace_source_widgets,
+    trace_channel_items,
 )
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
@@ -640,11 +641,7 @@ class PlotTraceCommand(CommandPlugin):
         trace_keys = list(traces.keys())
         axes_pair = _available_plot_axes(self.sequence_engine)
 
-        channel_items = {
-            f"{k} ({axis})": f"{v}.{axis}"
-            for k, v in traces.items()
-            for axis in ("x", "y")
-        }
+        channel_items = trace_channel_items(self, traces)
         channel_names = list(channel_items.keys())
 
         trace_combo = self._build_trace_combo(widget, trace_keys)
@@ -657,8 +654,17 @@ class PlotTraceCommand(CommandPlugin):
         )
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
-        x_combo = self._build_channel_combo(widget, channel_names, channel_items, self.x_expr, "x_expr")
-        y_combo = self._build_channel_combo(widget, channel_names, channel_items, self.y_expr, "y_expr")
+        x_combo = self._build_channel_combo(
+            widget, channel_names, channel_items, self.x_expr, "x_expr"
+        )
+        y_combo = self._build_channel_combo(
+            widget,
+            channel_names,
+            channel_items,
+            self.y_expr,
+            "y_expr",
+            prefer_y=True,
+        )
         title_edit = QLineEdit(self.title_expr, widget)
         title_edit.setToolTip(
             "Python expression evaluated at runtime in the engine namespace. "
@@ -965,14 +971,23 @@ class PlotTraceCommand(CommandPlugin):
         channel_items: dict[str, str],
         current_expr: str,
         fallback_attr: str,
+        *,
+        prefer_y: bool = False,
     ) -> QComboBox:
         combo = QComboBox(widget)
         if channel_names:
             combo.addItems(channel_names)
             if not _set_combo_to_expr(combo, channel_items, current_expr):
-                first_name = channel_names[0]
-                setattr(self, fallback_attr, channel_items[first_name])
-                combo.setCurrentText(first_name)
+                selected_name = next(
+                    (
+                        name
+                        for name in channel_names
+                        if prefer_y and not channel_items[name].endswith(".x")
+                    ),
+                    channel_names[0],
+                )
+                setattr(self, fallback_attr, channel_items[selected_name])
+                combo.setCurrentText(selected_name)
         else:
             combo.addItem("(no channels available)")
         return combo
