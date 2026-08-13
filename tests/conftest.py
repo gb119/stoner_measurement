@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 from qtpy.QtCore import QCoreApplication, QEvent
-from qtpy.QtWidgets import QApplication, QWidget
+from qtpy.QtWidgets import QApplication, QMessageBox, QWidget
 
 from stoner_measurement import resources
 from stoner_measurement.core.plugin_manager import PluginManager
@@ -74,6 +74,10 @@ def suppress_modal_message_boxes(monkeypatch):
     monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.critical", _noop)
     monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.information", _noop)
     monkeypatch.setattr("qtpy.QtWidgets.QMessageBox.about", _noop)
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
+    )
 
 
 @pytest.fixture(autouse=True)

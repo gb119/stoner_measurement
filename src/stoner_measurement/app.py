@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -152,6 +153,7 @@ class MeasurementApp(QMainWindow):
 
         # Path to the most recently saved/loaded measurement sequence file.
         self._current_measurement_path: Path | None = None
+        self._measurement_clean_digest = ""
 
         # Central widget -------------------------------------------------------
         self._main_window = MainWindow(plugin_manager=self._plugin_manager)
@@ -237,6 +239,7 @@ class MeasurementApp(QMainWindow):
 
         # Load the template sequence (or empty sequence if none configured) ----
         self._load_template_sequence()
+        self._mark_measurement_clean()
 
     def _initialise_feature_registry(self) -> None:
         """Collect per-feature UI objects so visibility is driven from one registry."""
@@ -919,9 +922,11 @@ class MeasurementApp(QMainWindow):
         except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError) as exc:
             QMessageBox.critical(self, "Load Sequence", f"Could not load sequence:\n{exc}")
             return
+        if not self._confirm_discard_measurement_changes():
+            return
         self._main_window.dock_panel.load_sequence(steps)
         self._current_measurement_path = None
-        self._update_window_title()
+        self._mark_measurement_clean()
         self._engine._rebuild_data_catalogs()
 
     # ------------------------------------------------------------------
@@ -1058,6 +1063,39 @@ class MeasurementApp(QMainWindow):
     # Measurement-tab actions
     # ------------------------------------------------------------------
 
+    def _measurement_digest(self) -> str:
+        """Return a digest of the current sequence's canonical JSON."""
+        from stoner_measurement.core.serializer import sequence_to_json
+
+        data = sequence_to_json(self._main_window.dock_panel.sequence_steps)
+        canonical = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(canonical).hexdigest()
+
+    def _mark_measurement_clean(self) -> None:
+        """Set the current sequence as the saved/loaded clean baseline."""
+        self._measurement_clean_digest = self._measurement_digest()
+        self._update_window_title()
+
+    def _confirm_discard_measurement_changes(self) -> bool:
+        """Offer to save a changed sequence before replacing or closing it."""
+        self._main_window.config_panel.commit_pending_changes()
+        if self._measurement_digest() == self._measurement_clean_digest:
+            return True
+        answer = QMessageBox.question(
+            self,
+            "Unsaved Sequence Changes",
+            "The measurement sequence has unsaved changes. Save them before continuing?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Cancel:
+            return False
+        if answer == QMessageBox.StandardButton.Yes:
+            return self._on_save_as_measurement()
+        return True
+
     def _load_template_sequence(self) -> None:
         """Load the default sequence template, or an empty sequence if none is found.
 
@@ -1090,9 +1128,11 @@ class MeasurementApp(QMainWindow):
         the sequence tree and resets the current file path. If a default
         sequence template file exists, that template is loaded instead of an empty sequence.
         """
+        if not self._confirm_discard_measurement_changes():
+            return
         self._load_template_sequence()
         self._current_measurement_path = None
-        self._update_window_title()
+        self._mark_measurement_clean()
         self._engine._rebuild_data_catalogs()
 
 
@@ -1130,9 +1170,11 @@ class MeasurementApp(QMainWindow):
                 f"Could not load sequence from {file_path.name!r}:\n{exc}",
             )
             return
+        if not self._confirm_discard_measurement_changes():
+            return
         dock.load_sequence(steps)
         self._current_measurement_path = file_path
-        self._update_window_title()
+        self._mark_measurement_clean()
         self._engine._rebuild_data_catalogs()
 
     def _on_save_measurement(self) -> None:
@@ -1146,7 +1188,7 @@ class MeasurementApp(QMainWindow):
             return
         self._save_measurement_to(self._current_measurement_path)
 
-    def _on_save_as_measurement(self) -> None:
+    def _on_save_as_measurement(self) -> bool:
         """Prompt the user for a file path and save the measurement sequence.
 
         Displays a save-file dialog restricted to ``.json`` files.  On
@@ -1165,13 +1207,15 @@ class MeasurementApp(QMainWindow):
             "JSON Files (*.json);;All Files (*)",
         )
         if not path:
-            return
+            return False
         file_path = Path(path)
         if file_path.suffix.lower() != ".json":
             file_path = file_path.with_suffix(".json")
         if self._save_measurement_to(file_path):
             self._current_measurement_path = file_path
             self._update_window_title()
+            return True
+        return False
 
     def _save_measurement_to(self, path: Path) -> bool:
         """Serialise the current sequence tree and write it to *path*.
@@ -1198,6 +1242,7 @@ class MeasurementApp(QMainWindow):
                 f"Could not save sequence to {path.name!r}:\n{exc}",
             )
             return False
+        self._mark_measurement_clean()
         return True
 
     # ------------------------------------------------------------------
@@ -1590,5 +1635,8 @@ class MeasurementApp(QMainWindow):
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Save window geometry and cleanly shut down engines on close."""
+        if not self._confirm_discard_measurement_changes():
+            event.ignore()
+            return
         self.shutdown()
         super().closeEvent(event)
