@@ -164,6 +164,13 @@ from stoner_measurement.instruments.temperature_controller import (
     ZoneEntry,
 )
 from stoner_measurement.instruments.thorlabs import ThorlabsHDR50, ThorlabsKDC101KPRMTE
+from stoner_measurement.instruments.xray import (
+    DiffractometerMechanics,
+    LegacyXrayDiffractometer,
+    SimulatedXrayDiffractometer,
+    XraySnapshot,
+)
+from stoner_measurement.instruments.xray_diffractometer import XrayDiffractometer
 
 __all__ = [
     "AlarmState",
@@ -176,6 +183,7 @@ __all__ = [
     "CurrentSweepSpacing",
     "CurrentWaveform",
     "DigitalMultimeter",
+    "DiffractometerMechanics",
     "DmmCapabilities",
     "DmmFunction",
     "DmmTriggerSource",
@@ -192,6 +200,7 @@ __all__ = [
     "InstrumentError",
     "LeyboldCenterThree",
     "LeyboldDisplayThree",
+    "LegacyXrayDiffractometer",
     "LockInAmplifier",
     "LockInAmplifierCapabilities",
     "LockInExpandFactor",
@@ -238,6 +247,7 @@ __all__ = [
     "SimulatedMassFlowController",
     "SimulatedMotorController",
     "SimulatedPressureGaugeController",
+    "SimulatedXrayDiffractometer",
     "SimulatedTemperatureController",
     "SourceMeterCapabilities",
     "SourceMode",
@@ -251,4 +261,6 @@ __all__ = [
     "TriggerModelConfiguration",
     "TriggerSource",
     "ZoneEntry",
+    "XraySnapshot",
+    "XrayDiffractometer",
 ]

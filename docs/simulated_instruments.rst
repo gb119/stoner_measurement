@@ -46,11 +46,26 @@ The controller reports realistic operational states:
 * ``RAMPING``
 * ``AT_TARGET``
 
+X-ray Diffractometer
+~~~~~~~~~~~~~~~~~~~~
+
+``SimulatedXrayDiffractometer`` implements the same abstract
+``XrayDiffractometer`` contract as the FTDI-backed legacy driver. It provides:
+
+* independent theta and 2-theta motion;
+* coupled ``2-theta = 2 * theta + offset`` motion;
+* exact hardware step quantisation;
+* scalar detector counts and count rates;
+* a deterministic synthetic powder-diffraction peak pattern.
+
+Select **Simulated** in the X-ray panel's instrument list. No address is
+required.
+
 Using Simulated Instruments
 ---------------------------
 
 The simulated drivers appear in the normal driver-selection controls used by
-the temperature and magnet control panels.
+the temperature, magnet, and X-ray control panels.
 
 No special configuration is required:
 

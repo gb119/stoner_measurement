@@ -1,0 +1,23 @@
+# The recovered values below belong to the original installation.  Motion is
+# deliberately disabled until they and the physical direction mapping have
+# been confirmed on the current diffractometer.
+connection:
+  instrument: Wharfdale
+  address: index:0
+  timeout_s: 2.0
+polling_rate_hz: 1.0
+motion:
+  enabled: false
+  mode: theta-2theta
+  speed_deg_per_min: 1.0
+  two_theta_offset_deg: 0.0
+  theta:
+    minimum_deg: -90.0
+    maximum_deg: 90.0
+    backlash_steps: 100
+  two_theta:
+    minimum_deg: -30.0
+    maximum_deg: 90.0
+    backlash_steps: 50
+count:
+  duration_s: 1.0

@@ -53,7 +53,9 @@ from stoner_measurement.plugins.command import (
     DetailsCommand,
     IfCommand,
     PlotTraceCommand,
+    ReadDiffractometerCommand,
     SaveCommand,
+    SetDiffractometerCommand,
 )
 from stoner_measurement.plugins.monitor import (
     MagneticFieldMonitorPlugin,
@@ -70,6 +72,7 @@ from stoner_measurement.plugins.state_scan import (
     MotorControllerScanPlugin,
     StateScanPlugin,
     TemperatureControllerScanPlugin,
+    XrayDiffractometerScanPlugin,
 )
 from stoner_measurement.plugins.state_sweep import (
     MagnetControllerSweepPlugin,
@@ -91,7 +94,9 @@ __all__ = [
     "MagneticFieldMonitorPlugin",
     "MotorAngleMonitorPlugin",
     "PlotTraceCommand",
+    "ReadDiffractometerCommand",
     "SaveCommand",
+    "SetDiffractometerCommand",
     "SequencePlugin",
     "StateControlPlugin",
     "StatePlugin",
@@ -99,6 +104,7 @@ __all__ = [
     "MagnetControllerScanPlugin",
     "MotorControllerScanPlugin",
     "TemperatureControllerScanPlugin",
+    "XrayDiffractometerScanPlugin",
     "StateSweepPlugin",
     "MagnetControllerSweepPlugin",
     "MotorControllerSweepPlugin",

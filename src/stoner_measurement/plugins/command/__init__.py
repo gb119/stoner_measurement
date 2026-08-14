@@ -35,7 +35,13 @@ from stoner_measurement.plugins.command.pressure_set_flow import (
     PressureSetFlowCommand,
     SetFlowCommand,
 )
+from stoner_measurement.plugins.command.read_diffractometer import (
+    ReadDiffractometerCommand,
+)
 from stoner_measurement.plugins.command.save import SaveCommand
+from stoner_measurement.plugins.command.set_diffractometer import (
+    SetDiffractometerCommand,
+)
 from stoner_measurement.plugins.command.set_field import SetFieldCommand
 from stoner_measurement.plugins.command.set_position import SetPositionCommand
 from stoner_measurement.plugins.command.set_temperature import SetTemperatureCommand
@@ -54,8 +60,10 @@ __all__ = [
     "PlotTraceCommand",
     "PressureGaugeChannelCommand",
     "PressureSetFlowCommand",
+    "ReadDiffractometerCommand",
     "SaveCommand",
     "SetFieldCommand",
+    "SetDiffractometerCommand",
     "SetFlowCommand",
     "SetPositionCommand",
     "SetTemperatureCommand",

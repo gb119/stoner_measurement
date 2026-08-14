@@ -50,6 +50,7 @@ from stoner_measurement.ui.icons import (
     make_stop_icon,
     make_temperature_icon,
     make_watch_icon,
+    make_xray_icon,
 )
 from stoner_measurement.ui.log_viewer import LogViewerWindow
 from stoner_measurement.ui.main_window import MainWindow
@@ -194,6 +195,11 @@ class MeasurementApp(QMainWindow):
 
         self._pressure_panel = PressureControlPanel(parent=None)
 
+        # X-ray diffractometer panel (hidden initially) -----------------------
+        from stoner_measurement.ui.xray_panel import XrayControlPanel
+
+        self._xray_panel = XrayControlPanel(parent=None)
+
         # Status bar -----------------------------------------------------------
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
@@ -272,6 +278,13 @@ class MeasurementApp(QMainWindow):
                 "indicator": self._engine_activity_status.pressure_indicator,
                 "panel": self._pressure_panel,
             },
+            "xray": {
+                "action": self._act_show_xray_panel,
+                "stop_action": self._act_stop_xray_engine,
+                "menu_action": self._xray_menu.menuAction(),
+                "indicator": self._engine_activity_status.xray_indicator,
+                "panel": self._xray_panel,
+            },
         }
 
     def _feature_enabled(self, feature: str) -> bool:
@@ -309,6 +322,7 @@ class MeasurementApp(QMainWindow):
         magnet_engine = self._magnet_panel._engine  # noqa: SLF001
         motor_engine = self._motor_panel._engine  # noqa: SLF001
         pressure_engine = self._pressure_panel._engine  # noqa: SLF001
+        xray_engine = self._xray_panel._engine  # noqa: SLF001
 
         status = self._engine_activity_status
 
@@ -327,6 +341,10 @@ class MeasurementApp(QMainWindow):
         pressure_engine.publisher.engine_status_changed.connect(status.set_pressure_status)
         pressure_engine.publisher.poll_activity.connect(status.blink_pressure)
         status.set_pressure_status(pressure_engine.status)
+
+        xray_engine.publisher.engine_status_changed.connect(status.set_xray_status)
+        xray_engine.publisher.poll_activity.connect(status.blink_xray)
+        status.set_xray_status(xray_engine.status)
 
         status.temperature_indicator.set_context_menu_builder(
             lambda: self._build_engine_indicator_menu(
@@ -354,6 +372,13 @@ class MeasurementApp(QMainWindow):
                 "Pressure controller",
                 pressure_engine,
                 status.pressure_indicator.status_text,
+            )
+        )
+        status.xray_indicator.set_context_menu_builder(
+            lambda: self._build_engine_indicator_menu(
+                "X-ray diffractometer",
+                xray_engine,
+                status.xray_indicator.status_text,
             )
         )
 
@@ -745,6 +770,16 @@ class MeasurementApp(QMainWindow):
         self._act_stop_pressure_engine.setStatusTip("Stop the pressure controller engine and disconnect hardware")
         self._act_stop_pressure_engine.triggered.connect(self._on_stop_pressure_engine)
 
+        self._act_show_xray_panel = QAction(make_xray_icon(), "Show &X-ray Control", self)
+        self._act_show_xray_panel.setStatusTip("Open the X-ray diffractometer panel")
+        self._act_show_xray_panel.triggered.connect(self._on_show_xray_panel)
+
+        self._act_stop_xray_engine = QAction("Stop X-ray &Engine", self)
+        self._act_stop_xray_engine.setStatusTip(
+            "Stop the X-ray controller engine and disconnect hardware"
+        )
+        self._act_stop_xray_engine.triggered.connect(self._on_stop_xray_engine)
+
         self._act_about = QAction("&About", self)
         self._act_about.setStatusTip("Show information about this application")
         self._act_about.triggered.connect(self._on_about)
@@ -815,6 +850,11 @@ class MeasurementApp(QMainWindow):
         self._pressure_menu.addAction(self._act_show_pressure_panel)
         self._pressure_menu.addSeparator()
         self._pressure_menu.addAction(self._act_stop_pressure_engine)
+
+        self._xray_menu = self._engines_menu.addMenu(make_xray_icon(), "&X-ray")
+        self._xray_menu.addAction(self._act_show_xray_panel)
+        self._xray_menu.addSeparator()
+        self._xray_menu.addAction(self._act_stop_xray_engine)
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._act_about)
@@ -855,6 +895,7 @@ class MeasurementApp(QMainWindow):
         toolbar.addAction(self._act_show_magnet_panel)
         toolbar.addAction(self._act_show_motor_panel)
         toolbar.addAction(self._act_show_pressure_panel)
+        toolbar.addAction(self._act_show_xray_panel)
         self._toolbar = toolbar
         self._configured_toolbar_items = []
         self._add_configured_toolbar_buttons()
@@ -1511,6 +1552,16 @@ class MeasurementApp(QMainWindow):
 
         PressureControllerEngine.instance().shutdown()
 
+    def _on_show_xray_panel(self) -> None:
+        """Show the X-ray control panel, raising it if already open."""
+        self._xray_panel.show_and_raise()
+
+    def _on_stop_xray_engine(self) -> None:
+        """Stop the X-ray controller engine and disconnect the instrument."""
+        from stoner_measurement.xray_control.engine import XrayControllerEngine
+
+        XrayControllerEngine.instance().shutdown()
+
     def _on_about(self) -> None:
         """Display the About dialogue."""
         QMessageBox.about(
@@ -1607,6 +1658,7 @@ class MeasurementApp(QMainWindow):
             self._magnet_panel,
             self._motor_panel,
             self._pressure_panel,
+            self._xray_panel,
         ):
             widget_name = f"{type(widget).__name__}"
             try:
@@ -1623,6 +1675,7 @@ class MeasurementApp(QMainWindow):
             self._magnet_panel._engine,  # noqa: SLF001
             self._motor_panel._engine,  # noqa: SLF001
             self._pressure_panel._engine,  # noqa: SLF001
+            self._xray_panel._engine,  # noqa: SLF001
         ):
             engine_name = f"{type(engine).__name__}"
             try:

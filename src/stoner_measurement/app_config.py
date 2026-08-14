@@ -26,6 +26,7 @@ FEATURE_DEFINITIONS: tuple[dict[str, str], ...] = (
     {"key": "magnetic_field", "label": "Magnetic field", "config_key": "features/magnetic_field"},
     {"key": "motor_position", "label": "Motor position", "config_key": "features/motor_position"},
     {"key": "pressure", "label": "Pressure", "config_key": "features/pressure"},
+    {"key": "xray", "label": "X-ray diffractometer", "config_key": "features/xray"},
 )
 
 FEATURE_KEYS: dict[str, str] = {

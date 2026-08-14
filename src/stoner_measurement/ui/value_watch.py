@@ -309,15 +309,13 @@ class _WatchDisplay(QtWidgets.QWidget):
         self._name_label.setWordWrap(True)
 
         self._value_label = QtWidgets.QLabel("—", self)
-        value_font = QtGui.QFont(_seven_segment_font_family() or "Courier New")
-        if not _seven_segment_font_family():
+        value_font = QtGui.QFont(seven_segment_font_family() or "Courier New")
+        if not seven_segment_font_family():
             value_font.setStyleHint(QtGui.QFont.StyleHint.TypeWriter)
         value_font.setPointSize(34)
         value_font.setBold(True)
         self._value_label.setFont(value_font)
-        self._value_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
+        self._value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._value_label.setMinimumHeight(56)
         self._value_label.setStyleSheet(f"QLabel {{ color: {colour('value_display_text')}; }}")
         self._value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -327,9 +325,7 @@ class _WatchDisplay(QtWidgets.QWidget):
         suffix_font.setPointSize(20)
         suffix_font.setBold(True)
         self._suffix_label.setFont(suffix_font)
-        self._suffix_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
+        self._suffix_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._suffix_label.setMinimumHeight(56)
         self._suffix_label.setStyleSheet(f"QLabel {{ color: {colour('value_display_text')}; }}")
         self._suffix_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -337,10 +333,7 @@ class _WatchDisplay(QtWidgets.QWidget):
         self._display_frame = QtWidgets.QFrame(self)
         self._display_frame.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
         self._display_frame.setStyleSheet(
-            value_display_frame_stylesheet() +
-            "QLabel {"
-            " background: transparent;"
-            "}"
+            value_display_frame_stylesheet() + "QLabel { background: transparent;}"
         )
         display_layout = QtWidgets.QHBoxLayout(self._display_frame)
         display_layout.setContentsMargins(12, 6, 12, 6)
@@ -420,9 +413,9 @@ class _WatchDisplay(QtWidgets.QWidget):
         self._suffix_label.setText(suffix_text)
 
 
-def _seven_segment_font_family() -> str:
+def seven_segment_font_family() -> str:
     """Load and return the bundled seven-segment font family name."""
-    cached = getattr(_seven_segment_font_family, "_cached_family", None)
+    cached = getattr(seven_segment_font_family, "_cached_family", None)
     if cached is not None:
         return cached
     family = ""
@@ -436,7 +429,7 @@ def _seven_segment_font_family() -> str:
                     family = families[0]
     except Exception:  # pylint: disable=broad-except
         family = ""
-    setattr(_seven_segment_font_family, "_cached_family", family)
+    setattr(seven_segment_font_family, "_cached_family", family)
     return family
 
 
@@ -468,7 +461,7 @@ def _format_with_si_prefix(value: float, significant_figures: int) -> str:
     }
     exponent = int(floor(log10(abs(value)) / 3.0) * 3)
     exponent = min(max(exponent, min(prefixes)), max(prefixes))
-    scaled = value / (10 ** exponent)
+    scaled = value / (10**exponent)
     return f"{scaled:.{significant_figures}g}", prefixes[exponent]
 
 
@@ -756,11 +749,14 @@ class ValueWatchWindow(QtWidgets.QWidget):
 
         new_entries: dict[str, WatchEntry] = {}
         current_formats = {
-            key: (entry.format_style, entry.significant_figures) for key, entry in self._watch_entries.items()
+            key: (entry.format_style, entry.significant_figures)
+            for key, entry in self._watch_entries.items()
         }
         for key, expression in sorted(catalog.items(), key=lambda item: item[0].lower()):
             restored_formats = {**self._restored_formats, **current_formats}
-            format_style, significant_figures = restored_formats.get(key, (_FORMAT_SI, _DEFAULT_SIGNIFICANT_FIGURES))
+            format_style, significant_figures = restored_formats.get(
+                key, (_FORMAT_SI, _DEFAULT_SIGNIFICANT_FIGURES)
+            )
             new_entries[key] = WatchEntry(
                 key=key,
                 expression=expression,
@@ -861,10 +857,12 @@ class ValueWatchWindow(QtWidgets.QWidget):
                     self._display_widget,
                 )
                 display.format_changed.connect(
-                    lambda format_style, significant_figures, key=entry.key: self._on_display_format_changed(
-                        key,
-                        format_style,
-                        significant_figures,
+                    lambda format_style, significant_figures, key=entry.key: (
+                        self._on_display_format_changed(
+                            key,
+                            format_style,
+                            significant_figures,
+                        )
                     )
                 )
                 self._displays[entry.key] = display
@@ -914,7 +912,9 @@ class ValueWatchWindow(QtWidgets.QWidget):
         self._display_layout.setRowStretch((len(displays) + columns - 1) // columns, 1)
 
     @pyqtSlot(str, str, int)
-    def _on_display_format_changed(self, key: str, format_style: str, significant_figures: int) -> None:
+    def _on_display_format_changed(
+        self, key: str, format_style: str, significant_figures: int
+    ) -> None:
         """Update persistent formatting for one watched value."""
         entry = self._watch_entries.get(key)
         if entry is None:
@@ -1130,9 +1130,7 @@ class ValueWatchWindow(QtWidgets.QWidget):
         scrollbar_allowance = 24
         return max(
             _DISPLAY_FIXED_WIDTH,
-            _DISPLAY_FIXED_WIDTH
-            + spacing + viewport_margins + scroll_frame
-            + scrollbar_allowance,
+            _DISPLAY_FIXED_WIDTH + spacing + viewport_margins + scroll_frame + scrollbar_allowance,
         )
 
     def _refresh_catalog_from_engine(self) -> None:

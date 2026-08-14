@@ -11,7 +11,7 @@ Implement a dedicated binary `BaseInstrument` driver with a shared controller ob
 3. axis mechanics, limits, timing, cancellation, backlash;
 4. higher-level scan orchestration.
 
-The existing `SerialTransport` supports arbitrary byte writes and `read(12)`. Configure no terminator and a 12-byte maximum. Do not force the result through a protocol API that returns `str`; call `transport.write(bytes([opcode]))` and `transport.read(12)` under one shared lock.
+The existing `SerialTransport` supports arbitrary byte writes and `read(12)`. Configure no terminator and a 12-byte maximum. Do not force the result through a protocol API that returns `str`; call `transport.write(bytes([opcode]))` and `transport.read(12)` under one shared lock. The related-system `mod_SIO.bas` strongly supports this exact one-byte write shape, but does not prove that the deployed X-ray adapter is exposed as a VCP serial port.
 
 Suggested modules:
 
@@ -61,7 +61,22 @@ Under the shared lock, send start, perform a cancellable monotonic wait, guarant
 
 Expose port, baud rate, data bits, stop bits, parity, flow control, timeouts, and optional pre-read delay as configuration until measured. The target transport's 9600-8N1 defaults are not recovered instrument facts. Extend it with `write_timeout`, `dsrdtr`, or inter-byte timeout only if bench evidence requires them.
 
-Prefer FTDI VCP/pyserial unless documentation shows D2XX, GPIO bit-bang, MPSSE, or custom converter firmware is required.
+Prefer FTDI VCP/pyserial if bench inspection shows that interface. The related migration instead exposes `WriteUSBDeviceBufferSIO(device_no, value, 1)`, which could be a D2XX/native wrapper or application-specific DLL; obtain that helper before choosing the backend. Keep the protocol/controller above a small binary transport interface so VCP and native-FTDI implementations can be swapped without changing mechanics or scan code.
+
+Do not emulate legacy writes to ISA control addresses. In the related migration, UART reset, FIFO reset, and loopback setup became no-ops; only data bytes were forwarded. Map recovery to transport-local purge/reset operations when supported.
+
+## Recovered installation configuration
+
+Represent the supplied `Xray_Setup.ini` values in a validated site configuration, separate from protocol constants:
+
+```text
+theta.soft_limits_deg = (-90.0, 90.0)
+two_theta.soft_limits_deg = (-30.0, 90.0)
+theta.backlash_steps = 100          # 0.25 deg
+two_theta.backlash_steps = 50       # 0.25 deg
+```
+
+These are recovered deployment defaults, not universal device capabilities. Require an explicit configuration/profile and confirmation before enabling motion. Keep transport settings in the instrument connection configuration, mechanics settings in the controller/axis configuration, and data paths/user identity outside the driver.
 
 ## Required unit tests
 
@@ -95,12 +110,15 @@ Fake-transport tests:
 - locking prevents interleaving;
 - one recovery retry then failure;
 - post-move missed-step detection and backlash sequence.
+- supplied site-profile limits reject theta outside `-90..90` and 2-theta outside `-30..90` without I/O;
+- supplied backlash values produce exactly 100 theta or 50 2-theta corrective steps in the configured direction;
+- reset/recovery never serializes ISA addresses `0x310`, `0x312`, or `0x313` as opcodes.
 
 Follow the target `AGENTS.md`: read `notes/testing_guidelines.md` before tests and run via `conda run -n stoner_measurement`.
 
 ## Bench gates
 
-1. Record FTDI part, VID/PID, EEPROM, firmware/driver mode, wiring and electrical levels.
+1. Locate the declaration, DLL, and open/read/configuration companions for `WriteUSBDeviceBufferSIO`; record the FTDI part, VID/PID, EEPROM, firmware/driver mode, wiring and electrical levels.
 2. With motion/X-rays inhibited, capture `0xF0`; identify settings and prove repeatable 12-byte valid-BCD replies.
 3. Repeat 100+ reads and measure latency/partial-read behaviour.
 4. Map status bits by changing one safe state at a time.
@@ -109,6 +127,8 @@ Follow the target `AGENTS.md`: read `notes/testing_guidelines.md` before tests a
 7. Verify disable and limit-latch behaviour safely.
 8. Test small closed-loop moves, cancellation, backlash and missed-step detection.
 9. Integrate scans only after primitives pass.
+
+Before motion, confirm that the supplied `-90..90 deg` theta, `-30..90 deg` 2-theta, and `0.25 deg` backlash profile still matches the current instrument.
 
 Log timestamped raw TX/RX, settings and physical observations; turn confirmed captures into fixtures.
 
@@ -121,4 +141,3 @@ Log timestamped raw TX/RX, settings and physical observations; turn confirmed ca
 - stop-count is guaranteed;
 - driver registration/export follows repository conventions;
 - relevant tests, Ruff and type checks pass in the prescribed environment.
-

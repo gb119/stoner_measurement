@@ -9,6 +9,10 @@ from stoner_measurement.instruments.transport.base import BaseTransport
 from stoner_measurement.instruments.transport.ethernet_transport import (
     EthernetTransport,
 )
+from stoner_measurement.instruments.transport.ftdi_d2xx_transport import (
+    FtdiD2xxError,
+    FtdiD2xxTransport,
+)
 from stoner_measurement.instruments.transport.gpib_transport import (
     GpibTransport,
     PassThroughGpibTransport,
@@ -20,6 +24,8 @@ from stoner_measurement.instruments.transport.udp_transport import UdpTransport
 __all__ = [
     "BaseTransport",
     "EthernetTransport",
+    "FtdiD2xxError",
+    "FtdiD2xxTransport",
     "GpibTransport",
     "NullTransport",
     "PassThroughGpibTransport",

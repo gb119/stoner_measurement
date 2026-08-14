@@ -70,6 +70,7 @@ Hierarchy overview:
 * :class:`~stoner_measurement.instruments.magnet_controller.MagnetController`
 * :class:`~stoner_measurement.instruments.source_meter.SourceMeter`
 * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter`
+* :class:`~stoner_measurement.instruments.xray_diffractometer.XrayDiffractometer`
 
 Concrete classes currently included in the package:
 
@@ -86,6 +87,9 @@ Concrete classes currently included in the package:
 * Magnet controller drivers:
   :class:`~stoner_measurement.instruments.lakeshore.Lakeshore625`,
   :class:`~stoner_measurement.instruments.oxford.OxfordIPS120`
+* X-ray diffractometer drivers:
+  :class:`~stoner_measurement.instruments.xray.LegacyXrayDiffractometer`,
+  :class:`~stoner_measurement.instruments.xray.SimulatedXrayDiffractometer`
 
 .. automodule:: stoner_measurement.instruments
    :members:
@@ -103,6 +107,16 @@ Concrete classes currently included in the package:
    :show-inheritance:
 
 .. automodule:: stoner_measurement.instruments.oxford
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: stoner_measurement.instruments.xray_diffractometer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: stoner_measurement.instruments.xray
    :members:
    :undoc-members:
    :show-inheritance:

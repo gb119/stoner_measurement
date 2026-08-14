@@ -8,6 +8,7 @@ Stoner Measurement
    installation
    usage
    simulated_instruments
+   xray_diffractometer
    round_dial_widget
    plugin_tab_ordering
    console_api

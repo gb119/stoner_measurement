@@ -421,16 +421,19 @@ class TestEngineActivityStatusWidget:
         assert widget.temperature_indicator is not None
         assert widget.magnet_indicator is not None
         assert widget.motor_indicator is not None
+        assert widget.xray_indicator is not None
 
     def test_status_updates_change_indicator_state(self, qapp):
         widget = EngineActivityStatusWidget()
         widget.set_temperature_status("connected")
         widget.set_magnet_status("error")
         widget.set_motor_status("disconnected")
+        widget.set_xray_status("polling")
 
         assert widget.temperature_indicator.status_text == "connected"
         assert widget.magnet_indicator.status_text == "error"
         assert widget.motor_indicator.status_text == "disconnected"
+        assert widget.xray_indicator.status_text == "polling"
 
     def test_poll_blink_temporarily_uses_highlight_colour(self, qapp):
         from qtpy.QtWidgets import QFrame
@@ -528,6 +531,7 @@ class TestMeasurementApp:
                     app._act_show_magnet_panel,
                     app._act_show_motor_panel,
                     app._act_show_pressure_panel,
+                    app._act_show_xray_panel,
                 ],
             ]
             assert "width: 3px" in app._toolbar.styleSheet()
@@ -554,18 +558,21 @@ class TestMeasurementApp:
         from stoner_measurement.magnet_control.types import MagnetEngineStatus
         from stoner_measurement.motor_control.types import MotorEngineStatus
         from stoner_measurement.temperature_control.types import EngineStatus
+        from stoner_measurement.xray_control.types import XrayEngineStatus
 
         app = MeasurementApp()
         try:
             app._temp_panel._engine.publisher.engine_status_changed.emit(EngineStatus.CONNECTED)
             app._magnet_panel._engine.publisher.engine_status_changed.emit(MagnetEngineStatus.ERROR)
             app._motor_panel._engine.publisher.engine_status_changed.emit(MotorEngineStatus.POLLING)
+            app._xray_panel._engine.publisher.engine_status_changed.emit(XrayEngineStatus.CONNECTED)
             qapp.processEvents()
 
             widget = app._engine_activity_status
             assert widget.temperature_indicator.status_text == "connected"
             assert widget.magnet_indicator.status_text == "error"
             assert widget.motor_indicator.status_text == "polling"
+            assert widget.xray_indicator.status_text == "connected"
         finally:
             app._engine.shutdown()
 

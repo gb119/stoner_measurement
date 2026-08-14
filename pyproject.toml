@@ -76,6 +76,7 @@ magnet_controller_scan = "stoner_measurement.plugins.state_scan.magnet_controlle
 k2400_point_scan = "stoner_measurement.plugins.state_scan.keithley_2400:Keithley2400PointScanPlugin"
 temperature_controller_scan = "stoner_measurement.plugins.state_scan.temperature_controller:TemperatureControllerScanPlugin"
 motor_controller_scan = "stoner_measurement.plugins.state_scan.motor_controller:MotorControllerScanPlugin"
+xray_diffractometer_scan = "stoner_measurement.plugins.state_scan.xray_diffractometer:XrayDiffractometerScanPlugin"
 sweep_time = "stoner_measurement.plugins.state_sweep.sweep_time:SweepTimePlugin"
 magnet_controller_sweep = "stoner_measurement.plugins.state_sweep.magnet_controller:MagnetControllerSweepPlugin"
 temperature_controller_sweep = "stoner_measurement.plugins.state_sweep.temperature_controller:TemperatureControllerSweepPlugin"
@@ -109,6 +110,8 @@ pressure_gauge_channel = "stoner_measurement.plugins.command.pressure_gauge_chan
 set_temperature = "stoner_measurement.plugins.command.set_temperature:SetTemperatureCommand"
 set_field = "stoner_measurement.plugins.command.set_field:SetFieldCommand"
 set_position = "stoner_measurement.plugins.command.set_position:SetPositionCommand"
+set_diffractometer = "stoner_measurement.plugins.command.set_diffractometer:SetDiffractometerCommand"
+read_diffractometer = "stoner_measurement.plugins.command.read_diffractometer:ReadDiffractometerCommand"
 
 [project.entry-points."stoner_measurement.instruments"]
 mks_pr4000b_s = "stoner_measurement.instruments.mks:MKSPR4000BS"

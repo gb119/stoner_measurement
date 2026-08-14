@@ -2,7 +2,7 @@
 
 ## Structure
 
-The active `xray.vbp` uses `frm_ThetaControl.frm` for motion/counting, `frm_ScanControler.frm` for scan orchestration, and `mod_IO_Communication.bas` for hardware I/O. `IO_Communication.bas` is an older near-duplicate. `temp.frm` is an earlier prototype that preserves status-byte decoding omitted from production.
+The active `xray.vbp` uses `frm_ThetaControl.frm` for motion/counting, `frm_ScanControler.frm` for scan orchestration, `mod_IO_Communication.bas` for hardware I/O, and `mod_Setup.bas` for configuration. `IO_Communication.bas` is an older near-duplicate. `temp.frm` is an earlier prototype that preserves status-byte decoding omitted from production. The added `mod_SIO.bas` belongs to a different sputter-system application and is transport-migration evidence, not an active X-ray module.
 
 ## Motion is host-generated stepping
 
@@ -25,6 +25,8 @@ The likely unit is degrees/minute: a speed of 1 moves either axis at 1 degree/mi
 
 For negative moves, optional backlash correction sends `N` extra anticlockwise steps then `N` clockwise steps, ending with a positive approach. Make this configurable mechanics policy, separate from byte encoding.
 
+The supplied `Xray_Setup.ini` sets `N=100` for theta and `N=50` for 2-theta. At 400 and 200 steps/degree respectively, both represent `0.25 deg` of take-up. These are integer step counts, not angular values stored in the INI.
+
 Abort is cooperative: stop issuing steps. The active UI never uses the motor-disable opcodes, so sending disable on cancellation requires hardware validation.
 
 ## Counting
@@ -46,7 +48,24 @@ Theta and 2-theta scans are point-by-point compositions of move, count, and plot
 
 ## Zeroing and limits
 
-`0xB0`/`0xC0` mutate the 2-theta/theta reference; they are not ordinary homing. Travel limits are loaded from `Xray_SETUP.INI` and enforced in the UI, not the controller. Require explicit driver soft limits; the six-digit BCD range is not mechanically safe. `0xA0` resets the limit latch, whose precise status semantics remain unknown.
+`0xB0`/`0xC0` mutate the 2-theta/theta reference; they are not ordinary homing. Travel limits are loaded from `Xray_Setup.ini` and enforced in the UI, not the controller. The supplied installation profile is:
+
+| Setting | Value |
+|---|---:|
+| Theta minimum / maximum | `-90 / +90 deg` |
+| 2-theta minimum / maximum | `-30 / +90 deg` |
+| Theta backlash | `100 steps = 0.25 deg` |
+| 2-theta backlash | `50 steps = 0.25 deg` |
+
+Require explicit driver soft limits and preserve these as an initial site profile, subject to confirmation on the present mechanics; the six-digit BCD range is not mechanically safe. `0xA0` resets the limit latch, whose precise status semantics remain unknown.
+
+## Configuration and mutable state
+
+`mod_Setup.bas` requires both INI files at startup. It loads the plot executable path, base data directory, four motion limits, two backlash step counts, and displayed version. The supplied base data directory is `C:\Data\`; after login the application appends the username and creates that per-user directory if needed. The EasyPlot path is legacy integration and is not part of the instrument driver.
+
+`Xray_system.ini` is partly mutable application state rather than hardware configuration. It contains the displayed version, last offset-scan date, a run number, zero-valued counter display offsets, an inter-process `XrayCheck` return field, and a username-to-display-name table. In the active `xray.vbp`, the version, scan date, user lookup, and `XrayCheck` field have live call sites. The counter-offset fields belong to the older `Setup.bas`/`frmMain.frm` source pair rather than the active `mod_Setup.bas`/`frm_Main.frm` project, so they should not be assumed to affect the analysed executable.
+
+For the port, separate configuration into: transport settings; mechanics/safety limits; backlash policy; and application concerns such as user data paths. Do not copy the plaintext legacy user mapping or the `XrayCheck` file-based authentication exchange into the hardware driver.
 
 ## Defects not to reproduce
 
@@ -58,4 +77,3 @@ Theta and 2-theta scans are point-by-point compositions of move, count, and plot
 - Some loop counters are 16-bit and can overflow.
 - Debug mode advances positions from commands and can conceal missed steps.
 - There is no checksum, lock, retry, or resynchronisation policy.
-

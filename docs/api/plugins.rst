@@ -53,6 +53,10 @@ State scan plugins
    :no-heading:
    :include-all-objects:
 
+.. automodapi:: stoner_measurement.plugins.state_scan.xray_diffractometer
+   :no-heading:
+   :include-all-objects:
+
 State sweep plugins
 ~~~~~~~~~~~~~~~~~~~
 
@@ -152,6 +156,14 @@ Command plugins
    :include-all-objects:
 
 .. automodapi:: stoner_measurement.plugins.command.save
+   :no-heading:
+   :include-all-objects:
+
+.. automodapi:: stoner_measurement.plugins.command.set_diffractometer
+   :no-heading:
+   :include-all-objects:
+
+.. automodapi:: stoner_measurement.plugins.command.read_diffractometer
    :no-heading:
    :include-all-objects:
 

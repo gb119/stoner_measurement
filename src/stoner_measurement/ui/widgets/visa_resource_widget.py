@@ -14,6 +14,7 @@ from enum import Enum, IntEnum
 from qtpy.QtWidgets import (
     QComboBox,
     QHBoxLayout,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
     QWidget,
@@ -24,6 +25,7 @@ from stoner_measurement.qt_compat import pyqtSignal
 #: Stylesheet templates for each connection status.  ``{bg}`` is replaced
 #: with the actual background colour token.
 _STYLE_TEMPLATE = "QComboBox {{ background-color: {bg}; color: #202020; }}"
+_LINE_EDIT_STYLE_TEMPLATE = "QLineEdit {{ background-color: {bg}; color: #202020; }}"
 
 #: Mapping from status to background colour CSS token.
 _STATUS_COLOURS: dict[str, str] = {
@@ -59,6 +61,27 @@ class VisaResourceStatus(Enum):
     CONNECTING = "connecting"
     CONNECTED = "connected"
     ERROR = "error"
+
+
+class StatusLineEdit(QLineEdit):
+    """Editable device string with standard controller connection colouring."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._status = VisaResourceStatus.DISCONNECTED
+
+    def set_status(self, status: VisaResourceStatus) -> None:
+        """Apply the shared disconnected/connecting/connected/error style."""
+        self._status = status
+        background = _STATUS_COLOURS.get(status.value, "")
+        self.setStyleSheet(
+            _LINE_EDIT_STYLE_TEMPLATE.format(bg=background) if background else ""
+        )
+
+    @property
+    def status(self) -> VisaResourceStatus:
+        """Return the current connection presentation state."""
+        return self._status
 
 
 # ---------------------------------------------------------------------------

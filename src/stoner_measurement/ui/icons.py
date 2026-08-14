@@ -22,6 +22,7 @@ from qtpy.QtGui import (
     QImage,
     QPainter,
     QPainterPath,
+    QPen,
     QPixmap,
     QPolygonF,
 )
@@ -500,6 +501,34 @@ def make_log_icon(size: int = 32) -> QIcon:
 
     painter.end()
     return QIcon(QPixmap.fromImage(img))
+
+
+def make_xray_icon(size: int = 32) -> QIcon:
+    """Create a compact source/sample/detector diffraction icon."""
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    centre = QPointF(size * 0.5, size * 0.54)
+    radius = size * 0.36
+    painter.setPen(QPen(QColor(colour("muted_text")), max(1.0, size * 0.045)))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawEllipse(centre, radius, radius)
+    source = QPointF(size * 0.14, size * 0.54)
+    detector = QPointF(size * 0.78, size * 0.26)
+    painter.setPen(QPen(QColor(colour("trace_red")), max(1.0, size * 0.065)))
+    painter.drawLine(source, centre)
+    painter.drawLine(centre, detector)
+    painter.setPen(QPen(QColor(colour("button_text")), max(1.0, size * 0.09)))
+    painter.drawLine(
+        QPointF(centre.x() - size * 0.13, centre.y()),
+        QPointF(centre.x() + size * 0.13, centre.y()),
+    )
+    painter.setBrush(QColor(colour("highlight")))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawRect(QRectF(detector.x() - size * 0.08, detector.y() - size * 0.06, size * 0.16, size * 0.12))
+    painter.end()
+    return QIcon(QPixmap.fromImage(image))
 
 
 def make_motor_icon(size: int = 32) -> QIcon:

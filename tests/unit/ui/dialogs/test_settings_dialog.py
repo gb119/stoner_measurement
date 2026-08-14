@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from qtpy.QtWidgets import QDialog, QLineEdit, QMessageBox
 
+from stoner_measurement.app_config import FEATURE_DEFINITIONS
 from stoner_measurement.ui import settings_dialog as settings_module
 from stoner_measurement.ui.settings_dialog import SettingsDialog
 
@@ -26,6 +27,9 @@ def _cell_line_edit(dialog: SettingsDialog, row: int, column: int) -> QLineEdit:
 
 
 class TestSettingsDialogBasics:
+    def test_xray_feature_is_registered_once(self):
+        assert [item["key"] for item in FEATURE_DEFINITIONS].count("xray") == 1
+
     def test_creates_dialog_with_saved_settings(self, qapp, monkeypatch):
         app_config = {
             "app": {"default_data_directory": "C:/Data/Test", "rig": "Rig-A", "theme": "light"},
@@ -75,6 +79,7 @@ class TestSettingsDialogBasics:
                     "magnetic_field": True,
                     "motor_position": True,
                     "pressure": True,
+                    "xray": True,
                 },
             },
         )
@@ -105,6 +110,7 @@ class TestSettingsDialogBasics:
                     "magnetic_field": True,
                     "motor_position": True,
                     "pressure": False,
+                    "xray": True,
                 },
             }
         ]

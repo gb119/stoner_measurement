@@ -18,6 +18,9 @@ from stoner_measurement.plugins.state_scan.motor_controller import (
 from stoner_measurement.plugins.state_scan.temperature_controller import (
     TemperatureControllerScanPlugin,
 )
+from stoner_measurement.plugins.state_scan.xray_diffractometer import (
+    XrayDiffractometerScanPlugin,
+)
 
 __all__ = [
     "CounterPlugin",
@@ -26,4 +29,5 @@ __all__ = [
     "MotorControllerScanPlugin",
     "StateScanPlugin",
     "TemperatureControllerScanPlugin",
+    "XrayDiffractometerScanPlugin",
 ]

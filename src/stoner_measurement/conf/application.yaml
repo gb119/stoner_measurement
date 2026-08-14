@@ -9,3 +9,4 @@ features:
   magnetic_field: true
   motor_position: true
   pressure: true
+  xray: true

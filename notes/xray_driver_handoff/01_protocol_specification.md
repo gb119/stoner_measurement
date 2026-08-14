@@ -13,7 +13,7 @@ The original software accesses four consecutive PC I/O ports:
 
 This separation is critical. The source's named “UART reset” is `write(0x310, 0)`, whereas all instrument operations are `write(0x311, opcode)`. `InitialiseInterfaceCard()` resets the old UART and FIFO and disables loopback; it is not an instrument reset sequence.
 
-Confidence: **high** for the register roles in the legacy card; **medium-high** that bytes written to `0x311` are exactly the FTDI payload, because the intermediate card schematic/firmware is unavailable.
+Confidence: **high** for the register roles in the legacy card. The related-system `mod_SIO.bas` gives **high-confidence evidence for the migration pattern** “old data-register value becomes one USB byte”, but only **medium-high confidence for this X-ray installation's exact FTDI path**, because the X-ray adapter, helper implementation, and intermediate electronics are unavailable.
 
 ## 2. Command frame
 
@@ -73,6 +73,8 @@ The legacy sequence is:
 For FTDI, steps 1-3 should normally become `reset_input_buffer()` (and possibly output-buffer reset) before the query, not transmitted bytes. The 10 ms pre-read and inter-byte delays describe the old implementation rather than proven protocol requirements. Start conservatively, then remove unnecessary sleeps after capture-based testing.
 
 The old UART status check requires `(status & 0x1F) == 3`, but this status is from the ISA UART/card and is not part of the 12-byte response. It must not be expected from the FTDI stream.
+
+The related `mod_SIO.bas` independently sends decimal `240` through `WriteUSBDeviceBufferSIO(device_no, 240, 1)` in `ReadHardwareStatus()`. That corroborates a one-byte `0xF0` USB request. The module contains no corresponding USB read call, so it does not establish response framing, receive timing, or whether the X-ray and sputter-system remote boards return the same data.
 
 ## 4. Fixed 12-byte response
 
@@ -162,12 +164,26 @@ The Python implementation should reject:
 
 Because there is no checksum or sync byte, a lost or inserted byte can produce a valid-looking but shifted BCD frame. On any framing/BCD failure: flush the input buffer, wait for quiescence, retry one complete `0xF0` transaction at most, and then fail closed. Position plausibility and continuity checks are strongly recommended.
 
-## 6. Unknown serial settings
+## 6. Corroborating FTDI migration evidence
 
-The repository provides no baud rate, parity, stop-bit, flow-control, RTS/DTR, or voltage-level configuration. The `MSCOMM32.OCX` reference is unused. Do not present `9600 8N1` as recovered fact; it is merely the target framework's default. Determine settings from, in preferred order:
+The added `mod_SIO.bas` is explicitly for the “Ivor” sputter system, not the X-ray application, so its device opcodes must not be imported into the X-ray driver. Its transport changes are nevertheless directly relevant:
 
-1. FTDI EEPROM/configuration and any existing working application;
-2. documentation or schematics for the replacement converter and old interface card;
-3. oscilloscope/logic-analyser capture of a known command such as `0xF0`;
-4. cautious parameter sweep with motors disabled, accepting only settings that repeatedly yield valid 12-byte BCD frames.
+- `WriteDataToPort(address, DataByte)` no longer uses `address`; it calls `WriteUSBDeviceBufferSIO(gIVORUSBSIODeviceNo, Val(DataByte), 1)`.
+- Motor command construction still produces the original byte values and sends each as a one-byte USB buffer.
+- The old UART reset, FIFO reset, and loopback routines retain their names but have their ISA writes commented out, making them effective no-ops.
+- `ReadHardwareStatus()` sends `0xF0` in exactly the same one-byte form.
+- A global integer device number selects the USB device, suggesting a native/helper API rather than proving a COM-port/VCP interface.
 
+This is strong evidence that the intended adapter is a transparent command-byte replacement at the application boundary. It does **not** identify `WriteUSBDeviceBufferSIO`'s ABI, FTDI mode, serial settings, electrical interface, buffering, latency, or read semantics; its declaration and implementation are absent.
+
+There is also a migration artefact in `Reset_Latches()`: it calls `WriteDataToPort(..., 176)` and then calls `WriteUSBDeviceBufferSIO(..., 176, 1)` directly, even though `WriteDataToPort` already forwards to USB. This appears to transmit the byte twice. Do not reproduce that duplication, and do not transfer the sputter-system value `0xB0` into the X-ray opcode table, where `0xB0` means zero 2-theta.
+
+## 7. Unknown serial settings
+
+The repository provides no USB helper implementation, baud rate, parity, stop-bit, flow-control, RTS/DTR, latency-timer, or voltage-level configuration. The `MSCOMM32.OCX` reference is unused by the X-ray application. The owner identifies the related adapter as FTDI-based, but `mod_SIO.bas` alone does not distinguish VCP, D2XX, bit-bang, or a custom wrapper/firmware path. Do not present `9600 8N1` as recovered fact; it is merely the target framework's default. Determine settings from, in preferred order:
+
+1. the missing declaration/implementation of `WriteUSBDeviceBufferSIO` and its open/read/configuration companions;
+2. FTDI EEPROM/configuration and any existing working application;
+3. documentation or schematics for the replacement converter and old interface card;
+4. oscilloscope/logic-analyser capture of a known command such as `0xF0`;
+5. cautious parameter sweep with motors disabled, accepting only settings that repeatedly yield valid 12-byte BCD frames.
