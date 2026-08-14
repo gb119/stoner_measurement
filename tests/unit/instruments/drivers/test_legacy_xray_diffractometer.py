@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from abc import ABC
 from collections import Counter
 
@@ -138,6 +139,80 @@ def test_simulator_enforces_coupling_and_generates_diffraction_peaks():
     assert snapshot.two_theta_deg == pytest.approx(37.2)
     assert peak.snapshot.counts > background.snapshot.counts * 100
     assert len(peak.snapshot.raw_frame) == 12
+
+
+def test_simulator_xrr_has_critical_plateau_and_fresnel_decay():
+    simulator = SimulatedXrayDiffractometer(peaks=(), background_rate_hz=0.0)
+
+    plateau = simulator.detector_rate_hz(0.7)
+    above_critical = simulator.detector_rate_hz(1.0)
+    high_angle = simulator.detector_rate_hz(4.0)
+
+    assert plateau == pytest.approx(simulator.xrr_rate_hz)
+    assert plateau > above_critical > high_angle
+
+
+def test_simulator_xrr_applies_laboratory_beam_footprint():
+    simulator = SimulatedXrayDiffractometer(peaks=(), background_rate_hz=0.0)
+    footprint_angle = math.degrees(math.asin(0.05 / 10.0))
+
+    assert footprint_angle == pytest.approx(0.28648, rel=1e-4)
+    assert simulator.xrr_footprint_factor(0.0) == 0.0
+    assert simulator.xrr_footprint_factor(footprint_angle) == pytest.approx(0.5)
+    assert simulator.xrr_footprint_factor(2.0 * footprint_angle) == 1.0
+
+
+def test_simulator_xrr_smooths_critical_edge_with_angular_resolution():
+    simulator = SimulatedXrayDiffractometer(
+        xrr_critical_angle_deg=0.4,
+        xrr_resolution_deg=0.01,
+    )
+
+    assert simulator.xrr_critical_edge_weight(0.76) > 0.97
+    assert simulator.xrr_critical_edge_weight(0.8) == pytest.approx(0.5)
+    assert simulator.xrr_critical_edge_weight(0.84) < 0.03
+
+
+def test_simulator_xrr_thickness_controls_kiessig_fringe_spacing():
+    simulator = SimulatedXrayDiffractometer(
+        peaks=(),
+        background_rate_hz=0.0,
+        xrr_critical_angle_deg=0.1,
+        xrr_film_thickness_nm=50.0,
+        xrr_fringe_amplitude=0.5,
+        xrr_roughness_nm=0.0,
+    )
+    wavelength_nm = simulator.xrr_wavelength_nm
+    first_q = 1.0
+    second_q = first_q + 2.0 * math.pi / 50.0
+    critical_q = (
+        4.0
+        * math.pi
+        * math.sin(math.radians(simulator.xrr_critical_angle_deg))
+        / wavelength_nm
+    )
+    first_theta = math.degrees(math.asin(first_q * wavelength_nm / (4.0 * math.pi)))
+    second_theta = math.degrees(
+        math.asin(second_q * wavelength_nm / (4.0 * math.pi))
+    )
+
+    first_modulation = simulator.xrr_reflectivity(2.0 * first_theta) / (
+        critical_q / first_q
+    ) ** 4
+    second_modulation = simulator.xrr_reflectivity(2.0 * second_theta) / (
+        critical_q / second_q
+    ) ** 4
+
+    assert first_modulation == pytest.approx(second_modulation)
+
+
+def test_simulator_xrr_count_uses_current_coupled_angle():
+    simulator = SimulatedXrayDiffractometer(peaks=(), poisson_noise=False)
+    simulator.move_coupled(0.2, 1.0)
+
+    result = simulator.count(0.5)
+
+    assert result.snapshot.counts == round(simulator.detector_rate_hz(0.4) * 0.5)
 
 
 def test_simulator_motion_duration_tracks_speed_and_coupled_detector_rate():

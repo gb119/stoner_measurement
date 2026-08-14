@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from qtpy.QtCore import QPointF
 from qtpy.QtGui import QFont
+from qtpy.QtWidgets import QInputDialog, QMessageBox
 
 from stoner_measurement.ui.widgets import VisaResourceStatus
 from stoner_measurement.ui.xray_panel import XrayControlPanel
@@ -55,13 +57,103 @@ def test_connection_tab_exposes_instruments_and_colours_device_status(panel):
     assert [
         panel._instrument_combo.itemText(index)  # noqa: SLF001
         for index in range(panel._instrument_combo.count())  # noqa: SLF001
-    ] == ["Wharfdale", "Simulated"]
+    ] == ["Wharfedale", "Simulated"]
 
     panel._instrument_combo.setCurrentText("Simulated")  # noqa: SLF001
     assert panel._address_edit.text() == "Built-in simulator"  # noqa: SLF001
     assert panel._address_edit.isReadOnly()  # noqa: SLF001
     panel._on_connect()  # noqa: SLF001
     assert panel._address_edit.status is VisaResourceStatus.CONNECTED  # noqa: SLF001
+
+
+def test_panel_exposes_locked_instrument_settings_tab(panel):
+    assert [panel._tabs.tabText(index) for index in range(panel._tabs.count())] == [  # noqa: SLF001
+        "Connection",
+        "Control",
+        "Instrument settings",
+    ]
+    assert not panel._settings_controls.isEnabled()  # noqa: SLF001
+    assert panel._settings_code_reset.isHidden()  # noqa: SLF001
+    assert panel._theta_min_spin.value() == pytest.approx(  # noqa: SLF001
+        panel._engine.mechanics.theta.minimum_deg  # noqa: SLF001
+    )
+    assert panel._two_theta_max_spin.value() == pytest.approx(  # noqa: SLF001
+        panel._engine.mechanics.two_theta.maximum_deg  # noqa: SLF001
+    )
+
+
+def test_instrument_settings_require_configured_code(panel, monkeypatch):
+    warnings = []
+    panel._engine.set_settings_unlock_code("operator-code")  # noqa: SLF001
+    monkeypatch.setattr(
+        QInputDialog,
+        "getText",
+        staticmethod(lambda *_args, **_kwargs: ("wrong", True)),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        staticmethod(lambda *_args, **_kwargs: warnings.append(_args[2])),
+    )
+
+    panel._toggle_settings_lock()  # noqa: SLF001
+
+    assert not panel._settings_unlocked  # noqa: SLF001
+    assert warnings == ["The settings code is incorrect."]
+
+    monkeypatch.setattr(
+        QInputDialog,
+        "getText",
+        staticmethod(lambda *_args, **_kwargs: ("operator-code", True)),
+    )
+    panel._toggle_settings_lock()  # noqa: SLF001
+
+    assert panel._settings_unlocked  # noqa: SLF001
+    assert panel._settings_controls.isEnabled()  # noqa: SLF001
+    assert not panel._settings_code_reset.isHidden()  # noqa: SLF001
+    assert panel._settings_lock_button.text() == "Lock settings"  # noqa: SLF001
+
+    panel._toggle_settings_lock()  # noqa: SLF001
+    assert not panel._settings_controls.isEnabled()  # noqa: SLF001
+    assert panel._settings_code_reset.isHidden()  # noqa: SLF001
+
+
+def test_unlocked_settings_save_mechanics_code_and_confirm_full_path(panel, monkeypatch):
+    saved_path = Path("C:/Users/operator/AppData/Local/xray_controller.yaml")
+    confirmations = []
+    monkeypatch.setattr(panel._engine, "save_configuration", lambda: saved_path)  # noqa: SLF001
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        staticmethod(lambda *_args, **_kwargs: confirmations.append(_args[2])),
+    )
+    panel._set_settings_locked(False)  # noqa: SLF001
+    panel._theta_steps_spin.setValue(500)  # noqa: SLF001
+    panel._theta_min_spin.setValue(-45.0)  # noqa: SLF001
+    panel._theta_max_spin.setValue(60.0)  # noqa: SLF001
+    panel._theta_backlash_spin.setValue(25)  # noqa: SLF001
+    panel._two_theta_steps_spin.setValue(250)  # noqa: SLF001
+    panel._two_theta_min_spin.setValue(-10.0)  # noqa: SLF001
+    panel._two_theta_max_spin.setValue(120.0)  # noqa: SLF001
+    panel._two_theta_backlash_spin.setValue(30)  # noqa: SLF001
+    panel._settings_timeout_spin.setValue(3.5)  # noqa: SLF001
+    panel._new_settings_code.setText("replacement")  # noqa: SLF001
+    panel._confirm_settings_code.setText("replacement")  # noqa: SLF001
+
+    panel._on_settings_save()  # noqa: SLF001
+
+    mechanics = panel._engine.mechanics  # noqa: SLF001
+    assert mechanics.theta.steps_per_degree == 500
+    assert mechanics.theta.minimum_deg == pytest.approx(-45.0)
+    assert mechanics.theta.maximum_deg == pytest.approx(60.0)
+    assert mechanics.theta.backlash_steps == 25
+    assert mechanics.two_theta.steps_per_degree == 250
+    assert mechanics.two_theta.minimum_deg == pytest.approx(-10.0)
+    assert mechanics.two_theta.maximum_deg == pytest.approx(120.0)
+    assert mechanics.two_theta.backlash_steps == 30
+    assert panel._engine.connection_timeout_s == pytest.approx(3.5)  # noqa: SLF001
+    assert panel._engine.verify_settings_unlock_code("replacement")  # noqa: SLF001
+    assert confirmations == [f"Configuration saved to:\n{saved_path}"]
 
 
 def test_connection_tab_exposes_live_polling_rate(panel):

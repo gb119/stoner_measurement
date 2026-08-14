@@ -2,20 +2,23 @@
 # deliberately disabled until they and the physical direction mapping have
 # been confirmed on the current diffractometer.
 connection:
-  instrument: Wharfdale
+  instrument: Wharfedale
   address: index:0
   timeout_s: 2.0
 polling_rate_hz: 1.0
+settings_unlock_code: Wharfedale
 motion:
   enabled: false
   mode: theta-2theta
   speed_deg_per_min: 1.0
   two_theta_offset_deg: 0.0
   theta:
+    steps_per_degree: 400
     minimum_deg: -90.0
     maximum_deg: 90.0
     backlash_steps: 100
   two_theta:
+    steps_per_degree: 200
     minimum_deg: -30.0
     maximum_deg: 90.0
     backlash_steps: 50

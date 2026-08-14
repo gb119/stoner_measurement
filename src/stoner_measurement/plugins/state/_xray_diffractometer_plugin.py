@@ -86,13 +86,24 @@ class XrayDiffractometerPluginMixin:
             return (mechanics.theta.minimum_deg, mechanics.theta.maximum_deg)
         offset = engine.get_engine_state().two_theta_offset_deg
         return (
-            max(mechanics.theta.minimum_deg, (mechanics.two_theta.minimum_deg - offset) / 2.0),
-            min(mechanics.theta.maximum_deg, (mechanics.two_theta.maximum_deg - offset) / 2.0),
+            max(
+                mechanics.two_theta.minimum_deg,
+                2.0 * mechanics.theta.minimum_deg + offset,
+            ),
+            min(
+                mechanics.two_theta.maximum_deg,
+                2.0 * mechanics.theta.maximum_deg + offset,
+            ),
         )
 
     def set_state(self, value: float) -> None:
         """Move the selected axes using the speed configured in the engine."""
-        self._ensure_connected().move_to(float(value), self.axes)
+        engine = self._ensure_connected()
+        target = float(value)
+        if self.axes is XrayMotionMode.COUPLED:
+            offset = engine.get_engine_state().two_theta_offset_deg
+            target = (target - offset) / 2.0
+        engine.move_to(target, self.axes)
 
     def get_state(self) -> float:
         """Return the measured coordinate corresponding to the selected axes."""
@@ -102,7 +113,7 @@ class XrayDiffractometerPluginMixin:
             state = engine.read_controller_state() or state
         if state.snapshot is None:
             raise RuntimeError("The X-ray diffractometer has no position reading.")
-        if self.axes is XrayMotionMode.TWO_THETA:
+        if self.axes in {XrayMotionMode.COUPLED, XrayMotionMode.TWO_THETA}:
             return float(state.snapshot.two_theta_deg)
         return float(state.snapshot.theta_deg)
 

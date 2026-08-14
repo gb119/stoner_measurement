@@ -3,7 +3,7 @@ X-ray Diffractometer Control
 
 The X-ray control panel operates a legacy two-axis diffractometer and scalar
 detector counter. Open it from **Engines > X-ray**. The panel supports a native
-FTDI USB instrument labelled **Wharfdale**, and a built-in simulator.
+FTDI USB instrument labelled **Wharfedale**, and a built-in simulator.
 
 Safety and first connection
 ---------------------------
@@ -20,8 +20,8 @@ backlash values, both single-step directions, and the available mechanical
 clearance on the current instrument. First communication tests should use
 **Read snapshot** with the motors and X-ray source safely inhibited.
 
-Wharfdale connection
---------------------
+Wharfedale connection
+---------------------
 
 Identify the FTDI USB device by zero-based index (for example ``index:0``) or
 FTDI serial number (for example ``serial:FT123456``). The device field changes
@@ -32,6 +32,22 @@ by the motor controller. Set it to **Disabled** to retain the connection
 without automatic reads. The application status bar shows the X-ray engine
 state and pulses for each successful poll; right-click its **X-ray** indicator
 to connect or disconnect using the saved instrument settings.
+
+Instrument settings lock
+------------------------
+
+The **Instrument settings** tab shows the theta and 2-theta travel limits,
+steps per degree, backlash, datum offset, motion speed, connection timeout,
+polling rate, and default count time. These controls are read-only until an
+experienced operator selects **Unlock settings** and enters the code stored as
+``settings_unlock_code`` in the local ``xray_controller.yaml`` file. The
+bundled initial code is ``Wharfedale``.
+
+When unlocked, the tab also shows a form for replacing the unlock code. The
+new code and confirmation must match. **Apply and save instrument settings**
+writes the complete configuration to the machine-local YAML file and confirms
+the full path in a dialog. Selecting **Lock settings** discards unsaved edits,
+disables the controls, and hides the code-reset form.
 
 Motion sets
 -----------

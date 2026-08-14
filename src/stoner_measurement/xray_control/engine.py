@@ -7,6 +7,7 @@ import math
 import threading
 from dataclasses import replace
 from datetime import UTC, datetime
+from hmac import compare_digest
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import QObject, QTimer
@@ -55,9 +56,10 @@ class XrayControllerEngine(QObject):
         self._cancel_event = threading.Event()
         self._operation_thread: threading.Thread | None = None
         self._polling_rate_hz = 1.0
-        self._preferred_instrument_name = "Wharfdale"
+        self._preferred_instrument_name = "Wharfedale"
         self._preferred_address = "index:0"
         self._timeout_s = 2.0
+        self._settings_unlock_code = "Wharfedale"
         self._motion_mode = XrayMotionMode.COUPLED
         self._speed_deg_per_min = 1.0
         self._two_theta_offset_deg = 0.0
@@ -105,6 +107,22 @@ class XrayControllerEngine(QObject):
     @property
     def mechanics(self) -> DiffractometerMechanics:
         return self._mechanics
+
+    @property
+    def connection_timeout_s(self) -> float:
+        """Configured FTDI communication timeout in seconds."""
+        return self._timeout_s
+
+    def verify_settings_unlock_code(self, candidate: str) -> bool:
+        """Check an operator-entered code against the local configuration."""
+        return compare_digest(str(candidate), self._settings_unlock_code)
+
+    def set_settings_unlock_code(self, code: str) -> None:
+        """Replace the local operator settings code after validation."""
+        code = str(code)
+        if not code:
+            raise ValueError("The settings unlock code cannot be empty.")
+        self._settings_unlock_code = code
 
     @property
     def polling_rate_hz(self) -> float:
@@ -160,7 +178,7 @@ class XrayControllerEngine(QObject):
             self._preferred_address = ""
             self.publisher.connection_changed.emit()
             return
-        if kind == "wharfdale":
+        if kind == "wharfedale":
             selector = _parse_d2xx_selector(address)
             transport = FtdiD2xxTransport(selector, timeout=self._timeout_s)
         else:
@@ -396,6 +414,52 @@ class XrayControllerEngine(QObject):
             motion_enabled=bool(enabled),
         )
 
+    def configure_instrument_settings(
+        self,
+        *,
+        theta_steps_per_degree: int,
+        theta_minimum_deg: float,
+        theta_maximum_deg: float,
+        theta_backlash_steps: int,
+        two_theta_steps_per_degree: int,
+        two_theta_minimum_deg: float,
+        two_theta_maximum_deg: float,
+        two_theta_backlash_steps: int,
+        timeout_s: float,
+    ) -> None:
+        """Apply validated hardware mechanics and connection timing settings."""
+        if theta_steps_per_degree <= 0 or two_theta_steps_per_degree <= 0:
+            raise ValueError("Axis steps per degree must be positive.")
+        if theta_minimum_deg >= theta_maximum_deg:
+            raise ValueError("Theta minimum must be less than its maximum.")
+        if two_theta_minimum_deg >= two_theta_maximum_deg:
+            raise ValueError("2-theta minimum must be less than its maximum.")
+        if theta_backlash_steps < 0 or two_theta_backlash_steps < 0:
+            raise ValueError("Axis backlash cannot be negative.")
+        if not math.isfinite(timeout_s) or timeout_s <= 0.0:
+            raise ValueError("Connection timeout must be positive and finite.")
+        self._mechanics = DiffractometerMechanics(
+            theta=AxisMechanics(
+                int(theta_steps_per_degree),
+                float(theta_minimum_deg),
+                float(theta_maximum_deg),
+                int(theta_backlash_steps),
+            ),
+            two_theta=AxisMechanics(
+                int(two_theta_steps_per_degree),
+                float(two_theta_minimum_deg),
+                float(two_theta_maximum_deg),
+                int(two_theta_backlash_steps),
+            ),
+            motion_enabled=self._mechanics.motion_enabled,
+        )
+        self._timeout_s = float(timeout_s)
+        if self._driver is not None:
+            self._driver.mechanics = self._mechanics
+        self._latest_state = replace(
+            self._latest_state, motion_enabled=self._mechanics.motion_enabled
+        )
+
     def configuration_dict(self) -> dict:
         return {
             "connection": {
@@ -404,6 +468,7 @@ class XrayControllerEngine(QObject):
                 "timeout_s": self._timeout_s,
             },
             "polling_rate_hz": self._polling_rate_hz,
+            "settings_unlock_code": self._settings_unlock_code,
             "motion": {
                 "enabled": self._mechanics.motion_enabled,
                 "mode": self._motion_mode.value,
@@ -498,23 +563,26 @@ class XrayControllerEngine(QObject):
 
     def _apply_configuration(self, config: dict) -> None:
         connection = config.get("connection", {})
-        selected = connection.get("instrument", connection.get("transport", "Wharfdale"))
+        selected = connection.get("instrument", connection.get("transport", "Wharfedale"))
         self._preferred_instrument_name = _normalise_instrument_name(str(selected))
         self._preferred_address = str(connection.get("address", "index:0"))
         self._timeout_s = float(connection.get("timeout_s", 2.0))
+        self._settings_unlock_code = str(
+            config.get("settings_unlock_code", "Wharfedale")
+        )
         self._polling_rate_hz = max(0.0, float(config.get("polling_rate_hz", 1.0)))
         motion = config.get("motion", {})
         theta = motion.get("theta", {})
         two_theta = motion.get("two_theta", {})
         self._mechanics = DiffractometerMechanics(
             theta=AxisMechanics(
-                400,
+                int(theta.get("steps_per_degree", 400)),
                 float(theta.get("minimum_deg", -90.0)),
                 float(theta.get("maximum_deg", 90.0)),
                 int(theta.get("backlash_steps", 100)),
             ),
             two_theta=AxisMechanics(
-                200,
+                int(two_theta.get("steps_per_degree", 200)),
                 float(two_theta.get("minimum_deg", -30.0)),
                 float(two_theta.get("maximum_deg", 90.0)),
                 int(two_theta.get("backlash_steps", 50)),
@@ -556,13 +624,14 @@ def _normalise_instrument_name(name: str) -> str:
     kind = name.strip().casefold()
     if kind in {"simulated", "simulation"}:
         return "Simulated"
-    if kind in {"wharfdale", "ftdi d2xx", "d2xx"}:
-        return "Wharfdale"
+    if kind in {"wharfedale", "wharfdale", "ftdi d2xx", "d2xx"}:
+        return "Wharfedale"
     return name.strip()
 
 
 def _axis_config(axis: AxisMechanics) -> dict:
     return {
+        "steps_per_degree": axis.steps_per_degree,
         "minimum_deg": axis.minimum_deg,
         "maximum_deg": axis.maximum_deg,
         "backlash_steps": axis.backlash_steps,

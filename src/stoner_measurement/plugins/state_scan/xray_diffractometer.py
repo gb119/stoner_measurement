@@ -29,8 +29,10 @@ class XrayDiffractometerScanPlugin(XrayDiffractometerPluginMixin, StateScanPlugi
     detector counts. The expression-capable count time is evaluated separately
     at each angle; the engine's prior count time is restored after the scan.
 
-    The instance exposes ``value``, ``index``, ``theta``, ``two_theta``, and
-    ``counts`` in the sequence namespace. For example::
+    In **Theta-2theta** mode, scan-generator values and ``value`` are detector
+    ``2-theta`` angles; the corresponding theta target is calculated
+    internally. The instance exposes ``value``, ``index``, ``theta``,
+    ``two_theta``, and ``counts`` in the sequence namespace. For example::
 
         xray_scan.axes = XrayMotionMode.COUPLED
         print(xray_scan.theta, xray_scan.two_theta, xray_scan.counts)

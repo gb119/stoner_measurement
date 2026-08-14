@@ -90,7 +90,7 @@ def test_scan_reconnects_and_maps_all_three_axis_choices(fake_engine, qapp):
     assert fake_engine.connect_calls == 1
     assert fake_engine.move_calls == [
         (5.0, XrayMotionMode.THETA),
-        (5.0, XrayMotionMode.COUPLED),
+        (2.0, XrayMotionMode.COUPLED),
         (5.0, XrayMotionMode.TWO_THETA),
     ]
 
@@ -100,13 +100,26 @@ def test_scan_uses_selected_coordinate_limits_and_readback(fake_engine, qapp):
     fake_engine.connected_driver = object()
 
     plugin.axes = XrayMotionMode.COUPLED
-    assert plugin.limits == pytest.approx((-15.5, 44.5))
-    assert plugin.get_state() == pytest.approx(3.0)
+    assert plugin.limits == pytest.approx((-30.0, 90.0))
+    assert plugin.get_state() == pytest.approx(7.0)
     plugin.axes = XrayMotionMode.TWO_THETA
     assert plugin.limits == pytest.approx((-30.0, 90.0))
     assert plugin.get_state() == pytest.approx(7.0)
     assert plugin.is_at_target() is True
     assert fake_engine.read_calls == 1
+
+
+def test_coupled_scan_values_are_two_theta_coordinates(fake_engine, qapp):
+    plugin = XrayDiffractometerScanPlugin()
+    fake_engine.connected_driver = object()
+    plugin.axes = XrayMotionMode.COUPLED
+
+    plugin.set_state(21.0)
+
+    assert fake_engine.move_calls == [(10.0, XrayMotionMode.COUPLED)]
+    assert fake_engine.state.snapshot.theta_deg == pytest.approx(10.0)
+    assert fake_engine.state.snapshot.two_theta_deg == pytest.approx(21.0)
+    assert plugin.get_state() == pytest.approx(21.0)
 
 
 def test_scan_axis_setting_widget_and_json_round_trip(fake_engine, qapp):
@@ -151,7 +164,7 @@ def test_scan_moves_then_evaluates_and_counts_measurement_points(fake_engine, qa
     plugin.disconnect()
 
     assert fake_engine.count_calls == pytest.approx([1.0])
-    assert fake_engine.events.index(("move", 5.0)) < fake_engine.events.index(("count", 1.0))
+    assert fake_engine.events.index(("move", 2.0)) < fake_engine.events.index(("count", 1.0))
     assert fake_engine.count_duration_s == pytest.approx(2.0)
     assert fake_engine.events[-1] == ("duration", 2.0)
 
@@ -167,7 +180,7 @@ def test_scan_does_not_count_positioning_only_points(fake_engine, qapp, engine):
     plugin.ramp_to(4.0, poll_interval=0.0)
     plugin.disconnect()
 
-    assert fake_engine.move_calls == [(4.0, XrayMotionMode.COUPLED)]
+    assert fake_engine.move_calls == [(1.5, XrayMotionMode.COUPLED)]
     assert fake_engine.count_calls == []
     assert fake_engine.count_duration_s == pytest.approx(2.0)
 
@@ -186,9 +199,9 @@ def test_scan_lifecycle_counts_only_measure_flags_and_restores_duration(fake_eng
     plugin.execute_sequence([])
 
     assert fake_engine.move_calls == [
+        (-0.5, XrayMotionMode.COUPLED),
         (0.0, XrayMotionMode.COUPLED),
-        (1.0, XrayMotionMode.COUPLED),
-        (2.0, XrayMotionMode.COUPLED),
+        (0.5, XrayMotionMode.COUPLED),
     ]
     assert fake_engine.count_calls == pytest.approx([0.75])
     assert fake_engine.count_duration_s == pytest.approx(2.0)

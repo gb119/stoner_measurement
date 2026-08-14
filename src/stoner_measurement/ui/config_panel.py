@@ -84,6 +84,20 @@ class ConfigPanel(QWidget):
             if self._shown_plugin not in self._plugin_manager.plugins.values():
                 self.show_plugin(None)
 
+    def _detach_all_tabs(self) -> None:
+        """Remove and detach every page without deleting cached plugin widgets.
+
+        ``QTabWidget.removeTab`` removes a page from the tab bar and stacked
+        layout, but leaves it parented to the internal ``QStackedWidget``.
+        Keeping old pages in that stack can leave stale native paint artefacts
+        when configuration pages are replaced and later reused.
+        """
+        while self._tabs.count() > 0:
+            widget = self._tabs.widget(0)
+            self._tabs.removeTab(0)
+            widget.hide()
+            widget.setParent(None)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -124,9 +138,8 @@ class ConfigPanel(QWidget):
             >>> panel.tabs.count()
             0
         """
-        # Remove all tabs without deleting widgets (they may be cached on the plugin).
-        while self._tabs.count() > 0:
-            self._tabs.removeTab(0)
+        # Detach without deleting widgets (they may be cached on the plugin).
+        self._detach_all_tabs()
 
         if plugin is None:
             self._shown_plugin = None
@@ -152,8 +165,7 @@ class ConfigPanel(QWidget):
             >>> panel.tabs.count()
             1
         """
-        while self._tabs.count() > 0:
-            self._tabs.removeTab(0)
+        self._detach_all_tabs()
         self._shown_plugin = None
         placeholder = QLabel("Select a sequence step to configure.")
         placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)

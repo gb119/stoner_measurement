@@ -81,5 +81,39 @@ def test_count_duration_is_shared_and_published(qapp):
     engine.shutdown()
 
 
+def test_instrument_safety_settings_and_unlock_code_are_serialized(qapp):
+    engine = XrayControllerEngine()
+    engine.configure_instrument_settings(
+        theta_steps_per_degree=500,
+        theta_minimum_deg=-45.0,
+        theta_maximum_deg=60.0,
+        theta_backlash_steps=25,
+        two_theta_steps_per_degree=250,
+        two_theta_minimum_deg=-10.0,
+        two_theta_maximum_deg=120.0,
+        two_theta_backlash_steps=30,
+        timeout_s=3.5,
+    )
+    engine.set_settings_unlock_code("local-operator-code")
+
+    config = engine.configuration_dict()
+
+    assert config["connection"]["timeout_s"] == pytest.approx(3.5)
+    assert config["settings_unlock_code"] == "local-operator-code"
+    assert config["motion"]["theta"] == {
+        "steps_per_degree": 500,
+        "minimum_deg": -45.0,
+        "maximum_deg": 60.0,
+        "backlash_steps": 25,
+    }
+    assert config["motion"]["two_theta"] == {
+        "steps_per_degree": 250,
+        "minimum_deg": -10.0,
+        "maximum_deg": 120.0,
+        "backlash_steps": 30,
+    }
+    engine.shutdown()
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

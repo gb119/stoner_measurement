@@ -35,6 +35,18 @@ class TestConfigPanel:
         panel.show_plugin(None)
         assert panel.tabs.count() == 0
 
+    def test_show_plugin_none_detaches_cached_pages(self, plugin_manager):
+        """Removed pages must not remain in the tab widget's internal stack."""
+        panel = ConfigPanel(plugin_manager=plugin_manager)
+        plugin = DummyPlugin()
+        panel.show_plugin(plugin)
+        pages = [panel.tabs.widget(index) for index in range(panel.tabs.count())]
+
+        panel.show_plugin(None)
+
+        assert all(page.parent() is None for page in pages)
+        assert all(page.isHidden() for page in pages)
+
     def test_show_plugin_replaces_previous_plugin_tabs(self, qapp):
         pm = PluginManager()
         panel = ConfigPanel(plugin_manager=pm)
@@ -57,6 +69,7 @@ class TestConfigPanel:
         panel.show_plugin(None)
         panel.show_plugin(plugin)
         assert panel.tabs.widget(0) is first_widget
+        assert first_widget.parent() is not None
 
     def test_sync_clears_tabs_on_plugin_removal(self, qapp):
         pm = PluginManager()

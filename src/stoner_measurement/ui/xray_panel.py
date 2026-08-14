@@ -15,9 +15,13 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -264,6 +268,7 @@ class XrayControlPanel(QWidget):
         super().__init__(parent)
         self._engine = XrayControllerEngine.instance()
         self._wharfdale_address = "index:0"
+        self._settings_unlocked = False
         self._allow_exit_close = False
         self.setWindowTitle("X-ray Diffractometer Control")
         self.resize(920, 680)
@@ -290,6 +295,7 @@ class XrayControlPanel(QWidget):
         self._tabs = QTabWidget(self)
         self._tabs.addTab(self._build_connection_tab(), "Connection")
         self._tabs.addTab(self._build_control_tab(), "Control")
+        self._tabs.addTab(self._build_instrument_settings_tab(), "Instrument settings")
         layout.addWidget(self._tabs)
 
         status_row = QHBoxLayout()
@@ -313,7 +319,7 @@ class XrayControlPanel(QWidget):
         layout = QVBoxLayout(page)
         form = QFormLayout()
         self._instrument_combo = QComboBox(page)
-        self._instrument_combo.addItems(["Wharfdale", "Simulated"])
+        self._instrument_combo.addItems(["Wharfedale", "Simulated"])
         # Compatibility for scripts written against the first panel prototype.
         self._transport_combo = self._instrument_combo
         self._address_edit = StatusLineEdit(page)
@@ -432,6 +438,97 @@ class XrayControlPanel(QWidget):
         outer.addLayout(right, 3)
         return page
 
+    def _build_instrument_settings_tab(self) -> QWidget:
+        """Build the operator-locked hardware mechanics page."""
+        page = QWidget(self)
+        layout = QVBoxLayout(page)
+        warning = QLabel(
+            "These values protect the instrument from unsafe motion. Only an "
+            "experienced operator should unlock and change them.",
+            page,
+        )
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+
+        self._settings_lock_button = QPushButton("Unlock settings", page)
+        layout.addWidget(self._settings_lock_button)
+
+        self._settings_controls = QWidget(page)
+        controls_layout = QVBoxLayout(self._settings_controls)
+        theta_group = QGroupBox("Theta axis", self._settings_controls)
+        theta_form = QFormLayout(theta_group)
+        self._theta_steps_spin = _integer_spin(theta_group, 1, 1_000_000)
+        self._theta_min_spin = _angle_spin(theta_group, -360.0, 360.0)
+        self._theta_max_spin = _angle_spin(theta_group, -360.0, 360.0)
+        self._theta_backlash_spin = _integer_spin(theta_group, 0, 1_000_000)
+        theta_form.addRow("Steps per degree", self._theta_steps_spin)
+        theta_form.addRow("Minimum / deg", self._theta_min_spin)
+        theta_form.addRow("Maximum / deg", self._theta_max_spin)
+        theta_form.addRow("Backlash / steps", self._theta_backlash_spin)
+        controls_layout.addWidget(theta_group)
+
+        two_theta_group = QGroupBox("2-theta axis", self._settings_controls)
+        two_theta_form = QFormLayout(two_theta_group)
+        self._two_theta_steps_spin = _integer_spin(two_theta_group, 1, 1_000_000)
+        self._two_theta_min_spin = _angle_spin(two_theta_group, -360.0, 360.0)
+        self._two_theta_max_spin = _angle_spin(two_theta_group, -360.0, 360.0)
+        self._two_theta_backlash_spin = _integer_spin(
+            two_theta_group, 0, 1_000_000
+        )
+        two_theta_form.addRow("Steps per degree", self._two_theta_steps_spin)
+        two_theta_form.addRow("Minimum / deg", self._two_theta_min_spin)
+        two_theta_form.addRow("Maximum / deg", self._two_theta_max_spin)
+        two_theta_form.addRow("Backlash / steps", self._two_theta_backlash_spin)
+        controls_layout.addWidget(two_theta_group)
+
+        operating_group = QGroupBox("Operating settings", self._settings_controls)
+        operating_form = QFormLayout(operating_group)
+        self._settings_motion_enabled = QCheckBox(
+            "Confirmed safe for motion", operating_group
+        )
+        self._settings_offset_spin = _angle_spin(operating_group, -180.0, 180.0)
+        self._settings_speed_spin = _angle_spin(operating_group, 0.01, 30.0)
+        self._settings_timeout_spin = QDoubleSpinBox(operating_group)
+        self._settings_timeout_spin.setRange(0.01, 300.0)
+        self._settings_timeout_spin.setSuffix(" s")
+        self._settings_polling_spin = QDoubleSpinBox(operating_group)
+        self._settings_polling_spin.setRange(0.0, 10.0)
+        self._settings_polling_spin.setSuffix(" Hz")
+        self._settings_count_spin = QDoubleSpinBox(operating_group)
+        self._settings_count_spin.setRange(0.01, 86_400.0)
+        self._settings_count_spin.setSuffix(" s")
+        operating_form.addRow(self._settings_motion_enabled)
+        operating_form.addRow("2-theta datum offset / deg", self._settings_offset_spin)
+        operating_form.addRow("Theta speed / deg min-1", self._settings_speed_spin)
+        operating_form.addRow("Connection timeout", self._settings_timeout_spin)
+        operating_form.addRow("Polling rate", self._settings_polling_spin)
+        operating_form.addRow("Default count time", self._settings_count_spin)
+        controls_layout.addWidget(operating_group)
+
+        self._settings_code_reset = QGroupBox(
+            "Reset settings unlock code", self._settings_controls
+        )
+        reset_form = QFormLayout(self._settings_code_reset)
+        self._new_settings_code = QLineEdit(self._settings_code_reset)
+        self._confirm_settings_code = QLineEdit(self._settings_code_reset)
+        for edit in (self._new_settings_code, self._confirm_settings_code):
+            edit.setEchoMode(QLineEdit.EchoMode.Password)
+        reset_form.addRow("New code", self._new_settings_code)
+        reset_form.addRow("Confirm code", self._confirm_settings_code)
+        controls_layout.addWidget(self._settings_code_reset)
+
+        self._settings_save_button = QPushButton(
+            "Apply and save instrument settings", self._settings_controls
+        )
+        controls_layout.addWidget(self._settings_save_button)
+        controls_layout.addStretch(1)
+        scroll = QScrollArea(page)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self._settings_controls)
+        layout.addWidget(scroll)
+        self._set_settings_locked(True)
+        return page
+
     def _build_motion_status_bar(self) -> QWidget:
         bar = QWidget(self)
         layout = QGridLayout(bar)
@@ -458,6 +555,8 @@ class XrayControlPanel(QWidget):
         self._mode_combo.currentIndexChanged.connect(self._update_speed_label)
         self._disconnect_button.clicked.connect(self._engine.disconnect_instrument)
         self._save_button.clicked.connect(self._on_save)
+        self._settings_lock_button.clicked.connect(self._toggle_settings_lock)
+        self._settings_save_button.clicked.connect(self._on_settings_save)
         self._read_button.clicked.connect(self._engine.read_controller_state)
         self._move_button.clicked.connect(self._on_move)
         self._cancel_button.clicked.connect(self._engine.cancel_operation)
@@ -485,7 +584,114 @@ class XrayControlPanel(QWidget):
         self._speed_spin.setValue(state.speed_deg_per_min)
         self._offset_spin.setValue(state.two_theta_offset_deg)
         self._duration_spin.setValue(self._engine.count_duration_s)
+        self._load_instrument_settings()
         self._update_speed_label()
+
+    def _load_instrument_settings(self) -> None:
+        """Populate the safety page from the active engine configuration."""
+        mechanics = self._engine.mechanics
+        state = self._engine.get_engine_state()
+        self._theta_steps_spin.setValue(mechanics.theta.steps_per_degree)
+        self._theta_min_spin.setValue(mechanics.theta.minimum_deg)
+        self._theta_max_spin.setValue(mechanics.theta.maximum_deg)
+        self._theta_backlash_spin.setValue(mechanics.theta.backlash_steps)
+        self._two_theta_steps_spin.setValue(mechanics.two_theta.steps_per_degree)
+        self._two_theta_min_spin.setValue(mechanics.two_theta.minimum_deg)
+        self._two_theta_max_spin.setValue(mechanics.two_theta.maximum_deg)
+        self._two_theta_backlash_spin.setValue(mechanics.two_theta.backlash_steps)
+        self._settings_motion_enabled.setChecked(mechanics.motion_enabled)
+        self._settings_offset_spin.setValue(state.two_theta_offset_deg)
+        self._settings_speed_spin.setValue(state.speed_deg_per_min)
+        self._settings_timeout_spin.setValue(self._engine.connection_timeout_s)
+        self._settings_polling_spin.setValue(self._engine.polling_rate_hz)
+        self._settings_count_spin.setValue(self._engine.count_duration_s)
+
+    def _set_settings_locked(self, locked: bool) -> None:
+        """Apply the locked state and hide code-reset controls when locked."""
+        self._settings_unlocked = not locked
+        self._settings_controls.setEnabled(not locked)
+        self._settings_code_reset.setVisible(not locked)
+        self._settings_lock_button.setText(
+            "Unlock settings" if locked else "Lock settings"
+        )
+
+    @pyqtSlot()
+    def _toggle_settings_lock(self) -> None:
+        if self._settings_unlocked:
+            self._new_settings_code.clear()
+            self._confirm_settings_code.clear()
+            self._load_instrument_settings()
+            self._set_settings_locked(True)
+            return
+        code, accepted = QInputDialog.getText(
+            self,
+            "Unlock instrument settings",
+            "Settings unlock code:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not accepted:
+            return
+        if not self._engine.verify_settings_unlock_code(code):
+            QMessageBox.warning(self, "Unlock failed", "The settings code is incorrect.")
+            return
+        self._set_settings_locked(False)
+
+    @pyqtSlot()
+    def _on_settings_save(self) -> None:
+        """Validate, apply, and persist unlocked instrument settings."""
+        if not self._settings_unlocked:
+            return
+        new_code = self._new_settings_code.text()
+        confirmation = self._confirm_settings_code.text()
+        if new_code or confirmation:
+            if not new_code:
+                QMessageBox.warning(self, "Invalid code", "The new code cannot be empty.")
+                return
+            if new_code != confirmation:
+                QMessageBox.warning(self, "Invalid code", "The new codes do not match.")
+                return
+        try:
+            self._engine.configure_instrument_settings(
+                theta_steps_per_degree=self._theta_steps_spin.value(),
+                theta_minimum_deg=self._theta_min_spin.value(),
+                theta_maximum_deg=self._theta_max_spin.value(),
+                theta_backlash_steps=self._theta_backlash_spin.value(),
+                two_theta_steps_per_degree=self._two_theta_steps_spin.value(),
+                two_theta_minimum_deg=self._two_theta_min_spin.value(),
+                two_theta_maximum_deg=self._two_theta_max_spin.value(),
+                two_theta_backlash_steps=self._two_theta_backlash_spin.value(),
+                timeout_s=self._settings_timeout_spin.value(),
+            )
+            self._engine.configure_motion(
+                enabled=self._settings_motion_enabled.isChecked(),
+                mode=self._mode_combo.currentData(),
+                speed_deg_per_min=self._settings_speed_spin.value(),
+                two_theta_offset_deg=self._settings_offset_spin.value(),
+            )
+            self._engine.set_polling_rate(self._settings_polling_spin.value())
+            self._engine.set_count_duration(self._settings_count_spin.value())
+            if new_code:
+                self._engine.set_settings_unlock_code(new_code)
+            path = self._engine.save_configuration()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid instrument settings", str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 - report local persistence failures
+            QMessageBox.critical(
+                self, "Save Configuration", f"Failed to save configuration:\n{exc}"
+            )
+            return
+        self._motion_enabled.setChecked(self._settings_motion_enabled.isChecked())
+        self._offset_spin.setValue(self._settings_offset_spin.value())
+        self._speed_spin.setValue(self._settings_speed_spin.value())
+        self._polling_rate_spin.setValue(self._settings_polling_spin.value())
+        self._duration_spin.setValue(self._settings_count_spin.value())
+        self._new_settings_code.clear()
+        self._confirm_settings_code.clear()
+        self._error_label.setText(f"Saved {path.name}")
+        QMessageBox.information(
+            self, "Save Configuration", f"Configuration saved to:\n{path}"
+        )
 
     @pyqtSlot(float)
     def _on_count_duration_changed(self, duration_s: float) -> None:
@@ -517,7 +723,7 @@ class XrayControlPanel(QWidget):
         try:
             instrument = self._instrument_combo.currentText()
             address = "" if instrument == "Simulated" else self._address_edit.text()
-            if instrument == "Wharfdale":
+            if instrument == "Wharfedale":
                 self._wharfdale_address = address
             self._engine.connect_driver(instrument, address)
         except Exception as exc:  # noqa: BLE001 - show connection diagnostics
@@ -528,9 +734,18 @@ class XrayControlPanel(QWidget):
 
     @pyqtSlot()
     def _on_save(self) -> None:
-        self._apply_motion_configuration()
-        path = self._engine.save_configuration()
+        try:
+            self._apply_motion_configuration()
+            path = self._engine.save_configuration()
+        except Exception as exc:  # noqa: BLE001 - report local persistence failures
+            QMessageBox.critical(
+                self, "Save Configuration", f"Failed to save configuration:\n{exc}"
+            )
+            return
         self._error_label.setText(f"Saved {path.name}")
+        QMessageBox.information(
+            self, "Save Configuration", f"Configuration saved to:\n{path}"
+        )
 
     @pyqtSlot()
     def _on_move(self) -> None:
@@ -660,6 +875,12 @@ def _angle_spin(parent: QWidget, minimum: float, maximum: float) -> QDoubleSpinB
     spin.setRange(minimum, maximum)
     spin.setDecimals(4)
     spin.setSingleStep(0.1)
+    return spin
+
+
+def _integer_spin(parent: QWidget, minimum: int, maximum: int) -> QSpinBox:
+    spin = QSpinBox(parent)
+    spin.setRange(minimum, maximum)
     return spin
 
 
