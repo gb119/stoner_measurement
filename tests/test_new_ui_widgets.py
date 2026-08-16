@@ -82,6 +82,16 @@ class TestPythonHighlighter:
 
 
 class TestConsoleWidget:
+    @pytest.fixture(autouse=True)
+    def _manage_console_widgets(self, monkeypatch, managed_qt_widget):
+        """Retain and deterministically close every console made by a test."""
+        console_class = ConsoleWidget
+
+        def make_managed_console(*args, **kwargs):
+            return managed_qt_widget(console_class(*args, **kwargs))
+
+        monkeypatch.setattr(sys.modules[__name__], "ConsoleWidget", make_managed_console)
+
     @staticmethod
     def _text(console: ConsoleWidget) -> str:
         return console.get_output_text()
@@ -277,11 +287,13 @@ class TestConsoleWidget:
 
         assert "12345" in self._text(console)
 
-    def test_falls_back_to_legacy_if_qtconsole_unavailable(self, qapp, monkeypatch):
+    def test_falls_back_to_legacy_if_qtconsole_unavailable(
+        self, qapp, monkeypatch, managed_qt_widget
+    ):
         import stoner_measurement.ui.console_widget as console_widget_module
 
         monkeypatch.setattr(console_widget_module, "_IPYTHON_CONSOLE_AVAILABLE", False)
-        console = console_widget_module.ConsoleWidget()
+        console = managed_qt_widget(console_widget_module.ConsoleWidget())
         assert console.using_ipython_console is False
 
     def test_ipython_shutdown_ignores_already_deleted_qt_wrappers(self, qapp):
@@ -313,6 +325,16 @@ class TestConsoleWidget:
 
 
 class TestScriptTab:
+    @pytest.fixture(autouse=True)
+    def _manage_script_tabs(self, monkeypatch, managed_qt_widget):
+        """Retain and deterministically close every script tab made by a test."""
+        tab_class = ScriptTab
+
+        def make_managed_tab(*args, **kwargs):
+            return managed_qt_widget(tab_class(*args, **kwargs))
+
+        monkeypatch.setattr(sys.modules[__name__], "ScriptTab", make_managed_tab)
+
     def test_creates_widget(self, qapp):
         tab = ScriptTab()
         assert tab is not None
