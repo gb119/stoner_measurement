@@ -691,13 +691,13 @@ class PlotTraceCommand(CommandPlugin):
         layout.addRow("Title expression:", title_edit)
         layout.addRow("X axis:", x_axis_combo)
         layout.addRow("Y axis:", y_axis_combo)
-        layout.addRow(
-            QLabel(
-                "<i>In advanced mode, x/y data and title expressions are "
-                "evaluated at runtime in the engine namespace.</i>",
-                widget,
-            )
+        advanced_help = QLabel(
+            "<i>In advanced mode, x/y data and title expressions are "
+            "evaluated at runtime in the engine namespace.</i>",
+            widget,
         )
+        advanced_help.setWordWrap(True)
+        layout.addRow(advanced_help)
         layout.addRow(QLabel("<b>Format (optional):</b>", widget))
         layout.addRow("Colour:", colour_button)
         layout.addRow("Line style:", line_style_combo)

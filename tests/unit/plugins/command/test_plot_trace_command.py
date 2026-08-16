@@ -163,6 +163,17 @@ class TestPlotTraceCommand:
         checkboxes = widget.findChildren(QCheckBox)
         assert len(checkboxes) >= 2
 
+    def test_config_widget_wraps_advanced_mode_help(self, qapp):
+        from qtpy.QtWidgets import QLabel
+
+        widget = PlotTraceCommand().config_widget()
+        advanced_help = next(
+            label for label in widget.findChildren(QLabel) if "In advanced mode" in label.text()
+        )
+
+        assert advanced_help.wordWrap() is True
+        assert advanced_help.hasHeightForWidth() is True
+
     def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
         from qtpy.QtWidgets import QCheckBox
 

@@ -14,7 +14,9 @@ the same recursive structure.
 from __future__ import annotations
 
 import copy
+import logging
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -24,6 +26,7 @@ if TYPE_CHECKING:
 type _SequenceStep = BasePlugin | tuple[BasePlugin, list[_SequenceStep]]
 
 _RENAME_SKIP_KEYS = frozenset({"class", "type", "version"})
+logger = logging.getLogger(__name__)
 
 
 def sequence_to_json(steps: list[_SequenceStep]) -> dict[str, Any]:
@@ -87,17 +90,29 @@ def _step_to_json(step: _SequenceStep) -> dict[str, Any]:
     return {"plugin": step.to_json()}
 
 
-def sequence_from_json(data: dict[str, Any]) -> list[_SequenceStep]:
+def sequence_from_json(
+    data: dict[str, Any],
+    *,
+    on_reserved_name_renamed: Callable[[str, str], None] | None = None,
+) -> list[_SequenceStep]:
     """Reconstruct a sequence tree from a JSON dict produced by :func:`sequence_to_json`.
 
     Rebuilds each plugin instance using
     :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.from_json` and
-    recursively reconstructs nested sub-steps.
+    recursively reconstructs nested sub-steps.  If an older sequence uses an
+    instance name that is now reserved, the loader chooses a valid non-conflicting
+    replacement, updates identifier references throughout the in-memory JSON,
+    and retries reconstruction.
 
     Args:
         data (dict[str, Any]):
             JSON dict as produced by :func:`sequence_to_json` and loaded from
             a file with :func:`json.loads` or :func:`json.load`.
+
+    Keyword Parameters:
+        on_reserved_name_renamed (Callable[[str, str], None] | None):
+            Optional callback invoked with each old and replacement instance
+            name when loading requires an automatic migration.
 
     Returns:
         (list[_SequenceStep]):
@@ -123,8 +138,59 @@ def sequence_from_json(data: dict[str, Any]) -> list[_SequenceStep]:
         >>> steps[0].instance_name
         'test_dummy'
     """
-    steps_data: list[dict[str, Any]] = data.get("steps", [])
-    return [_step_from_json(s) for s in steps_data]
+    from stoner_measurement.plugins.base_plugin import ReservedInstanceNameError
+
+    load_data = data
+    while True:
+        steps_data: list[dict[str, Any]] = load_data.get("steps", [])
+        try:
+            return [_step_from_json(s) for s in steps_data]
+        except ReservedInstanceNameError as exc:
+            replacement = _available_instance_name(load_data, exc.instance_name)
+            logger.warning(
+                "Renaming reserved instance name %r to %r while loading sequence JSON.",
+                exc.instance_name,
+                replacement,
+            )
+            if on_reserved_name_renamed is not None:
+                on_reserved_name_renamed(exc.instance_name, replacement)
+            load_data = rename_identifier_references(
+                load_data,
+                exc.instance_name,
+                replacement,
+            )
+
+
+def _available_instance_name(data: dict[str, Any], old_name: str) -> str:
+    """Return a valid replacement for a reserved instance name."""
+    from stoner_measurement.plugins.base_plugin import instance_name_validation_error
+
+    used_names = _instance_names(data)
+    candidate = f"{old_name}_"
+    suffix = 2
+    while candidate in used_names or instance_name_validation_error(candidate) is not None:
+        candidate = f"{old_name}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _instance_names(value: Any) -> set[str]:
+    """Collect all serialised instance names from a nested JSON value."""
+    if isinstance(value, dict):
+        names = {
+            instance_name
+            for instance_name in (value.get("instance_name"),)
+            if isinstance(instance_name, str)
+        }
+        for child in value.values():
+            names.update(_instance_names(child))
+        return names
+    if isinstance(value, list):
+        names: set[str] = set()
+        for child in value:
+            names.update(_instance_names(child))
+        return names
+    return set()
 
 
 def rename_identifier_references(

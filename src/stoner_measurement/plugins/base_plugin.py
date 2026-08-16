@@ -75,6 +75,14 @@ RESERVED_INSTANCE_NAMES = (
 )
 
 
+class ReservedInstanceNameError(ValueError):
+    """Raised when an instance name is reserved by Python or the application."""
+
+    def __init__(self, instance_name: str) -> None:
+        self.instance_name = instance_name
+        super().__init__(f"instance_name {instance_name!r} is reserved by Python or the application")
+
+
 def instance_name_validation_error(value: object) -> str | None:
     """Return an explanation when *value* cannot be used as an instance name."""
     if not isinstance(value, str) or not value or not value.isidentifier():
@@ -650,6 +658,8 @@ class BasePlugin(ABC):
         """
         error = instance_name_validation_error(value)
         if error is not None:
+            if isinstance(value, str) and is_reserved_instance_name(value):
+                raise ReservedInstanceNameError(value)
             raise ValueError(error)
         old = self.instance_name
         if value == old:

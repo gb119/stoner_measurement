@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from qtpy.QtWidgets import QMessageBox
+from qtpy.QtWidgets import QFileDialog, QMessageBox
 
 from stoner_measurement.app import MeasurementApp
 
@@ -56,6 +57,73 @@ def test_changed_sequence_honours_prompt_choice(
     assert MeasurementApp._confirm_discard_measurement_changes(fake) is expected
     assert commits == [True]
     assert saves == expected_saves
+
+
+@pytest.mark.parametrize(
+    ("migrated", "expected_calls"),
+    [
+        (False, ["clean"]),
+        (True, ["dirty"]),
+    ],
+)
+def test_loaded_sequence_migration_controls_clean_baseline(migrated, expected_calls):
+    calls: list[str] = []
+    fake = SimpleNamespace(
+        _mark_measurement_clean=lambda: calls.append("clean"),
+        _mark_measurement_dirty=lambda: calls.append("dirty"),
+    )
+
+    MeasurementApp._set_loaded_measurement_baseline(fake, migrated=migrated)
+
+    assert calls == expected_calls
+
+
+def test_mark_measurement_dirty_clears_saved_digest():
+    title_updates: list[bool] = []
+    fake = SimpleNamespace(
+        _measurement_clean_digest="saved-sha256",
+        _update_window_title=lambda: title_updates.append(True),
+    )
+
+    MeasurementApp._mark_measurement_dirty(fake)
+
+    assert fake._measurement_clean_digest == ""
+    assert title_updates == [True]
+
+
+def test_import_data_loads_reconstructed_sequence_and_marks_it_dirty(monkeypatch, tmp_path):
+    import stoner_measurement.core.sequence_metadata as sequence_metadata_module
+
+    data_path = tmp_path / "measurement.txt"
+    reconstructed = {"version": "test", "steps": [{"plugin": {"instance_name": "step"}}]}
+    steps = [object()]
+    events: list[object] = []
+    fake = SimpleNamespace(
+        _current_measurement_path=Path("previous.json"),
+        _app_config={},
+        _sequence_steps_from_json=lambda data: (steps, False) if data is reconstructed else None,
+        _confirm_discard_measurement_changes=lambda: True,
+        _main_window=SimpleNamespace(
+            dock_panel=SimpleNamespace(load_sequence=lambda loaded: events.append(("load", loaded)))
+        ),
+        _mark_measurement_dirty=lambda: events.append("dirty"),
+        _engine=SimpleNamespace(_rebuild_data_catalogs=lambda: events.append("catalogs")),
+    )
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *_args: (str(data_path), "Saved Data"),
+    )
+    monkeypatch.setattr(
+        sequence_metadata_module,
+        "sequence_json_from_data_file",
+        lambda path: reconstructed if path == data_path else None,
+    )
+
+    MeasurementApp._on_import_sequence_from_data(fake)
+
+    assert events == [("load", steps), "dirty", "catalogs"]
+    assert fake._current_measurement_path is None
 
 
 if __name__ == "__main__":

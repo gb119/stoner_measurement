@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.sequence_metadata import sequence_metadata
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.trace_catalog_ui import bind_trace_catalog_updates
 
@@ -389,9 +390,9 @@ class SaveCommand(CommandPlugin):
     * The remaining cells of row 0 are trace column headers with the form
       ``"{channel_name}:{axis_label} ({axis_units})"``.
     * The remaining cells of column 0 (rows 1 onwards) hold a flattened
-      metadata snapshot. ``sequence`` is the ordered list of unique instance
-      names; each named instance's serialised configuration is a top-level
-      item, alongside an ``outputs`` dictionary of evaluated scalar readings.
+      metadata snapshot. ``sequence`` is the depth-first list of dotted
+      instance paths; each path's final component names a top-level serialised
+      configuration item, alongside evaluated ``outputs`` scalar readings.
       Nested dicts are flattened using ``.`` separators; list items use
       ``[{index}]`` notation.
     * The remaining cells (rows 1 onwards, columns 1 onwards) contain the
@@ -525,9 +526,10 @@ class SaveCommand(CommandPlugin):
         * **Column 0 (rows 1+)** — flattened metadata entries of the form
           ``"{key}{typename}={repr(value)}"`` collected from the ``to_json()``
           state of each plugin instance in the current sequence. ``sequence``
-          stores their instance names in order, each instance name maps to its
-          serialised configuration at the metadata root, and ``outputs`` maps
-          catalogue keys to evaluated current scalar readings.
+          stores depth-first dotted instance paths so nested steps retain their
+          structure; each final path component maps to its serialised
+          configuration at the metadata root, and ``outputs`` maps catalogue
+          keys to evaluated current scalar readings.
         * **Remaining cells** — numerical data from each data column.
 
         Keyword Parameters:
@@ -683,10 +685,11 @@ class SaveCommand(CommandPlugin):
         if engine is None:
             raise RuntimeError("SaveCommand must be attached to a SequenceEngine before execute()")
 
-        plugins = engine.step_plugins()
-        sequence = [plugin.instance_name for plugin in plugins]
-        metadata: dict[str, Any] = {"sequence": sequence}
-        metadata.update((plugin.instance_name, plugin.to_json()) for plugin in plugins)
+        sequence_view = ns.get("sequence")
+        steps = getattr(sequence_view, "steps", None)
+        if steps is None:
+            steps = engine.step_plugins()
+        metadata = sequence_metadata(steps)
         outputs: dict[str, Any] = {}
         values_catalog: dict[str, str] = ns.get("_values", {})
         for key, expr in values_catalog.items():

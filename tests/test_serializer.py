@@ -340,6 +340,179 @@ class TestSequenceSerializer:
         for i, step in enumerate(steps):
             assert step.instance_name == f"dummy_{i}"
 
+    def test_saved_metadata_reconstructs_nested_sequence(self, qapp):
+        from stoner_measurement.core.sequence_metadata import (
+            sequence_json_from_metadata,
+            sequence_metadata,
+        )
+        from stoner_measurement.core.serializer import sequence_from_json
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        outer = CounterPlugin()
+        outer.instance_name = "outer"
+        inner = CounterPlugin()
+        inner.instance_name = "inner"
+        leaf = DummyPlugin()
+        leaf.instance_name = "leaf"
+        sibling = DummyPlugin()
+        sibling.instance_name = "sibling"
+
+        metadata = sequence_metadata([(outer, [(inner, [leaf])]), sibling])
+        assert metadata["sequence"] == ["outer", "outer.inner", "outer.inner.leaf", "sibling"]
+
+        restored = sequence_from_json(sequence_json_from_metadata(metadata))
+        restored_outer, outer_children = restored[0]
+        restored_inner, inner_children = outer_children[0]
+        assert restored_outer.instance_name == "outer"
+        assert restored_inner.instance_name == "inner"
+        assert inner_children[0].instance_name == "leaf"
+        assert restored[1].instance_name == "sibling"
+
+    @pytest.mark.parametrize(
+        ("paths", "message"),
+        [
+            (["a", "a.b.c"], "missing parent 'a.b'"),
+            (["a", "a.b", "c", "a.d"], "does not follow its parent 'a'"),
+            (["a", "a"], "Duplicate sequence path 'a'"),
+        ],
+    )
+    def test_saved_metadata_rejects_noncanonical_paths(self, paths, message):
+        from stoner_measurement.core.sequence_metadata import sequence_json_from_metadata
+
+        metadata = {
+            "sequence": paths,
+            "a": {},
+            "b": {},
+            "c": {},
+            "d": {},
+        }
+
+        with pytest.raises(ValueError, match=message):
+            sequence_json_from_metadata(metadata)
+
+    def test_flattened_metadata_reconstructs_sequence_json(self):
+        from stoner_measurement.core.sequence_metadata import (
+            metadata_from_flattened,
+            sequence_json_from_metadata,
+        )
+
+        entries = [
+            "outer.class{str}='some.module.Outer'",
+            "outer.instance_name{str}='outer'",
+            "inner.class{str}='some.module.Inner'",
+            "inner.instance_name{str}='inner'",
+            "sequence[0]{str}='outer'",
+            "sequence[1]{str}='outer.inner'",
+            "outputs.value{float}=nan",
+        ]
+
+        metadata = metadata_from_flattened(entries)
+        data = sequence_json_from_metadata(metadata)
+
+        assert metadata["outputs"]["value"] != metadata["outputs"]["value"]
+        assert data["steps"][0]["plugin"]["instance_name"] == "outer"
+        assert data["steps"][0]["sub_steps"][0]["plugin"]["instance_name"] == "inner"
+
+    def test_tdi_data_file_reconstructs_sequence_json(self, tmp_path):
+        from stoner_measurement.core.sequence_metadata import sequence_json_from_data_file
+
+        path = tmp_path / "measurement.txt"
+        path.write_text(
+            "TDI Format 2.0\tTrace (V)\n"
+            "outer.class{str}='some.module.Outer'\t1.0\n"
+            "outer.instance_name{str}='outer'\t2.0\n"
+            "sequence[0]{str}='outer'\t3.0\n",
+            encoding="utf-8",
+        )
+
+        data = sequence_json_from_data_file(path)
+
+        assert data["steps"] == [
+            {
+                "plugin": {
+                    "class": "some.module.Outer",
+                    "instance_name": "outer",
+                }
+            }
+        ]
+
+    def test_sequence_from_json_renames_reserved_instance_and_references(self, qapp):
+        from stoner_measurement.core.serializer import (
+            rename_identifier_references,
+            sequence_from_json,
+            sequence_to_json,
+        )
+        from stoner_measurement.plugins.command import PlotTraceCommand
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        source = DummyPlugin()
+        source.instance_name = "source"
+        plot = PlotTraceCommand()
+        plot.trace_key = "source:Dummy"
+        plot.x_expr = "source.data['Dummy'].x"
+        plot.y_expr = "source.data['Dummy'].y"
+        legacy_data = rename_identifier_references(
+            sequence_to_json([source, plot]),
+            "source",
+            "filter",
+        )
+
+        restored_source, restored_plot = sequence_from_json(legacy_data)
+
+        assert restored_source.instance_name == "filter_"
+        assert restored_plot.trace_key == "filter_:Dummy"
+        assert restored_plot.x_expr == "filter_.data['Dummy'].x"
+        assert restored_plot.y_expr == "filter_.data['Dummy'].y"
+
+    def test_reserved_instance_replacement_avoids_existing_name(self, qapp):
+        from stoner_measurement.core.serializer import (
+            rename_identifier_references,
+            sequence_from_json,
+            sequence_to_json,
+        )
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        source = DummyPlugin()
+        source.instance_name = "source"
+        existing = DummyPlugin()
+        existing.instance_name = "filter_"
+        legacy_data = rename_identifier_references(
+            sequence_to_json([source, existing]),
+            "source",
+            "filter",
+        )
+
+        restored_source, restored_existing = sequence_from_json(legacy_data)
+
+        assert restored_source.instance_name == "filter_2"
+        assert restored_existing.instance_name == "filter_"
+
+    def test_sequence_from_json_retries_for_each_reserved_instance(self, qapp):
+        from stoner_measurement.core.serializer import (
+            rename_identifier_references,
+            sequence_from_json,
+            sequence_to_json,
+        )
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        first = DummyPlugin()
+        first.instance_name = "first_source"
+        second = DummyPlugin()
+        second.instance_name = "second_source"
+        legacy_data = sequence_to_json([first, second])
+        legacy_data = rename_identifier_references(legacy_data, "first_source", "filter")
+        legacy_data = rename_identifier_references(legacy_data, "second_source", "list")
+
+        renames: list[tuple[str, str]] = []
+        restored = sequence_from_json(
+            legacy_data,
+            on_reserved_name_renamed=lambda old, new: renames.append((old, new)),
+        )
+
+        assert [plugin.instance_name for plugin in restored] == ["filter_", "list_"]
+        assert renames == [("filter", "filter_"), ("list", "list_")]
+
 
 class TestJsonTextRoundTrip:
     """Tests that verify JSON text serialisation — i.e. the dict can be rendered to

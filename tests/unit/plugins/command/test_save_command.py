@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from stoner_measurement.plugins.command import SaveCommand
@@ -222,6 +224,46 @@ class TestSaveCommand:
         assert "step_in_seq.instance_name{str}='step_in_seq'" in text
         assert "save.instance_name{str}='save'" in text
         assert "step_not_in_seq" not in text
+
+    def test_execute_tdi_nested_step_paths_are_dotted(self, qapp, engine, tmp_path):
+        """Nested UI steps retain their hierarchy in the flat metadata list."""
+        from stoner_measurement.core.sequence_metadata import sequence_json_from_data_file
+        from stoner_measurement.core.serializer import sequence_from_json
+        from stoner_measurement.plugins.state_control import CounterPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        outer = CounterPlugin()
+        outer.instance_name = "outer"
+        inner = CounterPlugin()
+        inner.instance_name = "inner"
+        leaf = DummyPlugin()
+        leaf.instance_name = "leaf"
+        sibling = DummyPlugin()
+        sibling.instance_name = "sibling"
+        cmd = SaveCommand()
+        engine.add_plugin("save", cmd)
+        engine.update_step_plugin_catalog([outer, inner, leaf, sibling])
+        engine._namespace["sequence"] = SimpleNamespace(  # noqa: SLF001
+            steps=[(outer, [(inner, [leaf])]), sibling]
+        )
+        out_file = tmp_path / "nested.txt"
+        cmd.path_expr = repr(str(out_file))
+
+        cmd.execute()
+
+        text = out_file.read_text()
+        assert "sequence[0]{str}='outer'" in text
+        assert "sequence[1]{str}='outer.inner'" in text
+        assert "sequence[2]{str}='outer.inner.leaf'" in text
+        assert "sequence[3]{str}='sibling'" in text
+
+        restored = sequence_from_json(sequence_json_from_data_file(out_file))
+        restored_outer, outer_children = restored[0]
+        restored_inner, inner_children = outer_children[0]
+        assert restored_outer.instance_name == "outer"
+        assert restored_inner.instance_name == "inner"
+        assert inner_children[0].instance_name == "leaf"
+        assert restored[1].instance_name == "sibling"
 
     def test_execute_tdi_values_in_metadata(self, qapp, engine, tmp_path):
         cmd = SaveCommand()

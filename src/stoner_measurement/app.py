@@ -244,8 +244,8 @@ class MeasurementApp(QMainWindow):
         self._plugin_manager.discover()
 
         # Load the template sequence (or empty sequence if none configured) ----
-        self._load_template_sequence()
-        self._mark_measurement_clean()
+        template_migrated = self._load_template_sequence()
+        self._set_loaded_measurement_baseline(migrated=template_migrated)
 
     def _initialise_feature_registry(self) -> None:
         """Collect per-feature UI objects so visibility is driven from one registry."""
@@ -630,6 +630,12 @@ class MeasurementApp(QMainWindow):
         self._act_open.setShortcut(QKeySequence.StandardKey.Open)
         self._act_open.triggered.connect(self._on_open)
 
+        self._act_import_data = QAction("Import Sequence from &Data…", self)
+        self._act_import_data.setStatusTip(
+            "Reconstruct a measurement sequence from metadata in a saved data file"
+        )
+        self._act_import_data.triggered.connect(self._on_import_sequence_from_data)
+
         self._act_save = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton),
             "&Save",
@@ -796,6 +802,7 @@ class MeasurementApp(QMainWindow):
         file_menu = menu_bar.addMenu("&File")
         file_menu.addAction(self._act_new)
         file_menu.addAction(self._act_open)
+        file_menu.addAction(self._act_import_data)
         file_menu.addAction(self._act_save)
         file_menu.addAction(self._act_save_as)
         file_menu.addAction(self._act_close_script_tab)
@@ -951,15 +958,15 @@ class MeasurementApp(QMainWindow):
         self._add_configured_toolbar_buttons()
 
     def _load_predefined_sequence(self, sequence_name: str) -> None:
-        from stoner_measurement.core.serializer import sequence_from_json
-
         path = self._find_predefined_sequence(sequence_name)
         if path is None:
-            QMessageBox.warning(self, "Load Sequence", f"Could not locate predefined sequence '{sequence_name}'.")
+            QMessageBox.warning(
+                self, "Load Sequence", f"Could not locate predefined sequence '{sequence_name}'."
+            )
             return
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            steps = sequence_from_json(data)
+            steps, migrated = self._sequence_steps_from_json(data)
         except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError) as exc:
             QMessageBox.critical(self, "Load Sequence", f"Could not load sequence:\n{exc}")
             return
@@ -967,7 +974,7 @@ class MeasurementApp(QMainWindow):
             return
         self._main_window.dock_panel.load_sequence(steps)
         self._current_measurement_path = None
-        self._mark_measurement_clean()
+        self._set_loaded_measurement_baseline(migrated=migrated)
         self._engine._rebuild_data_catalogs()
 
     # ------------------------------------------------------------------
@@ -982,6 +989,7 @@ class MeasurementApp(QMainWindow):
         """Update action labels and status tips when the active tab changes."""
         if index == self._TAB_MEASUREMENT:
             self._act_close_script_tab.setEnabled(False)
+            self._act_import_data.setEnabled(True)
             self._act_new.setText("&New Sequence")
             self._act_new.setStatusTip("Clear the measurement sequence and start a new one")
             self._act_open.setText("&Open Sequence…")
@@ -1002,6 +1010,7 @@ class MeasurementApp(QMainWindow):
             self._act_paste.setStatusTip("Paste the sequence step from the clipboard")
         elif index == self._TAB_EDITOR:
             self._act_close_script_tab.setEnabled(True)
+            self._act_import_data.setEnabled(False)
             self._act_new.setText("&New Script")
             self._act_new.setStatusTip("Clear the sequence editor and start a new script")
             self._act_open.setText("&Open Script…")
@@ -1117,6 +1126,30 @@ class MeasurementApp(QMainWindow):
         self._measurement_clean_digest = self._measurement_digest()
         self._update_window_title()
 
+    def _mark_measurement_dirty(self) -> None:
+        """Clear the saved baseline so the current sequence requires saving."""
+        self._measurement_clean_digest = ""
+        self._update_window_title()
+
+    def _set_loaded_measurement_baseline(self, *, migrated: bool) -> None:
+        """Mark a loaded sequence dirty only when deserialisation migrated it."""
+        if migrated:
+            self._mark_measurement_dirty()
+        else:
+            self._mark_measurement_clean()
+
+    @staticmethod
+    def _sequence_steps_from_json(data: dict) -> tuple[list, bool]:
+        """Deserialize sequence JSON and report whether reserved names changed."""
+        from stoner_measurement.core.serializer import sequence_from_json
+
+        renamed_instances: list[tuple[str, str]] = []
+        steps = sequence_from_json(
+            data,
+            on_reserved_name_renamed=lambda old, new: renamed_instances.append((old, new)),
+        )
+        return steps, bool(renamed_instances)
+
     def _confirm_discard_measurement_changes(self) -> bool:
         """Offer to save a changed sequence before replacing or closing it."""
         self._main_window.config_panel.commit_pending_changes()
@@ -1137,7 +1170,7 @@ class MeasurementApp(QMainWindow):
             return self._on_save_as_measurement()
         return True
 
-    def _load_template_sequence(self) -> None:
+    def _load_template_sequence(self) -> bool:
         """Load the default sequence template, or an empty sequence if none is found.
 
         The template is loaded from ``sequence_template.json`` using the same
@@ -1148,19 +1181,23 @@ class MeasurementApp(QMainWindow):
 
         If no template is found, or the file cannot be parsed, an empty
         sequence is loaded instead.
-        """
-        from stoner_measurement.core.serializer import sequence_from_json
 
+        Returns:
+            (bool):
+                ``True`` when reserved instance names were migrated while
+                loading the template, otherwise ``False``.
+        """
         template_path = self._find_sequence_template()
         if template_path is not None:
             try:
                 data = json.loads(template_path.read_text(encoding="utf-8"))
-                steps = sequence_from_json(data)
+                steps, migrated = self._sequence_steps_from_json(data)
                 self._main_window.dock_panel.load_sequence(steps)
-                return
+                return migrated
             except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError):
                 pass
         self._main_window.dock_panel.load_sequence([])
+        return False
 
     def _on_new_measurement(self) -> None:
         """Clear the measurement sequence and start a new one.
@@ -1171,11 +1208,10 @@ class MeasurementApp(QMainWindow):
         """
         if not self._confirm_discard_measurement_changes():
             return
-        self._load_template_sequence()
+        template_migrated = self._load_template_sequence()
         self._current_measurement_path = None
-        self._mark_measurement_clean()
+        self._set_loaded_measurement_baseline(migrated=template_migrated)
         self._engine._rebuild_data_catalogs()
-
 
     def _on_open_measurement(self) -> None:
         """Open a saved measurement sequence from a JSON file.
@@ -1184,8 +1220,6 @@ class MeasurementApp(QMainWindow):
         the sequence, and populates the sequence tree.  Displays an error
         message if the file cannot be parsed.
         """
-        from stoner_measurement.core.serializer import sequence_from_json
-
         dock = self._main_window.dock_panel
         start_dir = (
             str(self._current_measurement_path.parent)
@@ -1203,7 +1237,7 @@ class MeasurementApp(QMainWindow):
         file_path = Path(path)
         try:
             data = json.loads(file_path.read_text(encoding="utf-8"))
-            steps = sequence_from_json(data)
+            steps, migrated = self._sequence_steps_from_json(data)
         except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError) as exc:
             QMessageBox.critical(
                 self,
@@ -1215,7 +1249,50 @@ class MeasurementApp(QMainWindow):
             return
         dock.load_sequence(steps)
         self._current_measurement_path = file_path
-        self._mark_measurement_clean()
+        self._set_loaded_measurement_baseline(migrated=migrated)
+        self._engine._rebuild_data_catalogs()
+
+    def _on_import_sequence_from_data(self) -> None:
+        """Reconstruct a measurement sequence from saved data-file metadata."""
+        from stoner_measurement.core.sequence_metadata import sequence_json_from_data_file
+
+        start_dir = (
+            str(self._current_measurement_path.parent)
+            if self._current_measurement_path
+            else default_data_directory(config=self._app_config)
+        )
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Sequence from Data",
+            start_dir,
+            "Saved Data (*.txt *.nxs *.h5 *.hdf5);;TDI Text Files (*.txt);;"
+            "NeXus Files (*.nxs *.h5 *.hdf5);;All Files (*)",
+        )
+        if not path:
+            return
+        file_path = Path(path)
+        try:
+            data = sequence_json_from_data_file(file_path)
+            steps, _migrated = self._sequence_steps_from_json(data)
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            ImportError,
+            RuntimeError,
+            AttributeError,
+        ) as exc:
+            QMessageBox.critical(
+                self,
+                "Import Sequence from Data",
+                f"Could not reconstruct a sequence from {file_path.name!r}:\n{exc}",
+            )
+            return
+        if not self._confirm_discard_measurement_changes():
+            return
+        self._main_window.dock_panel.load_sequence(steps)
+        self._current_measurement_path = None
+        self._mark_measurement_dirty()
         self._engine._rebuild_data_catalogs()
 
     def _on_save_measurement(self) -> None:
