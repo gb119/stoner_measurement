@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QHBoxLayout, QSplitter, QTabWidget, QWidget
+from qtpy.QtWidgets import (
+    QHBoxLayout,
+    QSplitter,
+    QTabBar,
+    QTabWidget,
+    QWidget,
+)
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.ui.config_panel import ConfigPanel
@@ -112,6 +118,11 @@ class MainWindow(QWidget):
                 The dock panel widget.
         """
         return self._dock_panel
+
+    @property
+    def sequence_tabs(self) -> QTabBar:
+        """Tab bar representing the open measurement-sequence documents."""
+        return self._dock_panel.sequence_tabs
 
     @property
     def plot_widget(self) -> PlotWidget:

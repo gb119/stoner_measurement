@@ -15,6 +15,26 @@ class TestMainWindow:
         assert window.dock_panel is not None
         assert window.plot_widget is not None
 
+    def test_plugin_and_sequence_lists_use_adjustable_vertical_splitter(
+        self, plugin_manager, managed_qt_widget
+    ):
+        from qtpy.QtCore import Qt
+
+        window = managed_qt_widget(MainWindow(plugin_manager=plugin_manager))
+        dock = window.dock_panel
+        splitter = dock._list_splitter
+
+        assert splitter.orientation() == Qt.Orientation.Vertical
+        assert splitter.widget(0) is dock._plugin_section
+        assert splitter.widget(1) is dock._sequence_section
+        sequence_layout = dock._sequence_section.layout()
+        tab_index = next(
+            index
+            for index in range(sequence_layout.count())
+            if sequence_layout.itemAt(index).layout() is dock._sequence_tab_layout
+        )
+        assert tab_index < sequence_layout.indexOf(dock._sequence_tree)
+
     def test_close_closes_lifecycle_sensitive_children(
         self, plugin_manager, managed_qt_widget, monkeypatch
     ):

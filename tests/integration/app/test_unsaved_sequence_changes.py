@@ -96,18 +96,20 @@ def test_import_data_loads_reconstructed_sequence_and_marks_it_dirty(monkeypatch
 
     data_path = tmp_path / "measurement.txt"
     reconstructed = {"version": "test", "steps": [{"plugin": {"instance_name": "step"}}]}
-    steps = [object()]
     events: list[object] = []
+    document = object()
     fake = SimpleNamespace(
         _current_measurement_path=Path("previous.json"),
         _app_config={},
-        _sequence_steps_from_json=lambda data: (steps, False) if data is reconstructed else None,
-        _confirm_discard_measurement_changes=lambda: True,
-        _main_window=SimpleNamespace(
-            dock_panel=SimpleNamespace(load_sequence=lambda loaded: events.append(("load", loaded)))
-        ),
-        _mark_measurement_dirty=lambda: events.append("dirty"),
-        _engine=SimpleNamespace(_rebuild_data_catalogs=lambda: events.append("catalogs")),
+        _sequence_steps_from_json=lambda data: ([object()], False)
+        if data is reconstructed
+        else None,
+        _store_active_sequence=lambda: events.append("store"),
+        _new_sequence_document=lambda data, dirty: document
+        if data is reconstructed and dirty
+        else None,
+        _add_sequence_document=lambda added: events.append(("add", added)),
+        _engine=SimpleNamespace(is_running=False),
     )
     monkeypatch.setattr(
         QFileDialog,
@@ -122,8 +124,7 @@ def test_import_data_loads_reconstructed_sequence_and_marks_it_dirty(monkeypatch
 
     MeasurementApp._on_import_sequence_from_data(fake)
 
-    assert events == [("load", steps), "dirty", "catalogs"]
-    assert fake._current_measurement_path is None
+    assert events == ["store", ("add", document)]
 
 
 if __name__ == "__main__":

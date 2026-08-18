@@ -751,15 +751,17 @@ class TestMeasurementApp:
         assert app._main_window.script_tab.text == ""
         app._engine.shutdown()
 
-    def test_close_script_tab_action_has_shortcuts_and_tracks_active_main_tab(self, qapp):
+    def test_close_tab_action_tracks_active_main_tab(self, qapp):
         app = MeasurementApp()
         try:
-            action = app._act_close_script_tab
+            action = app._act_close_tab
             assert {shortcut.toString() for shortcut in action.shortcuts()} == {"Ctrl+F4", "Ctrl+W"}
-            assert action.isEnabled() is False
+            assert action.isEnabled() is True
+            assert action.text() == "&Close Sequence Tab"
 
             app._main_window.tabs.setCurrentIndex(app._TAB_EDITOR)
             assert action.isEnabled() is True
+            assert action.text() == "&Close Script Tab"
             script_tab = app._main_window.script_tab
             script_tab.new_tab()
             initial_count = script_tab._script_tabs.count()
@@ -768,7 +770,8 @@ class TestMeasurementApp:
 
             assert script_tab._script_tabs.count() == initial_count - 1
             app._main_window.tabs.setCurrentIndex(app._TAB_MEASUREMENT)
-            assert action.isEnabled() is False
+            assert action.isEnabled() is True
+            assert action.text() == "&Close Sequence Tab"
         finally:
             app._engine.shutdown()
 
@@ -945,7 +948,7 @@ class TestMeasurementApp:
         finally:
             app._engine.shutdown()
 
-    def test_load_predefined_sequence_clears_current_path(self, qapp, monkeypatch, tmp_path):
+    def test_load_predefined_sequence_opens_new_sequence_tab(self, qapp, monkeypatch, tmp_path):
         import shutil
 
         cfg_root = tmp_path
@@ -956,10 +959,12 @@ class TestMeasurementApp:
         app = MeasurementApp()
         try:
             app._current_measurement_path = Path("dummy.json")
+            initial_count = app._main_window.sequence_tabs.count()
             app._load_predefined_sequence("test-sequence.json")
 
             assert app._current_measurement_path is None
-            assert app.windowTitle() == "Stoner Measurement"
+            assert app._main_window.sequence_tabs.count() == initial_count + 1
+            assert "Untitled" in app.windowTitle()
             assert len(app._main_window.dock_panel.sequence_steps) > 0
         finally:
             app._engine.shutdown()

@@ -35,6 +35,8 @@ from qtpy.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSplitter,
+    QTabBar,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -997,24 +999,44 @@ class DockPanel(QWidget):
         self._clipboard_step_json: str | None = None
 
         layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self._plugin_section = QWidget(self)
+        plugin_layout = QVBoxLayout(self._plugin_section)
+        plugin_layout.setContentsMargins(0, 0, 0, 0)
 
         # --- Available sequence commands / plugins ---
-        layout.addWidget(QLabel("<b>Available sequence commands</b>"))
+        plugin_layout.addWidget(QLabel("<b>Available sequence commands</b>"))
         self._plugin_filter = QLineEdit()
         self._plugin_filter.setObjectName("pluginFilter")
         self._plugin_filter.setPlaceholderText("Filter plugins...")
         self._plugin_filter.setClearButtonEnabled(True)
-        layout.addWidget(self._plugin_filter)
+        plugin_layout.addWidget(self._plugin_filter)
         self._plugin_list = _PluginTreeWidget()
         self._plugin_list.setObjectName("pluginList")
-        layout.addWidget(self._plugin_list)
+        plugin_layout.addWidget(self._plugin_list, 1)
+
+        self._sequence_section = QWidget(self)
+        sequence_layout = QVBoxLayout(self._sequence_section)
+        sequence_layout.setContentsMargins(0, 0, 0, 0)
 
         # --- Sequence steps ---
-        layout.addWidget(QLabel("<b>Sequence Steps</b>"))
+        sequence_layout.addWidget(QLabel("<b>Sequence Steps</b>"))
+
+        self._sequence_tabs = QTabBar(self)
+        self._sequence_tabs.setDocumentMode(True)
+        self._sequence_tabs.setDrawBase(False)
+        self._sequence_tabs.setExpanding(False)
+        self._sequence_tabs.setMovable(True)
+        self._sequence_tabs.setTabsClosable(True)
+
+        self._sequence_tab_layout = QHBoxLayout()
+        self._sequence_tab_layout.setContentsMargins(0, 0, 0, 0)
+        self._sequence_tab_layout.addWidget(self._sequence_tabs, 1)
+        sequence_layout.addLayout(self._sequence_tab_layout)
+
         self._sequence_tree = _SequenceTreeWidget(plugin_manager=plugin_manager)
         self._sequence_tree.setObjectName("sequenceTree")
-        layout.addWidget(self._sequence_tree)
+        sequence_layout.addWidget(self._sequence_tree, 1)
         # Wire the factory so that plugin-list drops create new step items.
         self._sequence_tree.set_new_item_factory(self._make_new_step_item)
         # Enable right-click context menu on the sequence tree.
@@ -1030,7 +1052,16 @@ class DockPanel(QWidget):
         self._step_button_layout.setContentsMargins(0, 0, 0, 0)
         self._step_button_layout.addWidget(self._add_step_btn, 1)
         self._step_button_layout.addWidget(self._remove_step_btn, 1)
-        layout.addLayout(self._step_button_layout)
+        sequence_layout.addLayout(self._step_button_layout)
+
+        self._list_splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self._list_splitter.setObjectName("sequencePluginSplitter")
+        self._list_splitter.setChildrenCollapsible(False)
+        self._list_splitter.addWidget(self._plugin_section)
+        self._list_splitter.addWidget(self._sequence_section)
+        self._list_splitter.setStretchFactor(0, 1)
+        self._list_splitter.setStretchFactor(1, 1)
+        layout.addWidget(self._list_splitter, 1)
 
         # --- Monitoring section ---
         self._monitor_label = QLabel("<b>Monitoring</b>")
@@ -1060,6 +1091,11 @@ class DockPanel(QWidget):
         self._refresh_monitors()
         plugin_manager.plugins_changed.connect(self._refresh_plugins)
         plugin_manager.plugins_changed.connect(self._refresh_monitors)
+
+    @property
+    def sequence_tabs(self) -> QTabBar:
+        """Tab bar representing the open measurement-sequence documents."""
+        return self._sequence_tabs
 
     # ------------------------------------------------------------------
     # Internal helpers

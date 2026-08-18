@@ -5,7 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 from qtpy.QtCore import QSettings, QSize, Qt
 from qtpy.QtGui import QAction, QIcon, QKeySequence
@@ -117,6 +120,17 @@ class SequenceView:
             if callable(refresh):
                 refresh()
 
+
+@dataclass
+class SequenceDocument:
+    """Serialized state and file metadata for one open measurement sequence."""
+
+    document_id: str
+    display_name: str
+    data: dict[str, Any]
+    path: Path | None = None
+    clean_digest: str = ""
+
 class MeasurementApp(QMainWindow):
     """Top-level application window.
 
@@ -152,9 +166,12 @@ class MeasurementApp(QMainWindow):
         # be cleanly removed when the plugin list changes.
         self._engine_plugins: dict[str, object] = {}
 
-        # Path to the most recently saved/loaded measurement sequence file.
-        self._current_measurement_path: Path | None = None
-        self._measurement_clean_digest = ""
+        # Open measurement sequences share one live editor. Inactive documents
+        # are retained as serialized sequence dictionaries.
+        self._sequence_documents: dict[str, SequenceDocument] = {}
+        self._active_sequence_id: str | None = None
+        self._untitled_sequence_counter = 0
+        self._sequence_switching = False
 
         # Central widget -------------------------------------------------------
         self._main_window = MainWindow(plugin_manager=self._plugin_manager)
@@ -222,6 +239,9 @@ class MeasurementApp(QMainWindow):
         # Use an intermediate slot so step plugins are synced into the engine
         # namespace (and _traces rebuilt) before the config widget is shown.
         self._main_window.dock_panel.plugin_selected.connect(self._on_plugin_selected_for_config)
+        self._main_window.sequence_tabs.currentChanged.connect(self._on_sequence_tab_changed)
+        self._main_window.sequence_tabs.tabCloseRequested.connect(self._close_sequence_tab)
+        self._main_window.sequence_tabs.tabMoved.connect(self._on_sequence_tab_moved)
 
         # Build the UI before discovering plugins (so signals are in place) ---
         self._build_actions()
@@ -245,7 +265,16 @@ class MeasurementApp(QMainWindow):
 
         # Load the template sequence (or empty sequence if none configured) ----
         template_migrated = self._load_template_sequence()
-        self._set_loaded_measurement_baseline(migrated=template_migrated)
+        data = self._current_sequence_data()
+        document = self._new_sequence_document(
+            data,
+            migrated=template_migrated,
+        )
+        self._add_sequence_document(document, activate=False)
+        self._active_sequence_id = document.document_id
+        self._main_window.sequence_tabs.setCurrentIndex(0)
+        self._refresh_sequence_tab_titles()
+        self._update_window_title()
 
     def _initialise_feature_registry(self) -> None:
         """Collect per-feature UI objects so visibility is driven from one registry."""
@@ -610,6 +639,10 @@ class MeasurementApp(QMainWindow):
             if status.startswith(state):
                 background_colour = status_colour
                 break
+        sequence_tabs_enabled = not (
+            status.startswith("Running") or status.startswith("Paused")
+        )
+        self._main_window.sequence_tabs.setEnabled(sequence_tabs_enabled)
         self._show_status_message(status, background_colour)
 
     def _build_file_actions(self, style: QStyle) -> None:
@@ -648,11 +681,12 @@ class MeasurementApp(QMainWindow):
         self._act_save_as.setShortcut(QKeySequence.StandardKey.SaveAs)
         self._act_save_as.triggered.connect(self._on_save_as)
 
-        self._act_close_script_tab = QAction("&Close Script Tab", self)
-        self._act_close_script_tab.setShortcuts([QKeySequence("Ctrl+F4"), QKeySequence("Ctrl+W")])
-        self._act_close_script_tab.setStatusTip("Close the current script tab")
-        self._act_close_script_tab.setEnabled(False)
-        self._act_close_script_tab.triggered.connect(self._main_window.script_tab.close_current_tab)
+        self._act_close_tab = QAction("&Close Sequence Tab", self)
+        self._act_close_tab.setShortcuts([QKeySequence("Ctrl+F4"), QKeySequence("Ctrl+W")])
+        self._act_close_tab.setStatusTip("Close the current sequence tab")
+        self._act_close_tab.triggered.connect(self._on_close_tab)
+        # Compatibility alias retained for external callers and older tests.
+        self._act_close_script_tab = self._act_close_tab
 
         self._act_exit = QAction("E&xit", self)
         self._act_exit.setShortcut(QKeySequence.StandardKey.Quit)
@@ -805,7 +839,7 @@ class MeasurementApp(QMainWindow):
         file_menu.addAction(self._act_import_data)
         file_menu.addAction(self._act_save)
         file_menu.addAction(self._act_save_as)
-        file_menu.addAction(self._act_close_script_tab)
+        file_menu.addAction(self._act_close_tab)
         file_menu.addSeparator()
         file_menu.addAction(self._act_exit)
 
@@ -966,16 +1000,15 @@ class MeasurementApp(QMainWindow):
             return
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            steps, migrated = self._sequence_steps_from_json(data)
+            _steps, migrated = self._sequence_steps_from_json(data)
         except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError) as exc:
             QMessageBox.critical(self, "Load Sequence", f"Could not load sequence:\n{exc}")
             return
-        if not self._confirm_discard_measurement_changes():
+        if self._engine.is_running:
             return
-        self._main_window.dock_panel.load_sequence(steps)
-        self._current_measurement_path = None
-        self._set_loaded_measurement_baseline(migrated=migrated)
-        self._engine._rebuild_data_catalogs()
+        self._store_active_sequence()
+        document = self._new_sequence_document(data, migrated=migrated)
+        self._add_sequence_document(document)
 
     # ------------------------------------------------------------------
     # Tab-change handler — keeps action labels/tips in sync
@@ -988,7 +1021,9 @@ class MeasurementApp(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         """Update action labels and status tips when the active tab changes."""
         if index == self._TAB_MEASUREMENT:
-            self._act_close_script_tab.setEnabled(False)
+            self._act_close_tab.setEnabled(True)
+            self._act_close_tab.setText("&Close Sequence Tab")
+            self._act_close_tab.setStatusTip("Close the current sequence tab")
             self._act_import_data.setEnabled(True)
             self._act_new.setText("&New Sequence")
             self._act_new.setStatusTip("Clear the measurement sequence and start a new one")
@@ -1009,7 +1044,9 @@ class MeasurementApp(QMainWindow):
             self._act_paste.setText("&Paste Step")
             self._act_paste.setStatusTip("Paste the sequence step from the clipboard")
         elif index == self._TAB_EDITOR:
-            self._act_close_script_tab.setEnabled(True)
+            self._act_close_tab.setEnabled(True)
+            self._act_close_tab.setText("&Close Script Tab")
+            self._act_close_tab.setStatusTip("Close the current script tab")
             self._act_import_data.setEnabled(False)
             self._act_new.setText("&New Script")
             self._act_new.setStatusTip("Clear the sequence editor and start a new script")
@@ -1062,6 +1099,13 @@ class MeasurementApp(QMainWindow):
         elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
             self._on_save_as_script()
 
+    def _on_close_tab(self) -> None:
+        """Close the active sequence or script tab according to the main page."""
+        if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
+            self._close_sequence_tab(self._main_window.sequence_tabs.currentIndex())
+        elif self._main_window.tabs.currentIndex() == self._TAB_EDITOR:
+            self._main_window.script_tab.close_current_tab()
+
     def _on_cut(self) -> None:
         """Dispatch the Cut action to the appropriate handler for the active tab.
 
@@ -1113,22 +1157,217 @@ class MeasurementApp(QMainWindow):
     # Measurement-tab actions
     # ------------------------------------------------------------------
 
-    def _measurement_digest(self) -> str:
-        """Return a digest of the current sequence's canonical JSON."""
-        from stoner_measurement.core.serializer import sequence_to_json
+    @property
+    def _active_sequence_document(self) -> SequenceDocument | None:
+        """Return the active sequence document, if one has been created."""
+        if self._active_sequence_id is None:
+            return None
+        return self._sequence_documents.get(self._active_sequence_id)
 
-        data = sequence_to_json(self._main_window.dock_panel.sequence_steps)
+    @property
+    def _current_measurement_path(self) -> Path | None:
+        """Compatibility view of the active sequence document's file path."""
+        document = self._active_sequence_document
+        return document.path if document is not None else None
+
+    @_current_measurement_path.setter
+    def _current_measurement_path(self, value: Path | None) -> None:
+        document = self._active_sequence_document
+        if document is not None:
+            document.path = value
+            if value is not None:
+                document.display_name = value.name
+
+    @property
+    def _measurement_clean_digest(self) -> str:
+        """Compatibility view of the active document's clean digest."""
+        document = self._active_sequence_document
+        return document.clean_digest if document is not None else ""
+
+    @_measurement_clean_digest.setter
+    def _measurement_clean_digest(self, value: str) -> None:
+        document = self._active_sequence_document
+        if document is not None:
+            document.clean_digest = value
+
+    @staticmethod
+    def _sequence_data_digest(data: dict[str, Any]) -> str:
+        """Return the SHA-256 digest of canonical sequence JSON data."""
         canonical = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
         return hashlib.sha256(canonical).hexdigest()
 
+    def _current_sequence_data(self) -> dict[str, Any]:
+        """Serialize the sequence currently displayed in the shared editor."""
+        from stoner_measurement.core.serializer import sequence_to_json
+
+        return sequence_to_json(self._main_window.dock_panel.sequence_steps)
+
+    def _new_sequence_document(
+        self,
+        data: dict[str, Any],
+        *,
+        path: Path | None = None,
+        migrated: bool = False,
+        dirty: bool = False,
+    ) -> SequenceDocument:
+        """Create a sequence document with a stable identity and tab name."""
+        if path is None:
+            self._untitled_sequence_counter += 1
+            display_name = f"Untitled {self._untitled_sequence_counter}"
+        else:
+            display_name = path.name
+        clean_digest = "" if migrated or dirty else self._sequence_data_digest(data)
+        return SequenceDocument(
+            document_id=uuid4().hex,
+            display_name=display_name,
+            data=data,
+            path=path,
+            clean_digest=clean_digest,
+        )
+
+    def _add_sequence_document(
+        self,
+        document: SequenceDocument,
+        *,
+        activate: bool = True,
+    ) -> int:
+        """Add *document* to the backing store and sequence tab bar."""
+        self._sequence_documents[document.document_id] = document
+        tabs = self._main_window.sequence_tabs
+        self._sequence_switching = True
+        try:
+            index = tabs.addTab(document.display_name)
+            tabs.setTabData(index, document.document_id)
+            if activate:
+                tabs.setCurrentIndex(index)
+        finally:
+            self._sequence_switching = False
+        if activate:
+            self._activate_sequence_document(document.document_id)
+        else:
+            self._refresh_sequence_tab_titles()
+        return index
+
+    def _sequence_document_at(self, index: int) -> SequenceDocument | None:
+        """Return the document represented by sequence-tab *index*."""
+        if index < 0:
+            return None
+        document_id = self._main_window.sequence_tabs.tabData(index)
+        return self._sequence_documents.get(document_id)
+
+    def _sequence_tab_index(self, document_id: str) -> int:
+        """Return the tab index for *document_id*, or ``-1``."""
+        tabs = self._main_window.sequence_tabs
+        for index in range(tabs.count()):
+            if tabs.tabData(index) == document_id:
+                return index
+        return -1
+
+    def _store_active_sequence(self) -> None:
+        """Commit the live editor and store it in the active document."""
+        document = self._active_sequence_document
+        if document is None:
+            return
+        self._main_window.config_panel.commit_pending_changes()
+        document.data = self._current_sequence_data()
+        self._refresh_sequence_tab_titles()
+
+    def _activate_sequence_document(self, document_id: str) -> bool:
+        """Load one stored sequence into the shared measurement editor."""
+        document = self._sequence_documents.get(document_id)
+        if document is None:
+            return False
+        if document_id == self._active_sequence_id:
+            self._refresh_sequence_tab_titles()
+            return True
+        try:
+            steps, migrated = self._sequence_steps_from_json(document.data)
+        except (KeyError, ImportError, AttributeError, ValueError, TypeError) as exc:
+            QMessageBox.critical(
+                self,
+                "Switch Sequence",
+                f"Could not restore sequence {document.display_name!r}:\n{exc}",
+            )
+            return False
+        self._main_window.config_panel.show_plugin(None)
+        self._main_window.dock_panel.load_sequence(steps)
+        self._active_sequence_id = document_id
+        if migrated:
+            document.data = self._current_sequence_data()
+            document.clean_digest = ""
+        self._sync_sequence_steps_to_engine()
+        self._refresh_sequence_tab_titles()
+        self._update_window_title()
+        return True
+
+    def _on_sequence_tab_changed(self, index: int) -> None:
+        """Snapshot the outgoing sequence and restore the selected document."""
+        if self._sequence_switching:
+            return
+        target = self._sequence_document_at(index)
+        if target is None or target.document_id == self._active_sequence_id:
+            return
+        previous_id = self._active_sequence_id
+        if self._engine.is_running:
+            previous_index = self._sequence_tab_index(previous_id) if previous_id else -1
+            self._sequence_switching = True
+            try:
+                self._main_window.sequence_tabs.setCurrentIndex(previous_index)
+            finally:
+                self._sequence_switching = False
+            return
+        self._store_active_sequence()
+        if not self._activate_sequence_document(target.document_id):
+            previous_index = self._sequence_tab_index(previous_id) if previous_id else -1
+            self._sequence_switching = True
+            try:
+                self._main_window.sequence_tabs.setCurrentIndex(previous_index)
+            finally:
+                self._sequence_switching = False
+
+    def _on_sequence_tab_moved(self, _from: int, _to: int) -> None:
+        """Keep backing-store iteration order aligned with visual tab order."""
+        tabs = self._main_window.sequence_tabs
+        ordered_ids = [tabs.tabData(index) for index in range(tabs.count())]
+        self._sequence_documents = {
+            document_id: self._sequence_documents[document_id]
+            for document_id in ordered_ids
+            if document_id in self._sequence_documents
+        }
+
+    def _document_is_dirty(self, document: SequenceDocument) -> bool:
+        """Return whether *document* differs from its clean baseline."""
+        return self._sequence_data_digest(document.data) != document.clean_digest
+
+    def _refresh_sequence_tab_titles(self) -> None:
+        """Refresh sequence tab names and dirty markers from document state."""
+        tabs = self._main_window.sequence_tabs
+        for index in range(tabs.count()):
+            document = self._sequence_document_at(index)
+            if document is None:
+                continue
+            suffix = " *" if self._document_is_dirty(document) else ""
+            tabs.setTabText(index, f"{document.display_name}{suffix}")
+
+    def _measurement_digest(self) -> str:
+        """Return a digest of the current sequence's canonical JSON."""
+        return self._sequence_data_digest(self._current_sequence_data())
+
     def _mark_measurement_clean(self) -> None:
         """Set the current sequence as the saved/loaded clean baseline."""
-        self._measurement_clean_digest = self._measurement_digest()
+        document = self._active_sequence_document
+        if document is not None:
+            document.data = self._current_sequence_data()
+            document.clean_digest = self._sequence_data_digest(document.data)
+        self._refresh_sequence_tab_titles()
         self._update_window_title()
 
     def _mark_measurement_dirty(self) -> None:
         """Clear the saved baseline so the current sequence requires saving."""
         self._measurement_clean_digest = ""
+        store_active = getattr(self, "_store_active_sequence", None)
+        if callable(store_active):
+            store_active()
         self._update_window_title()
 
     def _set_loaded_measurement_baseline(self, *, migrated: bool) -> None:
@@ -1200,18 +1439,26 @@ class MeasurementApp(QMainWindow):
         return False
 
     def _on_new_measurement(self) -> None:
-        """Clear the measurement sequence and start a new one.
-
-        Asks the user to confirm discarding the current sequence, then clears
-        the sequence tree and resets the current file path. If a default
-        sequence template file exists, that template is loaded instead of an empty sequence.
-        """
-        if not self._confirm_discard_measurement_changes():
+        """Open a new sequence document populated from the default template."""
+        if self._engine.is_running:
             return
+        self._store_active_sequence()
         template_migrated = self._load_template_sequence()
-        self._current_measurement_path = None
-        self._set_loaded_measurement_baseline(migrated=template_migrated)
-        self._engine._rebuild_data_catalogs()
+        document = self._new_sequence_document(
+            self._current_sequence_data(),
+            migrated=template_migrated,
+        )
+        self._add_sequence_document(document, activate=False)
+        self._active_sequence_id = document.document_id
+        index = self._sequence_tab_index(document.document_id)
+        self._sequence_switching = True
+        try:
+            self._main_window.sequence_tabs.setCurrentIndex(index)
+        finally:
+            self._sequence_switching = False
+        self._sync_sequence_steps_to_engine()
+        self._refresh_sequence_tab_titles()
+        self._update_window_title()
 
     def _on_open_measurement(self) -> None:
         """Open a saved measurement sequence from a JSON file.
@@ -1220,7 +1467,6 @@ class MeasurementApp(QMainWindow):
         the sequence, and populates the sequence tree.  Displays an error
         message if the file cannot be parsed.
         """
-        dock = self._main_window.dock_panel
         start_dir = (
             str(self._current_measurement_path.parent)
             if self._current_measurement_path
@@ -1237,7 +1483,7 @@ class MeasurementApp(QMainWindow):
         file_path = Path(path)
         try:
             data = json.loads(file_path.read_text(encoding="utf-8"))
-            steps, migrated = self._sequence_steps_from_json(data)
+            _steps, migrated = self._sequence_steps_from_json(data)
         except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError) as exc:
             QMessageBox.critical(
                 self,
@@ -1245,12 +1491,18 @@ class MeasurementApp(QMainWindow):
                 f"Could not load sequence from {file_path.name!r}:\n{exc}",
             )
             return
-        if not self._confirm_discard_measurement_changes():
+        if self._engine.is_running:
             return
-        dock.load_sequence(steps)
-        self._current_measurement_path = file_path
-        self._set_loaded_measurement_baseline(migrated=migrated)
-        self._engine._rebuild_data_catalogs()
+        resolved_path = file_path.resolve()
+        for document in self._sequence_documents.values():
+            if document.path is not None and document.path.resolve() == resolved_path:
+                self._main_window.sequence_tabs.setCurrentIndex(
+                    self._sequence_tab_index(document.document_id)
+                )
+                return
+        self._store_active_sequence()
+        document = self._new_sequence_document(data, path=file_path, migrated=migrated)
+        self._add_sequence_document(document)
 
     def _on_import_sequence_from_data(self) -> None:
         """Reconstruct a measurement sequence from saved data-file metadata."""
@@ -1273,7 +1525,7 @@ class MeasurementApp(QMainWindow):
         file_path = Path(path)
         try:
             data = sequence_json_from_data_file(file_path)
-            steps, _migrated = self._sequence_steps_from_json(data)
+            _steps, _migrated = self._sequence_steps_from_json(data)
         except (
             OSError,
             ValueError,
@@ -1288,12 +1540,11 @@ class MeasurementApp(QMainWindow):
                 f"Could not reconstruct a sequence from {file_path.name!r}:\n{exc}",
             )
             return
-        if not self._confirm_discard_measurement_changes():
+        if self._engine.is_running:
             return
-        self._main_window.dock_panel.load_sequence(steps)
-        self._current_measurement_path = None
-        self._mark_measurement_dirty()
-        self._engine._rebuild_data_catalogs()
+        self._store_active_sequence()
+        document = self._new_sequence_document(data, dirty=True)
+        self._add_sequence_document(document)
 
     def _on_save_measurement(self) -> None:
         """Save the current measurement sequence to the last-used file.
@@ -1301,10 +1552,14 @@ class MeasurementApp(QMainWindow):
         Falls back to :meth:`_on_save_as_measurement` when no file has been
         chosen yet.
         """
-        if self._current_measurement_path is None:
+        document = self._active_sequence_document
+        if document is None:
+            return
+        self._store_active_sequence()
+        if document.path is None:
             self._on_save_as_measurement()
             return
-        self._save_measurement_to(self._current_measurement_path)
+        self._save_sequence_document_to(document, document.path)
 
     def _on_save_as_measurement(self) -> bool:
         """Prompt the user for a file path and save the measurement sequence.
@@ -1313,9 +1568,17 @@ class MeasurementApp(QMainWindow):
         success the chosen path becomes the new :attr:`_current_measurement_path`
         so that subsequent *Save* operations write to the same file.
         """
+        document = self._active_sequence_document
+        if document is None:
+            return False
+        self._store_active_sequence()
+        return self._save_sequence_document_as(document)
+
+    def _save_sequence_document_as(self, document: SequenceDocument) -> bool:
+        """Prompt for a path and save one sequence document."""
         start_dir = (
-            str(self._current_measurement_path.parent)
-            if self._current_measurement_path
+            str(document.path.parent)
+            if document.path
             else default_data_directory(config=self._app_config)
         )
         path, _ = QFileDialog.getSaveFileName(
@@ -1329,11 +1592,29 @@ class MeasurementApp(QMainWindow):
         file_path = Path(path)
         if file_path.suffix.lower() != ".json":
             file_path = file_path.with_suffix(".json")
-        if self._save_measurement_to(file_path):
-            self._current_measurement_path = file_path
-            self._update_window_title()
-            return True
-        return False
+        return self._save_sequence_document_to(document, file_path)
+
+    def _save_sequence_document_to(
+        self,
+        document: SequenceDocument,
+        path: Path,
+    ) -> bool:
+        """Write a stored sequence document to *path*."""
+        try:
+            path.write_text(json.dumps(document.data, indent=2), encoding="utf-8")
+        except (OSError, TypeError, ValueError) as exc:
+            QMessageBox.critical(
+                self,
+                "Save Sequence",
+                f"Could not save sequence to {path.name!r}:\n{exc}",
+            )
+            return False
+        document.path = path
+        document.display_name = path.name
+        document.clean_digest = self._sequence_data_digest(document.data)
+        self._refresh_sequence_tab_titles()
+        self._update_window_title()
+        return True
 
     def _save_measurement_to(self, path: Path) -> bool:
         """Serialise the current sequence tree and write it to *path*.
@@ -1347,21 +1628,86 @@ class MeasurementApp(QMainWindow):
                 ``True`` on success, ``False`` if an error occurred (an error
                 message box is shown to the user in that case).
         """
-        from stoner_measurement.core.serializer import sequence_to_json
-
-        steps = self._main_window.dock_panel.sequence_steps
-        try:
-            data = sequence_to_json(steps)
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        except (OSError, TypeError, ValueError) as exc:
-            QMessageBox.critical(
-                self,
-                "Save Sequence",
-                f"Could not save sequence to {path.name!r}:\n{exc}",
-            )
+        document = self._active_sequence_document
+        if document is None:
             return False
-        self._mark_measurement_clean()
-        return True
+        self._store_active_sequence()
+        return self._save_sequence_document_to(document, path)
+
+    def _confirm_close_sequence(self, document: SequenceDocument) -> bool:
+        """Resolve unsaved changes before closing one sequence document."""
+        if not self._document_is_dirty(document):
+            return True
+        answer = QMessageBox.question(
+            self,
+            "Unsaved Sequence Changes",
+            f"Sequence {document.display_name!r} has unsaved changes. Save them before closing?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Cancel:
+            return False
+        if answer == QMessageBox.StandardButton.No:
+            return True
+        if document.path is None:
+            return self._save_sequence_document_as(document)
+        return self._save_sequence_document_to(document, document.path)
+
+    def _close_sequence_tab(self, index: int) -> None:
+        """Close one sequence tab after resolving its dirty state."""
+        if self._engine.is_running:
+            return
+        document = self._sequence_document_at(index)
+        if document is None:
+            return
+        if document.document_id == self._active_sequence_id:
+            self._store_active_sequence()
+        if not self._confirm_close_sequence(document):
+            return
+
+        tabs = self._main_window.sequence_tabs
+        closing_active = document.document_id == self._active_sequence_id
+        next_document_id: str | None = None
+        if closing_active and tabs.count() > 1:
+            next_index = index + 1 if index + 1 < tabs.count() else index - 1
+            next_document = self._sequence_document_at(next_index)
+            next_document_id = next_document.document_id if next_document is not None else None
+
+        self._sequence_switching = True
+        try:
+            tabs.removeTab(index)
+        finally:
+            self._sequence_switching = False
+        del self._sequence_documents[document.document_id]
+
+        if not closing_active:
+            self._refresh_sequence_tab_titles()
+            return
+
+        self._active_sequence_id = None
+        if next_document_id is None:
+            self._on_new_measurement()
+            return
+        self._activate_sequence_document(next_document_id)
+        next_index = self._sequence_tab_index(next_document_id)
+        self._sequence_switching = True
+        try:
+            tabs.setCurrentIndex(next_index)
+        finally:
+            self._sequence_switching = False
+
+    def _confirm_close_all_sequences(self) -> bool:
+        """Resolve dirty state for every sequence tab before application exit."""
+        self._store_active_sequence()
+        tabs = self._main_window.sequence_tabs
+        documents = [
+            document
+            for index in range(tabs.count())
+            if (document := self._sequence_document_at(index)) is not None
+        ]
+        return all(self._confirm_close_sequence(document) for document in documents)
 
     # ------------------------------------------------------------------
     # Sequence-editor (script) action handlers
@@ -1692,10 +2038,15 @@ class MeasurementApp(QMainWindow):
         """Refresh the window title to reflect the active tab and file."""
         tab_idx = self._main_window.tabs.currentIndex()
         if tab_idx == self._TAB_MEASUREMENT:
-            if self._current_measurement_path is None:
+            document = self._active_sequence_document
+            if document is None:
                 self.setWindowTitle("Stoner Measurement")
             else:
-                self.setWindowTitle(f"Stoner Measurement — {self._current_measurement_path.name}")
+                dirty = self._measurement_digest() != document.clean_digest
+                suffix = " *" if dirty else ""
+                self.setWindowTitle(
+                    f"Stoner Measurement — {document.display_name}{suffix}"
+                )
             return
         pane = self._main_window.script_tab.current_pane()
         if pane is None or pane.path is None:
@@ -1765,7 +2116,7 @@ class MeasurementApp(QMainWindow):
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Save window geometry and cleanly shut down engines on close."""
-        if not self._confirm_discard_measurement_changes():
+        if not self._confirm_close_all_sequences():
             event.ignore()
             return
         self.shutdown()
