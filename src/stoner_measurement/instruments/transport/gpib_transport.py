@@ -649,34 +649,29 @@ class PassThroughGpibTransport(GpibTransport):
         """
         command = b"SYST:COMM:SER:ENT?"
         accumulated = b""
-        for ix in range(1, 65):
-            raw = self._resource.read_raw()
-            if raw.strip():
-                parts = raw.split(b";")
-                if len(parts) == 1:
-                    try:
-                        rc = int(raw.strip())
-                        return rc, ""
-                    except ValueError:  # Partial response
-                        accumulated += raw.strip()
-                        self._log_comms_traffic("RX", f"Continuing read: {raw}")
-                        sleep(_DEFAULT_K6221_SERIAL_POLL)
-                        self._resource.write_raw(command)
-                        continue
-                try:
-                    rc = int(parts[-1].strip())
-                except ValueError:
-                    raise InstrumentError(
-                        "Found multiple parts in response, but last part is not a status byte {accumulated+raw}"
-                    )
-                response = b";".join(parts[:-1])
-                accumulated += response
-                return rc, accumulated
-            if ix < 64:  # Still more to read
+        
+        empty_count=0
+        while empty_count<65:
+            raw_eol=self._resource.read_raw()
+            raw=raw_eol.strip()
+            if not raw:
+                empty_count+=1
+            self._log_comms_traffic("RX", f"Read ->{raw_eol}-<")
+            if len(raw)==0 or len(raw_eol)==255 or raw_eol[-2]==b"\n":
+                accumulated+=raw
                 sleep(_DEFAULT_K6221_SERIAL_POLL)
                 self._resource.write_raw(command)
-
-        raise InstrumentError(f"Incomplete response with no status byte {accumulated}")
+                continue
+            parts=[x for x in re.split(b"\;|\\n",raw) if x] # Bits of the read maybe se[arated by ; or \n
+            try:
+                rc=int(parts[-1])
+                accumulated+=b";".join(parts[:-1])
+                return rc,accumulated
+            except ValueError:
+                self._log_comms_traffic("RX", f"Processomg {parts}")
+                break                
+            
+        raise InstrumentError(f"Incomplete response with no status byte {accumulated}: {parts}")
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Read one response frame from the instrument via the 6221's SYST:COMM:SER:ENT?.

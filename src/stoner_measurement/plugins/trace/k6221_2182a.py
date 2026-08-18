@@ -1032,6 +1032,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             # ---- Arm 6221 sweep and initiate 2182A trigger system. ----
             self._k6221.clear_sweep_complete_event()
             self._k2182a.set_buffer_feed_continuous_next()
+            self._k2182a.clear_buffer()
+            self._k2182a.set_buffer_size(n)
+            self._k2182a.set_buffer_feed_sense()
+            self._k2182a.set_buffer_feed_continuous_next()
             self._k2182a.initiate()
             self._secondary_voltages = None
             if self._secondary_enabled:
@@ -1092,7 +1096,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         post_sweep_delay: float,
     ) -> tuple[float, ...]:
         """Read a complete meter buffer, allowing its final reading to settle."""
-        read_deadline = time.monotonic() + max(_TIMEOUT_MIN / 2.0, post_sweep_delay * 4.0)
+        read_deadline = time.monotonic() + max(_TIMEOUT_MIN, post_sweep_delay * count)
         while True:
             readings = meter.read_buffer(count=count)
             if len(readings) == count:
