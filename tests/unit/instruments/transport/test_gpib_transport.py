@@ -207,7 +207,7 @@ class TestPassThroughGpibTransport:
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
 
         transport = PassThroughGpibTransport(address=22)
-        resource = self._FakeResource(responses=[b"0"])
+        resource = self._FakeResource(responses=[b"0\n\n"])
         transport._resource = resource
 
         transport.write(b"*IDN?")
@@ -219,14 +219,36 @@ class TestPassThroughGpibTransport:
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
 
         transport = PassThroughGpibTransport(address=22)
-        resource = self._FakeResource(responses=[b"1.23\r\n\n;0"])
+        resource = self._FakeResource(responses=[b"1.23\r\n;0\n\n"])
         transport._resource = resource
 
         value = transport.read()
 
-        assert value == b"1.23\r\n\n"
+        assert value == b"1.23\r\n"
         assert resource.write_log == [b'SYST:COMM:SER:SEND "*STB?";ENT?']
         assert transport.last_stb == 0
+
+    def test_slow_query_collects_trace_before_requesting_status_byte(self, monkeypatch):
+        import stoner_measurement.instruments.transport.gpib_transport as gpib_module
+        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
+
+        monkeypatch.setattr(gpib_module, "sleep", lambda _seconds: None)
+        transport = PassThroughGpibTransport(address=22)
+        resource = self._FakeResource(
+            responses=[b"1.0,2.0,", b"3.0\r\n\n", b"16\n\n"]
+        )
+        transport._resource = resource
+
+        value = transport.query(b"TRAC:DAA?", slow=False)
+
+        assert value == b"1.0,2.0,3.0"
+        assert resource.write_log == [
+            b'SYST:COMM:SER:SEND "TRAC:DAA?"',
+            b"SYST:COMM:SER:ENT?",
+            b"SYST:COMM:SER:ENT?",
+            b'SYST:COMM:SER:SEND "*STB?";ENT?',
+        ]
+        assert transport.last_stb == 16
 
     def test_read_status_byte_returns_cached_last_stb(self):
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport

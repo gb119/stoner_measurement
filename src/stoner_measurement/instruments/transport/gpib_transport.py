@@ -30,6 +30,16 @@ _DEFAULT_READ_POLL = 0.01
 logger = logging.getLogger(__name__)
 
 
+def _get_stb_from_response(response):
+    """Try to extract a status byte from a bytestring response."""
+    parts = response.split(b";")
+    try:
+        rc = int(float(parts[-1]))
+        response = b";".join(parts[:-1])
+        return rc, response
+    except ValueError as exc:
+        raise InstrumentError(f"{response} did not seem to contain a status byte.") from exc
+
 class GpibTransport(BaseTransport):
     """GPIB transport using PyVISA.
 
@@ -569,7 +579,8 @@ class PassThroughGpibTransport(GpibTransport):
             wrapped = b'SYST:COMM:SER:SEND "*STB?";ENT?'
             self._log_comms_traffic("TX", wrapped)
             self._resource.write_raw(wrapped)
-        self.last_stb, response = self._read_serial_entry_chunk()
+        self.last_stb, response = _get_stb_from_response(self._read_serial_entry_chunk())
+
         self._log_comms_traffic("RX", response)
         self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
         if self.last_stb & 4:
@@ -621,10 +632,16 @@ class PassThroughGpibTransport(GpibTransport):
         self._last_cmd = perf_counter()
         if slow is not None:
             sleep(slow / 1000)
-            wrapped = b'SYST:COMM:SER:SEND "*STB?";ENT?'
+            wrapped = b"SYST:COMM:SER:ENT?"
             self._log_comms_traffic("TX", wrapped)
             self._resource.write_raw(wrapped)
-        self.last_stb, response = self._read_serial_entry_chunk()
+        response = self._read_serial_entry_chunk()
+        if slow is not None:
+            self._resource.write_raw(b'SYST:COMM:SER:SEND "*STB?";ENT?')
+            rc=self._read_serial_entry_chunk()
+            response+=b";"+rc
+        self.last_stb, response = _get_stb_from_response(response)
+
         self._log_comms_traffic("RX", response)
         self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
         if self.last_stb & 4:
@@ -646,32 +663,33 @@ class PassThroughGpibTransport(GpibTransport):
 
         Raises:
             ``InstrumentError`` if we can't get a response from the instrument.'
+
+        Notes:
+            The 2182A will send message frames of up to 254 characters and terminate the complete message
+            with a \n. The 6221 will then append its own \n. So the terminal frame can be recognised as
+            ending with \n\n. The 2182 resonds with a bare \n if it has no message, so en empty message
+            is a bare \n\n.
+
+            We will leave the processing of possible status bytes to the calling read() method.
         """
         command = b"SYST:COMM:SER:ENT?"
         accumulated = b""
-        
-        empty_count=0
-        while empty_count<65:
-            raw_eol=self._resource.read_raw()
-            raw=raw_eol.strip()
-            if not raw:
-                empty_count+=1
-            self._log_comms_traffic("RX", f"Read ->{raw_eol}-<")
-            if len(raw)==0 or len(raw_eol)==255 or raw_eol[-2]==b"\n":
-                accumulated+=raw
-                sleep(_DEFAULT_K6221_SERIAL_POLL)
-                self._resource.write_raw(command)
-                continue
-            parts=[x for x in re.split(b"\;|\\n",raw) if x] # Bits of the read maybe se[arated by ; or \n
-            try:
-                rc=int(parts[-1])
-                accumulated+=b";".join(parts[:-1])
-                return rc,accumulated
-            except ValueError:
-                self._log_comms_traffic("RX", f"Processomg {parts}")
-                break                
-            
-        raise InstrumentError(f"Incomplete response with no status byte {accumulated}: {parts}")
+
+        while not (raw:=self._resource.read_raw()).endswith(b"\n\n"):
+            self._log_comms_traffic("RX", f"Read frameL {raw}")
+            accumulated+=raw.strip()
+            if num_bytes and len(accumulated)>num_bytes:
+                accumulated=accumulated[:num_bytes]
+                raise InstrumentError(f"Overran bute count {num_bytes} message was {accumulated}")
+            self._resource.write_raw(command)
+            sleep (_DEFAULT_K6221_SERIAL_POLL)
+        accumulated+=raw.strip()
+        self._log_comms_traffic("RX", f"Final message {accumulated}")
+
+        if accumulated:
+            return accumulated
+        raise InstrumentError(f"Incomplete response with no terminator {accumulated}")
+
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Read one response frame from the instrument via the 6221's SYST:COMM:SER:ENT?.
@@ -696,7 +714,7 @@ class PassThroughGpibTransport(GpibTransport):
         wrapped = b'SYST:COMM:SER:SEND "*STB?";ENT?'
         self._log_comms_traffic("TX", wrapped)
         self._resource.write_raw(wrapped)
-        self.last_stb, response = self._read_serial_entry_chunk()
+        self.last_stb, response = _get_stb_from_response(self._read_serial_entry_chunk())
         self._log_comms_traffic("RX", response)
         self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
         if self.last_stb & 4:

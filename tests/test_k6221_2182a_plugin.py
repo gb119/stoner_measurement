@@ -345,14 +345,14 @@ class TestExecute:
         plugin._k2182a.initiate.assert_called_once_with()
         plugin._k6221.enable_output.assert_not_called()
         plugin._k2182a.read_buffer.assert_called_once_with(count=2)
-        plugin._k2182a.set_buffer_feed_continuous_next.assert_called_once_with()
+        assert plugin._k2182a.set_buffer_feed_continuous_next.call_args_list == [call(), call()]
         plugin._k6221.clear_sweep_complete_event.assert_called_once_with()
         plugin._k6221.wait_for_sweep_complete_srq.assert_called_once()
         plugin._k2182a.get_buffer_count.assert_not_called()
         assert sleep_mock.call_args_list == [call(plugin._post_sweep_delay())]
 
     def test_execute_retries_buffer_read_until_final_measurement_arrives(self, qapp):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock, call, patch
 
         import numpy as np
 
@@ -368,7 +368,7 @@ class TestExecute:
 
         assert points == [(1e-3, 0.1), (2e-3, 0.2)]
         assert plugin._k2182a.read_buffer.call_count == 2
-        plugin._k2182a.set_buffer_feed_continuous_next.assert_called_once_with()
+        assert plugin._k2182a.set_buffer_feed_continuous_next.call_args_list == [call(), call()]
 
     def test_execute_can_run_successive_sweeps_without_reconfigure(self, qapp):
         from unittest.mock import MagicMock, patch
@@ -392,8 +392,8 @@ class TestExecute:
         plugin._k6221.sweep_arm.assert_not_called()
         plugin._k6221.sweep_start.assert_not_called()
         assert plugin._k2182a.initiate.call_count == 2
-        assert plugin._k2182a.set_buffer_feed_continuous_next.call_count == 2
-        plugin._k2182a.clear_buffer.assert_not_called()
+        assert plugin._k2182a.set_buffer_feed_continuous_next.call_count == 4
+        assert plugin._k2182a.clear_buffer.call_count == 2
         plugin._k6221.enable_output.assert_not_called()
 
 
