@@ -34,11 +34,10 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
     plugin takes selected x/y data, sorts it by x, resamples it onto a uniform
     grid, and then performs either a forward FFT or an inverse FFT.
 
-    In the configuration tabs, the data-selection tab lets you choose either a
-    source trace and y column or advanced x/y expressions. A second tab selects
-    whether the transform is forward or inverse. The Help/About tab uses this
-    docstring to explain the difference between those modes and the meaning of
-    the output columns.
+    In the configuration tabs, the data-selection tab always selects a source
+    trace and column. Advanced mode may override the calculation inputs with
+    x/y expressions while retaining that source context for output naming. A
+    second tab selects whether the transform is forward or inverse.
 
     The output trace contains magnitude, real, imaginary, and phase columns,
     all sharing a reciprocal-domain x axis.
@@ -48,11 +47,11 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
             Key in the ``_traces`` catalogue used in simple mode. Defaults to
             ``""``.
         column_key (str):
-            Selected y-column key from the chosen trace in simple mode.
-            Defaults to ``""``.
+            Selected column key from the chosen source trace. Defaults to
+            ``""``.
         advanced_mode (bool):
             When ``True``, evaluate :attr:`x_expr` and :attr:`y_expr` instead
-            of using direct trace/column selection. Defaults to ``False``.
+            of using the selected trace arrays. Defaults to ``False``.
         x_expr (str):
             Python expression used to compute x data in advanced mode.
             Defaults to ``""``.
@@ -164,7 +163,9 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """
         del data
         try:
-            x_arr, y_arr, y_col_name, source_names, source_units = self._get_selected_data_arrays()
+            x_arr, y_arr, y_col_name, source_names, source_units, _source_trace = (
+                self._get_selected_data_arrays()
+            )
         except Exception as exc:
             self.log.error("FourierTransform: failed to retrieve data — %s", exc)
             return {}

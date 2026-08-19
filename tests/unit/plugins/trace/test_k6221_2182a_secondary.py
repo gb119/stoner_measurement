@@ -270,8 +270,8 @@ def test_acquisition_arms_and_reads_secondary_meter(qapp):
 @pytest.mark.parametrize(
     ("mode", "expected_timeout"),
     [
-        (SecondaryTriggerMode.PARALLEL, 10.5),
-        (SecondaryTriggerMode.DAISY_CHAIN, 20.5),
+        (SecondaryTriggerMode.PARALLEL, 11.0),
+        (SecondaryTriggerMode.DAISY_CHAIN, 22.0),
     ],
 )
 def test_trigger_wiring_changes_sweep_timing_estimate(qapp, mode, expected_timeout):
@@ -280,9 +280,10 @@ def test_trigger_wiring_changes_sweep_timing_estimate(qapp, mode, expected_timeo
     plugin._k6221 = MagicMock()
     plugin._k6221.wait_for_sweep_complete_srq.return_value = True
     plugin._k2182a = MagicMock()
-    plugin._k2182a.read_buffer.return_value = tuple(range(100))
-    plugin._secondary_nanovoltmeter.read_buffer.return_value = tuple(range(100))
-    plugin._sweep_values = np.arange(100)
+    plugin._source_delay = 0.0
+    plugin._k2182a.read_buffer.return_value = tuple(range(500))
+    plugin._secondary_nanovoltmeter.read_buffer.return_value = tuple(range(500))
+    plugin._sweep_values = np.arange(500)
 
     with patch("stoner_measurement.plugins.trace.k6221_2182a.time.sleep"):
         plugin._acquire_pairs({})

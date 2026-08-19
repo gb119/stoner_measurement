@@ -5,10 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-import pandas as pd
 from qtpy.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget
 
-from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform._trace_selection import (
     TraceChannelSelectionMixin,
 )
@@ -24,10 +22,11 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
     overall shape, or when you want to estimate derivatives from evenly
     sampled or near-evenly sampled trace data.
 
-    In the configuration tabs, choose the input trace or advanced x/y
-    expressions, then set the filter window length, polynomial order, and the
-    output type. The output can be either the smoothed signal itself or a
-    derivative of selected order.
+    In the configuration tabs, choose the source trace and target column, then
+    optionally enable advanced x/y input expressions. Set the filter window
+    length, polynomial order, and output type. The complete source trace is
+    copied and only the target column is replaced by the smoothed signal or
+    derivative.
 
     The data-selection tab determines where the input arrays come from, while
     the filter tab configures the Savitzky-Golay operation itself. The
@@ -40,8 +39,8 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         column_key (str):
             Selected y-column key from the chosen trace.
         advanced_mode (bool):
-            When ``True``, use advanced x/y expressions instead of direct
-            trace and column selection.
+            When ``True``, use advanced x/y expressions as calculation inputs
+            while retaining the selected source trace and target column.
         x_expr (str):
             Expression used to compute x data in advanced mode.
         y_expr (str):
@@ -116,7 +115,9 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
             return {}
 
         try:
-            x_arr, y_arr, y_col_name, source_names, source_units = self._get_selected_data_arrays()
+            x_arr, y_arr, y_col_name, source_names, source_units, source_trace = (
+                self._get_selected_data_arrays()
+            )
             y_arr = np.asarray(y_arr, dtype=float)
         except Exception as exc:
             self.log.error("SavitzkyGolay: failed to retrieve data — %s", exc)
@@ -124,6 +125,9 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
 
         if len(x_arr) < 3 or len(y_arr) < 3:
             self.log.warning("SavitzkyGolay: not enough points for filtering.")
+            return {}
+        if len(x_arr) != len(y_arr):
+            self.log.error("SavitzkyGolay: x and y input arrays must have matching lengths.")
             return {}
 
         window_length = _validated_odd_window_length(self.window_length, len(y_arr))
@@ -148,32 +152,32 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
             self.log.error("SavitzkyGolay: filtering failed — %s", exc)
             return {}
 
-        output_col = y_col_name if derivative_order == 0 else f"d{derivative_order}_{y_col_name}"
-        df = pd.DataFrame({output_col: y_filtered}, index=pd.Index(x_arr, name="x"))
+        if len(y_filtered) != len(source_trace.df):
+            self.log.error(
+                "SavitzkyGolay: input arrays must match the selected source trace length."
+            )
+            return {}
+        filtered_trace = self._copy_trace_data(source_trace)
+        filtered_trace.df[y_col_name] = y_filtered
 
-        names = {"x": source_names.get("x", "x")}
         if derivative_order == 0:
-            names[output_col] = source_names.get(y_col_name, y_col_name)
+            filtered_trace.names[y_col_name] = source_names.get(y_col_name, y_col_name)
         else:
             base_name = source_names.get(y_col_name, y_col_name)
-            names[output_col] = f"d{derivative_order}_{base_name}_dx{derivative_order}"
-
-        units = {"x": source_units.get("x", "")}
-        y_unit = source_units.get(y_col_name, "")
-        x_unit = units["x"]
-        if derivative_order == 0:
-            units[output_col] = y_unit
-        else:
-            units[output_col] = _derive_unit(y_unit, x_unit, derivative_order)
-
-        return {
-            _OUTPUT_TRACE_KEY: TraceData(
-                df=df,
-                column_roles={output_col: COLUMN_ROLE_Y},
-                names=names,
-                units=units,
+            filtered_trace.names[y_col_name] = (
+                f"d{derivative_order}_{base_name}_dx{derivative_order}"
             )
-        }
+
+        y_unit = source_units.get(y_col_name, "")
+        x_unit = source_units.get("x", "")
+        if derivative_order == 0:
+            filtered_trace.units[y_col_name] = y_unit
+        else:
+            filtered_trace.units[y_col_name] = _derive_unit(
+                y_unit, x_unit, derivative_order
+            )
+
+        return {_OUTPUT_TRACE_KEY: filtered_trace}
 
     def _build_data_tab(self, parent: QWidget | None = None) -> QWidget:
         """Build the data-selection tab."""

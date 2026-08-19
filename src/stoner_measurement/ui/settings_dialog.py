@@ -45,6 +45,8 @@ from stoner_measurement.app_config import (
     theme_setting,
 )
 from stoner_measurement.resources import (
+    install_predefined_sequence,
+    install_toolbar_icon,
     load_toolbar_config,
     save_toolbar_config,
     user_config_root,
@@ -334,7 +336,7 @@ class SettingsDialog(QDialog):
             self._toolbar_table.removeRow(row)
 
     def _browse_icon_for_row(self, line_edit: QLineEdit) -> None:
-        """Choose an icon file and store its basename in the row editor."""
+        """Choose an icon, install it in user resources, and store its basename."""
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Toolbar Icon",
@@ -342,10 +344,17 @@ class SettingsDialog(QDialog):
             "Image Files (*.png *.svg *.ico *.jpg *.jpeg);;All Files (*)",
         )
         if path:
-            line_edit.setText(Path(path).name)
+            try:
+                installed = install_toolbar_icon(path)
+            except OSError as exc:
+                QMessageBox.critical(
+                    self, "Install Toolbar Icon", f"Could not install icon:\n{exc}"
+                )
+                return
+            line_edit.setText(installed.name)
 
     def _browse_sequence_for_row(self, line_edit: QLineEdit) -> None:
-        """Choose a sequence file and store its basename in the row editor."""
+        """Choose a sequence, install it in user resources, and store its basename."""
         start_dir = str(user_config_root() / "sequences")
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -354,7 +363,14 @@ class SettingsDialog(QDialog):
             "JSON Files (*.json);;All Files (*)",
         )
         if path:
-            line_edit.setText(Path(path).name)
+            try:
+                installed = install_predefined_sequence(path)
+            except OSError as exc:
+                QMessageBox.critical(
+                    self, "Install Toolbar Sequence", f"Could not install sequence:\n{exc}"
+                )
+                return
+            line_edit.setText(installed.name)
 
     def _browse_data_dir(self) -> None:
         """Open a directory chooser and populate the data-directory field."""

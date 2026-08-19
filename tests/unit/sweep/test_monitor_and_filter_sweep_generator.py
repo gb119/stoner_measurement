@@ -30,27 +30,32 @@ class _FakeStateSweep:
 
 
 def test_progress_resets_and_reports_filter_trigger(qapp, monkeypatch):
-    plugin = _FakeStateSweep([0.0, 2.0])
+    plugin = _FakeStateSweep([0.0, 2.0, 2.0])
     generator = MonitorAndFilterSweepGenerator(
         rows=[("signal", False, 1.0)],
         timeout=10.0,
         poll_seconds=0.0,
         state_sweep=plugin,
     )
-    clock = iter([0.0, 0.5, 1.0, 1.0])
+    clock = iter([0.0, 0.5, 1.0, 1.0, 1.5])
     monkeypatch.setattr(generator_module.time, "monotonic", lambda: next(clock))
     progress: list[tuple[float, float]] = []
     triggers: list[int] = []
+    trigger_statuses: list[int | None] = []
     generator.progress_updated.connect(lambda elapsed, timeout: progress.append((elapsed, timeout)))
     generator.measurement_triggered.connect(triggers.append)
+    generator.trigger_status_changed.connect(trigger_statuses.append)
 
     first = next(generator)
     second = next(generator)
+    third = next(generator)
 
     assert first[3] is False
     assert second == (0, 0.0, 0, True)
-    assert progress == [(0.5, 10.0), (0.0, 10.0)]
+    assert third[3] is False
+    assert progress == [(0.5, 10.0), (0.0, 10.0), (0.5, 10.0)]
     assert triggers == [0]
+    assert trigger_statuses == [None, 0, None]
 
 
 def test_timeout_trigger_reports_timeout_source(qapp, monkeypatch):
@@ -80,13 +85,19 @@ def test_widget_shows_progress_and_trigger_source(qapp, managed_qt_widget):
     assert widget._progress.value() == 250  # noqa: SLF001
     assert widget._progress.format() == "2.5 / 10.0 s"  # noqa: SLF001
 
-    generator.measurement_triggered.emit(1)
+    generator.trigger_status_changed.emit(1)
     assert "palette(highlight)" in widget._table.cellWidget(1, 0).styleSheet()  # noqa: SLF001
     assert widget._timeout_spin.styleSheet() == ""  # noqa: SLF001
 
-    generator.measurement_triggered.emit(-1)
+    generator.trigger_status_changed.emit(-1)
     assert "palette(highlight)" in widget._timeout_spin.styleSheet()  # noqa: SLF001
     assert widget._table.cellWidget(1, 0).styleSheet() == ""  # noqa: SLF001
+
+    generator.trigger_status_changed.emit(None)
+    assert widget._timeout_spin.styleSheet() == ""  # noqa: SLF001
+    for row in range(widget._table.rowCount()):  # noqa: SLF001
+        for column in range(widget._table.columnCount()):  # noqa: SLF001
+            assert widget._table.cellWidget(row, column).styleSheet() == ""  # noqa: SLF001
 
 
 if __name__ == "__main__":

@@ -40,6 +40,27 @@ on status bbar right hand side.
 25. The log window supports regular-expression filtering for fine-grained message and communications filtering. DONE
 26. Plot widget supports programmatic trace renaming without losing data, axes, style, errors, or visibility.
     Plot-points ses this API when a configured series label changes. DONE
+27. Monitor and Filter sweep trigger highlights are cleared on the next evaluation when no condition triggers a
+    measurement. DONE
+28. Files chosen for custom-toolbar buttons in Preferences are installed into the correct user configuration
+    directories: icons into `resources` and sequences into `sequences`. Files already elsewhere in the managed
+    configuration tree are moved; files selected from outside it are copied. DONE
+29. Edit Function Scan can optionally generate a call to the owning scan plugin's `configure()` method immediately
+    after applying the edited function-scan settings. DONE
+30. Curve Fit evaluates user `p0` functions and initial-parameter traces through a reusable logging context that
+    reports warnings at INFO and exceptions at ERROR through the caller-supplied application logger. DONE
+31. Curve Fit exposes its current `fit` and optional `p0` functions as callable instance attributes, and exposes the
+    latest best-fit parameter values by name when they do not clash with existing plugin attributes. DONE
+32. Conditional `Break If` and `Continue If` commands generate guarded loop-control statements. Their default
+    instance names are `break_if` and `continue_if`, and generic sequence-position validation prevents them being
+    inserted outside a state scan or sweep loop. DONE
+33. X Offset Removal now copies the complete selected source trace and replaces only the selected target axis or
+    data column with `x - dx`. The target selector uses the trace catalogue's channel names and units, defaults to
+    the trace x channel, and includes every stored column, while the source trace remains unchanged. DONE
+34. Trace-producing transforms now keep source-trace and target-column controls active in Advanced Mode. Normal mode
+    uses the source trace's default x/y inputs; Advanced Mode may source x/y arrays from anywhere while retaining the
+    selected trace context. Window and Savitzky-Golay filters copy the complete trace and replace only the selected
+    column, while X Offset replaces only its selected target axis or column. DONE
 
 ## Done, but needs testing
 
@@ -78,33 +99,7 @@ on status bbar right hand side.
    connection then engine should enter a failed state and require the user to reconnect via the panel. The failed
    state needs to be logged as an error and reflected in the status-bar indicators.
 2. Implement the binary data formats for the Keithley 2182A buffer reads to try for faster 6221-2182 loops.
-3. Implement `break` and `continue` plugin commands (but make them have a condaitional field so that
-   they produce code like:
-       ```
-	   if condition_expression:
-	       break/continue
-	    ```
-	Would also need to have the ability to refuse to add not in a sub-loop (so we need
-	a hook that can be called on BasePlugin that is passed the sequence step list it
-	is being passed to and can raise some sort of Exception that the UI can display.)
 
 ## Bugs
 
-1.	In a Monitor and Filter sweep, the plugin highlights the test that caused the measure flag
-    to set True, but this stays highligted until the next measure true is set. If no tests for The
-	next measurement pass, the highlights shpuld be cleared.
-2. I added a custom toolbar, but the icon field doesn't seem to be working. JSON is:
-	```
-	buttons:
-	- name: R(T)
-	  sequence: R(T).json
-      image: R(T).png
-      tooltip: Config for doing Resistance vs Temperature
-	```
-	The png file is next to the sequence file and the sequence is loading correctly. If the button is
-	supposed to be somehwere else, then when I select the button file in the UI, it should be
-	moved to the correct location.
-3.	Check the SRQ timeout calcualtions - seems to not quite get it right for longer source delays in 6221-2182 trace plugin
-4.  Remove voltage offset seems to be changing things other than just the x column.
-5.  Edit Function Scan plugin  should have an option to reconfigure the scan plugin after editing - to generated
-    the code `<trace.configure()`.
+1.	Check the SRQ timeout calcualtions - seems to not quite get it right for longer source delays in 6221-2182 trace plugin

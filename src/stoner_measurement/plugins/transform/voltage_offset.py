@@ -32,15 +32,18 @@ _METHOD_LABELS = {
 class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
     """Remove a constant x-axis offset from selected x/y data.
 
-    The transform estimates ``dx`` using one of three methods and returns the
-    original y data against ``x - dx``. Data may be selected from a trace and
-    y column, or supplied as custom x/y expressions in advanced mode.
+    The transform estimates ``dx`` using one of three methods and returns a
+    complete copy of the selected source trace with only the selected target
+    axis or data column replaced by ``x - dx``. The target selector defaults
+    to the trace x axis but includes every stored column. Advanced mode may
+    obtain the x/y arrays used to calculate that offset from unrelated
+    expressions, while retaining the selected trace and target context.
     """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.trace_key: str = ""
-        self.column_key: str = ""
+        self.column_key: str = "x"
         self.advanced_mode: bool = False
         self.x_expr: str = ""
         self.y_expr: str = ""
@@ -88,11 +91,51 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
             return float(np.mean(x_arr[mask]))
         raise ValueError(f"Unknown voltage-offset method {self.method!r}")
 
+    def _default_trace_column_key(self) -> str:
+        """Default the output target to the source trace's x axis."""
+        return "x"
+
+    def _get_selected_data_arrays(
+        self,
+    ) -> tuple[np.ndarray, np.ndarray, str, dict[str, str], dict[str, str], TraceData]:
+        """Return offset inputs and the selected output-column context."""
+        trace_data = self._get_selected_trace_data()
+        target_column = self.column_key
+        if target_column == "":
+            y_columns = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
+            if not y_columns:
+                raise ValueError(f"Selected trace {self.trace_key!r} has no primary y column.")
+            target_column = y_columns[0]
+        elif target_column != "x" and target_column not in trace_data.df.columns:
+            target_column = "x"
+
+        if self.advanced_mode:
+            if not self.x_expr or not self.y_expr:
+                raise ValueError("x_expr and y_expr must be set in advanced mode.")
+            x_data = self.eval(self.x_expr)
+            y_data = self.eval(self.y_expr)
+        else:
+            x_data = (
+                trace_data.x
+                if target_column == "x"
+                else trace_data.df[target_column].to_numpy(dtype=float)
+            )
+            y_data = trace_data.y
+
+        return (
+            np.asarray(x_data, dtype=float),
+            np.asarray(y_data),
+            target_column,
+            dict(trace_data.names),
+            dict(trace_data.units),
+            trace_data,
+        )
+
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Return the selected trace with its calculated x offset removed."""
+        """Copy the selected trace and remove the calculated offset from x."""
         del data
         try:
-            x_arr, y_arr, y_col_name, source_names, source_units = (
+            x_arr, y_arr, target_column, _source_names, _source_units, source_trace = (
                 self._get_selected_data_arrays()
             )
             x_arr = np.asarray(x_arr, dtype=float)
@@ -103,28 +146,23 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
                 raise ValueError("input data is empty")
             if not np.all(np.isfinite(x_arr)) or not np.all(np.isfinite(y_arr)):
                 raise ValueError("x and y data must contain only finite values")
+            if len(source_trace.df) != len(x_arr):
+                raise ValueError("input arrays must match the selected source trace length")
             dx = self._calculate_offset(x_arr, y_arr)
         except Exception as exc:
             self.log.error("XOffsetRemoval: failed to calculate offset — %s", exc)
             return {}
 
         corrected_x = x_arr - dx
-        df = pd.DataFrame({y_col_name: y_arr}, index=pd.Index(corrected_x, name="x"))
-        names = {
-            "x": source_names.get("x", "x"),
-            y_col_name: source_names.get(y_col_name, y_col_name),
-        }
-        units = {
-            "x": source_units.get("x", ""),
-            y_col_name: source_units.get(y_col_name, ""),
-        }
+        corrected_trace = self._copy_trace_data(source_trace)
+        if target_column == "x":
+            corrected_trace.df.index = pd.Index(
+                corrected_x, name=source_trace.df.index.name
+            )
+        else:
+            corrected_trace.df[target_column] = corrected_x
         return {
-            _OUTPUT_TRACE_KEY: TraceData(
-                df=df,
-                column_roles={y_col_name: COLUMN_ROLE_Y},
-                names=names,
-                units=units,
-            ),
+            _OUTPUT_TRACE_KEY: corrected_trace,
             _OFFSET_VALUE_KEY: dx,
         }
 
@@ -198,7 +236,7 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
     def _restore_from_json(self, data: dict[str, Any]) -> None:
         """Restore trace selection and offset settings."""
         self.trace_key = str(data.get("trace_key", ""))
-        self.column_key = str(data.get("column_key", ""))
+        self.column_key = str(data.get("column_key", "x")) or "x"
         self.advanced_mode = bool(data.get("advanced_mode", False))
         self.x_expr = str(data.get("x_expr", ""))
         self.y_expr = str(data.get("y_expr", ""))

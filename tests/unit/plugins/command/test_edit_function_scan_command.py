@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from qtpy.QtWidgets import QComboBox, QLineEdit
+from qtpy.QtWidgets import QCheckBox, QComboBox, QLineEdit
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command import EditFunctionScanCommand
@@ -176,6 +176,11 @@ def test_config_widget_lists_eligible_scan_and_uses_blank_retain_fields(
     assert command.amplitude_expr == "base_amplitude * scale"
     assert command.waveform_expr == "Square"
 
+    reconfigure = widget.findChild(QCheckBox, "reconfigure_after_edit")
+    assert not reconfigure.isChecked()
+    reconfigure.setChecked(True)
+    assert command.reconfigure_after_edit is True
+
 
 def test_config_widget_refreshes_when_generator_type_changes(qapp, engine, managed_qt_widget):
     command = EditFunctionScanCommand()
@@ -220,6 +225,7 @@ def test_json_round_trip_preserves_optional_expressions(qapp):
     command.amplitude_expr = "starting_amplitude * scale"
     command.points_expr = "points_for_stage"
     command.waveform_expr = "'Square'"
+    command.reconfigure_after_edit = True
 
     restored = BasePlugin.from_json(command.to_json())
 
@@ -229,6 +235,26 @@ def test_json_round_trip_preserves_optional_expressions(qapp):
     assert restored.offset_expr == ""
     assert restored.points_expr == "points_for_stage"
     assert restored.waveform_expr == "'Square'"
+    assert restored.reconfigure_after_edit is True
+
+
+def test_generated_code_optionally_reconfigures_target_after_edit(qapp):
+    command = EditFunctionScanCommand()
+    command.instance_name = "edit_scan"
+    command.target_scan = "field_scan"
+
+    assert command.generate_action_code(1, [], lambda *_args: []) == [
+        "    edit_scan()",
+        "",
+    ]
+
+    command.reconfigure_after_edit = True
+
+    assert command.generate_action_code(1, [], lambda *_args: []) == [
+        "    edit_scan()",
+        "    field_scan.configure()",
+        "",
+    ]
 
 
 def test_execute_rejects_missing_or_ineligible_target(qapp, engine):

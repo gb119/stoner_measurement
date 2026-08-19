@@ -14,6 +14,8 @@ Exports :class:`CommandPlugin` (abstract base) from
 :class:`StatusCommand` from :mod:`stoner_measurement.plugins.command.status`,
 :class:`AlertCommand` from :mod:`stoner_measurement.plugins.command.alert`,
 :class:`IfCommand` from :mod:`stoner_measurement.plugins.command.if_command`,
+:class:`BreakIfCommand` and :class:`ContinueIfCommand` from
+:mod:`stoner_measurement.plugins.command.loop_control`,
 :class:`DetailsCommand` from :mod:`stoner_measurement.plugins.command.details`,
 and :class:`EditFunctionScanCommand` from
 :mod:`stoner_measurement.plugins.command.edit_function_scan`.
@@ -24,6 +26,7 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.command.edit_function_scan import EditFunctionScanCommand
 from stoner_measurement.plugins.command.if_command import IfCommand
+from stoner_measurement.plugins.command.loop_control import BreakIfCommand, ContinueIfCommand
 from stoner_measurement.plugins.command.make_safe import MakeSafeCommand
 from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
 from stoner_measurement.plugins.command.plot_points import PlotPointsCommand
@@ -50,7 +53,9 @@ from stoner_measurement.plugins.command.wait import WaitCommand
 
 __all__ = [
     "AlertCommand",
+    "BreakIfCommand",
     "CommandPlugin",
+    "ContinueIfCommand",
     "DetailsCommand",
     "EditFunctionScanCommand",
     "IfCommand",

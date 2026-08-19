@@ -110,8 +110,8 @@ def test_configure_applies_2182a_settings(qapp, filter_type, enabled, driver_typ
 @pytest.mark.parametrize(
     ("filter_type", "expected"),
     [
-        (DigitalFilterType.OFF, 0.25),
-        (DigitalFilterType.WINDOW, 0.25),
+        (DigitalFilterType.OFF, 0.2),
+        (DigitalFilterType.WINDOW, 0.2),
         (DigitalFilterType.REPEAT, 0.8),
     ],
 )

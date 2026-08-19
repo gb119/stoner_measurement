@@ -103,6 +103,44 @@ def trace_channel_items(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
     return items
 
 
+def trace_target_column_items(
+    plugin: Any, traces: dict[str, str], trace_key: str
+) -> dict[str, str]:
+    """Return user-facing labels mapped to target keys for one source trace.
+
+    The x axis maps to ``"x"``. Stored DataFrame columns map to their stable
+    column keys. Before acquisition, a configured producer's y channel maps to
+    ``""``, the existing sentinel for the trace's primary y-role column.
+    """
+    if not trace_key or trace_key not in traces:
+        return {}
+    expression = traces[trace_key]
+    try:
+        trace_data = plugin.eval(expression)
+        frame = trace_data.df
+        names = dict(getattr(trace_data, "names", {}) or {})
+        units = dict(getattr(trace_data, "units", {}) or {})
+    except Exception:  # noqa: BLE001  # the catalogue may precede acquisition
+        configured = _configured_trace_channels(plugin, trace_key, expression)
+        if configured is None:
+            return {
+                f"{trace_key} (x)": "x",
+                f"{trace_key} (y)": "",
+            }
+        return {
+            label: "x" if channel_expression.endswith(".x") else ""
+            for label, channel_expression in configured.items()
+        }
+
+    items = {_channel_label(trace_key, "x", names=names, units=units): "x"}
+    y_columns = list(getattr(trace_data, "get_columns_by_role", lambda _role: [])("y"))
+    default_y = y_columns[0] if y_columns else None
+    for column in frame.columns:
+        target_key = "" if column == default_y else str(column)
+        items[_channel_label(trace_key, column, names=names, units=units)] = target_key
+    return items
+
+
 def refresh_trace_source_widgets(
     plugin: Any,
     widgets: dict[str, Any],
@@ -127,11 +165,8 @@ def refresh_trace_source_widgets(
 
     column_combo = widgets.get("column_combo")
     if show_column_selector and column_combo is not None:
-        columns = plugin._get_trace_columns(plugin.trace_key)
         column_combo.blockSignals(True)
         plugin._populate_column_combo(column_combo, plugin.trace_key)
-        if plugin.column_key not in columns:
-            plugin.column_key = ""
         column_combo.blockSignals(False)
 
     items = trace_channel_items(plugin, traces)

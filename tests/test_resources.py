@@ -160,6 +160,68 @@ class TestLookupHelpers:
 
         assert resources.find_toolbar_icon("icon.png") == bundled_icon
 
+    def test_install_toolbar_icon_copies_file_from_outside_config(self, monkeypatch, tmp_path):
+        """An icon outside managed config should be copied, preserving its original."""
+        user_root = tmp_path / "user"
+        selected = tmp_path / "selected" / "icon.png"
+        selected.parent.mkdir()
+        selected.write_bytes(b"icon data")
+        monkeypatch.setattr(resources, "user_config_root", lambda: user_root)
+
+        copied = resources.install_toolbar_icon(selected)
+
+        assert copied == user_root / "resources" / "icon.png"
+        assert copied.read_bytes() == b"icon data"
+        assert selected.read_bytes() == b"icon data"
+
+    def test_install_toolbar_icon_moves_file_from_wrong_config_directory(
+        self, monkeypatch, tmp_path
+    ):
+        """An icon already inside managed config should be moved into resources."""
+        user_root = tmp_path / "user"
+        selected = user_root / "sequences" / "icon.png"
+        selected.parent.mkdir(parents=True)
+        selected.write_bytes(b"icon data")
+        monkeypatch.setattr(resources, "user_config_root", lambda: user_root)
+
+        installed = resources.install_toolbar_icon(selected)
+
+        assert installed == user_root / "resources" / "icon.png"
+        assert installed.read_bytes() == b"icon data"
+        assert not selected.exists()
+
+    def test_install_predefined_sequence_copies_file_from_outside_config(
+        self, monkeypatch, tmp_path
+    ):
+        """A sequence outside managed config should be copied, preserving its original."""
+        user_root = tmp_path / "user"
+        selected = tmp_path / "selected" / "scan.json"
+        selected.parent.mkdir()
+        selected.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(resources, "user_config_root", lambda: user_root)
+
+        installed = resources.install_predefined_sequence(selected)
+
+        assert installed == user_root / "sequences" / "scan.json"
+        assert installed.read_text(encoding="utf-8") == "{}"
+        assert selected.read_text(encoding="utf-8") == "{}"
+
+    def test_install_predefined_sequence_moves_file_from_wrong_config_directory(
+        self, monkeypatch, tmp_path
+    ):
+        """A sequence inside managed config should be moved into sequences."""
+        user_root = tmp_path / "user"
+        selected = user_root / "resources" / "scan.json"
+        selected.parent.mkdir(parents=True)
+        selected.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(resources, "user_config_root", lambda: user_root)
+
+        installed = resources.install_predefined_sequence(selected)
+
+        assert installed == user_root / "sequences" / "scan.json"
+        assert installed.read_text(encoding="utf-8") == "{}"
+        assert not selected.exists()
+
     def test_find_predefined_sequence_prefers_user_resource(self, monkeypatch, tmp_path):
         """User predefined sequences should override bundled sequences."""
         user_seq = tmp_path / "sequences" / "test.json"

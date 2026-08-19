@@ -197,6 +197,57 @@ class TestSettingsDialogToolbarRows:
         assert dialog._toolbar_table.rowCount() == 1
         assert dialog._toolbar_table.item(0, 0).text() == "Two"
 
+    def test_browse_icon_installs_selection_and_stores_installed_name(
+        self, qapp, monkeypatch, tmp_path
+    ):
+        _install_dialog_dependencies(monkeypatch, {"app": {}, "features": {}})
+        dialog = SettingsDialog()
+        line_edit = QLineEdit()
+        selected = tmp_path / "R(T).png"
+        selected.write_bytes(b"icon")
+        installed = tmp_path / "resources" / selected.name
+        selected_paths = []
+        monkeypatch.setattr(
+            settings_module.QFileDialog,
+            "getOpenFileName",
+            lambda *_args, **_kwargs: (str(selected), "Image Files"),
+        )
+        monkeypatch.setattr(
+            settings_module,
+            "install_toolbar_icon",
+            lambda path: selected_paths.append(path) or installed,
+        )
+
+        dialog._browse_icon_for_row(line_edit)
+
+        assert selected_paths == [str(selected)]
+        assert line_edit.text() == "R(T).png"
+
+    def test_browse_sequence_installs_selection_and_stores_installed_name(
+        self, qapp, monkeypatch, tmp_path
+    ):
+        _install_dialog_dependencies(monkeypatch, {"app": {}, "features": {}})
+        dialog = SettingsDialog()
+        line_edit = QLineEdit()
+        selected = tmp_path / "R(T).json"
+        selected.write_text("{}", encoding="utf-8")
+        installed = tmp_path / "sequences" / selected.name
+        selected_paths = []
+        monkeypatch.setattr(
+            settings_module.QFileDialog,
+            "getOpenFileName",
+            lambda *_args, **_kwargs: (str(selected), "JSON Files"),
+        )
+        monkeypatch.setattr(
+            settings_module,
+            "install_predefined_sequence",
+            lambda path: selected_paths.append(path) or installed,
+        )
+
+        dialog._browse_sequence_for_row(line_edit)
+
+        assert selected_paths == [str(selected)]
+        assert line_edit.text() == "R(T).json"
 
 class TestSettingsDialogToolbarSave:
     def test_save_toolbar_cancel_on_validation_warning_does_not_write(self, qapp, monkeypatch):

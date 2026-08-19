@@ -6,10 +6,8 @@ import ast
 from typing import Any
 
 import numpy as np
-import pandas as pd
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLineEdit, QWidget
 
-from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform._trace_selection import (
     TraceChannelSelectionMixin,
 )
@@ -50,7 +48,8 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
 
     Use this transform when you want a simple configurable smoothing or
     windowed averaging operation. It applies a window function to the selected
-    y data and returns a filtered trace on the same x-axis.
+    y data, copies the complete source trace, and replaces only the selected
+    target column.
 
     In the configuration tabs, choose the input trace or advanced x/y
     expressions, then select the SciPy window type, length, optional window
@@ -67,8 +66,8 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
         column_key (str):
             Selected y-column key from the chosen trace.
         advanced_mode (bool):
-            When ``True``, use advanced x/y expressions instead of direct
-            trace and column selection.
+            When ``True``, use advanced x/y expressions as calculation inputs
+            while retaining the selected source trace and target column.
         x_expr (str):
             Expression used to compute x data in advanced mode.
         y_expr (str):
@@ -144,7 +143,9 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """Return the selected trace with y filtered by window convolution."""
         del data
         try:
-            x_arr, y_arr, y_col_name, source_names, source_units = self._get_selected_data_arrays()
+            x_arr, y_arr, y_col_name, _source_names, _source_units, source_trace = (
+                self._get_selected_data_arrays()
+            )
             y_arr = np.asarray(y_arr, dtype=float)
         except Exception as exc:
             self.log.error("WindowFilter: failed to retrieve data — %s", exc)
@@ -152,6 +153,9 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
 
         if len(x_arr) == 0 or len(y_arr) == 0:
             self.log.warning("WindowFilter: empty input data.")
+            return {}
+        if len(x_arr) != len(y_arr):
+            self.log.error("WindowFilter: x and y input arrays must have matching lengths.")
             return {}
 
         try:
@@ -165,25 +169,15 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
             return {}
 
         y_filtered = np.convolve(y_arr, kernel, mode="same")
-        df = pd.DataFrame({y_col_name: y_filtered}, index=pd.Index(x_arr, name="x"))
-
-        names = {
-            "x": source_names.get("x", "x"),
-            y_col_name: source_names.get(y_col_name, y_col_name),
-        }
-        units = {
-            "x": source_units.get("x", ""),
-            y_col_name: source_units.get(y_col_name, ""),
-        }
-
-        return {
-            _FILTER_TRACE_KEY: TraceData(
-                df=df,
-                column_roles={y_col_name: COLUMN_ROLE_Y},
-                names=names,
-                units=units,
+        if len(y_filtered) != len(source_trace.df):
+            self.log.error(
+                "WindowFilter: input arrays must match the selected source trace length."
             )
-        }
+            return {}
+        filtered_trace = self._copy_trace_data(source_trace)
+        filtered_trace.df[y_col_name] = y_filtered
+
+        return {_FILTER_TRACE_KEY: filtered_trace}
 
     def _build_window_kernel(self) -> np.ndarray:
         """Build and return the configured window kernel for convolution."""

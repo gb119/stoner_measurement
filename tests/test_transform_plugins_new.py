@@ -13,7 +13,29 @@ from stoner_measurement.plugins.transform import (
     FourierTransformPlugin,
     SavitzkyGolayPlugin,
     WindowFilterPlugin,
+    XOffsetRemovalPlugin,
 )
+
+
+def _set_transform_source(engine, plugin, length: int) -> TraceData:
+    """Attach a multi-column source trace for array-input transform tests."""
+    source = TraceData(
+        df=pd.DataFrame(
+            {
+                "signal": np.zeros(length, dtype=float),
+                "untouched": np.arange(length, dtype=float) + 100.0,
+            },
+            index=pd.Index(np.arange(length, dtype=float), name="source_x"),
+        ),
+        column_roles={"signal": COLUMN_ROLE_Y},
+        names={"x": "Source X", "signal": "Signal", "untouched": "Untouched"},
+        units={"x": "s", "signal": "V", "untouched": "A"},
+    )
+    engine._namespace["_transform_source"] = source
+    engine._namespace["_traces"] = {"source": "_transform_source"}
+    plugin.trace_key = "source"
+    plugin.column_key = "signal"
+    return source
 
 
 @pytest.fixture
@@ -66,6 +88,40 @@ def test_transform_trace_combo_refreshes_when_catalog_changes(
     assert plugin.trace_key == "counter.data"
 
 
+@pytest.mark.parametrize(
+    "plugin_cls",
+    [
+        WindowFilterPlugin,
+        SavitzkyGolayPlugin,
+        FourierTransformPlugin,
+        XOffsetRemovalPlugin,
+    ],
+)
+def test_advanced_mode_keeps_source_trace_and_all_columns_active(
+    plugin_cls, engine, managed_qt_widget
+):
+    plugin = plugin_cls()
+    engine.add_plugin("transform", plugin)
+    _set_transform_source(engine, plugin, 3)
+    plugin.advanced_mode = True
+    widget = managed_qt_widget(QWidget())
+    ws = plugin._create_data_source_widgets(widget, engine._namespace["_traces"])
+    plugin._wire_data_source_widgets(ws)
+
+    assert ws["trace_combo"].isEnabled()
+    assert ws["column_combo"].isEnabled()
+    expected_columns = [
+        "source:Source X (s)",
+        "source:Signal (V)",
+        "source:Untouched (A)",
+    ]
+    assert [
+        ws["column_combo"].itemText(i) for i in range(ws["column_combo"].count())
+    ] == expected_columns
+    assert ws["x_combo"].isEnabled()
+    assert ws["y_combo"].isEnabled()
+
+
 class TestWindowFilterPlugin:
     def test_window_filter_advanced_mode_returns_filtered_trace(self, engine):
         plugin = WindowFilterPlugin()
@@ -75,6 +131,7 @@ class TestWindowFilterPlugin:
         y = np.array([0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0], dtype=float)
         engine._namespace["_x"] = x
         engine._namespace["_y"] = y
+        source = _set_transform_source(engine, plugin, len(x))
 
         plugin.advanced_mode = True
         plugin.x_expr = "_x"
@@ -88,8 +145,10 @@ class TestWindowFilterPlugin:
         td = result["filtered"]
 
         expected = np.convolve(y, np.ones(3) / 3.0, mode="same")
-        np.testing.assert_allclose(td.x, x)
+        np.testing.assert_allclose(td.x, source.x)
         np.testing.assert_allclose(td.y, expected)
+        np.testing.assert_allclose(td.df["untouched"], source.df["untouched"])
+        np.testing.assert_allclose(source.df["signal"], 0.0)
 
     def test_window_filter_simple_mode_honours_selected_column(self, engine):
         plugin = WindowFilterPlugin()
@@ -111,7 +170,30 @@ class TestWindowFilterPlugin:
         plugin.window_length = 1
 
         result = plugin.transform({})
-        np.testing.assert_allclose(result["filtered"].y, np.arange(5, dtype=float))
+        np.testing.assert_allclose(
+            result["filtered"].df["y2"], np.arange(5, dtype=float)
+        )
+        np.testing.assert_allclose(result["filtered"].df["y1"], 0.0)
+
+    def test_window_filter_advanced_mode_replaces_selected_target_column(self, engine):
+        plugin = WindowFilterPlugin()
+        engine.add_plugin("window_filter", plugin)
+        source = _set_transform_source(engine, plugin, 4)
+        replacement = np.array([4.0, 3.0, 2.0, 1.0])
+        engine._namespace["_advanced_x"] = np.arange(4, dtype=float)
+        engine._namespace["_advanced_y"] = replacement
+        plugin.column_key = "untouched"
+        plugin.advanced_mode = True
+        plugin.x_expr = "_advanced_x"
+        plugin.y_expr = "_advanced_y"
+        plugin.window_name = "boxcar"
+        plugin.window_length = 1
+
+        result = plugin.transform({})["filtered"]
+
+        np.testing.assert_allclose(result.df["untouched"], replacement)
+        np.testing.assert_allclose(result.df["signal"], source.df["signal"])
+        np.testing.assert_allclose(source.df["untouched"], [100.0, 101.0, 102.0, 103.0])
 
 
 class TestSavitzkyGolayPlugin:
@@ -123,6 +205,7 @@ class TestSavitzkyGolayPlugin:
         y = x**2
         engine._namespace["_x"] = x
         engine._namespace["_y"] = y
+        source = _set_transform_source(engine, plugin, len(x))
 
         plugin.advanced_mode = True
         plugin.x_expr = "_x"
@@ -134,6 +217,7 @@ class TestSavitzkyGolayPlugin:
         result = plugin.transform({})
         td = result["savgol"]
         np.testing.assert_allclose(td.y, y, atol=1e-9)
+        np.testing.assert_allclose(td.df["untouched"], source.df["untouched"])
 
     def test_savgol_first_derivative_of_quadratic(self, engine):
         plugin = SavitzkyGolayPlugin()
@@ -143,6 +227,7 @@ class TestSavitzkyGolayPlugin:
         y = x**2
         engine._namespace["_x"] = x
         engine._namespace["_y"] = y
+        _set_transform_source(engine, plugin, len(x))
 
         plugin.advanced_mode = True
         plugin.x_expr = "_x"
@@ -163,6 +248,7 @@ class TestSavitzkyGolayPlugin:
         y = x**2
         engine._namespace["_x"] = x
         engine._namespace["_y"] = y
+        _set_transform_source(engine, plugin, len(x))
 
         plugin.advanced_mode = True
         plugin.x_expr = "_x"
@@ -188,6 +274,7 @@ class TestFourierTransformPlugin:
         y = np.sin(2.0 * np.pi * frequency * x)
         engine._namespace["_x"] = x
         engine._namespace["_y"] = y
+        _set_transform_source(engine, plugin, len(x))
 
         plugin.advanced_mode = True
         plugin.x_expr = "_x"
@@ -197,13 +284,18 @@ class TestFourierTransformPlugin:
         result = plugin.transform({})
         td = result["fft"]
 
-        assert {"y_magnitude", "y_real", "y_imag", "y_angle"}.issubset(set(td.df.columns))
+        assert {
+            "signal_magnitude",
+            "signal_real",
+            "signal_imag",
+            "signal_angle",
+        }.issubset(set(td.df.columns))
         mid = len(td.x) // 2
         assert abs(td.x[mid]) < 1e-9
         peak_frequency = abs(td.x[int(np.argmax(td.y))])
         assert abs(peak_frequency - frequency) < 1.0
-        magnitude = td.df["y_magnitude"].to_numpy(dtype=float)
-        complex_from_parts = td.df["y_real"] + 1j * td.df["y_imag"]
+        magnitude = td.df["signal_magnitude"].to_numpy(dtype=float)
+        complex_from_parts = td.df["signal_real"] + 1j * td.df["signal_imag"]
         np.testing.assert_allclose(magnitude, np.abs(complex_from_parts))
 
     def test_inverse_fft_recovers_signal_shape(self, engine):
@@ -219,6 +311,7 @@ class TestFourierTransformPlugin:
 
         engine._namespace["_f"] = freq
         engine._namespace["_spec"] = spec
+        _set_transform_source(engine, plugin, len(freq))
 
         plugin.advanced_mode = True
         plugin.x_expr = "_f"
@@ -228,8 +321,13 @@ class TestFourierTransformPlugin:
         result = plugin.transform({})
         td = result["fft"]
 
-        assert {"y_magnitude", "y_real", "y_imag", "y_angle"}.issubset(set(td.df.columns))
-        reconstructed = td.df["y_real"].to_numpy(dtype=float)
+        assert {
+            "signal_magnitude",
+            "signal_real",
+            "signal_imag",
+            "signal_angle",
+        }.issubset(set(td.df.columns))
+        reconstructed = td.df["signal_real"].to_numpy(dtype=float)
         reconstructed = reconstructed / np.max(np.abs(reconstructed))
         expected = signal / np.max(np.abs(signal))
         corr = np.corrcoef(reconstructed, expected)[0, 1]

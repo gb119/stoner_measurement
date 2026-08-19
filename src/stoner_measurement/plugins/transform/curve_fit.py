@@ -45,6 +45,7 @@ from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_Y,
     TraceData,
 )
+from stoner_measurement.logging_utils import log_exceptions_and_warnings
 from stoner_measurement.plugins.trace_catalog_ui import (
     bind_trace_catalog_updates,
     refresh_trace_source_widgets,
@@ -673,9 +674,19 @@ class CurveFitPlugin(TransformPlugin):
     This plugin executes user-supplied Python fit code. Only use trusted fit
     definitions in normal workflows.
 
+    After a fit has run, each fitted parameter can be read directly by its
+    function-signature name. For example, ``curve_fit.a`` returns the same
+    value as ``curve_fit.data["a"]``. Uncertainties and reported initial
+    values remain available through :attr:`data`. Normal plugin attributes
+    take precedence over dynamic fitted parameters; retrieve a clashing
+    parameter name from :attr:`data` instead.
+
     Attributes:
         trace_key (str):
             Key in the ``_traces`` catalogue used in simple mode.
+        column_key (str):
+            Selected y-data column within :attr:`trace_key`. An empty string
+            uses the source trace's default y column.
         advanced_mode (bool):
             When ``True``, ``x_expr``, ``y_expr``, and ``y_error_expr`` are
             used to select data instead of ``trace_key``.
@@ -706,25 +717,62 @@ class CurveFitPlugin(TransformPlugin):
             :attr:`data` containing the fitting function evaluated at the x
             data with the optimal parameters.
         report_initial_values (bool):
-            When ``True``, the initial parameter values actually used for the fit
-            are also reported as scalar outputs in the values catalogue.
+            When ``True``, the initial parameter values actually used for the
+            fit are also reported as scalar outputs in the values catalogue.
+        fit_code_syntax_error_line (int | None):
+            Line containing the latest detected syntax error in
+            :attr:`fit_code`, or ``None`` when the code parses successfully.
+        fit_code_syntax_error_message (str):
+            Message for the latest detected fit-code syntax error, or an empty
+            string when the code parses successfully.
+        fit (Callable[..., Any]):
+            Dynamically compiled ``fit`` function from :attr:`fit_code`. This
+            callable is available from the Script tab or QtConsole without
+            running a fit first.
+        p0 (Callable[..., Any]):
+            Dynamically compiled initial-estimate function from
+            :attr:`fit_code`. This attribute is absent when the source does
+            not define ``p0``.
+        data (dict[str, Any]):
+            Inherited result mapping from the latest :meth:`run`. It contains
+            fitted values, ``"{parameter}_err"`` uncertainties, optional
+            ``"{parameter}_initial"`` values, and any enabled fit traces.
+        instance_name (str):
+            Inherited sequence-instance name used to access this plugin in
+            generated scripts and the QtConsole.
+        sequence_engine (SequenceEngine | None):
+            Inherited reference to the sequence engine and its live
+            namespace.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = CurveFitPlugin()
-        >>> plugin.name
-        'Curve Fit'
-        >>> plugin.output_trace_names
-        ['fit']
-        >>> sorted(name for name in plugin.output_value_names if name.endswith(" a") or name.endswith(" b"))
-        []
-        >>> plugin.advanced_mode
-        False
+        Inspect and call the compiled default linear model from the
+        QtConsole::
+
+            curve_fit.param_names
+            # ['a', 'b']
+            curve_fit.fit(x_values, 2.0, 0.5)
+
+        Read results after the sequence has run the fit::
+
+            curve_fit.a
+            curve_fit.b
+            curve_fit.data["a_err"]
+            curve_fit.data["b_err"]
+
+        Define and use an initial-estimate function::
+
+            curve_fit.fit_code = '''\
+            def fit(x, amplitude, offset):
+                return amplitude * x + offset
+
+            def p0(x, y):
+                return (1.0, y.mean())
+            '''
+            curve_fit.p0(x_values, y_values)
     """
 
     def __init__(self, parent=None) -> None:
@@ -754,6 +802,28 @@ class CurveFitPlugin(TransformPlugin):
         self._param_table_preview_timer = QTimer(self)
         self._param_table_preview_timer.setSingleShot(True)
         self._param_table_preview_timer.timeout.connect(self._refresh_param_table_preview)
+
+    def __getattr__(self, name: str) -> Any:
+        """Expose compiled functions and latest fitted parameters dynamically."""
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            pass
+
+        state = vars(self)
+        fit_code = state.get("fit_code")
+        if name in {"fit", "p0"} and isinstance(fit_code, str):
+            fit_func, p0_func = self._compile_fit_code()
+            function = fit_func if name == "fit" else p0_func
+            if callable(function):
+                return self._wrap_user_stdout_callable(function)
+
+        if name in state.get("param_names", ()):
+            data = state.get("data", {})
+            if name in data:
+                return data[name]
+
+        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
     # ------------------------------------------------------------------
     # BasePlugin / TransformPlugin abstract interface
@@ -1053,7 +1123,12 @@ class CurveFitPlugin(TransformPlugin):
                 failure.
         """
         p0_vals = p0 if p0 is not None else [1.0] * len(self.param_names)
-        try:
+        trace: TraceData | None = None
+        with log_exceptions_and_warnings(
+            self.log,
+            "CurveFit: initial-parameter trace",
+            suppress=True,
+        ) as outcome:
             y_initial = fit_func(x_arr, *p0_vals)
             y_arr = np.asarray(y_initial, dtype=float)
             source_name_map = source_names or {}
@@ -1067,15 +1142,15 @@ class CurveFitPlugin(TransformPlugin):
                 y_col_name: source_unit_map.get(y_col_name, ""),
             }
             df = pd.DataFrame({y_col_name: y_arr}, index=pd.Index(x_arr, name="x"))
-            return TraceData(
+            trace = TraceData(
                 df=df,
                 column_roles={y_col_name: COLUMN_ROLE_Y},
                 names=names,
                 units=units,
             )
-        except Exception as exc:
-            self.log.warning("CurveFit: failed to compute initial trace — %s", exc)
+        if outcome.failed:
             return None
+        return trace
 
     def _run_curve_fit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -1365,11 +1440,15 @@ class CurveFitPlugin(TransformPlugin):
                 Initial parameter values, or ``None`` if all entries are blank.
         """
         if p0_func is not None:
-            try:
-                result = p0_func(x_arr, y_arr)
-                return list(result)
-            except Exception as exc:
-                self.log.warning("CurveFit: p0 function raised %s — using table values.", exc)
+            initial_values = None
+            with log_exceptions_and_warnings(
+                self.log,
+                "CurveFit: p0 function",
+                suppress=True,
+            ) as outcome:
+                initial_values = list(p0_func(x_arr, y_arr))
+            if not outcome.failed:
+                return initial_values
 
         initials = []
         all_none = True

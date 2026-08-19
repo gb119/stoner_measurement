@@ -118,6 +118,11 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         (-inf, inf)
     """
 
+    @property
+    def is_loop_container(self) -> bool:
+        """Return ``True`` because scan and sweep children run in a loop."""
+        return True
+
     instance_name_changed = pyqtSignal(str, str)
     comment_changed = pyqtSignal(str, str)
     state_changed = pyqtSignal(float)

@@ -1740,6 +1740,26 @@ class SequenceEngine(QObject):
         ordered_plugins = self._collect_plugins_from_steps(steps, plugins)
         self._sequence_plugins = list(ordered_plugins)
 
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        def _resolve_validation_step(step: object) -> object:
+            """Resolve legacy entry-point names while preserving the nested tree."""
+            if isinstance(step, tuple):
+                plugin_or_name, sub_steps = step
+                plugin = (
+                    plugin_or_name
+                    if isinstance(plugin_or_name, BasePlugin)
+                    else plugins.get(str(plugin_or_name), plugin_or_name)
+                )
+                return (plugin, [_resolve_validation_step(child) for child in sub_steps])
+            if isinstance(step, BasePlugin):
+                return step
+            return plugins.get(str(step), step)
+
+        validation_steps = [_resolve_validation_step(step) for step in steps]
+        for plugin in ordered_plugins:
+            plugin.validate_sequence_position(validation_steps)
+
         if not ordered_plugins:
             code = "\n".join(header) + "# No sequence steps defined yet.\n"
             return (code, {}) if return_line_map else code

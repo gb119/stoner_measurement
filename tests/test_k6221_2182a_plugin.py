@@ -345,7 +345,7 @@ class TestExecute:
         plugin._k2182a.initiate.assert_called_once_with()
         plugin._k6221.enable_output.assert_not_called()
         plugin._k2182a.read_buffer.assert_called_once_with(count=2)
-        assert plugin._k2182a.set_buffer_feed_continuous_next.call_args_list == [call(), call()]
+        assert plugin._k2182a.set_buffer_feed_continuous_next.call_args_list == [call()]
         plugin._k6221.clear_sweep_complete_event.assert_called_once_with()
         plugin._k6221.wait_for_sweep_complete_srq.assert_called_once()
         plugin._k2182a.get_buffer_count.assert_not_called()
@@ -368,7 +368,7 @@ class TestExecute:
 
         assert points == [(1e-3, 0.1), (2e-3, 0.2)]
         assert plugin._k2182a.read_buffer.call_count == 2
-        assert plugin._k2182a.set_buffer_feed_continuous_next.call_args_list == [call(), call()]
+        assert plugin._k2182a.set_buffer_feed_continuous_next.call_args_list == [call()]
 
     def test_execute_can_run_successive_sweeps_without_reconfigure(self, qapp):
         from unittest.mock import MagicMock, patch
@@ -392,8 +392,8 @@ class TestExecute:
         plugin._k6221.sweep_arm.assert_not_called()
         plugin._k6221.sweep_start.assert_not_called()
         assert plugin._k2182a.initiate.call_count == 2
-        assert plugin._k2182a.set_buffer_feed_continuous_next.call_count == 4
-        assert plugin._k2182a.clear_buffer.call_count == 2
+        assert plugin._k2182a.set_buffer_feed_continuous_next.call_count == 2
+        plugin._k2182a.clear_buffer.assert_not_called()
         plugin._k6221.enable_output.assert_not_called()
 
 
@@ -922,7 +922,7 @@ class TestComplianceBounds:
                 pass  # connect() not called; that's fine — we only care about ValueError
 
     def test_resistance_mode_raises_when_compliance_exceeds_limit(self, qapp):
-        """Resistance-mode compliance exceeding 105 V must raise ValueError."""
+        """Resistance-mode compliance exceeding 10.5 V must raise ValueError."""
         from unittest.mock import MagicMock, patch
 
         import numpy as np
@@ -932,18 +932,19 @@ class TestComplianceBounds:
         plugin._k2182a = MagicMock()
         plugin._compliance_mode = ComplianceMode.RESISTANCE
         plugin._compliance_resistance = 2000.0  # 2 kΩ
-        # 100 mA × 2 kΩ = 200 V > 105 V
-        plugin._sweep_values = np.array([0.1])
+        # configure() obtains its sweep from the configured generator.
+        plugin.scan_generator = MagicMock()
+        plugin.scan_generator.generate.return_value = np.array([0.1])
 
         with (
             patch.object(plugin._k6221, "configure_custom_sweep"),
             patch.object(plugin._k6221, "configure_list_compliance"),
         ):
-            with pytest.raises(ValueError, match="105"):
+            with pytest.raises(ValueError, match="10.5"):
                 plugin.configure()
 
     def test_resistance_mode_ok_within_limit(self, qapp):
-        """Resistance-mode compliance within 105 V must not raise."""
+        """Resistance-mode compliance within 10.5 V must not raise."""
         from unittest.mock import MagicMock, patch
 
         import numpy as np
@@ -953,8 +954,9 @@ class TestComplianceBounds:
         plugin._k2182a = MagicMock()
         plugin._compliance_mode = ComplianceMode.RESISTANCE
         plugin._compliance_resistance = 100.0  # 100 Ω
-        # 1 mA × 100 Ω = 0.1 V — well within limit
-        plugin._sweep_values = np.array([1e-3])
+        # configure() obtains its sweep from the configured generator.
+        plugin.scan_generator = MagicMock()
+        plugin.scan_generator.generate.return_value = np.array([1e-3])
 
         # Should not raise ValueError; RuntimeError from missing setup is OK
         with (

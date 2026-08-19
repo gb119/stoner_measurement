@@ -411,6 +411,35 @@ class BasePlugin(ABC):
     disabled: bool = False
 
     @property
+    def is_loop_container(self) -> bool:
+        """Return whether nested steps execute inside a generated Python loop.
+
+        The default is ``False``. Sequence container plugins that generate a
+        loop override this marker so placement-sensitive commands can validate
+        their position without depending on particular scan implementations.
+        """
+        return False
+
+    def validate_sequence_position(self, sequence_steps: list) -> None:
+        """Validate this plugin's position in *sequence_steps*.
+
+        The base implementation accepts every position. Plugins with placement
+        constraints may inspect the complete nested step list and raise an
+        exception with a user-facing message. The sequence editor calls this
+        hook before inserting or moving a step, and code generation repeats the
+        validation as a final safeguard.
+
+        Args:
+            sequence_steps (list):
+                Nested sequence descriptors containing the proposed plugin
+                position.
+
+        Raises:
+            Exception:
+                Subclasses may raise when the proposed position is invalid.
+        """
+
+    @property
     def controller_features(self) -> frozenset[str]:
         """Return controller feature flags required by this plugin."""
         return frozenset()

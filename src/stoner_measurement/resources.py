@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.resources
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -227,6 +228,37 @@ def save_toolbar_config(config: dict[str, Any]) -> Path:
             Path written to disk.
     """
     return save_user_yaml("toolbar.yaml", config)
+
+
+def _install_user_resource(source: str | Path, subdir: str) -> Path:
+    """Install a selected file in a canonical user resource directory.
+
+    Files already inside the user configuration tree are moved because that
+    tree is managed by the application. Files elsewhere are copied so the
+    user's original remains untouched.
+    """
+    source_path = Path(source).resolve()
+    config_root = user_config_root().resolve()
+    target_dir = config_root / subdir
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / source_path.name
+    if source_path == target:
+        return target
+    if source_path.is_relative_to(config_root):
+        source_path.replace(target)
+    else:
+        shutil.copy2(source_path, target)
+    return target
+
+
+def install_toolbar_icon(source: str | Path) -> Path:
+    """Install a selected toolbar icon in the canonical user resource directory."""
+    return _install_user_resource(source, "resources")
+
+
+def install_predefined_sequence(source: str | Path) -> Path:
+    """Install a selected sequence in the canonical user sequence directory."""
+    return _install_user_resource(source, "sequences")
 
 
 def find_toolbar_icon(name: str) -> Path | None:

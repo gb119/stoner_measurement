@@ -303,6 +303,8 @@ class _SequenceTreeWidget(QTreeWidget):
         super().__init__(parent)
         self._plugin_manager = plugin_manager
         self._new_item_factory: Callable[[str], QTreeWidgetItem | None] | None = None
+        self._placement_validator: Callable[[QTreeWidgetItem, QTreeWidgetItem | None], bool] | None = None
+        self._rejected_item_handler: Callable[[QTreeWidgetItem], None] | None = None
         self.setHeaderHidden(True)
         self.setRootIsDecorated(True)
         self.setIndentation(20)
@@ -332,6 +334,25 @@ class _SequenceTreeWidget(QTreeWidget):
                 disable plugin-list drops.
         """
         self._new_item_factory = factory
+
+    def set_placement_validator(
+        self,
+        validator: Callable[[QTreeWidgetItem, QTreeWidgetItem | None], bool] | None,
+        rejected_item_handler: Callable[[QTreeWidgetItem], None] | None = None,
+    ) -> None:
+        """Set callbacks used to validate placements and discard rejected new items."""
+        self._placement_validator = validator
+        self._rejected_item_handler = rejected_item_handler
+
+    def _can_place_item(
+        self,
+        item: QTreeWidgetItem,
+        parent_item: QTreeWidgetItem | None,
+    ) -> bool:
+        """Return whether *item* may be inserted below *parent_item*."""
+        if self._placement_validator is None:
+            return True
+        return self._placement_validator(item, parent_item)
 
     @staticmethod
     def _is_sequence_plugin_instance(plugin: BasePlugin) -> bool:
@@ -518,6 +539,11 @@ class _SequenceTreeWidget(QTreeWidget):
             else:
                 target_index = self.indexOfTopLevelItem(target)
 
+        proposed_parent = target if pos == QAbstractItemView.DropIndicatorPosition.OnItem else target_parent
+        if not self._can_place_item(dragged, proposed_parent):
+            event.ignore()
+            return
+
         # Detach dragged item from its current location
         dragged_parent = dragged.parent()
         if dragged_parent is not None:
@@ -601,6 +627,17 @@ class _SequenceTreeWidget(QTreeWidget):
         pos_point = event.position().toPoint()
         target = self.itemAt(pos_point)
         pos = self.dropIndicatorPosition()
+
+        proposed_parent = (
+            target
+            if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem
+            else target.parent() if target is not None else None
+        )
+        if not self._can_place_item(new_item, proposed_parent):
+            if self._rejected_item_handler is not None:
+                self._rejected_item_handler(new_item)
+            event.ignore()
+            return
 
         if target is None:
             self.addTopLevelItem(new_item)
@@ -870,6 +907,8 @@ class _SequenceTreeWidget(QTreeWidget):
             above_plugin = above_item.data(0, _PLUGIN_INSTANCE_ROLE)
             if not self._is_sequence_plugin_instance(above_plugin):
                 continue
+            if any(not self._can_place_item(item, above_item) for item in group):
+                continue
             for item in group:
                 cur_parent = item.parent()
                 if cur_parent is not None:
@@ -900,6 +939,8 @@ class _SequenceTreeWidget(QTreeWidget):
         for group in by_parent.values():
             parent_item = group[0].parent()
             grandparent = parent_item.parent()
+            if any(not self._can_place_item(item, grandparent) for item in group):
+                continue
             if grandparent is not None:
                 insert_after = grandparent.indexOfChild(parent_item)
             else:
@@ -1039,6 +1080,10 @@ class DockPanel(QWidget):
         sequence_layout.addWidget(self._sequence_tree, 1)
         # Wire the factory so that plugin-list drops create new step items.
         self._sequence_tree.set_new_item_factory(self._make_new_step_item)
+        self._sequence_tree.set_placement_validator(
+            self._validate_item_placement,
+            self._release_step_plugins,
+        )
         # Enable right-click context menu on the sequence tree.
         self._sequence_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._sequence_tree.customContextMenuRequested.connect(self._show_sequence_context_menu)
@@ -1215,6 +1260,58 @@ class DockPanel(QWidget):
         for i in range(item.childCount()):
             self._release_step_plugins(item.child(i))
 
+    @staticmethod
+    def _plugins_in_steps(steps: list[_SequenceStep]):
+        """Yield every plugin in *steps* depth first."""
+        for step in steps:
+            if isinstance(step, tuple):
+                plugin, children = step
+            else:
+                plugin, children = step, []
+            yield plugin
+            yield from DockPanel._plugins_in_steps(children)
+
+    @classmethod
+    def _validate_sequence_steps(cls, steps: list[_SequenceStep]) -> None:
+        """Run every plugin's sequence-position validation hook."""
+        for plugin in cls._plugins_in_steps(steps):
+            plugin.validate_sequence_position(steps)
+
+    def _proposed_steps(
+        self,
+        step: _SequenceStep,
+        parent_item: QTreeWidgetItem | None,
+    ) -> list[_SequenceStep]:
+        """Build a minimal sequence tree representing a proposed placement."""
+        proposed = step
+        current = parent_item
+        while current is not None:
+            parent_plugin: BasePlugin = current.data(0, _PLUGIN_INSTANCE_ROLE)
+            proposed = (parent_plugin, [proposed])
+            current = current.parent()
+        return [proposed]
+
+    def _validate_step_placement(
+        self,
+        step: _SequenceStep,
+        parent_item: QTreeWidgetItem | None,
+    ) -> bool:
+        """Validate a proposed placement, displaying any exception to the user."""
+        try:
+            self._validate_sequence_steps(self._proposed_steps(step, parent_item))
+        except Exception as exc:  # validation exceptions are intentionally user-facing
+            QMessageBox.warning(self, "Invalid sequence position", str(exc))
+            return False
+        return True
+
+    def _validate_item_placement(
+        self,
+        item: QTreeWidgetItem,
+        parent_item: QTreeWidgetItem | None,
+    ) -> bool:
+        """Validate placing a tree *item* below *parent_item*."""
+        return self._validate_step_placement(self._item_to_step(item), parent_item)
+
     def _add_step(self) -> None:
         """Add the selected plugin as a top-level sequence step.
 
@@ -1238,6 +1335,9 @@ class DockPanel(QWidget):
             return
         item = self._make_new_step_item(ep_name)
         if item is None:
+            return
+        if not self._validate_item_placement(item, None):
+            self._release_step_plugins(item)
             return
         self._sequence_tree.addTopLevelItem(item)
 
@@ -1633,6 +1733,8 @@ class DockPanel(QWidget):
             1
         """
         # Release all existing step plugins and clear the tree.
+        self._validate_sequence_steps(steps)
+
         for i in range(self._sequence_tree.topLevelItemCount() - 1, -1, -1):
             item = self._sequence_tree.topLevelItem(i)
             self._release_step_plugins(item)
@@ -2027,10 +2129,14 @@ class DockPanel(QWidget):
         anchor = self._sequence_tree.currentItem()
         new_items: list[QTreeWidgetItem] = []
         if anchor is None:
+            if any(not self._validate_step_placement(step, None) for step in steps):
+                return False
             for step in steps:
                 new_items.append(self._load_step(step, parent_item=None))
         else:
             parent = anchor.parent()
+            if any(not self._validate_step_placement(step, parent) for step in steps):
+                return False
             if parent is None:
                 base_idx = self._sequence_tree.indexOfTopLevelItem(anchor)
                 for i, step in enumerate(steps):

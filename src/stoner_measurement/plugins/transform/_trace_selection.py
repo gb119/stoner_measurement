@@ -1,11 +1,12 @@
 """Shared trace/channel selection helpers for transform plugins.
 
-Provides a reusable mixin that mirrors the curve-fit plugin's data-selection
-behaviour:
+Provides a reusable mixin for transforms whose primary output is a trace:
 
-* Simple mode selects a trace (and optional y-column) from ``_traces``.
-* Advanced mode selects ``x``/``y`` arrays via expressions evaluated against
-  the sequence-engine namespace.
+* A source trace and target column are always selected from ``_traces``.
+* Simple mode uses that trace's x axis and selected/default y column as inputs.
+* Advanced mode keeps the same output trace/column context but obtains the
+  calculation's ``x``/``y`` arrays from expressions evaluated against the
+  sequence-engine namespace.
 """
 
 from __future__ import annotations
@@ -16,18 +17,17 @@ from typing import Any
 import numpy as np
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLabel, QWidget
 
-from stoner_measurement.core.trace_data import COLUMN_ROLE_Y
+from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.trace_catalog_ui import (
     bind_trace_catalog_updates,
     refresh_trace_source_widgets,
     trace_channel_items,
+    trace_target_column_items,
 )
-
-_DEFAULT_COLUMN_OPTION = "(default)"
 
 
 class TraceChannelSelectionMixin:
-    """Mixin providing curve-fit-style trace/channel data selection."""
+    """Mixin separating output trace context from optional advanced inputs."""
 
     trace_key: str
     column_key: str
@@ -35,30 +35,59 @@ class TraceChannelSelectionMixin:
     x_expr: str
     y_expr: str
 
-    def _get_trace_columns(self, trace_key: str) -> list[str]:
-        """Return DataFrame columns for a trace key, or an empty list."""
+    def _get_selected_trace_data(self) -> TraceData:
+        """Resolve and return the source trace selected by :attr:`trace_key`."""
         traces = self.engine_namespace.get("_traces", {})
-        if not trace_key or trace_key not in traces:
-            return []
-        try:
-            trace_data = self.eval(traces[trace_key])
-            cols = getattr(trace_data, "columns", None)
-            if isinstance(cols, list):
-                return cols
-        except Exception:
-            self.log.debug("Failed to inspect columns for trace %r.", trace_key, exc_info=True)
-        return []
+        if not self.trace_key or self.trace_key not in traces:
+            raise ValueError(f"Trace {self.trace_key!r} not found in _traces catalogue.")
+        trace_data = self.eval(traces[self.trace_key])
+        if not isinstance(trace_data, TraceData):
+            raise TypeError(f"Selected trace {self.trace_key!r} is not TraceData.")
+        return trace_data
+
+    def _selected_trace_column(self, trace_data: TraceData) -> str:
+        """Return the selected target column, falling back to the primary y column."""
+        if self.column_key and self.column_key in trace_data.df.columns:
+            return self.column_key
+        y_columns = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
+        if y_columns:
+            return y_columns[0]
+        if trace_data.columns:
+            return trace_data.columns[0]
+        raise ValueError(f"Selected trace {self.trace_key!r} has no data columns.")
+
+    @staticmethod
+    def _copy_trace_data(trace_data: TraceData) -> TraceData:
+        """Return a fully independent copy of *trace_data*."""
+        return TraceData(
+            df=trace_data.df.copy(deep=True),
+            column_roles=dict(trace_data.column_roles),
+            names=dict(trace_data.names),
+            units=dict(trace_data.units),
+        )
 
     def _populate_column_combo(self, combo: QComboBox, trace_key: str) -> None:
-        """Populate the column combo with ``(default)`` and trace columns."""
-        columns = self._get_trace_columns(trace_key)
+        """Populate the target combo with canonical labels for one trace."""
+        traces = self.engine_namespace.get("_traces", {})
+        items = trace_target_column_items(self, traces, trace_key)
         combo.clear()
-        combo.addItem(_DEFAULT_COLUMN_OPTION)
-        combo.addItems(columns)
-        if self.column_key and self.column_key in columns:
-            combo.setCurrentText(self.column_key)
-        else:
-            combo.setCurrentText(_DEFAULT_COLUMN_OPTION)
+        if not items:
+            combo.addItem("(no channels available)", None)
+            return
+        for label, column_key in items.items():
+            combo.addItem(label, column_key)
+        target_key = self.column_key
+        available_keys = list(items.values())
+        if target_key not in available_keys:
+            target_key = self._default_trace_column_key()
+        if target_key not in available_keys:
+            target_key = available_keys[0]
+        combo.setCurrentIndex(combo.findData(target_key))
+        self.column_key = target_key
+
+    def _default_trace_column_key(self) -> str:
+        """Return the target key selected when no persisted choice is available."""
+        return ""
 
     def _build_column_combo(self, widget: QWidget) -> QComboBox:
         """Build the trace-column selection combo box."""
@@ -160,8 +189,8 @@ class TraceChannelSelectionMixin:
             partial(self._apply_trace_source, ws, show_column_selector, on_change)
         )
         if show_column_selector and ws["column_combo"] is not None:
-            ws["column_combo"].currentTextChanged.connect(
-                partial(self._apply_column_source, on_change)
+            ws["column_combo"].currentIndexChanged.connect(
+                partial(self._apply_column_source, ws["column_combo"], on_change)
             )
         ws["advanced_check"].toggled.connect(partial(self._apply_advanced_source, on_change))
         ws["x_combo"].currentTextChanged.connect(
@@ -202,20 +231,20 @@ class TraceChannelSelectionMixin:
         """Apply a trace selection and refresh its available columns."""
         if text != "(no traces available)":
             self.trace_key = text
-            columns = self._get_trace_columns(text)
             column_combo = ws["column_combo"]
             if show_column_selector and column_combo is not None:
                 column_combo.blockSignals(True)
                 self._populate_column_combo(column_combo, text)
-                if self.column_key not in columns:
-                    self.column_key = ""
-                    column_combo.setCurrentText(_DEFAULT_COLUMN_OPTION)
                 column_combo.blockSignals(False)
         self._trigger_data_source_change(on_change)
 
-    def _apply_column_source(self, on_change: Any | None, text: str) -> None:
+    def _apply_column_source(
+        self, combo: QComboBox, on_change: Any | None, index: int
+    ) -> None:
         """Apply a selected trace column."""
-        self.column_key = "" if text == _DEFAULT_COLUMN_OPTION else text
+        column_key = combo.itemData(index)
+        if column_key is not None:
+            self.column_key = str(column_key)
         self._trigger_data_source_change(on_change)
 
     def _apply_advanced_source(self, on_change: Any | None, checked: bool) -> None:
@@ -239,20 +268,21 @@ class TraceChannelSelectionMixin:
     def _update_data_source_enabled(
         ws: dict[str, Any], show_column_selector: bool, advanced: bool
     ) -> None:
-        """Enable only the widgets relevant to the selected data-source mode."""
-        ws["trace_combo"].setEnabled(not advanced)
+        """Keep the source trace active while toggling advanced array inputs."""
+        ws["trace_combo"].setEnabled(True)
         if show_column_selector and ws["column_combo"] is not None:
-            ws["column_combo"].setEnabled(not advanced)
+            ws["column_combo"].setEnabled(True)
         ws["x_combo"].setEnabled(advanced)
         ws["y_combo"].setEnabled(advanced)
 
     def _get_selected_data_arrays(
         self,
-    ) -> tuple[np.ndarray, np.ndarray, str, dict[str, str], dict[str, str]]:
-        """Return selected ``x``/``y`` arrays plus selected column metadata."""
-        y_col_name = "y"
-        source_names: dict[str, str] = {}
-        source_units: dict[str, str] = {}
+    ) -> tuple[np.ndarray, np.ndarray, str, dict[str, str], dict[str, str], TraceData]:
+        """Return input arrays together with their source-trace target context."""
+        trace_data = self._get_selected_trace_data()
+        y_col_name = self._selected_trace_column(trace_data)
+        source_names = dict(trace_data.names)
+        source_units = dict(trace_data.units)
 
         if self.advanced_mode:
             if not self.x_expr or not self.y_expr:
@@ -260,23 +290,8 @@ class TraceChannelSelectionMixin:
             x_data = self.eval(self.x_expr)
             y_data = self.eval(self.y_expr)
         else:
-            traces = self.engine_namespace.get("_traces", {})
-            if not self.trace_key or self.trace_key not in traces:
-                raise ValueError(f"Trace {self.trace_key!r} not found in _traces catalogue.")
-            trace_expr = traces[self.trace_key]
-            trace_data = self.eval(trace_expr)
             x_data = trace_data.x
-            source_names = dict(getattr(trace_data, "names", {}))
-            source_units = dict(getattr(trace_data, "units", {}))
-
-            col = self.column_key
-            y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
-            if col and hasattr(trace_data, "df") and col in trace_data.df.columns:
-                y_data = trace_data.df[col].to_numpy(dtype=float)
-                y_col_name = col
-            else:
-                y_data = trace_data.y
-                y_col_name = y_cols[0] if y_cols else "y"
+            y_data = trace_data.df[y_col_name].to_numpy(dtype=float)
 
         return (
             np.asarray(x_data, dtype=float),
@@ -284,6 +299,7 @@ class TraceChannelSelectionMixin:
             y_col_name,
             source_names,
             source_units,
+            trace_data,
         )
 
 

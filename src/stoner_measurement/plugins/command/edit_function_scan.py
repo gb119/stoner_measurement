@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
-from qtpy.QtWidgets import QComboBox, QFormLayout, QLabel, QLineEdit, QWidget
+from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLabel, QLineEdit, QWidget
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.state_scan.base import StateScanPlugin
@@ -41,7 +42,8 @@ class EditFunctionScanCommand(CommandPlugin):
     generator setting exactly as it is. A non-blank field is evaluated in the
     sequence namespace when this command runs. Waveform accepts ``Sine``,
     ``Triangle``, ``Square``, or ``Sawtooth``, or an expression resolving to
-    one of those values.
+    one of those values. Enable **Reconfigure scan plugin after editing** to
+    call the target plugin's ``configure()`` method immediately afterwards.
 
     All supplied expressions are evaluated before any setting is changed, so
     an evaluation error leaves the generator untouched. If evaluation
@@ -66,6 +68,9 @@ class EditFunctionScanCommand(CommandPlugin):
             Optional waveform name or expression resolving to a waveform name.
         phase_expr (str):
             Optional expression replacing the phase in degrees.
+        reconfigure_after_edit (bool):
+            Whether generated sequence code calls ``configure()`` on the
+            target scan plugin immediately after this command.
         instance_name (str):
             Inherited sequence-instance name for this command.
         sequence_engine (SequenceEngine | None):
@@ -98,6 +103,7 @@ class EditFunctionScanCommand(CommandPlugin):
         self.exponent_expr = ""
         self.waveform_expr = ""
         self.phase_expr = ""
+        self.reconfigure_after_edit = False
 
     @property
     def name(self) -> str:
@@ -162,6 +168,18 @@ class EditFunctionScanCommand(CommandPlugin):
         """Return the target picker and optional replacement-expression fields."""
         return _EditFunctionScanWidget(self, parent)
 
+    def generate_action_code(
+        self,
+        indent: int,
+        sub_steps: list,
+        render_sub_step: Callable,
+    ) -> list[str]:
+        """Render the edit call followed by optional target reconfiguration."""
+        lines = super().generate_action_code(indent, sub_steps, render_sub_step)
+        if self.reconfigure_after_edit and self.target_scan:
+            lines.insert(-1, f"{'    ' * indent}{self.target_scan}.configure()")
+        return lines
+
     def to_json(self) -> dict[str, Any]:
         data = super().to_json()
         data.update(
@@ -174,6 +192,7 @@ class EditFunctionScanCommand(CommandPlugin):
                 "exponent_expr": self.exponent_expr,
                 "waveform_expr": self.waveform_expr,
                 "phase_expr": self.phase_expr,
+                "reconfigure_after_edit": self.reconfigure_after_edit,
             }
         )
         return data
@@ -183,6 +202,7 @@ class EditFunctionScanCommand(CommandPlugin):
         for parameter in (*_NUMERIC_PARAMETERS, "points", "waveform"):
             attribute = f"{parameter}_expr"
             setattr(self, attribute, str(data.get(attribute, "")))
+        self.reconfigure_after_edit = bool(data.get("reconfigure_after_edit", False))
 
 
 class _EditFunctionScanWidget(QWidget):
@@ -234,6 +254,12 @@ class _EditFunctionScanWidget(QWidget):
         self._waveform_combo.currentTextChanged.connect(self._on_waveform_changed)
         layout.addRow("Waveform:", self._waveform_combo)
 
+        self._reconfigure_check = QCheckBox(self)
+        self._reconfigure_check.setObjectName("reconfigure_after_edit")
+        self._reconfigure_check.setChecked(self._command.reconfigure_after_edit)
+        self._reconfigure_check.toggled.connect(self._on_reconfigure_changed)
+        layout.addRow("Reconfigure scan plugin after editing:", self._reconfigure_check)
+
         layout.addRow(
             QLabel(
                 "<i>Blank fields retain the current generator setting. Non-blank fields are "
@@ -271,3 +297,6 @@ class _EditFunctionScanWidget(QWidget):
 
     def _on_waveform_changed(self, text: str) -> None:
         self._command.waveform_expr = text.strip()
+
+    def _on_reconfigure_changed(self, checked: bool) -> None:
+        self._command.reconfigure_after_edit = checked

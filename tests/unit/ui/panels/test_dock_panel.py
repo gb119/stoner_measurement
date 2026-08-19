@@ -7,7 +7,7 @@ from qtpy.QtWidgets import QLabel, QLineEdit, QTreeWidgetItem
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import _ABCQObjectMeta
-from stoner_measurement.plugins.command import IfCommand
+from stoner_measurement.plugins.command import BreakIfCommand, IfCommand
 from stoner_measurement.plugins.state_control import StateControlPlugin
 from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.ui.dock_panel import DockPanel
@@ -89,6 +89,54 @@ class TestDockPanel:
         steps = panel.sequence_steps
         assert len(steps) == 1
         assert isinstance(steps[0], DummyPlugin)
+
+    def test_add_rejects_loop_control_at_top_level(self, qapp, monkeypatch):
+        pm = PluginManager()
+        pm.register("break_if", BreakIfCommand())
+        panel = DockPanel(plugin_manager=pm)
+        warnings: list[str] = []
+        monkeypatch.setattr(
+            "stoner_measurement.ui.dock_panel.QMessageBox.warning",
+            lambda _parent, _title, message: warnings.append(message),
+        )
+
+        panel._plugin_list.select_plugin("break_if")
+        panel._add_step()
+
+        assert panel.sequence_steps == []
+        assert warnings == ["Break If must be placed inside a scan or sweep loop."]
+
+    def test_load_accepts_loop_control_inside_scan(self, qapp):
+        from stoner_measurement.plugins.state_scan.counter import CounterPlugin
+
+        panel = DockPanel(plugin_manager=PluginManager())
+        scan = CounterPlugin()
+        command = BreakIfCommand()
+        panel.load_sequence([(scan, [command])])
+
+        assert panel.sequence_steps == [(scan, [command])]
+
+    def test_promote_rejects_loop_control_out_of_scan(self, qapp, monkeypatch):
+        from stoner_measurement.plugins.state_scan.counter import CounterPlugin
+
+        panel = DockPanel(plugin_manager=PluginManager())
+        scan = CounterPlugin()
+        command = BreakIfCommand()
+        panel.load_sequence([(scan, [command])])
+        scan_item = panel._sequence_tree.topLevelItem(0)
+        command_item = scan_item.child(0)
+        warnings: list[str] = []
+        monkeypatch.setattr(
+            "stoner_measurement.ui.dock_panel.QMessageBox.warning",
+            lambda _parent, _title, message: warnings.append(message),
+        )
+        panel._sequence_tree.setCurrentItem(command_item)
+        command_item.setSelected(True)
+
+        panel._sequence_tree._move_selected_out()
+
+        assert panel.sequence_steps == [(scan, [command])]
+        assert warnings == ["Break If must be placed inside a scan or sweep loop."]
 
     def test_remove_step(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)
