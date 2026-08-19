@@ -77,7 +77,34 @@ on status bbar right hand side.
    In the latter case they should atempt to auto-reconnect. If reconnection fails 5 times without a successful
    connection then engine should enter a failed state and require the user to reconnect via the panel. The failed
    state needs to be logged as an error and reflected in the status-bar indicators.
+2. Implement the binary data formats for the Keithley 2182A buffer reads to try for faster 6221-2182 loops.
+3. Implement `break` and `continue` plugin commands (but make them have a condaitional field so that
+   they produce code like:
+       ```
+	   if condition_expression:
+	       break/continue
+	    ```
+	Would also need to have the ability to refuse to add not in a sub-loop (so we need
+	a hook that can be called on BasePlugin that is passed the sequence step list it
+	is being passed to and can raise some sort of Exception that the UI can display.)
 
 ## Bugs
 
-No currently confirmed bugs. Items awaiting hardware or visual confirmation are listed above.
+1.	In a Monitor and Filter sweep, the plugin highlights the test that caused the measure flag
+    to set True, but this stays highligted until the next measure true is set. If no tests for The
+	next measurement pass, the highlights shpuld be cleared.
+2. I added a custom toolbar, but the icon field doesn't seem to be working. JSON is:
+	```
+	buttons:
+	- name: R(T)
+	  sequence: R(T).json
+      image: R(T).png
+      tooltip: Config for doing Resistance vs Temperature
+	```
+	The png file is next to the sequence file and the sequence is loading correctly. If the button is
+	supposed to be somehwere else, then when I select the button file in the UI, it should be
+	moved to the correct location.
+3.	Check the SRQ timeout calcualtions - seems to not quite get it right for longer source delays in 6221-2182 trace plugin
+4.  Remove voltage offset seems to be changing things other than just the x column.
+5.  Edit Function Scan plugin  should have an option to reconfigure the scan plugin after editing - to generated
+    the code `<trace.configure()`.

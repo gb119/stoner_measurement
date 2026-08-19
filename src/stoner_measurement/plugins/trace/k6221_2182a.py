@@ -81,14 +81,14 @@ from stoner_measurement.ui.widgets import (
 )
 
 #: Poll interval in seconds when waiting for the 2182A buffer to fill.
-_POLL_INTERVAL: float = 0.25
+_POLL_INTERVAL: float = 0.1
 
 #: Safety factor applied to the theoretical sweep duration when computing timeout.
-_TIMEOUT_FACTOR: float = 5.0
+_TIMEOUT_FACTOR: float = 1.1
 
 #: Minimum timeout in seconds regardless of sweep duration.
 _TIMEOUT_MIN: float = 10.0
-_POST_SWEEP_DELAY_MIN: float = 0.25
+_POST_SWEEP_DELAY_MIN: float = 0.05
 
 #: Available fixed current output ranges for the 6221 (amps).
 _6221_FIXED_RANGES: tuple[float, ...] = (
@@ -120,7 +120,7 @@ _2182A_DIGITS_OPTIONS = Keithley2182A.CAPABILITIES.digit_values
 _ZERO_CURRENT_THRESHOLD: float = 1e-30
 
 #: Maximum compliance voltage supported by the 6221 (volts).
-_6221_MAX_COMPLIANCE_V: float = 105.0
+_6221_MAX_COMPLIANCE_V: float = 10.5
 
 _CLEANUP_EXCEPTIONS: tuple[type[Exception], ...] = (
     OSError,
@@ -1031,10 +1031,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         try:
             # ---- Arm 6221 sweep and initiate 2182A trigger system. ----
             self._k6221.clear_sweep_complete_event()
-            self._k2182a.set_buffer_feed_continuous_next()
-            self._k2182a.clear_buffer()
-            self._k2182a.set_buffer_size(n)
-            self._k2182a.set_buffer_feed_sense()
             self._k2182a.set_buffer_feed_continuous_next()
             self._k2182a.initiate()
             self._secondary_voltages = None

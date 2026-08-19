@@ -653,6 +653,7 @@ class Keithley6221(CurrentSource):
         """Wait for sweep SRQ, using a transport-native operation if available."""
         native_result = self.transport.wait_for_srq(timeout)
         if native_result is not None:
+            self.transport._log_comms_traffic("IEEE", f"SRQ Asserted {native_result}")
             return native_result
 
         deadline = time.monotonic() + timeout
@@ -665,8 +666,10 @@ class Keithley6221(CurrentSource):
                 finally:
                     self.auto_check_errors = auto_check_errors
             if status_byte & _STATUS_BYTE_REQUEST_SERVICE:
+                self.transport._log_comms_traffic("IEEE", f"SRQ from Status byte asserteed {status_byte}")
                 return True
             sleep(poll_interval)
+        self.transport._log_comms_traffic("IEEE", "Timed out waiting for SRQ")
         return False
 
     def sweep_is_running(self) -> bool:
