@@ -603,8 +603,7 @@ class TestPlotTraceCommand:
         )
 
         df = pd.DataFrame(
-            {"y": [1.0, 2.0], "z": [3.0, 4.0]},
-            index=pd.Index([0.0, 1.0], name="x"),
+            {"x": [0.0, 1.0], "y": [1.0, 2.0], "z": [3.0, 4.0]}
         )
         td = TraceData(df=df, column_roles={"y": COLUMN_ROLE_Y, "z": COLUMN_ROLE_Z})
         cmd = PlotTraceCommand()
@@ -676,8 +675,7 @@ class TestPlotTraceCommand:
         )
 
         df = pd.DataFrame(
-            {"y": [1.0], "z": [2.0]},
-            index=pd.Index([0.0], name="x"),
+            {"x": [0.0], "y": [1.0], "z": [2.0]}
         )
         td = TraceData(
             df=df,
@@ -705,7 +703,7 @@ class TestPlotTraceCommand:
 
         from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 
-        df = pd.DataFrame({"V": [1.0], "R": [2.0]}, index=pd.Index([0.0], name="x"))
+        df = pd.DataFrame({"x": [0.0], "V": [1.0], "R": [2.0]})
         td = TraceData(
             df=df,
             column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y},
@@ -748,11 +746,11 @@ class TestPlotTraceCommand:
         from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 
         t1 = TraceData(
-            df=pd.DataFrame({"A": [1.0]}, index=pd.Index([0.0], name="x")),
+            df=pd.DataFrame({"x": [0.0], "A": [1.0]}),
             column_roles={"A": COLUMN_ROLE_Y},
         )
         t2 = TraceData(
-            df=pd.DataFrame({"B": [2.0]}, index=pd.Index([0.0], name="x")),
+            df=pd.DataFrame({"x": [0.0], "B": [2.0]}),
             column_roles={"B": COLUMN_ROLE_Y},
         )
         cmd = PlotTraceCommand()
@@ -789,8 +787,7 @@ class TestPlotTraceCommand:
         from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 
         df = pd.DataFrame(
-            {"V": [1.0, 2.0], "R": [10.0, 20.0]},
-            index=pd.Index([0.0, 1.0], name="x"),
+            {"x": [0.0, 1.0], "V": [1.0, 2.0], "R": [10.0, 20.0]}
         )
         td = TraceData(df=df, column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y})
         cmd = PlotTraceCommand()
@@ -820,8 +817,7 @@ class TestPlotTraceCommand:
         from stoner_measurement.core import COLUMN_ROLE_Y, TraceData
 
         df = pd.DataFrame(
-            {"V": [1.0], "R": [10.0]},
-            index=pd.Index([0.0], name="x"),
+            {"x": [0.0], "V": [1.0], "R": [10.0]}
         )
         td = TraceData(df=df, column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y})
         cmd = PlotTraceCommand()
@@ -848,8 +844,7 @@ class TestPlotTraceCommand:
         )
 
         df = pd.DataFrame(
-            {"V": [1.0, 2.0], "e_V": [0.1, 0.2]},
-            index=pd.Index([0.0, 1.0], name="x"),
+            {"x": [0.0, 1.0], "V": [1.0, 2.0], "e_V": [0.1, 0.2]}
         )
         td = TraceData(
             df=df,
@@ -883,8 +878,13 @@ class TestPlotTraceCommand:
         )
 
         df = pd.DataFrame(
-            {"V": [1.0, 2.0], "R": [10.0, 20.0], "e_V": [0.1, 0.2], "e_R": [1.0, 2.0]},
-            index=pd.Index([0.0, 1.0], name="x"),
+            {
+                "x": [0.0, 1.0],
+                "V": [1.0, 2.0],
+                "R": [10.0, 20.0],
+                "e_V": [0.1, 0.2],
+                "e_R": [1.0, 2.0],
+            }
         )
         td = TraceData(
             df=df,
@@ -922,8 +922,12 @@ class TestPlotTraceCommand:
         )
 
         df = pd.DataFrame(
-            {"V": [1.0, 2.0], "R": [10.0, 20.0], "d_I": [0.01, 0.01]},
-            index=pd.Index([0.0, 1.0], name="x"),
+            {
+                "x": [0.0, 1.0],
+                "V": [1.0, 2.0],
+                "R": [10.0, 20.0],
+                "d_I": [0.01, 0.01],
+            }
         )
         td = TraceData(
             df=df,

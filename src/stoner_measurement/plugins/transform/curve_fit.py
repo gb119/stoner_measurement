@@ -42,14 +42,17 @@ from qtpy.QtWidgets import (
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_E,
+    COLUMN_ROLE_X,
     COLUMN_ROLE_Y,
     TraceData,
 )
 from stoner_measurement.logging_utils import log_exceptions_and_warnings
 from stoner_measurement.plugins.trace_catalog_ui import (
+    TraceChannelComboBox,
     bind_trace_catalog_updates,
     refresh_trace_source_widgets,
     trace_channel_items,
+    trace_channel_roles,
 )
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.qt_compat import pyqtSignal
@@ -1141,7 +1144,7 @@ class CurveFitPlugin(TransformPlugin):
                 "x": source_unit_map.get("x", ""),
                 y_col_name: source_unit_map.get(y_col_name, ""),
             }
-            df = pd.DataFrame({y_col_name: y_arr}, index=pd.Index(x_arr, name="x"))
+            df = pd.DataFrame({"x": x_arr, y_col_name: y_arr})
             trace = TraceData(
                 df=df,
                 column_roles={y_col_name: COLUMN_ROLE_Y},
@@ -1275,7 +1278,7 @@ class CurveFitPlugin(TransformPlugin):
                 "x": source_unit_map.get("x", ""),
                 y_col_name: source_unit_map.get(y_col_name, ""),
             }
-            df = pd.DataFrame({y_col_name: y_arr}, index=pd.Index(x_arr, name="x"))
+            df = pd.DataFrame({"x": x_arr, y_col_name: y_arr})
             return TraceData(
                 df=df,
                 column_roles={y_col_name: COLUMN_ROLE_Y},
@@ -1728,7 +1731,7 @@ class CurveFitPlugin(TransformPlugin):
         """
         trace_keys = list(traces.keys())
         channel_items = trace_channel_items(self, traces)
-        channel_names = list(channel_items.keys())
+        channel_roles = trace_channel_roles(self, traces)
 
         trace_combo = QComboBox(widget)
         if trace_keys:
@@ -1745,31 +1748,21 @@ class CurveFitPlugin(TransformPlugin):
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
 
-        x_combo = QComboBox(widget)
-        if channel_names:
-            x_combo.addItems(channel_names)
-            if not _set_combo_to_expr(x_combo, channel_items, self.x_expr):
-                self.x_expr = channel_items[channel_names[0]]
-                x_combo.setCurrentIndex(0)
-        else:
-            x_combo.addItem("(no channels available)")
+        x_combo = TraceChannelComboBox(widget)
+        self.x_expr = x_combo.set_channels(
+            channel_items,
+            channel_roles,
+            self.x_expr,
+            preferred_role=COLUMN_ROLE_X,
+        )
 
-        y_combo = QComboBox(widget)
-        if channel_names:
-            y_combo.addItems(channel_names)
-            if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
-                default_y_index = next(
-                    (
-                        index
-                        for index, name in enumerate(channel_names)
-                        if not channel_items[name].endswith(".x")
-                    ),
-                    0,
-                )
-                self.y_expr = channel_items[channel_names[default_y_index]]
-                y_combo.setCurrentIndex(default_y_index)
-        else:
-            y_combo.addItem("(no channels available)")
+        y_combo = TraceChannelComboBox(widget)
+        self.y_expr = y_combo.set_channels(
+            channel_items,
+            channel_roles,
+            self.y_expr,
+            preferred_role=COLUMN_ROLE_Y,
+        )
 
         y_error_edit = QLineEdit(self.y_error_expr, widget)
         y_error_edit.setToolTip(
@@ -2090,44 +2083,3 @@ class CurveFitPlugin(TransformPlugin):
         self.report_initial_values = data.get("report_initial_values", False)
         self.show_initial_trace = data.get("show_initial_trace", False)
         self.show_best_fit_trace = data.get("show_best_fit_trace", False)
-
-
-# ---------------------------------------------------------------------------
-# Module-level helper (mirrors plot_trace.py)
-# ---------------------------------------------------------------------------
-
-
-def _set_combo_to_expr(
-    combo: QComboBox,
-    items: dict[str, str],
-    expr: str,
-) -> bool:
-    """Set *combo* current item to the entry in *items* whose value matches *expr*.
-
-    Args:
-        combo (QComboBox):
-            Combo box to update.
-        items (dict[str, str]):
-            Mapping of display name → expression.
-        expr (str):
-            Expression to search for.
-
-    Returns:
-        (bool):
-            ``True`` if a match was found and the combo was updated.
-
-    Examples:
-        >>> from qtpy.QtWidgets import QApplication, QComboBox
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> combo = QComboBox()
-        >>> combo.addItems(["a", "b"])
-        >>> _set_combo_to_expr(combo, {"a": "expr_a", "b": "expr_b"}, "expr_b")
-        True
-        >>> combo.currentText()
-        'b'
-    """
-    for display_name, item_expr in items.items():
-        if item_expr == expr:
-            combo.setCurrentText(display_name)
-            return True
-    return False

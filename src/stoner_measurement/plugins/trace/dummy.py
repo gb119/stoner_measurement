@@ -34,9 +34,9 @@ class DummyPlugin(TracePlugin):
     current on the x-axis and voltage on the y-axis.
 
     The configuration tabs include the standard trace scan-generator controls
-    plus simple text-entry fields for the RSJ model parameters. The Help/About
-    tab uses this docstring to explain both the physical meaning of those
-    parameters and the fact that the plugin is entirely hardware-free.
+    plus settings for the RSJ model, noise, and trace-wide voltage offset. The
+    Help/About tab uses this docstring to explain both the physical meaning of
+    those parameters and the fact that the plugin is entirely hardware-free.
 
     More technically, scan points are interpreted as applied current values
     *I* (in A). The corresponding voltage is computed from the DC RSJ model:
@@ -44,6 +44,7 @@ class DummyPlugin(TracePlugin):
     * ``V = 0`` when ``|I| < I_c``
     * ``V = sign(I) × R_n × √(I² − I_c²)`` when ``|I| ≥ I_c``
     * ``V += N(0, V_n)`` — independent Gaussian noise added to every sample
+    * ``V += N(0, V_offset)`` — one constant random offset added to the trace
 
     where *I_c* is the critical current, *R_n* is the normal-state
     resistance, and *V_n* is the noise standard deviation.
@@ -55,6 +56,8 @@ class DummyPlugin(TracePlugin):
             Python expression string for the normal-state resistance.
         _noise_level (str):
             Python expression string for the additive Gaussian noise level.
+        _voltage_offset_scale (str):
+            Python expression string for the trace-wide voltage-offset scale.
         _rounding_level (str):
             Python expression string controlling current rounding behaviour used
             by the implementation.
@@ -77,6 +80,7 @@ class DummyPlugin(TracePlugin):
         self._critical_current: str = "1.0"
         self._normal_resistance: str = "1.0"
         self._noise_level: str = "0.0"
+        self._voltage_offset_scale: str = "0.0"
         self._rounding_level = "0.0"
         self.scan_generator = FunctionScanGenerator(parent=self)
         self._apply_initial_config()
@@ -227,6 +231,9 @@ class DummyPlugin(TracePlugin):
                   expression in V.  Defaults to the expression set on the
                   *Settings* tab (initially ``"0.0"``).  Set to ``"0.0"`` for
                   noiseless output.
+                * ``"V_offset"`` *(str | float)* — standard deviation of the
+                  one normally distributed voltage offset applied uniformly to
+                  the complete trace. Defaults to ``"0.0"``.
 
         Returns:
             (dict[str, TraceData]):
@@ -235,6 +242,7 @@ class DummyPlugin(TracePlugin):
         i_c = self._eval_expr(str(parameters.get("I_c", self._critical_current)))
         r_n = self._eval_expr(str(parameters.get("R_n", self._normal_resistance)))
         v_n_expr = str(parameters.get("V_n", self._noise_level))
+        offset_scale_expr = str(parameters.get("V_offset", self._voltage_offset_scale))
         rounding = self._eval_expr(str(parameters.get("Rounding", self._rounding_level)))
 
         current_values = self.scan_generator.generate()
@@ -259,9 +267,12 @@ class DummyPlugin(TracePlugin):
         if v_n > 0.0:
             voltage_values += np.random.normal(0, v_n, voltage_values.size)
 
+        offset_scale = self._eval_expr(offset_scale_expr)
+        if offset_scale > 0.0:
+            voltage_values += np.random.normal(0.0, offset_scale)
+
         frame = pd.DataFrame(
-            {"V": voltage_values},
-            index=pd.Index(np.asarray(current_values, dtype=float), name="x"),
+            {"x": np.asarray(current_values, dtype=float), "V": voltage_values}
         )
         return {
             self.name: TraceData(
@@ -276,16 +287,15 @@ class DummyPlugin(TracePlugin):
         """Serialise this plugin's configuration, including RSJ model parameters.
 
         Extends the base :meth:`~stoner_measurement.plugins.trace.base.TracePlugin.to_json`
-        dict with ``"critical_current"``, ``"normal_resistance"``, and
-        ``"noise_level"`` keys containing the expression strings configured on
-        the *Settings* tab.
+        dict with the RSJ, noise, and ``"voltage_offset_scale"`` expressions
+        configured on the *Settings* tab.
 
         Returns:
             (dict[str, Any]):
                 A JSON-serialisable dictionary with at least the keys produced
                 by :meth:`~stoner_measurement.plugins.trace.base.TracePlugin.to_json`
-                plus ``"critical_current"``, ``"normal_resistance"``, and
-                ``"noise_level"``.
+                plus ``"critical_current"``, ``"normal_resistance"``,
+                ``"noise_level"``, and ``"voltage_offset_scale"``.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -300,7 +310,13 @@ class DummyPlugin(TracePlugin):
             '0.0'
         """
         data = super().to_json()
-        for attr in ["critical_current", "normal_resistance", "noise_level", "rounding_level"]:
+        for attr in [
+            "critical_current",
+            "normal_resistance",
+            "noise_level",
+            "rounding_level",
+            "voltage_offset_scale",
+        ]:
             data[attr] = getattr(self, f"_{attr}")
         return data
 
@@ -316,7 +332,13 @@ class DummyPlugin(TracePlugin):
                 Serialised plugin dict as produced by :meth:`to_json`.
         """
         super()._restore_from_json(data)
-        for attr in ["critical_current", "normal_resistance", "noise_level", "rounding_level"]:
+        for attr in [
+            "critical_current",
+            "normal_resistance",
+            "noise_level",
+            "rounding_level",
+            "voltage_offset_scale",
+        ]:
             if attr in data:
                 setattr(self, f"_{attr}", data.get(attr))
 
@@ -367,6 +389,17 @@ class DummyPlugin(TracePlugin):
         )
         v_n_edit.setToolTip(tooltip + " Use '0.0' for noiseless output.")
 
+        offset_scale_edit = SISpinBox(
+            value=self._voltage_offset_scale,
+            suffix="V",
+            siPrefix=True,
+            allow_expressions=True,
+        )
+        offset_scale_edit.setToolTip(
+            tooltip
+            + " One value is drawn per measurement and added to every trace point."
+        )
+
         rounding_edit = SISpinBox(
             value=self._rounding_level, suffix="K", siPrefix=True, allow_expressions=True
         )
@@ -381,17 +414,22 @@ class DummyPlugin(TracePlugin):
         def _update_v_n() -> None:
             self._noise_level = str(v_n_edit.value())
 
+        def _update_offset_scale() -> None:
+            self._voltage_offset_scale = str(offset_scale_edit.value())
+
         def _update_rounding() -> None:
             self._rounding_level = str(rounding_edit.value())
 
         i_c_edit.editingFinished.connect(_update_i_c)
         r_n_edit.editingFinished.connect(_update_r_n)
         v_n_edit.editingFinished.connect(_update_v_n)
+        offset_scale_edit.editingFinished.connect(_update_offset_scale)
         rounding_edit.editingFinished.connect(_update_rounding)
 
         layout.addRow("Critical current I_c (A):", i_c_edit)
         layout.addRow("Normal resistance R_n (\u03a9):", r_n_edit)
         layout.addRow("Noise level V_n (V):", v_n_edit)
+        layout.addRow("Voltage offset scale (V):", offset_scale_edit)
         layout.addRow("Thermal noise (K):", rounding_edit)
         return widget
 
@@ -425,10 +463,13 @@ class DummyPlugin(TracePlugin):
             "when <code>|I| &ge; I<sub>c</sub></code></li>"
             "<li><code>V += N(0, V<sub>n</sub>)</code> &mdash; "
             "independent Gaussian noise added to every sample</li>"
+            "<li><code>V += N(0, V<sub>offset</sub>)</code> &mdash; one "
+            "constant random offset added to every sample in a measurement</li>"
             "</ul>"
             "<p>Set <code>I<sub>c</sub></code> (critical current), "
             "<code>R<sub>n</sub></code> (normal-state resistance), and "
             "<code>V<sub>n</sub></code> (noise standard deviation, as a "
             "Python expression) on the <b>Settings</b> tab. "
-            "Use <code>V<sub>n</sub> = 0.0</code> for noiseless output.</p>"
+            "Use <code>V<sub>n</sub> = 0.0</code> for noiseless output. "
+            "Configure trace-wide offset variation on the <b>Settings</b> tab.</p>"
         )

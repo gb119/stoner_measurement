@@ -32,7 +32,10 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.core.sequence_metadata import sequence_metadata
 from stoner_measurement.plugins.command.base import CommandPlugin
-from stoner_measurement.plugins.trace_catalog_ui import bind_trace_catalog_updates
+from stoner_measurement.plugins.trace_catalog_ui import (
+    bind_trace_catalog_updates,
+    remap_catalog_text,
+)
 
 #: Regex matching the start of a Python string literal (with optional prefix).
 _STRING_EXPR_RE = re.compile(r'^(?P<leading>\s*)(?P<prefix>[fFrRbBuU]*)(?P<quote>["\'])')
@@ -717,10 +720,6 @@ class SaveCommand(CommandPlugin):
                 continue
             try:
                 trace_data = self.eval(expr)
-                x_values = np.array(trace_data.x, dtype=float, copy=True)
-                x_label = (trace_data.names or {}).get("x") or "x"
-                x_units = (trace_data.units or {}).get("x", "")
-                columns.append((f"{trace_key}:{x_label} ({x_units})", x_values))
                 for column_name in trace_data.df.columns:
                     values = trace_data.df[column_name].to_numpy(dtype=float, copy=True)
                     label = (trace_data.names or {}).get(column_name) or str(column_name)
@@ -979,6 +978,13 @@ class SaveCommand(CommandPlugin):
         traces_layout.setContentsMargins(4, 4, 4, 4)
 
         def _populate_traces(traces_catalog: dict[str, str]) -> None:
+            trace_keys = list(traces_catalog)
+            for old_key in list(self.trace_selection):
+                if old_key in traces_catalog:
+                    continue
+                renamed_key = remap_catalog_text(old_key, trace_keys)
+                if renamed_key is not None and renamed_key not in self.trace_selection:
+                    self.trace_selection[renamed_key] = self.trace_selection.pop(old_key)
             while traces_layout.count():
                 item = traces_layout.takeAt(0)
                 child = item.widget()

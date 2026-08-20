@@ -22,10 +22,10 @@ def _set_transform_source(engine, plugin, length: int) -> TraceData:
     source = TraceData(
         df=pd.DataFrame(
             {
+                "x": np.arange(length, dtype=float),
                 "signal": np.zeros(length, dtype=float),
                 "untouched": np.arange(length, dtype=float) + 100.0,
-            },
-            index=pd.Index(np.arange(length, dtype=float), name="source_x"),
+            }
         ),
         column_roles={"signal": COLUMN_ROLE_Y},
         names={"x": "Source X", "signal": "Signal", "untouched": "Untouched"},
@@ -86,6 +86,134 @@ def test_transform_trace_combo_refreshes_when_catalog_changes(
 
     assert trace_combo.findText("counter.data") >= 0
     assert plugin.trace_key == "counter.data"
+
+
+def test_catalog_refresh_preserves_channel_text_across_acquisition_add_and_rename(
+    engine, managed_qt_widget
+):
+    """A cached config page keeps the same named channel as expressions evolve."""
+    from stoner_measurement.plugins.state_scan import CounterPlugin
+    from stoner_measurement.plugins.trace import DummyPlugin
+
+    source = DummyPlugin()
+    plugin = XOffsetRemovalPlugin()
+    engine.add_plugin("dummy", source)
+    engine.add_plugin("x_offset_removal", plugin)
+    engine.update_step_plugin_catalog([source, plugin])
+
+    data_tab = managed_qt_widget(plugin.config_tabs()[0][1])
+    channel_combos = [
+        combo
+        for combo in data_tab.findChildren(QComboBox)
+        if combo.findText("dummy:Dummy:V (V)") >= 0
+    ]
+    x_combo = next(
+        combo
+        for combo in channel_combos
+        if combo.currentText() == "dummy:Dummy:I (A)"
+        and combo.itemData(combo.currentIndex()) is None
+    )
+    x_combo.setCurrentText("dummy:Dummy:V (V)")
+    assert plugin.x_expr == "dummy.data['Dummy'].y"
+
+    source.measure(
+        {"I_c": "1.0", "R_n": "1.0", "V_n": "0.0", "V_offset": "0.0", "Rounding": "0.0"}
+    )
+    engine.refresh_data_catalogs()
+
+    assert x_combo.currentText() == "dummy:Dummy:V (V)"
+    assert plugin.x_expr == "dummy.data['Dummy'].df['V'].to_numpy()"
+
+    counter = CounterPlugin()
+    counter.collect_data = True
+    engine.update_step_plugin_catalog([source, plugin, counter])
+
+    assert x_combo.currentText() == "dummy:Dummy:V (V)"
+    assert plugin.trace_key == "dummy:Dummy"
+
+    source.instance_name = "renamed"
+    engine.rename_plugin("dummy", "renamed")
+
+    assert x_combo.currentText() == "renamed:Dummy:V (V)"
+    assert plugin.x_expr == "renamed.data['Dummy'].df['V'].to_numpy()"
+    assert plugin.trace_key == "renamed:Dummy"
+
+
+def test_loaded_live_channel_expressions_survive_config_page_construction(
+    engine, managed_qt_widget
+):
+    """Saved DataFrame expressions map to configured channels before acquisition."""
+    from stoner_measurement.plugins.base_plugin import BasePlugin
+    from stoner_measurement.plugins.trace import DummyPlugin
+
+    source = DummyPlugin()
+    source.instance_name = "iv"
+    plugin = BasePlugin.from_json(
+        {
+            "type": "transform",
+            "class": (
+                "stoner_measurement.plugins.transform.voltage_offset:"
+                "XOffsetRemovalPlugin"
+            ),
+            "instance_name": "correct",
+            "trace_key": "iv:Dummy",
+            "column_key": "",
+            "advanced_mode": True,
+            "x_expr": "iv.data['Dummy'].df['V'].to_numpy()",
+            "y_expr": "iv.data['Dummy'].df['x'].to_numpy()",
+            "method": "near_zero_y",
+            "factor": 0.25,
+        }
+    )
+    engine.add_plugin("iv", source)
+    engine.add_plugin("correct", plugin)
+    engine.update_step_plugin_catalog([source, plugin])
+
+    data_tab = managed_qt_widget(plugin.config_tabs()[0][1])
+    target_combo = next(
+        combo
+        for combo in data_tab.findChildren(QComboBox)
+        if combo.itemData(combo.currentIndex()) == ""
+    )
+    selected_channels = {
+        combo.currentText()
+        for combo in data_tab.findChildren(QComboBox)
+        if combo.itemData(combo.currentIndex()) is None
+    }
+
+    assert plugin.column_key == ""
+    assert target_combo.currentText() == "iv:Dummy:V (V)"
+    assert plugin.x_expr == "iv.data['Dummy'].df['V'].to_numpy()"
+    assert plugin.y_expr == "iv.data['Dummy'].df['x'].to_numpy()"
+    assert {"iv:Dummy:V (V)", "iv:Dummy:I (A)"} <= selected_channels
+
+    filter_plugin = BasePlugin.from_json(
+        {
+            "type": "transform",
+            "class": (
+                "stoner_measurement.plugins.transform.window_filter:"
+                "WindowFilterPlugin"
+            ),
+            "instance_name": "filter_",
+            "trace_key": "correct:offset_removed",
+            "column_key": "",
+            "advanced_mode": True,
+            "x_expr": "correct.data['offset_removed'].x",
+            "y_expr": "correct.data['offset_removed'].y",
+            "window_name": "blackman",
+            "window_length": 17,
+            "window_parameters": "",
+            "symmetric_window": True,
+            "normalise_kernel": True,
+        }
+    )
+    engine.add_plugin("filter_", filter_plugin)
+    engine.update_step_plugin_catalog([source, plugin, filter_plugin])
+    managed_qt_widget(filter_plugin.config_tabs()[0][1])
+
+    assert filter_plugin.trace_key == "correct:offset_removed"
+    assert filter_plugin.x_expr == "correct.data['offset_removed'].x"
+    assert filter_plugin.y_expr == "correct.data['offset_removed'].y"
 
 
 @pytest.mark.parametrize(
@@ -157,7 +285,7 @@ class TestWindowFilterPlugin:
         x = np.arange(5, dtype=float)
         trace = TraceData(
             df=pd.DataFrame(
-                {"y1": np.zeros(5), "y2": np.arange(5, dtype=float)}, index=pd.Index(x, name="x")
+                {"x": x, "y1": np.zeros(5), "y2": np.arange(5, dtype=float)}
             ),
             column_roles={"y1": COLUMN_ROLE_Y, "y2": COLUMN_ROLE_Y},
         )
@@ -340,7 +468,7 @@ class TestFourierTransformPlugin:
         x = np.linspace(0.0, 1.0, 32)
         y = np.exp(1j * 2.0 * np.pi * x).real
         trace = TraceData(
-            df=pd.DataFrame({"spec": y}, index=pd.Index(x, name="x")),
+            df=pd.DataFrame({"x": x, "spec": y}),
             column_roles={"spec": COLUMN_ROLE_Y},
             units={"x": "1/s"},
         )
@@ -360,8 +488,11 @@ class TestFourierTransformPlugin:
         engine._namespace["_traces"] = {"dummy:Dummy": "_trace"}
         engine._namespace["_trace"] = TraceData(
             df=pd.DataFrame(
-                {"V": np.arange(3, dtype=float), "R": np.arange(3, dtype=float) + 1.0},
-                index=pd.Index(np.arange(3, dtype=float), name="x"),
+                {
+                    "x": np.arange(3, dtype=float),
+                    "V": np.arange(3, dtype=float),
+                    "R": np.arange(3, dtype=float) + 1.0,
+                }
             ),
             column_roles={"V": COLUMN_ROLE_Y},
             names={"x": "I", "V": "V", "R": "R"},
@@ -374,7 +505,7 @@ class TestFourierTransformPlugin:
         assert ws["x_combo"].currentText() == "dummy:Dummy:I (A)"
         assert ws["y_combo"].currentText() == "dummy:Dummy:V (V)"
         assert ws["channel_items"] == {
-            "dummy:Dummy:I (A)": "_trace.x",
+            "dummy:Dummy:I (A)": "_trace.df['x'].to_numpy()",
             "dummy:Dummy:V (V)": "_trace.df['V'].to_numpy()",
             "dummy:Dummy:R (Ω)": "_trace.df['R'].to_numpy()",
         }

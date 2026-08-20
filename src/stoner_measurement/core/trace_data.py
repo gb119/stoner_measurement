@@ -12,6 +12,9 @@ import pandas as pd
 COLUMN_ROLE_Y: str = "y"
 """Role tag identifying a column as the primary dependent variable."""
 
+COLUMN_ROLE_X: str = "x"
+"""Role tag identifying the independent-variable column."""
+
 COLUMN_ROLE_Z: str = "z"
 """Role tag identifying a column as a secondary dependent variable."""
 
@@ -22,22 +25,21 @@ COLUMN_ROLE_E: str = "e"
 """Role tag identifying a column as y-axis uncertainty (error bar)."""
 
 _VALID_ROLES: frozenset[str] = frozenset(
-    {COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_D, COLUMN_ROLE_E}
+    {COLUMN_ROLE_X, COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_D, COLUMN_ROLE_E}
 )
 
 
 class TraceData:
-    """One complete trace table with a shared independent-variable axis.
+    """One complete trace table with a shared independent-variable column.
 
-    The DataFrame index stores x and each DataFrame column stores measured,
-    derived, or uncertainty data on that same x grid.  Column roles identify
-    primary data (``y``), auxiliary data (``z``), x uncertainty (``d``), and
-    y uncertainty (``e``).  Missing roles default to primary for the first
-    column and auxiliary for subsequent columns.
+    The DataFrame uses a simple integer row index. Its columns store the
+    independent variable, measured or derived data, and uncertainties on the
+    same row grid. Column roles identify x (``x``), primary data (``y``),
+    auxiliary data (``z``), x uncertainty (``d``), and y uncertainty (``e``).
 
-    ``names`` and ``units`` are completed for ``"x"`` and every DataFrame
-    column during construction.  Unknown role or metadata keys are rejected so
-    these mappings cannot silently drift away from the table.
+    ``names`` and ``units`` are completed for every DataFrame column during
+    construction. Unknown role or metadata keys are rejected so these mappings
+    cannot silently drift away from the table.
 
     Use :meth:`from_xy` as a convenience for a conventional single-y trace.
     """
@@ -51,7 +53,11 @@ class TraceData:
         units: dict[str, str] | None = None,
     ) -> None:
         """Initialise a validated DataFrame-backed trace dataset."""
-        self._df = pd.DataFrame() if df is None else df.copy()
+        self._df = (
+            pd.DataFrame({"x": pd.Series(dtype=float)})
+            if df is None
+            else df.copy().reset_index(drop=True)
+        )
         if self._df.columns.has_duplicates:
             raise ValueError("TraceData columns must have unique names.")
 
@@ -63,18 +69,25 @@ class TraceData:
         invalid_roles = {role for role in roles.values() if role not in _VALID_ROLES}
         if invalid_roles:
             raise ValueError(f"Invalid column roles: {sorted(invalid_roles)!r}")
-        for index, column in enumerate(columns):
+        x_columns = [column for column, role in roles.items() if role == COLUMN_ROLE_X]
+        if not x_columns and "x" in columns:
+            roles["x"] = COLUMN_ROLE_X
+            x_columns = ["x"]
+        if len(x_columns) != 1:
+            raise ValueError("TraceData requires exactly one COLUMN_ROLE_X column.")
+        data_columns = [column for column in columns if column not in x_columns]
+        for index, column in enumerate(data_columns):
             roles.setdefault(column, COLUMN_ROLE_Y if index == 0 else COLUMN_ROLE_Z)
         self.column_roles = roles
 
-        valid_metadata_keys = {"x", *columns}
+        valid_metadata_keys = set(columns)
         supplied_names = dict(names or {})
         supplied_units = dict(units or {})
         unknown_metadata = (set(supplied_names) | set(supplied_units)).difference(valid_metadata_keys)
         if unknown_metadata:
             raise ValueError(f"Trace metadata references unknown columns: {sorted(unknown_metadata)!r}")
-        self.names = {"x": supplied_names.get("x", "x")}
-        self.units = {"x": supplied_units.get("x", "")}
+        self.names = {}
+        self.units = {}
         for column in columns:
             self.names[column] = supplied_names.get(column, str(column))
             self.units[column] = supplied_units.get(column, "")
@@ -91,15 +104,18 @@ class TraceData:
         units: dict[str, str] | None = None,
     ) -> TraceData:
         """Build a conventional single-y trace without a second constructor path."""
-        columns: dict[str, np.ndarray] = {"y": np.asarray(y, dtype=float)}
-        roles = {"y": COLUMN_ROLE_Y}
+        columns: dict[str, np.ndarray] = {
+            "x": np.asarray(x, dtype=float),
+            "y": np.asarray(y, dtype=float),
+        }
+        roles = {"x": COLUMN_ROLE_X, "y": COLUMN_ROLE_Y}
         if x_error is not None:
             columns["d"] = np.asarray(x_error, dtype=float)
             roles["d"] = COLUMN_ROLE_D
         if y_error is not None:
             columns["e"] = np.asarray(y_error, dtype=float)
             roles["e"] = COLUMN_ROLE_E
-        frame = pd.DataFrame(columns, index=pd.Index(np.asarray(x, dtype=float), name="x"))
+        frame = pd.DataFrame(columns)
         return cls(frame, column_roles=roles, names=names, units=units)
 
     # ------------------------------------------------------------------
@@ -108,7 +124,7 @@ class TraceData:
 
     @property
     def df(self) -> pd.DataFrame:
-        """The underlying :class:`pandas.DataFrame` (index = x, columns = data).
+        """The underlying DataFrame (integer row index, columns = channels).
 
         Returns:
             (pd.DataFrame):
@@ -122,7 +138,7 @@ class TraceData:
             >>> isinstance(td.df, pd.DataFrame)
             True
             >>> list(td.df.columns)
-            ['y']
+            ['x', 'y']
         """
         return self._df
 
@@ -153,7 +169,7 @@ class TraceData:
 
         Returns:
             (np.ndarray):
-                The DataFrame index as a float64 array.
+                The ``COLUMN_ROLE_X`` column as a float64 array.
 
         Examples:
             >>> import numpy as np
@@ -162,7 +178,10 @@ class TraceData:
             >>> td.x.tolist()
             [0.0, 1.0]
         """
-        return self._df.index.to_numpy(dtype=float)
+        cols = self.get_columns_by_role(COLUMN_ROLE_X)
+        if not cols:
+            return np.array([], dtype=float)
+        return self._df[cols[0]].to_numpy(dtype=float)
 
     @property
     def y(self) -> np.ndarray:

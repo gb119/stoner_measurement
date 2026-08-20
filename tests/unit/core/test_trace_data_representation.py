@@ -14,22 +14,21 @@ from stoner_measurement.core import (
 
 def test_representation_reports_columns_and_rows():
     df = pd.DataFrame(
-        {"voltage": [1.0, 2.0], "current": [3.0, 4.0]},
-        index=pd.Index([0.0, 1.0], name="time"),
+        {"x": [0.0, 1.0], "voltage": [1.0, 2.0], "current": [3.0, 4.0]}
     )
     trace = TraceData(
         df=df,
         column_roles={"voltage": COLUMN_ROLE_Y, "current": COLUMN_ROLE_Z},
     )
 
-    assert str(trace) == "TraceData(columns=['voltage', 'current'], rows=2)"
+    assert str(trace) == "TraceData(columns=['x', 'voltage', 'current'], rows=2)"
     assert repr(trace) == str(trace)
 
 
 def test_representation_reports_empty_trace():
     trace = TraceData()
 
-    assert str(trace) == "TraceData(columns=[], rows=0)"
+    assert str(trace) == "TraceData(columns=['x'], rows=0)"
 
 
 if __name__ == "__main__":

@@ -5,10 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-import pandas as pd
 from qtpy.QtWidgets import QComboBox, QFormLayout, QWidget
 
-from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
+from stoner_measurement.core.trace_data import COLUMN_ROLE_X, COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform._trace_selection import (
     TraceChannelSelectionMixin,
 )
@@ -98,7 +97,7 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
     def _get_selected_data_arrays(
         self,
     ) -> tuple[np.ndarray, np.ndarray, str, dict[str, str], dict[str, str], TraceData]:
-        """Return offset inputs and the selected output-column context."""
+        """Return calculation inputs and the independently selected target context."""
         trace_data = self._get_selected_trace_data()
         target_column = self.column_key
         if target_column == "":
@@ -132,7 +131,7 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
         )
 
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Copy the selected trace and remove the calculated offset from x."""
+        """Calculate an offset, then subtract it from the selected target column."""
         del data
         try:
             x_arr, y_arr, target_column, _source_names, _source_units, source_trace = (
@@ -146,21 +145,17 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
                 raise ValueError("input data is empty")
             if not np.all(np.isfinite(x_arr)) or not np.all(np.isfinite(y_arr)):
                 raise ValueError("x and y data must contain only finite values")
-            if len(source_trace.df) != len(x_arr):
-                raise ValueError("input arrays must match the selected source trace length")
             dx = self._calculate_offset(x_arr, y_arr)
         except Exception as exc:
             self.log.error("XOffsetRemoval: failed to calculate offset — %s", exc)
             return {}
 
-        corrected_x = x_arr - dx
         corrected_trace = self._copy_trace_data(source_trace)
         if target_column == "x":
-            corrected_trace.df.index = pd.Index(
-                corrected_x, name=source_trace.df.index.name
-            )
-        else:
-            corrected_trace.df[target_column] = corrected_x
+            target_column = corrected_trace.get_columns_by_role(COLUMN_ROLE_X)[0]
+        corrected_trace.df[target_column] = (
+            corrected_trace.df[target_column].to_numpy(dtype=float) - dx
+        )
         return {
             _OUTPUT_TRACE_KEY: corrected_trace,
             _OFFSET_VALUE_KEY: dx,
@@ -236,7 +231,7 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
     def _restore_from_json(self, data: dict[str, Any]) -> None:
         """Restore trace selection and offset settings."""
         self.trace_key = str(data.get("trace_key", ""))
-        self.column_key = str(data.get("column_key", "x")) or "x"
+        self.column_key = str(data.get("column_key", "x"))
         self.advanced_mode = bool(data.get("advanced_mode", False))
         self.x_expr = str(data.get("x_expr", ""))
         self.y_expr = str(data.get("y_expr", ""))

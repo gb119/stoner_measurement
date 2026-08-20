@@ -727,6 +727,27 @@ class TestRenameIdentifierReferences:
         assert renamed is not data
         assert renamed["plugin"] is not data["plugin"]
 
+    def test_renames_trace_selection_keys(self, qapp):
+        from stoner_measurement.core.serializer import rename_identifier_references
+
+        data = {
+            "plugin": {
+                "trace_selection": {
+                    "field:IV": False,
+                    "field_2:IV": True,
+                    "other:IV": False,
+                }
+            }
+        }
+
+        renamed = rename_identifier_references(data, "field", "temp")
+
+        assert renamed["plugin"]["trace_selection"] == {
+            "temp:IV": False,
+            "field_2:IV": True,
+            "other:IV": False,
+        }
+
 
 if __name__ == "__main__":
 

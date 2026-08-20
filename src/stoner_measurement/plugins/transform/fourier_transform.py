@@ -190,12 +190,12 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         component_columns = _component_column_names(y_col_name)
         df = pd.DataFrame(
             {
+                "x": x_out,
                 component_columns["magnitude"]: np.abs(y_out),
                 component_columns["real"]: np.real(y_out),
                 component_columns["imag"]: np.imag(y_out),
                 component_columns["angle"]: np.angle(y_out),
-            },
-            index=pd.Index(x_out, name="x"),
+            }
         )
 
         names = {"x": source_names.get("x", default_x_name)}

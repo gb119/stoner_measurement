@@ -762,6 +762,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             x_arr = np.asarray(self._sweep_values, dtype=float)
 
         columns = {
+            "x": x_arr,
             "Current": current,
             "Voltage": voltage,
             response_name: resistance,
@@ -832,7 +833,7 @@ class Keithley2400SweepPlugin(TracePlugin):
                 column_roles[column] = role
                 names[column] = column
                 units[column] = unit
-        df = pd.DataFrame(columns, index=pd.Index(x_arr, name="x"))
+        df = pd.DataFrame(columns)
         return {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
 
     def _records_to_arrays(

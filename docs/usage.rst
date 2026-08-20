@@ -114,10 +114,16 @@ conversion step. The Save command likewise has one trace selection path for
 both instrument traces and collected scan/sweep tables; incremental saving
 remains available for repeated saves as a table grows.
 
+The independent variable is an ordinary DataFrame column carrying the
+``COLUMN_ROLE_X`` role. The DataFrame index is always a simple integer row
+index, so every channel can be enumerated, selected, copied, and saved through
+the same column-based path.
+
 .. code-block:: python
 
     from stoner_measurement.core import (
         TraceData,
+        COLUMN_ROLE_X,
         COLUMN_ROLE_Y,
         COLUMN_ROLE_Z,
         COLUMN_ROLE_E,
@@ -134,15 +140,16 @@ remains available for repeated saves as a table grows.
     # Multi-column trace, including its uncertainty column
     df = pd.DataFrame(
         {
+            "x": [0.0, 1.0, 2.0],
             "voltage": [0.0, 1.0, 4.0],
             "current": [0.0, 0.5, 2.0],
             "voltage_error": [0.01, 0.01, 0.02],
-        },
-        index=pd.Index([0.0, 1.0, 2.0], name="x"),
+        }
     )
     td_multi = TraceData(
         df,
         column_roles={
+            "x": COLUMN_ROLE_X,
             "voltage": COLUMN_ROLE_Y,
             "current": COLUMN_ROLE_Z,
             "voltage_error": COLUMN_ROLE_E,

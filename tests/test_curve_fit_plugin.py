@@ -1074,8 +1074,7 @@ class TestCurveFitColumnKey:
 
         x = np.linspace(0.0, 1.0, 20)
         df = pd.DataFrame(
-            {"V": 3.0 * x + 1.0, "R": 2.0 * x + 0.5},
-            index=pd.Index(x, name="x"),
+            {"x": x, "V": 3.0 * x + 1.0, "R": 2.0 * x + 0.5}
         )
         td = TraceData(df=df, column_roles={"V": COLUMN_ROLE_Y, "R": COLUMN_ROLE_Y})
         engine._namespace["_td"] = td
@@ -1101,12 +1100,12 @@ class TestCurveFitColumnKey:
         x = np.linspace(0.0, 1.0, 5)
         df = pd.DataFrame(
             {
+                "x": x,
                 "V": 3.0 * x + 1.0,
                 "R": 2.0 * x + 0.5,
                 "e_V": np.full_like(x, 0.1),
                 "e_R": np.full_like(x, 2.0),
-            },
-            index=pd.Index(x, name="x"),
+            }
         )
         td = TraceData(
             df=df,
@@ -1222,11 +1221,11 @@ class TestCurveFitColumnKey:
         engine.add_plugin("cf", plugin)
 
         td1 = TraceData(
-            df=pd.DataFrame({"A": [1.0]}, index=pd.Index([0.0], name="x")),
+            df=pd.DataFrame({"x": [0.0], "A": [1.0]}),
             column_roles={"A": COLUMN_ROLE_Y},
         )
         td2 = TraceData(
-            df=pd.DataFrame({"B": [2.0]}, index=pd.Index([0.0], name="x")),
+            df=pd.DataFrame({"x": [0.0], "B": [2.0]}),
             column_roles={"B": COLUMN_ROLE_Y},
         )
         engine._namespace["td1"] = td1

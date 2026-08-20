@@ -232,8 +232,7 @@ class DataManagerWindow(QtWidgets.QWidget):
             frame = trace_data.df
             names = trace_data.names or {}
             units = trace_data.units or {}
-            columns = [self._column_label("x", names=names, units=units)]
-            columns.extend(
+            columns = list(
                 self._column_label(column, names=names, units=units) for column in frame.columns
             )
             return (

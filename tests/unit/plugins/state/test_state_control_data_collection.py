@@ -60,7 +60,7 @@ class TestStateControlDataCollection:
         from stoner_measurement.core import TraceData
 
         p = _InstantState()
-        p._data = TraceData(pd.DataFrame({"value": [1.0]}))
+        p._data = TraceData(pd.DataFrame({"x": [0.0], "value": [1.0]}))
         p.clear_data()
         assert p.data.df.empty
 
@@ -70,7 +70,7 @@ class TestStateControlDataCollection:
         from stoner_measurement.core import TraceData
 
         p = _InstantState()
-        p._data = TraceData(pd.DataFrame({"value": [1.0]}))
+        p._data = TraceData(pd.DataFrame({"x": [0.0], "value": [1.0]}))
         p.clear_filter = "False"
         p.clear_data()
         assert p.data.df.empty

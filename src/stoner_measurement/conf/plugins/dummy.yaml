@@ -1,6 +1,7 @@
 critical_current: "0.5E-3"
 normal_resistance: "5.0E-3"
 noise_level: "1.0E-8"
+voltage_offset_scale: "0.0"
 rounding_level: "1.0"
 scan_generator:
   type: FunctionScanGenerator

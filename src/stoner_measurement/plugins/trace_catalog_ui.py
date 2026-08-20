@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from qtpy.QtCore import QObject
 from qtpy.QtWidgets import QComboBox, QWidget
+
+from stoner_measurement.core.trace_data import COLUMN_ROLE_X, COLUMN_ROLE_Y
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -14,6 +17,145 @@ if TYPE_CHECKING:
 
 _NO_TRACES = "(no traces available)"
 _NO_CHANNELS = "(no channels available)"
+
+
+def remap_catalog_text(current_text: str, available_texts: list[str]) -> str | None:
+    """Return the unique renamed item matching *current_text*'s stable suffix."""
+    if not current_text:
+        return None
+    if current_text in available_texts:
+        return current_text
+    separator_positions = [
+        position
+        for separator in (":", ".")
+        if (position := current_text.find(separator)) >= 0
+    ]
+    if not separator_positions:
+        return None
+    suffix = current_text[min(separator_positions) :]
+    matches = [text for text in available_texts if text.endswith(suffix)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _expression_channel(expression: str) -> tuple[str, str | None, Any | None]:
+    """Return an expression's trace base, shorthand role, and DataFrame column."""
+    if expression.endswith(".x"):
+        return expression[:-2], COLUMN_ROLE_X, None
+    if expression.endswith(".y"):
+        return expression[:-2], COLUMN_ROLE_Y, None
+    marker = ".df["
+    marker_index = expression.rfind(marker)
+    suffix = "].to_numpy()"
+    if marker_index < 0 or not expression.endswith(suffix):
+        return expression, None, None
+    column_text = expression[marker_index + len(marker) : -len(suffix)]
+    try:
+        column = ast.literal_eval(column_text)
+    except (SyntaxError, ValueError):
+        return expression, None, None
+    role = COLUMN_ROLE_X if column == "x" else None
+    return expression[:marker_index], role, column
+
+
+def channel_name_for_expression(
+    items: dict[str, str],
+    roles: dict[str, str],
+    expression: str,
+) -> str | None:
+    """Find the displayed channel matching a saved expression semantically.
+
+    Before acquisition, configured channels use ``.x``/``.y`` expressions;
+    live catalogues use DataFrame expressions. Match those representations by
+    trace, role, and canonical channel name without overwriting the saved
+    expression merely because the representation has changed.
+    """
+    exact = next((name for name, item_expr in items.items() if item_expr == expression), None)
+    if exact is not None:
+        return exact
+
+    source_base, source_role, source_column = _expression_channel(expression)
+    matches = []
+    for name, item_expr in items.items():
+        item_base, item_role, item_column = _expression_channel(item_expr)
+        item_role = roles.get(item_expr) or item_role
+        if item_base != source_base:
+            continue
+        if source_column is not None and item_column == source_column:
+            matches.append(name)
+            continue
+        if source_column is not None and item_column is None:
+            channel_label = name.rsplit(":", 1)[-1].rsplit(" (", 1)[0]
+            expected_role = COLUMN_ROLE_X if source_column == "x" else COLUMN_ROLE_Y
+            if item_role == expected_role and (
+                source_column == "x" or channel_label == str(source_column)
+            ):
+                matches.append(name)
+            continue
+        if source_column is None and source_role is not None and item_role == source_role:
+            matches.append(name)
+    return matches[0] if len(matches) == 1 else None
+
+
+class TraceChannelComboBox(QComboBox):
+    """Channel selector that owns display-name and expression conversion."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._channel_items: dict[str, str] = {}
+
+    @property
+    def selected_expression(self) -> str:
+        """Return the expression represented by the current display item."""
+        return self._channel_items.get(self.currentText(), "")
+
+    def set_channels(
+        self,
+        items: dict[str, str],
+        roles: dict[str, str],
+        expression: str,
+        *,
+        preferred_role: str,
+        preserve_current_text: bool = False,
+    ) -> str:
+        """Replace the catalogue and return the expression to retain.
+
+        A still-valid visible selection wins during refresh. Otherwise the
+        saved expression is matched semantically across configured ``.x/.y``
+        and live DataFrame forms. Defaults are used only when neither survives.
+        """
+        current_text = self.currentText() if preserve_current_text else ""
+        self.blockSignals(True)
+        self.clear()
+        self._channel_items = dict(items)
+        if not items:
+            self.addItem(_NO_CHANNELS)
+            self.blockSignals(False)
+            return expression
+
+        self.addItems(items)
+        if current_text in items:
+            selected_name = current_text
+            selected_expression = items[selected_name]
+        else:
+            selected_name = channel_name_for_expression(items, roles, expression)
+            selected_expression = expression
+            if selected_name is None and preserve_current_text:
+                selected_name = remap_catalog_text(current_text, list(items))
+                if selected_name is not None:
+                    selected_expression = items[selected_name]
+            if selected_name is None:
+                selected_name = next(
+                    (
+                        name
+                        for name, item_expression in items.items()
+                        if roles.get(item_expression) == preferred_role
+                    ),
+                    next(iter(items)),
+                )
+                selected_expression = items[selected_name]
+        self.setCurrentText(selected_name)
+        self.blockSignals(False)
+        return selected_expression
 
 
 class _TraceCatalogBinding(QObject):
@@ -96,11 +238,32 @@ def trace_channel_items(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
                 items[f"{trace_key} (y)"] = f"{expression}.y"
             continue
 
-        items[_channel_label(trace_key, "x", names=names, units=units)] = f"{expression}.x"
         for column in frame.columns:
             label = _channel_label(trace_key, column, names=names, units=units)
             items[label] = f"{expression}.df[{column!r}].to_numpy()"
     return items
+
+
+def trace_channel_roles(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
+    """Return each selectable channel expression's role."""
+    roles: dict[str, str] = {}
+    for trace_key, expression in traces.items():
+        try:
+            trace_data = plugin.eval(expression)
+            for column in trace_data.df.columns:
+                channel_expression = f"{expression}.df[{column!r}].to_numpy()"
+                roles[channel_expression] = trace_data.column_roles.get(column, "")
+        except Exception:  # noqa: BLE001  # the catalogue may precede acquisition
+            configured = _configured_trace_channels(plugin, trace_key, expression)
+            if configured is not None:
+                for channel_expression in configured.values():
+                    roles[channel_expression] = (
+                        COLUMN_ROLE_X if channel_expression.endswith(".x") else COLUMN_ROLE_Y
+                    )
+            else:
+                roles[f"{expression}.x"] = COLUMN_ROLE_X
+                roles[f"{expression}.y"] = COLUMN_ROLE_Y
+    return roles
 
 
 def trace_target_column_items(
@@ -132,11 +295,20 @@ def trace_target_column_items(
             for label, channel_expression in configured.items()
         }
 
-    items = {_channel_label(trace_key, "x", names=names, units=units): "x"}
-    y_columns = list(getattr(trace_data, "get_columns_by_role", lambda _role: [])("y"))
+    y_columns = list(
+        getattr(trace_data, "get_columns_by_role", lambda _role: [])(COLUMN_ROLE_Y)
+    )
     default_y = y_columns[0] if y_columns else None
+    x_columns = list(
+        getattr(trace_data, "get_columns_by_role", lambda _role: [])(COLUMN_ROLE_X)
+    )
+    x_column = x_columns[0] if x_columns else None
+    items = {}
     for column in frame.columns:
-        target_key = "" if column == default_y else str(column)
+        if column == x_column:
+            target_key = "x"
+        else:
+            target_key = "" if column == default_y else str(column)
         items[_channel_label(trace_key, column, names=names, units=units)] = target_key
     return items
 
@@ -152,11 +324,19 @@ def refresh_trace_source_widgets(
     """Refresh common trace, column, and advanced x/y source selectors."""
     trace_keys = list(traces)
     trace_combo: QComboBox = widgets["trace_combo"]
+    current_trace_text = trace_combo.currentText()
     trace_combo.blockSignals(True)
     trace_combo.clear()
     if trace_keys:
         trace_combo.addItems(trace_keys)
-        plugin.trace_key = plugin.trace_key if plugin.trace_key in trace_keys else trace_keys[0]
+        if current_trace_text in trace_keys:
+            plugin.trace_key = current_trace_text
+        elif plugin.trace_key not in trace_keys:
+            plugin.trace_key = (
+                remap_catalog_text(current_trace_text, trace_keys)
+                or remap_catalog_text(plugin.trace_key, trace_keys)
+                or trace_keys[0]
+            )
         trace_combo.setCurrentText(plugin.trace_key)
     else:
         trace_combo.addItem(_NO_TRACES)
@@ -170,13 +350,17 @@ def refresh_trace_source_widgets(
         column_combo.blockSignals(False)
 
     items = trace_channel_items(plugin, traces)
+    roles = trace_channel_roles(plugin, traces)
     widgets["channel_items"].clear()
     widgets["channel_items"].update(items)
-    _refresh_channel_combo(plugin, widgets["x_combo"], items, "x_expr", preferred_axis="x")
+    _refresh_channel_combo(
+        plugin, widgets["x_combo"], items, roles, "x_expr", preferred_axis="x"
+    )
     _refresh_channel_combo(
         plugin,
         widgets["y_combo"],
         items,
+        roles,
         "y_expr",
         preferred_axis="y" if prefer_y_channel else None,
     )
@@ -186,11 +370,27 @@ def _refresh_channel_combo(
     plugin: Any,
     combo: QComboBox,
     items: dict[str, str],
+    roles: dict[str, str],
     attribute: str,
     *,
     preferred_axis: str | None,
 ) -> None:
-    """Refresh one channel combo while preserving a still-valid expression."""
+    """Refresh one channel combo, preferring its still-valid displayed text."""
+    if isinstance(combo, TraceChannelComboBox):
+        preferred_role = (
+            COLUMN_ROLE_X if preferred_axis == "x" else COLUMN_ROLE_Y
+        )
+        expression = combo.set_channels(
+            items,
+            roles,
+            getattr(plugin, attribute),
+            preferred_role=preferred_role,
+            preserve_current_text=True,
+        )
+        setattr(plugin, attribute, expression)
+        return
+
+    current_text = combo.currentText()
     current_expression = getattr(plugin, attribute)
     combo.blockSignals(True)
     combo.clear()
@@ -200,19 +400,28 @@ def _refresh_channel_combo(
         combo.blockSignals(False)
         return
     combo.addItems(items)
-    selected_name = next(
-        (name for name, expression in items.items() if expression == current_expression),
-        None,
-    )
+    selected_name = current_text if current_text in items else None
+    if selected_name is None:
+        selected_name = channel_name_for_expression(items, roles, current_expression)
+    if selected_name is None:
+        selected_name = remap_catalog_text(current_text, list(items))
     if selected_name is None and preferred_axis is not None:
         if preferred_axis == "x":
             selected_name = next(
-                (name for name, expression in items.items() if expression.endswith(".x")),
+                (
+                    name
+                    for name, expression in items.items()
+                    if roles.get(expression) == COLUMN_ROLE_X
+                ),
                 None,
             )
         else:
             selected_name = next(
-                (name for name, expression in items.items() if not expression.endswith(".x")),
+                (
+                    name
+                    for name, expression in items.items()
+                    if roles.get(expression) == COLUMN_ROLE_Y
+                ),
                 None,
             )
     selected_name = selected_name or next(iter(items))

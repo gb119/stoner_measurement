@@ -19,8 +19,7 @@ def _install_collected_trace(engine) -> str:
     plugin.collect_data = True
     plugin._data = TraceData(  # noqa: SLF001
         pd.DataFrame(
-            {"signal": [2.5, 3.5], "stage": [0.0, 1.0]},
-            index=pd.Index([10.0, 20.0], name="field"),
+            {"x": [10.0, 20.0], "signal": [2.5, 3.5], "stage": [0.0, 1.0]}
         ),
         column_roles={"signal": COLUMN_ROLE_Y, "stage": COLUMN_ROLE_Z},
         names={"x": "Field", "signal": "Signal", "stage": "Stage"},
@@ -48,7 +47,7 @@ def test_refresh_preserves_selection_and_updates_shape(engine, managed_qt_widget
     window._trace_items[key].setCheckState(0, Qt.CheckState.Unchecked)  # noqa: SLF001
 
     plugin = engine.evaluate_expression(key)
-    plugin.df.loc[30.0] = [4.5, 2.0]
+    plugin.df.loc[len(plugin.df)] = [30.0, 4.5, 2.0]
     window.refresh_traces()
 
     assert window._trace_items[key].text(2) == "3 × 3"  # noqa: SLF001
@@ -92,8 +91,8 @@ def test_save_runs_in_background_and_writes_selected_snapshot(
     window._save_selected("tdi")  # noqa: SLF001
     assert started.wait(timeout=2)
     assert window._active_workers  # noqa: SLF001
-    assert engine.evaluate_expression(key).df.shape == (2, 2)
-    engine.evaluate_expression(key).df.loc[10.0, "signal"] = 99.0
+    assert engine.evaluate_expression(key).df.shape == (2, 3)
+    engine.evaluate_expression(key).df.loc[0, "signal"] = 99.0
 
     release.set()
     qtbot.waitUntil(lambda: not window._active_workers, timeout=5000)  # noqa: SLF001

@@ -18,11 +18,11 @@ def _set_collected_state_data(counter, values: list[float]) -> None:
 
     frame = pd.DataFrame(
         {
+            "x": values,
             "iteration": range(len(values)),
             "stage": [0] * len(values),
             "signal": values,
-        },
-        index=pd.Index(values, name="x"),
+        }
     )
     counter._data = TraceData(  # noqa: SLF001
         frame,
@@ -115,6 +115,32 @@ class TestSaveCommand:
         engine.update_step_plugin_catalog([counter])
 
         assert any(check.text() == "counter.data" for check in widget.findChildren(QCheckBox))
+
+    def test_config_widget_preserves_unchecked_trace_when_source_is_renamed(
+        self, qapp, engine, managed_qt_widget
+    ):
+        from qtpy.QtWidgets import QCheckBox
+
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        source = DummyPlugin()
+        cmd = SaveCommand()
+        engine.add_plugin("dummy", source)
+        engine.add_plugin("save", cmd)
+        engine.update_step_plugin_catalog([source, cmd])
+        cmd.trace_selection = {"dummy:Dummy": False}
+        widget = managed_qt_widget(cmd.config_widget())
+
+        source.instance_name = "renamed"
+        engine.rename_plugin("dummy", "renamed")
+
+        renamed_check = next(
+            check
+            for check in widget.findChildren(QCheckBox)
+            if check.text() == "renamed:Dummy"
+        )
+        assert renamed_check.isChecked() is False
+        assert cmd.trace_selection == {"renamed:Dummy": False}
 
     def test_execute_writes_tdi_file(self, qapp, engine, tmp_path):
         cmd = SaveCommand()
@@ -309,8 +335,11 @@ class TestSaveCommand:
         from stoner_measurement.core import TraceData
 
         frame = pd.DataFrame(
-            {"voltage": [1.0, 2.0], "resistance": [10.0, 20.0]},
-            index=pd.Index([0.1, 0.2], name="x"),
+            {
+                "x": [0.1, 0.2],
+                "voltage": [1.0, 2.0],
+                "resistance": [10.0, 20.0],
+            }
         )
         trace = TraceData(
             frame,

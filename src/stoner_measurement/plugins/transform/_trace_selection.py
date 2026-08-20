@@ -11,17 +11,20 @@ Provides a reusable mixin for transforms whose primary output is a trace:
 
 from __future__ import annotations
 
+import copy
 from functools import partial
 from typing import Any
 
 import numpy as np
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLabel, QWidget
 
-from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
+from stoner_measurement.core.trace_data import COLUMN_ROLE_X, COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.trace_catalog_ui import (
+    TraceChannelComboBox,
     bind_trace_catalog_updates,
     refresh_trace_source_widgets,
     trace_channel_items,
+    trace_channel_roles,
     trace_target_column_items,
 )
 
@@ -59,12 +62,7 @@ class TraceChannelSelectionMixin:
     @staticmethod
     def _copy_trace_data(trace_data: TraceData) -> TraceData:
         """Return a fully independent copy of *trace_data*."""
-        return TraceData(
-            df=trace_data.df.copy(deep=True),
-            column_roles=dict(trace_data.column_roles),
-            names=dict(trace_data.names),
-            units=dict(trace_data.units),
-        )
+        return copy.deepcopy(trace_data)
 
     def _populate_column_combo(self, combo: QComboBox, trace_key: str) -> None:
         """Populate the target combo with canonical labels for one trace."""
@@ -105,7 +103,7 @@ class TraceChannelSelectionMixin:
         """Create trace/channel selection widgets for a transform data tab."""
         trace_keys = list(traces.keys())
         channel_items = trace_channel_items(self, traces)
-        channel_names = list(channel_items.keys())
+        channel_roles = trace_channel_roles(self, traces)
 
         trace_combo = QComboBox(widget)
         if trace_keys:
@@ -122,31 +120,21 @@ class TraceChannelSelectionMixin:
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
 
-        x_combo = QComboBox(widget)
-        if channel_names:
-            x_combo.addItems(channel_names)
-            if not _set_combo_to_expr(x_combo, channel_items, self.x_expr):
-                self.x_expr = channel_items[channel_names[0]]
-                x_combo.setCurrentIndex(0)
-        else:
-            x_combo.addItem("(no channels available)")
+        x_combo = TraceChannelComboBox(widget)
+        self.x_expr = x_combo.set_channels(
+            channel_items,
+            channel_roles,
+            self.x_expr,
+            preferred_role=COLUMN_ROLE_X,
+        )
 
-        y_combo = QComboBox(widget)
-        if channel_names:
-            y_combo.addItems(channel_names)
-            if not _set_combo_to_expr(y_combo, channel_items, self.y_expr):
-                default_y_index = next(
-                    (
-                        index
-                        for index, name in enumerate(channel_names)
-                        if not channel_items[name].endswith(".x")
-                    ),
-                    0,
-                )
-                self.y_expr = channel_items[channel_names[default_y_index]]
-                y_combo.setCurrentIndex(default_y_index)
-        else:
-            y_combo.addItem("(no channels available)")
+        y_combo = TraceChannelComboBox(widget)
+        self.y_expr = y_combo.set_channels(
+            channel_items,
+            channel_roles,
+            self.y_expr,
+            preferred_role=COLUMN_ROLE_Y,
+        )
 
         return {
             "trace_combo": trace_combo,
@@ -301,16 +289,3 @@ class TraceChannelSelectionMixin:
             source_units,
             trace_data,
         )
-
-
-def _set_combo_to_expr(
-    combo: QComboBox,
-    items: dict[str, str],
-    expr: str,
-) -> bool:
-    """Set *combo* to the display entry mapped to *expr* and report success."""
-    for display_name, item_expr in items.items():
-        if item_expr == expr:
-            combo.setCurrentText(display_name)
-            return True
-    return False

@@ -581,7 +581,12 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 )
             p_arr = i_arr * v_arr
 
-        columns: dict[str, np.ndarray] = {"V": v_arr, response_name: r_arr, "P": p_arr}
+        columns: dict[str, np.ndarray] = {
+            "x": i_arr,
+            "V": v_arr,
+            response_name: r_arr,
+            "P": p_arr,
+        }
         column_roles = {
             "V": COLUMN_ROLE_Y,
             response_name: COLUMN_ROLE_Z,
@@ -643,10 +648,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 names[column] = column
                 units[column] = unit
 
-        df = pd.DataFrame(
-            columns,
-            index=pd.Index(i_arr, name="x"),
-        )
+        df = pd.DataFrame(columns)
         return {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
 
     def _secondary_column_names(self, *, response_name: str | None = None) -> tuple[str, str, str]:

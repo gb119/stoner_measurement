@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -174,10 +175,10 @@ class TestDummyPlugin:
             for cb in settings_widget.findChildren(QCheckBox)
         )
 
-    def test_about_tab_is_third(self, qapp, qtbot):
+    def test_about_tab_is_last(self, qapp, qtbot):
         plugin = DummyPlugin()
         tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
-        assert "About" in tabs[2][0]
+        assert "About" in tabs[-1][0]
 
     def test_about_html_returns_string(self, qapp):
         plugin = DummyPlugin()
@@ -202,10 +203,13 @@ class TestDummyPlugin:
         qtbot.addWidget(widget)
         spins = widget.findChildren(SISpinBox)
 
-        assert [spin.opts["suffix"] for spin in spins] == ["A", "Ω", "V", "K"]
+        assert [spin.opts["suffix"] for spin in spins] == ["A", "Ω", "V", "V", "K"]
         spins[0].lineEdit().setText("base_current * 2")
         spins[0].editingFinished.emit()
         assert plugin._critical_current == "base_current * 2"
+        spins[3].lineEdit().setText("offset_sigma")
+        spins[3].editingFinished.emit()
+        assert plugin._voltage_offset_scale == "offset_sigma"
 
     def test_set_scan_generator_class(self, qapp):
         from stoner_measurement.scan import FunctionScanGenerator
@@ -320,6 +324,9 @@ class TestDummyPlugin:
     def test_default_noise_level(self, qapp):
         assert DummyPlugin()._noise_level == "1.0E-8"
 
+    def test_default_voltage_offset_scale_is_zero(self, qapp):
+        assert DummyPlugin()._voltage_offset_scale == "0.0"
+
     def test_execute_zero_noise_is_exact(self, qapp):
         """V_n=0.0 must give exact RSJ values (no noise added)."""
         plugin = DummyPlugin()
@@ -357,6 +364,46 @@ class TestDummyPlugin:
         # exactly equal to the noiseless RSJ value (I=2 → V=2 for I_c=0).
         noiseless_v = 2.0
         assert any(abs(v - noiseless_v) > 1e-6 for _i, v in noisy)
+
+    def test_zero_voltage_offset_scale_skips_random_draw(self, qapp):
+        plugin = DummyPlugin()
+        _make_scan(plugin, end=2.0, step=1.0)
+
+        with patch("stoner_measurement.plugins.trace.dummy.np.random.normal") as normal:
+            data = _measure_pairs(
+                plugin,
+                {
+                    "I_c": "0.0",
+                    "R_n": "1.0",
+                    "V_n": "0.0",
+                    "V_offset": "0.0",
+                    "Rounding": "0.0",
+                },
+            )
+
+        normal.assert_not_called()
+        assert [voltage for _current, voltage in data] == pytest.approx([0.0, 1.0, 2.0])
+
+    def test_voltage_offset_is_one_constant_draw_per_measurement(self, qapp):
+        plugin = DummyPlugin()
+        plugin._voltage_offset_scale = "0.5"
+        _make_scan(plugin, end=2.0, step=1.0)
+
+        with patch(
+            "stoner_measurement.plugins.trace.dummy.np.random.normal", return_value=0.25
+        ) as normal:
+            data = _measure_pairs(
+                plugin,
+                {
+                    "I_c": "0.0",
+                    "R_n": "1.0",
+                    "V_n": "0.0",
+                    "Rounding": "0.0",
+                },
+            )
+
+        normal.assert_called_once_with(0.0, 0.5)
+        assert [voltage for _current, voltage in data] == pytest.approx([0.25, 1.25, 2.25])
 
     def test_default_normal_resistance(self, qapp):
         assert DummyPlugin()._normal_resistance == "5.0E-3"
@@ -445,6 +492,7 @@ class TestDummyPlugin:
         assert d["critical_current"] == "0.5E-3"
         assert d["normal_resistance"] == "5.0E-3"
         assert d["noise_level"] == "1.0E-8"
+        assert d["voltage_offset_scale"] == "0.0"
         assert d["report_channel_statistics"] is False
 
     def test_to_json_reflects_changed_settings(self, qapp):
@@ -452,10 +500,12 @@ class TestDummyPlugin:
         plugin._critical_current = "2.5"
         plugin._normal_resistance = "0.5"
         plugin._noise_level = "1e-3"
+        plugin._voltage_offset_scale = "2e-6"
         d = plugin.to_json()
         assert d["critical_current"] == "2.5"
         assert d["normal_resistance"] == "0.5"
         assert d["noise_level"] == "1e-3"
+        assert d["voltage_offset_scale"] == "2e-6"
 
     def test_round_trip_restores_settings(self, qapp):
         import json
@@ -466,6 +516,7 @@ class TestDummyPlugin:
         plugin._critical_current = "2.5"
         plugin._normal_resistance = "0.5"
         plugin._noise_level = "1e-3"
+        plugin._voltage_offset_scale = "2e-6"
         plugin._set_report_channel_statistics(True)
 
         restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
@@ -473,6 +524,7 @@ class TestDummyPlugin:
         assert restored._critical_current == "2.5"
         assert restored._normal_resistance == "0.5"
         assert restored._noise_level == "1e-3"
+        assert restored._voltage_offset_scale == "2e-6"
         assert restored._report_channel_statistics is True
 
     def test_round_trip_default_settings(self, qapp):
@@ -486,6 +538,7 @@ class TestDummyPlugin:
         assert restored._critical_current == "0.5E-3"
         assert restored._normal_resistance == "5.0E-3"
         assert restored._noise_level == "1.0E-8"
+        assert restored._voltage_offset_scale == "0.0"
 
 
 if __name__ == "__main__":

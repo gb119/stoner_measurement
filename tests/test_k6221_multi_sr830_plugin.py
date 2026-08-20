@@ -1007,7 +1007,7 @@ class TestChannelsAndResistance:
 
         assert list(data) == ["Signals"]
         trace = data["Signals"]
-        assert trace.columns == ["X label", "X label resistance"]
+        assert trace.columns == ["x", "X label", "X label resistance"]
         assert trace.units["X label"] == "V"
         assert trace.units["X label resistance"] == "\u03a9"
 

@@ -23,7 +23,7 @@ class _SimpleTrace(TracePlugin):
     def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         n = int(parameters.get("n", 5))
         x = np.arange(n, dtype=float)
-        frame = pd.DataFrame({"y": x**2}, index=pd.Index(x, name="x"))
+        frame = pd.DataFrame({"x": x, "y": x**2})
         return {
             self.name: TraceData(
                 frame,

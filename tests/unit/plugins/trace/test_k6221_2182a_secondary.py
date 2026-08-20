@@ -243,10 +243,10 @@ def test_measure_adds_prefixed_secondary_derived_columns(qapp):
     plugin._acquire_pairs = acquire
     trace = plugin.measure({})["IV"]
 
-    assert list(trace.df.columns) == ["V", "R", "P", "hall V", "hall R", "hall P"]
-    assert np.isnan(trace.df.loc[0.0, "hall R"])
-    assert trace.df.loc[2.0, "hall R"] == pytest.approx(0.4)
-    assert trace.df.loc[-3.0, "hall P"] == pytest.approx(-3.6)
+    assert list(trace.df.columns) == ["x", "V", "R", "P", "hall V", "hall R", "hall P"]
+    assert np.isnan(trace.df.iloc[0]["hall R"])
+    assert trace.df.iloc[1]["hall R"] == pytest.approx(0.4)
+    assert trace.df.iloc[2]["hall P"] == pytest.approx(-3.6)
 
 
 def test_acquisition_arms_and_reads_secondary_meter(qapp):

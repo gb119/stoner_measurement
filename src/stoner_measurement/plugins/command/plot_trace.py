@@ -42,13 +42,16 @@ from qtpy.QtWidgets import (
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
     COLUMN_ROLE_E,
+    COLUMN_ROLE_X,
     COLUMN_ROLE_Y,
 )
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.trace_catalog_ui import (
+    TraceChannelComboBox,
     bind_trace_catalog_updates,
     refresh_trace_source_widgets,
     trace_channel_items,
+    trace_channel_roles,
 )
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
@@ -642,8 +645,7 @@ class PlotTraceCommand(CommandPlugin):
         axes_pair = _available_plot_axes(self.sequence_engine)
 
         channel_items = trace_channel_items(self, traces)
-        channel_names = list(channel_items.keys())
-
+        channel_roles = trace_channel_roles(self, traces)
         trace_combo = self._build_trace_combo(widget, trace_keys)
         column_combo = self._build_column_combo(widget)
         transpose_check = QCheckBox(widget)
@@ -655,15 +657,20 @@ class PlotTraceCommand(CommandPlugin):
         advanced_check = QCheckBox(widget)
         advanced_check.setChecked(self.advanced_mode)
         x_combo = self._build_channel_combo(
-            widget, channel_names, channel_items, self.x_expr, "x_expr"
+            widget,
+            channel_items,
+            channel_roles,
+            self.x_expr,
+            "x_expr",
+            preferred_role=COLUMN_ROLE_X,
         )
         y_combo = self._build_channel_combo(
             widget,
-            channel_names,
             channel_items,
+            channel_roles,
             self.y_expr,
             "y_expr",
-            prefer_y=True,
+            preferred_role=COLUMN_ROLE_Y,
         )
         title_edit = QLineEdit(self.title_expr, widget)
         title_edit.setToolTip(
@@ -967,29 +974,21 @@ class PlotTraceCommand(CommandPlugin):
     def _build_channel_combo(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         widget: QWidget,
-        channel_names: list[str],
         channel_items: dict[str, str],
+        channel_roles: dict[str, str],
         current_expr: str,
         fallback_attr: str,
         *,
-        prefer_y: bool = False,
+        preferred_role: str,
     ) -> QComboBox:
-        combo = QComboBox(widget)
-        if channel_names:
-            combo.addItems(channel_names)
-            if not _set_combo_to_expr(combo, channel_items, current_expr):
-                selected_name = next(
-                    (
-                        name
-                        for name in channel_names
-                        if prefer_y and not channel_items[name].endswith(".x")
-                    ),
-                    channel_names[0],
-                )
-                setattr(self, fallback_attr, channel_items[selected_name])
-                combo.setCurrentText(selected_name)
-        else:
-            combo.addItem("(no channels available)")
+        combo = TraceChannelComboBox(widget)
+        selected_expression = combo.set_channels(
+            channel_items,
+            channel_roles,
+            current_expr,
+            preferred_role=preferred_role,
+        )
+        setattr(self, fallback_attr, selected_expression)
         return combo
 
     def _build_plot_axis_combo(
@@ -1170,40 +1169,6 @@ class PlotTraceCommand(CommandPlugin):
             ensure_y = cast(Callable[[str, str], None], ensure_y)
             y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
             ensure_y(y_axis, y_axis)  # pylint: disable=not-callable
-
-
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
-
-
-def _set_combo_to_expr(
-    combo: QComboBox,
-    items: dict[str, str],
-    expr: str,
-) -> bool:
-    """Set *combo* to the entry whose value in *items* matches *expr*.
-
-    If no match is found the combo selection is left unchanged.
-
-    Args:
-        combo (QComboBox):
-            The combo box whose current index is to be set.
-        items (dict[str, str]):
-            Mapping of display name to expression string.
-        expr (str):
-            Expression string to search for.
-
-    Returns:
-        (bool):
-            ``True`` if a matching entry was found and the combo was updated,
-            ``False`` otherwise.
-    """
-    for display_name, item_expr in items.items():
-        if item_expr == expr:
-            combo.setCurrentText(display_name)
-            return True
-    return False
 
 
 def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list[str]]:

@@ -27,6 +27,7 @@ from qtpy.QtCore import QObject
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
     COLUMN_ROLE_E,
+    COLUMN_ROLE_X,
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
     TraceData,
@@ -297,9 +298,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
     def _empty_trace_data(self) -> TraceData:
         """Return an empty collected-data table with state-axis metadata."""
-        frame = pd.DataFrame(index=pd.Index([], dtype=float, name="x"))
+        frame = pd.DataFrame({"x": pd.Series(dtype=float)})
         return TraceData(
             frame,
+            column_roles={"x": COLUMN_ROLE_X},
             names={"x": self.state_name},
             units={"x": self.units},
         )
@@ -391,8 +393,11 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             row["state"] = self.value
         row.update(output_values)
 
-        new_row = pd.DataFrame([row], index=pd.Index([x_value], name="x"))
-        frame = new_row if self._data.df.empty else pd.concat([self._data.df, new_row])
+        row = {"x": x_value, **row}
+        new_row = pd.DataFrame([row])
+        frame = new_row if self._data.df.empty else pd.concat(
+            [self._data.df, new_row], ignore_index=True
+        )
         self._data = self._build_collected_trace(frame, explicit_x)
 
     def _resolve_collect_keys(
@@ -424,9 +429,11 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     def _build_collected_trace(self, frame: pd.DataFrame, explicit_x: str | None) -> TraceData:
         """Build collected trace metadata around the accumulated data frame."""
         output_columns = [
-            column for column in frame.columns if column not in {"iteration", "stage", "state"}
+            column
+            for column in frame.columns
+            if column not in {"x", "iteration", "stage", "state"}
         ]
-        roles = {"iteration": COLUMN_ROLE_Z, "stage": COLUMN_ROLE_Z}
+        roles = {"x": COLUMN_ROLE_X, "iteration": COLUMN_ROLE_Z, "stage": COLUMN_ROLE_Z}
         if "state" in frame.columns:
             roles["state"] = COLUMN_ROLE_Z
         role_constants = {"d": COLUMN_ROLE_D, "y": COLUMN_ROLE_Y, "e": COLUMN_ROLE_E}

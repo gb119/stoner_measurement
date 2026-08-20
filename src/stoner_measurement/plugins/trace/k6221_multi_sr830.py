@@ -413,7 +413,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         """Acquire all lock-in outputs once as one shared-x multicolumn trace."""
         x_values, channel_values, specs = self._acquire_trace(parameters)
-        frame = pd.DataFrame(index=pd.Index(np.asarray(x_values, dtype=float), name="x"))
+        frame = pd.DataFrame({"x": np.asarray(x_values, dtype=float)})
         roles: dict[str, str] = {}
         names = {"x": self.x_label}
         units = {"x": self.x_units}

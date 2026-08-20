@@ -211,7 +211,15 @@ def rename_identifier_references(
 
     def _rewrite(value: Any, *, key: str | None = None) -> Any:
         if isinstance(value, dict):
-            return {child_key: _rewrite(child_value, key=child_key) for child_key, child_value in value.items()}
+            rewritten = {}
+            for child_key, child_value in value.items():
+                rewritten_key = (
+                    pattern.sub(new_name, child_key)
+                    if key == "trace_selection"
+                    else child_key
+                )
+                rewritten[rewritten_key] = _rewrite(child_value, key=child_key)
+            return rewritten
         if isinstance(value, list):
             return [_rewrite(item, key=key) for item in value]
         if isinstance(value, str):
