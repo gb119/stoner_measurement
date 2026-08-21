@@ -99,7 +99,18 @@ on status bbar right hand side.
    connection then engine should enter a failed state and require the user to reconnect via the panel. The failed
    state needs to be logged as an error and reflected in the status-bar indicators.
 2. Implement the binary data formats for the Keithley 2182A buffer reads to try for faster 6221-2182 loops.
+3. For all trace plugins, add a "Transpose" option below the "report column averages" option on the scan generation page.
+   If set, this will switch the role allocations that otherwise would be set between the X and primary Y columns - so e.g.
+   on the 6221-2182 IV plugin, the votlage would be set as X and the current as Y.
+4.  When the user double clicks a plugin in the plugin list, the insert location in the sequence steps should pay
+   attention to the selected item in the sequence steps:
+   - no selection, add at end of sequence steps
+   - sequence step with sub-sequence list, add to end of sub-sequence list
+   - otherwise add after the selected step in the same sequence list (main or sub) as selected step.
+   
+
 
 ## Bugs
 
 1.	Check the SRQ timeout calcualtions - seems to not quite get it right for longer source delays in 6221-2182 trace plugin
+2.	The default GPIB address for Keithley 6221 instruments shopuld be GPIB0::13::INSTR
