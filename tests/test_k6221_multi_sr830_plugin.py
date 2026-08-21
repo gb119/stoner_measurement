@@ -63,6 +63,7 @@ class TestDefaults:
 
     def test_defaults(self, qapp):
         plugin = _make_plugin()
+        assert plugin._6221_resource == "GPIB0::13::INSTR"
         assert plugin._scan_mode is WaveformScanMode.OFFSET
         assert plugin._phase_marker_tlink == 4
         assert plugin._waveform_frequency == pytest.approx(367.0)

@@ -233,8 +233,10 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
         start_time = time.monotonic()
         last_measure_time = start_time
         baseline_values: list[float | None] = [None for _ in self._rows]
+        poll_period = self.effective_poll_period_seconds(self._poll_seconds)
 
         while True:
+            iteration_started = time.monotonic() if poll_period > 0.0 else None
             current_state = float(plugin.get_state())
             if self._eval_bool(self._termination_condition):
                 return
@@ -275,8 +277,7 @@ class MonitorAndFilterSweepGenerator(BaseSweepGenerator):
 
             yield (triggered_index if triggered_index is not None else -1), current_state, 0, measure_flag
 
-            if self._poll_seconds > 0.0:
-                time.sleep(self._poll_seconds)
+            self.pace_iteration(iteration_started, self._poll_seconds)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return the configuration widget for this generator.

@@ -58,6 +58,8 @@ class TraceData:
             if df is None
             else df.copy().reset_index(drop=True)
         )
+        self._row_count = len(self._df)
+        self._capacity = self._row_count
         if self._df.columns.has_duplicates:
             raise ValueError("TraceData columns must have unique names.")
 
@@ -124,12 +126,12 @@ class TraceData:
 
     @property
     def df(self) -> pd.DataFrame:
-        """The underlying DataFrame (integer row index, columns = channels).
+        """The committed DataFrame rows (integer row index, columns = channels).
 
         Returns:
             (pd.DataFrame):
-                The backing DataFrame.  All columns are established when the
-                :class:`TraceData` object is constructed.
+                A view containing committed rows only. Reserved append capacity
+                is excluded.
 
         Examples:
             >>> import numpy as np, pandas as pd
@@ -140,7 +142,43 @@ class TraceData:
             >>> list(td.df.columns)
             ['x', 'y']
         """
-        return self._df
+        self._sync_external_growth()
+        if self._row_count == self._capacity:
+            return self._df
+        return self._df.iloc[: self._row_count]
+
+    @property
+    def row_count(self) -> int:
+        """Number of committed rows, excluding reserved append capacity."""
+        self._sync_external_growth()
+        return self._row_count
+
+    def reserve_rows(self, capacity: int) -> None:
+        """Reserve storage for at least *capacity* rows without exposing empty rows."""
+        requested = max(self._row_count, int(capacity))
+        if requested <= self._capacity:
+            return
+        self._df = self._df.reindex(pd.RangeIndex(requested))
+        self._capacity = requested
+
+    def append_row(self, row: dict[str, object], *, batch_size: int = 256) -> None:
+        """Append one committed row, growing the backing frame in batches."""
+        columns = list(self._df.columns)
+        if set(row) != set(columns):
+            missing = sorted(set(columns).difference(row))
+            extra = sorted(set(row).difference(columns))
+            raise ValueError(f"Trace row columns do not match: missing={missing!r}, extra={extra!r}")
+        if self._row_count >= self._capacity:
+            self.reserve_rows(self._capacity + max(1, int(batch_size)))
+        self._df.iloc[self._row_count] = [row[column] for column in columns]
+        self._row_count += 1
+
+    def _sync_external_growth(self) -> None:
+        """Account for legacy direct row additions when no capacity was reserved."""
+        actual_rows = len(self._df)
+        if actual_rows != self._capacity and self._row_count == self._capacity:
+            self._row_count = actual_rows
+            self._capacity = actual_rows
 
     @property
     def columns(self) -> list[str]:
@@ -181,7 +219,7 @@ class TraceData:
         cols = self.get_columns_by_role(COLUMN_ROLE_X)
         if not cols:
             return np.array([], dtype=float)
-        return self._df[cols[0]].to_numpy(dtype=float)
+        return self.df[cols[0]].to_numpy(dtype=float)
 
     @property
     def y(self) -> np.ndarray:
@@ -202,7 +240,7 @@ class TraceData:
         cols = self.get_columns_by_role(COLUMN_ROLE_Y)
         if not cols:
             return np.array([], dtype=float)
-        return self._df[cols[0]].to_numpy(dtype=float)
+        return self.df[cols[0]].to_numpy(dtype=float)
 
     @property
     def d(self) -> np.ndarray:
@@ -223,7 +261,7 @@ class TraceData:
         cols = self.get_columns_by_role(COLUMN_ROLE_D)
         if not cols:
             return np.array([], dtype=float)
-        return self._df[cols[0]].to_numpy(dtype=float)
+        return self.df[cols[0]].to_numpy(dtype=float)
 
     @property
     def e(self) -> np.ndarray:
@@ -244,7 +282,7 @@ class TraceData:
         cols = self.get_columns_by_role(COLUMN_ROLE_E)
         if not cols:
             return np.array([], dtype=float)
-        return self._df[cols[0]].to_numpy(dtype=float)
+        return self.df[cols[0]].to_numpy(dtype=float)
 
     # ------------------------------------------------------------------
     # Multi-column API
@@ -277,7 +315,7 @@ class TraceData:
 
     def __str__(self) -> str:
         """Return a concise summary of the trace shape and columns."""
-        return f"TraceData(columns={self.columns!r}, rows={len(self._df)})"
+        return f"TraceData(columns={self.columns!r}, rows={self.row_count})"
 
     def __repr__(self) -> str:
         """Return the human-friendly trace summary."""

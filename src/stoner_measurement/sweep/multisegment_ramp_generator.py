@@ -205,15 +205,19 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         if not plugin.start_from_current_value:
             plugin.set_state(self.eval_float(self._start))
             start_wait_started = time.monotonic()
-            while not plugin.is_at_target():
+            poll_seconds = self.eval_float(self._poll_seconds)
+            poll_period = self.effective_poll_period_seconds(poll_seconds)
+            while True:
+                iteration_started = time.monotonic() if poll_period > 0.0 else None
+                if plugin.is_at_target():
+                    break
                 if (
                     self.eval_float(self._start_timeout_seconds) > 0.0
                     and (time.monotonic() - start_wait_started)
                     > self.eval_float(self._start_timeout_seconds)
                 ):
                     return
-                if self.eval_float(self._poll_seconds) > 0.0:
-                    time.sleep(self.eval_float(self._poll_seconds))
+                self.pace_iteration(iteration_started, poll_seconds)
 
         stage_index = 0
         target, rate, measure_flag = self._segments[stage_index]
@@ -221,7 +225,10 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
         plugin.set_target(self.eval_float(target))
 
         ix = 0
+        poll_seconds = self.eval_float(self._poll_seconds)
+        poll_period = self.effective_poll_period_seconds(poll_seconds)
         while True:
+            iteration_started = time.monotonic() if poll_period > 0.0 else None
             current_value = float(plugin.get_state())
             yield ix, current_value, stage_index, bool(measure_flag)
             ix += 1
@@ -234,8 +241,7 @@ class MultiSegmentRampSweepGenerator(BaseSweepGenerator):
                 plugin.set_rate(self.eval_float(rate))
                 plugin.set_target(self.eval_float(target))
 
-            if self.eval_float(self._poll_seconds) > 0.0:
-                time.sleep(self.eval_float(self._poll_seconds))
+            self.pace_iteration(iteration_started, poll_seconds)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return the configuration widget for this generator.

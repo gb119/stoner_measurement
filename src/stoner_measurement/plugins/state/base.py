@@ -129,6 +129,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     state_changed = pyqtSignal(float)
     state_reached = pyqtSignal(float)
     state_error = pyqtSignal(str)
+    engine_cache_max_age_seconds: float = 5.0
 
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise shared iteration state and data-collection fields."""
@@ -394,11 +395,11 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         row.update(output_values)
 
         row = {"x": x_value, **row}
-        new_row = pd.DataFrame([row])
-        frame = new_row if self._data.df.empty else pd.concat(
-            [self._data.df, new_row], ignore_index=True
-        )
-        self._data = self._build_collected_trace(frame, explicit_x)
+        if self._data.row_count == 0:
+            self._data = self._build_collected_trace(pd.DataFrame([row]), explicit_x)
+            self._data.reserve_rows(256)
+        else:
+            self._data.append_row(row)
 
     def _resolve_collect_keys(
         self, values_cat: dict[str, str], outputs: list[str] | None

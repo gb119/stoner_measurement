@@ -1212,8 +1212,8 @@ class DockPanel(QWidget):
                     self.add_monitor_widget(name, widget)
 
     def _on_plugin_double_clicked(self) -> None:
-        """Add the double-clicked plugin as a sequence step."""
-        self._add_step()
+        """Add the double-clicked plugin relative to the selected sequence step."""
+        self._add_step(relative_to_sequence_selection=True)
 
     def _filter_plugins(self, text: str) -> None:
         """Show only plugin leaf items whose name contains *text*.
@@ -1312,16 +1312,18 @@ class DockPanel(QWidget):
         """Validate placing a tree *item* below *parent_item*."""
         return self._validate_step_placement(self._item_to_step(item), parent_item)
 
-    def _add_step(self) -> None:
-        """Add the selected plugin as a top-level sequence step.
+    def _add_step(self, *, relative_to_sequence_selection: bool = False) -> None:
+        """Add the selected plugin as a sequence step.
 
         Reads the entry-point name from the currently selected leaf item's
         :data:`_EP_NAME_ROLE` data.  Category header nodes do not carry an
         entry-point name and are silently ignored, preventing abstract plugin
         types from being added to the sequence.
 
-        Delegates to :meth:`_make_new_step_item` to create the item, then
-        appends it at the top level of the sequence tree.
+        Button-triggered additions append at the top level. Double-clicked
+        additions use the selected sequence item as an insertion anchor: a
+        container receives the new item as its last child, while a leaf places
+        it immediately afterwards in the same sequence.
         """
         current = self._plugin_list.currentItem()
         if current is None:
@@ -1336,10 +1338,32 @@ class DockPanel(QWidget):
         item = self._make_new_step_item(ep_name)
         if item is None:
             return
-        if not self._validate_item_placement(item, None):
+        anchor = None
+        selected = self._sequence_tree.selectedItems()
+        if relative_to_sequence_selection and len(selected) == 1:
+            anchor = selected[0]
+
+        parent = anchor.parent() if anchor is not None else None
+        if anchor is not None:
+            anchor_plugin = anchor.data(0, _PLUGIN_INSTANCE_ROLE)
+            if self._sequence_tree._is_sequence_plugin_instance(anchor_plugin):
+                parent = anchor
+
+        if not self._validate_item_placement(item, parent):
             self._release_step_plugins(item)
             return
-        self._sequence_tree.addTopLevelItem(item)
+
+        if anchor is None:
+            self._sequence_tree.addTopLevelItem(item)
+        elif parent is anchor:
+            anchor.addChild(item)
+            anchor.setExpanded(True)
+        elif parent is None:
+            index = self._sequence_tree.indexOfTopLevelItem(anchor)
+            self._sequence_tree.insertTopLevelItem(index + 1, item)
+        else:
+            index = parent.indexOfChild(anchor)
+            parent.insertChild(index + 1, item)
 
     def _make_new_step_item(self, ep_name: str) -> QTreeWidgetItem | None:
         """Create a new sequence-step tree item for the plugin *ep_name*.

@@ -90,6 +90,68 @@ class TestDockPanel:
         assert len(steps) == 1
         assert isinstance(steps[0], DummyPlugin)
 
+    def test_double_click_with_no_sequence_selection_appends_at_end(self, plugin_manager):
+        panel = DockPanel(plugin_manager=plugin_manager)
+        first, second = DummyPlugin(), DummyPlugin()
+        second.instance_name = "dummy_2"
+        panel.load_sequence([first, second])
+        panel._sequence_tree.clearSelection()
+        panel._plugin_list.select_plugin("Dummy")
+
+        panel._on_plugin_double_clicked()
+
+        assert len(panel.sequence_steps) == 3
+        assert panel.sequence_steps[2].instance_name == "dummy_3"
+
+    def test_double_click_after_selected_leaf_inserts_at_same_level(self, plugin_manager):
+        panel = DockPanel(plugin_manager=plugin_manager)
+        first_plugin, second_plugin = DummyPlugin(), DummyPlugin()
+        second_plugin.instance_name = "dummy_2"
+        panel.load_sequence([first_plugin, second_plugin])
+        first = panel._sequence_tree.topLevelItem(0)
+        panel._sequence_tree.setCurrentItem(first)
+        panel._plugin_list.select_plugin("Dummy")
+
+        panel._on_plugin_double_clicked()
+
+        assert [step.instance_name for step in panel.sequence_steps] == [
+            "dummy",
+            "dummy_3",
+            "dummy_2",
+        ]
+
+    def test_double_click_on_container_appends_to_subsequence(self, plugin_manager):
+        panel = DockPanel(plugin_manager=plugin_manager)
+        panel.load_sequence([(IfCommand(), [DummyPlugin()])])
+        container = panel._sequence_tree.topLevelItem(0)
+        panel._sequence_tree.setCurrentItem(container)
+        panel._plugin_list.select_plugin("Dummy")
+
+        panel._on_plugin_double_clicked()
+
+        plugin, children = panel.sequence_steps[0]
+        assert isinstance(plugin, IfCommand)
+        assert [child.instance_name for child in children] == ["dummy", "dummy_2"]
+
+    def test_double_click_after_nested_leaf_inserts_in_same_subsequence(self, plugin_manager):
+        panel = DockPanel(plugin_manager=plugin_manager)
+        first_plugin, second_plugin = DummyPlugin(), DummyPlugin()
+        second_plugin.instance_name = "dummy_2"
+        panel.load_sequence([(IfCommand(), [first_plugin, second_plugin])])
+        container = panel._sequence_tree.topLevelItem(0)
+        first_child = container.child(0)
+        panel._sequence_tree.setCurrentItem(first_child)
+        panel._plugin_list.select_plugin("Dummy")
+
+        panel._on_plugin_double_clicked()
+
+        _plugin, children = panel.sequence_steps[0]
+        assert [child.instance_name for child in children] == [
+            "dummy",
+            "dummy_3",
+            "dummy_2",
+        ]
+
     def test_add_rejects_loop_control_at_top_level(self, qapp, monkeypatch):
         pm = PluginManager()
         pm.register("break_if", BreakIfCommand())

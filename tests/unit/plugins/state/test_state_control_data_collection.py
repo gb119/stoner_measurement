@@ -120,15 +120,19 @@ class TestStateControlDataCollection:
         engine.add_plugin("instantstate", p)
         p.collect_filter = "True"
         p.meas_flag = True
+        trace_ids: list[int] = []
         for i in range(3):
             p.ix = i
             p.value = float(i)
             p.stage = i
             p.collect()
+            trace_ids.append(id(p.data))
         assert len(p.data.df) == 3
         assert p.data.x.tolist() == [0.0, 1.0, 2.0]
         assert p.data.df["iteration"].tolist() == [0, 1, 2]
         assert p.data.df["stage"].tolist() == [0, 1, 2]
+        assert len(set(trace_ids)) == 1
+        assert len(p.data._df) == 256
         engine.shutdown()
 
     def test_collect_with_outputs_filter(self, qapp):

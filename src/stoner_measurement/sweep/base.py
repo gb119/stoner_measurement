@@ -7,6 +7,7 @@ for concrete sweep-generator implementations.
 
 from __future__ import annotations
 
+import time
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
@@ -94,6 +95,23 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         if self.state_sweep is None:
             return float(value)
         return self.state_sweep.eval_float(value)
+
+    def effective_poll_period_seconds(self, configured_seconds: float) -> float:
+        """Resolve the minimum complete-loop period from the owning sweep plugin."""
+        period = max(0.0, float(configured_seconds))
+        resolver = getattr(self.state_sweep, "effective_poll_period_seconds", None)
+        return period if not callable(resolver) else float(resolver(period))
+
+    def pace_iteration(self, started_at: float | None, configured_seconds: float) -> None:
+        """Sleep only for the unconsumed part of the effective complete-loop period."""
+        if started_at is None:
+            return
+        period = self.effective_poll_period_seconds(configured_seconds)
+        if period <= 0.0:
+            return
+        remaining = period - (time.monotonic() - started_at)
+        if remaining > 0.0:
+            time.sleep(remaining)
 
     @property
     def state_sweep(self) -> StateSweepPlugin | None:

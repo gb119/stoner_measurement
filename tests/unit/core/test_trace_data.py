@@ -74,6 +74,36 @@ class TestConstruction:
         with pytest.raises(ValueError, match="unique names"):
             TraceData(frame)
 
+    def test_reserved_rows_are_hidden_until_committed(self):
+        trace = TraceData(_frame(signal=[1.0]))
+
+        trace.reserve_rows(8)
+
+        assert trace.row_count == 1
+        assert len(trace.df) == 1
+        assert len(trace._df) == 8
+
+    def test_append_row_commits_preallocated_storage_one_row_at_a_time(self):
+        trace = TraceData(_frame(signal=[1.0]))
+        trace.reserve_rows(4)
+
+        trace.append_row({"x": 1.0, "signal": 2.0})
+        trace.append_row({"x": 2.0, "signal": 3.0})
+
+        assert trace.row_count == 3
+        assert len(trace.df) == 3
+        assert len(trace._df) == 4
+        assert trace.df["signal"].tolist() == [1.0, 2.0, 3.0]
+
+    def test_append_row_grows_capacity_in_batches(self):
+        trace = TraceData(_frame(signal=[1.0]))
+
+        trace.append_row({"x": 1.0, "signal": 2.0}, batch_size=3)
+
+        assert trace.row_count == 2
+        assert len(trace._df) == 4
+        assert len(trace.df) == 2
+
 
 class TestMetadata:
     def test_metadata_defaults_cover_every_column(self):

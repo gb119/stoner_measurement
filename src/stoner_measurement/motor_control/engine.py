@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections import deque
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -86,6 +87,7 @@ class MotorControllerEngine(QObject):
         self._display_target_angle: float | None = None
         self._acceleration: float | None = None
         self._latest_state: MotorEngineState = MotorEngineState(engine_status=self._status)
+        self._latest_state_time: float | None = None
 
         self._timer = QTimer(self)
         self._engine_lock = threading.RLock()
@@ -525,6 +527,7 @@ class MotorControllerEngine(QObject):
 
             self._set_status(MotorEngineStatus.POLLING)
             self._latest_state = state
+            self._latest_state_time = time.monotonic()
             self.publisher.reading_updated.emit(state.reading)
             self.publisher.state_updated.emit(state)
             self.publisher.poll_activity.emit()
@@ -543,6 +546,13 @@ class MotorControllerEngine(QObject):
             stable=self._stable,
             engine_status=self._status,
         )
+
+    @property
+    def state_cache_age_seconds(self) -> float:
+        """Age of the most recent successful hardware state read."""
+        if self._latest_state_time is None:
+            return float("inf")
+        return max(0.0, time.monotonic() - self._latest_state_time)
 
     @pyqtSlot()
     def shutdown(self) -> None:

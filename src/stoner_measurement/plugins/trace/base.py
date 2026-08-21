@@ -65,7 +65,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.core.trace_data import TraceData
+from stoner_measurement.core.trace_data import COLUMN_ROLE_X, COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.base_plugin import (
     BasePlugin,
     _ABCQObjectMeta,
@@ -294,6 +294,10 @@ class _ScanPage(QWidget):
         stats_check.setChecked(plugin._report_channel_statistics)
         stats_check.toggled.connect(plugin._set_report_channel_statistics)
         output_form.addRow(stats_check)
+        transpose_check = QCheckBox("Transpose X and primary Y channels")
+        transpose_check.setChecked(plugin._transpose)
+        transpose_check.toggled.connect(plugin._set_transpose)
+        output_form.addRow(transpose_check)
         output_widget = QWidget()
         output_widget.setObjectName("trace_statistics_options")
         output_widget.setLayout(output_form)
@@ -398,6 +402,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         self._status: TraceStatus = TraceStatus.IDLE
         self.data: dict[str, TraceData] = {}
         self._report_channel_statistics: bool = False
+        self._transpose: bool = False
         self.channel_statistics: dict[str, dict[str, float]] = {}
         self._cached_config_tabs: list | None = None
 
@@ -488,6 +493,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         data = super().to_json()
         data["scan_generator"] = self.scan_generator.to_json()
         data["report_channel_statistics"] = self._report_channel_statistics
+        data["transpose"] = self._transpose
         return data
 
     def _restore_from_json(self, data: dict) -> None:
@@ -508,6 +514,8 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             self.scan_generator_changed.emit()
         if "report_channel_statistics" in data:
             self._report_channel_statistics = bool(data["report_channel_statistics"])
+        if "transpose" in data:
+            self._transpose = bool(data["transpose"])
 
     @property
     def status(self) -> TraceStatus:
@@ -638,10 +646,21 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             self.channel_statistics = {}
             self._set_status(TraceStatus.ERROR)
             raise
-        self.data = data
+        self.data = self._transpose_trace_roles(data) if self._transpose else data
         self._update_channel_statistics()
         self._set_status(TraceStatus.DATA_AVAILABLE)
         return self.data
+
+    @staticmethod
+    def _transpose_trace_roles(data: dict[str, TraceData]) -> dict[str, TraceData]:
+        """Swap the X and first Y role in every measured trace."""
+        for trace_data in data.values():
+            x_columns = trace_data.get_columns_by_role(COLUMN_ROLE_X)
+            y_columns = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
+            if x_columns and y_columns:
+                trace_data.column_roles[x_columns[0]] = COLUMN_ROLE_Y
+                trace_data.column_roles[y_columns[0]] = COLUMN_ROLE_X
+        return data
 
     def disconnect(self) -> None:
         """Release all reserved instrument resources.
@@ -940,6 +959,10 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             self.channel_statistics = {}
             return
         self._update_channel_statistics()
+
+    def _set_transpose(self, enabled: bool) -> None:
+        """Enable or disable X/primary-Y role transposition."""
+        self._transpose = bool(enabled)
 
     def _update_channel_statistics(self) -> None:
         """Recalculate per-channel mean and standard deviation from :attr:`data`."""

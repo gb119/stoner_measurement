@@ -79,6 +79,9 @@ class TestIdentity:
 
 
 class TestDefaults:
+    def test_default_6221_resource(self, qapp):
+        assert _make_plugin()._6221_resource == "GPIB0::13::INSTR"
+
     def test_default_connection_mode(self, qapp):
         assert _make_plugin()._connection_mode is ConnectionMode.VIA_6221_SERIAL
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections import deque
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -136,6 +137,7 @@ class TemperatureControllerEngine(QObject):
         self._stability_value_history: dict[int, deque[tuple[datetime, float, float]]] = {}
         self._stability_diagnostics: dict[int, StabilityDiagnostics] = {}
         self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
+        self._latest_state_time: float | None = None
 
         self._timer = QTimer(self)
         self._engine_lock = threading.RLock()
@@ -1140,6 +1142,7 @@ class TemperatureControllerEngine(QObject):
 
             self._set_status(EngineStatus.POLLING)
             self._latest_state = state
+            self._latest_state_time = time.monotonic()
             for reading in state.readings.values():
                 self.publisher.channel_reading.emit(reading)
             self.publisher.state_updated.emit(state)
@@ -1149,6 +1152,13 @@ class TemperatureControllerEngine(QObject):
     def get_engine_state(self) -> TemperatureEngineState:
         """Return a snapshot of the current engine state without polling."""
         return replace(self._latest_state, engine_status=self._status)
+
+    @property
+    def state_cache_age_seconds(self) -> float:
+        """Age of the most recent successful hardware state read."""
+        if self._latest_state_time is None:
+            return float("inf")
+        return max(0.0, time.monotonic() - self._latest_state_time)
 
     @pyqtSlot()
     def shutdown(self) -> None:

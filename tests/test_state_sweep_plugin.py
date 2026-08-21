@@ -222,6 +222,11 @@ class TestStateSweepPlugin:
         lines = plugin.generate_action_code(1, [], lambda s, i: [])
         assert any("while next(" in line for line in lines)
 
+    def test_generate_action_code_does_not_print_each_sweep_point(self, qapp):
+        lines = _TestSweepPlugin().generate_action_code(1, [], lambda s, i: [])
+
+        assert not any("print(" in line for line in lines)
+
     def test_sweep_config_exposes_comment_field(self, qapp):
         from qtpy.QtWidgets import QLineEdit
 
@@ -237,6 +242,19 @@ class TestStateSweepPlugin:
         comment_edit.editingFinished.emit()
 
         assert plugin.comment == "collect during motion"
+
+    def test_sweep_page_exposes_engine_polling_rate_control(self, qapp):
+        from stoner_measurement.ui.widgets import SISpinBox
+
+        plugin = _TestSweepPlugin()
+        sweep_page = plugin.config_tabs()[0][1]
+        polling_rate = next(
+            spin for spin in sweep_page.findChildren(SISpinBox) if spin.opts["suffix"] == "Hz"
+        )
+
+        assert polling_rate.value() == pytest.approx(0.0)
+        polling_rate.setValue(5.0)
+        assert plugin.engine_polling_rate_hz == pytest.approx(5.0)
 
     def test_scan_config_exposes_comment_field(self, qapp):
         from qtpy.QtWidgets import QLineEdit
@@ -274,13 +292,54 @@ class TestStateSweepPlugin:
         plugin.sweep_timeout_factor = 3.5
         d = plugin.to_json()
         assert d["sweep_timeout_factor"] == 3.5
+        assert d["engine_polling_rate_hz"] == 0.0
 
     def test_from_json_restores_sweep_timeout_factor(self, qapp):
         plugin = SweepTimePlugin()
         plugin.sweep_timeout_factor = 4.0
+        plugin.engine_polling_rate_hz = 8.0
         restored = BasePlugin.from_json(plugin.to_json())
         assert isinstance(restored, SweepTimePlugin)
         assert restored.sweep_timeout_factor == 4.0
+        assert restored.engine_polling_rate_hz == 8.0
+
+    def test_zero_sweep_engine_polling_rate_leaves_engine_unchanged(self, qapp):
+        engine = type(
+            "Engine",
+            (),
+            {"polling_rate_hz": 1.0, "set_polling_rate": lambda self, rate: calls.append(rate)},
+        )()
+        calls: list[float] = []
+        plugin = _TestSweepPlugin()
+        plugin._engine = lambda: engine
+
+        plugin._begin_sweep()
+        plugin._end_sweep()
+
+        assert calls == []
+
+    def test_sweep_engine_polling_rate_is_restored_after_substep_error(self, qapp):
+        class _Engine:
+            polling_rate_hz = 1.0
+
+            def set_polling_rate(self, rate):
+                self.polling_rate_hz = float(rate)
+                calls.append(float(rate))
+
+        calls: list[float] = []
+        engine = _Engine()
+        plugin = _TestSweepPlugin()
+        plugin._engine = lambda: engine
+        plugin.engine_polling_rate_hz = 10.0
+        plugin.sweep_generator = _FiniteSweepGenerator(
+            points=[(0, 1.0, 0, True)], state_sweep=plugin, parent=plugin
+        )
+
+        with pytest.raises(RuntimeError, match="substep failed"):
+            plugin.execute_sequence([lambda: (_ for _ in ()).throw(RuntimeError("substep failed"))])
+
+        assert calls == [10.0, 1.0]
+        assert engine.polling_rate_hz == 1.0
 
     def test_state_reached_emitted_on_normal_exhaustion(self, qapp):
         plugin = _TestSweepPlugin()
@@ -375,6 +434,64 @@ class TestStateSweepPlugin:
         assert result is False
         assert errors2
         assert "limits" in errors2[0].lower()
+
+    def test_sweep_limits_are_cached_at_start(self, qapp):
+        class _CountingLimitsPlugin(_TestSweepPlugin):
+            limit_reads = 0
+
+            @property
+            def limits(self):
+                self.limit_reads += 1
+                return (0.0, 5.0)
+
+        plugin = _CountingLimitsPlugin()
+        plugin.sweep_generator = _FiniteSweepGenerator(
+            points=[(0, 1.0, 0, True), (1, 2.0, 0, True)], state_sweep=plugin, parent=plugin
+        )
+
+        plugin._begin_sweep()
+        assert next(plugin) is True
+        assert next(plugin) is True
+
+        assert plugin.limit_reads == 1
+
+    def test_effective_poll_period_uses_engine_update_rate(self, qapp):
+        plugin = _TestSweepPlugin()
+        plugin._engine = lambda: type("Engine", (), {"polling_rate_hz": 1.0})()
+
+        assert plugin.effective_poll_period_seconds(0.05) == pytest.approx(1.0)
+        assert plugin.effective_poll_period_seconds(1.5) == pytest.approx(1.5)
+
+    def test_iteration_pacing_sleeps_only_for_remaining_period(self, qapp, monkeypatch):
+        plugin = _TestSweepPlugin()
+        plugin._engine = lambda: type("Engine", (), {"polling_rate_hz": 1.0})()
+        generator = _FiniteSweepGenerator(state_sweep=plugin, parent=plugin)
+        sleeps: list[float] = []
+        monkeypatch.setattr("stoner_measurement.sweep.base.time.monotonic", lambda: 10.5)
+        monkeypatch.setattr("stoner_measurement.sweep.base.time.sleep", sleeps.append)
+
+        generator.pace_iteration(10.0, 0.05)
+
+        assert sleeps == pytest.approx([0.5])
+
+    def test_iteration_pacing_does_not_sleep_after_period_elapsed(self, qapp, monkeypatch):
+        plugin = _TestSweepPlugin()
+        plugin._engine = lambda: type("Engine", (), {"polling_rate_hz": 1.0})()
+        generator = _FiniteSweepGenerator(state_sweep=plugin, parent=plugin)
+        sleeps: list[float] = []
+        monkeypatch.setattr("stoner_measurement.sweep.base.time.monotonic", lambda: 11.1)
+        monkeypatch.setattr("stoner_measurement.sweep.base.time.sleep", sleeps.append)
+
+        generator.pace_iteration(10.0, 0.05)
+
+        assert sleeps == []
+
+    def test_generated_loop_restores_engine_polling_rate(self, qapp):
+        lines = _TestSweepPlugin().generate_action_code(1, [], lambda s, i: [])
+
+        assert "    try:" in lines
+        assert "    finally:" in lines
+        assert "        testsweep._end_sweep()" in lines
 
     def test_limits_inherited_from_state_plugin(self, qapp):
         from stoner_measurement.plugins.state import StatePlugin

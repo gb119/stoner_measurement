@@ -26,7 +26,7 @@ on status bbar right hand side.
 15. Magnet controller panel should show the actual and target rates.
 16. Lakeshore 625 - driver reads FLDS?/LIMIT? values from instrument for field-current constant and limits. DONE
 17. Lakeshore 625 driver uses OPST? instead of invalid RDGST? and maps the documented operation-status bits. DONE
-18.Right clicking on the status indicators for the engines in the status bar should allow the engines to be stopped,
+18. Right clicking on the status indicators for the engines in the status bar should allow the engines to be stopped,
    restarted, disconnected, or reconnected.
 19. Magnet control panel and engine - need switch heater to understand transition states - DONE
 20. Lakeshroe 625 - check that it can read the field-current constant from the supply and limits. - DONE
@@ -61,29 +61,34 @@ on status bbar right hand side.
     uses the source trace's default x/y inputs; Advanced Mode may source x/y arrays from anywhere while retaining the
     selected trace context. Window and Savitzky-Golay filters copy the complete trace and replace only the selected
     column, while X Offset replaces only its selected target axis or column. DONE
+35. Keithley 6221 instruments default to the GPIB resource ``GPIB0::13::INSTR``. DONE
 
 ## Done, but needs testing
 
-4. Implement K24x0 trace and scan plugins. - DONE - Needs testing with hardware
-5. ITC503 driver temperature conversion table. - DONE NEEDS HARDWARE TESTING
-6. Lakeshore 625 command errors are detected through STB/`*ESR?`; hardware, operational, and PSH faults are checked
+1. Implement K24x0 trace and scan plugins. - DONE - Needs testing with hardware
+2. ITC503 driver temperature conversion table. - DONE NEEDS HARDWARE TESTING
+3. Lakeshore 625 command errors are detected through STB/`*ESR?`; hardware, operational, and PSH faults are checked
    through `ERST?`, logged as critical, and abort operation. - DONE - Needs hardware testing
-7. Lakeshore 625 uses the supported `RATE`/`RATE?` command in A/s and converts the public current/field ramp-rate
+4. Lakeshore 625 uses the supported `RATE`/`RATE?` command in A/s and converts the public current/field ramp-rate
    interfaces to per-minute units. - DONE - Needs hardware testing
-8. Oxford IPS120 reads safe-current limits from R21/R22. - DONE - Needs hardware testing
-9. Oxford IPS120 persistent-switch heater controls are enabled for stable heater states when the supply is at a safe
+5. Oxford IPS120 reads safe-current limits from R21/R22. - DONE - Needs hardware testing
+6. Oxford IPS120 persistent-switch heater controls are enabled for stable heater states when the supply is at a safe
    current. - DONE - Needs hardware testing
-10. Shared trace-plugin scan configuration pages, including every scan-generator type, pack controls from the top and
+7. Shared trace-plugin scan configuration pages, including every scan-generator type, pack controls from the top and
     leave surplus vertical space only at the bottom. - DONE - Needs visual testing
-11. The 6221-multiple-SR830 sensitivity selector now starts with an explicit Auto option. Auto configuration runs
+8. The 6221-multiple-SR830 sensitivity selector now starts with an explicit Auto option. Auto configuration runs
     `AGAN`, waits for IFC completion, reads back the selected sensitivity, and aborts if `LIAS?` reports overload.
     - DONE - Needs hardware testing
-12. Instrument address widgets force dark foreground text on connecting, connected, and error status backgrounds for
+9. Instrument address widgets force dark foreground text on connecting, connected, and error status backgrounds for
     dark-mode contrast. - DONE - Needs visual testing
-13. Plot-points automatically updates an unedited plot label when its Y value changes, while preserving manually edited
+10. Plot-points automatically updates an unedited plot label when its Y value changes, while preserving manually edited
     labels. - DONE
-14. 6221-multiple-SR830 resistance-derived channel averages are exported through the values catalogue. - DONE
-15. Save metadata is limited to plugins used by sequence steps and includes the outputs catalogue. - DONE
+11. 6221-multiple-SR830 resistance-derived channel averages are exported through the values catalogue. - DONE
+12. Save metadata is limited to plugins used by sequence steps and includes the outputs catalogue. - DONE
+13. Trace-plugin scan pages include a Transpose option below the channel-statistics option. It exchanges the X and
+    primary Y roles in measured traces. - DONE - Needs testing
+14. Double-clicking an available plugin inserts it relative to the selected sequence step: at the end when there is no
+    selection, inside a selected container, or after a selected leaf at the same nesting level. - DONE - Needs testing
 
 ## Partially done, needs more work
 
@@ -99,18 +104,8 @@ on status bbar right hand side.
    connection then engine should enter a failed state and require the user to reconnect via the panel. The failed
    state needs to be logged as an error and reflected in the status-bar indicators.
 2. Implement the binary data formats for the Keithley 2182A buffer reads to try for faster 6221-2182 loops.
-3. For all trace plugins, add a "Transpose" option below the "report column averages" option on the scan generation page.
-   If set, this will switch the role allocations that otherwise would be set between the X and primary Y columns - so e.g.
-   on the 6221-2182 IV plugin, the votlage would be set as X and the current as Y.
-4.  When the user double clicks a plugin in the plugin list, the insert location in the sequence steps should pay
-   attention to the selected item in the sequence steps:
-   - no selection, add at end of sequence steps
-   - sequence step with sub-sequence list, add to end of sub-sequence list
-   - otherwise add after the selected step in the same sequence list (main or sub) as selected step.
-   
-
 
 ## Bugs
 
-1.	Check the SRQ timeout calcualtions - seems to not quite get it right for longer source delays in 6221-2182 trace plugin
-2.	The default GPIB address for Keithley 6221 instruments shopuld be GPIB0::13::INSTR
+1. Check the SRQ timeout calculations - seems to not quite get it right for longer source delays in the 6221-2182
+   trace plugin.

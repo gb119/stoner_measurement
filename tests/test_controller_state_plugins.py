@@ -73,6 +73,8 @@ class _FakeMagnetEngine:
         self.ramp_to_target_calls = 0
         self.read_calls = 0
         self.disconnect_calls = 0
+        self.state_cache_age_seconds = 0.0
+        self.polling_rate_hz = 1.0
         self._limits = SimpleNamespace(max_field=2.5)
         self._state = MagnetEngineState(
             reading=MagnetReading(
@@ -155,6 +157,8 @@ class _FakeTemperatureEngine:
         self.loop_settings_calls: list[int] = []
         self.read_calls = 0
         self.disconnect_calls = 0
+        self.state_cache_age_seconds = 0.0
+        self.polling_rate_hz = 1.0
         self._state = TemperatureEngineState(
             readings={
                 "A": TemperatureChannelReading(
@@ -222,6 +226,8 @@ class _FakeMotorEngine:
         self.move_calls: list[tuple[float, MotorMoveDirection]] = []
         self.read_calls = 0
         self.disconnect_calls = 0
+        self.state_cache_age_seconds = 0.0
+        self.polling_rate_hz = 1.0
         self._state = SimpleNamespace(
             reading=SimpleNamespace(
                 angle=12.5,
@@ -304,6 +310,7 @@ def test_magnet_controller_scan_plugin_uses_engine(monkeypatch, qapp):
 def test_magnet_controller_is_at_target_ignores_stale_reading_flag(monkeypatch, qapp):
     engine = _FakeMagnetEngine()
     engine.connected_driver = object()
+    engine.state_cache_age_seconds = 6.0
     engine._state = MagnetEngineState(
         reading=MagnetReading(
             timestamp=datetime.now(tz=UTC),
@@ -406,8 +413,9 @@ def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monke
     }
 
 
-def test_temperature_controller_is_at_target_forces_poll(monkeypatch, qapp):
+def test_temperature_controller_is_at_target_refreshes_stale_cache(monkeypatch, qapp):
     engine = _FakeTemperatureEngine()
+    engine.state_cache_age_seconds = 6.0
     monkeypatch.setattr(
         temperature_module,
         "TemperatureControllerEngine",
@@ -421,8 +429,9 @@ def test_temperature_controller_is_at_target_forces_poll(monkeypatch, qapp):
     assert engine.read_calls == 1
 
 
-def test_motor_controller_is_at_target_forces_poll(monkeypatch, qapp):
+def test_motor_controller_is_at_target_refreshes_stale_cache(monkeypatch, qapp):
     engine = _FakeMotorEngine()
+    engine.state_cache_age_seconds = 6.0
     monkeypatch.setattr(
         motor_module,
         "MotorControllerEngine",
@@ -433,6 +442,18 @@ def test_motor_controller_is_at_target_forces_poll(monkeypatch, qapp):
 
     assert plugin.is_at_target() is True
     assert engine.read_calls == 1
+
+
+def test_motor_controller_is_at_target_uses_fresh_cache(monkeypatch, qapp):
+    engine = _FakeMotorEngine()
+    monkeypatch.setattr(
+        motor_module,
+        "MotorControllerEngine",
+        type("FakeMotorControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    assert MotorControllerScanPlugin().is_at_target() is True
+    assert engine.read_calls == 0
 
 
 def test_motor_controller_scan_plugin_uses_direction_and_fixed_velocity(monkeypatch, qapp):

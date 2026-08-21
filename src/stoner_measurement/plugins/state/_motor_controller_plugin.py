@@ -79,10 +79,16 @@ class MotorControllerPluginMixin:
             engine.connect_preferred_driver()
         return engine
 
-    def _engine_state(self, *, refresh: bool = False) -> MotorEngineState:
+    def _engine_state(
+        self,
+        *,
+        refresh: bool = False,
+        max_age_seconds: float | None = None,
+    ) -> MotorEngineState:
         engine = self._engine()
         state = engine.get_engine_state()
-        if refresh and engine.connected_driver is not None:
+        stale = max_age_seconds is not None and engine.state_cache_age_seconds > max_age_seconds
+        if (refresh or stale) and engine.connected_driver is not None:
             state = engine.read_controller_state() or state
         return state
 
@@ -137,7 +143,7 @@ class MotorControllerPluginMixin:
 
     def is_at_target(self) -> bool:
         """Return ``True`` when the engine reports the motor at its target."""
-        state = self._engine_state(refresh=True)
+        state = self._engine_state(max_age_seconds=self.engine_cache_max_age_seconds)
         return bool(state.at_target)
 
     @property

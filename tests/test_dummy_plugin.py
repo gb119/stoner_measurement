@@ -163,6 +163,25 @@ class TestDummyPlugin:
         texts = [cb.text() for cb in checkboxes]
         assert "Report channel average and standard deviation outputs" in texts
 
+    def test_transpose_checkbox_follows_statistics_checkbox(self, qapp, qtbot):
+        from qtpy.QtWidgets import QCheckBox
+
+        plugin = DummyPlugin()
+        tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
+        checkboxes = tabs[0][1].findChildren(QCheckBox)
+        texts = [checkbox.text() for checkbox in checkboxes]
+
+        assert texts.index("Transpose X and primary Y channels") == (
+            texts.index("Report channel average and standard deviation outputs") + 1
+        )
+        transpose = next(
+            checkbox
+            for checkbox in checkboxes
+            if checkbox.text() == "Transpose X and primary Y channels"
+        )
+        transpose.setChecked(True)
+        assert plugin._transpose is True
+
     def test_statistics_checkbox_is_not_on_settings_tab(self, qapp, qtbot):
         """The shared trace statistics switch should no longer be injected into Settings."""
         from qtpy.QtWidgets import QCheckBox
@@ -277,6 +296,18 @@ class TestDummyPlugin:
         result = plugin.measure({})
         td = result["Dummy"]
         assert td.get_columns_by_role(COLUMN_ROLE_Y) == ["V"]
+
+    def test_measure_transposes_x_and_primary_y_roles(self, qapp):
+        from stoner_measurement.core import COLUMN_ROLE_X, COLUMN_ROLE_Y
+
+        plugin = DummyPlugin()
+        plugin._set_transpose(True)
+        _make_scan(plugin, end=0.2, step=0.1)
+
+        td = plugin.measure({})["Dummy"]
+
+        assert td.get_columns_by_role(COLUMN_ROLE_X) == ["V"]
+        assert td.get_columns_by_role(COLUMN_ROLE_Y) == ["x"]
 
     def test_measure_status_data_available_after_completion(self, qapp):
         plugin = DummyPlugin()
@@ -494,6 +525,7 @@ class TestDummyPlugin:
         assert d["noise_level"] == "1.0E-8"
         assert d["voltage_offset_scale"] == "0.0"
         assert d["report_channel_statistics"] is False
+        assert d["transpose"] is False
 
     def test_to_json_reflects_changed_settings(self, qapp):
         plugin = DummyPlugin()
@@ -518,6 +550,7 @@ class TestDummyPlugin:
         plugin._noise_level = "1e-3"
         plugin._voltage_offset_scale = "2e-6"
         plugin._set_report_channel_statistics(True)
+        plugin._set_transpose(True)
 
         restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
         assert isinstance(restored, DummyPlugin)
@@ -526,6 +559,7 @@ class TestDummyPlugin:
         assert restored._noise_level == "1e-3"
         assert restored._voltage_offset_scale == "2e-6"
         assert restored._report_channel_statistics is True
+        assert restored._transpose is True
 
     def test_round_trip_default_settings(self, qapp):
         import json

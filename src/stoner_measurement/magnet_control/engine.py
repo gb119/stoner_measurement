@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 import threading
+import time
 from collections import deque
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -145,6 +146,7 @@ class MagnetControllerEngine(QObject):
         self._zero_target_active: bool = False
         self._quench_active: bool = False
         self._latest_state: MagnetEngineState = MagnetEngineState(engine_status=self._status)
+        self._latest_state_time: float | None = None
 
         self._timer = QTimer(self)
         self._engine_lock = threading.RLock()
@@ -906,6 +908,7 @@ class MagnetControllerEngine(QObject):
 
             self._set_status(MagnetEngineStatus.POLLING)
             self._latest_state = state
+            self._latest_state_time = time.monotonic()
             self._handle_quench_state(state)
             self.publisher.reading_updated.emit(state.reading)
             self.publisher.state_updated.emit(state)
@@ -973,6 +976,13 @@ class MagnetControllerEngine(QObject):
             stable=self._stable,
             engine_status=self._status,
         )
+
+    @property
+    def state_cache_age_seconds(self) -> float:
+        """Age of the most recent successful hardware state read."""
+        if self._latest_state_time is None:
+            return float("inf")
+        return max(0.0, time.monotonic() - self._latest_state_time)
 
     @pyqtSlot()
     def shutdown(self) -> None:

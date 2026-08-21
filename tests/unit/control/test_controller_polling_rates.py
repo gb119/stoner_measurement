@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from stoner_measurement.magnet_control.engine import MagnetControllerEngine
@@ -38,6 +40,20 @@ def test_engine_polling_rate_api_clamps_converts_and_disables(engine_type, qapp)
     engine.set_polling_rate(20.0)
     assert engine.polling_rate_hz == pytest.approx(10.0)
     assert engine._timer.interval() == 100  # noqa: SLF001
+    engine.shutdown()
+
+
+@pytest.mark.parametrize(
+    "engine_type",
+    [MagnetControllerEngine, MotorControllerEngine, TemperatureControllerEngine],
+)
+def test_engine_state_cache_records_monotonic_age(engine_type, qapp):
+    engine = engine_type()
+
+    assert engine.state_cache_age_seconds == float("inf")
+    engine._latest_state_time = time.monotonic() - 2.0  # noqa: SLF001
+
+    assert engine.state_cache_age_seconds == pytest.approx(2.0, abs=0.1)
     engine.shutdown()
 
 

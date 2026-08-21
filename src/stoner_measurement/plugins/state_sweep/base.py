@@ -129,6 +129,19 @@ class _StateSweepPage(QWidget):
         )
         header_form.addRow("Timeout factor:", timeout_factor_spin)
 
+        polling_rate_spin = SISpinBox(allow_expressions=True)
+        polling_rate_spin.setOpts(bounds=(0.0, 10.0), decimals=3, step=0.5, suffix="Hz")
+        polling_rate_spin.setValue(plugin.engine_polling_rate_hz)
+        polling_rate_spin.setToolTip(
+            "Temporary controller-engine polling rate used during this sweep. "
+            "The previous rate is restored when the sweep loop exits. Set to "
+            "0 Hz to leave the engine rate unchanged."
+        )
+        polling_rate_spin.sigValueChanged.connect(
+            lambda sb: setattr(plugin, "engine_polling_rate_hz", sb.value())
+        )
+        header_form.addRow("Engine polling rate:", polling_rate_spin)
+
         start_from_current_check = QCheckBox()
         start_from_current_check.setChecked(plugin.start_from_current_value)
         start_from_current_check.setToolTip(
@@ -315,8 +328,11 @@ class StateSweepPlugin(StatePlugin):
         super().__init__(parent)
         self.sweep_generator: BaseSweepGenerator = self._sweep_generator_class(state_sweep=self, parent=self)
         self.sweep_timeout_factor: float | str = self.default_sweep_timeout_factor
+        self.engine_polling_rate_hz: float | str = 0.0
+        self._previous_engine_polling_rate_hz: float | None = None
         self._sweep_start_time: float = 0.0
         self._sweep_deadline: float = float("inf")
+        self._sweep_limits: tuple[float, float] = (float("-inf"), float("inf"))
         self.ix = -1
 
     def default_measure_condition_step(self):
@@ -426,6 +442,7 @@ class StateSweepPlugin(StatePlugin):
         data = super().to_json()
         data["sweep_generator"] = self.sweep_generator.to_json()
         data["sweep_timeout_factor"] = self.sweep_timeout_factor
+        data["engine_polling_rate_hz"] = self.engine_polling_rate_hz
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -441,6 +458,8 @@ class StateSweepPlugin(StatePlugin):
             self.sweep_generator_changed.emit()
         if "sweep_timeout_factor" in data:
             self.sweep_timeout_factor = data["sweep_timeout_factor"]
+        if "engine_polling_rate_hz" in data:
+            self.engine_polling_rate_hz = data["engine_polling_rate_hz"]
 
     # ------------------------------------------------------------------
     # Sweep generator management
@@ -513,11 +532,44 @@ class StateSweepPlugin(StatePlugin):
 
     def _begin_sweep(self) -> None:
         """Reset the generator and record the sweep start time and deadline."""
-        timeout = self.sweep_timeout
-        self._sweep_start_time = time.monotonic()
-        self._sweep_deadline = self._sweep_start_time + timeout
-        self.sweep_generator.reset()
-        logger.debug(f"Begin sweep for {self.__class__} with {timeout=}")
+        self._apply_sweep_engine_polling_rate()
+        try:
+            timeout = self.sweep_timeout
+            self._sweep_limits = self.limits
+            self._sweep_start_time = time.monotonic()
+            self._sweep_deadline = self._sweep_start_time + timeout
+            self.sweep_generator.reset()
+            logger.debug(f"Begin sweep for {self.__class__} with {timeout=}")
+        except Exception:
+            self._end_sweep()
+            raise
+
+    def _apply_sweep_engine_polling_rate(self) -> None:
+        """Save and temporarily replace an attached controller engine's polling rate."""
+        engine_factory = getattr(self, "_engine", None)
+        if not callable(engine_factory) or self._previous_engine_polling_rate_hz is not None:
+            return
+        engine = engine_factory()
+        setter = getattr(engine, "set_polling_rate", None)
+        if not callable(setter):
+            return
+        requested_rate = self.eval_float(self.engine_polling_rate_hz)
+        if requested_rate <= 0.0:
+            return
+        self._previous_engine_polling_rate_hz = float(engine.polling_rate_hz)
+        setter(requested_rate)
+
+    def _end_sweep(self) -> None:
+        """Restore the controller engine polling rate saved at sweep entry."""
+        previous = self._previous_engine_polling_rate_hz
+        if previous is None:
+            return
+        self._previous_engine_polling_rate_hz = None
+        engine_factory = getattr(self, "_engine", None)
+        if callable(engine_factory):
+            setter = getattr(engine_factory(), "set_polling_rate", None)
+            if callable(setter):
+                setter(previous)
 
     def __iter__(self) -> StateSweepPlugin:
         self._begin_sweep()
@@ -558,7 +610,7 @@ class StateSweepPlugin(StatePlugin):
             logger.debug(f"Finished sweep at {self.value}")
             return False
 
-        lo, hi = self.limits
+        lo, hi = self._sweep_limits
         if (not np.isinf(lo) and self.value < lo) or (not np.isinf(hi) and self.value > hi):
             self.state_error.emit(
                 f"{self.state_name} value {self.value:.4g} {self.units} "
@@ -573,6 +625,15 @@ class StateSweepPlugin(StatePlugin):
 
         self.state_changed.emit(float(self.value))
         return True
+
+    def effective_poll_period_seconds(self, configured_seconds: float) -> float:
+        """Return the minimum complete-loop period for the configured and engine rates."""
+        period = max(0.0, float(configured_seconds))
+        engine_factory = getattr(self, "_engine", None)
+        if not callable(engine_factory):
+            return period
+        rate = max(0.0, float(getattr(engine_factory(), "polling_rate_hz", 0.0)))
+        return max(period, 1.0 / rate) if rate > 0.0 else period
 
     # ------------------------------------------------------------------
     # Sub-sequence execution
@@ -601,12 +662,15 @@ class StateSweepPlugin(StatePlugin):
             if self.clear_on_start:
                 self.clear_data()
             self._begin_sweep()
-            while next(self):
-                logger.debug("Iterated: running sub-sequence")
-                for sub_step in sub_steps:
-                    sub_step()
-                if self.collect_data:
-                    self.collect()
+            try:
+                while next(self):
+                    logger.debug("Iterated: running sub-sequence")
+                    for sub_step in sub_steps:
+                        sub_step()
+                    if self.collect_data:
+                        self.collect()
+            finally:
+                self._end_sweep()
         finally:
             logger.debug("Disconnecting")
             self.disconnect()
@@ -694,20 +758,27 @@ class StateSweepPlugin(StatePlugin):
         """
         prefix = "    " * indent
         loop_prefix = "    " * (indent + 1)
+        body_prefix = "    " * (indent + 2)
         var_name = self.instance_name
         lines: list[str] = []
         if self.clear_on_start:
             lines.append(f"{prefix}{var_name}.clear_data()")
         lines += [
             f"{prefix}{var_name}._begin_sweep()",
-            f"{prefix}while next({var_name}):",
-            f"{loop_prefix}wait_for_plot_ready()",
-            f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.value:.4g}} {self.units}")',
+            f"{prefix}try:",
+            f"{loop_prefix}while next({var_name}):",
+            f"{body_prefix}wait_for_plot_ready()",
         ]
         if sub_steps:
             for sub_step in sub_steps:
-                lines.extend(render_sub_step(sub_step, indent + 1))
+                lines.extend(render_sub_step(sub_step, indent + 2))
         if self.collect_data:
-            lines.append(f"{loop_prefix}{var_name}.collect()")
+            lines.append(f"{body_prefix}{var_name}.collect()")
+        lines.extend(
+            [
+                f"{prefix}finally:",
+                f"{loop_prefix}{var_name}._end_sweep()",
+            ]
+        )
         lines.append("")
         return lines

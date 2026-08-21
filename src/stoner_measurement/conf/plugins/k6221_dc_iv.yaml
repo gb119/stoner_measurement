@@ -1,4 +1,4 @@
-resource_6221: GPIB0::22::INSTR
+resource_6221: GPIB0::13::INSTR
 resource_2182a: GPIB0::7::INSTR
 connection_mode: via_6221_serial
 compliance_mode: voltage
