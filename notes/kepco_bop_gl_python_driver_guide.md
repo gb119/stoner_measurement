@@ -89,8 +89,8 @@ FUNC:MODE VOLT;:VOLT 5;:CURR:PROT 1;:OUTP ON
 
 The BOP has a selected **main mode** and a complementary protection channel.
 
-|  Selected main mode        | Main setpoint | Complementary protection |
-|----------------------------|---------------|--------------------------|
+| Selected main mode         | Main setpoint | Complementary protection |
+| -------------------------- | ------------- | ------------------------ |
 | Voltage (`FUNC:MODE VOLT`) | `VOLT`        | `CURR:PROT`              |
 | Current (`FUNC:MODE CURR`) | `CURR`        | `VOLT:PROT`              |
 
@@ -171,20 +171,20 @@ complementary values to zero.
 
 ### Identity, reset, synchronization
 
-| Capability                | Command/query   | Notes                                                                     |
-|---------------------------|-----------------|---------------------------------------------------------------------------|
-| Identify                  | `*IDN?`         | Returns manufacturer, model, ratings/serial, firmware.                    |
-| Clear status/errors       | `*CLS`          | Clears error queue and event registers.                                   |
-| Reset                     | `*RST`          | Reset may leave output on; behavior depends on setup and load type.       |
-| Wait for prior operations | `*WAI`          | Blocks execution of subsequent commands.                                  |
-| Operation complete        | `*OPC`; `*OPC?` | For flash writes, send `COMMAND;*OPC?` together and read the reply.       |
-| Self test                 | `*TST?`         | `0` means pass.                                                           |
-| SCPI version              | `SYST:VERS?`    |                                                                           |
+| Capability                | Command/query   | Notes                                                               |
+| ------------------------- | --------------- | ------------------------------------------------------------------- |
+| Identify                  | `*IDN?`         | Returns manufacturer, model, ratings/serial, firmware.              |
+| Clear status/errors       | `*CLS`          | Clears error queue and event registers.                             |
+| Reset                     | `*RST`          | Reset may leave output on; behavior depends on setup and load type. |
+| Wait for prior operations | `*WAI`          | Blocks execution of subsequent commands.                            |
+| Operation complete        | `*OPC`; `*OPC?` | For flash writes, send `COMMAND;*OPC?` together and read the reply. |
+| Self test                 | `*TST?`         | `0` means pass.                                                     |
+| SCPI version              | `SYST:VERS?`    |                                                                     |
 
 ### Output and load behavior
 
 | Capability                | Command/query                          | Values                                         |
-|---------------------------|----------------------------------------|------------------------------------------------|
+| ------------------------- | -------------------------------------- | ---------------------------------------------- |
 | Output enable             | `OUTP ON`                              |                                                |
 | Output disable            | `OUTP OFF`                             | Behavior depends on `OUTP:MODE`.               |
 | Output state              | `OUTP?`                                | `1` on, `0` off.                               |
@@ -206,17 +206,17 @@ Output OFF does not necessarily make output terminals benign. The application mu
 
 ### Setpoints and measurements
 
-| Capability                       |       Command/query                     |
-|----------------------------------|-----------------------------------------|
-| Select voltage mode              | `FUNC:MODE VOLT`                        |
-| Select current mode              | `FUNC:MODE CURR`                        |
-| Select mode from analog input    | `FUNC:MODE EXT`                         |
-| Mode query                       | `FUNC:MODE?` (`0` voltage, `1` current) |
-| Program voltage                  | `VOLT <signed_volts>`                   |
-| Program current                  | `CURR <signed_amps>`                    |
-| Programmed voltage/current       | `VOLT?`, `CURR?`                        |
-| Actual voltage/current           | `MEAS:VOLT?`, `MEAS:CURR?`              |
-| Measurement integration/rate     | `MEAS:MODE {50\|60\|125}`               |
+| Capability                    | Command/query                           |
+| ----------------------------- | --------------------------------------- |
+| Select voltage mode           | `FUNC:MODE VOLT`                        |
+| Select current mode           | `FUNC:MODE CURR`                        |
+| Select mode from analog input | `FUNC:MODE EXT`                         |
+| Mode query                    | `FUNC:MODE?` (`0` voltage, `1` current) |
+| Program voltage               | `VOLT <signed_volts>`                   |
+| Program current               | `CURR <signed_amps>`                    |
+| Programmed voltage/current    | `VOLT?`, `CURR?`                        |
+| Actual voltage/current        | `MEAS:VOLT?`, `MEAS:CURR?`              |
+| Measurement integration/rate  | `MEAS:MODE {50\|60\|125}`               |
 
 `VOLT?` and `CURR?` read programmed values. `MEAS:VOLT?` and `MEAS:CURR?` read actual output values. The
 measurement rate is nominally 5 ms; readback samples are filtered/integrated per `MEAS:MODE`.
@@ -415,11 +415,11 @@ varying inputs. They require a source able to sink up to 0.15 mA at the low end.
 
 ## 10. Trigger Port reference
 
-| Pin | Signal                 | Driver-relevant behavior                                       |
-|----:|------------------------|----------------------------------------------------------------|
-| 1   | logic ground           | reference                                                      |
-| 2   | remote ON/OFF          | behavior configured by `OUTP:CONT`                             |
-| 4   | external trigger input | active low; min 100 µs for triggering; also used by LIST waits |
+|  Pin | Signal                 | Driver-relevant behavior                                       |
+| ---: | ---------------------- | -------------------------------------------------------------- |
+|    1 | logic ground           | reference                                                      |
+|    2 | remote ON/OFF          | behavior configured by `OUTP:CONT`                             |
+|    4 | external trigger input | active low; min 100 µs for triggering; also used by LIST waits |
 
 The Trigger Port’s pin mapping should be treated as hardware configuration, not a normal Python-driver concern,
 except when exposing external triggering and remote output enable APIs.
@@ -447,21 +447,21 @@ SYST:ERR:CODE:ALL?
 
 ### Key driver errors
 
-| Code        | Meaning                 | Typical driver action                                  |
-|------------:|-------------------------|--------------------------------------------------------|
-| `-100`      | command error           | command construction bug; raise immediately            |
-| `-120`      | numeric data error      | validate/format values                                 |
-| `-203`      | command protected       | calibration/security access not enabled                |
-| `-221`      | settings conflict       | invalid LIST/state combination                         |
-| `-222`      | data out of range       | reject requested voltage/current/parameter             |
-| `-223`      | too much data           | reduce LIST points/segments                            |
-| `-226`      | lists not same length   | repair LIST dwell/value construction                   |
-| `-240`      | hardware error          | halt operation and surface fault                       |
-| `-311/-314` | memory error/lost       | do not trust saved settings                            |
-| `-340`      | calibration failed      | calibration workflow fault                             |
-| `-350`      | queue overflow          | error history incomplete; clear and fail safely        |
-| `-363`      | input buffer overrun    | reduce command length/rate                             |
-| `-400/-420` | query errors            | ensure every query is read exactly once                |
+|        Code | Meaning               | Typical driver action                           |
+| ----------: | --------------------- | ----------------------------------------------- |
+|      `-100` | command error         | command construction bug; raise immediately     |
+|      `-120` | numeric data error    | validate/format values                          |
+|      `-203` | command protected     | calibration/security access not enabled         |
+|      `-221` | settings conflict     | invalid LIST/state combination                  |
+|      `-222` | data out of range     | reject requested voltage/current/parameter      |
+|      `-223` | too much data         | reduce LIST points/segments                     |
+|      `-226` | lists not same length | repair LIST dwell/value construction            |
+|      `-240` | hardware error        | halt operation and surface fault                |
+| `-311/-314` | memory error/lost     | do not trust saved settings                     |
+|      `-340` | calibration failed    | calibration workflow fault                      |
+|      `-350` | queue overflow        | error history incomplete; clear and fail safely |
+|      `-363` | input buffer overrun  | reduce command length/rate                      |
+| `-400/-420` | query errors          | ensure every query is read exactly once         |
 
 ### Status registers
 
@@ -513,14 +513,14 @@ For serial operation, XON/XOFF must be enabled for reliable flash updates accord
 
 ## 12. Save, recall, and persistence
 
-| Command         | Meaning                                                                  |
-|-----------------|--------------------------------------------------------------------------|
-| `*SAV <1..99>`  | Save runtime operating setup.                                            |
-| `*RCL <1..99>`  | Recall and immediately apply setup. Treat as potentially hazardous.      |
-| `MEM:UPD INT`   | Persist GPIB address and `SYST:SET` interface/reset configuration.       |
-| `MEM:UPD SER`   | Persist serial baud/pace/echo configuration.                             |
-| `MEM:UPD LIM`   | Persist software and maximum protection bounds.                          |
-| `MEM:UPD OUTP`  | Persist output state and mode.                                           |
+| Command        | Meaning                                                             |
+| -------------- | ------------------------------------------------------------------- |
+| `*SAV <1..99>` | Save runtime operating setup.                                       |
+| `*RCL <1..99>` | Recall and immediately apply setup. Treat as potentially hazardous. |
+| `MEM:UPD INT`  | Persist GPIB address and `SYST:SET` interface/reset configuration.  |
+| `MEM:UPD SER`  | Persist serial baud/pace/echo configuration.                        |
+| `MEM:UPD LIM`  | Persist software and maximum protection bounds.                     |
+| `MEM:UPD OUTP` | Persist output state and mode.                                      |
 
 `*RCL` can restore output ON, mode, setpoints, protection settings, and reference types. Do not call it with a
 connected load unless the setup is known safe. Locations 1–15 may be selected as power-up configurations using

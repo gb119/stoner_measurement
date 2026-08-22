@@ -395,20 +395,20 @@ only for queries.
 
 ### Channel configuration and output
 
-|        Command        | Parameters / response    |                      Behaviour                         |
-| --------------------- | ------------------------ | ------------------------------------------------------ |
-| `SOURce:FUNCtion`     | `\<channel\>, POWer \|`  | Set mode only while output is off. Use a custom        |
-|                       |  `VOLTage \| CURRent```  | validated mode converter.                              |
-| `SOURce:FUNCtion?`    | `\<channel\>` -> mode    | Query configured mode.                                 |
-| `SOURce:POWer`        | `\<channel\>,\<watts\>`  | Validate 0..configured power full scale and program    |
-|                       |                          | desired value; do not enable.                          |
-| `SOURce:POWer?`       | `\<channel\>` -> watts   | Query requested power.                                 |
-| `SOURce:VOLTage`      | `\<channel\>,\<volts\>`  | Optional voltage-mode setpoint.                        |
-| `SOURce:CURRent`      | `\<channel\>,\<amps\>`   | Optional current-mode setpoint.                        |
-| `OUTPut`              | `\<channel\>,ON \| OFF`  | ON starts supervised single-channel ignition; OFF      |
-|                       |                          | disables first and zeros second.                       |
-| `OUTPut?`             | `\<channel\>` -> `0\|1`  | Query commanded enable, not measured status.           |
-| `ABORt`               | `\<channel\>`            | Immediate channel shutdown and operation cancellation. |
+| Command            | Parameters / response   | Behaviour                                              |
+| ------------------ | ----------------------- | ------------------------------------------------------ |
+| `SOURce:FUNCtion`  | `\<channel\>, POWer \|` | Set mode only while output is off. Use a custom        |
+|                    | `VOLTage \| CURRent```  | validated mode converter.                              |
+| `SOURce:FUNCtion?` | `\<channel\>` -> mode   | Query configured mode.                                 |
+| `SOURce:POWer`     | `\<channel\>,\<watts\>` | Validate 0..configured power full scale and program    |
+|                    |                         | desired value; do not enable.                          |
+| `SOURce:POWer?`    | `\<channel\>` -> watts  | Query requested power.                                 |
+| `SOURce:VOLTage`   | `\<channel\>,\<volts\>` | Optional voltage-mode setpoint.                        |
+| `SOURce:CURRent`   | `\<channel\>,\<amps\>`  | Optional current-mode setpoint.                        |
+| `OUTPut`           | `\<channel\>,ON \| OFF` | ON starts supervised single-channel ignition; OFF      |
+|                    |                         | disables first and zeros second.                       |
+| `OUTPut?`          | `\<channel\>` -> `0\|1` | Query commanded enable, not measured status.           |
+| `ABORt`            | `\<channel\>`           | Immediate channel shutdown and operation cancellation. |
 
 Decorators should resemble:
 
@@ -426,7 +426,7 @@ simple queries synchronous and very short.
 
 ### Measurements and state
 
-|             Command                   |                 Response                   |
+| Command                               | Response                                   |
 | ------------------------------------- | ------------------------------------------ |
 | `MEASure:POWer? \<channel\>`          | calibrated watts                           |
 | `MEASure:VOLTage? \<channel\>`        | calibrated volts                           |
@@ -442,7 +442,7 @@ ordinary queries must not disturb the 10/100 Hz scheduler.
 
 ### Ignition configuration
 
-|                     Command                                   |            Purpose            |
+| Command                                                       | Purpose                       |
 | ------------------------------------------------------------- | ----------------------------- |
 | `SOURce:IGNition:TIMEout \<channel\>,\<seconds\>`             | default 5.0 s                 |
 | `SOURce:IGNition:TOLerance:ABSolute \<channel\>,\<watts\>`    | low-power absolute tolerance  |
@@ -455,7 +455,7 @@ Implement matching queries for every persisted setting.
 
 ### Group operation
 
-|       Command         |                                   Behaviour                                          |
+| Command               | Behaviour                                                                            |
 | --------------------- | ------------------------------------------------------------------------------------ |
 | `GROUp:MASK <0..255>` | Select group members while group is idle.                                            |
 | `GROUp:MASK?`         | Return current mask.                                                                 |
@@ -471,7 +471,7 @@ fixed parameter tuple.
 
 ### Fault and reset commands
 
-|           Command                |                                 Behaviour                                        |
+| Command                          | Behaviour                                                                        |
 | -------------------------------- | -------------------------------------------------------------------------------- |
 | `SYSTem:FAULt? \<channel\>`      | Return code, detail, timestamp, final power and voltage.                         |
 | `SYSTem:FAULt:CLEar \<channel\>` | Clear only while output is off and hardware status is safe.                      |
@@ -486,7 +486,7 @@ fixed parameter tuple.
 Use the base status registers consistently. Proposed `STATus:OPERation`
 condition bits:
 
-| Bit |                     Meaning                |
+| Bit | Meaning                                    |
 | --- | ------------------------------------------ |
 | 0   | any channel preparing/armed                |
 | 1   | any channel igniting                       |
@@ -496,7 +496,7 @@ condition bits:
 
 Proposed `STATus:QUEStionable` condition bits:
 
-| Bits |              Meaning                      |
+| Bits | Meaning                                   |
 | ---- | ----------------------------------------- |
 | 0-7  | corresponding channel has a latched fault |
 | 8    | SPI/ADC/DAC communication fault           |

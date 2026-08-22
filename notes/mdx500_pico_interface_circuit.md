@@ -159,14 +159,14 @@ vary even when the electrical start commands are simultaneous.
 Use `U3=ADuM4151ARIZ`, powered by `3V3_CTL/GND_CTL` on side 1 and
 `+3V3_F/GND_MDX` on side 2. Fit 100 nF plus 1 uF at each supply pair.
 
-| Pico-side net | ADuM4151 function | Field-side net |
-| --- | --- | --- |
-| `SCLK` | `MCLK -> SCLK` | shared ADC/DAC clock |
-| `MOSI` | `MO -> SI` | shared ADC/DAC data in |
-| `MISO` | `MI <- SO` | shared tri-stated data out |
-| `ADC_CS_N` | `MSS -> SSS` | `U5.CS_N` |
-| `DAC_CS_N` | `VIA -> VOA` | `U4.SYNC_N` |
-| `AFE_RESET_N` | `VIB -> VOB` | `U4.CLR_N` and `U5.RST_PD_N` |
+| Pico-side net | ADuM4151 function | Field-side net               |
+| ------------- | ----------------- | ---------------------------- |
+| `SCLK`        | `MCLK -> SCLK`    | shared ADC/DAC clock         |
+| `MOSI`        | `MO -> SI`        | shared ADC/DAC data in       |
+| `MISO`        | `MI <- SO`        | shared tri-stated data out   |
+| `ADC_CS_N`    | `MSS -> SSS`      | `U5.CS_N`                    |
+| `DAC_CS_N`    | `VIA -> VOA`      | `U4.SYNC_N`                  |
+| `AFE_RESET_N` | `VIB -> VOB`      | `U4.CLR_N` and `U5.RST_PD_N` |
 
 Fit `R30/R31/R32=33 ohm` in series with field-side SCLK, MOSI, and MISO close to
 the isolator. Pull both chip-select nets high with 10 kohm. Pull
@@ -223,12 +223,12 @@ Use `U5=ADS8688` with `AVDD=+5V_F`, `DVDD=+3V3_F`, internal 4.096 V reference,
 and each used input programmed for the unipolar `0..10.24 V` range. Follow the
 data sheet's reference-capacitor and supply-decoupling layout exactly.
 
-| ADC input | MDX pin | Signal | Engineering full scale |
-| --- | ---: | --- | ---: |
-| `AIN0` | 1 | current monitor | 1 A |
-| `AIN1` | 2 | power monitor | 500 W |
-| `AIN2` | 3 | voltage monitor | 1200 V |
-| `AIN3` | 12 | programmed level monitor | selected mode full scale |
+| ADC input | MDX pin | Signal                   |   Engineering full scale |
+| --------- | ------: | ------------------------ | -----------------------: |
+| `AIN0`    |       1 | current monitor          |                      1 A |
+| `AIN1`    |       2 | power monitor            |                    500 W |
+| `AIN2`    |       3 | voltage monitor          |                   1200 V |
+| `AIN3`    |      12 | programmed level monitor | selected mode full scale |
 
 For each channel use:
 
@@ -255,19 +255,19 @@ approximately 5 mA with a 1.15 V LED. The common hardware output-permit must
 gate the `REMOTE_ON` LED path. Confirm logic-output current limits and the actual
 relay LED drop.
 
-| Relay | Contact wiring | Meaning when closed |
-| --- | --- | --- |
+| Relay          | Contact wiring                             | Meaning when closed       |
+| -------------- | ------------------------------------------ | ------------------------- |
 | `K1 REMOTE_ON` | J2.7 and J2.8 tied together -> K1 -> J2.25 | two-wire remote output on |
-| `K2 MODE_P` | J2.16 -> K2 -> J2.25 | `P_REG_N = low` |
-| `K3 MODE_I` | J2.17 -> K3 -> J2.25 | `I_REG_N = low` |
+| `K2 MODE_P`    | J2.16 -> K2 -> J2.25                       | `P_REG_N = low`           |
+| `K3 MODE_I`    | J2.17 -> K3 -> J2.25                       | `I_REG_N = low`           |
 
 Mode contact truth table:
 
-| Requested mode | K2 / pin 16 | K3 / pin 17 |
-| --- | --- | --- |
-| voltage | closed / low | closed / low |
-| power | closed / low | open / high |
-| current | open / high | closed / low |
+| Requested mode | K2 / pin 16  | K3 / pin 17  |
+| -------------- | ------------ | ------------ |
+| voltage        | closed / low | closed / low |
+| power          | closed / low | open / high  |
+| current        | open / high  | closed / low |
 
 Never change K2/K3 while K1 is closed. On boot: K1 open, write DAC zero, select
 mode, verify status, then permit K1 to close. On any exception: open K1 first,
@@ -294,22 +294,22 @@ connector to the 74HC165 status chain.
 
 ## DB-25 connections used by this board
 
-| Pin | Connection |
-| ---: | --- |
-| 1 | ADS8688 AIN0 through filter |
-| 2 | ADS8688 AIN1 through filter |
-| 3 | ADS8688 AIN2 through filter |
-| 4, 5, 6 | no PCB control; remain in genuine hardware interlock chain |
-| 7, 8 | tied locally and switched to pin 25 by K1 |
-| 9, 20, 21, 25 | field ground/star; retain separate routing to star |
-| 10 | test point only; do not parallel with the DAC reference |
-| 12 | ADS8688 AIN3 through filter |
-| 13 | active-low status optocoupler |
-| 14 | fused field-side power and status-LED source |
-| 16 | switched to pin 25 by K2 |
-| 17 | switched to pin 25 by K3 |
-| 22 | active-low status optocoupler |
-| 23 | AD5754R channel-A output through EMI filter |
+|           Pin | Connection                                                 |
+| ------------: | ---------------------------------------------------------- |
+|             1 | ADS8688 AIN0 through filter                                |
+|             2 | ADS8688 AIN1 through filter                                |
+|             3 | ADS8688 AIN2 through filter                                |
+|       4, 5, 6 | no PCB control; remain in genuine hardware interlock chain |
+|          7, 8 | tied locally and switched to pin 25 by K1                  |
+| 9, 20, 21, 25 | field ground/star; retain separate routing to star         |
+|            10 | test point only; do not parallel with the DAC reference    |
+|            12 | ADS8688 AIN3 through filter                                |
+|            13 | active-low status optocoupler                              |
+|            14 | fused field-side power and status-LED source               |
+|            16 | switched to pin 25 by K2                                   |
+|            17 | switched to pin 25 by K3                                   |
+|            22 | active-low status optocoupler                              |
+|            23 | AD5754R channel-A output through EMI filter                |
 
 ## Layout constraints
 
@@ -374,56 +374,56 @@ Items marked **provisional** require schematic/thermal review. Items marked
 
 ### Integrated circuits and isolation devices
 
-| References | Qty | Part / suggested ordering code | Package | Function and selection notes |
-| --- | ---: | --- | --- | --- |
-| U1 | 1 | TPS7A4901DGN | HVSSOP-8 PowerPAD | 36 V-input adjustable LDO set to 5.0 V. Verify exact orderable suffix and thermal pad footprint. |
-| U8 | 1 | TPS7A4901DGN | HVSSOP-8 PowerPAD | Second high-voltage LDO set to approximately 12.0 V for DAC AVDD. |
-| U2 | 1 | TLV75533PDBVR | SOT-23-5 | Fixed 3.3 V LDO from the 5 V field rail. |
-| U3 | 1 | ADuM4151ARIZ | 20-lead wide SOIC | 5 kV rms-rated SPI digital isolator, two forward and one reverse auxiliary channels. The component rating does not by itself certify the assembled product. |
-| U4 | 1 | AD5754RBREZ | 24-lead TSSOP with exposed pad, RE-24 | Quad 16-bit voltage-output DAC with internal reference. Use channel A; power down B-D. |
-| U5 | 1 | ADS8688IDBT | TSSOP-38, DBT | Eight-channel 16-bit ADC with 0-10.24 V input range; tube ordering code is convenient for prototypes. |
-| U6, U7 | 2 | LTV-817S-TA1-C or equivalent high-CTR optocoupler | SOP-4 | Active-low `SETPOINT_OK_N` and `OUTPUT_ON_N` receivers. Confirm CTR at approximately 2 mA LED current; increase LED current within MDX limits if required. |
-| K1-K3 | 3 | G3VM-61G1 | SOP-4 | Normally-open 60 V MOSFET relays for remote-on, P-regulation and I-regulation contacts. Maximum trigger current is 3 mA; the design uses about 5 mA nominal. |
+| References |  Qty | Part / suggested ordering code                    | Package                               | Function and selection notes                                                                                                                                 |
+| ---------- | ---: | ------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| U1         |    1 | TPS7A4901DGN                                      | HVSSOP-8 PowerPAD                     | 36 V-input adjustable LDO set to 5.0 V. Verify exact orderable suffix and thermal pad footprint.                                                             |
+| U8         |    1 | TPS7A4901DGN                                      | HVSSOP-8 PowerPAD                     | Second high-voltage LDO set to approximately 12.0 V for DAC AVDD.                                                                                            |
+| U2         |    1 | TLV75533PDBVR                                     | SOT-23-5                              | Fixed 3.3 V LDO from the 5 V field rail.                                                                                                                     |
+| U3         |    1 | ADuM4151ARIZ                                      | 20-lead wide SOIC                     | 5 kV rms-rated SPI digital isolator, two forward and one reverse auxiliary channels. The component rating does not by itself certify the assembled product.  |
+| U4         |    1 | AD5754RBREZ                                       | 24-lead TSSOP with exposed pad, RE-24 | Quad 16-bit voltage-output DAC with internal reference. Use channel A; power down B-D.                                                                       |
+| U5         |    1 | ADS8688IDBT                                       | TSSOP-38, DBT                         | Eight-channel 16-bit ADC with 0-10.24 V input range; tube ordering code is convenient for prototypes.                                                        |
+| U6, U7     |    2 | LTV-817S-TA1-C or equivalent high-CTR optocoupler | SOP-4                                 | Active-low `SETPOINT_OK_N` and `OUTPUT_ON_N` receivers. Confirm CTR at approximately 2 mA LED current; increase LED current within MDX limits if required.   |
+| K1-K3      |    3 | G3VM-61G1                                         | SOP-4                                 | Normally-open 60 V MOSFET relays for remote-on, P-regulation and I-regulation contacts. Maximum trigger current is 3 mA; the design uses about 5 mA nominal. |
 
 ### Connectors, protection, and test hardware
 
-| References | Qty | Description | Rating / footprint | Notes |
-| --- | ---: | --- | --- | --- |
-| J1 | 1 | 2x8 keyed board-to-board/backplane connector | Connector family selected with backplane mechanics | Carries controller-domain SPI, selects, reset, relay drives, status returns, 3.3 V and ground. It is not a Pico cable. |
-| J2 | 1 | Male DB-25 connector with metal shell and screw locks | Through-hole right-angle or panel/cable type | Must mate with the MDX female User port. Select the exact mechanical part after enclosure and cable-entry decisions. |
-| F1 | 1 | Fast-acting fuse | 63 mA, at least 32 V | **Provisional.** Choose cartridge/holder or SMD part after measuring startup current; do not treat it as a precise 100 mA limiter. |
-| D1 | 1 footprint | Low-leakage transient suppressor | At least 18 V stand-off; footprint to suit selected part | **DNP.** Populate only after measuring the auxiliary rail and proving the clamp cannot overload pin 14 or introduce leakage/error. |
-| TP1 | 1 | `+15V_F` test point | Loop or SMD pad | Field side. |
-| TP2 | 1 | `+12V_A` test point | Loop or SMD pad | DAC analog rail. |
-| TP3 | 1 | `+5V_F` test point | Loop or SMD pad | ADC analog rail. |
-| TP4 | 1 | `+3V3_F` test point | Loop or SMD pad | Field digital rail. |
-| TP5 | 1 | `GND_MDX` test point | Loop or SMD pad | Field reference only. |
-| TP6 | 1 | `GND_CTL` test point | Loop or SMD pad | Controller reference only; must remain isolated from TP5. |
-| TP7 | 1 | DAC output before R20 | Small SMD pad | Permits DAC testing with J2 disconnected. |
-| TP8 | 1 | J2.23 filtered level output | Small SMD pad | Permits checking the complete setpoint path. |
-| MH1-MH4 | 4 | Plated or non-plated mounting holes | M3, enclosure dependent | Keep copper clearance appropriate to the mounting hardware and isolation zones. |
+| References |         Qty | Description                                           | Rating / footprint                                       | Notes                                                                                                                              |
+| ---------- | ----------: | ----------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| J1         |           1 | 2x8 keyed board-to-board/backplane connector          | Connector family selected with backplane mechanics       | Carries controller-domain SPI, selects, reset, relay drives, status returns, 3.3 V and ground. It is not a Pico cable.             |
+| J2         |           1 | Male DB-25 connector with metal shell and screw locks | Through-hole right-angle or panel/cable type             | Must mate with the MDX female User port. Select the exact mechanical part after enclosure and cable-entry decisions.               |
+| F1         |           1 | Fast-acting fuse                                      | 63 mA, at least 32 V                                     | **Provisional.** Choose cartridge/holder or SMD part after measuring startup current; do not treat it as a precise 100 mA limiter. |
+| D1         | 1 footprint | Low-leakage transient suppressor                      | At least 18 V stand-off; footprint to suit selected part | **DNP.** Populate only after measuring the auxiliary rail and proving the clamp cannot overload pin 14 or introduce leakage/error. |
+| TP1        |           1 | `+15V_F` test point                                   | Loop or SMD pad                                          | Field side.                                                                                                                        |
+| TP2        |           1 | `+12V_A` test point                                   | Loop or SMD pad                                          | DAC analog rail.                                                                                                                   |
+| TP3        |           1 | `+5V_F` test point                                    | Loop or SMD pad                                          | ADC analog rail.                                                                                                                   |
+| TP4        |           1 | `+3V3_F` test point                                   | Loop or SMD pad                                          | Field digital rail.                                                                                                                |
+| TP5        |           1 | `GND_MDX` test point                                  | Loop or SMD pad                                          | Field reference only.                                                                                                              |
+| TP6        |           1 | `GND_CTL` test point                                  | Loop or SMD pad                                          | Controller reference only; must remain isolated from TP5.                                                                          |
+| TP7        |           1 | DAC output before R20                                 | Small SMD pad                                            | Permits DAC testing with J2 disconnected.                                                                                          |
+| TP8        |           1 | J2.23 filtered level output                           | Small SMD pad                                            | Permits checking the complete setpoint path.                                                                                       |
+| MH1-MH4    |           4 | Plated or non-plated mounting holes                   | M3, enclosure dependent                                  | Keep copper clearance appropriate to the mounting hardware and isolation zones.                                                    |
 
 ### Resistors
 
 Use at least 50 ppm/degree C thin-film resistors for regulator feedback and
 analog paths. General digital pull resistors may be ordinary 1% thick-film.
 
-| References | Qty | Value | Tolerance / rating | Package | Function |
-| --- | ---: | ---: | --- | --- | --- |
-| R1 | 1 | 324 kohm | 0.1%, 25 ppm/degree C | 0603 or 0805 | U1 upper feedback resistor; with R2 gives approximately 5.02 V using nominal 1.185 V feedback reference. Recalculate from the selected regulator revision. |
-| R2 | 1 | 100 kohm | 0.1%, 25 ppm/degree C | 0603 or 0805 | U1 lower feedback resistor. |
-| R3 | 1 | 910 kohm | 0.1%, 25 ppm/degree C | 0805 | U8 upper feedback resistor; with R4 gives approximately 11.97 V. Recalculate before release. |
-| R4 | 1 | 100 kohm | 0.1%, 25 ppm/degree C | 0603 or 0805 | U8 lower feedback resistor. |
-| R5, R6 | 2 | 0 ohm | 1% | 0603 | Configuration links for U1/U8 enable connections; replace with required enable networks if sequencing analysis demands it. |
-| R10-R12 | 3 | 430 ohm | 1%, 0.1 W | 0603 | Backplane 74HC595-to-G3VM relay LED current limiting, approximately 5 mA nominal. |
-| R13, R14 | 2 | 6.8 kohm | 1%, 0.125 W or greater | 0805 | MDX +15 V to status optocoupler LED current limiting, approximately 2 mA. |
-| R15, R16 | 2 | 10 kohm | 1% | 0603 | Pico-side status-input pull-ups to `3V3_CTL`. |
-| R17, R18 | 2 | 10 kohm | 1% | 0603 | Field-side ADC and DAC chip-select pull-ups. |
-| R19 | 1 | 10 kohm | 1% | 0603 | Field-side `AFE_RESET_N` pull-down. |
-| R20 | 1 | 100 ohm | 0.1%, 25 ppm/degree C | 0805 | DAC-output isolation/EMI resistor. |
-| R21-R24 | 4 | 1.00 kohm | 0.1%, 25 ppm/degree C | 0805 | ADC monitor input filter/protection resistors. |
-| R25, R26 | 2 | 0 ohm | 0.1 W | 0805 | Optional star-point links for separately routed analog/control returns; fit only as shown by the final grounding plan. |
-| R30-R32 | 3 | 33 ohm | 1% | 0603 | Series damping on field-side SCLK, MOSI, and MISO. |
+| References |  Qty |     Value | Tolerance / rating     | Package      | Function                                                                                                                                                   |
+| ---------- | ---: | --------: | ---------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1         |    1 |  324 kohm | 0.1%, 25 ppm/degree C  | 0603 or 0805 | U1 upper feedback resistor; with R2 gives approximately 5.02 V using nominal 1.185 V feedback reference. Recalculate from the selected regulator revision. |
+| R2         |    1 |  100 kohm | 0.1%, 25 ppm/degree C  | 0603 or 0805 | U1 lower feedback resistor.                                                                                                                                |
+| R3         |    1 |  910 kohm | 0.1%, 25 ppm/degree C  | 0805         | U8 upper feedback resistor; with R4 gives approximately 11.97 V. Recalculate before release.                                                               |
+| R4         |    1 |  100 kohm | 0.1%, 25 ppm/degree C  | 0603 or 0805 | U8 lower feedback resistor.                                                                                                                                |
+| R5, R6     |    2 |     0 ohm | 1%                     | 0603         | Configuration links for U1/U8 enable connections; replace with required enable networks if sequencing analysis demands it.                                 |
+| R10-R12    |    3 |   430 ohm | 1%, 0.1 W              | 0603         | Backplane 74HC595-to-G3VM relay LED current limiting, approximately 5 mA nominal.                                                                          |
+| R13, R14   |    2 |  6.8 kohm | 1%, 0.125 W or greater | 0805         | MDX +15 V to status optocoupler LED current limiting, approximately 2 mA.                                                                                  |
+| R15, R16   |    2 |   10 kohm | 1%                     | 0603         | Pico-side status-input pull-ups to `3V3_CTL`.                                                                                                              |
+| R17, R18   |    2 |   10 kohm | 1%                     | 0603         | Field-side ADC and DAC chip-select pull-ups.                                                                                                               |
+| R19        |    1 |   10 kohm | 1%                     | 0603         | Field-side `AFE_RESET_N` pull-down.                                                                                                                        |
+| R20        |    1 |   100 ohm | 0.1%, 25 ppm/degree C  | 0805         | DAC-output isolation/EMI resistor.                                                                                                                         |
+| R21-R24    |    4 | 1.00 kohm | 0.1%, 25 ppm/degree C  | 0805         | ADC monitor input filter/protection resistors.                                                                                                             |
+| R25, R26   |    2 |     0 ohm | 0.1 W                  | 0805         | Optional star-point links for separately routed analog/control returns; fit only as shown by the final grounding plan.                                     |
+| R30-R32    |    3 |    33 ohm | 1%                     | 0603         | Series damping on field-side SCLK, MOSI, and MISO.                                                                                                         |
 
 ### Capacitors
 
@@ -431,53 +431,53 @@ Voltage ratings below are minimums. Use X7R unless C0G/NP0 is specified and
 check effective capacitance at the applied DC bias. The ADS8688 reference
 capacitors should be placed exactly as its data sheet specifies.
 
-| References | Qty | Value | Dielectric / minimum rating | Package | Function |
-| --- | ---: | ---: | --- | --- | --- |
-| C1 | 1 | 10 uF | X7R, 25 V | 1210 | Bulk capacitor after F1 on `+15V_F`. |
-| C2 | 1 | 100 nF | X7R, 50 V | 0603 | High-frequency bypass on `+15V_F`. |
-| C3 | 1 | 2.2 uF | X7R, 25 V | 0805/1206 | U1 input bypass. |
-| C4 | 1 | 10 uF | X7R, 10 V | 0805/1206 | U1 5 V output/stability capacitor. |
-| C5 | 1 | 10 nF | C0G/NP0, 25 V | 0603 | U1 noise-reduction capacitor; confirm value and connection from the TPS7A49 data sheet. |
-| C6 | 1 | 2.2 uF | X7R, 25 V | 0805/1206 | U8 input bypass. |
-| C7 | 1 | 10 uF | X7R, 25 V | 1206 | U8 12 V output/stability capacitor. |
-| C8 | 1 | 10 nF | C0G/NP0, 25 V | 0603 | U8 noise-reduction capacitor; confirm against data sheet. |
-| C9 | 1 | 4.7 uF | X7R, 10 V | 0805 | U2 input bypass. |
-| C10 | 1 | 4.7 uF | X7R, 6.3 V or greater | 0805 | U2 3.3 V output/stability capacitor. |
-| C11, C13 | 2 | 100 nF | X7R, 10 V | 0603 | ADuM4151 VDD1 and VDD2 high-frequency bypass. |
-| C12, C14 | 2 | 1 uF | X7R, 10 V | 0603/0805 | ADuM4151 local bulk bypass, one on each side. |
-| C15, C17 | 2 | 100 nF | X7R, 25 V for C15; 10 V for C17 | 0603 | AD5754R AVDD and DVCC high-frequency bypass. |
-| C16 | 1 | 10 uF | low-ESR X7R/tantalum, 25 V | 1206 or case A | AD5754R AVDD bulk bypass. |
-| C18 | 1 | 10 uF | low-ESR X7R/tantalum, 10 V | 0805/1206 | AD5754R DVCC bulk bypass. |
-| C20 | 1 | 10 nF | C0G/NP0, 25 V | 0805 | DAC output EMI filter to the pin-21 analog return. |
-| C21, C22 | 2 | 1 uF | X7R, 10 V | 0603 | ADS8688 AVDD bypass, one directly at each AVDD pin. |
-| C23 | 1 | 10 uF | X7R, 10 V | 0805 | ADS8688 AVDD bulk bypass. |
-| C24 | 1 | 10 uF | X7R, 10 V | 0805 | ADS8688 DVDD bypass. |
-| C25 | 1 | 10 uF | X7R, 10 V | 0805 | ADS8688 REFIO-to-REFGND decoupling for internal reference. |
-| C26 | 1 | 1 uF | X7R, 10 V | 0603 | ADS8688 REFCAP high-frequency decoupling; no vias to pins. |
-| C27 | 1 | 22 uF | X7R, 10 V | 1210 | ADS8688 REFCAP charge reservoir; no vias to pins. |
-| C30-C33 | 4 | 100 nF | C0G/NP0 or film, 25 V | 1206 or suitable film footprint | ADC monitor RC filters. C0G at this value is relatively large/costly; retain a film-capacitor option. |
+| References |  Qty |  Value | Dielectric / minimum rating     | Package                         | Function                                                                                              |
+| ---------- | ---: | -----: | ------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| C1         |    1 |  10 uF | X7R, 25 V                       | 1210                            | Bulk capacitor after F1 on `+15V_F`.                                                                  |
+| C2         |    1 | 100 nF | X7R, 50 V                       | 0603                            | High-frequency bypass on `+15V_F`.                                                                    |
+| C3         |    1 | 2.2 uF | X7R, 25 V                       | 0805/1206                       | U1 input bypass.                                                                                      |
+| C4         |    1 |  10 uF | X7R, 10 V                       | 0805/1206                       | U1 5 V output/stability capacitor.                                                                    |
+| C5         |    1 |  10 nF | C0G/NP0, 25 V                   | 0603                            | U1 noise-reduction capacitor; confirm value and connection from the TPS7A49 data sheet.               |
+| C6         |    1 | 2.2 uF | X7R, 25 V                       | 0805/1206                       | U8 input bypass.                                                                                      |
+| C7         |    1 |  10 uF | X7R, 25 V                       | 1206                            | U8 12 V output/stability capacitor.                                                                   |
+| C8         |    1 |  10 nF | C0G/NP0, 25 V                   | 0603                            | U8 noise-reduction capacitor; confirm against data sheet.                                             |
+| C9         |    1 | 4.7 uF | X7R, 10 V                       | 0805                            | U2 input bypass.                                                                                      |
+| C10        |    1 | 4.7 uF | X7R, 6.3 V or greater           | 0805                            | U2 3.3 V output/stability capacitor.                                                                  |
+| C11, C13   |    2 | 100 nF | X7R, 10 V                       | 0603                            | ADuM4151 VDD1 and VDD2 high-frequency bypass.                                                         |
+| C12, C14   |    2 |   1 uF | X7R, 10 V                       | 0603/0805                       | ADuM4151 local bulk bypass, one on each side.                                                         |
+| C15, C17   |    2 | 100 nF | X7R, 25 V for C15; 10 V for C17 | 0603                            | AD5754R AVDD and DVCC high-frequency bypass.                                                          |
+| C16        |    1 |  10 uF | low-ESR X7R/tantalum, 25 V      | 1206 or case A                  | AD5754R AVDD bulk bypass.                                                                             |
+| C18        |    1 |  10 uF | low-ESR X7R/tantalum, 10 V      | 0805/1206                       | AD5754R DVCC bulk bypass.                                                                             |
+| C20        |    1 |  10 nF | C0G/NP0, 25 V                   | 0805                            | DAC output EMI filter to the pin-21 analog return.                                                    |
+| C21, C22   |    2 |   1 uF | X7R, 10 V                       | 0603                            | ADS8688 AVDD bypass, one directly at each AVDD pin.                                                   |
+| C23        |    1 |  10 uF | X7R, 10 V                       | 0805                            | ADS8688 AVDD bulk bypass.                                                                             |
+| C24        |    1 |  10 uF | X7R, 10 V                       | 0805                            | ADS8688 DVDD bypass.                                                                                  |
+| C25        |    1 |  10 uF | X7R, 10 V                       | 0805                            | ADS8688 REFIO-to-REFGND decoupling for internal reference.                                            |
+| C26        |    1 |   1 uF | X7R, 10 V                       | 0603                            | ADS8688 REFCAP high-frequency decoupling; no vias to pins.                                            |
+| C27        |    1 |  22 uF | X7R, 10 V                       | 1210                            | ADS8688 REFCAP charge reservoir; no vias to pins.                                                     |
+| C30-C33    |    4 | 100 nF | C0G/NP0 or film, 25 V           | 1206 or suitable film footprint | ADC monitor RC filters. C0G at this value is relatively large/costly; retain a film-capacitor option. |
 
 ### Controller/backplane electronics: one set per eight-channel system
 
 Reference designators in this table are reserved for the controller schematic
 and do not collide with the per-channel-card references above.
 
-| References | Qty | Part / value | Package | Function and notes |
-| --- | ---: | --- | --- | --- |
-| P100 | 1 | Raspberry Pi Pico or Pico W | Castellated Pico module | Mount directly on the controller PCB. Keep USB accessible at the enclosure edge. |
-| U100 | 1 | SN74LVC244APW | TSSOP-20 | Eight-channel backplane fan-out buffer: four SCLK and four MOSI outputs, each serving at most two slots. |
-| U101, U102 | 2 | SN74HC138PW | TSSOP-16 | Active-low 3-to-8 decoders for ADC and DAC chip selects. Pull enables to their inactive state. |
-| U103 | 1 | SN74HC151PW | TSSOP-16 | Eight-to-one MISO multiplexer selected by `SLOT_A[2:0]`. Do not join ADuM MI outputs directly. |
-| U110-U112 | 3 | SN74HC595PW | TSSOP-16 | Twenty-four relay command bits with one shared latch and output enable. |
-| U120, U121 | 2 | SN74HC165PW | TSSOP-16 | Sixteen parallel status inputs shifted to the Pico. |
-| U130 | 1 | watchdog/supervisor, final part TBD | package TBD | Must require periodic Pico activity and remove `REMOTE_OUTPUT_PERMIT` on reset/hang. Select after timeout and polarity are fixed. |
-| U131 | 1 | 3.3 V load switch or relay-LED permit stage, final part TBD | package TBD | Gates current to all `REMOTE_ON` MOSFET-relay LEDs; default off with a hardware pull-down. |
-| RN100-RN102 | 3 | 8x 10 kohm resistor arrays | 0603 array or TSSOP network | Default-off/inactive pulls for relay outputs, status inputs, decoder enables and spare lines; allocate explicitly in schematic. |
-| R100-R107 | 8 | 22-47 ohm | 0603 | Source-series termination, one per U100 SCLK/MOSI fan-out output; choose by measurement. |
-| C100-C110 | 11 | 100 nF X7R | 0603 | One local decoupler per controller/backplane IC. Add one for the watchdog/load switch as required. |
-| C111-C113 | 3 | 10 uF X7R | 0805 | Controller 3.3 V bulk decoupling at Pico, logic bank and slot connectors. |
-| J100-J107 | 8 | mating channel-card connectors | matches J1 | One keyed slot connector per MDX channel. Unused slots must be electrically benign. |
-| TP100-TP106 | 7 | logic test points | SMD pads | SCLK, MOSI, selected MISO, ADC enable, DAC enable, relay latch, and output permit. |
+| References  |  Qty | Part / value                                                | Package                     | Function and notes                                                                                                                |
+| ----------- | ---: | ----------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| P100        |    1 | Raspberry Pi Pico or Pico W                                 | Castellated Pico module     | Mount directly on the controller PCB. Keep USB accessible at the enclosure edge.                                                  |
+| U100        |    1 | SN74LVC244APW                                               | TSSOP-20                    | Eight-channel backplane fan-out buffer: four SCLK and four MOSI outputs, each serving at most two slots.                          |
+| U101, U102  |    2 | SN74HC138PW                                                 | TSSOP-16                    | Active-low 3-to-8 decoders for ADC and DAC chip selects. Pull enables to their inactive state.                                    |
+| U103        |    1 | SN74HC151PW                                                 | TSSOP-16                    | Eight-to-one MISO multiplexer selected by `SLOT_A[2:0]`. Do not join ADuM MI outputs directly.                                    |
+| U110-U112   |    3 | SN74HC595PW                                                 | TSSOP-16                    | Twenty-four relay command bits with one shared latch and output enable.                                                           |
+| U120, U121  |    2 | SN74HC165PW                                                 | TSSOP-16                    | Sixteen parallel status inputs shifted to the Pico.                                                                               |
+| U130        |    1 | watchdog/supervisor, final part TBD                         | package TBD                 | Must require periodic Pico activity and remove `REMOTE_OUTPUT_PERMIT` on reset/hang. Select after timeout and polarity are fixed. |
+| U131        |    1 | 3.3 V load switch or relay-LED permit stage, final part TBD | package TBD                 | Gates current to all `REMOTE_ON` MOSFET-relay LEDs; default off with a hardware pull-down.                                        |
+| RN100-RN102 |    3 | 8x 10 kohm resistor arrays                                  | 0603 array or TSSOP network | Default-off/inactive pulls for relay outputs, status inputs, decoder enables and spare lines; allocate explicitly in schematic.   |
+| R100-R107   |    8 | 22-47 ohm                                                   | 0603                        | Source-series termination, one per U100 SCLK/MOSI fan-out output; choose by measurement.                                          |
+| C100-C110   |   11 | 100 nF X7R                                                  | 0603                        | One local decoupler per controller/backplane IC. Add one for the watchdog/load switch as required.                                |
+| C111-C113   |    3 | 10 uF X7R                                                   | 0805                        | Controller 3.3 V bulk decoupling at Pico, logic bank and slot connectors.                                                         |
+| J100-J107   |    8 | mating channel-card connectors                              | matches J1                  | One keyed slot connector per MDX channel. Unused slots must be electrically benign.                                               |
+| TP100-TP106 |    7 | logic test points                                           | SMD pads                    | SCLK, MOSI, selected MISO, ADC enable, DAC enable, relay latch, and output permit.                                                |
 
 The watchdog and output-permit components remain deliberately unresolved: their
 timeout, reset polarity, drive current, diagnostic feedback, and behaviour
@@ -486,13 +486,13 @@ implementation can replace this hardware default-off path.
 
 ### PCB, cable, and enclosure items
 
-| Item | Qty | Requirement |
-| --- | ---: | --- |
-| Four-layer controller/backplane PCB | 1 | Carries the Pico, multiplexers, decoders, shift registers, watchdog, and up to eight card connectors. No Pico-to-SPI cable is required. |
-| Four-layer channel-card PCB | 1 per MDX | Maintain separate controller and field ground/power planes with the ADuM keep-out respected. Use an isolation slot only if supported by the final mechanical and safety review. |
-| Shielded DB-25 cable | 1 | Straight-through, individually screened or overall shielded cable suitable for the installation environment; keep analog returns paired with their signals. |
-| Metal enclosure | 1 | Bond DB-25 shell and cable shield to enclosure at entry. Do not use the signal-ground plane as the shield-current path. |
-| Labels | as required | Mark the MDX channel, 5 V/10 V analog configuration, board revision, connector orientation, and test-point domains. |
+| Item                                |         Qty | Requirement                                                                                                                                                                     |
+| ----------------------------------- | ----------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Four-layer controller/backplane PCB |           1 | Carries the Pico, multiplexers, decoders, shift registers, watchdog, and up to eight card connectors. No Pico-to-SPI cable is required.                                         |
+| Four-layer channel-card PCB         |   1 per MDX | Maintain separate controller and field ground/power planes with the ADuM keep-out respected. Use an isolation slot only if supported by the final mechanical and safety review. |
+| Shielded DB-25 cable                |           1 | Straight-through, individually screened or overall shielded cable suitable for the installation environment; keep analog returns paired with their signals.                     |
+| Metal enclosure                     |           1 | Bond DB-25 shell and cable shield to enclosure at entry. Do not use the signal-ground plane as the shield-current path.                                                         |
+| Labels                              | as required | Mark the MDX channel, 5 V/10 V analog configuration, board revision, connector orientation, and test-point domains.                                                             |
 
 ### Parts-list release gates
 
