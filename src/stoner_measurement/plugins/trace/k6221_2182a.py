@@ -23,7 +23,7 @@ import enum
 import logging
 import math
 import time
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -57,6 +57,7 @@ from stoner_measurement.instruments.transport.gpib_transport import (
     GpibTransport,
     PassThroughGpibTransport,
 )
+from stoner_measurement.instruments.transport.serial_transport import SerialTransport
 from stoner_measurement.plugins.trace._differential import (
     modulate_current_sweep,
     reduce_differential_readings,
@@ -861,8 +862,17 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # ---- 2182A: reset and configure ----
             self._k2182a.reset()
-            self._k2182a.set_data_format(KeithleyDataFormat.SREAL)
-            self._k2182a.set_byte_order(KeithleyByteOrder.native())
+            meter_2182a = cast(Keithley2182A, self._k2182a)
+            transport_2182a = meter_2182a.transport
+            ascii_only = self._connection_mode is ConnectionMode.VIA_6221_SERIAL or isinstance(
+                transport_2182a,
+                (PassThroughGpibTransport, SerialTransport),
+            )
+            if ascii_only:
+                meter_2182a.set_data_format(KeithleyDataFormat.ASCII)
+            else:
+                meter_2182a.set_data_format(KeithleyDataFormat.SREAL)
+                meter_2182a.set_byte_order(KeithleyByteOrder.native())
 
             self._k2182a.set_digits(self._digits)
             self._k2182a.set_nplc(self._nplc)

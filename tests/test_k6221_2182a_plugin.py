@@ -8,6 +8,7 @@ import logging
 import pytest
 
 from stoner_measurement.instruments.keithley import KeithleyByteOrder, KeithleyDataFormat
+from stoner_measurement.instruments.transport import SerialTransport
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
     ComplianceMode,
@@ -427,8 +428,35 @@ class TestConfigure:
         plugin._k6221.sweep_init.assert_not_called()
         plugin._k6221.sweep_start.assert_not_called()
         plugin._k2182a.clear_buffer.assert_called_once_with()
+        plugin._k2182a.set_data_format.assert_called_once_with(KeithleyDataFormat.ASCII)
+        plugin._k2182a.set_byte_order.assert_not_called()
+
+    def test_configure_direct_gpib_uses_native_order_sreal(self, qapp):
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.DIRECT_GPIB
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+
+        plugin.configure()
+
         plugin._k2182a.set_data_format.assert_called_once_with(KeithleyDataFormat.SREAL)
         plugin._k2182a.set_byte_order.assert_called_once_with(KeithleyByteOrder.native())
+
+    def test_configure_serial_2182a_uses_ascii_even_in_direct_mode(self, qapp):
+        from unittest.mock import MagicMock
+
+        plugin = _make_plugin()
+        plugin._connection_mode = ConnectionMode.DIRECT_GPIB
+        plugin._k6221 = MagicMock()
+        plugin._k2182a = MagicMock()
+        plugin._k2182a.transport = SerialTransport(port="COM1")
+
+        plugin.configure()
+
+        plugin._k2182a.set_data_format.assert_called_once_with(KeithleyDataFormat.ASCII)
+        plugin._k2182a.set_byte_order.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
