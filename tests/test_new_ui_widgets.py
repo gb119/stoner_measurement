@@ -488,14 +488,9 @@ class TestEngineActivityStatusWidget:
 
 class TestMeasurementApp:
     @pytest.fixture(autouse=True)
-    def _manage_measurement_apps(self, monkeypatch, managed_qt_widget):
+    def _manage_measurement_apps(self, monkeypatch, managed_measurement_app):
         """Retain and deterministically close every application made by a test."""
-        app_class = MeasurementApp
-
-        def make_managed_app():
-            return managed_qt_widget(app_class())
-
-        monkeypatch.setattr(sys.modules[__name__], "MeasurementApp", make_managed_app)
+        monkeypatch.setattr(sys.modules[__name__], "MeasurementApp", managed_measurement_app)
 
     def test_has_menu_bar(self, qapp):
         app = MeasurementApp()

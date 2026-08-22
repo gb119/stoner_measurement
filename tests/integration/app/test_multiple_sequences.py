@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 from qtpy.QtWidgets import QFileDialog, QMessageBox
 
 from stoner_measurement.app import MeasurementApp
 from stoner_measurement.plugins.trace import DummyPlugin
+
+
+@pytest.fixture(autouse=True)
+def _manage_measurement_apps(monkeypatch, managed_measurement_app):
+    """Shut down every application created by a test before Qt deletion."""
+    monkeypatch.setattr(sys.modules[__name__], "MeasurementApp", managed_measurement_app)
 
 
 def test_startup_creates_one_sequence_document_and_tab(qapp):
