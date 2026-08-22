@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 
 if TYPE_CHECKING:
@@ -220,6 +222,12 @@ class SourceMeterCapabilities:
             :meth:`~SourceMeter.get_buffer_size`,
             :meth:`~SourceMeter.clear_buffer`, and
             :meth:`~SourceMeter.read_buffer`.
+        has_data_format (bool):
+            ``True`` if the driver supports selecting ASCII or binary reading
+            transfers.
+        has_byte_order (bool):
+            ``True`` if the driver supports selecting the byte order used for
+            binary reading transfers.
     """
 
     has_function_selection: bool = False
@@ -227,6 +235,8 @@ class SourceMeterCapabilities:
     has_source_delay: bool = False
     has_trigger_model: bool = False
     has_buffer: bool = False
+    has_data_format: bool = False
+    has_byte_order: bool = False
 
 
 class SourceMeter(BaseInstrument):
@@ -797,7 +807,7 @@ class SourceMeter(BaseInstrument):
             "Check get_capabilities().has_buffer before calling this method."
         )
 
-    def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
+    def read_buffer(self, count: int | None = None) -> tuple[float, ...] | np.ndarray:
         """Return readings from the instrument buffer.
 
         Args:

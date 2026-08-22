@@ -199,7 +199,7 @@ class BaseTransport(ABC):
                 If no data is received within :attr:`timeout` seconds.
         """
 
-    def query(self,data: bytes, num_bytes: int | None = None, slow: bool = False) -> bytes:
+    def query(self,data: bytes, num_bytes: int | None = None, slow: int | None = False) -> bytes:
         """Perform a write and then read operation in series.
 
         Args:

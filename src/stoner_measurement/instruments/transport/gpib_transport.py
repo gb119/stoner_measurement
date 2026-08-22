@@ -589,7 +589,7 @@ class PassThroughGpibTransport(GpibTransport):
             )
         return self.last_stb
 
-    def query(self, data: bytes, num_bytes: int | None = None, slow: bool = False) -> bytes:
+    def query(self, data: bytes, num_bytes: int | None = None, slow: int | None = False) -> bytes:
         """Perform a write and then read operation in series.
 
         Args:
@@ -677,13 +677,15 @@ class PassThroughGpibTransport(GpibTransport):
 
         while not (raw:=self._resource.read_raw()).endswith(b"\n\n"):
             self._log_comms_traffic("RX", f"Read frameL {raw}")
-            accumulated+=raw.strip()
+            is_binary = accumulated.startswith(b"#0") or raw.startswith(b"#0")
+            accumulated += raw[:-1] if is_binary and raw.endswith(b"\n") else raw.strip()
             if num_bytes and len(accumulated)>num_bytes:
                 accumulated=accumulated[:num_bytes]
                 raise InstrumentError(f"Overran bute count {num_bytes} message was {accumulated}")
             self._resource.write_raw(command)
             sleep (_DEFAULT_K6221_SERIAL_POLL)
-        accumulated+=raw.strip()
+        is_binary = accumulated.startswith(b"#0") or raw.startswith(b"#0")
+        accumulated += raw[:-2] if is_binary else raw.strip()
         self._log_comms_traffic("RX", f"Final message {accumulated}")
 
         if accumulated:

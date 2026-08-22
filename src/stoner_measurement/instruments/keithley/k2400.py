@@ -20,6 +20,13 @@ from dataclasses import dataclass
 from enum import Enum
 from time import sleep
 
+import numpy as np
+
+from stoner_measurement.instruments.keithley._scpi_data_format import (
+    KeithleyByteOrder,
+    KeithleyDataFormat,
+    KeithleyScpiDataFormatMixin,
+)
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.source_meter import (
@@ -32,6 +39,7 @@ from stoner_measurement.instruments.source_meter import (
     TriggerModelConfiguration,
 )
 from stoner_measurement.instruments.transport.base import BaseTransport
+from stoner_measurement.instruments.transport.serial_transport import SerialTransport
 
 #: Valid measurement functions for Keithley 24xx SMUs.
 _VALID_MEASURE_FUNCTIONS = frozenset({"VOLT", "CURR", "RES"})
@@ -80,7 +88,7 @@ class BufferReading:
     status: float | None = None
 
 
-class Keithley2400(SourceMeter):
+class Keithley2400(KeithleyScpiDataFormatMixin, SourceMeter):
     """Driver for the Keithley 2400 Series SourceMeter.
 
     Implements :class:`~stoner_measurement.instruments.source_meter.SourceMeter`
@@ -128,6 +136,26 @@ class Keithley2400(SourceMeter):
             transport=transport,
             protocol=protocol if protocol is not None else ScpiProtocol(),
         )
+        self._initialise_data_format_state()
+        self._format_elements: tuple[str, ...] = ("VOLT", "CURR", "RES", "TIME", "STAT")
+        self._supported_data_formats = (
+            KeithleyDataFormat.ASCII,
+            KeithleyDataFormat.SREAL,
+        )
+
+    def reset(self) -> None:
+        """Reset the instrument and restore cached format defaults."""
+        super().reset()
+        self._initialise_data_format_state()
+        self._format_elements = ("VOLT", "CURR", "RES", "TIME", "STAT")
+
+    def set_data_format(self, data_format: KeithleyDataFormat) -> None:
+        """Set ASCII or single-precision binary measurement transfers."""
+        if data_format is not KeithleyDataFormat.ASCII and isinstance(
+            self.transport, SerialTransport
+        ):
+            raise ValueError("The Keithley 2400 supports binary transfers over GPIB only.")
+        super().set_data_format(data_format)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -240,14 +268,15 @@ class Keithley2400(SourceMeter):
 
     def _parse_buffer_records(
         self,
-        payload: str,
+        payload: str | np.ndarray,
         elements: tuple[str, ...],
     ) -> tuple[BufferReading, ...]:
         """Parse a trace-buffer payload into structured reading records.
 
         Args:
-            payload (str):
-                Raw comma-separated buffer payload returned by the instrument.
+            payload (str | numpy.ndarray):
+                Raw comma-separated ASCII values or an array view over a
+                binary response returned by the instrument.
             elements (tuple[str, ...]):
                 Ordered format-element names describing each record.
 
@@ -260,7 +289,7 @@ class Keithley2400(SourceMeter):
                 If *elements* is empty or the payload width does not match the
                 configured record format.
         """
-        values = self._parse_csv_floats(payload)
+        values = self._parse_csv_floats(payload) if isinstance(payload, str) else payload
         width = len(elements)
         if width == 0:
             raise ValueError("At least one format element must be configured.")
@@ -1118,14 +1147,17 @@ class Keithley2400(SourceMeter):
 
     def set_format_data_ascii(self) -> None:
         """Select ASCII transfer format for reading data."""
-        self.write(":FORM:DATA ASC")
+        self.set_data_format(KeithleyDataFormat.ASCII)
 
     def set_format_elements(self, elements: tuple[str, ...]) -> None:
         """Set the reading elements returned by READ/FETCH/TRACE queries."""
         if not elements:
             raise ValueError("At least one format element must be provided.")
         normalised = tuple(self._normalise_format_element(element) for element in elements)
+        if normalised == self._format_elements:
+            return
         self.write(f":FORM:ELEM {','.join(normalised)}")
+        self._format_elements = normalised
 
     def set_trace_feed_sense(self) -> None:
         """Configure the trace buffer to store raw sense readings."""
@@ -1216,14 +1248,21 @@ class Keithley2400(SourceMeter):
                 Parsed buffer records.
         """
         normalised = tuple(self._normalise_format_element(element) for element in elements)
-        self.set_format_data_ascii()
         self.set_format_elements(normalised)
-        if count is None:
-            payload = self.query(":TRAC:DATA?")
+        if count is not None and count <= 0:
+            raise ValueError("Requested buffer count must be positive.")
+        command = ":TRAC:DATA?" if count is None else f":TRAC:DATA? 1,{count}"
+        if self._data_format is KeithleyDataFormat.ASCII:
+            payload: str | np.ndarray = self.query(command)
         else:
-            if count <= 0:
-                raise ValueError("Requested buffer count must be positive.")
-            payload = self.query(f":TRAC:DATA? 1,{count}")
+            raw = self._query_raw(command)
+            value_count = None if count is None else count * len(normalised)
+            payload = self.parse_binary_floats(
+                raw,
+                data_format=self._data_format,
+                byte_order=self._byte_order,
+                count=value_count,
+            )
         return self._parse_buffer_records(payload, normalised)
 
     def configure_buffer(
@@ -1231,9 +1270,23 @@ class Keithley2400(SourceMeter):
         size: int,
         *,
         elements: tuple[str, ...] = ("VOLT", "CURR", "RES", "TIME", "STAT"),
+        data_format: KeithleyDataFormat | None = None,
     ) -> None:
-        """Configure the trace buffer and transfer format for buffered acquisition."""
-        self.set_format_data_ascii()
+        """Configure the trace buffer and transfer format for buffered acquisition.
+
+        GPIB transfers default to native-order single-precision binary data.
+        RS-232 transfers remain ASCII because the instrument does not support
+        binary responses on that interface.
+        """
+        if data_format is None:
+            data_format = (
+                KeithleyDataFormat.ASCII
+                if isinstance(self.transport, SerialTransport)
+                else KeithleyDataFormat.SREAL
+            )
+        self.set_data_format(data_format)
+        if data_format is not KeithleyDataFormat.ASCII:
+            self.set_byte_order(KeithleyByteOrder.native())
         self.set_format_elements(elements)
         self.clear_buffer()
         self.set_buffer_size(size)
@@ -1326,7 +1379,7 @@ class Keithley2400(SourceMeter):
         """
         self.write(":TRAC:CLE")
 
-    def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
+    def read_buffer(self, count: int | None = None) -> tuple[float, ...] | np.ndarray:
         """Read buffered readings from the internal trace buffer.
 
         Args:
@@ -1334,8 +1387,9 @@ class Keithley2400(SourceMeter):
                 Optional number of readings to return from the start of the buffer.
 
         Returns:
-            (tuple[float, ...]):
-                Flat tuple of numeric readings.
+            (tuple[float, ...] | numpy.ndarray):
+                Flat tuple for ASCII transfers, or a zero-copy array view for
+                binary transfers.
 
         Raises:
             ConnectionError:
@@ -1353,13 +1407,19 @@ class Keithley2400(SourceMeter):
             (1.0, 2.0)
             >>> k.disconnect()
         """
-        if count is None:
-            response = self.query(":TRAC:DATA?")
-            return self._parse_csv_floats(response)
-        if count <= 0:
+        if count is not None and count <= 0:
             raise ValueError("Requested buffer count must be positive.")
-        response = self.query(f":TRAC:DATA? 1,{count}")
-        return self._parse_csv_floats(response)
+        command = ":TRAC:DATA?" if count is None else f":TRAC:DATA? 1,{count}"
+        if self._data_format is KeithleyDataFormat.ASCII:
+            return self._parse_csv_floats(self.query(command))
+        raw = self._query_raw(command)
+        value_count = None if count is None else count * len(self._format_elements)
+        return self.parse_binary_floats(
+            raw,
+            data_format=self._data_format,
+            byte_order=self._byte_order,
+            count=value_count,
+        )
 
     # ------------------------------------------------------------------
     # Capabilities
@@ -1372,7 +1432,8 @@ class Keithley2400(SourceMeter):
             (SourceMeterCapabilities):
                 Descriptor indicating that this driver supports measurement
                 function selection, source sweeps, source delay, trigger/arm
-                model configuration, and reading buffer control.
+                model configuration, reading buffer control, and configurable
+                binary transfer format and byte order.
 
         Examples:
             >>> from stoner_measurement.instruments.transport import NullTransport
@@ -1389,6 +1450,8 @@ class Keithley2400(SourceMeter):
             has_source_delay=True,
             has_trigger_model=True,
             has_buffer=True,
+            has_data_format=True,
+            has_byte_order=True,
         )
 
     # ------------------------------------------------------------------

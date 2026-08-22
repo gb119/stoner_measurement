@@ -43,7 +43,11 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
 from stoner_measurement.instruments.current_source import CurrentSource
-from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
+from stoner_measurement.instruments.keithley import (
+    Keithley2182A,
+    KeithleyByteOrder,
+    KeithleyDataFormat,
+)
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.nanovoltmeter import (
     Nanovoltmeter,
@@ -857,6 +861,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # ---- 2182A: reset and configure ----
             self._k2182a.reset()
+            self._k2182a.set_data_format(KeithleyDataFormat.SREAL)
+            self._k2182a.set_byte_order(KeithleyByteOrder.native())
 
             self._k2182a.set_digits(self._digits)
             self._k2182a.set_nplc(self._nplc)
