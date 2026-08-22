@@ -174,6 +174,15 @@ class MagnetControllerPluginMixin:
             values[f"{var}:Voltage"] = f"{var}.voltage"
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return units for the scan value and optional measured outputs."""
+        units = super().reported_value_units()
+        var = self.instance_name
+        units.update(
+            {f"{var}:Field": "T", f"{var}:Current": "A", f"{var}:Voltage": "V"}
+        )
+        return units
+
     def _magnet_settings_to_json(self) -> dict[str, object]:
         return {
             "ramp_rate": self.ramp_rate,

@@ -54,6 +54,7 @@ from stoner_measurement.plugins.trace_catalog_ui import (
     trace_channel_roles,
 )
 from stoner_measurement.qt_compat import pyqtSignal
+from stoner_measurement.ui.axis_mappings import AxisLabel
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
 
 if TYPE_CHECKING:
@@ -78,25 +79,6 @@ _PLOT_SIGNAL_BINDINGS = (
     ("plot_ensure_y_axis", "ensure_y_axis"),
     ("plot_trace_style", "set_trace_style_from_dict"),
 )
-
-
-def _format_axis_label(name: str, unit: str) -> str:
-    """Build an axis label string from a name and unit.
-
-    Args:
-        name (str):
-            Human-readable name of the axis variable (e.g. ``"Current"``).
-        unit (str):
-            Physical unit string (e.g. ``"A"``).
-
-    Returns:
-        (str):
-            ``"{name} ({unit})"`` when both are non-empty, ``"{name}"`` when
-            only the name is provided, or ``""`` when both are empty.
-    """
-    if name and unit:
-        return f"{name} ({unit})"
-    return name
 
 
 def _safe_disconnect(signal: Any, slot: Any) -> None:
@@ -187,9 +169,9 @@ class PlotTraceCommand(CommandPlugin):
             Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_with_errors`
             when the plugin is attached to an engine with a plot widget.
-        plot_axis_labels (pyqtSignal[str, str]):
+        plot_axis_labels (pyqtSignal[AxisLabel, AxisLabel]):
             Emitted by :meth:`execute` in simple mode with
-            ``(x_label, y_label)`` derived from
+            structured ``(x_label, y_label)`` quantity/unit metadata derived from
             :class:`~stoner_measurement.core.TraceData` metadata.
             Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_default_axis_labels`
@@ -246,13 +228,13 @@ class PlotTraceCommand(CommandPlugin):
     #: Signal emitted by execute() in simple mode — (title, x_array, y_array, x_err, y_err).
     plot_trace_with_errors = pyqtSignal(str, object, object, object, object)
     #: Signal emitted by execute() in simple mode — (x_label, y_label).
-    plot_axis_labels = pyqtSignal(str, str)
+    plot_axis_labels = pyqtSignal(object, object)
     #: Signal emitted by execute() before each queued trace update.
     plot_update_queued = pyqtSignal()
     #: Signal emitted by execute() to ensure x-axis exists — (axis_name, axis_label).
-    plot_ensure_x_axis = pyqtSignal(str, str)
+    plot_ensure_x_axis = pyqtSignal(str, object)
     #: Signal emitted by execute() to ensure y-axis exists — (axis_name, axis_label).
-    plot_ensure_y_axis = pyqtSignal(str, str)
+    plot_ensure_y_axis = pyqtSignal(str, object)
     #: Signal emitted by execute() — (trace_name, x_axis_name, y_axis_name).
     plot_trace_axes = pyqtSignal(str, str, str)
     #: Signal emitted by execute() to set trace style — (trace_name, style_dict).
@@ -827,11 +809,11 @@ class PlotTraceCommand(CommandPlugin):
             x_name = ""
         if y_name.strip().lower() == "y" and not y_unit:
             y_name = ""
-        x_label = _format_axis_label(x_name, x_unit)
-        y_label = _format_axis_label(y_name, y_unit)
+        x_label = AxisLabel(x_name, x_unit)
+        y_label = AxisLabel(y_name, y_unit)
         if self.transpose:
             x_label, y_label = y_label, x_label
-        if x_label or y_label:
+        if str(x_label) or str(y_label):
             self.plot_axis_labels.emit(x_label, y_label)
 
     def _build_trace_combo(self, widget: QWidget, trace_keys: list[str]) -> QComboBox:

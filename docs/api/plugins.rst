@@ -109,6 +109,10 @@ Sequence plugins
    :no-heading:
    :include-all-objects:
 
+.. automodapi:: stoner_measurement.plugins.sequence.containers
+   :no-heading:
+   :include-all-objects:
+
 Transform plugins
 -----------------
 

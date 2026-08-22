@@ -65,6 +65,8 @@ class TestPluginManager:
         assert "counter" in pm.plugins
         assert "sweep_time" in pm.plugins
         assert "save" in pm.plugins
+        assert "run_parallel" in pm.plugins
+        assert "run_sequentially" in pm.plugins
 
 
 if __name__ == "__main__":

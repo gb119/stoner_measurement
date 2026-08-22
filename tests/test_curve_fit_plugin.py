@@ -184,7 +184,8 @@ class TestParamTableWidget:
         assert table._table.horizontalHeaderItem(0).text() == "a"  # noqa: SLF001
         assert table._table.horizontalHeaderItem(1).text() == "b"  # noqa: SLF001
         assert table._table.verticalHeaderItem(0).text() == "Min"  # noqa: SLF001
-        assert table._table.verticalHeaderItem(4).text() == "Fitted"  # noqa: SLF001
+        assert table._table.verticalHeaderItem(3).text() == "Units"  # noqa: SLF001
+        assert table._table.verticalHeaderItem(5).text() == "Fitted"  # noqa: SLF001
 
     def test_updates_fitted_row_text(self, qapp):
         table = _ParamTableWidget()

@@ -63,7 +63,12 @@ from stoner_measurement.plugins.monitor import (
     MotorAngleMonitorPlugin,
     TemperatureMonitorPlugin,
 )
-from stoner_measurement.plugins.sequence import SequencePlugin, TopLevelSequence
+from stoner_measurement.plugins.sequence import (
+    RunParallelPlugin,
+    RunSequentiallyPlugin,
+    SequencePlugin,
+    TopLevelSequence,
+)
 from stoner_measurement.plugins.state import StatePlugin
 from stoner_measurement.plugins.state_control import StateControlPlugin
 from stoner_measurement.plugins.state_scan import (
@@ -97,6 +102,8 @@ __all__ = [
     "ReadDiffractometerCommand",
     "SaveCommand",
     "SetDiffractometerCommand",
+    "RunParallelPlugin",
+    "RunSequentiallyPlugin",
     "SequencePlugin",
     "StateControlPlugin",
     "StatePlugin",

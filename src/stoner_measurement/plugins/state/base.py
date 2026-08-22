@@ -627,3 +627,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             f"{var}:{self.state_name}": f"{var}.value",
             f"{var}:Index": f"{var}.index",
         }
+
+    def reported_value_units(self) -> dict[str, str]:
+        """Report the physical unit of the state value; the index is unitless."""
+        return {f"{self.instance_name}:{self.state_name}": self.units}

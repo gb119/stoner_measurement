@@ -1016,14 +1016,23 @@ class SequenceEngine(QObject):
         :meth:`update_step_plugin_catalog` so that the catalogs always reflect
         the current sequence.
         """
+        from stoner_measurement.core.value_catalog import ValueCatalogEntry
         from stoner_measurement.plugins.base_plugin import BasePlugin
+
         traces: dict[str, str] = {}
-        values: dict[str, str] = {}
+        values: dict[str, ValueCatalogEntry] = {}
         if not script:
             for plugin in self._extra_catalog_plugins:
                 if isinstance(plugin, BasePlugin):
                     traces.update(plugin.reported_traces())
-                    values.update(plugin.reported_values())
+                    plugin_values = plugin.reported_values()
+                    plugin_units = plugin.reported_value_units()
+                    values.update(
+                        {
+                            key: ValueCatalogEntry(expression, plugin_units.get(key, ""))
+                            for key, expression in plugin_values.items()
+                        }
+                    )
         self._namespace["_traces"] = traces
         self._namespace["_values"] = values
         self.traces_catalog_changed.emit(dict(traces))
@@ -1249,7 +1258,8 @@ class SequenceEngine(QObject):
 
         Returns a snapshot of the ``_values`` dict in the engine namespace.
         Each entry maps a human-readable name (``"{instance_name}:{value_name}"``)
-        to the Python expression that retrieves the corresponding scalar value from
+        to a string-compatible Python expression carrying optional physical-unit
+        metadata.  The expression retrieves the corresponding scalar value from
         the namespace.
 
         The catalog is rebuilt automatically whenever a plugin is added,

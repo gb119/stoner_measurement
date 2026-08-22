@@ -49,3 +49,7 @@ class ReadDiffractometerCommand(CommandPlugin):
 
     def reported_values(self) -> dict[str, str]:
         return {f"{self.instance_name}:Counts": f"{self.instance_name}.value"}
+
+    def reported_value_units(self) -> dict[str, str]:
+        """Identify the detector output as a count quantity."""
+        return {f"{self.instance_name}:Counts": "counts"}

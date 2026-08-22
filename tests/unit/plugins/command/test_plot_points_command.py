@@ -17,8 +17,10 @@ from qtpy.QtWidgets import (
 )
 
 import stoner_measurement.plugins.command.base as command_base
+from stoner_measurement.core import ValueCatalogEntry
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command import PlotPointsCommand
+from stoner_measurement.ui.axis_mappings import AxisLabel
 from stoner_measurement.ui.plot_widget import PlotWidget
 
 
@@ -276,7 +278,7 @@ class TestPlotPointsCommand:
             {"key": "p:y1", "label": "Series 1", "y_axis": "temp"},
         ]
 
-        ensured_axes: list[tuple[str, str]] = []
+        ensured_axes: list[tuple[str, AxisLabel]] = []
         assigned_trace_axes: list[tuple[str, str, str]] = []
         command.plot_ensure_y_axis.connect(lambda axis, label: ensured_axes.append((axis, label)))
         command.plot_trace_axes.connect(
@@ -285,8 +287,28 @@ class TestPlotPointsCommand:
 
         command.execute()
 
-        assert ensured_axes == [("left", "left"), ("temp", "temp")]
+        assert ensured_axes == [("left", AxisLabel("y0")), ("temp", AxisLabel("y1"))]
         assert assigned_trace_axes == [("Series 0", "freq", "left"), ("Series 1", "freq", "temp")]
+
+    def test_execute_passes_catalogue_units_to_axis_labels(self, qapp, engine):
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {
+            "source:Current": ValueCatalogEntry("source_current", "A"),
+            "meter:Voltage": ValueCatalogEntry("meter_voltage", "V"),
+        }
+        engine._namespace.update(source_current=0.001, meter_voltage=0.002)
+        command.x_key = "source:Current"
+        command.y_entries = [{"key": "meter:Voltage", "label": "Reading"}]
+        x_axes = []
+        y_axes = []
+        command.plot_ensure_x_axis.connect(lambda name, label: x_axes.append((name, label)))
+        command.plot_ensure_y_axis.connect(lambda name, label: y_axes.append((name, label)))
+
+        command.execute()
+
+        assert x_axes == [("bottom", AxisLabel("Current", "A"))]
+        assert y_axes == [("left", AxisLabel("Voltage", "V"))]
 
     def test_execute_skips_missing_x_key(self, qapp, engine):
         command = PlotPointsCommand()

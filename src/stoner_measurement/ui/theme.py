@@ -232,7 +232,12 @@ def apply_pyqtgraph_dark_theme(plot_item, axis_items: dict[str, object]) -> None
             label_style = {"color": foreground}
             current_label = getattr(axis, "labelText", "") or ""
             if current_label:
-                axis.setLabel(current_label, **label_style)
+                axis.setLabel(
+                    current_label,
+                    units=getattr(axis, "labelUnits", "") or "",
+                    siPrefixEnableRanges=axis.getSIPrefixEnableRanges(),
+                    **label_style,
+                )
             else:
                 axis.labelStyle = label_style
         except AttributeError:

@@ -7,7 +7,7 @@ import pytest
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QComboBox, QDialog, QHeaderView, QLineEdit
 
-from stoner_measurement.ui.axis_mappings import inverse_values, transform_values
+from stoner_measurement.ui.axis_mappings import AxisLabel, inverse_values, transform_values
 from stoner_measurement.ui.plot_widget import (
     _MAX_VISIBLE_TRACE_ROWS,
     _POINT_PICTOGRAMS,
@@ -129,6 +129,14 @@ class TestPlotWidget:
         widget = self.make_plot_widget()
         assert "left" in widget.axis_names
         assert "bottom" in widget.axis_names
+
+    def test_only_configured_default_axes_are_visible(self, qapp):
+        widget = self.make_plot_widget()
+
+        assert widget._plot_item.getAxis("left").isVisible()
+        assert widget._plot_item.getAxis("bottom").isVisible()
+        assert not widget._default_top_axis.isVisible()
+        assert not widget._default_right_axis.isVisible()
 
     def test_configure_axes_button_present(self, qapp):
         widget = self.make_plot_widget()
@@ -321,7 +329,7 @@ class TestPlotWidget:
         assert "temp" not in widget.axis_names
         assert widget._trace_axes["sig"] == ("bottom", "left")
         assert "freq" in widget.axis_names
-        assert widget._axis_items["freq"].labelText == "Frequency (Hz)"
+        assert widget._axis_items["freq"].axis_label == AxisLabel("Frequency", "Hz")
         assert widget._axis_log_scale["freq"] is True
 
     def test_axis_entries_show_blank_bounds_for_auto_axes(self, qapp):
@@ -388,8 +396,28 @@ class TestPlotWidget:
 
     def test_add_y_axis(self, qapp):
         widget = self.make_plot_widget()
+        default_right_axis = widget._default_right_axis
         widget.add_y_axis("temperature", "Temperature (K)", side="right")
+        widget.resize(800, 600)
+        widget.show()
+        qapp.processEvents()
+
         assert "temperature" in widget.axis_names
+        assert widget._default_right_axis_removed
+        assert widget._default_right_axis is None
+        assert default_right_axis.scene() is None
+        right_spine_x = widget._axis_items["temperature"].geometry().left()
+        plot_right = widget._plot_item.vb.sceneBoundingRect().right()
+        assert right_spine_x == pytest.approx(plot_right, abs=1.0)
+
+    def test_moving_axis_to_right_replaces_default_placeholder(self, qapp):
+        widget = self.make_plot_widget()
+        widget.add_y_axis("temperature", "Temperature (K)", side="left")
+
+        widget.set_axis_side("temperature", "right")
+
+        assert widget._default_right_axis_removed
+        assert widget._default_right_axis is None
 
     def test_add_y_axis_duplicate_noop(self, qapp):
         widget = self.make_plot_widget()
@@ -513,7 +541,7 @@ class TestPlotWidget:
         widget = self.make_plot_widget()
         widget.add_y_axis("temp", "Temp")
         widget.set_axis_label("temp", "Temperature (K)")
-        assert widget._axis_items["temp"].labelText == "Temperature (K)"
+        assert widget._axis_items["temp"].axis_label == AxisLabel("Temperature", "K")
 
     def test_set_axis_log_scale_updates_axis_state(self, qapp):
         widget = self.make_plot_widget()
@@ -723,20 +751,51 @@ class TestPlotWidget:
     def test_set_default_axis_labels_updates_bottom_axis(self, qapp):
         widget = self.make_plot_widget()
         widget.set_default_axis_labels("Current (A)", "")
-        label_text = widget._pg_widget.getPlotItem().getAxis("bottom").labelText
-        assert label_text == "Current (A)"
+        axis = widget._pg_widget.getPlotItem().getAxis("bottom")
+        assert axis.axis_label == AxisLabel("Current", "A")
 
     def test_set_default_axis_labels_updates_left_axis(self, qapp):
         widget = self.make_plot_widget()
         widget.set_default_axis_labels("", "Voltage (V)")
-        label_text = widget._pg_widget.getPlotItem().getAxis("left").labelText
-        assert label_text == "Voltage (V)"
+        axis = widget._pg_widget.getPlotItem().getAxis("left")
+        assert axis.axis_label == AxisLabel("Voltage", "V")
 
     def test_set_default_axis_labels_both(self, qapp):
         widget = self.make_plot_widget()
         widget.set_default_axis_labels("Current (A)", "Voltage (V)")
-        assert widget._pg_widget.getPlotItem().getAxis("bottom").labelText == "Current (A)"
-        assert widget._pg_widget.getPlotItem().getAxis("left").labelText == "Voltage (V)"
+        assert widget._pg_widget.getPlotItem().getAxis("bottom").axis_label == AxisLabel(
+            "Current", "A"
+        )
+        assert widget._pg_widget.getPlotItem().getAxis("left").axis_label == AxisLabel(
+            "Voltage", "V"
+        )
+
+    def test_axis_uses_si_prefix_on_physical_unit(self, qapp):
+        widget = self.make_plot_widget()
+        widget.set_axis_label("bottom", AxisLabel("Current", "A"))
+        axis = widget._axis_items["bottom"]
+
+        axis.setRange(0.0, 0.003)
+
+        assert axis.labelUnitPrefix == "m"
+        assert "(mA)" in axis.labelString()
+        assert "x0.001" not in axis.labelString()
+
+    def test_unitless_axis_puts_si_prefix_on_tick_labels(self, qapp):
+        widget = self.make_plot_widget()
+        widget.set_axis_label("bottom", AxisLabel("Ratio"))
+        axis = widget._axis_items["bottom"]
+        axis.setRange(0.0, 0.003)
+
+        labels = axis.tickStrings([0.0, 0.001, 0.002], axis.autoSIPrefixScale, 0.001)
+
+        assert labels == ["0", "1m", "2m"]
+        assert "x0.001" not in axis.labelString()
+
+        axis.setRange(0.0, 3000.0)
+        labels = axis.tickStrings([0.0, 1000.0, 2000.0], axis.autoSIPrefixScale, 1000.0)
+
+        assert labels == ["0", "1k", "2k"]
 
     def test_set_default_axis_labels_empty_strings_no_change(self, qapp):
         widget = self.make_plot_widget()

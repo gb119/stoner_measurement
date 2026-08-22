@@ -520,6 +520,22 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         )
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return source and measured electrical units for scalar outputs."""
+        units = super().reported_value_units()
+        prefix = self.instance_name
+        units.update(
+            {
+                f"{prefix}.source_value": self.units,
+                f"{prefix}.voltage": "V",
+                f"{prefix}.current": "A",
+                f"{prefix}.resistance": "Ω",
+                f"{prefix}.power": "W",
+                f"{prefix}.timestamp": "s",
+            }
+        )
+        return units
+
     def to_json(self) -> dict[str, Any]:
         """Serialise plugin state.
 
