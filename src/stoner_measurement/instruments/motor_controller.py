@@ -65,8 +65,8 @@ def resolve_relative_motor_move(
 ) -> MotorMovePlan:
     """Resolve a requested angle into a relative move inside ``±soft_limit``."""
     limit = abs(float(soft_limit))
-    current = _normalise_angle_to_soft_limit(current_angle, limit)
-    target = _normalise_angle_to_soft_limit(target_angle, limit)
+    current = normalise_angle_to_soft_limit(current_angle, limit)
+    target = normalise_angle_to_soft_limit(target_angle, limit)
     requested_direction = _normalise_move_direction(direction)
     resolved_direction = requested_direction
 
@@ -104,7 +104,7 @@ def _normalise_move_direction(direction: MotorMoveDirection) -> MotorMoveDirecti
     return direction
 
 
-def _normalise_angle_to_soft_limit(angle: float, soft_limit: float) -> float:
+def normalise_angle_to_soft_limit(angle: float, soft_limit: float) -> float:
     """Normalise *angle* into the ``[-soft_limit, +soft_limit]`` range."""
     if soft_limit < 180.0:
         raise ValueError(f"soft_limit must be at least 180 degrees, got {soft_limit}.")

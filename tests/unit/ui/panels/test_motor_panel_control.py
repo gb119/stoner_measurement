@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from stoner_measurement.instruments.motor_controller import MotorMoveDirection
@@ -47,6 +49,24 @@ def test_status_bar_reserves_width_for_stable_control_columns(qapp):
     status_bar = panel._status_label.parentWidget()  # noqa: SLF001
 
     assert status_bar.minimumWidth() >= 720
+
+
+def test_read_state_updates_direction_combo_from_requested_mode(qapp, monkeypatch):
+    panel = MotorControlPanel()
+    clockwise_index = panel._direction_combo.findData(MotorMoveDirection.CLOCKWISE)  # noqa: SLF001
+    panel._direction_combo.setCurrentIndex(clockwise_index)  # noqa: SLF001
+    state = SimpleNamespace(
+        target_angle=None,
+        direction_mode="shortest",
+        move_direction="clockwise",
+        velocity=None,
+        acceleration=None,
+    )
+    monkeypatch.setattr(panel, "_read_controller_state_or_warn", lambda _title: state)
+
+    panel._on_read_state()  # noqa: SLF001
+
+    assert panel._direction_combo.currentData() is MotorMoveDirection.SHORTEST  # noqa: SLF001
 
 
 if __name__ == "__main__":

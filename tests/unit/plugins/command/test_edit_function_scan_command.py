@@ -10,7 +10,12 @@ from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command import EditFunctionScanCommand
 from stoner_measurement.plugins.state_scan import CounterPlugin
 from stoner_measurement.plugins.trace import DummyPlugin
-from stoner_measurement.scan import FunctionScanGenerator, SteppedScanGenerator, WaveformType
+from stoner_measurement.scan import (
+    FunctionScanGenerator,
+    FunctionScanWidget,
+    SteppedScanGenerator,
+    WaveformType,
+)
 
 
 def _attach_sequence(engine, command):
@@ -82,6 +87,26 @@ def test_known_waveform_label_does_not_need_quoting(qapp, engine):
     command.execute()
 
     assert function_scan.scan_generator.waveform is WaveformType.SAWTOOTH
+
+
+def test_execute_refreshes_visible_function_scan_controls(qapp, engine, managed_qt_widget):
+    command = EditFunctionScanCommand()
+    function_scan, _ = _attach_sequence(engine, command)
+    generator = function_scan.scan_generator
+    assert isinstance(generator, FunctionScanGenerator)
+    widget = managed_qt_widget(FunctionScanWidget(generator))
+    command.target_scan = "field_scan"
+    command.amplitude_expr = "3.5"
+    command.offset_expr = "0.25"
+    command.points_expr = "24"
+    command.waveform_expr = "Triangle"
+
+    command.execute()
+
+    assert widget._amplitude_spin.value() == pytest.approx(3.5)  # noqa: SLF001
+    assert widget._offset_spin.value() == pytest.approx(0.25)  # noqa: SLF001
+    assert widget._points_spin.value() == 24  # noqa: SLF001
+    assert widget._waveform_combo.currentData() is WaveformType.TRIANGLE  # noqa: SLF001
 
 
 def test_replacements_are_atomic_when_an_expression_fails(qapp, engine):

@@ -53,6 +53,7 @@ class MotorEngineState:
     displayed_angle: float | None = None
     revolutions: int = 0
     move_direction: str | None = None
+    direction_mode: str | None = None
 
 
 @dataclass

@@ -538,7 +538,7 @@ class MotorControlPanel(QWidget):
             self._velocity_spin.setValue(self._engine._velocity)  # pylint: disable=protected-access
         if self._engine._acceleration is not None:  # pylint: disable=protected-access
             self._acceleration_spin.setValue(self._engine._acceleration)  # pylint: disable=protected-access
-        direction = self._engine._move_direction  # pylint: disable=protected-access
+        direction = self._engine._direction_mode  # pylint: disable=protected-access
         if direction is MotorMoveDirection.TOWARDS_ZERO:
             direction = MotorMoveDirection.SHORTEST
         index = self._direction_combo.findData(direction)
@@ -621,9 +621,9 @@ class MotorControlPanel(QWidget):
             self._on_state_updated(state)
             if state.target_angle is not None:
                 self._target_angle_spin.setValue(state.target_angle)
-            if state.move_direction is not None:
+            if state.direction_mode is not None:
                 try:
-                    direction = MotorMoveDirection(state.move_direction)
+                    direction = MotorMoveDirection(state.direction_mode)
                 except ValueError:
                     direction = MotorMoveDirection.CLOCKWISE
                 index = self._direction_combo.findData(direction)
@@ -679,9 +679,9 @@ class MotorControlPanel(QWidget):
             return
         if state.target_angle is not None:
             self._target_angle_spin.setValue(state.target_angle)
-        if state.move_direction is not None:
+        if state.direction_mode is not None:
             try:
-                direction = MotorMoveDirection(state.move_direction)
+                direction = MotorMoveDirection(state.direction_mode)
             except ValueError:
                 direction = MotorMoveDirection.CLOCKWISE
             index = self._direction_combo.findData(direction)
@@ -712,7 +712,7 @@ class MotorControlPanel(QWidget):
             self._engine.preferred_address = address
             self._engine._velocity = self._velocity_spin.value()  # pylint: disable=protected-access
             self._engine._acceleration = self._acceleration_spin.value()  # pylint: disable=protected-access
-            self._engine._move_direction = self._direction_combo.currentData()  # pylint: disable=protected-access
+            self._engine._direction_mode = self._direction_combo.currentData()  # pylint: disable=protected-access
             path = self._engine.save_configuration()
             self._refresh_target_angle_bounds()
         except Exception as exc:

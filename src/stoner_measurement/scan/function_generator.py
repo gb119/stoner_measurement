@@ -15,7 +15,7 @@ import logging
 import numpy as np
 import pyqtgraph as pg
 from qtpy import QtGui
-from qtpy.QtCore import QObject, QSettings, QSize, Qt
+from qtpy.QtCore import QObject, QSettings, QSignalBlocker, QSize, Qt
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -782,7 +782,7 @@ class FunctionScanWidget(QWidget):
         self._exponent_spin.valueChanged.connect(self._on_exponent_changed)
         self._points_spin.valueChanged.connect(self._on_points_changed)
         self._periods_spin.valueChanged.connect(self._on_periods_changed)
-        self._generator.values_changed.connect(self._refresh_plot)
+        self._generator.values_changed.connect(self.refresh)
         self._generator.current_point_changed.connect(self._on_current_point_changed)
         self._generator.units_changed.connect(self._update_units)
         self._update_units(self._generator.units)
@@ -829,6 +829,16 @@ class FunctionScanWidget(QWidget):
 
     def refresh(self) -> None:
         """Reload widget state from the bound generator."""
+        controls = (
+            self._waveform_combo,
+            self._amplitude_spin,
+            self._offset_spin,
+            self._phase_spin,
+            self._exponent_spin,
+            self._points_spin,
+            self._periods_spin,
+        )
+        blockers = [QSignalBlocker(control) for control in controls]
         self._waveform_combo.setCurrentIndex(list(WaveformType).index(self._generator.waveform))
         self._amplitude_spin.setValue(self._generator.amplitude)
         self._offset_spin.setValue(self._generator.offset)
@@ -839,6 +849,7 @@ class FunctionScanWidget(QWidget):
         self._update_units(self._generator.units)
         self._refresh_plot()
         self.update()
+        del blockers
 
     def _clear_current_marker(self) -> None:
         """Clear the current-point marker from the preview."""

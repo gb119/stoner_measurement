@@ -49,6 +49,7 @@ from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.trace_catalog_ui import (
     TraceChannelComboBox,
     bind_trace_catalog_updates,
+    channel_name_for_expression,
     refresh_trace_source_widgets,
     trace_channel_items,
     trace_channel_roles,
@@ -434,8 +435,10 @@ class PlotTraceCommand(CommandPlugin):
                 return
             x_axis = self.x_axis_name or _DEFAULT_X_AXIS
             y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
-            self.plot_ensure_x_axis.emit(x_axis, x_axis)
-            self.plot_ensure_y_axis.emit(y_axis, y_axis)
+            x_label = self._channel_label_for_expression(self.x_expr)
+            y_label = self._channel_label_for_expression(self.y_expr)
+            self.plot_ensure_x_axis.emit(x_axis, x_label or x_axis)
+            self.plot_ensure_y_axis.emit(y_axis, y_label or y_axis)
             self._queue_plot_update_request(self.plot_update_queued)
             self.plot_trace.emit(
                 title,
@@ -519,7 +522,9 @@ class PlotTraceCommand(CommandPlugin):
                     y_err = trace_data.df[e_cols[i]].to_numpy(dtype=float) if i < len(e_cols) else None
                     self._emit_single_trace(title, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
 
-        self._emit_trace_axis_labels(trace_data, label_y_key)
+        x_label, y_label = self._emit_trace_axis_labels(trace_data, label_y_key)
+        self.plot_ensure_x_axis.emit(x_axis, x_label or x_axis)
+        self.plot_ensure_y_axis.emit(y_axis, y_label or y_axis)
 
     def _build_style_dict(self) -> dict:
         """Build a style dictionary from the current format attributes.
@@ -796,7 +801,23 @@ class PlotTraceCommand(CommandPlugin):
             return current_colour
         return selected.name(QColor.NameFormat.HexRgb)
 
-    def _emit_trace_axis_labels(self, trace_data: Any, y_key: str | None = None) -> None:
+    def _channel_label_for_expression(self, expression: str) -> str:
+        """Return the data-selection label for a configured channel expression."""
+        traces: dict[str, str] = self.engine_namespace.get("_traces", {})
+        items = trace_channel_items(self, traces)
+        roles = trace_channel_roles(self, traces)
+        channel_name = channel_name_for_expression(items, roles, expression)
+        if channel_name is None:
+            return ""
+        for trace_key in sorted(traces, key=len, reverse=True):
+            prefix = f"{trace_key}:"
+            if channel_name.startswith(prefix):
+                return channel_name[len(prefix) :]
+        return channel_name
+
+    def _emit_trace_axis_labels(
+        self, trace_data: Any, y_key: str | None = None
+    ) -> tuple[str, str]:
         """Emit default axis labels resolved from trace metadata.
 
         Args:
@@ -833,6 +854,7 @@ class PlotTraceCommand(CommandPlugin):
             x_label, y_label = y_label, x_label
         if x_label or y_label:
             self.plot_axis_labels.emit(x_label, y_label)
+        return x_label, y_label
 
     def _build_trace_combo(self, widget: QWidget, trace_keys: list[str]) -> QComboBox:
         combo = QComboBox(widget)

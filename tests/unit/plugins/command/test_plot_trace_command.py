@@ -503,21 +503,57 @@ class TestPlotTraceCommand:
         assert len(labels) == 1
         assert labels[0] == ("Current (A)", "Voltage (V)")
 
-    def test_plot_axis_labels_not_emitted_in_advanced_mode(self, qapp, engine):
-        """execute() does not emit plot_axis_labels in advanced mode."""
+    def test_advanced_mode_uses_selected_channel_names_and_units_for_axes(self, qapp, engine):
+        """Advanced selections use the same labels displayed by the channel selectors."""
+        from stoner_measurement.core import TraceData
+
         cmd = PlotTraceCommand()
         engine.add_plugin("plot_trace", cmd)
-        engine._namespace["px"] = np.array([1.0])
-        engine._namespace["py"] = np.array([2.0])
+        engine._namespace["td"] = TraceData.from_xy(
+            np.array([1.0]),
+            np.array([2.0]),
+            names={"x": "Magnetic Field", "y": "Resistance"},
+            units={"x": "T", "y": "ohm"},
+        )
+        engine._namespace["_traces"] = {"field_scan:data": "td"}
         cmd.advanced_mode = True
-        cmd.x_expr = "px"
-        cmd.y_expr = "py"
+        cmd.x_expr = "td.df['x'].to_numpy()"
+        cmd.y_expr = "td.df['y'].to_numpy()"
 
-        labels: list = []
-        cmd.plot_axis_labels.connect(lambda x, y: labels.append((x, y)))
+        ensured_x: list[tuple[str, str]] = []
+        ensured_y: list[tuple[str, str]] = []
+        cmd.plot_ensure_x_axis.connect(lambda axis, label: ensured_x.append((axis, label)))
+        cmd.plot_ensure_y_axis.connect(lambda axis, label: ensured_y.append((axis, label)))
         cmd.execute()
 
-        assert labels == []
+        assert ensured_x[-1] == ("bottom", "Magnetic Field (T)")
+        assert ensured_y[-1] == ("left", "Resistance (ohm)")
+
+    def test_simple_mode_applies_channel_labels_to_configured_axes(self, qapp, engine):
+        """Default simple-mode channels label custom axes as well as default axes."""
+        from stoner_measurement.core import TraceData
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = TraceData.from_xy(
+            np.array([1.0]),
+            np.array([2.0]),
+            names={"x": "Temperature", "y": "Voltage"},
+            units={"x": "K", "y": "V"},
+        )
+        engine._namespace["_traces"] = {"temperature_scan:data": "td"}
+        cmd.trace_key = "temperature_scan:data"
+        cmd.x_axis_name = "temperature_axis"
+        cmd.y_axis_name = "voltage_axis"
+        ensured_x: list[tuple[str, str]] = []
+        ensured_y: list[tuple[str, str]] = []
+        cmd.plot_ensure_x_axis.connect(lambda axis, label: ensured_x.append((axis, label)))
+        cmd.plot_ensure_y_axis.connect(lambda axis, label: ensured_y.append((axis, label)))
+
+        cmd.execute()
+
+        assert ensured_x[-1] == ("temperature_axis", "Temperature (K)")
+        assert ensured_y[-1] == ("voltage_axis", "Voltage (V)")
 
     def test_plot_axis_labels_not_emitted_when_names_empty(self, qapp, engine):
         """execute() does not emit plot_axis_labels when TraceData has no names."""

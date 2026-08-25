@@ -19,6 +19,7 @@ from stoner_measurement.instruments.addressing import (
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.motor_controller import (
     MotorMoveDirection,
+    normalise_angle_to_soft_limit,
     resolve_relative_motor_move,
     wrap_angle_360,
 )
@@ -84,6 +85,7 @@ class MotorControllerEngine(QObject):
         self._target_angle: float | None = None
         self._velocity: float | None = None
         self._move_direction: MotorMoveDirection = MotorMoveDirection.CLOCKWISE
+        self._direction_mode: MotorMoveDirection = MotorMoveDirection.CLOCKWISE
         self._display_target_angle: float | None = None
         self._acceleration: float | None = None
         self._latest_state: MotorEngineState = MotorEngineState(engine_status=self._status)
@@ -136,11 +138,11 @@ class MotorControllerEngine(QObject):
             acceleration = motion.get("acceleration_deg_s2")
             if isinstance(acceleration, (int, float)):
                 self._acceleration = float(acceleration)
-            direction_name = str(motion.get("direction", self._move_direction.value))
+            direction_name = str(motion.get("direction", self._direction_mode.value))
             try:
-                self._move_direction = MotorMoveDirection(direction_name)
-                if self._move_direction is MotorMoveDirection.TOWARDS_ZERO:
-                    self._move_direction = MotorMoveDirection.SHORTEST
+                self._direction_mode = MotorMoveDirection(direction_name)
+                if self._direction_mode is MotorMoveDirection.TOWARDS_ZERO:
+                    self._direction_mode = MotorMoveDirection.SHORTEST
             except ValueError:
                 logger.warning("Unknown saved motor move direction %r; keeping default.", direction_name)
 
@@ -307,6 +309,7 @@ class MotorControllerEngine(QObject):
                 target_angle=self._target_angle,
                 displayed_angle=wrap_angle_360(self._target_angle) if self._target_angle is not None else None,
                 move_direction=self._move_direction.value,
+                direction_mode=self._direction_mode.value,
                 velocity=self._velocity,
                 acceleration=self._acceleration,
                 engine_status=self._status,
@@ -377,7 +380,7 @@ class MotorControllerEngine(QObject):
             "motion": {
                 "velocity_deg_s": self._velocity,
                 "acceleration_deg_s2": self._acceleration,
-                "direction": self._move_direction.value,
+                "direction": self._direction_mode.value,
             },
             "limits": {
                 "soft_limit_deg": self._soft_limit,
@@ -441,6 +444,11 @@ class MotorControllerEngine(QObject):
                 self._driver.move_relative(plan.relative_angle, direction=plan.direction)
                 self._target_angle = plan.target_angle
                 self._display_target_angle = wrap_angle_360(plan.target_angle)
+                self._direction_mode = (
+                    MotorMoveDirection.SHORTEST
+                    if direction is MotorMoveDirection.TOWARDS_ZERO
+                    else direction
+                )
                 self._move_direction = plan.direction
                 self._mark_target_pending()
             except Exception:
@@ -477,6 +485,11 @@ class MotorControllerEngine(QObject):
                 self._driver.move_home(direction=plan.direction)
                 self._target_angle = 0.0
                 self._display_target_angle = 0.0
+                self._direction_mode = (
+                    MotorMoveDirection.SHORTEST
+                    if direction is MotorMoveDirection.TOWARDS_ZERO
+                    else direction
+                )
                 self._move_direction = plan.direction
                 self._mark_target_pending()
             except Exception as exc:
@@ -540,6 +553,7 @@ class MotorControllerEngine(QObject):
             target_angle=self._target_angle,
             displayed_angle=wrap_angle_360(self._target_angle) if self._target_angle is not None else None,
             move_direction=self._move_direction.value,
+            direction_mode=self._direction_mode.value,
             velocity=self._velocity,
             acceleration=self._acceleration,
             at_target=self._is_at_target,
@@ -570,6 +584,7 @@ class MotorControllerEngine(QObject):
                 target_angle=self._target_angle,
                 displayed_angle=wrap_angle_360(self._target_angle) if self._target_angle is not None else None,
                 move_direction=self._move_direction.value,
+                direction_mode=self._direction_mode.value,
                 velocity=self._velocity,
                 acceleration=self._acceleration,
                 engine_status=self._status,
@@ -599,14 +614,19 @@ class MotorControllerEngine(QObject):
         status = driver.status
         now = datetime.now(tz=UTC)
 
-        angle_val = float(status.current_angle)
+        raw_angle = float(status.current_angle)
+        angle_val = normalise_angle_to_soft_limit(raw_angle, self._soft_limit)
         logger.debug(f"Read {angle_val=}")
         displayed_angle = wrap_angle_360(angle_val)
         logger.debug(f"Read {displayed_angle=}")
         self._history.append((now, angle_val))
         angular_rate = _compute_rate(self._history)
 
-        target_angle = status.target_angle if status.target_angle is not None else self._target_angle
+        target_angle = (
+            normalise_angle_to_soft_limit(status.target_angle, self._soft_limit)
+            if status.target_angle is not None
+            else self._target_angle
+        )
         logger.debug(f"Read {target_angle=}")
         displayed_target = (
             wrap_angle_360(target_angle)
@@ -624,7 +644,7 @@ class MotorControllerEngine(QObject):
             displayed_angle=displayed_angle,
             angular_rate=angular_rate,
             at_target=self._is_at_target,
-            revolutions=int(angle_val // 360.0),
+            revolutions=int(raw_angle // 360.0),
             target_revolutions=int(target_angle // 360.0) if target_angle is not None else None,
             move_direction=self._move_direction.value,
         )
@@ -638,8 +658,9 @@ class MotorControllerEngine(QObject):
             at_target=self._is_at_target,
             stable=self._stable,
             engine_status=MotorEngineStatus.POLLING,
-            revolutions=int(angle_val // 360.0),
+            revolutions=int(raw_angle // 360.0),
             move_direction=self._move_direction.value,
+            direction_mode=self._direction_mode.value,
         )
 
     def _evaluate_stability(
