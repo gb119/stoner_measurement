@@ -1,81 +1,91 @@
-Overview
-The 7265 is a DSP dual‑phase lock‑in amplifier with a richer, more modern feature set than the SR830—wider frequency range, more flexible reference handling, deeper buffering, and built‑in experiments. It “uses the latest digital signal processing (DSP) technology to extend the operating capabilities of the lock-in amplifier to provide the researcher with a very versatile unit suitable both for measurement and control of experiments.” 
+# Signal Recovery 7265 programming guide
+
+The 7265 is a DSP dual‑phase lock‑in amplifier with a richer, more modern feature set than the SR830—wider frequency
+range, more flexible reference handling, deeper buffering, and built‑in experiments. It “uses the latest digital signal
+processing (DSP) technology to extend the operating capabilities of the lock-in amplifier to provide the researcher
+with a very versatile unit suitable both for measurement and control of experiments.”
 
 Your LLM coding agent should treat the 7265 as:
 
-A stateful instrument with multiple operating modes (signal recovery, vector voltmeter, dual reference, harmonic analysis).
+A stateful instrument with multiple operating modes (signal recovery, vector voltmeter, dual reference, harmonic
+analysis).
 
 A command/response device over GPIB or RS232, with subtle protocol differences from the SR830.
 
 A data source and controller with ADCs, DACs, curve buffers, and built‑in sweeps.
 
-The attached application note explicitly shows that “the majority of user-developed software programs written to operate the SR830 lock-in amplifier are easily modified to use the SIGNAL RECOVERY models 7225 and 7265 Digital Signal Processing (DSP) instruments instead.” 
+The attached application note explicitly shows that “the majority of user-developed software programs written to
+operate the SR830 lock-in amplifier are easily modified to use the SIGNAL RECOVERY models 7225 and 7265 Digital Signal
+Processing (DSP) instruments instead.”
 
 Core capabilities of the 7265 (for the agent’s mental model)
 Measurement & signal processing
 
-Frequency range: 
+Frequency range:
 1
- mHz
+ mHz
 →
 250
- kHz
- internal reference; reference frequency may differ from oscillator frequency. 
+ kHz
+ internal reference; reference frequency may differ from oscillator frequency.
 
 Dual‑phase lock‑in: X, Y, R, θ, noise; vector voltmeter mode.
 
-Time constants: 
+Time constants:
 10
- 
+
 𝜇
 s
 →
 100
- ks
- in a 1–2–5–10 sequence via TC n. 
+ ks
+ in a 1–2–5–10 sequence via TC n.
 
-Filter slopes: 6, 12, 18, 24 dB/oct via SLOPE n. 
+Filter slopes: 6, 12, 18, 24 dB/oct via SLOPE n.
 
-Line‑frequency notch: LF n1 n2 for F, 2F, F&2F at 50/60 Hz. 
+Line‑frequency notch: LF n1 n2 for F, 2F, F&2F at 50/60 Hz.
 
 Reference handling
 
-Source selection: IE n (internal, external TTL, external analog) vs SR830 FMOD i. 
+Source selection: IE n (internal, external TTL, external analog) vs SR830 FMOD i.
 
-Frequency: OF. n (oscillator) and FRQ. (actual reference). 
+Frequency: OF. n (oscillator) and FRQ. (actual reference).
 
-Phase & harmonic: REFP. (phase in degrees), REFN n (harmonic up to 65,535). 
+Phase & harmonic: REFP. (phase in degrees), REFN n (harmonic up to 65,535).
 
-Advanced modes: Dual reference, dual harmonic, Virtual Reference™ (no physical reference), spectral display. 
+Advanced modes: Dual reference, dual harmonic, Virtual Reference™ (no physical reference), spectral display.
 
 Inputs & outputs
 
-Input modes: IMODE (A, A–B, current high‑bandwidth, current low‑noise) plus VMODE for voltage/current selection, mapping SR830 ISRC. 
+Input modes: IMODE (A, A–B, current high‑bandwidth, current low‑noise) plus VMODE for voltage/current selection,
+mapping SR830 ISRC.
 
-Coupling & grounding: CP (AC/DC), FLOAT (float/ground shell). 
+Coupling & grounding: CP (AC/DC), FLOAT (float/ground shell).
 
-Sensitivity: SEN n with mapping rules from SR830 SENS i depending on input mode. 
+Sensitivity: SEN n with mapping rules from SR830 SENS i depending on input mode.
 
-Oscillator amplitude: OA. in V rms, extended down to 
+Oscillator amplitude: OA. in V rms, extended down to
 1
- 
+
 𝜇
 V
-. 
+.
 
-Analog outputs: CH 1 n, CH 2 n for X%, Y%, etc; X., Y., MAG., PHA. for numeric readback. 
+Analog outputs: CH 1 n, CH 2 n for X%, Y%, etc; X., Y., MAG., PHA. for numeric readback.
 
 Auxiliary I/O & buffers
 
-DACs: DAC. n1 n2 (four outputs, 1 mV resolution). 
+DACs: DAC. n1 n2 (four outputs, 1 mV resolution).
 
-ADCs: ADC. n (auxiliary voltages), plus transient recorder mode at up to 40 kSa/s. 
+ADCs: ADC. n (auxiliary voltages), plus transient recorder mode at up to 40 kSa/s.
 
-Curve buffers: TD, TDC, TDT, DC. n, M, STR n for one‑shot, looping, triggered acquisition and storage rate control. 
+Curve buffers: TD, TDC, TDT, DC. n, M, STR n for one‑shot, looping, triggered acquisition and storage rate control.
 
-Built‑in experiments: frequency response sweeps, spectral display, transient recorder, harmonic analysis. 
+Built‑in experiments: frequency response sweeps, spectral display, transient recorder, harmonic analysis.
 
-The manual emphasizes that “changing to the SIGNAL RECOVERY units allows the user to take advantage, maybe at a later date, of the richer feature set of these instruments, including such items as the extended frequency range, dual reference and harmonic modes, the transient recorder facility and the more powerful output data curve buffer.” 
+The manual emphasizes that “changing to the SIGNAL RECOVERY units allows the user to take advantage, maybe at a later
+date, of the richer feature set of these instruments, including such items as the extended frequency range, dual
+reference and harmonic modes, the transient recorder facility and the more powerful output data curve buffer.”
 
 Interface & protocol: 7265 vs SR830
 GPIB
@@ -83,13 +93,14 @@ No OUTX on 7265:
 
 SR830: OUTX i selects which interface receives responses.
 
-7265: always responds on the interface that received the command—your agent must not send OUTX. 
+7265: always responds on the interface that received the command—your agent must not send OUTX.
 
 Status byte differences:
 
 SR830 serial poll bits: command in progress, data available, SRQ, etc.
 
-7265 serial poll bits: bit 0 = command complete, bit 7 = data available and SRQ; other bits indicate invalid command, parameter error, reference unlock, overload, new ADC values. 
+7265 serial poll bits: bit 0 = command complete, bit 7 = data available and SRQ; other bits indicate invalid command,
+parameter error, reference unlock, overload, new ADC values.
 
 Your agent should always:
 
@@ -103,7 +114,7 @@ Check error bits (invalid command, parameter error, overload, reference unlock) 
 
 Terminators:
 
-7265 can use CR, CR/LF, or GPIB EOI as terminators; SR830 only CR or CR/LF. 
+7265 can use CR, CR/LF, or GPIB EOI as terminators; SR830 only CR or CR/LF.
 
 Agent should configure the driver to match the existing lab convention (typically CR/LF).
 
@@ -112,13 +123,13 @@ Connector & role:
 
 SR830: 25‑pin DCE.
 
-7265: 9‑pin DTE; different cable wiring. 
+7265: 9‑pin DTE; different cable wiring.
 
 Handshake model:
 
 SR830: CTS/DTR hardware or DRQ software handshaking.
 
-7265: character‑by‑character echo handshake—send one character, wait for echo, then send the next. 
+7265: character‑by‑character echo handshake—send one character, wait for echo, then send the next.
 
 Your agent must assume that any RS232 driver for the 7265 already implements this; if not, it must generate code that:
 
@@ -132,7 +143,7 @@ Terminators & prompts:
 
 Input terminator: CR or CR/LF.
 
-Output terminator: CR/LF plus a prompt character: * (OK) or ? (error). 
+Output terminator: CR/LF plus a prompt character: * (OK) or ? (error).
 
 After each response, the agent should:
 
@@ -141,13 +152,13 @@ Strip terminators and prompt.
 If prompt is ?, issue ST and N to diagnose the error and propagate a meaningful exception or log entry.
 
 Multiple commands & delimiters
-Command chaining: both instruments accept multiple commands separated by ; on one line. 
+Command chaining: both instruments accept multiple commands separated by ; on one line.
 
 Response delimiters:
 
 SR830: comma‑separated.
 
-7265: default comma, but user can change to any printable ASCII character. 
+7265: default comma, but user can change to any printable ASCII character.
 
 Agent should not hard‑code commas; instead:
 
@@ -159,32 +170,34 @@ Command model & SR830 mapping (what the agent must know)
 Query semantics
 SR830: CMD? for queries; parameters separated by commas.
 
-7265: omit parameters to query; no commas between parameters. 
+7265: omit parameters to query; no commas between parameters.
 
 For example:
 
 SR830: FREQ? → reference frequency.
 
-7265: FRQ. → reference frequency; OF. sets oscillator frequency. 
+7265: FRQ. → reference frequency; OF. sets oscillator frequency.
 
 Your agent should:
 
 Treat SR830‑style CMD? as conceptual, not literal, when generating 7265 code.
 
-Use the mapping table from the application note as a reference for translation. 
+Use the mapping table from the application note as a reference for translation.
 
 Key mappings (illustrative, not exhaustive)
 Identity & reset
 
-SR830 *IDN? → 7265 ID (returns "7265").
+SR830 \\*IDN? → 7265 ID (returns "7265").
 
-SR830 *RST → 7265 ADF 1 (reset to defaults, but communication settings unchanged). 
+SR830 \\*RST → 7265 ADF 1 (reset to defaults, but communication settings unchanged).
 
 Status & errors
 
-SR830 *STB? → 7265 ST.
+SR830 \\*STB? → 7265 ST.
 
-SR830 *ESR?, *ERRS?, *LIAS? → 7265 ST, N, M (no direct equivalents; information is spread across status and overload bytes). 
+SR830 \\*ESR?, \\*ERRS?, \\*LIAS? → 7265 ST, N, M (no direct equivalents; information is spread across status and
+overload
+bytes).
 
 Auto functions
 
@@ -192,7 +205,7 @@ AGAN → ASEN (auto sensitivity/gain).
 
 APHS → AQN (auto phase).
 
-ARSV → AUTOMATIC 1 (automatic AC gain). 
+ARSV → AUTOMATIC 1 (automatic AC gain).
 
 Input configuration
 
@@ -200,13 +213,13 @@ ICPL i → CP n (AC/DC).
 
 IGND i → FLOAT n (float/ground).
 
-ISRC variants → IMODE + VMODE. 
+ISRC variants → IMODE + VMODE.
 
 Outputs & scaling
 
 OUTP? 1/2/3/4 → X., Y., MAG., PHA..
 
-OEXP (offset/expand) → XOF, YOF, EX. 
+OEXP (offset/expand) → XOF, YOF, EX.
 
 Buffers & acquisition
 
@@ -214,9 +227,10 @@ STRT, SEND 0;STRT, SEND 1;STRT, TSTR 1;STRT → TD, TDC, TDT 0.
 
 TRCA? → DC. n (curve data).
 
-SPTS? → M (four values; points stored is the fourth). 
+SPTS? → M (four values; points stored is the fourth).
 
-Your agent should never assume that an SR830 command exists on the 7265; it must always translate via the mapping or use native 7265 commands.
+Your agent should never assume that an SR830 command exists on the 7265; it must always translate via the mapping or
+use native 7265 commands.
 
 Integration patterns for stoner_measurement
 Even without direct access to the repo, we can assume a typical Python measurement framework with:
@@ -227,7 +241,8 @@ SCPI‑like command methods.
 
 Asynchronous or synchronous acquisition loops.
 
-1. Driver abstraction
+## 1. Driver abstraction
+
 Your agent should generate a driver class along these lines:
 
 Core responsibilities:
@@ -238,15 +253,18 @@ Command send/receive: low‑level write, read, serial_poll primitives.
 
 Status handling: ST, N, M parsing; raising structured exceptions.
 
-High‑level methods: set_reference_source, set_frequency, set_phase, set_sensitivity, set_time_constant, read_XY, read_Rtheta, start_curve, read_curve, configure_transient_recorder, etc.
+High‑level methods: set_reference_source, set_frequency, set_phase, set_sensitivity, set_time_constant, read_XY,
+read_Rtheta, start_curve, read_curve, configure_transient_recorder, etc.
 
 Design choices for the agent:
 
 Implement thin wrappers around the 7265 command set, using the mapping table as a guide.
 
-Keep SR830 compatibility by providing a shim layer that exposes SR830‑style method names but internally calls 7265 commands.
+Keep SR830 compatibility by providing a shim layer that exposes SR830‑style method names but internally calls 7265
+commands.
 
-2. Capability discovery & configuration
+## 2. Capability discovery & configuration
+
 The agent should:
 
 Provide methods to query current state using 7265 semantics (no parameters → query).
@@ -255,10 +273,12 @@ Implement mode‑safe configuration:
 
 Ensure input mode, coupling, grounding, sensitivity, time constant, and reference are set coherently.
 
-For advanced modes (dual reference, harmonic, spectral), expose explicit configuration methods rather than hidden flags.
+For advanced modes (dual reference, harmonic, spectral), expose explicit configuration methods rather than hidden
+flags.
 
-3. Timing & acquisition logic
-The application note recommends a “rule of thumb” of five time constants before recording a new value at 12 dB/octave. 
+## 3. Timing & acquisition logic
+
+The application note recommends a “rule of thumb” of five time constants before recording a new value at 12 dB/octave.
 
 Your agent should:
 
@@ -266,7 +286,7 @@ Encapsulate this in helper methods, e.g. wait_for_settle() that:
 
 Reads current time constant.
 
-Computes 
+Computes
 5
 ×
 𝜏
@@ -284,7 +304,8 @@ Poll status until acquisition completes or buffer fills.
 
 Read data via DC. n and parse into arrays compatible with stoner_measurement.
 
-4. Error‑aware coding patterns
+## 4. Error‑aware coding patterns
+
 The 7265 exposes rich error information via status and overload bytes. Your agent should:
 
 After each command:
@@ -316,17 +337,22 @@ Key differences (must be handled consciously):
 
 Interface selection: no OUTX; 7265 always responds on the command interface.
 
-Status model: different bit allocations; richer error reporting; agent must use serial poll as part of every write/read routine. 
+Status model: different bit allocations; richer error reporting; agent must use serial poll as part of every write/read
+routine.
 
-RS232 handshake: character‑echo protocol and prompt characters; SR830‑style bulk writes will fail. 
+RS232 handshake: character‑echo protocol and prompt characters; SR830‑style bulk writes will fail.
 
-Query syntax: omit parameters instead of CMD?; no commas between parameters. 
+Query syntax: omit parameters instead of CMD?; no commas between parameters.
 
-Extended capabilities: dual reference, dual harmonic, Virtual Reference, spectral display, transient recorder, more powerful curve buffers. 
+Extended capabilities: dual reference, dual harmonic, Virtual Reference, spectral display, transient recorder, more
+powerful curve buffers.
 
-Programming Guide for an LLM Coding Agent
+## Programming guide for an LLM coding agent
+
 Target: stoner_measurement Instrument Driver for the Signal Recovery 7265 DSP Lock‑in Amplifier
-1. Mental Model: How the 7265 Works
+
+## 1. Mental Model: How the 7265 Works
+
 The 7265 is a stateful DSP lock‑in with:
 
 Dual‑phase detection (X, Y, R, θ)
@@ -359,26 +385,31 @@ Acquisition/buffer state
 
 Every command modifies or queries one part of this state.
 
-2. Interface Differences: 7265 vs SR830 (Critical for Code Generation)
-2.1 No OUTX Command
+## 2. Interface Differences: 7265 vs SR830 (Critical for Code Generation)
+
+### 2.1 No OUTX Command
+
 SR830: OUTX i selects GPIB/RS232 output port.
-7265: Always responds on the same interface that received the command.  
+7265: Always responds on the same interface that received the command.
 → The agent must never generate OUTX.
 
-2.2 Query Syntax
-SR830: CMD?  
-7265: CMD. with no parameters  
+### 2.2 Query Syntax
+
+SR830: CMD?
+7265: CMD. with no parameters
 Example:
 
 SR830: FREQ?
 
 7265: FRQ.
 
-2.3 Parameter Separation
+### 2.3 Parameter Separation
+
 SR830: comma‑separated parameters
 7265: parameters separated by spaces
 
-2.4 Status Byte
+### 2.4 Status Byte
+
 The 7265 uses different bit assignments:
 
 Bit 0 → command complete
@@ -389,7 +420,8 @@ Other bits → invalid command, parameter error, reference unlock, overload
 
 The agent must always serial‑poll after every command.
 
-2.5 RS232 Handshake
+### 2.5 RS232 Handshake
+
 7265 uses character‑echo handshake:
 
 Send one character
@@ -400,53 +432,62 @@ Continue
 
 Also: responses end with CR/LF + prompt (* = OK, ? = error).
 
-2.6 Response Delimiter
+### 2.6 Response Delimiter
+
 7265 allows any printable ASCII as delimiter.
 Agent must not hard‑code commas.
 
-3. Command Set Summary (LLM‑Friendly)
-3.1 Reference & Oscillator
-Function	SR830	7265
-Reference source	FMOD i	IE n
-Oscillator frequency	FREQ f	OF. n
-Reference frequency	FREQ?	FRQ.
-Harmonic	HARM i	REFN n
-Phase	PHAS x	REFP. n
+## 3. Command Set Summary (LLM‑Friendly)
 
+### 3.1 Reference & Oscillator
 
-3.2 Input Configuration
-Function	SR830	7265
-Input mode	ISRC i	IMODE, VMODE
-Coupling	ICPL i	CP n
-Grounding	IGND i	FLOAT n
+| Function             | SR830  | 7265    |
+| -------------------- | ------ | ------- |
+| Reference source     | FMOD i | IE n    |
+| Oscillator frequency | FREQ f | OF. n   |
+| Reference frequency  | FREQ?  | FRQ.    |
+| Harmonic             | HARM i | REFN n  |
+| Phase                | PHAS x | REFP. n |
 
+### 3.2 Input Configuration
 
-3.3 Filters
-Function	SR830	7265
-Time constant	OFLT i	TC n
-Slope	OFSL i	SLOPE n
-Line notch	ILIN i	LF n1 n2
+| Function   | SR830  | 7265         |
+| ---------- | ------ | ------------ |
+| Input mode | ISRC i | IMODE, VMODE |
+| Coupling   | ICPL i | CP n         |
+| Grounding  | IGND i | FLOAT n      |
 
+### 3.3 Filters
 
-3.4 Outputs
-Function	SR830	7265
-X	OUTP? 1	X.
-Y	OUTP? 2	Y.
-R	OUTP? 3	MAG.
-θ	OUTP? 4	PHA.
+| Function      | SR830  | 7265     |
+| ------------- | ------ | -------- |
+| Time constant | OFLT i | TC n     |
+| Slope         | OFSL i | SLOPE n  |
+| Line notch    | ILIN i | LF n1 n2 |
 
+### 3.4 Outputs
 
-3.5 Buffers & Acquisition
-Function	SR830	7265
-Start acquisition	STRT	TD
-Loop acquisition	SEND 1;STRT	TDC
-Triggered acquisition	TSTR 1;STRT	TDT 0
-Read buffer	TRCA?	DC. n
-Points in buffer	SPTS?	M (4th value)
+| Function | SR830   | 7265 |
+| -------- | ------- | ---- |
+| X        | OUTP? 1 | X.   |
+| Y        | OUTP? 2 | Y.   |
+| R        | OUTP? 3 | MAG. |
+| θ        | OUTP? 4 | PHA. |
 
+### 3.5 Buffers & Acquisition
 
-4. Behavioural Rules for the LLM Agent
-4.1 After Every Command
+| Function              | SR830       | 7265          |
+| --------------------- | ----------- | ------------- |
+| Start acquisition     | STRT        | TD            |
+| Loop acquisition      | SEND 1;STRT | TDC           |
+| Triggered acquisition | TSTR 1;STRT | TDT 0         |
+| Read buffer           | TRCA?       | DC. n         |
+| Points in buffer      | SPTS?       | M (4th value) |
+
+## 4. Behavioural Rules for the LLM Agent
+
+### 4.1 After Every Command
+
 Send command
 
 Serial poll
@@ -457,13 +498,16 @@ If prompt is ? → send ST and N
 
 Raise structured error
 
-4.2 When Changing Experimental Parameters
+### 4.2 When Changing Experimental Parameters
+
 Wait 5 × time constant before reading outputs (rule of thumb from manual).
 
-4.3 When Using RS232
+### 4.3 When Using RS232
+
 Always generate character‑echo handshake code.
 
-4.4 When Using Buffers
+### 4.4 When Using Buffers
+
 Use:
 
 TD → one‑shot
@@ -474,12 +518,14 @@ TDT 0 → triggered
 
 Then poll until complete.
 
-5. Driver Skeleton for stoner_measurement
-Below is a clean, idiomatic Python skeleton that fits the style of the repository (instrument class, SCPI‑like methods, structured errors, numpy arrays for data).
+## 5. Driver Skeleton for stoner_measurement
+
+Below is a clean, idiomatic Python skeleton that fits the style of the repository (instrument class, SCPI‑like methods,
+structured errors, numpy arrays for data).
 
 This is not a full driver—just the scaffolding your agent will extend.
 
-python
+```python
 import time
 import numpy as np
 from stoner.instrument import Instrument
@@ -615,7 +661,10 @@ class SR7265(Instrument):
         m = self.query("M")
         parts = m.split(",")
         return int(parts[3])  # 4th value
-6. How the LLM Agent Should Extend This Skeleton
+```
+
+## 6. How the LLM Agent Should Extend This Skeleton
+
 Add capabilities:
 DAC control (DAC. n1 n2)
 
@@ -647,9 +696,10 @@ reference unlock
 overload
 
 Add timing helpers:
-python
+
+```python
 def wait_for_settle(self):
     tc_index = int(self.query("TC"))
     tau = self._tc_index_to_seconds(tc_index)
     time.sleep(5 * tau)
-
+```
