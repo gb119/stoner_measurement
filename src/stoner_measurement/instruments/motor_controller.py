@@ -104,8 +104,13 @@ def _normalise_move_direction(direction: MotorMoveDirection) -> MotorMoveDirecti
     return direction
 
 
-def normalise_angle_to_soft_limit(angle: float, soft_limit: float) -> float:
-    """Normalise *angle* into the ``[-soft_limit, +soft_limit]`` range."""
+def normalise_angle_to_soft_limit(
+    angle: float,
+    soft_limit: float,
+    *,
+    reference_angle: float | None = None,
+) -> float:
+    """Normalise *angle* into the soft limits, preserving the referenced branch."""
     if soft_limit < 180.0:
         raise ValueError(f"soft_limit must be at least 180 degrees, got {soft_limit}.")
     value = float(angle)
@@ -113,6 +118,17 @@ def normalise_angle_to_soft_limit(angle: float, soft_limit: float) -> float:
         value -= 360.0
     while value < -soft_limit:
         value += 360.0
+    if reference_angle is not None:
+        candidates = [value]
+        candidate = value - 360.0
+        while candidate >= -soft_limit:
+            candidates.append(candidate)
+            candidate -= 360.0
+        candidate = value + 360.0
+        while candidate <= soft_limit:
+            candidates.append(candidate)
+            candidate += 360.0
+        value = min(candidates, key=lambda item: abs(item - float(reference_angle)))
     return value
 
 

@@ -433,7 +433,11 @@ class MotorControllerEngine(QObject):
             if self._driver is None:
                 return
             try:
-                current_angle = float(self._driver.get_position())
+                current_angle = normalise_angle_to_soft_limit(
+                    self._driver.get_position(),
+                    self._soft_limit,
+                    reference_angle=self._target_angle,
+                )
                 plan = resolve_relative_motor_move(
                     current_angle,
                     float(angle),
@@ -474,7 +478,11 @@ class MotorControllerEngine(QObject):
             if self._driver is None:
                 return
             try:
-                current_angle = float(self._driver.get_position())
+                current_angle = normalise_angle_to_soft_limit(
+                    self._driver.get_position(),
+                    self._soft_limit,
+                    reference_angle=self._target_angle,
+                )
                 plan = resolve_relative_motor_move(
                     current_angle,
                     0.0,
@@ -614,20 +622,27 @@ class MotorControllerEngine(QObject):
         status = driver.status
         now = datetime.now(tz=UTC)
 
+        target_angle = (
+            normalise_angle_to_soft_limit(
+                status.target_angle,
+                self._soft_limit,
+                reference_angle=self._target_angle,
+            )
+            if status.target_angle is not None
+            else self._target_angle
+        )
+        logger.debug(f"Read {target_angle=}")
         raw_angle = float(status.current_angle)
-        angle_val = normalise_angle_to_soft_limit(raw_angle, self._soft_limit)
+        angle_val = normalise_angle_to_soft_limit(
+            raw_angle,
+            self._soft_limit,
+            reference_angle=target_angle,
+        )
         logger.debug(f"Read {angle_val=}")
         displayed_angle = wrap_angle_360(angle_val)
         logger.debug(f"Read {displayed_angle=}")
         self._history.append((now, angle_val))
         angular_rate = _compute_rate(self._history)
-
-        target_angle = (
-            normalise_angle_to_soft_limit(status.target_angle, self._soft_limit)
-            if status.target_angle is not None
-            else self._target_angle
-        )
-        logger.debug(f"Read {target_angle=}")
         displayed_target = (
             wrap_angle_360(target_angle)
             if target_angle is not None
