@@ -46,6 +46,7 @@ from qtpy.QtWidgets import (
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import is_reserved_instance_name
 from stoner_measurement.qt_compat import pyqtSignal
+from stoner_measurement.resources import load_plugin_catalogue_config
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -69,10 +70,7 @@ type _SequenceStep = BasePlugin | tuple[BasePlugin, list[_SequenceStep]]
 # identifiers.
 _PASTE_SUFFIX_RE = re.compile(r"^(.*)_(\d+)$")
 
-# Ordered list of (plugin_type_key, display_label) pairs that define the tree
-# categories shown in the available-plugins panel.  The order determines how
-# categories appear from top to bottom.  Only categories that contain at least
-# one registered plugin are shown.
+# Fallback categories for plugins not listed in the catalogue configuration.
 _PLUGIN_TYPE_CATEGORIES: list[tuple[str, str]] = [
     ("trace", "Trace"),
     ("state_control", "State Control"),
@@ -93,11 +91,11 @@ _TREE_STYLESHEET = """
 QTreeWidget {
     show-decoration-selected: 1;
 }
-QTreeWidget::branch:has-siblings:!adjoins-item {
+QTreeWidget::branch:has-siblings:!adjoins-item:!has-children {
     border-left: 1px solid gray;
     margin-left: 5px;
 }
-QTreeWidget::branch:has-siblings:adjoins-item,
+QTreeWidget::branch:has-siblings:adjoins-item:!has-children,
 QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {
     border-left: 1px solid gray;
     margin-left: 5px;
@@ -129,14 +127,14 @@ def _apply_disabled_appearance(item: QTreeWidgetItem, disabled: bool) -> None:
 
 
 class _PluginTreeWidget(QTreeWidget):
-    """Plugin tree widget that organises available plugins by type category.
+    """Plugin tree widget organised by function, with type-based fallbacks.
 
-    Concrete plugins are shown as leaf nodes grouped under non-interactive
-    category headers that correspond to the abstract plugin base types (trace,
-    state control, monitor, transform, command, sequence).  Only concrete
-    plugin leaf nodes carry an entry-point registry key and may be dragged into
-    the sequence tree; category header nodes cannot be dragged or added as
-    sequence steps.
+    Plugins listed in ``plugin_catalogue.yaml`` are grouped by experimental
+    function, such as **Magnet Control**, independently of their runtime base
+    class. Remaining plugins appear beneath type-based fallback headings such
+    as **Trace**, **Monitor**, or **Command**. Only concrete plugin leaf nodes
+    carry an entry-point registry key and may be dragged into the sequence
+    tree; category headers cannot be dragged or added as sequence steps.
 
     Each leaf item stores the entry-point registry key in :data:`_EP_NAME_ROLE`
     so that :class:`_SequenceTreeWidget` can look up and instantiate the correct
@@ -1142,58 +1140,97 @@ class DockPanel(QWidget):
         """Tab bar representing the open measurement-sequence documents."""
         return self._sequence_tabs
 
+    def refresh_plugins(self) -> None:
+        """Reload the available-plugin tree from the effective catalogue."""
+        self._refresh_plugins()
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _refresh_plugins(self) -> None:
-        """Reload the plugin list from the plugin manager, grouped by plugin type.
-
-        Plugins are organised under category header nodes in the order defined
-        by :data:`_PLUGIN_TYPE_CATEGORIES`.  Categories with no registered
-        plugins are omitted.  Leaf plugin items are sorted alphabetically
-        within each category.  After rebuilding the tree the current filter
-        text is re-applied.
-        """
+        """Reload configured functional groups and type-based fallbacks."""
         self._plugin_list.clear()
-        plugins = self._plugin_manager.plugins
+        remaining = dict(self._plugin_manager.plugins)
 
-        # Group plugins by their type key.
-        by_type: dict[str, list[tuple[str, BasePlugin]]] = {}
-        for ep_name, plugin in plugins.items():
-            by_type.setdefault(plugin.plugin_type, []).append((ep_name, plugin))
-
-        # Build tree in the canonical category order.
-        for type_key, label in _PLUGIN_TYPE_CATEGORIES:
-            entries = by_type.get(type_key)
-            if not entries:
-                continue
+        def add_category(
+            label: str,
+            entries: list[tuple[str, BasePlugin, str]],
+            *,
+            preserve_order: bool = False,
+        ) -> None:
             category_item = QTreeWidgetItem([label])
             category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self._plugin_list.addTopLevelItem(category_item)
-            for ep_name, plugin in sorted(entries):
-                leaf = QTreeWidgetItem([plugin.name])
+            ordered = (
+                entries
+                if preserve_order
+                else sorted(entries, key=lambda entry: entry[0])
+            )
+            for ep_name, plugin, leaf_label in ordered:
+                leaf = QTreeWidgetItem([leaf_label])
                 leaf.setData(0, _EP_NAME_ROLE, ep_name)
                 leaf.setToolTip(0, plugin.tooltip())
-                leaf.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
+                leaf.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsDragEnabled
+                )
                 category_item.addChild(leaf)
             category_item.setExpanded(True)
+
+        def configured_tree_item(configured: dict) -> QTreeWidgetItem | None:
+            """Build one recursive configured group or plugin tree node."""
+            if "plugin" in configured:
+                ep_name = configured["plugin"]
+                plugin = remaining.pop(ep_name, None)
+                if plugin is None:
+                    return None
+                leaf = QTreeWidgetItem([configured.get("label", plugin.name)])
+                leaf.setData(0, _EP_NAME_ROLE, ep_name)
+                leaf.setToolTip(0, plugin.tooltip())
+                leaf.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsDragEnabled
+                )
+                return leaf
+
+            group_item = QTreeWidgetItem([configured["group"]])
+            group_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            for child_config in configured.get("items", []):
+                child = configured_tree_item(child_config)
+                if child is not None:
+                    group_item.addChild(child)
+            if group_item.childCount() == 0:
+                return None
+            group_item.setExpanded(True)
+            return group_item
+
+        for configured in load_plugin_catalogue_config()["items"]:
+            item = configured_tree_item(configured)
+            if item is not None:
+                self._plugin_list.addTopLevelItem(item)
+
+        by_type: dict[str, list[tuple[str, BasePlugin, str]]] = {}
+        for ep_name, plugin in remaining.items():
+            by_type.setdefault(plugin.plugin_type, []).append(
+                (ep_name, plugin, plugin.name)
+            )
+
+        # Build the fallback class/type hierarchy after functional groups.
+        for type_key, label in _PLUGIN_TYPE_CATEGORIES:
+            fallback_entries = by_type.get(type_key)
+            if not fallback_entries:
+                continue
+            add_category(label, fallback_entries)
 
         # Handle any plugin types not listed in _PLUGIN_TYPE_CATEGORIES.
         known_types = {t for t, _ in _PLUGIN_TYPE_CATEGORIES}
         for type_key, entries in sorted(by_type.items()):
             if type_key in known_types:
                 continue
-            category_item = QTreeWidgetItem([type_key.capitalize()])
-            category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self._plugin_list.addTopLevelItem(category_item)
-            for ep_name, plugin in sorted(entries):
-                leaf = QTreeWidgetItem([plugin.name])
-                leaf.setData(0, _EP_NAME_ROLE, ep_name)
-                leaf.setToolTip(0, plugin.tooltip())
-                leaf.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
-                category_item.addChild(leaf)
-            category_item.setExpanded(True)
+            add_category(type_key.capitalize(), entries)
 
         self._filter_plugins(self._plugin_filter.text())
 
@@ -1355,7 +1392,7 @@ class DockPanel(QWidget):
 
         if anchor is None:
             self._sequence_tree.addTopLevelItem(item)
-        elif parent is anchor:
+        elif parent is anchor and anchor is not None:
             anchor.addChild(item)
             anchor.setExpanded(True)
         elif parent is None:

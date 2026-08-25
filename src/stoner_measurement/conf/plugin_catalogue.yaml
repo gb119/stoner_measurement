@@ -1,0 +1,89 @@
+items:
+- group: Keithleys
+  items:
+  - plugin: k6221_dc_iv
+    label: 6221/2182 IV Trace
+  - plugin: k6221_multi_sr830
+    label: 6221/Lockins Trace
+  - plugin: k2400_dc_iv
+    label: 2400 IV Trace
+  - plugin: k2400_point_scan
+    label: 2400 Point by Point Scan
+- group: Plot
+  items:
+  - plugin: plot_clear
+    label: Clear
+  - plugin: plot_points
+    label: Plot Points
+  - plugin: plot_trace
+    label: Plot Trace
+- group: Sequence Execution
+  items:
+  - plugin: if_command
+    label: If
+  - plugin: counter
+    label: Loop (Counter)
+  - plugin: break_if
+    label: Break If
+  - plugin: continue_if
+    label: Continue If
+  - plugin: run_parallel
+    label: Run Parallel
+  - plugin: run_sequentially
+    label: Run Sequentially
+- group: Rig Control
+  items:
+  - group: Temperature Control
+    items:
+    - plugin: set_temperature
+      label: Set
+    - plugin: temperature_controller_scan
+      label: Scan
+    - plugin: temperature_controller_sweep
+      label: Sweep
+    - plugin: temperature_monitor
+      label: Monitor
+  - group: Magnet Control
+    items:
+    - plugin: set_field
+      label: Set
+    - plugin: magnet_controller_scan
+      label: Scan
+    - plugin: magnet_controller_sweep
+      label: Sweep
+    - plugin: magnetic_field_monitor
+      label: Magnetic Field Monitor
+  - group: Motor Control
+    items:
+    - plugin: set_position
+      label: Set
+    - plugin: motor_controller_scan
+      label: Scan
+    - plugin: motor_controller_sweep
+      label: Sweep
+    - plugin: motor_angle_monitor
+      label: Monitor
+  - group: Vacuum System
+    items:
+    - plugin: pressure_monitor
+      label: Pressure Monitor
+    - plugin: pressure_set_flow
+      label: Set Flow
+    - plugin: pressure_gauge_channel
+      label: Set Gauge Channel
+  - group: Diffractometer Control
+    items:
+    - plugin: xray_diffractometer_scan
+      label: Scan
+    - plugin: set_diffractometer
+      label: Set
+    - plugin: read_diffractometer
+      label: Read
+- group: Network Analyzer
+  items:
+  - plugin: network_analyser_set
+    label: Set
+  - plugin: network_analyser_point_scan
+    label: Scan
+  - plugin: network_analyser
+    label: Trace

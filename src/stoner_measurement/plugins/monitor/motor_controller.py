@@ -17,7 +17,60 @@ from stoner_measurement.plugins.monitor.base import MonitorPlugin
 
 
 class MotorAngleMonitorPlugin(MonitorPlugin):
-    """Publish live motor-controller readings into the sequence value catalogue."""
+    """Monitor motor position and motion state without commanding movement.
+
+    Use this passive monitor when other sequence plugins need access to the
+    current motor angle or motion status but should not change the motor
+    target. On connection it opens the application's preferred motor
+    controller when necessary and starts the standard one-second monitor
+    timer. Disconnecting stops this plugin's timer while leaving the shared
+    motor-controller engine available to scan, sweep, and set-position
+    plugins.
+
+    The configuration page selects which quantities appear in the sequence
+    value catalogue: **Angle** and **Target Angle** in degrees, **Angular
+    Rate** in degrees per second, and the unitless **Moving**, **At Target**,
+    and **Stable** flags. Boolean states are published as ``1.0`` or ``0.0``;
+    unavailable position or motion readings are reported as NaN.
+
+    By default each read uses the latest state cached by the shared engine,
+    avoiding an extra instrument transaction. Enable **Force fresh controller
+    poll** when every monitor read must query the hardware directly. Fresh
+    polling improves immediacy but increases communication traffic and may
+    reduce the rate available to other controller operations.
+
+    This plugin is a leaf sequence step. A direct sequence execution performs
+    one synchronous :meth:`read`, while its timer can continue to update
+    :attr:`last_reading` during an active measurement lifecycle. It never sets
+    velocity, acceleration, direction, or target position.
+
+    Attributes:
+        report_angle (bool):
+            Publish the measured angle in degrees.
+        report_target_angle (bool):
+            Publish the active target angle in degrees.
+        report_moving (bool):
+            Publish whether the motor is currently moving.
+        report_angular_rate (bool):
+            Publish the measured angular rate in degrees per second.
+        report_at_target (bool):
+            Publish the engine's at-target state.
+        report_stability (bool):
+            Publish the engine's stable-state indication.
+        force_fresh_poll (bool):
+            Query the controller during every read instead of using cached
+            engine state.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        Add this monitor when a trace or data-collection plugin should record
+        the actual motor angle alongside another measurement. Select only
+        **Angle** and **Angular Rate** if the remaining status flags are not
+        required.
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)

@@ -28,6 +28,9 @@ from stoner_measurement.plugins.command.edit_function_scan import EditFunctionSc
 from stoner_measurement.plugins.command.if_command import IfCommand
 from stoner_measurement.plugins.command.loop_control import BreakIfCommand, ContinueIfCommand
 from stoner_measurement.plugins.command.make_safe import MakeSafeCommand
+from stoner_measurement.plugins.command.network_analyser_set import (
+    NetworkAnalyserSetCommand,
+)
 from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
 from stoner_measurement.plugins.command.plot_points import PlotPointsCommand
 from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
@@ -60,6 +63,7 @@ __all__ = [
     "EditFunctionScanCommand",
     "IfCommand",
     "MakeSafeCommand",
+    "NetworkAnalyserSetCommand",
     "PlotClearCommand",
     "PlotPointsCommand",
     "PlotTraceCommand",

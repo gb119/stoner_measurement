@@ -13,6 +13,15 @@ from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.ui.dock_panel import DockPanel
 
 
+@pytest.fixture(autouse=True)
+def _isolate_plugin_catalogue(monkeypatch):
+    """Keep dock-panel tests independent of the user's catalogue override."""
+    monkeypatch.setattr(
+        "stoner_measurement.ui.dock_panel.load_plugin_catalogue_config",
+        lambda: {"items": []},
+    )
+
+
 class _FakeStatePlugin(StateControlPlugin, metaclass=_ABCQObjectMeta):
     """Minimal concrete StateControlPlugin for use in tests."""
 
@@ -69,6 +78,75 @@ class TestDockPanel:
         assert category_map["State Scan"].child(0).data(0, _EP_NAME_ROLE) == "counter"
         assert category_map["State Sweep"].child(0).text(0) == "Sweep Time"
         assert category_map["State Sweep"].child(0).data(0, _EP_NAME_ROLE) == "sweep_time"
+
+    def test_yaml_catalogue_groups_plugins_and_preserves_fallbacks(
+        self, qapp, monkeypatch
+    ):
+        from stoner_measurement.plugins.state_scan.counter import CounterPlugin
+        from stoner_measurement.ui import dock_panel as dock_module
+
+        config = {
+            "items": [
+                {
+                    "group": "Magnet Control",
+                    "items": [
+                        {"plugin": "field_scan", "label": "Scan"},
+                        {"plugin": "set_field", "label": "Set"},
+                    ],
+                }
+            ]
+        }
+        monkeypatch.setattr(dock_module, "load_plugin_catalogue_config", lambda: config)
+        pm = PluginManager()
+        pm.register("set_field", DummyPlugin())
+        pm.register("field_scan", DummyPlugin())
+        pm.register("counter", CounterPlugin())
+
+        panel = DockPanel(plugin_manager=pm)
+
+        assert [
+            panel._plugin_list.topLevelItem(index).text(0)
+            for index in range(panel._plugin_list.topLevelItemCount())
+        ] == ["Magnet Control", "State Scan"]
+        group = panel._plugin_list.topLevelItem(0)
+        assert [group.child(index).text(0) for index in range(group.childCount())] == [
+            "Scan",
+            "Set",
+        ]
+        assert group.child(0).data(0, dock_module._EP_NAME_ROLE) == "field_scan"
+        assert panel._plugin_list.select_plugin("set_field") is True
+        assert panel._plugin_list.currentItem().text(0) == "Set"
+
+    def test_yaml_catalogue_supports_nested_groups(self, qapp, monkeypatch):
+        from stoner_measurement.ui import dock_panel as dock_module
+
+        config = {
+            "items": [
+                {
+                    "group": "Control",
+                    "items": [
+                        {
+                            "group": "Magnet",
+                            "items": [
+                                {"plugin": "set_field", "label": "Set"},
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        monkeypatch.setattr(dock_module, "load_plugin_catalogue_config", lambda: config)
+        pm = PluginManager()
+        pm.register("set_field", DummyPlugin())
+
+        panel = DockPanel(plugin_manager=pm)
+
+        control = panel._plugin_list.topLevelItem(0)
+        magnet = control.child(0)
+        assert control.text(0) == "Control"
+        assert magnet.text(0) == "Magnet"
+        assert magnet.child(0).text(0) == "Set"
+        assert panel._plugin_list.select_plugin("set_field") is True
 
     def test_sequence_steps_empty_initially(self, plugin_manager):
         panel = DockPanel(plugin_manager=plugin_manager)

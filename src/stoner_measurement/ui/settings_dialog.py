@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QSettings
+from qtpy.QtCore import QSettings, Qt
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -22,6 +24,8 @@ from qtpy.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -47,14 +51,22 @@ from stoner_measurement.app_config import (
 from stoner_measurement.resources import (
     install_predefined_sequence,
     install_toolbar_icon,
+    load_plugin_catalogue_config,
     load_toolbar_config,
+    save_plugin_catalogue_config,
     save_toolbar_config,
     user_config_root,
 )
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.theme import DEFAULT_THEME, available_themes
 
+if TYPE_CHECKING:
+    from stoner_measurement.plugins.base_plugin import BasePlugin
+
 _ROW_TYPE_SEPARATOR = "__separator__"
+_CATALOGUE_KIND_ROLE = Qt.ItemDataRole.UserRole
+_CATALOGUE_GROUP = "group"
+_CATALOGUE_PLUGIN = "plugin"
 
 
 def make_app_settings() -> QSettings:
@@ -70,13 +82,21 @@ def make_app_settings() -> QSettings:
 class SettingsDialog(QDialog):
     """Modal preferences dialogue for editing persistent application settings."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        available_plugins: Mapping[str, BasePlugin] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferences")
         self.setMinimumWidth(620)
 
         self.toolbar_saved = False
+        self.plugin_catalogue_saved = False
         self._toolbar_cfg = load_toolbar_config()
+        self._plugin_catalogue_cfg = load_plugin_catalogue_config()
+        self._available_plugins = dict(available_plugins or {})
+        self._plugin_catalogue_dirty = False
         self._feature_checkboxes: dict[str, QCheckBox] = {}
         app_config = load_app_config()
 
@@ -84,6 +104,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_general_tab(app_config), "General")
         tabs.addTab(self._build_features_tab(app_config), "Features")
         tabs.addTab(self._build_toolbar_tab(), "Toolbar")
+        tabs.addTab(self._build_plugin_catalogue_tab(), "Plugin List")
 
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
@@ -220,6 +241,324 @@ class SettingsDialog(QDialog):
         toolbar_buttons_row.addWidget(save_toolbar_button)
         layout.addLayout(toolbar_buttons_row)
         return tab
+
+    def _build_plugin_catalogue_tab(self) -> QWidget:
+        """Build the ordered functional-group editor for the plugin list."""
+        tab = QWidget(self)
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        help_label = QLabel(
+            "Group related sequence commands independently of their Python class. "
+            "Groups may be nested to any depth. Add Group inserts beside the "
+            "selection; Move In and Move Out change its nesting level. Plugins "
+            "not listed here remain in their existing type categories.",
+            tab,
+        )
+        help_label.setWordWrap(True)
+        layout.addWidget(help_label)
+
+        self._plugin_catalogue_tree = QTreeWidget(tab)
+        self._plugin_catalogue_tree.setColumnCount(2)
+        self._plugin_catalogue_tree.setHeaderLabels(
+            ["Group / plugin entry point", "Display label"]
+        )
+        self._plugin_catalogue_tree.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        header = self._plugin_catalogue_tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._populate_plugin_catalogue_tree()
+        self._plugin_catalogue_tree.itemChanged.connect(
+            lambda *_args: self._mark_plugin_catalogue_dirty()
+        )
+        layout.addWidget(self._plugin_catalogue_tree)
+
+        add_row = QHBoxLayout()
+        self._plugin_catalogue_combo = QComboBox(tab)
+        add_plugin = QPushButton("Add Plugin", tab)
+        add_plugin.clicked.connect(self._add_catalogue_plugin)
+        add_row.addWidget(self._plugin_catalogue_combo, 1)
+        add_row.addWidget(add_plugin)
+        layout.addLayout(add_row)
+
+        buttons = QHBoxLayout()
+        add_group = QPushButton("Add Group", tab)
+        add_group.clicked.connect(self._add_catalogue_group)
+        remove = QPushButton("Remove Selected", tab)
+        remove.clicked.connect(self._remove_catalogue_item)
+        move_up = QPushButton("Move Up", tab)
+        move_up.clicked.connect(lambda: self._move_catalogue_item(-1))
+        move_down = QPushButton("Move Down", tab)
+        move_down.clicked.connect(lambda: self._move_catalogue_item(1))
+        move_in = QPushButton("Move In", tab)
+        move_in.clicked.connect(self._move_catalogue_item_in)
+        move_out = QPushButton("Move Out", tab)
+        move_out.clicked.connect(self._move_catalogue_item_out)
+        save = QPushButton("Save Plugin List", tab)
+        save.clicked.connect(lambda: self._save_plugin_catalogue_from_ui())
+        for button in (add_group, remove, move_up, move_down, move_in, move_out):
+            buttons.addWidget(button)
+        buttons.addStretch(1)
+        buttons.addWidget(save)
+        layout.addLayout(buttons)
+        self._refresh_catalogue_plugin_combo()
+        return tab
+
+    def _populate_plugin_catalogue_tree(self) -> None:
+        """Populate the plugin-list editor from the effective configuration."""
+        self._plugin_catalogue_tree.blockSignals(True)
+        try:
+            self._populate_catalogue_items(
+                self._plugin_catalogue_tree.invisibleRootItem(),
+                self._plugin_catalogue_cfg.get("items", []),
+            )
+        finally:
+            self._plugin_catalogue_tree.blockSignals(False)
+
+    def _populate_catalogue_items(
+        self, parent: QTreeWidgetItem, configured_items: list[dict]
+    ) -> None:
+        """Recursively append configured groups and plugins below *parent*."""
+        for configured in configured_items:
+            if "plugin" in configured:
+                parent.addChild(
+                    self._make_catalogue_item(
+                        configured["plugin"],
+                        configured.get("label", ""),
+                        _CATALOGUE_PLUGIN,
+                    )
+                )
+                continue
+            group = self._make_catalogue_item(
+                configured["group"], "", _CATALOGUE_GROUP
+            )
+            parent.addChild(group)
+            self._populate_catalogue_items(group, configured.get("items", []))
+            group.setExpanded(True)
+
+    @staticmethod
+    def _make_catalogue_item(
+        name: str, label: str = "", kind: str = _CATALOGUE_GROUP
+    ) -> QTreeWidgetItem:
+        """Create one editable group or plugin row."""
+        item = QTreeWidgetItem([name, label])
+        item.setData(0, _CATALOGUE_KIND_ROLE, kind)
+        item.setFlags(
+            Qt.ItemFlag.ItemIsEnabled
+            | Qt.ItemFlag.ItemIsSelectable
+            | Qt.ItemFlag.ItemIsEditable
+        )
+        return item
+
+    def _catalogue_plugin_ids(self) -> set[str]:
+        """Return entry-point names currently present in the editor."""
+        result: set[str] = set()
+
+        def collect(parent: QTreeWidgetItem) -> None:
+            for index in range(parent.childCount()):
+                item = parent.child(index)
+                if item.data(0, _CATALOGUE_KIND_ROLE) == _CATALOGUE_PLUGIN:
+                    plugin = item.text(0).strip()
+                    if plugin:
+                        result.add(plugin)
+                else:
+                    collect(item)
+
+        collect(self._plugin_catalogue_tree.invisibleRootItem())
+        return result
+
+    def _refresh_catalogue_plugin_combo(self) -> None:
+        """List available plugins that are not already grouped."""
+        selected = self._plugin_catalogue_combo.currentData()
+        grouped = self._catalogue_plugin_ids()
+        self._plugin_catalogue_combo.clear()
+        for ep_name, plugin in sorted(
+            self._available_plugins.items(), key=lambda item: item[1].name.casefold()
+        ):
+            if ep_name not in grouped:
+                self._plugin_catalogue_combo.addItem(
+                    f"{plugin.name} ({ep_name})", ep_name
+                )
+        if selected:
+            index = self._plugin_catalogue_combo.findData(selected)
+            if index >= 0:
+                self._plugin_catalogue_combo.setCurrentIndex(index)
+
+    def _mark_plugin_catalogue_dirty(self) -> None:
+        """Record that the plugin-list configuration has changed."""
+        self._plugin_catalogue_dirty = True
+        self._refresh_catalogue_plugin_combo()
+
+    def _add_catalogue_group(self) -> None:
+        """Insert a new group immediately after the selected node."""
+        existing: set[str] = set()
+
+        def collect_group_names(parent: QTreeWidgetItem) -> None:
+            for index in range(parent.childCount()):
+                child = parent.child(index)
+                if child.data(0, _CATALOGUE_KIND_ROLE) == _CATALOGUE_GROUP:
+                    existing.add(child.text(0))
+                    collect_group_names(child)
+
+        root = self._plugin_catalogue_tree.invisibleRootItem()
+        collect_group_names(root)
+        base = "New Group"
+        name = base
+        suffix = 2
+        while name in existing:
+            name = f"{base} {suffix}"
+            suffix += 1
+        item = self._make_catalogue_item(name, kind=_CATALOGUE_GROUP)
+        selected = self._plugin_catalogue_tree.currentItem()
+        if selected is None:
+            root.addChild(item)
+        else:
+            parent = selected.parent() or root
+            parent.insertChild(parent.indexOfChild(selected) + 1, item)
+            if parent is not root:
+                parent.setExpanded(True)
+        self._plugin_catalogue_tree.setCurrentItem(item)
+        self._plugin_catalogue_tree.editItem(item, 0)
+        self._mark_plugin_catalogue_dirty()
+
+    def _selected_catalogue_group(self) -> QTreeWidgetItem | None:
+        """Return the selected item as a group, or its parent group."""
+        selected = self._plugin_catalogue_tree.currentItem()
+        if selected is None:
+            return None
+        if selected.data(0, _CATALOGUE_KIND_ROLE) == _CATALOGUE_GROUP:
+            return selected
+        parent = selected.parent()
+        if (
+            parent is not None
+            and parent.data(0, _CATALOGUE_KIND_ROLE) == _CATALOGUE_GROUP
+        ):
+            return parent
+        return None
+
+    def _add_catalogue_plugin(self) -> None:
+        """Append the selected ungrouped plugin to the selected group."""
+        group = self._selected_catalogue_group()
+        ep_name = self._plugin_catalogue_combo.currentData()
+        if group is None or not ep_name:
+            return
+        plugin = self._available_plugins.get(ep_name)
+        child = self._make_catalogue_item(
+            ep_name,
+            plugin.name if plugin is not None else "",
+            _CATALOGUE_PLUGIN,
+        )
+        group.addChild(child)
+        group.setExpanded(True)
+        self._plugin_catalogue_tree.setCurrentItem(child)
+        self._mark_plugin_catalogue_dirty()
+
+    def _remove_catalogue_item(self) -> None:
+        """Remove the selected plugin or functional group."""
+        selected = self._plugin_catalogue_tree.currentItem()
+        if selected is None:
+            return
+        parent = selected.parent()
+        if parent is None:
+            self._plugin_catalogue_tree.takeTopLevelItem(
+                self._plugin_catalogue_tree.indexOfTopLevelItem(selected)
+            )
+        else:
+            parent.takeChild(parent.indexOfChild(selected))
+        self._mark_plugin_catalogue_dirty()
+
+    def _move_catalogue_item(self, offset: int) -> None:
+        """Move the selected group or plugin one position up or down."""
+        selected = self._plugin_catalogue_tree.currentItem()
+        if selected is None:
+            return
+        parent = selected.parent() or self._plugin_catalogue_tree.invisibleRootItem()
+        current = parent.indexOfChild(selected)
+        target = current + offset
+        if not 0 <= target < parent.childCount():
+            return
+        was_expanded = selected.isExpanded()
+        item = parent.takeChild(current)
+        parent.insertChild(target, item)
+        item.setExpanded(was_expanded)
+        self._plugin_catalogue_tree.setCurrentItem(item)
+        self._mark_plugin_catalogue_dirty()
+
+    def _move_catalogue_item_in(self) -> None:
+        """Make the selected node the last child of its preceding sibling group."""
+        selected = self._plugin_catalogue_tree.currentItem()
+        if selected is None:
+            return
+        root = self._plugin_catalogue_tree.invisibleRootItem()
+        parent = selected.parent() or root
+        index = parent.indexOfChild(selected)
+        if index <= 0:
+            return
+        preceding = parent.child(index - 1)
+        if preceding.data(0, _CATALOGUE_KIND_ROLE) != _CATALOGUE_GROUP:
+            return
+        was_expanded = selected.isExpanded()
+        item = parent.takeChild(index)
+        preceding.addChild(item)
+        item.setExpanded(was_expanded)
+        preceding.setExpanded(True)
+        self._plugin_catalogue_tree.setCurrentItem(item)
+        self._mark_plugin_catalogue_dirty()
+
+    def _move_catalogue_item_out(self) -> None:
+        """Promote the selected node to immediately after its parent group."""
+        selected = self._plugin_catalogue_tree.currentItem()
+        if selected is None:
+            return
+        parent = selected.parent()
+        if parent is None:
+            return
+        root = self._plugin_catalogue_tree.invisibleRootItem()
+        grandparent = parent.parent() or root
+        parent_index = grandparent.indexOfChild(parent)
+        was_expanded = selected.isExpanded()
+        item = parent.takeChild(parent.indexOfChild(selected))
+        grandparent.insertChild(parent_index + 1, item)
+        item.setExpanded(was_expanded)
+        self._plugin_catalogue_tree.setCurrentItem(item)
+        self._mark_plugin_catalogue_dirty()
+
+    def _collect_plugin_catalogue_from_ui(self) -> dict:
+        """Build an ordered plugin-list configuration from the editor."""
+
+        def collect(parent: QTreeWidgetItem) -> list[dict]:
+            items = []
+            for index in range(parent.childCount()):
+                item = parent.child(index)
+                if item.data(0, _CATALOGUE_KIND_ROLE) == _CATALOGUE_GROUP:
+                    items.append(
+                        {"group": item.text(0).strip(), "items": collect(item)}
+                    )
+                    continue
+                entry = {"plugin": item.text(0).strip()}
+                label = item.text(1).strip()
+                if label:
+                    entry["label"] = label
+                items.append(entry)
+            return items
+
+        return {"items": collect(self._plugin_catalogue_tree.invisibleRootItem())}
+
+    def _save_plugin_catalogue_from_ui(self, *, show_message: bool = True) -> None:
+        """Save functional plugin groups as a user YAML override."""
+        config = self._collect_plugin_catalogue_from_ui()
+        path = save_plugin_catalogue_config(config)
+        self._plugin_catalogue_cfg = config
+        self._plugin_catalogue_dirty = False
+        self.plugin_catalogue_saved = True
+        if show_message:
+            QMessageBox.information(
+                self,
+                "Plugin List Saved",
+                f"Plugin list configuration saved to:\n{path}",
+            )
 
     def _load_toolbar_rows(self) -> None:
         """Populate the toolbar table from the effective toolbar configuration."""
@@ -412,7 +751,7 @@ class SettingsDialog(QDialog):
 
     def _collect_toolbar_config_from_ui(self) -> dict:
         """Build a toolbar configuration mapping from the table contents."""
-        buttons = []
+        buttons: list[dict] = []
         for row in range(self._toolbar_table.rowCount()):
             name_item = self._toolbar_table.item(row, 0)
             tooltip_item = self._toolbar_table.item(row, 3)
@@ -462,6 +801,8 @@ class SettingsDialog(QDialog):
 
     def _on_accept(self) -> None:
         """Write the current field values to the user application config."""
+        if self._plugin_catalogue_dirty:
+            self._save_plugin_catalogue_from_ui(show_message=False)
         config = load_app_config()
         set_app_config_value(config, KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
         set_app_config_value(config, KEY_RIG, self._rig_edit.text().strip())

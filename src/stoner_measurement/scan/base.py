@@ -221,6 +221,9 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
         )
         from stoner_measurement.scan.function_generator import FunctionScanGenerator
         from stoner_measurement.scan.list_generator import ListScanGenerator
+        from stoner_measurement.scan.network_analyser_generator import (
+            NetworkAnalyserScanGenerator,
+        )
         from stoner_measurement.scan.ramp_generator import RampScanGenerator
         from stoner_measurement.scan.stepped_generator import SteppedScanGenerator
 
@@ -228,6 +231,7 @@ class BaseScanGenerator(QObject, metaclass=_ABCQObjectMeta):
             "ArbitraryFunctionScanGenerator": ArbitraryFunctionScanGenerator,
             "FunctionScanGenerator": FunctionScanGenerator,
             "ListScanGenerator": ListScanGenerator,
+            "NetworkAnalyserScanGenerator": NetworkAnalyserScanGenerator,
             "RampScanGenerator": RampScanGenerator,
             "SteppedScanGenerator": SteppedScanGenerator,
         }

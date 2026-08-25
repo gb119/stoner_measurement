@@ -9,12 +9,22 @@ from stoner_measurement.ui import settings_dialog as settings_module
 from stoner_measurement.ui.settings_dialog import SettingsDialog
 
 
-def _install_dialog_dependencies(monkeypatch, app_config: dict, toolbar_config: dict | None = None) -> list[dict]:
+def _install_dialog_dependencies(
+    monkeypatch,
+    app_config: dict,
+    toolbar_config: dict | None = None,
+    plugin_catalogue_config: dict | None = None,
+) -> list[dict]:
     """Patch persistent dependencies used by SettingsDialog construction."""
     saved_configs: list[dict] = []
     monkeypatch.setattr(settings_module, "load_app_config", lambda: app_config)
     monkeypatch.setattr(settings_module, "save_app_config", saved_configs.append)
     monkeypatch.setattr(settings_module, "load_toolbar_config", lambda: toolbar_config or {"buttons": []})
+    monkeypatch.setattr(
+        settings_module,
+        "load_plugin_catalogue_config",
+        lambda: plugin_catalogue_config or {"items": []},
+    )
     return saved_configs
 
 
@@ -286,3 +296,179 @@ class TestSettingsDialogToolbarSave:
         ]
         assert dialog._toolbar_cfg == saved[0]
         assert dialog.toolbar_saved is True
+
+
+class TestSettingsDialogPluginCatalogue:
+    def test_add_group_as_sibling_then_move_plugin_in_and_out(
+        self, qapp, monkeypatch
+    ):
+        config = {
+            "items": [
+                {
+                    "group": "Control",
+                    "items": [
+                        {"plugin": "first", "label": "First"},
+                        {"plugin": "second", "label": "Second"},
+                    ],
+                }
+            ]
+        }
+        _install_dialog_dependencies(
+            monkeypatch,
+            {"app": {}, "features": {}},
+            plugin_catalogue_config=config,
+        )
+        dialog = SettingsDialog()
+        tree = dialog._plugin_catalogue_tree
+        control = tree.topLevelItem(0)
+
+        tree.setCurrentItem(control.child(0))
+        dialog._add_catalogue_group()
+
+        nested_group = control.child(1)
+        assert nested_group.text(0) == "New Group"
+        assert control.child(2).text(0) == "second"
+
+        tree.setCurrentItem(control.child(2))
+        dialog._move_catalogue_item_in()
+
+        assert nested_group.childCount() == 1
+        assert nested_group.child(0).text(0) == "second"
+        assert nested_group.isExpanded()
+        assert dialog._collect_plugin_catalogue_from_ui() == {
+            "items": [
+                {
+                    "group": "Control",
+                    "items": [
+                        {"plugin": "first", "label": "First"},
+                        {
+                            "group": "New Group",
+                            "items": [
+                                {"plugin": "second", "label": "Second"}
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+
+        dialog._move_catalogue_item_out()
+
+        assert nested_group.childCount() == 0
+        assert control.child(2).text(0) == "second"
+
+    def test_moving_group_preserves_expanded_leaf_subtree(self, qapp, monkeypatch):
+        config = {
+            "items": [
+                {
+                    "group": "Magnet Control",
+                    "items": [
+                        {"plugin": "set_field", "label": "Set"},
+                        {"plugin": "field_scan", "label": "Scan"},
+                    ],
+                },
+                {
+                    "group": "Temperature Control",
+                    "items": [
+                        {"plugin": "set_temperature", "label": "Set"},
+                    ],
+                },
+            ]
+        }
+        _install_dialog_dependencies(
+            monkeypatch,
+            {"app": {}, "features": {}},
+            plugin_catalogue_config=config,
+        )
+        dialog = SettingsDialog()
+        tree = dialog._plugin_catalogue_tree
+        magnet_group = tree.topLevelItem(0)
+        assert magnet_group.isExpanded()
+
+        tree.setCurrentItem(magnet_group)
+        dialog._move_catalogue_item(1)
+
+        moved_group = tree.topLevelItem(1)
+        assert moved_group is magnet_group
+        assert moved_group.isExpanded()
+        assert [
+            (moved_group.child(index).text(0), moved_group.child(index).text(1))
+            for index in range(moved_group.childCount())
+        ] == [("set_field", "Set"), ("field_scan", "Scan")]
+
+        dialog._move_catalogue_item(-1)
+
+        assert tree.topLevelItem(0) is magnet_group
+        assert magnet_group.isExpanded()
+        assert magnet_group.childCount() == 2
+
+    def test_edits_group_order_labels_and_available_plugins(self, qapp, monkeypatch):
+        config = {
+            "items": [
+                {
+                    "group": "Magnet Control",
+                    "items": [
+                        {"plugin": "set_field", "label": "Set"},
+                        {"plugin": "field_scan", "label": "Scan"},
+                    ],
+                }
+            ]
+        }
+        _install_dialog_dependencies(
+            monkeypatch,
+            {"app": {}, "features": {}},
+            plugin_catalogue_config=config,
+        )
+        plugins = {
+            "set_field": _NamedPlugin("Set Field"),
+            "field_scan": _NamedPlugin("Field Scan"),
+            "extra": _NamedPlugin("Extra Plugin"),
+        }
+
+        dialog = SettingsDialog(available_plugins=plugins)
+        group = dialog._plugin_catalogue_tree.topLevelItem(0)
+        dialog._plugin_catalogue_tree.setCurrentItem(group.child(1))
+        dialog._move_catalogue_item(-1)
+        group.child(0).setText(1, "Field scan")
+
+        assert dialog._plugin_catalogue_combo.count() == 1
+        assert dialog._plugin_catalogue_combo.currentData() == "extra"
+        assert dialog._collect_plugin_catalogue_from_ui() == {
+            "items": [
+                {
+                    "group": "Magnet Control",
+                    "items": [
+                        {"plugin": "field_scan", "label": "Field scan"},
+                        {"plugin": "set_field", "label": "Set"},
+                    ],
+                }
+            ]
+        }
+
+    def test_accept_saves_dirty_plugin_catalogue(self, qapp, tmp_path, monkeypatch):
+        _install_dialog_dependencies(
+            monkeypatch,
+            {"app": {}, "features": {}},
+            plugin_catalogue_config={"items": []},
+        )
+        saved = []
+        monkeypatch.setattr(
+            settings_module,
+            "save_plugin_catalogue_config",
+            lambda config: saved.append(config) or (tmp_path / "plugin_catalogue.yaml"),
+        )
+        dialog = SettingsDialog()
+        dialog._add_catalogue_group()
+
+        dialog._on_accept()
+
+        assert dialog.result() == QDialog.DialogCode.Accepted
+        assert saved == [{"items": [{"group": "New Group", "items": []}]}]
+        assert dialog.plugin_catalogue_saved is True
+
+
+class _NamedPlugin:
+    """Minimal plugin-like object for the catalogue preferences tests."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name

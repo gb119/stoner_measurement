@@ -28,6 +28,70 @@ class TestUserPathHelpers:
 class TestYamlHelpers:
     """Tests for YAML loading and saving helpers."""
 
+    def test_plugin_catalogue_normalisation_preserves_order_and_first_occurrence(
+        self,
+    ):
+        """Invalid rows are dropped without changing valid catalogue ordering."""
+        config = {
+            "groups": [
+                {
+                    "name": " Magnet ",
+                    "plugins": [
+                        {"plugin": " scan ", "label": " Scan "},
+                        {"plugin": "scan", "label": "Duplicate"},
+                        {"plugin": None, "label": "Invalid"},
+                    ],
+                },
+                {"name": "Temperature", "plugins": [{"plugin": "set"}]},
+                {"name": None, "plugins": []},
+            ]
+        }
+
+        assert resources.normalise_plugin_catalogue_config(config) == {
+            "items": [
+                {
+                    "group": "Magnet",
+                    "items": [{"plugin": "scan", "label": "Scan"}],
+                },
+                {"group": "Temperature", "items": [{"plugin": "set"}]},
+            ]
+        }
+
+    def test_plugin_catalogue_normalisation_preserves_recursive_items(self):
+        """Canonical nested groups remain ordered while duplicates are removed."""
+        config = {
+            "items": [
+                {
+                    "group": "Control",
+                    "items": [
+                        {"plugin": "set", "label": "Set"},
+                        {
+                            "group": "Magnet",
+                            "items": [
+                                {"plugin": "scan", "label": "Scan"},
+                                {"plugin": "set", "label": "Duplicate"},
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+
+        assert resources.normalise_plugin_catalogue_config(config) == {
+            "items": [
+                {
+                    "group": "Control",
+                    "items": [
+                        {"plugin": "set", "label": "Set"},
+                        {
+                            "group": "Magnet",
+                            "items": [{"plugin": "scan", "label": "Scan"}],
+                        },
+                    ],
+                }
+            ]
+        }
+
     def test_load_user_or_bundled_yaml_prefers_user_file(self, monkeypatch, tmp_path):
         """User YAML should take precedence over a bundled fallback file."""
         user_cfg = tmp_path / "toolbar.yaml"

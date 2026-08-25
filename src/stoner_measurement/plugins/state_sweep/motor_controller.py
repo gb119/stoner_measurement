@@ -16,20 +16,29 @@ class MotorControllerSweepPlugin(MotorControllerPluginMixin, StateSweepPlugin):
     angle is changing. This is useful for angular sweeps where stopping at
     every point would be unnecessarily slow.
 
-    In the configuration tabs, the **Settings** tab contains the inherited
-    motor-controller options such as tolerance and timeout factor. The
-    sweep-generator area lets you define the motion profile, for example with
-    a multi-segment ramp containing several angle targets and rates. The
-    **Data Collection** section controls which values are recorded during the
-    sweep. The **Help/About** tab uses this docstring as end-user guidance.
+    The **Sweep** tab selects a multi-segment ramp or monitor-and-filter
+    generator. A multi-segment ramp defines an optional starting angle and a
+    sequence of absolute targets, angular rates, and measurement flags. Once
+    motion begins, the plugin samples the live angle and runs nested steps at
+    the generator's polling interval without stopping the motor. Segment rates
+    are interpreted in degrees per second. **Start from current value** skips
+    the initial positioning move.
 
-    Rates for multi-segment ramp sweeps are interpreted in ``deg/s`` and the
-    default timeout factor for this plugin is ``2.0``.
+    The **Sweep** tab also controls the timeout factor and optional temporary
+    motor-engine polling rate. The timeout is the generator's estimated
+    duration multiplied by the configured factor, which defaults to ``2.0``;
+    the previous engine polling rate is restored when the sweep exits. The
+    **Settings** tab controls acceleration, move direction, and which measured
+    angle, target-angle, and angular-rate outputs are published. Motion rates
+    come from the sweep segments, so there is no separate fixed-velocity
+    control. The **Data** tab selects values recorded during motion.
+
+    The plugin connects the application's preferred controller through the
+    shared motor engine when necessary. Completing or aborting the sweep
+    restores temporary polling configuration and leaves the shared engine
+    connected. It does not automatically return the motor home.
 
     Attributes:
-        tolerance (float):
-            Allowed angular error, in degrees, used by the inherited
-            controller logic.
         sweep_timeout_factor (float):
             Multiplier applied to the estimated sweep duration when computing
             the allowed wall-clock runtime.
@@ -42,6 +51,12 @@ class MotorControllerSweepPlugin(MotorControllerPluginMixin, StateSweepPlugin):
         sweep_generator (BaseSweepGenerator):
             Active sweep generator instance controlling the angular
             trajectory.
+        acceleration (float | str):
+            Acceleration or sequence expression in degrees per second squared.
+        direction (MotorMoveDirection):
+            Direction policy used for initial and segment target moves.
+        report_outputs (list[str] | None):
+            Optional motor readbacks exposed to the sequence value catalogue.
         value (float):
             Most recently sampled control value, in degrees.
         ix (int):

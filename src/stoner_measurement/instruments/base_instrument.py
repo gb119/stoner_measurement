@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from stoner_measurement.display_names import class_display_name
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.lock_registry import get_instrument_lock
+from stoner_measurement.instruments.protocol.ieee488 import parse_ieee_block
 
 if TYPE_CHECKING:
     from stoner_measurement.instruments.protocol.base import BaseProtocol
@@ -352,6 +353,92 @@ class BaseInstrument(ABC):
                 raise
 
             return response
+
+    def query_ieee_block(self, command: str, *, max_payload: int = 256 * 1024 * 1024) -> bytes:
+        """Send a query and return its IEEE 488.2 definite-length block payload.
+
+        The complete write/read/error-check cycle is protected by the
+        instrument lock. Response chunks are accumulated until the advertised
+        payload and protocol terminator have been received, so embedded newline
+        bytes do not truncate binary data.
+
+        Args:
+            command (str):
+                Query string in the instrument's command language.
+
+        Keyword Parameters:
+            max_payload (int):
+                Safety limit for the advertised payload length. Defaults to
+                256 MiB.
+
+        Returns:
+            (bytes):
+                The block payload without its header or trailing terminator.
+
+        Raises:
+            ValueError:
+                If the block header, length, terminator, or trailing data is
+                malformed.
+            TimeoutError:
+                If the transport stops returning data before the block is
+                complete.
+        """
+        if max_payload <= 0:
+            raise ValueError("max_payload must be positive.")
+
+        with self._lock:
+            payload = self.protocol.format_query(command)
+            self.transport.write(_coerce_to_bytes(payload))
+            buffer = bytearray()
+
+            def fill(required: int) -> None:
+                while len(buffer) < required:
+                    # Text-oriented SCPI protocols commonly use a small frame
+                    # limit (4096 bytes). A VNA trace can be much larger, so
+                    # allow the transport to receive up to this method's
+                    # independently enforced block safety limit.
+                    chunk = self.transport.read(max_payload + 32)
+                    if not chunk:
+                        raise TimeoutError(
+                            f"Incomplete IEEE 488.2 block response to {command!r}."
+                        )
+                    buffer.extend(chunk)
+
+            fill(2)
+            if buffer[0] != ord("#"):
+                raise ValueError("IEEE 488.2 block must start with '#'.")
+            digit_token = buffer[1]
+            if digit_token < ord("1") or digit_token > ord("9"):
+                raise ValueError("Only definite-length IEEE 488.2 blocks are supported.")
+            length_digits = digit_token - ord("0")
+            fill(2 + length_digits)
+            length_field = bytes(buffer[2 : 2 + length_digits])
+            if not length_field.isdigit():
+                raise ValueError("IEEE 488.2 block has a non-numeric length field.")
+            payload_length = int(length_field)
+            if payload_length > max_payload:
+                raise ValueError(
+                    f"IEEE 488.2 payload length {payload_length} exceeds "
+                    f"the {max_payload} byte safety limit."
+                )
+
+            payload_start = 2 + length_digits
+            payload_end = payload_start + payload_length
+            terminator = getattr(self.protocol, "terminator", b"")
+            if isinstance(terminator, str):
+                terminator = terminator.encode("latin-1")
+            if not isinstance(terminator, bytes):
+                terminator = b""
+            fill(payload_end + len(terminator))
+            if terminator and bytes(buffer[payload_end : payload_end + len(terminator)]) != terminator:
+                raise ValueError("IEEE 488.2 block is not followed by the protocol terminator.")
+            if len(buffer) != payload_end + len(terminator):
+                raise ValueError("Unexpected trailing data after IEEE 488.2 block response.")
+
+            result = parse_ieee_block(bytes(buffer), terminator=terminator)
+            if self.auto_check_errors:
+                self.check_for_errors(command=command)
+            return result
         
     def read_status_byte(self) -> int | None:
         """Return the instrument status byte via an out-of-band mechanism.

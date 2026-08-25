@@ -230,6 +230,83 @@ def save_toolbar_config(config: dict[str, Any]) -> Path:
     return save_user_yaml("toolbar.yaml", config)
 
 
+def normalise_plugin_catalogue_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return a validated, recursive plugin-catalogue configuration.
+
+    The canonical format is an ordered ``items`` tree whose nodes are either
+    ``{"group": name, "items": [...]}`` or ``{"plugin": entry_point}``.
+    The earlier flat ``groups``/``plugins`` format is accepted and migrated on
+    load. Invalid entries are ignored, and the first occurrence of a plugin
+    wins so that it appears in only one place.
+
+    Args:
+        config (dict[str, Any]):
+            Raw plugin catalogue configuration mapping.
+
+    Returns:
+        (dict[str, Any]):
+            A mapping containing an ordered, recursively nested ``items`` list.
+    """
+    seen_plugins: set[str] = set()
+
+    def normalise_items(raw_items: object) -> list[dict[str, Any]]:
+        if not isinstance(raw_items, list):
+            return []
+        result: list[dict[str, Any]] = []
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            raw_plugin = raw_item.get("plugin")
+            plugin = raw_plugin.strip() if isinstance(raw_plugin, str) else ""
+            if plugin:
+                if plugin in seen_plugins:
+                    continue
+                entry: dict[str, Any] = {"plugin": plugin}
+                raw_label = raw_item.get("label")
+                label = raw_label.strip() if isinstance(raw_label, str) else ""
+                if label:
+                    entry["label"] = label
+                result.append(entry)
+                seen_plugins.add(plugin)
+                continue
+
+            raw_group = raw_item.get("group", raw_item.get("name"))
+            group = raw_group.strip() if isinstance(raw_group, str) else ""
+            if not group:
+                continue
+            children = raw_item.get("items")
+            if not isinstance(children, list):
+                # Backward compatibility for the original flat schema.
+                legacy_plugins = raw_item.get("plugins")
+                legacy_groups = raw_item.get("groups")
+                children = []
+                if isinstance(legacy_plugins, list):
+                    children.extend(legacy_plugins)
+                if isinstance(legacy_groups, list):
+                    children.extend(legacy_groups)
+            result.append({"group": group, "items": normalise_items(children)})
+        return result
+
+    raw_items = config.get("items")
+    if not isinstance(raw_items, list):
+        raw_items = config.get("groups")
+    return {"items": normalise_items(raw_items)}
+
+
+def load_plugin_catalogue_config() -> dict[str, Any]:
+    """Load the effective ordered plugin-list configuration."""
+    return normalise_plugin_catalogue_config(
+        load_user_or_bundled_yaml("plugin_catalogue.yaml")
+    )
+
+
+def save_plugin_catalogue_config(config: dict[str, Any]) -> Path:
+    """Save an ordered plugin-list configuration as a user override."""
+    return save_user_yaml(
+        "plugin_catalogue.yaml", normalise_plugin_catalogue_config(config)
+    )
+
+
 def _install_user_resource(source: str | Path, subdir: str) -> Path:
     """Install a selected file in a canonical user resource directory.
 

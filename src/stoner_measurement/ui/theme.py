@@ -261,11 +261,11 @@ def tree_stylesheet() -> str:
 QTreeWidget {{
     show-decoration-selected: 1;
 }}
-QTreeWidget::branch:has-siblings:!adjoins-item {{
+QTreeWidget::branch:has-siblings:!adjoins-item:!has-children {{
     border-left: 1px solid {border};
     margin-left: 5px;
 }}
-QTreeWidget::branch:has-siblings:adjoins-item,
+QTreeWidget::branch:has-siblings:adjoins-item:!has-children,
 QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {{
     border-left: 1px solid {border};
     margin-left: 5px;

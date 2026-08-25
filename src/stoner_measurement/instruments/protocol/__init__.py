@@ -7,6 +7,7 @@ simple-ASCII (:class:`LakeshoreProtocol`) protocols.
 """
 
 from stoner_measurement.instruments.protocol.base import BaseProtocol
+from stoner_measurement.instruments.protocol.ieee488 import parse_ieee_block
 from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
 from stoner_measurement.instruments.protocol.leybold import LeyboldCenterProtocol
 from stoner_measurement.instruments.protocol.mks import MKSPR4000Protocol, MKSPSRProtocol
@@ -16,6 +17,7 @@ from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 
 __all__ = [
     "BaseProtocol",
+    "parse_ieee_block",
     "LakeshoreProtocol",
     "MKSPR4000Protocol",
     "MKSPSRProtocol",

@@ -211,3 +211,4 @@ __marimo__/
 .ai_chat/
 
 .pytest*/*
+notes/sources/*

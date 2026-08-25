@@ -44,6 +44,11 @@ from stoner_measurement.plugins.trace.keithley_2400 import (
 from stoner_measurement.plugins.trace.keithley_2400 import (
     TerminalMode as K2400TerminalMode,
 )
+from stoner_measurement.plugins.trace.network_analyser import (
+    NetworkAnalyserModel,
+    NetworkAnalyserSweepVariable,
+    NetworkAnalyserTracePlugin,
+)
 
 __all__ = [
     "ComplianceMode",
@@ -59,6 +64,9 @@ __all__ = [
     "SweepSourceMode",
     "TriggerRouting",
     "LockInOutput",
+    "NetworkAnalyserModel",
+    "NetworkAnalyserSweepVariable",
+    "NetworkAnalyserTracePlugin",
     "SecondaryTriggerMode",
     "SourceRangeMode",
     "TracePlugin",

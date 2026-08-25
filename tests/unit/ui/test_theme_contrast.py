@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from stoner_measurement.ui.theme import contrast_ratio, contrasting_text_colour
+from stoner_measurement.ui.theme import (
+    contrast_ratio,
+    contrasting_text_colour,
+    tree_stylesheet,
+)
 
 
 @pytest.mark.parametrize(
@@ -21,6 +25,16 @@ def test_contrasting_text_colour_meets_wcag_aa(background):
 def test_wcag_reference_contrast_ratios():
     assert contrast_ratio("#000000", "#ffffff") == pytest.approx(21.0)
     assert contrast_ratio("#777777", "#ffffff") == pytest.approx(4.478, rel=1e-3)
+
+
+def test_tree_branch_guides_do_not_override_group_chevrons():
+    """Custom guide lines must not match branches that have child nodes."""
+    stylesheet = tree_stylesheet()
+
+    assert "branch:has-siblings:!adjoins-item:!has-children" in stylesheet
+    assert "branch:has-siblings:adjoins-item:!has-children" in stylesheet
+    assert "branch:has-siblings:!adjoins-item {" not in stylesheet
+    assert "branch:has-siblings:adjoins-item," not in stylesheet
 
 
 if __name__ == "__main__":

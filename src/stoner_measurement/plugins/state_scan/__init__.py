@@ -15,6 +15,9 @@ from stoner_measurement.plugins.state_scan.magnet_controller import (
 from stoner_measurement.plugins.state_scan.motor_controller import (
     MotorControllerScanPlugin,
 )
+from stoner_measurement.plugins.state_scan.network_analyser import (
+    NetworkAnalyserPointScanPlugin,
+)
 from stoner_measurement.plugins.state_scan.temperature_controller import (
     TemperatureControllerScanPlugin,
 )
@@ -27,6 +30,7 @@ __all__ = [
     "Keithley2400PointScanPlugin",
     "MagnetControllerScanPlugin",
     "MotorControllerScanPlugin",
+    "NetworkAnalyserPointScanPlugin",
     "StateScanPlugin",
     "TemperatureControllerScanPlugin",
     "XrayDiffractometerScanPlugin",

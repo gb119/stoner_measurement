@@ -10,6 +10,7 @@ import numpy as np
 
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.electrometer import ElectrometerDataFormat
+from stoner_measurement.instruments.protocol.ieee488 import parse_ieee_block
 
 KeithleyDataFormat = ElectrometerDataFormat
 
@@ -118,7 +119,11 @@ class KeithleyScpiDataFormatMixin:
                 (ElectrometerDataFormat.DREAL, 8),
             ):
                 try:
-                    data = cls._remove_binary_terminator(payload[2:], itemsize)
+                    data = parse_ieee_block(
+                        payload,
+                        allow_indefinite=True,
+                        itemsize=itemsize,
+                    )
                 except ValueError:
                     continue
                 if len(data) == count * itemsize:
@@ -131,12 +136,15 @@ class KeithleyScpiDataFormatMixin:
             data_format = matches[0]
         if data_format is ElectrometerDataFormat.ASCII:
             raise ValueError("ASCII data cannot be parsed as a binary response.")
-        if not payload.startswith(b"#0"):
-            raise ValueError("Binary Keithley response does not start with the '#0' marker.")
-
         type_code = "f4" if data_format is ElectrometerDataFormat.SREAL else "f8"
         itemsize = 4 if data_format is ElectrometerDataFormat.SREAL else 8
-        data = cls._remove_binary_terminator(payload[2:], itemsize)
+        if not payload.startswith(b"#0"):
+            raise ValueError("Binary Keithley response does not start with the '#0' marker.")
+        data = parse_ieee_block(
+            payload,
+            allow_indefinite=True,
+            itemsize=itemsize,
+        )
         endian = ">" if byte_order is KeithleyByteOrder.NORMAL else "<"
         values = np.frombuffer(data, dtype=np.dtype(f"{endian}{type_code}"))
         if count is not None:

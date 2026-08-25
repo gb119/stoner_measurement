@@ -30,6 +30,7 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.dmm.DigitalMultimeter` — abstract type
 * :class:`~stoner_measurement.instruments.electrometer.Electrometer` — abstract type
 * :class:`~stoner_measurement.instruments.nanovoltmeter.Nanovoltmeter` — abstract type
+* :class:`~stoner_measurement.instruments.network_analyser.NetworkAnalyser` — abstract type
 * :class:`~stoner_measurement.instruments.eurotherm.Eurotherm2000Series` — concrete temperature controller
 * :class:`~stoner_measurement.instruments.eurotherm.Eurotherm3200Series` — concrete temperature controller
 * :class:`~stoner_measurement.instruments.keithley.Keithley2000` — concrete DMM driver
@@ -55,8 +56,11 @@ laboratory instruments:
 * :class:`~stoner_measurement.instruments.simulated.SimulatedMagnetController` — concrete simulated magnet controller
 * :class:`~stoner_measurement.instruments.simulated.SimulatedMotorController` — concrete simulated motor controller
 * :class:`~stoner_measurement.instruments.thorlabs.ThorlabsKDC101KPRMTE` — concrete motor driver
+* :class:`~stoner_measurement.instruments.agilent.AgilentE5062A` — concrete ENA driver
+* :class:`~stoner_measurement.instruments.agilent.AgilentN5222A` — concrete PNA driver
 """
 
+from stoner_measurement.instruments.agilent import AgilentE5062A, AgilentN5222A
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 from stoner_measurement.instruments.current_source import (
     CurrentSource,
@@ -123,6 +127,18 @@ from stoner_measurement.instruments.nanovoltmeter import (
     NanovoltmeterFunction,
     NanovoltmeterTriggerSource,
 )
+from stoner_measurement.instruments.network_analyser import (
+    ByteOrder,
+    DataEncoding,
+    NetworkAnalyser,
+    NetworkAnalyserCapabilities,
+    NetworkAnalyserTriggerSource,
+    NetworkSweep,
+    NetworkTraceData,
+    SweepConfiguration,
+    SweepType,
+    TraceFormat,
+)
 from stoner_measurement.instruments.pressure_controller import (
     PressureControllerCapabilities,
     PressureGaugeController,
@@ -173,8 +189,11 @@ from stoner_measurement.instruments.xray import (
 from stoner_measurement.instruments.xray_diffractometer import XrayDiffractometer
 
 __all__ = [
+    "AgilentE5062A",
+    "AgilentN5222A",
     "AlarmState",
     "BaseInstrument",
+    "ByteOrder",
     "ControllerCapabilities",
     "ControlMode",
     "CurrentSource",
@@ -183,6 +202,7 @@ __all__ = [
     "CurrentSweepSpacing",
     "CurrentWaveform",
     "DigitalMultimeter",
+    "DataEncoding",
     "DiffractometerMechanics",
     "DmmCapabilities",
     "DmmFunction",
@@ -231,6 +251,11 @@ __all__ = [
     "NanovoltmeterCapabilities",
     "NanovoltmeterFunction",
     "NanovoltmeterTriggerSource",
+    "NetworkAnalyser",
+    "NetworkAnalyserCapabilities",
+    "NetworkAnalyserTriggerSource",
+    "NetworkSweep",
+    "NetworkTraceData",
     "PressureControllerCapabilities",
     "PressureGaugeController",
     "PressureReading",
@@ -252,12 +277,15 @@ __all__ = [
     "SourceMeterCapabilities",
     "SourceMode",
     "SourceSweepConfiguration",
+    "SweepConfiguration",
     "SweepSpacing",
+    "SweepType",
     "ThorlabsHDR50",
     "ThorlabsKDC101KPRMTE",
     "TemperatureController",
     "TemperatureReading",
     "TemperatureStatus",
+    "TraceFormat",
     "TriggerModelConfiguration",
     "TriggerSource",
     "ZoneEntry",

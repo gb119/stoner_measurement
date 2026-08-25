@@ -21,6 +21,9 @@ from stoner_measurement.scan.function_generator import (
     WaveformType,
 )
 from stoner_measurement.scan.list_generator import ListScanGenerator, ListScanWidget
+from stoner_measurement.scan.network_analyser_generator import (
+    NetworkAnalyserScanGenerator,
+)
 from stoner_measurement.scan.ramp_generator import (
     RampMode,
     RampScanGenerator,
@@ -39,6 +42,7 @@ __all__ = [
     "FunctionScanWidget",
     "ListScanGenerator",
     "ListScanWidget",
+    "NetworkAnalyserScanGenerator",
     "RampMode",
     "RampScanGenerator",
     "RampScanWidget",
