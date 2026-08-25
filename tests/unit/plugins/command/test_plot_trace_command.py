@@ -521,14 +521,14 @@ class TestPlotTraceCommand:
         cmd.x_expr = "td.df['x'].to_numpy()"
         cmd.y_expr = "td.df['y'].to_numpy()"
 
-        ensured_x: list[tuple[str, str]] = []
-        ensured_y: list[tuple[str, str]] = []
+        ensured_x: list[tuple[str, AxisLabel]] = []
+        ensured_y: list[tuple[str, AxisLabel]] = []
         cmd.plot_ensure_x_axis.connect(lambda axis, label: ensured_x.append((axis, label)))
         cmd.plot_ensure_y_axis.connect(lambda axis, label: ensured_y.append((axis, label)))
         cmd.execute()
 
-        assert ensured_x[-1] == ("bottom", "Magnetic Field (T)")
-        assert ensured_y[-1] == ("left", "Resistance (ohm)")
+        assert ensured_x[-1] == ("bottom", AxisLabel("Magnetic Field", "T"))
+        assert ensured_y[-1] == ("left", AxisLabel("Resistance", "ohm"))
 
     def test_simple_mode_applies_channel_labels_to_configured_axes(self, qapp, engine):
         """Default simple-mode channels label custom axes as well as default axes."""
@@ -546,15 +546,15 @@ class TestPlotTraceCommand:
         cmd.trace_key = "temperature_scan:data"
         cmd.x_axis_name = "temperature_axis"
         cmd.y_axis_name = "voltage_axis"
-        ensured_x: list[tuple[str, str]] = []
-        ensured_y: list[tuple[str, str]] = []
+        ensured_x: list[tuple[str, AxisLabel | str]] = []
+        ensured_y: list[tuple[str, AxisLabel | str]] = []
         cmd.plot_ensure_x_axis.connect(lambda axis, label: ensured_x.append((axis, label)))
         cmd.plot_ensure_y_axis.connect(lambda axis, label: ensured_y.append((axis, label)))
 
         cmd.execute()
 
-        assert ensured_x[-1] == ("temperature_axis", "Temperature (K)")
-        assert ensured_y[-1] == ("voltage_axis", "Voltage (V)")
+        assert ensured_x[-1] == ("temperature_axis", AxisLabel("Temperature", "K"))
+        assert ensured_y[-1] == ("voltage_axis", AxisLabel("Voltage", "V"))
 
     def test_plot_axis_labels_not_emitted_when_names_empty(self, qapp, engine):
         """execute() does not emit plot_axis_labels when TraceData has no names."""

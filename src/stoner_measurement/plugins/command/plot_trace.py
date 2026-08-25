@@ -419,8 +419,8 @@ class PlotTraceCommand(CommandPlugin):
             y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
             x_label = self._channel_label_for_expression(self.x_expr)
             y_label = self._channel_label_for_expression(self.y_expr)
-            self.plot_ensure_x_axis.emit(x_axis, x_label or x_axis)
-            self.plot_ensure_y_axis.emit(y_axis, y_label or y_axis)
+            self.plot_ensure_x_axis.emit(x_axis, x_label if str(x_label) else x_axis)
+            self.plot_ensure_y_axis.emit(y_axis, y_label if str(y_label) else y_axis)
             self._queue_plot_update_request(self.plot_update_queued)
             self.plot_trace.emit(
                 title,
@@ -505,8 +505,8 @@ class PlotTraceCommand(CommandPlugin):
                     self._emit_single_trace(title, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
 
         x_label, y_label = self._emit_trace_axis_labels(trace_data, label_y_key)
-        self.plot_ensure_x_axis.emit(x_axis, x_label or x_axis)
-        self.plot_ensure_y_axis.emit(y_axis, y_label or y_axis)
+        self.plot_ensure_x_axis.emit(x_axis, x_label if str(x_label) else x_axis)
+        self.plot_ensure_y_axis.emit(y_axis, y_label if str(y_label) else y_axis)
 
     def _build_style_dict(self) -> dict:
         """Build a style dictionary from the current format attributes.
@@ -783,23 +783,23 @@ class PlotTraceCommand(CommandPlugin):
             return current_colour
         return selected.name(QColor.NameFormat.HexRgb)
 
-    def _channel_label_for_expression(self, expression: str) -> str:
+    def _channel_label_for_expression(self, expression: str) -> AxisLabel:
         """Return the data-selection label for a configured channel expression."""
         traces: dict[str, str] = self.engine_namespace.get("_traces", {})
         items = trace_channel_items(self, traces)
         roles = trace_channel_roles(self, traces)
         channel_name = channel_name_for_expression(items, roles, expression)
         if channel_name is None:
-            return ""
+            return AxisLabel("")
         for trace_key in sorted(traces, key=len, reverse=True):
             prefix = f"{trace_key}:"
             if channel_name.startswith(prefix):
-                return channel_name[len(prefix) :]
-        return channel_name
+                return AxisLabel.coerce(channel_name[len(prefix) :])
+        return AxisLabel.coerce(channel_name)
 
     def _emit_trace_axis_labels(
         self, trace_data: Any, y_key: str | None = None
-    ) -> tuple[str, str]:
+    ) -> tuple[AxisLabel, AxisLabel]:
         """Emit default axis labels resolved from trace metadata.
 
         Args:
