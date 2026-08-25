@@ -1,10 +1,10 @@
 """CurveFitPlugin — transform plugin that fits data to a user-defined function.
 
 Performs scipy.optimize.curve_fit on a selected data trace using a fitting
-function supplied as Python source code.  Parameter names, bounds, and initial
-values are configured via the UI.  Fitted parameter values and their
-uncertainties (sqrt of covariance matrix diagonal) are reported as plugin
-outputs.
+function supplied as Python source code. Parameter names, bounds, initial
+values, and SI units are configured via the UI. Fitted parameter values and
+their uncertainties (sqrt of covariance matrix diagonal) are reported as
+unit-aware plugin outputs.
 
 Notes:
     The fit-function code entered by the user is executed with Python's built-in
@@ -185,9 +185,10 @@ _NAN = float("nan")
 _PARAM_TABLE_ROW_MIN = 0
 _PARAM_TABLE_ROW_INITIAL = 1
 _PARAM_TABLE_ROW_MAX = 2
-_PARAM_TABLE_ROW_USED_INITIAL = 3
-_PARAM_TABLE_ROW_FITTED = 4
-_PARAM_TABLE_ROW_LABELS = ["Min", "Initial", "Max", "Initial used", "Fitted"]
+_PARAM_TABLE_ROW_UNITS = 3
+_PARAM_TABLE_ROW_USED_INITIAL = 4
+_PARAM_TABLE_ROW_FITTED = 5
+_PARAM_TABLE_ROW_LABELS = ["Min", "Initial", "Max", "Units", "Initial used", "Fitted"]
 
 # Mapping from SI tier (power-of-1000 exponent) to SI prefix symbol.
 _SI_PREFIXES: dict[int, str] = {
@@ -376,20 +377,21 @@ def _format_value_with_reference(value: Any, reference_value: Any, reference_unc
 
 
 class _ParamTableWidget(QWidget):
-    """Table widget for configuring per-parameter bounds and initial values.
+    """Table widget for configuring fitted-parameter values and physical units.
 
     Displays one column per parameter detected in the fit function. The columns
-    show the parameter names and the rows show the minimum bound, editable initial value, maximum bound, the initial
-    values currently used by the fit, and the fitted value with uncertainty.
+    show the parameter names. Rows provide the minimum bound, editable initial
+    value, maximum bound, SI unit, initial value used by the fit, and fitted
+    value with uncertainty.
 
     Args:
         parent (QWidget | None):
             Optional Qt parent widget.
 
     Attributes:
-        param_settings (dict[str, dict[str, float | None]]):
-            Mapping of parameter name → ``{"min": …, "initial": …, "max": …}``.
-            ``None`` means the value was not specified by the user.
+        param_settings (dict[str, dict[str, float | str | None]]):
+            Mapping of parameter name to numeric bounds/initial value and a
+            ``"units"`` string. ``None`` means a numeric value was unspecified.
         settings_changed (pyqtSignal):
             Emitted whenever the user edits a cell in the table.
     """
@@ -400,7 +402,7 @@ class _ParamTableWidget(QWidget):
         """Initialise the parameter table."""
         super().__init__(parent)
         self._build_ui()
-        self.param_settings: dict[str, dict[str, float | None]] = {}
+        self.param_settings: dict[str, dict[str, float | str | None]] = {}
         self._fitted_text_by_param: dict[str, str] = {}
         self._fitted_value_by_param: dict[str, Any] = {}
         self._fitted_uncertainty_by_param: dict[str, Any] = {}
@@ -419,7 +421,8 @@ class _ParamTableWidget(QWidget):
         self._table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self._table.setToolTip(
             "Leave Min/Initial/Max blank to use defaults.\n"
-            "Min/Max constrain the curve fit; Initial provides manual starting values."
+            "Min/Max constrain the curve fit; Initial provides manual starting values.\n"
+            "Units supplies the SI unit propagated with fitted scalar outputs."
         )
         self._table.setStyleSheet(
             "QTableWidget { "
@@ -476,6 +479,11 @@ class _ParamTableWidget(QWidget):
                     val = prev.get(key)
                     text = "" if val is None else str(val)
                     self._table.setItem(row, col, QTableWidgetItem(text))
+                self._table.setItem(
+                    _PARAM_TABLE_ROW_UNITS,
+                    col,
+                    QTableWidgetItem(str(prev.get("units", "") or "")),
+                )
                 self._set_read_only_cell(
                     _PARAM_TABLE_ROW_USED_INITIAL,
                     col,
@@ -485,22 +493,25 @@ class _ParamTableWidget(QWidget):
         finally:
             self._table.blockSignals(blocked)
 
-    def read_settings(self) -> dict[str, dict[str, float | None]]:
+    def read_settings(self) -> dict[str, dict[str, float | str | None]]:
         """Read current table values and return a settings dict.
 
         Returns:
-            (dict[str, dict[str, float | None]]):
-                ``{param_name: {"min": …, "initial": …, "max": …}}``
-                where ``None`` means the cell was blank.
+            (dict[str, dict[str, float | str | None]]):
+                Per-parameter numeric settings plus an SI ``"units"`` string.
         """
         self.param_settings = self._read_table()
         return self.param_settings
 
-    def load_settings(self, settings: dict[str, dict[str, float | None]], param_names: list[str]) -> None:
+    def load_settings(
+        self,
+        settings: dict[str, dict[str, float | str | None]],
+        param_names: list[str],
+    ) -> None:
         """Populate the table from *settings* for the given *param_names*.
 
         Args:
-            settings (dict[str, dict[str, float | None]]):
+            settings (dict[str, dict[str, float | str | None]]):
                 Settings dict as returned by :meth:`read_settings`.
             param_names (list[str]):
                 Ordered parameter names to show.
@@ -546,11 +557,11 @@ class _ParamTableWidget(QWidget):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _read_table(self) -> dict[str, dict[str, float | None]]:
+    def _read_table(self) -> dict[str, dict[str, float | str | None]]:
         """Read values from the table and return a settings dict."""
-        result: dict[str, dict[str, float | None]] = {}
+        result: dict[str, dict[str, float | str | None]] = {}
         for col, name in enumerate(self._iter_parameter_names()):
-            column_settings: dict[str, float | None] = {}
+            column_settings: dict[str, float | str | None] = {}
             for row, key in (
                 (_PARAM_TABLE_ROW_MIN, "min"),
                 (_PARAM_TABLE_ROW_INITIAL, "initial"),
@@ -565,13 +576,15 @@ class _ParamTableWidget(QWidget):
                         column_settings[key] = None
                 else:
                     column_settings[key] = None
+            units_item = self._table.item(_PARAM_TABLE_ROW_UNITS, col)
+            column_settings["units"] = units_item.text().strip() if units_item else ""
             result[name] = column_settings
         return result
 
     def _fill_table(
         self,
         param_names: list[str],
-        settings: dict[str, dict[str, float | None]],
+        settings: dict[str, dict[str, float | str | None]],
     ) -> None:
         """Fill the table from *param_names* and *settings*."""
         self._parameter_names = list(param_names)
@@ -589,6 +602,11 @@ class _ParamTableWidget(QWidget):
                     val = vals.get(key)
                     text = "" if val is None else str(val)
                     self._table.setItem(row, col, QTableWidgetItem(text))
+                self._table.setItem(
+                    _PARAM_TABLE_ROW_UNITS,
+                    col,
+                    QTableWidgetItem(str(vals.get("units", "") or "")),
+                )
                 self._set_read_only_cell(
                     _PARAM_TABLE_ROW_USED_INITIAL,
                     col,
@@ -668,7 +686,8 @@ class CurveFitPlugin(TransformPlugin):
       can be added to generate initial parameter guesses automatically.
     * **Parameters** — a table with one column per detected parameter.  Each
       parameter column lets you set optional minimum, initial, and maximum
-      values. Optional outputs can also be enabled:
+      values plus the SI unit propagated with its scalar outputs. Optional
+      outputs can also be enabled:
 
       * reporting the initial parameter values used by the fit
       * generating an **initial fit** trace
@@ -707,10 +726,11 @@ class CurveFitPlugin(TransformPlugin):
         param_names (list[str]):
             Parameter names extracted from the ``fit`` function signature.
             Updated automatically whenever :attr:`fit_code` changes.
-        param_settings (dict[str, dict[str, float | None]]):
-            Per-parameter bounds and initial value.  Each entry maps a
-            parameter name to ``{"min": …, "initial": …, "max": …}`` where
-            ``None`` means *unconstrained / auto*.
+        param_settings (dict[str, dict[str, float | str | None]]):
+            Per-parameter bounds, initial value, and SI unit. Each entry maps a
+            parameter name to ``{"min": …, "initial": …, "max": …,
+            "units": …}``; ``None`` means *unconstrained / auto* for numeric
+            settings.
         show_initial_trace (bool):
             When ``True``, the transform stores an ``"initial_fit"`` trace
             in :attr:`data` containing the fitting function evaluated at the
@@ -793,7 +813,7 @@ class CurveFitPlugin(TransformPlugin):
         # Detected parameter names (derived from fit_code)
         self.param_names: list[str] = _parse_fit_params(self.fit_code)
         # Per-parameter bounds/initial settings
-        self.param_settings: dict[str, dict[str, float | None]] = {}
+        self.param_settings: dict[str, dict[str, float | str | None]] = {}
         # Optional trace outputs
         self.show_initial_trace: bool = False
         self.report_initial_values: bool = False
@@ -966,6 +986,23 @@ class CurveFitPlugin(TransformPlugin):
                 names.append(f"{pname}_initial")
             names.append(f"{pname}_err")
         return names
+
+    def reported_value_units(self) -> dict[str, str]:
+        """Return configured SI units for fitted scalar parameter outputs.
+
+        A parameter's fitted value, uncertainty, and optional reported initial
+        value all describe the same physical quantity and therefore carry the
+        same unit.
+        """
+        var = self.instance_name
+        units: dict[str, str] = {}
+        for pname in self.param_names:
+            unit = str(self.param_settings.get(pname, {}).get("units", "") or "").strip()
+            units[f"{var}:{pname}"] = unit
+            units[f"{var}:{pname}_err"] = unit
+            if self.report_initial_values:
+                units[f"{var}:{pname}_initial"] = unit
+        return units
 
     # ------------------------------------------------------------------
     # Transform implementation
@@ -1457,7 +1494,7 @@ class CurveFitPlugin(TransformPlugin):
         all_none = True
         for pname in self.param_names:
             val = self.param_settings.get(pname, {}).get("initial")
-            initials.append(1.0 if val is None else val)
+            initials.append(1.0 if val is None else float(val))
             if val is not None:
                 all_none = False
         return None if all_none else initials
@@ -1491,8 +1528,8 @@ class CurveFitPlugin(TransformPlugin):
             s = self.param_settings.get(pname, {})
             lo = s.get("min")
             hi = s.get("max")
-            lower.append(-_INF if lo is None else lo)
-            upper.append(_INF if hi is None else hi)
+            lower.append(-_INF if lo is None else float(lo))
+            upper.append(_INF if hi is None else float(hi))
             if lo is not None or hi is not None:
                 has_bounds = True
         if not has_bounds:
@@ -1558,6 +1595,11 @@ class CurveFitPlugin(TransformPlugin):
             return
         self._param_table_preview_timer.start(delay_ms)
 
+    def _on_param_table_destroyed(self) -> None:
+        """Discard the table reference and cancel any deferred preview update."""
+        self._param_table_preview_timer.stop()
+        self._param_table_widget = None
+
     def _update_param_names(self, code: str) -> None:
         """Update :attr:`param_names` by introspecting *code*.
 
@@ -1580,13 +1622,13 @@ class CurveFitPlugin(TransformPlugin):
 
     def _merge_param_settings(
         self,
-        table_settings: dict[str, dict[str, float | None]],
+        table_settings: dict[str, dict[str, float | str | None]],
         current_param_names: list[str],
     ) -> None:
         """Merge table settings while preserving non-parameter auxiliary keys.
 
         Args:
-            table_settings (dict[str, dict[str, float | None]]):
+            table_settings (dict[str, dict[str, float | str | None]]):
                 Parameter settings read from the UI table.
             current_param_names (list[str]):
                 Parameter names currently managed by the fit-function table.
@@ -1595,6 +1637,8 @@ class CurveFitPlugin(TransformPlugin):
             key: value for key, value in self.param_settings.items() if key not in current_param_names
         }
         self.param_settings = {**auxiliary_settings, **table_settings}
+        if self.sequence_engine is not None:
+            self.sequence_engine.refresh_data_catalogs()
 
     # ------------------------------------------------------------------
     # Configuration tabs
@@ -1941,6 +1985,7 @@ class CurveFitPlugin(TransformPlugin):
         param_widget.load_settings(self.param_settings, self.param_names)
         param_widget.update_fitted_results(self.data)
         self._param_table_widget = param_widget
+        param_widget.destroyed.connect(self._on_param_table_destroyed)
         self._refresh_param_table_preview()
         param_layout.addWidget(param_widget)
 
@@ -2076,10 +2121,16 @@ class CurveFitPlugin(TransformPlugin):
         self.fit_code = data.get("fit_code", _DEFAULT_FIT_CODE)
         self.param_names = data.get("param_names", _parse_fit_params(self.fit_code))
         raw_settings = data.get("param_settings", {})
-        self.param_settings = {
-            name: {k: (float(v) if v is not None else None) for k, v in entry.items()}
-            for name, entry in raw_settings.items()
-        }
+        self.param_settings = {}
+        for name, entry in raw_settings.items():
+            restored: dict[str, float | str | None] = {}
+            for key, value in entry.items():
+                if key == "units":
+                    restored[key] = str(value or "").strip()
+                else:
+                    restored[key] = float(value) if value is not None else None
+            restored.setdefault("units", "")
+            self.param_settings[name] = restored
         self.report_initial_values = data.get("report_initial_values", False)
         self.show_initial_trace = data.get("show_initial_trace", False)
         self.show_best_fit_trace = data.get("show_best_fit_trace", False)

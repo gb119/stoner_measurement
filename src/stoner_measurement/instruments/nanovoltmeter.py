@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, ClassVar
 
+import numpy as np
+
 from stoner_measurement.instruments.base_instrument import BaseInstrument
 
 if TYPE_CHECKING:
@@ -44,6 +46,8 @@ class NanovoltmeterCapabilities:
     has_filter: bool = False
     has_trigger: bool = False
     has_buffer: bool = False
+    has_data_format: bool = False
+    has_byte_order: bool = False
     supported_functions: tuple[NanovoltmeterFunction, ...] = (NanovoltmeterFunction.VOLT,)
     fixed_voltage_ranges: tuple[float, ...] = ()
     nplc_values: tuple[float, ...] = ()
@@ -422,7 +426,7 @@ class Nanovoltmeter(BaseInstrument):
             "Check get_capabilities().has_buffer before calling this method."
         )
 
-    def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
+    def read_buffer(self, count: int | None = None) -> tuple[float, ...] | np.ndarray:
         """Read values from the instrument buffer.
 
         Keyword Parameters:

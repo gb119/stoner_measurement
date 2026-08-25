@@ -42,6 +42,7 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.qt_compat import pyqtSignal
+from stoner_measurement.ui.axis_mappings import AxisLabel
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
 
 if TYPE_CHECKING:
@@ -137,6 +138,10 @@ def _default_label(key: str, engine_namespace: dict) -> str:
     if len(parts) != 2:
         return key
     instance_name, quantity_name = parts
+    catalog_entry = engine_namespace.get("_values", {}).get(key)
+    catalog_units = getattr(catalog_entry, "units", "")
+    if catalog_units:
+        return str(AxisLabel(quantity_name, catalog_units))
     plugin = engine_namespace.get(instance_name)
     if plugin is None:
         return quantity_name
@@ -148,6 +153,12 @@ def _default_label(key: str, engine_namespace: dict) -> str:
         if unit:
             return f"{quantity_name} ({unit})"
     return quantity_name
+
+
+def _axis_label(key: str, catalog_entry: str) -> AxisLabel:
+    """Build structured axis metadata from one scalar catalogue entry."""
+    quantity = key.split(":", 1)[-1]
+    return AxisLabel(quantity, getattr(catalog_entry, "units", ""))
 
 
 class PlotPointsCommand(CommandPlugin):
@@ -229,9 +240,9 @@ class PlotPointsCommand(CommandPlugin):
     #: Signal emitted by execute() before each queued point update.
     plot_update_queued = pyqtSignal()
     #: Signal emitted by execute() to ensure x-axis exists — (axis_name, axis_label).
-    plot_ensure_x_axis = pyqtSignal(str, str)
+    plot_ensure_x_axis = pyqtSignal(str, object)
     #: Signal emitted by execute() to ensure y-axis exists — (axis_name, axis_label).
-    plot_ensure_y_axis = pyqtSignal(str, str)
+    plot_ensure_y_axis = pyqtSignal(str, object)
     #: Signal emitted by execute() to assign trace axes — (trace_name, x_axis, y_axis).
     plot_trace_axes = pyqtSignal(str, str, str)
     #: Signal emitted by execute() to set trace style — (trace_name, style_dict).
@@ -426,8 +437,8 @@ class PlotPointsCommand(CommandPlugin):
                 # Stop waiting/plotting for this step when interrupted
                 # (e.g. user stop requested).
                 return
-            self.plot_ensure_x_axis.emit(x_axis, x_axis)
-            self.plot_ensure_y_axis.emit(y_axis, y_axis)
+            self.plot_ensure_x_axis.emit(x_axis, _axis_label(self.x_key, x_expr))
+            self.plot_ensure_y_axis.emit(y_axis, _axis_label(y_key, y_expr))
             self._queue_plot_update_request(self.plot_update_queued)
             self.plot_point.emit(label, x_val, y_val)
             self.plot_trace_axes.emit(label, x_axis, y_axis)

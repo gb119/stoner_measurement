@@ -357,3 +357,8 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
         var = self.instance_name
         return {f"{var}:{qty}": f"{var}.last_reading['{qty}']" for qty in self.quantity_names}
+
+    def reported_value_units(self) -> dict[str, str]:
+        """Return the configured physical unit for every monitored quantity."""
+        var = self.instance_name
+        return {f"{var}:{qty}": self.units.get(qty, "") for qty in self.quantity_names}

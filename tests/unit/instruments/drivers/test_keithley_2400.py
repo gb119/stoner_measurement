@@ -4,9 +4,17 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
-from stoner_measurement.instruments.keithley import Keithley2400, Keithley2410, Keithley2450
+from stoner_measurement.instruments.keithley import (
+    Keithley2400,
+    Keithley2410,
+    Keithley2450,
+    KeithleyByteOrder,
+    KeithleyDataFormat,
+)
+from stoner_measurement.instruments.keithley.k2400 import BufferReading
 from stoner_measurement.instruments.protocol import ScpiProtocol
 from stoner_measurement.instruments.source_meter import (
     MeasureFunction,
@@ -18,6 +26,7 @@ from stoner_measurement.instruments.source_meter import (
     TriggerSource,
 )
 from stoner_measurement.instruments.transport import NullTransport
+from stoner_measurement.instruments.transport.serial_transport import SerialTransport
 
 
 def _null(responses=None):
@@ -305,11 +314,58 @@ class TestKeithley2400:
         assert records[0].resistance == pytest.approx(3.0)
         assert records[0].time == pytest.approx(4.0)
         assert records[0].status == pytest.approx(5.0)
-        assert t.write_log == [
-            b":FORM:DATA ASC\n",
-            b":FORM:ELEM VOLT,CURR,RES,TIME,STAT\n",
-            b":TRAC:DATA?\n",
-        ]
+        assert t.write_log == [b":TRAC:DATA?\n"]
+
+    def test_binary_format_state_and_2400_precision_limit(self):
+        t = _null()
+        k = Keithley2400(transport=t)
+
+        k.set_data_format(KeithleyDataFormat.SREAL)
+        k.set_byte_order(KeithleyByteOrder.native())
+
+        assert k.get_data_format() is KeithleyDataFormat.SREAL
+        assert k.get_byte_order() is KeithleyByteOrder.native()
+        with pytest.raises(ValueError, match="Unsupported data format"):
+            k.set_data_format(KeithleyDataFormat.DREAL)
+
+    def test_binary_format_is_rejected_for_serial_transport(self):
+        k = Keithley2400(transport=SerialTransport(port="COM1"))
+
+        with pytest.raises(ValueError, match="GPIB only"):
+            k.set_data_format(KeithleyDataFormat.SREAL)
+
+    def test_configure_buffer_uses_native_order_sreal(self):
+        t = _null()
+        k = Keithley2400(transport=t)
+
+        k.configure_buffer(2)
+
+        expected = [b":FORM:DATA SRE\n"]
+        if KeithleyByteOrder.native() is KeithleyByteOrder.SWAPPED:
+            expected.append(b":FORM:BORD SWAP\n")
+        expected.extend([
+            b":TRAC:CLE\n",
+            b":TRAC:POIN 2\n",
+            b":TRAC:FEED SENS\n",
+            b":TRAC:FEED:CONT NEXT\n",
+        ])
+        assert t.write_log == expected
+
+    def test_binary_buffer_records_preserve_record_mapping(self):
+        elements = ("VOLT", "CURR", "RES", "TIME", "STAT")
+        expected = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype="<f4")
+        t = _null(responses=[b"#0" + expected.tobytes() + b"\n"])
+        k = Keithley2400(transport=t)
+        k.set_data_format(KeithleyDataFormat.SREAL)
+        k.set_byte_order(KeithleyByteOrder.SWAPPED)
+
+        records = k.read_buffer_records(elements, count=2)
+
+        assert records == (
+            BufferReading(voltage=1, current=2, resistance=3, time=4, status=5),
+            BufferReading(voltage=6, current=7, resistance=8, time=9, status=10),
+        )
+        assert t.write_log[-1] == b":TRAC:DATA? 1,2\n"
 
     def test_check_error_queue_returns_terminating_no_error(self):
         t = _null(responses=[b'-200,"Execution error"\n', b'0,"No error"\n'])
@@ -373,6 +429,8 @@ class TestKeithley2400:
         assert caps.has_source_delay
         assert caps.has_trigger_model
         assert caps.has_buffer
+        assert caps.has_data_format
+        assert caps.has_byte_order
 
     def test_configure_trigger_link_source_handshake(self):
         transport = _null()

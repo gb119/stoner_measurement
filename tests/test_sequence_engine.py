@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from stoner_measurement.core.sequence_engine import SequenceEngine, _to_var_name
+from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.trace import DummyPlugin
 
@@ -670,6 +671,24 @@ class TestDataCatalogs:
         cat = engine.values_catalog
         assert len(cat) > 0
         assert any("counter" in k for k in cat)
+
+    def test_values_catalog_entries_preserve_expression_and_units(self, engine):
+        class UnitPlugin(BasePlugin):
+            @property
+            def name(self):
+                return "Unit output"
+
+            def reported_values(self):
+                return {"unit_output:Voltage": "unit_output.value"}
+
+            def reported_value_units(self):
+                return {"unit_output:Voltage": "V"}
+
+        engine.update_step_plugin_catalog([UnitPlugin()])
+
+        entry = engine.values_catalog["unit_output:Voltage"]
+        assert entry == "unit_output.value"
+        assert entry.units == "V"
 
     def test_collecting_state_plugin_populates_traces_catalog(self, engine):
         from stoner_measurement.plugins.state_scan import CounterPlugin

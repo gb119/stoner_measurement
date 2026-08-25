@@ -56,11 +56,11 @@ The main window contains two top-level work areas.
 
 This is the main workspace for routine use. It contains three panels:
 
-| Area | Purpose |
-| --- | --- |
-| **Left panel** | Plugin list, sequence tree, and monitoring controls |
-| **Centre panel** | Live plotting area for measurement data |
-| **Right panel** | Configuration for the currently selected step |
+| Area             | Purpose                                             |
+| ---------------- | --------------------------------------------------- |
+| **Left panel**   | Plugin list, sequence tree, and monitoring controls |
+| **Centre panel** | Live plotting area for measurement data             |
+| **Right panel**  | Configuration for the currently selected step       |
 
 A typical workflow is:
 

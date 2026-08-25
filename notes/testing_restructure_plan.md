@@ -74,34 +74,34 @@ tests/
 These files carry too much unrelated behavior and should be split by module or
 contract as they are touched:
 
-| File | Tests | Lines | Suggested split | Status |
-| --- | ---: | ---: | --- | --- |
-| `tests/test_new_ui_widgets.py` | 139 | 1876 | `unit/ui/widgets/`, `unit/ui/panels/`, `integration/app/` | In progress; SI spin box moved in pass 23 |
-| `tests/test_curve_fit_plugin.py` | 109 | 1241 | keep focused, but split UI/config from fit execution | Open |
-| `tests/test_sequence_engine.py` | 100 | 906 | `unit/core/` and `integration/sequence/` | Open |
-| `tests/test_instruments.py` | 452 | 4692 | `unit/instruments/drivers/` plus shared driver contracts | Complete; removed in pass 22 |
-| `tests/test_command_plugin.py` | 256 | 3244 | `unit/plugins/command/test_<command>.py` | Complete; removed in command-plugin migration |
-| `tests/test_plugin_subtypes.py` | 121 | 1092 | plugin contracts plus subtype-specific unit files | Complete; removed in plugin-subtype migration |
+| File                             | Tests | Lines | Suggested split                                           | Status                                        |
+| -------------------------------- | ----: | ----: | --------------------------------------------------------- | --------------------------------------------- |
+| `tests/test_new_ui_widgets.py`   |   139 |  1876 | `unit/ui/widgets/`, `unit/ui/panels/`, `integration/app/` | In progress; SI spin box moved in pass 23     |
+| `tests/test_curve_fit_plugin.py` |   109 |  1241 | keep focused, but split UI/config from fit execution      | Open                                          |
+| `tests/test_sequence_engine.py`  |   100 |   906 | `unit/core/` and `integration/sequence/`                  | Open                                          |
+| `tests/test_instruments.py`      |   452 |  4692 | `unit/instruments/drivers/` plus shared driver contracts  | Complete; removed in pass 22                  |
+| `tests/test_command_plugin.py`   |   256 |  3244 | `unit/plugins/command/test_<command>.py`                  | Complete; removed in command-plugin migration |
+| `tests/test_plugin_subtypes.py`  |   121 |  1092 | plugin contracts plus subtype-specific unit files         | Complete; removed in plugin-subtype migration |
 
 ## Cold Coverage Spots
 
 Ranked by missed lines plus missed branches:
 
-| Module | Coverage | Debt | Recommended approach |
-| --- | ---: | ---: | --- |
-| `ui/value_watch.py` | 29% | 663 | Unit-test model/state transitions and threshold formatting before widget flows |
-| `ui/widgets/round_dial.py` | 44% | 532 | Parametrize modes, label placement, collision handling, and color/theme branches |
-| `ui/dock_panel.py` | 66% | 425 | Split tree-model behavior from drag/drop and selection integration |
-| `ui/temperature_panel.py` | 73% | 414 | Extract/test state helpers; add thin Qt signal and chart-refresh tests |
-| `ui/plot_widget.py` | 80% | 322 | Cover axes-dialog branches, context-menu actions, and persistence wiring |
-| `app.py` | 67% | 316 | Add focused app-shell tests for action wiring and plugin-tree edge cases |
-| `ui/magnet_panel.py` | 77% | 255 | Test state rendering, limits handling, and command enablement with fake engine |
-| `temperature_control/engine.py` | 67% | 242 | Contract tests for driver connection, error paths, and state transitions |
-| `ui/pressure_panel.py` | 69% | 225 | Add fake-engine panel tests for state rendering, limits, and button gating |
-| `plugins/trace/k6221_multi_sr830.py` | 80% | 212 | Fill branch cases around config validation and UI callbacks |
-| `instruments/eurotherm/temperature_controllers.py` | 70% | 197 | Add driver contract tests for parsing, limits, and error-reporting branches |
-| `magnet_control/engine.py` | 73% | 194 | Add fake-driver state transition and failure-path tests |
-| `instruments/transport/gpib_transport.py` | 46% | 173 | Mock PyVISA resources under a transport contract |
+| Module                                             | Coverage | Debt | Recommended approach                                                             |
+| -------------------------------------------------- | -------: | ---: | -------------------------------------------------------------------------------- |
+| `ui/value_watch.py`                                |      29% |  663 | Unit-test model/state transitions and threshold formatting before widget flows   |
+| `ui/widgets/round_dial.py`                         |      44% |  532 | Parametrize modes, label placement, collision handling, and color/theme branches |
+| `ui/dock_panel.py`                                 |      66% |  425 | Split tree-model behavior from drag/drop and selection integration               |
+| `ui/temperature_panel.py`                          |      73% |  414 | Extract/test state helpers; add thin Qt signal and chart-refresh tests           |
+| `ui/plot_widget.py`                                |      80% |  322 | Cover axes-dialog branches, context-menu actions, and persistence wiring         |
+| `app.py`                                           |      67% |  316 | Add focused app-shell tests for action wiring and plugin-tree edge cases         |
+| `ui/magnet_panel.py`                               |      77% |  255 | Test state rendering, limits handling, and command enablement with fake engine   |
+| `temperature_control/engine.py`                    |      67% |  242 | Contract tests for driver connection, error paths, and state transitions         |
+| `ui/pressure_panel.py`                             |      69% |  225 | Add fake-engine panel tests for state rendering, limits, and button gating       |
+| `plugins/trace/k6221_multi_sr830.py`               |      80% |  212 | Fill branch cases around config validation and UI callbacks                      |
+| `instruments/eurotherm/temperature_controllers.py` |      70% |  197 | Add driver contract tests for parsing, limits, and error-reporting branches      |
+| `magnet_control/engine.py`                         |      73% |  194 | Add fake-driver state transition and failure-path tests                          |
+| `instruments/transport/gpib_transport.py`          |      46% |  173 | Mock PyVISA resources under a transport contract                                 |
 
 ## Migration Rules
 

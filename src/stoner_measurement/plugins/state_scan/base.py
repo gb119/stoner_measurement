@@ -744,7 +744,10 @@ class StateScanPlugin(StatePlugin):
             ),
             f"{loop_prefix}wait_for_plot_ready()",
             f"{loop_prefix}{var_name}.ramp_to(float({var_name}.value))",
-            f'{loop_prefix}print(f"{self.state_name}: {{{var_name}.get_state():.4g}} {self.units}")',
+            (
+                f'{loop_prefix}log.debug("%s: %.4g %s", '
+                f"{self.state_name!r}, {var_name}.get_state(), {self.units!r})"
+            ),
         ]
         if sub_steps:
             for sub_step in sub_steps:

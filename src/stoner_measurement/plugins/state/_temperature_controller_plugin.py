@@ -183,6 +183,15 @@ class TemperatureControllerPluginMixin:
             values[f"{var}:Sensor {channel}"] = f"{var}.sensor_value({channel!r})"
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return temperature units for the loop setpoint and sensor readings."""
+        units = super().reported_value_units()
+        selected = self._available_sensor_channels() if self.sensor_channels is None else list(self.sensor_channels)
+        var = self.instance_name
+        units[f"{var}:Loop Setpoint"] = self.units
+        units.update({f"{var}:Sensor {channel}": self.units for channel in selected})
+        return units
+
     def _temperature_settings_to_json(self) -> dict[str, object]:
         return {
             "control_loop": self.control_loop,

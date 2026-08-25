@@ -40,6 +40,7 @@ from qtpy.QtWidgets import (
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.axis_mappings import (
     AXIS_SCALES,
+    AxisLabel,
     AxisScale,
     MappedAxisItem,
     inverse_values,
@@ -780,13 +781,20 @@ class PlotWidget(QWidget):
         scene.sigMouseClicked.connect(self._on_scene_mouse_clicked)
         if hasattr(scene, "sigMouseDragged"):
             scene.sigMouseDragged.connect(self._on_scene_mouse_dragged)
-        self._pg_widget.setLabel("left", "Value")
-        self._pg_widget.setLabel("bottom", "Step")
+        axis_items["left"].set_axis_label(AxisLabel("Value"))
+        axis_items["bottom"].set_axis_label(AxisLabel("Step"))
         plot_item: pg.PlotItem = self._pg_widget.getPlotItem()
         plot_item.setMenuEnabled(False)
         self._plot_item = plot_item
         self._default_top_axis = plot_item.getAxis("top")
         self._default_top_axis_removed = False
+        self._default_right_axis = plot_item.getAxis("right")
+        self._default_right_axis_removed = False
+        # PlotItem keeps placeholder axes on all four sides.  They are not
+        # user-configured axes, so keep the unused top/right placeholders out
+        # of view until a named axis replaces them.
+        plot_item.hideAxis("top")
+        plot_item.hideAxis("right")
         self._view_boxes["left"] = plot_item.vb
         self._view_boxes["bottom"] = plot_item.vb
         self._pair_view_boxes[("bottom", "left")] = plot_item.vb
@@ -834,6 +842,8 @@ class PlotWidget(QWidget):
     def _layout_additional_axes(self) -> None:
         """Place axes on the plot layout with offsets for shared sides."""
         for side in ("left", "right"):
+            if self._axis_order.get(("y", side)):
+                self._remove_default_auxiliary_axis(side)
             for offset, axis_name in enumerate(self._axis_order.get(("y", side), [])):
                 axis_item = self._axis_items.get(axis_name)
                 if axis_item is None:
@@ -846,6 +856,8 @@ class PlotWidget(QWidget):
                 self._plot_item.layout.addItem(axis_item, 2, column)
 
         for side in ("top", "bottom"):
+            if self._axis_order.get(("x", side)):
+                self._remove_default_auxiliary_axis(side)
             for offset, axis_name in enumerate(self._axis_order.get(("x", side), [])):
                 axis_item = self._axis_items.get(axis_name)
                 if axis_item is None:
@@ -856,6 +868,23 @@ class PlotWidget(QWidget):
                     else _AXIS_LAYOUT_ROW["bottom"] + offset
                 )
                 self._plot_item.layout.addItem(axis_item, row, 1)
+
+    def _remove_default_auxiliary_axis(self, side: str) -> None:
+        """Remove PyQtGraph's unused top/right placeholder for a named axis."""
+        if side not in {"top", "right"}:
+            return
+        removed_attribute = f"_default_{side}_axis_removed"
+        if getattr(self, removed_attribute):
+            return
+        axis_attribute = f"_default_{side}_axis"
+        axis_item = getattr(self, axis_attribute)
+        # Close before removing from the layout so the AxisItem disposes of
+        # its LabelItem while the graphics scene is still alive.
+        axis_item.unlinkFromView()
+        axis_item.close()
+        self._plot_item.layout.removeItem(axis_item)
+        setattr(self, axis_attribute, None)
+        setattr(self, removed_attribute, True)
 
     def _capture_manual_axis_range(self, name: str) -> None:
         """Store the current visible range as the manual range for an axis."""
@@ -1289,7 +1318,7 @@ class PlotWidget(QWidget):
             entries.append(
                 {
                     "name": name,
-                    "label": axis.labelText or name,
+                    "label": str(axis.axis_label) or name,
                     "log_scale": self._axis_log_scale.get(name, False),
                     "scale": self._axis_scale.get(name, "linear"),
                     "scale_parameter": self._axis_scale_parameter.get(name, 1.0),
@@ -1743,8 +1772,10 @@ class PlotWidget(QWidget):
         with self._pending_data_updates_lock:
             return self._pending_data_updates > 0
 
-    @pyqtSlot(str, str)
-    def set_default_axis_labels(self, x_label: str, y_label: str) -> None:
+    @pyqtSlot(object, object)
+    def set_default_axis_labels(
+        self, x_label: AxisLabel | str, y_label: AxisLabel | str
+    ) -> None:
         """Update the default bottom and left axis labels.
 
         Called by :class:`~stoner_measurement.plugins.command.PlotTraceCommand`
@@ -1765,12 +1796,12 @@ class PlotWidget(QWidget):
             >>> _ = QApplication.instance() or QApplication([])
             >>> widget = PlotWidget()
             >>> widget.set_default_axis_labels("Current (A)", "Voltage (V)")
-            >>> widget._pg_widget.getPlotItem().getAxis("bottom").labelText
-            'Current (A)'
+            >>> widget._pg_widget.getPlotItem().getAxis("bottom").axis_label
+            AxisLabel(label='Current', unit='A')
         """
-        if x_label:
+        if str(x_label):
             self.set_axis_label("bottom", x_label)
-        if y_label:
+        if str(y_label):
             self.set_axis_label("left", y_label)
 
     def set_rolling_time_window(self, duration_seconds: float) -> None:
@@ -2085,7 +2116,7 @@ class PlotWidget(QWidget):
         raw = self._inverse_axis_values(name, [minimum, maximum])
         return float(raw[0]), float(raw[1])
 
-    def set_axis_label(self, name: str, label: str) -> None:
+    def set_axis_label(self, name: str, label: AxisLabel | str) -> None:
         """Set the displayed title for an axis.
 
         Args:
@@ -2100,7 +2131,7 @@ class PlotWidget(QWidget):
         """
         if name not in self._axis_items:
             raise KeyError(f"Unknown axis: {name!r}")
-        self._axis_items[name].setLabel(label)
+        self._axis_items[name].set_axis_label(label)
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
 
     def set_axis_log_scale(self, name: str, log_scale: bool) -> None:
@@ -2355,7 +2386,7 @@ class PlotWidget(QWidget):
     def add_y_axis(
         self,
         name: str,
-        label: str,
+        label: AxisLabel | str,
         side: Literal["left", "right"] = "right",
     ) -> None:
         """Add a new y-axis with an independent :class:`pyqtgraph.ViewBox`.
@@ -2385,7 +2416,7 @@ class PlotWidget(QWidget):
         if name in self._axis_items:
             return
         axis = MappedAxisItem(side)
-        axis.setLabel(label)
+        axis.set_axis_label(label)
         axis.setGrid(False)
         self._axis_items[name] = axis
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
@@ -2404,12 +2435,12 @@ class PlotWidget(QWidget):
         self._update_grid_state()
         self._refresh_trace_and_axis_controls()
 
-    def ensure_y_axis(self, name: str, label: str = "") -> None:
+    def ensure_y_axis(self, name: str, label: AxisLabel | str = "") -> None:
         """Ensure a y-axis with *name* exists, creating it on the right if absent.
 
-        If the axis already exists this is a no-op.  If it does not exist a new
-        right-hand y-axis is added using :meth:`add_y_axis`, with *label* as
-        the displayed axis label (falling back to *name* when *label* is empty).
+        If the axis already exists its label metadata is refreshed.  Otherwise
+        a new right-hand y-axis is added using :meth:`add_y_axis`, with *label*
+        as the displayed axis label (falling back to *name* when empty).
 
         This is intended for use by command plugins that direct trace data to a
         named axis — they call this method before :meth:`assign_trace_axes` so
@@ -2437,13 +2468,15 @@ class PlotWidget(QWidget):
             1
         """
         if name in self._axis_items:
+            if str(label):
+                self.set_axis_label(name, label)
             return
         self.add_y_axis(name, label or name)
 
     def add_x_axis(
         self,
         name: str,
-        label: str,
+        label: AxisLabel | str,
         position: Literal["bottom", "top"] = "top",
     ) -> None:
         """Add a new x-axis with an independent :class:`pyqtgraph.ViewBox`.
@@ -2472,19 +2505,8 @@ class PlotWidget(QWidget):
         """
         if name in self._axis_items:
             return
-        if position == "top" and not self._default_top_axis_removed:
-            # GraphicsLayout.removeItem() only removes the AxisItem itself from
-            # the scene.  Its LabelItem can otherwise outlive the
-            # QGraphicsTextItem it wraps and receive a queued resize event
-            # during widget teardown (notably with PyQt6 on CI).  Close the
-            # axis first so pyqtgraph explicitly disposes of its label.
-            self._default_top_axis.unlinkFromView()
-            self._default_top_axis.close()
-            self._plot_item.layout.removeItem(self._default_top_axis)
-            self._default_top_axis = None
-            self._default_top_axis_removed = True
         axis = MappedAxisItem(position)
-        axis.setLabel(label)
+        axis.set_axis_label(label)
         axis.setGrid(False)
         self._axis_items[name] = axis
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
@@ -2503,7 +2525,7 @@ class PlotWidget(QWidget):
         self._update_grid_state()
         self._refresh_trace_and_axis_controls()
 
-    def ensure_x_axis(self, name: str, label: str = "") -> None:
+    def ensure_x_axis(self, name: str, label: AxisLabel | str = "") -> None:
         """Ensure an x-axis with *name* exists, creating it at the top if absent.
 
         Args:
@@ -2516,6 +2538,8 @@ class PlotWidget(QWidget):
                 Text label shown on the axis. Defaults to *name* when empty.
         """
         if name in self._axis_items:
+            if str(label):
+                self.set_axis_label(name, label)
             return
         self.add_x_axis(name, label or name)
 

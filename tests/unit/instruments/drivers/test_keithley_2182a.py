@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
-from stoner_measurement.instruments.keithley import Keithley2182A
+from stoner_measurement.instruments.electrometer import ElectrometerDataFormat
+from stoner_measurement.instruments.keithley import Keithley2182A, KeithleyByteOrder
 from stoner_measurement.instruments.nanovoltmeter import (
     NanovoltmeterCapabilities,
     NanovoltmeterFunction,
@@ -121,12 +123,89 @@ class TestKeithley2182A:
         with pytest.raises(ValueError):
             k.set_relative_value(121.0)
 
+    def test_data_format_and_byte_order_are_cached(self):
+        t = _null()
+        k = Keithley2182A(transport=t)
+
+        assert k.get_data_format() is ElectrometerDataFormat.ASCII
+        assert k.get_byte_order() is KeithleyByteOrder.NORMAL
+        k.set_data_format(ElectrometerDataFormat.SREAL)
+        k.set_byte_order(KeithleyByteOrder.SWAPPED)
+        k.set_data_format(ElectrometerDataFormat.SREAL)
+        k.set_byte_order(KeithleyByteOrder.SWAPPED)
+
+        assert k.get_data_format() is ElectrometerDataFormat.SREAL
+        assert k.get_byte_order() is KeithleyByteOrder.SWAPPED
+        assert t.write_log == [b":FORM:DATA SRE\n", b":FORM:BORD SWAP\n"]
+
+    def test_buffer_size_is_cached_after_setting(self):
+        t = _null()
+        k = Keithley2182A(transport=t)
+        k.set_buffer_size(8)
+        k.set_buffer_size(8)
+
+        assert k.get_buffer_size() == 8
+        assert t.write_log == [b":TRAC:POIN 8\n"]
+
+    @pytest.mark.parametrize(
+        ("data_format", "byte_order", "dtype"),
+        [
+            (ElectrometerDataFormat.SREAL, KeithleyByteOrder.NORMAL, ">f4"),
+            (ElectrometerDataFormat.SREAL, KeithleyByteOrder.SWAPPED, "<f4"),
+            (ElectrometerDataFormat.DREAL, KeithleyByteOrder.NORMAL, ">f8"),
+            (ElectrometerDataFormat.DREAL, KeithleyByteOrder.SWAPPED, "<f8"),
+        ],
+    )
+    def test_binary_buffer_is_zero_copy_numpy_view(self, data_format, byte_order, dtype):
+        expected = np.array([1.25, -2.5, 3.75], dtype=dtype)
+        t = _null(responses=[b"#0" + expected.tobytes() + b"\n"])
+        k = Keithley2182A(transport=t)
+        k.set_data_format(data_format)
+        k.set_byte_order(byte_order)
+
+        result = k.read_buffer(count=3)
+
+        assert isinstance(result, np.ndarray)
+        np.testing.assert_array_equal(result, expected)
+        assert result.flags.owndata is False
+        assert t.write_log[-1] == b":TRAC:DATA?\n"
+
+    def test_binary_buffer_requires_marker_and_whole_values(self):
+        k = Keithley2182A(transport=_null())
+        with pytest.raises(ValueError, match="#0"):
+            k.parse_binary_floats(
+                b"not binary",
+                data_format=ElectrometerDataFormat.SREAL,
+                byte_order=KeithleyByteOrder.NORMAL,
+            )
+        with pytest.raises(ValueError, match="whole number"):
+            k.parse_binary_floats(
+                b"#0abc",
+                data_format=ElectrometerDataFormat.SREAL,
+                byte_order=KeithleyByteOrder.NORMAL,
+            )
+
+    def test_binary_precision_can_be_inferred_from_count_and_length(self):
+        expected = np.array([1.25, -2.5], dtype=">f8")
+
+        result = Keithley2182A.parse_binary_floats(
+            b"#0" + expected.tobytes() + b"\n",
+            data_format=None,
+            byte_order=KeithleyByteOrder.NORMAL,
+            count=2,
+        )
+
+        assert result.dtype == np.dtype(">f8")
+        np.testing.assert_array_equal(result, expected)
+
     def test_capabilities(self):
         caps = Keithley2182A(transport=_null()).get_capabilities()
         assert isinstance(caps, NanovoltmeterCapabilities)
         assert caps.has_filter
         assert caps.has_trigger
         assert caps.has_buffer
+        assert caps.has_data_format
+        assert caps.has_byte_order
         assert caps.fixed_voltage_ranges == (0.01, 0.1, 1.0, 10.0, 100.0, 120.0)
         assert caps.nplc_values == (0.1, 1.0, 10.0)
         assert caps.digit_values == (4, 5, 6, 7, 8)

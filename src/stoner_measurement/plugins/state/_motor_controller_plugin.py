@@ -183,6 +183,19 @@ class MotorControllerPluginMixin:
             values[f"{var}:Angular Rate"] = f"{var}.angular_rate"
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return angular units for the motor's reported values."""
+        units = super().reported_value_units()
+        var = self.instance_name
+        units.update(
+            {
+                f"{var}:Angle": "°",
+                f"{var}:Target Angle": "°",
+                f"{var}:Angular Rate": "°/s",
+            }
+        )
+        return units
+
     def _motor_settings_to_json(self) -> dict[str, object]:
         return {
             "velocity": self.velocity,

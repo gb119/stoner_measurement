@@ -483,8 +483,6 @@ class Keithley2400SweepPlugin(TracePlugin):
             self._smu.set_filter_count(self._filter_count, instrument_mode)
             self._smu.set_filter_type(self._filter_type, instrument_mode)
             self._smu.set_median_filter_enabled(self._median_filter_enabled, instrument_mode)
-            self._smu.set_format_data_ascii()
-            self._smu.set_format_elements(_BUFFER_ELEMENTS)
             self._smu.reset_timestamp()
             self._smu.configure_source_sweep(
                 SourceSweepConfiguration(

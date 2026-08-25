@@ -1425,6 +1425,21 @@ class BasePlugin(ABC):
         """
         return {}
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return physical units for scalar outputs exposed by this plugin.
+
+        Keys match those returned by :meth:`reported_values`; values are unit
+        symbols suitable for user-facing labels, for example ``"V"`` or
+        ``"K"``.  The sequence engine combines the two mappings into
+        metadata-bearing ``_values`` catalogue entries.  Plugins may omit
+        dimensionless values or values whose units are not known.
+
+        Returns:
+            (dict[str, str]):
+                Mapping from reported-value keys to physical unit symbols.
+        """
+        return {}
+
     def member_plugins(self) -> list[BasePlugin]:
         """Return any :class:`BasePlugin` instances owned directly by this plugin.
 

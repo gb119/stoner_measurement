@@ -63,6 +63,30 @@ def managed_qt_widget(qapp):
     widgets.clear()
 
 
+@pytest.fixture
+def managed_measurement_app(managed_qt_widget):
+    """Create application windows and shut down all owned resources first.
+
+    ``MeasurementApp.close()`` can legitimately be rejected when a sequence
+    document is dirty.  Tests therefore call the application's unconditional
+    shutdown path before the generic widget fixture closes and deletes the Qt
+    object hierarchy.
+    """
+    from stoner_measurement.app import MeasurementApp
+
+    apps: list[MeasurementApp] = []
+
+    def create() -> MeasurementApp:
+        app = managed_qt_widget(MeasurementApp())
+        apps.append(app)
+        return app
+
+    yield create
+
+    for app in reversed(apps):
+        app.shutdown()
+
+
 @pytest.fixture(autouse=True)
 def suppress_modal_message_boxes(monkeypatch):
     """Prevent modal QMessageBox displays from blocking headless tests."""

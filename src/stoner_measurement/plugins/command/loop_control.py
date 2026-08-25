@@ -47,7 +47,12 @@ class _ConditionalLoopControlCommand(CommandPlugin):
                 if plugin is self:
                     found = True
                     invalid = invalid or not inside_loop
-                child_inside_loop = inside_loop or bool(
+                inherited_loop = (
+                    False
+                    if getattr(plugin, "isolates_loop_control", False)
+                    else inside_loop
+                )
+                child_inside_loop = inherited_loop or bool(
                     getattr(plugin, "is_loop_container", False)
                 )
                 if children:

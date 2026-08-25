@@ -154,6 +154,15 @@ class XrayDiffractometerPluginMixin:
         )
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return angular and detector-count units for measured outputs."""
+        units = super().reported_value_units()
+        var = self.instance_name
+        units.update(
+            {f"{var}:Theta": "°", f"{var}:2-Theta": "°", f"{var}:Counts": "counts"}
+        )
+        return units
+
     def _xray_settings_to_json(self) -> dict[str, object]:
         return {"axes": self.axes.value}
 

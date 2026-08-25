@@ -151,6 +151,18 @@ class TestStateControlPlugin:
         p.execute_sequence([lambda: visited.append((float(p.value), bool(p.meas_flag)))])
         assert visited == [(0.0, False), (1.0, True)]
 
+    def test_generated_scan_state_uses_debug_log_not_print(self, qapp):
+        p = _InstantState()
+
+        lines = p.generate_action_code(1, [], lambda _step, _indent: [])
+
+        assert not any("print(" in line for line in lines)
+        assert any(
+            'log.debug("%s: %.4g %s", \'Voltage\', instantstate.get_state(), \'V\')'
+            in line
+            for line in lines
+        )
+
     def test_index_property_aliases_ix(self, qapp):
         p = _InstantState()
         p.ix = 3

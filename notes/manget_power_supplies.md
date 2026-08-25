@@ -20,13 +20,13 @@ This is organised as a **true mapping table**:
 
 ### 🧲 1. Setpoint / Target Commands
 
-| Function                  | Lake Shore 625  | IPS120   | Mercury IPS           | Notes                           |
-| ------------------------- | --------------- | -------- | --------------------- | ------------------------------- |
-| Set current               | `SETI <val>`    | `I<val>` | `SET:...:CURR <val>`  | Same function                   |
-| Read current (measured)   | `RDGI?`         | `R2`     | `READ:...:CURR?`      | IPS120 uses register            |
-| Read setpoint             | `SETI?`         | `R5`     | `READ:...:CURR?`      | Mercury same signal used        |
-| Set field (if calibrated) | via calibration | `J<val>` | `SET:...:FIELD <val>` | IPS120 and Mercury support      |
-|                           |                 |          |                       | field commands                  |
+| Function                  | Lake Shore 625  | IPS120   | Mercury IPS           | Notes                      |
+| ------------------------- | --------------- | -------- | --------------------- | -------------------------- |
+| Set current               | `SETI <val>`    | `I<val>` | `SET:...:CURR <val>`  | Same function              |
+| Read current (measured)   | `RDGI?`         | `R2`     | `READ:...:CURR?`      | IPS120 uses register       |
+| Read setpoint             | `SETI?`         | `R5`     | `READ:...:CURR?`      | Mercury same signal used   |
+| Set field (if calibrated) | via calibration | `J<val>` | `SET:...:FIELD <val>` | IPS120 and Mercury support |
+|                           |                 |          |                       | field commands             |
 
 ***
 

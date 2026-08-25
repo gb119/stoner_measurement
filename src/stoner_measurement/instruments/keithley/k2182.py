@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import numpy as np
+
+from stoner_measurement.instruments.electrometer import ElectrometerDataFormat
+from stoner_measurement.instruments.keithley._scpi_data_format import (
+    KeithleyByteOrder,
+    KeithleyScpiDataFormatMixin,
+)
 from stoner_measurement.instruments.nanovoltmeter import (
     Nanovoltmeter,
     NanovoltmeterCapabilities,
@@ -15,8 +22,10 @@ from stoner_measurement.instruments.transport.gpib_transport import (
     PassThroughGpibTransport,
 )
 
+__all__ = ["Keithley2182A", "KeithleyByteOrder"]
 
-class Keithley2182A(Nanovoltmeter):
+
+class Keithley2182A(KeithleyScpiDataFormatMixin, Nanovoltmeter):
     """Driver for the Keithley 2182A nanovoltmeter.
 
     Attributes:
@@ -33,6 +42,8 @@ class Keithley2182A(Nanovoltmeter):
         super().__init__(
             transport=transport, protocol=protocol if protocol is not None else ScpiProtocol()
         )
+        self._initialise_data_format_state()
+        self._buffer_size: int | None = None
 
     def connect(self) -> None:
         """Open the transport connection to the instrument.
@@ -59,7 +70,7 @@ class Keithley2182A(Nanovoltmeter):
         """
         super().connect()
         if isinstance(self.transport, PassThroughGpibTransport):
-            self.transport.write("*CLS", host=True)  # Clear error nuffer on 6221
+            self.transport.write(b"*CLS", host=True)  # Clear error buffer on 6221
         self.write("*CLS")
 
     def reset(self) -> None:
@@ -84,6 +95,7 @@ class Keithley2182A(Nanovoltmeter):
             >>> instr.disconnect()
         """
         self.write("*RST", slow=500)
+        self._initialise_data_format_state()
 
     @staticmethod
     def _parse_csv_floats(values: str) -> tuple[float, ...]:
@@ -393,6 +405,12 @@ class Keithley2182A(Nanovoltmeter):
         """Return the number of readings currently stored in the trace buffer."""
         return int(float(self.query(":TRAC:POIN?")))
 
+    def get_buffer_size(self) -> int:
+        """Return the configured trace capacity, querying only if it is not cached."""
+        if self._buffer_size is None:
+            self._buffer_size = int(float(self.query(":TRAC:POIN?")))
+        return self._buffer_size
+
     def set_buffer_size(self, size: int) -> None:
         """Set the trace buffer point capacity.
 
@@ -406,7 +424,10 @@ class Keithley2182A(Nanovoltmeter):
         """
         if size <= 0:
             raise ValueError("size must be positive.")
+        if size == self._buffer_size:
+            return
         self.write(f":TRAC:POIN {size}")
+        self._buffer_size = size
 
     def set_buffer_feed_sense(self) -> None:
         """Set trace feed source to measurement readings (``:TRAC:FEED SENS``)."""
@@ -416,7 +437,7 @@ class Keithley2182A(Nanovoltmeter):
         """Set feed mode to continuous-next (``:TRAC:FEED:CONT NEXT``)."""
         self.write(":TRAC:FEED:CONT NEXT")
 
-    def read_buffer(self, count: int | None = None) -> tuple[float, ...]:
+    def read_buffer(self, count: int | None = None) -> tuple[float, ...] | np.ndarray:
         """Read values from the instrument trace buffer.
 
         Keyword Parameters:
@@ -425,26 +446,39 @@ class Keithley2182A(Nanovoltmeter):
                 If ``None``, read all available points.
 
         Returns:
-            (tuple[float, ...]):
-                Parsed buffer readings.
+            (tuple[float, ...] | numpy.ndarray):
+                Parsed ASCII readings, or a zero-copy NumPy view for binary
+                formats.
 
         Raises:
             ValueError:
                 If *count* is not positive.
         """
-        if count is None:
-            payload = self.query(":TRAC:DATA?")
-            return self._parse_csv_floats(payload)
-        if count <= 0:
+        if count is not None and count <= 0:
             raise ValueError("count must be a positive integer.")
-        payload = self.query(":TRAC:DATA?", slow=count*0.05)
-        return self._parse_csv_floats(payload)
+        # A non-None value makes the 6221 relay collect the complete trace
+        # before issuing its separate status query.  Zero adds no delay.
+        slow = 0 if count is None else round(count * 0.05)
+        if self._data_format is ElectrometerDataFormat.ASCII:
+            payload = self.query(":TRAC:DATA?", slow=slow)
+            values = self._parse_csv_floats(payload)
+            return values if count is None else values[:count]
+
+        raw = self._query_raw(":TRAC:DATA?", slow=slow)
+        return self.parse_binary_floats(
+            raw,
+            data_format=self._data_format,
+            byte_order=self._byte_order,
+            count=count,
+        )
 
     CAPABILITIES = NanovoltmeterCapabilities(
         has_function_selection=True,
         has_filter=True,
         has_trigger=True,
         has_buffer=True,
+        has_data_format=True,
+        has_byte_order=True,
         supported_functions=(NanovoltmeterFunction.VOLT, NanovoltmeterFunction.TEMP),
         fixed_voltage_ranges=(0.01, 0.1, 1.0, 10.0, 100.0, 120.0),
         nplc_values=(0.1, 1.0, 10.0),

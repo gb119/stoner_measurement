@@ -9,6 +9,7 @@ from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_Z,
     TraceData,
 )
+from stoner_measurement.core.value_catalog import ValueCatalogEntry
 
 __all__ = [
     "COLUMN_ROLE_D",
@@ -18,4 +19,5 @@ __all__ = [
     "COLUMN_ROLE_Z",
     "SequenceEngine",
     "TraceData",
+    "ValueCatalogEntry",
 ]

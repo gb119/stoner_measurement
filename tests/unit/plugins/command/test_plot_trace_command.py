@@ -8,6 +8,7 @@ import pytest
 from stoner_measurement.plugins.command import (
     PlotTraceCommand,
 )
+from stoner_measurement.ui.axis_mappings import AxisLabel
 
 
 def _make_plot_widget(qtbot, qapp, request):
@@ -496,12 +497,12 @@ class TestPlotTraceCommand:
         engine._namespace["_traces"] = {"dummy:Ch": "td"}
         cmd.trace_key = "dummy:Ch"
 
-        labels: list[tuple[str, str]] = []
+        labels: list[tuple[AxisLabel, AxisLabel]] = []
         cmd.plot_axis_labels.connect(lambda x, y: labels.append((x, y)))
         cmd.execute()
 
         assert len(labels) == 1
-        assert labels[0] == ("Current (A)", "Voltage (V)")
+        assert labels[0] == (AxisLabel("Current", "A"), AxisLabel("Voltage", "V"))
 
     def test_advanced_mode_uses_selected_channel_names_and_units_for_axes(self, qapp, engine):
         """Advanced selections use the same labels displayed by the channel selectors."""
@@ -731,7 +732,7 @@ class TestPlotTraceCommand:
         cmd.execute()
 
         assert len(labels) == 1
-        assert labels[0] == ("Current (A)", "Height (m)")
+        assert labels[0] == (AxisLabel("Current", "A"), AxisLabel("Height", "m"))
 
     def test_axis_labels_fallback_to_resolved_y_column_when_column_key_invalid(self, qapp, engine):
         """Axis label y metadata should come from the actual plotted y column."""
@@ -758,7 +759,7 @@ class TestPlotTraceCommand:
         cmd.execute()
 
         assert len(labels) == 1
-        assert labels[0] == ("Current (A)", "Voltage (V)")
+        assert labels[0] == (AxisLabel("Current", "A"), AxisLabel("Voltage", "V"))
 
     def test_config_widget_has_column_combo(self, qapp, engine):
         """config_widget() must include a Column combo box.

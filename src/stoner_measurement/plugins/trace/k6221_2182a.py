@@ -23,7 +23,7 @@ import enum
 import logging
 import math
 import time
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -43,7 +43,11 @@ from qtpy.QtWidgets import (
 
 from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
 from stoner_measurement.instruments.current_source import CurrentSource
-from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
+from stoner_measurement.instruments.keithley import (
+    Keithley2182A,
+    KeithleyByteOrder,
+    KeithleyDataFormat,
+)
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.nanovoltmeter import (
     Nanovoltmeter,
@@ -53,6 +57,7 @@ from stoner_measurement.instruments.transport.gpib_transport import (
     GpibTransport,
     PassThroughGpibTransport,
 )
+from stoner_measurement.instruments.transport.serial_transport import SerialTransport
 from stoner_measurement.plugins.trace._differential import (
     modulate_current_sweep,
     reduce_differential_readings,
@@ -857,6 +862,17 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             # ---- 2182A: reset and configure ----
             self._k2182a.reset()
+            meter_2182a = cast(Keithley2182A, self._k2182a)
+            transport_2182a = meter_2182a.transport
+            ascii_only = self._connection_mode is ConnectionMode.VIA_6221_SERIAL or isinstance(
+                transport_2182a,
+                (PassThroughGpibTransport, SerialTransport),
+            )
+            if ascii_only:
+                meter_2182a.set_data_format(KeithleyDataFormat.ASCII)
+            else:
+                meter_2182a.set_data_format(KeithleyDataFormat.SREAL)
+                meter_2182a.set_byte_order(KeithleyByteOrder.native())
 
             self._k2182a.set_digits(self._digits)
             self._k2182a.set_nplc(self._nplc)

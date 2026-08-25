@@ -352,8 +352,6 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         self._smu.set_filter_type(self._filter_type, instrument_mode)
         self._smu.set_median_filter_enabled(self._median_filter_enabled, instrument_mode)
         self._smu.set_source_delay(source_delay)
-        self._smu.set_format_data_ascii()
-        self._smu.set_format_elements(_POINT_ELEMENTS)
         self._smu.reset_timestamp()
 
         trigger_source = {
@@ -521,6 +519,22 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
             }
         )
         return values
+
+    def reported_value_units(self) -> dict[str, str]:
+        """Return source and measured electrical units for scalar outputs."""
+        units = super().reported_value_units()
+        prefix = self.instance_name
+        units.update(
+            {
+                f"{prefix}.source_value": self.units,
+                f"{prefix}.voltage": "V",
+                f"{prefix}.current": "A",
+                f"{prefix}.resistance": "Ω",
+                f"{prefix}.power": "W",
+                f"{prefix}.timestamp": "s",
+            }
+        )
+        return units
 
     def to_json(self) -> dict[str, Any]:
         """Serialise plugin state.

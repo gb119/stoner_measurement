@@ -82,25 +82,25 @@ wire protocol.
 The MDX User port is a female DB-25 connector. A bar over a manual signal name
 means active low. The table uses `*_N` below to make that polarity explicit.
 
-| Pin | Suggested Python name | Direction | Meaning | Relevance to VB system |
-| ---: | --- | --- | --- | --- |
-| 1 | `current_monitor` | Analog out | 0-full-scale voltage represents 0-1 A | Not explicitly consumed in supplied module |
-| 2 | `power_monitor` | Analog out | 0-full-scale voltage represents 0-500 W | Not explicitly consumed |
-| 3 | `voltage_monitor` | Analog out | 0-full-scale voltage represents 0-1200 V | Not explicitly consumed |
-| 4 | `water_interlock_n` | Digital in | Must be pulled low to satisfy water interlock | Custom wiring unknown |
-| 5 | `vacuum_interlock_n` | Digital in | Must be pulled low to satisfy vacuum interlock | Custom wiring unknown |
-| 6 | `main_interlock_n` | Digital/current-loop in | Enables the main contactor | Custom wiring unknown |
-| 7 | `remote_off_n` | Digital in | Open/high forces output off; low permits output | Probably part of each on/off channel |
-| 8 | `remote_on_n` | Digital in | Low turns output on when remote-on is enabled | Probably part of each on/off channel |
-| 9, 20, 21, 25 | `ground` | - | Chassis/signal ground | Analog and digital reference |
-| 10 | `reference` | Analog out | Accurate 5 V or 10 V reference, factory option | Could be the DAC reference; wiring unknown |
-| 12 | `level_monitor` | Analog out | Programmed setpoint as 0-full-scale voltage | Not explicitly consumed |
-| 13 | `setpoint_ok_n` | Digital out | Goes low when requested setpoint is attained | Likely source of `shp_SetPoint`, not proven |
-| 14 | `aux_15v` | Power out | 15 V, up to 100 mA | Possible custom-board input supply; unknown |
-| 16 | `power_regulation_n` | Digital in | Regulation-mode selection | No matching VB command |
-| 17 | `current_regulation_n` | Digital in | Regulation-mode selection | No matching VB command |
-| 22 | `output_on_n` | Digital out | Low while output is on; high while off | Could feed status, not shown |
-| 23 | `level_setpoint` | Analog in | 0-full-scale voltage requests 0-maximum selected output | Almost certainly driven by custom DAC |
+|           Pin | Suggested Python name  | Direction               | Meaning                                                 | Relevance to VB system                      |
+| ------------: | ---------------------- | ----------------------- | ------------------------------------------------------- | ------------------------------------------- |
+|             1 | `current_monitor`      | Analog out              | 0-full-scale voltage represents 0-1 A                   | Not explicitly consumed in supplied module  |
+|             2 | `power_monitor`        | Analog out              | 0-full-scale voltage represents 0-500 W                 | Not explicitly consumed                     |
+|             3 | `voltage_monitor`      | Analog out              | 0-full-scale voltage represents 0-1200 V                | Not explicitly consumed                     |
+|             4 | `water_interlock_n`    | Digital in              | Must be pulled low to satisfy water interlock           | Custom wiring unknown                       |
+|             5 | `vacuum_interlock_n`   | Digital in              | Must be pulled low to satisfy vacuum interlock          | Custom wiring unknown                       |
+|             6 | `main_interlock_n`     | Digital/current-loop in | Enables the main contactor                              | Custom wiring unknown                       |
+|             7 | `remote_off_n`         | Digital in              | Open/high forces output off; low permits output         | Probably part of each on/off channel        |
+|             8 | `remote_on_n`          | Digital in              | Low turns output on when remote-on is enabled           | Probably part of each on/off channel        |
+| 9, 20, 21, 25 | `ground`               | -                       | Chassis/signal ground                                   | Analog and digital reference                |
+|            10 | `reference`            | Analog out              | Accurate 5 V or 10 V reference, factory option          | Could be the DAC reference; wiring unknown  |
+|            12 | `level_monitor`        | Analog out              | Programmed setpoint as 0-full-scale voltage             | Not explicitly consumed                     |
+|            13 | `setpoint_ok_n`        | Digital out             | Goes low when requested setpoint is attained            | Likely source of `shp_SetPoint`, not proven |
+|            14 | `aux_15v`              | Power out               | 15 V, up to 100 mA                                      | Possible custom-board input supply; unknown |
+|            16 | `power_regulation_n`   | Digital in              | Regulation-mode selection                               | No matching VB command                      |
+|            17 | `current_regulation_n` | Digital in              | Regulation-mode selection                               | No matching VB command                      |
+|            22 | `output_on_n`          | Digital out             | Low while output is on; high while off                  | Could feed status, not shown                |
+|            23 | `level_setpoint`       | Analog in               | 0-full-scale voltage requests 0-maximum selected output | Almost certainly driven by custom DAC       |
 
 The factory option determines whether analog full scale is 5 V or 10 V. The
 manual specifies the following full-scale monitor values: 1 A on pin 1, 500 W
@@ -109,11 +109,11 @@ selected regulation mode at full-scale voltage.
 
 The MDX has three remotely selected regulation modes:
 
-| Mode | Pin 17 `current_regulation_n` | Pin 16 `power_regulation_n` |
-| --- | --- | --- |
-| Voltage | low | low |
-| Power | high | low |
-| Current | low | high |
+| Mode    | Pin 17 `current_regulation_n` | Pin 16 `power_regulation_n` |
+| ------- | ----------------------------- | --------------------------- |
+| Voltage | low                           | low                         |
+| Power   | high                          | low                         |
+| Current | low                           | high                        |
 
 The VB module contains no operation for pins 16 or 17. The installation must
 therefore fix the regulation mode in hardware, or configure it outside this
@@ -133,20 +133,20 @@ Remote control also requires the MDX rear-panel switches to be configured:
 The high nibble selects an operation. The low nibble carries a DAC nibble,
 channel/control bits, or a four-channel bitmap.
 
-| Byte range | Meaning in VB | Payload |
-| --- | --- | --- |
-| `0x00..0x0F` | Load DAC data bits 3..0 | Low four bits of 12-bit code |
-| `0x10..0x1F` | Load DAC data bits 7..4 | Middle four bits |
-| `0x20..0x2F` | Load DAC data bits 11..8 | High four bits |
+| Byte range   | Meaning in VB                             | Payload                                              |
+| ------------ | ----------------------------------------- | ---------------------------------------------------- |
+| `0x00..0x0F` | Load DAC data bits 3..0                   | Low four bits of 12-bit code                         |
+| `0x10..0x1F` | Load DAC data bits 7..4                   | Middle four bits                                     |
+| `0x20..0x2F` | Load DAC data bits 11..8                  | High four bits                                       |
 | `0x30..0x3F` | Select/latch DAC output bank for MDX 1..4 | Low bits contain channel and latch/chip-select state |
 | `0x40..0x4F` | Select/latch DAC output bank for MDX 5..8 | Low bits contain channel and latch/chip-select state |
-| `0x50..0x5F` | Set MDX 1..4 on/off state | Bit 0 = MDX 1 through bit 3 = MDX 4 |
-| `0x60..0x6F` | Set MDX 5..8 on/off state | Bit 0 = MDX 5 through bit 3 = MDX 8 |
-| `0x70` | Reset both DACs to zero | No payload |
-| `0x80..0x8F` | Motor 1 control | Unrelated to MDX driver |
-| `0x90..0x9F` | Motor 2 control | Unrelated to MDX driver |
-| `0xB0` | Reset latches | No payload |
-| `0xF0` | Request/read hardware status | Response transport and format absent |
+| `0x50..0x5F` | Set MDX 1..4 on/off state                 | Bit 0 = MDX 1 through bit 3 = MDX 4                  |
+| `0x60..0x6F` | Set MDX 5..8 on/off state                 | Bit 0 = MDX 5 through bit 3 = MDX 8                  |
+| `0x70`       | Reset both DACs to zero                   | No payload                                           |
+| `0x80..0x8F` | Motor 1 control                           | Unrelated to MDX driver                              |
+| `0x90..0x9F` | Motor 2 control                           | Unrelated to MDX driver                              |
+| `0xB0`       | Reset latches                             | No payload                                           |
+| `0xF0`       | Request/read hardware status              | Response transport and format absent                 |
 
 `0x3F` and `0x4F` are described by the VB comments as disabling DAC output 1
 and DAC output 2 respectively. These values overlap the DAC-bank command
@@ -408,25 +408,25 @@ Recommended internal state and safeguards:
 
 Assuming round-to-nearest conversion and no special calibration:
 
-| Request | DAC code | Expected byte sequence before waits |
-| --- | ---: | --- |
-| MDX 1, 0 mA | `0x000` | `00 10 20 3C 30 3C` |
-| MDX 1, 1000 mA | `0xFFF` | `0F 1F 2F 3C 30 3C` |
-| MDX 4, 1000 mA | `0xFFF` | `0F 1F 2F 3F 33 3F` |
-| MDX 5, 0 mA | `0x000` | `00 10 20 4C 40 4C` |
-| MDX 8, 1000 mA | `0xFFF` | `0F 1F 2F 4F 43 4F` |
+| Request        | DAC code | Expected byte sequence before waits |
+| -------------- | -------: | ----------------------------------- |
+| MDX 1, 0 mA    |  `0x000` | `00 10 20 3C 30 3C`                 |
+| MDX 1, 1000 mA |  `0xFFF` | `0F 1F 2F 3C 30 3C`                 |
+| MDX 4, 1000 mA |  `0xFFF` | `0F 1F 2F 3F 33 3F`                 |
+| MDX 5, 0 mA    |  `0x000` | `00 10 20 4C 40 4C`                 |
+| MDX 8, 1000 mA |  `0xFFF` | `0F 1F 2F 4F 43 4F`                 |
 
 Bitmap examples:
 
 | Desired enabled supplies | Expected command(s) |
-| --- | --- |
-| None in bank 1 | `50` |
-| MDX 1 only | `51` |
-| MDX 1 and 4 | `59` |
-| All MDX 1..4 | `5F` |
-| MDX 5 only | `61` |
-| MDX 5 and 8 | `69` |
-| All MDX 5..8 | `6F` |
+| ------------------------ | ------------------- |
+| None in bank 1           | `50`                |
+| MDX 1 only               | `51`                |
+| MDX 1 and 4              | `59`                |
+| All MDX 1..4             | `5F`                |
+| MDX 5 only               | `61`                |
+| MDX 5 and 8              | `69`                |
+| All MDX 5..8             | `6F`                |
 
 Tests should also prove that concurrent setpoint calls cannot interleave, that
 changing one enable bit preserves the other three, that disable precedes

@@ -63,30 +63,30 @@ Avoid high-frequency writes to:
 
 ## 4. Core process variables
 
-| Function | Mnemonic | Address | R/W | Notes |
-| --- | ---: | ---: | --- | --- |
-| Process value | `PV.IN` | 1 | R | measured temperature/process value |
-| Target setpoint | `TG.SP` | 2 | R/W | do not ramp by repeated writes |
-| Manual output value | `MAN.OP` | 3 | R/W | used in manual mode |
-| Working output | `WRK.OP` | 4 | R | actual output demand |
-| Working setpoint | `WKG.SP` | 5 | R | active effective setpoint |
-| Error | `P.Err` | 39 | R | PV - SP |
-| Instrument status bitmap | `StAt` | 75 | R | see status bits below |
-| Digital input bitmap | `Di.IP` | 87 | R | input states |
-| Digital output bitmap | `Di.OP` | 551 | R/W | writable only for telemetry outputs |
+| Function                 | Mnemonic | Address | R/W | Notes                               |
+| ------------------------ | -------: | ------: | --- | ----------------------------------- |
+| Process value            |  `PV.IN` |       1 | R   | measured temperature/process value  |
+| Target setpoint          |  `TG.SP` |       2 | R/W | do not ramp by repeated writes      |
+| Manual output value      | `MAN.OP` |       3 | R/W | used in manual mode                 |
+| Working output           | `WRK.OP` |       4 | R   | actual output demand                |
+| Working setpoint         | `WKG.SP` |       5 | R   | active effective setpoint           |
+| Error                    |  `P.Err` |      39 | R   | PV - SP                             |
+| Instrument status bitmap |   `StAt` |      75 | R   | see status bits below               |
+| Digital input bitmap     |  `Di.IP` |      87 | R   | input states                        |
+| Digital output bitmap    |  `Di.OP` |     551 | R/W | writable only for telemetry outputs |
 
 ## 5. Open/closed loop, standby, manual
 
 Use these for control-mode handling:
 
-| Function | Mnemonic | Address | Values |
-| --- | ---: | ---: | --- |
-| Instrument mode | `IM` | 199 | `0` operating, `1` standby/control outputs off, `2` config/all outputs inactive |
-| Auto/manual loop mode | `A-M` | 273 | `0` auto closed-loop, `1` manual open-loop |
-| Manual output value | `MAN.OP` | 3 | output demand in % |
-| Forced manual output value | `F.OP` | 84 | forced output |
-| Forced manual mode | `F.MOD` | 85 | `0` none, `1` step, `2` last |
-| Standby type | `STBY.T` | 530 | `0` absolute alarm outputs active, others off; `1` all outputs inactive |
+| Function                   | Mnemonic | Address | Values                                                                          |
+| -------------------------- | -------: | ------: | ------------------------------------------------------------------------------- |
+| Instrument mode            |     `IM` |     199 | `0` operating, `1` standby/control outputs off, `2` config/all outputs inactive |
+| Auto/manual loop mode      |    `A-M` |     273 | `0` auto closed-loop, `1` manual open-loop                                      |
+| Manual output value        | `MAN.OP` |       3 | output demand in %                                                              |
+| Forced manual output value |   `F.OP` |      84 | forced output                                                                   |
+| Forced manual mode         |  `F.MOD` |      85 | `0` none, `1` step, `2` last                                                    |
+| Standby type               | `STBY.T` |     530 | `0` absolute alarm outputs active, others off; `1` all outputs inactive         |
 
 High-level driver API:
 
@@ -411,25 +411,25 @@ Applies mainly to Eurotherm 2200 and 2400 series instruments.
 
 The 2000 and 3200 series share many core Modbus addresses:
 
-| Function | 2000 address | 3200 address | Notes |
-| --- | ---: | ---: | --- |
-| Process value | 1 | 1 | same |
-| Target setpoint | 2 | 2 | same, but avoid repeated writes |
-| Output power / manual output | 3 | 3 | same |
-| Working output | 4 | 4 | same |
-| Working setpoint | 5 | 5 | same |
-| Proportional band | 6 | 6 | same |
-| Integral time | 8 | 8 | same |
-| Derivative time | 9 | 9 | same |
-| SP1 | 24 | 24 | same |
-| SP2 | 25 | 25 | same |
-| Local setpoint trim | 27 | 27 | same |
-| Alarm 1 / 2 setpoints | 13 / 14 | 13 / 14 | same |
-| Alarm 3 / 4 setpoints | 81 / 82 | 81 / 82 | same |
-| Auto/manual | 273 | 273 | same |
-| Autotune enable | 270 | 270 | same |
-| Acknowledge all alarms | 274 | 274 | same |
-| Instrument mode | 199 | 199 | same basic meaning |
+| Function                     | 2000 address | 3200 address | Notes                           |
+| ---------------------------- | -----------: | -----------: | ------------------------------- |
+| Process value                |            1 |            1 | same                            |
+| Target setpoint              |            2 |            2 | same, but avoid repeated writes |
+| Output power / manual output |            3 |            3 | same                            |
+| Working output               |            4 |            4 | same                            |
+| Working setpoint             |            5 |            5 | same                            |
+| Proportional band            |            6 |            6 | same                            |
+| Integral time                |            8 |            8 | same                            |
+| Derivative time              |            9 |            9 | same                            |
+| SP1                          |           24 |           24 | same                            |
+| SP2                          |           25 |           25 | same                            |
+| Local setpoint trim          |           27 |           27 | same                            |
+| Alarm 1 / 2 setpoints        |      13 / 14 |      13 / 14 | same                            |
+| Alarm 3 / 4 setpoints        |      81 / 82 |      81 / 82 | same                            |
+| Auto/manual                  |          273 |          273 | same                            |
+| Autotune enable              |          270 |          270 | same                            |
+| Acknowledge all alarms       |          274 |          274 | same                            |
+| Instrument mode              |          199 |          199 | same basic meaning              |
 
 This means a large part of a 3200-series driver can be reused for 2000-series instruments.
 
@@ -528,19 +528,19 @@ Recommended:
 
 ## 5. Core operating registers
 
-| Function | Mnemonic | Modbus | Values |
-| --- | ---: | ---: | --- |
-| Process value | `PV` | 1 | read |
-| Target setpoint | `SL` | 2 | read/write |
-| Output power | `OP` | 3 | read/write in manual |
-| Working output | `WO` | 4 | read |
-| Working setpoint | `SP` | 5 | read |
-| Auto/manual | `mA` | 273 | `0` auto, `1` manual |
-| Instrument mode | `IM` | 199 | `0` normal, `1` standby, `2` configuration |
-| Process error | `ER` | 39 | read |
-| Controller version | `V0` | 107 | hex major/minor |
-| Controller identifier | `II` | 122 | hex instrument ID |
-| Communications address | `Ad` | 131 | read/write |
+| Function               | Mnemonic | Modbus | Values                                     |
+| ---------------------- | -------: | -----: | ------------------------------------------ |
+| Process value          |     `PV` |      1 | read                                       |
+| Target setpoint        |     `SL` |      2 | read/write                                 |
+| Output power           |     `OP` |      3 | read/write in manual                       |
+| Working output         |     `WO` |      4 | read                                       |
+| Working setpoint       |     `SP` |      5 | read                                       |
+| Auto/manual            |     `mA` |    273 | `0` auto, `1` manual                       |
+| Instrument mode        |     `IM` |    199 | `0` normal, `1` standby, `2` configuration |
+| Process error          |     `ER` |     39 | read                                       |
+| Controller version     |     `V0` |    107 | hex major/minor                            |
+| Controller identifier  |     `II` |    122 | hex instrument ID                          |
+| Communications address |     `Ad` |    131 | read/write                                 |
 
 Recommended API:
 

@@ -250,6 +250,22 @@ class TestPassThroughGpibTransport:
         ]
         assert transport.last_stb == 16
 
+    def test_slow_query_preserves_binary_whitespace_bytes(self, monkeypatch):
+        import stoner_measurement.instruments.transport.gpib_transport as gpib_module
+        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
+
+        monkeypatch.setattr(gpib_module, "sleep", lambda _seconds: None)
+        transport = PassThroughGpibTransport(address=22)
+        resource = self._FakeResource(
+            responses=[b"#0\x00 \n", b"\r\x01\n\n", b"16\n\n"]
+        )
+        transport._resource = resource
+
+        value = transport.query(b"TRAC:DATA?", slow=False)
+
+        assert value == b"#0\x00 \r\x01"
+        assert transport.last_stb == 16
+
     def test_read_status_byte_returns_cached_last_stb(self):
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
 

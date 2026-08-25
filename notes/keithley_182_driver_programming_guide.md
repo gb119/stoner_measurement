@@ -169,35 +169,35 @@ The concrete mapping must follow the actual abstract/concrete members present in
 `src/stoner_measurement/instruments/nanovoltmeter.py`. The following map identifies the expected implementation
 semantics; adapt exact property names only where the established project API differs.
 
-|    Generic capability   |   Model 182 implementation  |     Command(s)     |                 Notes                  |
-| ----------------------- | --------------------------- | ------------------ | -------------------------------------- |
-| Read voltage /          | Latest conversion, one-shot | `F0`, `T1`, `G0`   | Return volts as `float`.               |
-| `reading` / `measure()` | on talk                     | or `G1`            |                                        |
-| Measurement range       | Autorange or fixed          | `R0`, `R1`–`R5`,   | Ranges are 3 mV, 30 mV, 300 mV, 3 V,   |
-|                         | full-scale range            | `R8`               | 30 V. `R8` disables autoranging while  |
-|                         |                             |                    | retaining the present range.           |
-| Resolution / digits     | Display/conversion          | `B0`–`B3`          | B0=5½, B1=6½, B2=3½, B3=4½ digits.     |
-|                         | resolution                  |                    |                                        |
-| Integration time /      | One line cycle, 3 ms, or    | `S0`–`S2`          | This is not a modern numeric NPLC      |
-| NPLC-equivalent         | 100 ms                      |                    | setting; expose the three supported    |
-|                         |                             |                    | choices only.                          |
-| Filter enable           | Enable/disable both filters | `N1` / `N0`        | A global enable gate.                  |
-| Digital filter response | Off, fast, medium, slow     | `P0`–`P3`          | Keep separate from global filter       |
-|                         |                             |                    | enable.                                |
-| Analogue filter enable  | Off/on                      | `O0` / `O1`        | Only meaningful when filters are       |
-|                         |                             |                    | enabled.                               |
-| Trigger mode            | On talk, GET, X, external,  | `T0`–`T10`         | Generic API normally needs only `T1`;  |
-|                         | manual                      |                    | expose other modes as an extension.    |
-| Trigger interval        | Interval between readings   | `Q<seconds>`       | Valid 10 ms–999.999 s.                 |
-|                         | in multiple mode            |                    |                                        |
-| Trigger delay           | Delay before a one-shot     | `W0` /             | Valid 1 ms–999.999 s; has effect only  |
-|                         | conversion                  | `W<seconds>`       | in one-shot mode.                      |
-| Relative/null reading   | Enable/disable; use         | `Z0`–`Z3`          | Do not conflate this with the generic  |
-|                         | next/explicit/prior         |                    | API’s software offset unless semantics |
-|                         | baseline                    |                    |                                        |
-|                         |                             |                    | match.                                 |
-| Device errors/status    | Alternate output status     | `U0`, `U1`         | Parse all error bits.                  |
-| Reset                   | IEEE-488 device clear       | transport DCL/SDC  | Explicit/destructive operation only.   |
+| Generic capability      | Model 182 implementation    | Command(s)        | Notes                                  |
+| ----------------------- | --------------------------- | ----------------- | -------------------------------------- |
+| Read voltage /          | Latest conversion, one-shot | `F0`, `T1`, `G0`  | Return volts as `float`.               |
+| `reading` / `measure()` | on talk                     | or `G1`           |                                        |
+| Measurement range       | Autorange or fixed          | `R0`, `R1`–`R5`,  | Ranges are 3 mV, 30 mV, 300 mV, 3 V,   |
+|                         | full-scale range            | `R8`              | 30 V. `R8` disables autoranging while  |
+|                         |                             |                   | retaining the present range.           |
+| Resolution / digits     | Display/conversion          | `B0`–`B3`         | B0=5½, B1=6½, B2=3½, B3=4½ digits.     |
+|                         | resolution                  |                   |                                        |
+| Integration time /      | One line cycle, 3 ms, or    | `S0`–`S2`         | This is not a modern numeric NPLC      |
+| NPLC-equivalent         | 100 ms                      |                   | setting; expose the three supported    |
+|                         |                             |                   | choices only.                          |
+| Filter enable           | Enable/disable both filters | `N1` / `N0`       | A global enable gate.                  |
+| Digital filter response | Off, fast, medium, slow     | `P0`–`P3`         | Keep separate from global filter       |
+|                         |                             |                   | enable.                                |
+| Analogue filter enable  | Off/on                      | `O0` / `O1`       | Only meaningful when filters are       |
+|                         |                             |                   | enabled.                               |
+| Trigger mode            | On talk, GET, X, external,  | `T0`–`T10`        | Generic API normally needs only `T1`;  |
+|                         | manual                      |                   | expose other modes as an extension.    |
+| Trigger interval        | Interval between readings   | `Q<seconds>`      | Valid 10 ms–999.999 s.                 |
+|                         | in multiple mode            |                   |                                        |
+| Trigger delay           | Delay before a one-shot     | `W0` /            | Valid 1 ms–999.999 s; has effect only  |
+|                         | conversion                  | `W<seconds>`      | in one-shot mode.                      |
+| Relative/null reading   | Enable/disable; use         | `Z0`–`Z3`         | Do not conflate this with the generic  |
+|                         | next/explicit/prior         |                   | API’s software offset unless semantics |
+|                         | baseline                    |                   |                                        |
+|                         |                             |                   | match.                                 |
+| Device errors/status    | Alternate output status     | `U0`, `U1`        | Parse all error bits.                  |
+| Reset                   | IEEE-488 device clear       | transport DCL/SDC | Explicit/destructive operation only.   |
 
 ### 5.1 Range
 
@@ -390,33 +390,33 @@ be sent by automatic setup, test discovery, or recovery logic.
 
 The following is an implementation-oriented command index. Validate option values locally before writing them.
 
-|           Function          |                      Commands                      |
-| --------------------------- | -------------------------------------------------- |
-| Display message             | `A0`, `A1,string`, `A2,string`, `A3`               |
-| Resolution                  | `B0`–`B3`                                          |
-| Calibration                 | `C0`–`C8,value`                                    |
-| Digital filter damping alias| `D0`, `D1`                                         |
-| Reading source              | `F0`–`F4`                                          |
-| Reading output fields       | `G0`–`G7`                                          |
-| Manual trigger / memory test| `H0`, `H1`                                         |
-| Buffer                      | `I0`, `I1,length`, `I2`                            |
-| Analogue-output relative    | `J0`–`J3`                                          |
-| EOI / hold-off              | `K0`–`K3`                                          |
-| Setup save/recall           | `L0`–`L2`                                          |
-| SRQ mask                    | `M0`, `M1`, `M2`, `M4`, `M8`, `M16`, `M32`, `M128` |
-| Global filter enable        | `N0`, `N1`                                         |
-| Analogue filter             | `O0`, `O1`                                         |
-| Digital filter response     | `P0`–`P3`                                          |
-| Multiple-trigger interval   | `Qseconds`                                         |
-| Range                       | `R0`–`R5`, `R8`                                    |
-| Integration period          | `S0`–`S2`                                          |
-| Trigger source/mode         | `T0`–`T10`                                         |
-| Alternate/status output     | `U0`–`U14`                                         |
-| Analogue output config      | `V0,gain`, `V1,value`                              |
-| Trigger delay               | `W0`, `Wseconds`                                   |
-| Execute                     | `X`                                                |
-| Terminator                  | `Y0`, `Y1`, `Y2`, `Y3`, `Y10`, `Y13`               |
-| Reading relative            | `Z0`–`Z3`                                          |
+| Function                     | Commands                                           |
+| ---------------------------- | -------------------------------------------------- |
+| Display message              | `A0`, `A1,string`, `A2,string`, `A3`               |
+| Resolution                   | `B0`–`B3`                                          |
+| Calibration                  | `C0`–`C8,value`                                    |
+| Digital filter damping alias | `D0`, `D1`                                         |
+| Reading source               | `F0`–`F4`                                          |
+| Reading output fields        | `G0`–`G7`                                          |
+| Manual trigger / memory test | `H0`, `H1`                                         |
+| Buffer                       | `I0`, `I1,length`, `I2`                            |
+| Analogue-output relative     | `J0`–`J3`                                          |
+| EOI / hold-off               | `K0`–`K3`                                          |
+| Setup save/recall            | `L0`–`L2`                                          |
+| SRQ mask                     | `M0`, `M1`, `M2`, `M4`, `M8`, `M16`, `M32`, `M128` |
+| Global filter enable         | `N0`, `N1`                                         |
+| Analogue filter              | `O0`, `O1`                                         |
+| Digital filter response      | `P0`–`P3`                                          |
+| Multiple-trigger interval    | `Qseconds`                                         |
+| Range                        | `R0`–`R5`, `R8`                                    |
+| Integration period           | `S0`–`S2`                                          |
+| Trigger source/mode          | `T0`–`T10`                                         |
+| Alternate/status output      | `U0`–`U14`                                         |
+| Analogue output config       | `V0,gain`, `V1,value`                              |
+| Trigger delay                | `W0`, `Wseconds`                                   |
+| Execute                      | `X`                                                |
+| Terminator                   | `Y0`, `Y1`, `Y2`, `Y3`, `Y10`, `Y13`               |
+| Reading relative             | `Z0`–`Z3`                                          |
 
 ## 8. Error-handling requirements
 
