@@ -40,6 +40,46 @@ def test_engine_reports_current_and_window_stability_values(qapp):
     engine.shutdown()
 
 
+def test_stability_uses_final_target_during_setpoint_ramp(qapp):
+    """A tracking sensor is not stable merely because it follows a ramping setpoint."""
+    class _Driver:
+        is_connected = False
+
+        def set_setpoint(self, loop, value):
+            self.last_setpoint = (loop, value)
+
+    engine = TemperatureControllerEngine()
+    engine.set_stability_config(StabilityConfig(tolerance_k=0.1, window_s=1, min_rate=0.01))
+    t0 = datetime.now(tz=UTC)
+
+    initial = TemperatureChannelReading(
+        channel="A",
+        value=300.0,
+        timestamp=t0,
+        status=SensorStatus.OK,
+        rate_of_change=0.0,
+    )
+    engine._evaluate_stability({"A": initial}, {1: 300.0}, (1,), t0)  # noqa: SLF001
+    engine._driver = _Driver()  # noqa: SLF001
+    engine.set_setpoint(1, 310.0)
+
+    ramping = TemperatureChannelReading(
+        channel="A",
+        value=300.05,
+        timestamp=t0 + timedelta(seconds=5),
+        status=SensorStatus.OK,
+        rate_of_change=0.0,
+    )
+    at_setpoint, stable = engine._evaluate_stability(  # noqa: SLF001
+        {"A": ramping}, {1: 300.05}, (1,), t0 + timedelta(seconds=5)
+    )
+
+    assert engine._target_setpoints[1] == pytest.approx(310.0)  # noqa: SLF001
+    assert at_setpoint[1] is False
+    assert stable[1] is False
+    engine.shutdown()
+
+
 def test_panel_overall_stability_ignores_off_loops(qapp, managed_qt_widget):
     from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 

@@ -134,6 +134,10 @@ class TemperatureControllerEngine(QObject):
         self._unstable_since: dict[int, datetime | None] = {}
         # Current stable flags (persisted across polls for hysteresis).
         self._stable: dict[int, bool] = {}
+        # Final commanded setpoint for each loop.  A controller may report an
+        # instantaneous ramping setpoint, which must not be used as the
+        # stability target.
+        self._target_setpoints: dict[int, float] = {}
         self._stability_value_history: dict[int, deque[tuple[datetime, float, float]]] = {}
         self._stability_diagnostics: dict[int, StabilityDiagnostics] = {}
         self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
@@ -249,6 +253,7 @@ class TemperatureControllerEngine(QObject):
             self._at_setpoint_since.clear()
             self._unstable_since.clear()
             self._stable.clear()
+            self._target_setpoints.clear()
             self._stability_value_history.clear()
             self._stability_diagnostics.clear()
             self._set_status(EngineStatus.CONNECTED)
@@ -442,6 +447,7 @@ class TemperatureControllerEngine(QObject):
             self._at_setpoint_since.clear()
             self._unstable_since.clear()
             self._stable.clear()
+            self._target_setpoints.clear()
             self._set_status(EngineStatus.DISCONNECTED)
             self._latest_state = TemperatureEngineState(engine_status=self._status)
         self.publisher.connection_changed.emit()
@@ -551,7 +557,7 @@ class TemperatureControllerEngine(QObject):
                 return
             try:
                 self._driver.set_setpoint(loop, value)
-                self._mark_setpoint_pending(loop)
+                self._mark_setpoint_pending(loop, value)
             except Exception:
                 logger.exception("Failed to set setpoint for loop %d", loop)
 
@@ -768,6 +774,7 @@ class TemperatureControllerEngine(QObject):
                 return
             try:
                 self._driver.set_setpoint(loop, setpoint)
+                self._mark_setpoint_pending(loop, setpoint)
             except Exception:
                 logger.exception("Failed to set setpoint for loop %d", loop)
             try:
@@ -1185,6 +1192,7 @@ class TemperatureControllerEngine(QObject):
             self._connected_driver_name = None
             self._connected_transport_name = None
             self._connected_address = None
+            self._target_setpoints.clear()
             self._set_status(EngineStatus.STOPPED)
             self._latest_state = TemperatureEngineState(engine_status=self._status)
         if TemperatureControllerEngine._singleton is self:
@@ -1233,11 +1241,16 @@ class TemperatureControllerEngine(QObject):
         setpoints, heater_outputs, heater_ranges, loop_modes, input_channels = self._collect_loop_data(
             driver, caps
         )
+        for loop, setpoint in setpoints.items():
+            # On the first read after connection there is no commanded value
+            # in this engine session, so the reported setpoint is our best
+            # available target.
+            self._target_setpoints.setdefault(loop, setpoint)
         needle_valve = self._read_needle_valve(driver, caps)
         gas_auto_mode = self._read_gas_auto(driver, caps)
         at_setpoint, stable = self._evaluate_stability(readings, setpoints, caps.loop_numbers, now)
         stability_rate_channels = self._select_stability_rate_channels(
-            readings, setpoints, caps.loop_numbers
+            readings, self._target_setpoints, caps.loop_numbers
         )
 
         return TemperatureEngineState(
@@ -1350,7 +1363,9 @@ class TemperatureControllerEngine(QObject):
             readings (dict[str, TemperatureChannelReading]):
                 Current channel readings.
             setpoints (dict[int, float]):
-                Current setpoints, keyed by loop number.
+                Controller-reported setpoints, keyed by loop number.  These
+                initialise targets on the first read but do not replace a
+                target previously sent by the engine.
             loop_numbers (tuple[int, ...]):
                 Ordered loop numbers to evaluate.
             now (datetime):
@@ -1364,13 +1379,14 @@ class TemperatureControllerEngine(QObject):
         stable: dict[int, bool] = {}
 
         for lp in loop_numbers:
-            sp = setpoints.get(lp, 0.0)
-            cfg = _select_stability_band(self._stability_config, sp)
+            reported_setpoint = setpoints.get(lp, 0.0)
+            target_setpoint = self._target_setpoints.setdefault(lp, reported_setpoint)
+            cfg = _select_stability_band(self._stability_config, target_setpoint)
             tolerance_reading = _reading_for_channel(readings, cfg.tolerance_channel)
             rate_reading = _reading_for_channel(readings, cfg.rate_channel)
-            pv = tolerance_reading.value if tolerance_reading is not None else sp
+            pv = tolerance_reading.value if tolerance_reading is not None else reported_setpoint
             rate = rate_reading.rate_of_change if rate_reading is not None else 0.0
-            difference = pv - sp
+            difference = pv - target_setpoint
 
             diagnostic_history = self._stability_value_history.setdefault(lp, deque())
             diagnostic_history.append((now, difference, rate))
@@ -1437,8 +1453,9 @@ class TemperatureControllerEngine(QObject):
         if holdoff_elapsed:
             self._stable[loop] = False
 
-    def _mark_setpoint_pending(self, loop: int) -> None:
+    def _mark_setpoint_pending(self, loop: int, target_setpoint: float) -> None:
         """Invalidate cached loop stability after commanding a new setpoint."""
+        self._target_setpoints[loop] = float(target_setpoint)
         self._at_setpoint_since[loop] = None
         self._unstable_since[loop] = None
         self._stable[loop] = False

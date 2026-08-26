@@ -30,6 +30,7 @@ from stoner_measurement.instruments.addressing import (
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.magnet_controller import (
+    MagnetController,
     MagnetLimits,
     MagnetState,
     current_is_at_target,
@@ -55,9 +56,6 @@ from stoner_measurement.magnet_control.types import (
 from stoner_measurement.qt_compat import pyqtSlot
 
 if TYPE_CHECKING:
-    from stoner_measurement.instruments.magnet_controller import (
-        MagnetController,
-    )
     from stoner_measurement.instruments.protocol.base import BaseProtocol
     from stoner_measurement.instruments.transport.base import BaseTransport
 
@@ -308,7 +306,7 @@ class MagnetControllerEngine(QObject):
             self._stable = False
             self._zero_target_active = False
             try:
-                self._magnet_constant = driver.refresh_magnet_constant()
+                self._synchronise_magnet_constant(driver)
             except Exception:
                 logger.debug(
                     "MagnetControllerEngine: failed to refresh magnet constant on connect",
@@ -320,6 +318,20 @@ class MagnetControllerEngine(QObject):
             if self._polling_rate_hz > 0.0:
                 self._timer.start()
         logger.info("MagnetControllerEngine: connected to %s", type(driver).__name__)
+
+    def _synchronise_magnet_constant(self, driver: MagnetController) -> None:
+        """Synchronise the cached constant without discarding software configuration.
+
+        The base ``refresh_magnet_constant`` implementation only returns a
+        driver's local constructor default; it does not read the instrument.
+        For those drivers, a persisted YAML value is therefore authoritative
+        and must seed the newly-created driver before its value is cached.
+        Drivers which override the method continue to refresh from hardware.
+        """
+        refresh_is_local = type(driver).refresh_magnet_constant is MagnetController.refresh_magnet_constant
+        if refresh_is_local and self._magnet_constant is not None:
+            driver.set_magnet_constant(self._magnet_constant)
+        self._magnet_constant = driver.refresh_magnet_constant()
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
         """Instantiate and connect a magnet controller from identifiers.

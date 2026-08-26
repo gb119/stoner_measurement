@@ -37,6 +37,7 @@ from qtpy.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTreeWidget,
     QTreeWidgetItem,
@@ -606,7 +607,14 @@ class MagnetControlPanel(QWidget):
         layout.addWidget(const_group)
 
         layout.addStretch()
-        return widget
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setWidget(widget)
+        return scroll
 
     # --- Chart tab ---
 
