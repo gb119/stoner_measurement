@@ -31,6 +31,12 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     Attributes:
         loop (int):
             Control loop used by the underlying mixin to apply set-points.
+        settle_timeout_minutes (float):
+            Maximum time to wait for the selected loop to become stable at
+            each set-point. Defaults to ``20.0`` minutes.
+        timed_out (bool):
+            Whether the most recent set-point wait reached its stability
+            timeout.
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
@@ -48,6 +54,7 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._init_temperature_controller_plugin()
+        self.settle_timeout_minutes = 20.0
 
     @property
     def name(self) -> str:
@@ -61,11 +68,21 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     def units(self) -> str:
         return "K"
 
+    @property
+    def settle_timeout(self) -> float:
+        """Return the configured stability timeout in seconds."""
+        return 60.0 * self.settle_timeout_minutes
+
     def to_json(self) -> dict[str, object]:
         data = super().to_json()
         data.update(self._temperature_settings_to_json())
+        data["settle_timeout_minutes"] = self.settle_timeout_minutes
         return data
 
     def _restore_from_json(self, data: dict[str, object]) -> None:
         super()._restore_from_json(data)
         self._restore_temperature_settings(data)
+        if "settle_timeout_minutes" in data:
+            self.settle_timeout_minutes = max(
+                0.1, float(data["settle_timeout_minutes"])
+            )

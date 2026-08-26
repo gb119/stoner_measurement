@@ -349,6 +349,7 @@ class StateScanPlugin(StatePlugin):
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the Qt object hierarchy and create the built-in scan generator."""
         super().__init__(parent)
+        self.timed_out: bool = False
         self.scan_generator: BaseScanGenerator = self._scan_generator_class(parent=self)
 
     def default_measure_condition_step(self):
@@ -665,17 +666,20 @@ class StateScanPlugin(StatePlugin):
             >>> reached
             [1.0]
         """
+        self.timed_out = False
         lo, hi = self.limits
         if (math.isfinite(lo) and value < lo) or (math.isfinite(hi) and value > hi):
             self.state_error.emit(f"Target {value} is outside limits [{lo}, {hi}]")
             return
 
         self.set_state(value)
-        deadline = time.monotonic() + self.settle_timeout
+        timeout = self.settle_timeout
+        deadline = time.monotonic() + timeout
         while not self.is_at_target():
             self.state_changed.emit(self.get_state())
             if time.monotonic() > deadline:
-                self.state_error.emit(f"Timeout after {self.settle_timeout}s waiting for state to reach {value}")
+                self.timed_out = True
+                self.state_error.emit(f"Timeout after {timeout}s waiting for state to reach {value}")
                 return
             time.sleep(poll_interval)
         self.state_reached.emit(self.get_state())

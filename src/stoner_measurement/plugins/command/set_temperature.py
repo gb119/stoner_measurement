@@ -9,6 +9,7 @@ from qtpy.QtWidgets import QFormLayout, QSpinBox, QWidget
 
 from stoner_measurement.plugins.command.set_engine_state import SetEngineStateCommand
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+from stoner_measurement.ui.widgets import SISpinBox
 
 
 class SetTemperatureCommand(SetEngineStateCommand):
@@ -20,17 +21,18 @@ class SetTemperatureCommand(SetEngineStateCommand):
     immediately or hold sequence execution until the engine reports that the
     selected loop is stable.
 
-    The configuration tab provides **Control loop**, **Setpoint expression**,
-    and **Wait expression** controls. The setpoint is in kelvin and may be a
-    number or an expression evaluated in the sequence namespace when the step
-    runs. The wait expression defaults to ``True``; set it to ``False`` or to
-    another Boolean expression to continue after the first state read.
+    The configuration tab provides **Control loop**, **Stability timeout**,
+    **Setpoint expression**, and **Wait expression** controls. The setpoint is
+    in kelvin and may be a number or an expression evaluated in the sequence
+    namespace when the step runs. The wait expression defaults to ``True``;
+    set it to ``False`` or to another Boolean expression to continue after the
+    first state read. The stability timeout defaults to 20 minutes.
 
     When execution finishes, the command publishes **Temperature**,
-    **Setpoint**, **Heater Output**, **At Setpoint**, and **Stable** scalar
-    outputs from the final controller state. Boolean outputs are represented
-    as ``1.0`` or ``0.0``. They can be selected by later sequence steps or read
-    with :meth:`output_value` in the console.
+    **Setpoint**, **Heater Output**, **At Setpoint**, **Stable**, and
+    **Timed Out** scalar outputs from the final controller state. Boolean
+    outputs are represented as ``1.0`` or ``0.0``. They can be selected by
+    later sequence steps or read with :meth:`output_value` in the console.
 
     Attributes:
         control_loop (int):
@@ -41,6 +43,10 @@ class SetTemperatureCommand(SetEngineStateCommand):
         wait_expr (str):
             Boolean expression controlling whether execution waits for the
             selected loop to become stable. Defaults to ``"True"``.
+        settle_timeout_minutes (float):
+            Maximum stability wait in minutes. Defaults to ``20.0``.
+        timed_out (bool):
+            Whether the most recent execution reached its stability timeout.
         instance_name (str):
             Inherited sequence-instance name used to identify the command and
             its published scalar outputs.
@@ -71,6 +77,7 @@ class SetTemperatureCommand(SetEngineStateCommand):
         super().__init__(parent)
         self.setpoint_expr = "300.0"
         self.control_loop = 1
+        self.settle_timeout_minutes = 20.0
 
     @property
     def name(self) -> str:
@@ -82,7 +89,19 @@ class SetTemperatureCommand(SetEngineStateCommand):
 
     @property
     def output_names(self) -> tuple[str, ...]:
-        return ("Temperature", "Setpoint", "Heater Output", "At Setpoint", "Stable")
+        return (
+            "Temperature",
+            "Setpoint",
+            "Heater Output",
+            "At Setpoint",
+            "Stable",
+            "Timed Out",
+        )
+
+    @property
+    def wait_timeout_seconds(self) -> float:
+        """Return the configured stability timeout in seconds."""
+        return 60.0 * self.settle_timeout_minutes
 
     def _ensure_engine(self):
         engine = TemperatureControllerEngine.instance()
@@ -110,6 +129,7 @@ class SetTemperatureCommand(SetEngineStateCommand):
             "Heater Output": float(state.heater_outputs.get(self.control_loop, math.nan)),
             "At Setpoint": float(bool(state.at_setpoint.get(self.control_loop, False))),
             "Stable": float(bool(state.stable.get(self.control_loop, False))),
+            "Timed Out": float(self.timed_out),
         }
 
     def _add_specific_config(self, layout: QFormLayout, widget: QWidget) -> None:
@@ -120,8 +140,27 @@ class SetTemperatureCommand(SetEngineStateCommand):
         loop.valueChanged.connect(lambda value: setattr(self, "control_loop", int(value)))
         layout.addRow("Control loop:", loop)
 
+        timeout = SISpinBox(widget)
+        timeout.setObjectName("temperature_settle_timeout_minutes")
+        timeout.setOpts(bounds=(0.1, 1.0e6), decimals=3, step=1.0, suffix="min")
+        timeout.setValue(self.settle_timeout_minutes)
+        timeout.setToolTip(
+            "Maximum time to wait for the selected loop to satisfy the "
+            "temperature stability criteria before the command continues."
+        )
+        timeout.sigValueChanged.connect(
+            lambda spin: setattr(self, "settle_timeout_minutes", float(spin.value()))
+        )
+        layout.addRow("Stability timeout:", timeout)
+
     def _specific_to_json(self) -> dict[str, Any]:
-        return {"control_loop": self.control_loop}
+        return {
+            "control_loop": self.control_loop,
+            "settle_timeout_minutes": self.settle_timeout_minutes,
+        }
 
     def _restore_specific_json(self, data: dict[str, Any]) -> None:
         self.control_loop = max(1, int(data.get("control_loop", 1)))
+        self.settle_timeout_minutes = max(
+            0.1, float(data.get("settle_timeout_minutes", 20.0))
+        )

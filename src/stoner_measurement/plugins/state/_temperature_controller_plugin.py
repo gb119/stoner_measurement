@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+from stoner_measurement.ui.widgets import SISpinBox
 
 if TYPE_CHECKING:
     from stoner_measurement.temperature_control.types import TemperatureEngineState
@@ -179,6 +180,8 @@ class TemperatureControllerPluginMixin:
         selected = self._available_sensor_channels() if self.sensor_channels is None else list(self.sensor_channels)
         var = self.instance_name
         values[f"{var}:Loop Setpoint"] = f"{var}.control_setpoint"
+        if hasattr(self, "settle_timeout_minutes"):
+            values[f"{var}:Timed Out"] = f"{var}.timed_out"
         for channel in selected:
             values[f"{var}:Sensor {channel}"] = f"{var}.sensor_value({channel!r})"
         return values
@@ -189,6 +192,8 @@ class TemperatureControllerPluginMixin:
         selected = self._available_sensor_channels() if self.sensor_channels is None else list(self.sensor_channels)
         var = self.instance_name
         units[f"{var}:Loop Setpoint"] = self.units
+        if hasattr(self, "settle_timeout_minutes"):
+            units[f"{var}:Timed Out"] = ""
         units.update({f"{var}:Sensor {channel}": self.units for channel in selected})
         return units
 
@@ -230,6 +235,24 @@ class _TemperatureControllerSettingsWidget(QWidget):
         self._loop_spin.setValue(self._plugin.control_loop)
         self._loop_spin.valueChanged.connect(self._on_loop_changed)
         form.addRow("Control loop:", self._loop_spin)
+
+        if hasattr(self._plugin, "settle_timeout_minutes"):
+            self._settle_timeout_spin = SISpinBox(self)
+            self._settle_timeout_spin.setObjectName("temperature_settle_timeout_minutes")
+            self._settle_timeout_spin.setOpts(
+                bounds=(0.1, 1.0e6), decimals=3, step=1.0, suffix="min"
+            )
+            self._settle_timeout_spin.setValue(self._plugin.settle_timeout_minutes)
+            self._settle_timeout_spin.setToolTip(
+                "Maximum time to wait for the selected loop to satisfy the "
+                "temperature stability criteria before the scan continues."
+            )
+            self._settle_timeout_spin.sigValueChanged.connect(
+                lambda spin: setattr(
+                    self._plugin, "settle_timeout_minutes", float(spin.value())
+                )
+            )
+            form.addRow("Stability timeout:", self._settle_timeout_spin)
 
         self._sensor_edit = QLineEdit(
             "" if self._plugin.sensor_channels is None else ", ".join(self._plugin.sensor_channels), self

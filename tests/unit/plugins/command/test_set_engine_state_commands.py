@@ -87,6 +87,42 @@ def test_temperature_uses_loop_waits_and_snapshots_outputs(monkeypatch, qapp, en
     assert command.output_value("Heater Output") == 7.0
     assert command.output_value("At Setpoint") == 1.0
     assert command.output_value("Stable") == 1.0
+    assert command.output_value("Timed Out") == 0.0
+
+
+def test_temperature_timeout_continues_and_records_status(monkeypatch, qapp, engine):
+    reading = SimpleNamespace(value=100.0)
+    pending = SimpleNamespace(
+        readings={"A": reading},
+        setpoints={1: 200.0},
+        heater_outputs={1: 25.0},
+        input_channels={1: "A"},
+        at_setpoint={1: False},
+        stable={1: False},
+    )
+    fake = _StateEngine([pending])
+    _install_engine(
+        monkeypatch,
+        "stoner_measurement.plugins.command.set_temperature",
+        "TemperatureControllerEngine",
+        fake,
+    )
+    times = iter((0.0, 1.0))
+    monkeypatch.setattr(
+        "stoner_measurement.plugins.command.set_engine_state.time.monotonic",
+        lambda: next(times),
+    )
+    command = SetTemperatureCommand()
+    command.settle_timeout_minutes = 0.001
+    engine.add_plugin("set_temperature", command)
+
+    command.execute()
+
+    assert command.timed_out is True
+    assert command.output_value("Timed Out") == 1.0
+    assert command.reported_values()["set_temperature:Timed Out"] == (
+        "set_temperature.output_value('Timed Out')"
+    )
 
 
 def test_temperature_false_wait_expression_does_not_require_stability(monkeypatch, qapp, engine):
@@ -105,12 +141,15 @@ def test_temperature_false_wait_expression_does_not_require_stability(monkeypatc
     command = SetTemperatureCommand()
     command.setpoint_expr = "310.0"
     command.wait_expr = "False"
+    command.timed_out = True
     engine.add_plugin("set_temperature", command)
 
     command.execute()
 
     assert fake.index == 1
     assert command.output_value("Stable") == 0.0
+    assert command.timed_out is False
+    assert command.output_value("Timed Out") == 0.0
 
 
 def test_field_false_wait_expression_takes_one_fresh_snapshot(monkeypatch, qapp, engine):
@@ -195,6 +234,11 @@ def test_common_and_specific_configuration_widgets(qapp):
     assert temperature_widget.findChild(SISpinBox, "setpoint_expression") is not None
     assert temperature_widget.findChild(QLineEdit, "wait_expression").text() == "True"
     assert temperature_widget.findChild(QSpinBox, "control_loop").value() == 1
+    timeout = temperature_widget.findChild(
+        SISpinBox, "temperature_settle_timeout_minutes"
+    )
+    assert timeout.value() == 20.0
+    assert timeout.opts["suffix"] == "min"
 
     position = SetPositionCommand()
     position_widget = position.config_widget()
@@ -220,6 +264,17 @@ def test_specific_settings_round_trip(qapp, command, attribute, value):
     assert getattr(restored, attribute) == value
     assert restored.setpoint_expr == "requested_target"
     assert restored.wait_expr == "wait_for_it"
+
+
+def test_temperature_timeout_setting_round_trips(qapp):
+    command = SetTemperatureCommand()
+    command.settle_timeout_minutes = 35.0
+
+    restored = BasePlugin.from_json(command.to_json())
+
+    assert isinstance(restored, SetTemperatureCommand)
+    assert restored.settle_timeout_minutes == 35.0
+    assert restored.wait_timeout_seconds == 2100.0
 
 
 def test_reported_values_reference_final_snapshot(qapp):

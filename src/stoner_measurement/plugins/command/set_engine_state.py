@@ -23,7 +23,13 @@ class SetEngineStateCommand(CommandPlugin):
         super().__init__(parent)
         self.setpoint_expr: str = "0.0"
         self.wait_expr: str = "True"
+        self.timed_out: bool = False
         self._final_values: dict[str, float] = {}
+
+    @property
+    def wait_timeout_seconds(self) -> float | None:
+        """Maximum wait time in seconds, or ``None`` to wait indefinitely."""
+        return None
 
     @property
     @abstractmethod
@@ -71,10 +77,16 @@ class SetEngineStateCommand(CommandPlugin):
         setpoint = self.eval_float(self.setpoint_expr)
         wait_for_target = bool(self.eval(self.wait_expr))
         engine = self._ensure_engine()
+        self.timed_out = False
         self._set_target(engine, setpoint)
         state = self._read_state(engine)
+        timeout = self.wait_timeout_seconds
+        deadline = None if timeout is None else time.monotonic() + timeout
         while wait_for_target and not self._target_reached(state, setpoint):
             if self._stop_requested():
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                self.timed_out = True
                 break
             time.sleep(self.poll_interval)
             state = self._read_state(engine)

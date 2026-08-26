@@ -411,6 +411,7 @@ def test_temperature_controller_scan_plugin_uses_loop_and_selected_sensors(monke
         "temperature_controller:Setpoint": "temperature_controller.value",
         "temperature_controller:Index": "temperature_controller.index",
         "temperature_controller:Loop Setpoint": "temperature_controller.control_setpoint",
+        "temperature_controller:Timed Out": "temperature_controller.timed_out",
         "temperature_controller:Sensor A": "temperature_controller.sensor_value('A')",
     }
 
