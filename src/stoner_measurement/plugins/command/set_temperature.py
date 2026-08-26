@@ -17,8 +17,8 @@ class SetTemperatureCommand(SetEngineStateCommand):
     Use this command to change the setpoint of one loop on the active
     temperature controller. If necessary, the command connects the preferred
     configured controller before setting the target. It can either continue
-    immediately or hold sequence execution until the controller reports that
-    the selected loop is at its setpoint.
+    immediately or hold sequence execution until the engine reports that the
+    selected loop is stable.
 
     The configuration tab provides **Control loop**, **Setpoint expression**,
     and **Wait expression** controls. The setpoint is in kelvin and may be a
@@ -40,7 +40,7 @@ class SetTemperatureCommand(SetEngineStateCommand):
             to ``"300.0"``.
         wait_expr (str):
             Boolean expression controlling whether execution waits for the
-            selected loop to reach its setpoint. Defaults to ``"True"``.
+            selected loop to become stable. Defaults to ``"True"``.
         instance_name (str):
             Inherited sequence-instance name used to identify the command and
             its published scalar outputs.
@@ -99,7 +99,7 @@ class SetTemperatureCommand(SetEngineStateCommand):
         return engine.read_controller_state() or engine.get_engine_state()
 
     def _target_reached(self, state, setpoint: float) -> bool:
-        return bool(state.at_setpoint.get(self.control_loop, False))
+        return bool(state.stable.get(self.control_loop, False))
 
     def _state_values(self, state) -> dict[str, float]:
         channel = state.input_channels.get(self.control_loop)

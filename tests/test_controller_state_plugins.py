@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -177,6 +178,7 @@ class _FakeTemperatureEngine:
             setpoints={2: 10.0},
             input_channels={2: "B"},
             at_setpoint={2: True},
+            stable={2: True},
             engine_status=EngineStatus.POLLING,
         )
 
@@ -442,6 +444,21 @@ def test_motor_controller_is_at_target_refreshes_stale_cache(monkeypatch, qapp):
 
     assert plugin.is_at_target() is True
     assert engine.read_calls == 1
+
+
+def test_temperature_controller_scan_waits_for_engine_stability(monkeypatch, qapp):
+    engine = _FakeTemperatureEngine()
+    engine._state = replace(engine._state, at_setpoint={2: True}, stable={2: False})
+    monkeypatch.setattr(
+        temperature_module,
+        "TemperatureControllerEngine",
+        type("FakeTemperatureControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = TemperatureControllerScanPlugin()
+    plugin.control_loop = 2
+
+    assert plugin.is_at_target() is False
 
 
 def test_motor_controller_is_at_target_uses_fresh_cache(monkeypatch, qapp):

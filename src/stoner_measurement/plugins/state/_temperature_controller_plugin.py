@@ -160,7 +160,7 @@ class TemperatureControllerPluginMixin:
     def is_at_target(self) -> bool:
         state = self._engine_state(max_age_seconds=self.engine_cache_max_age_seconds)
         loop = self._state_control_loop(state)
-        return bool(state.at_setpoint.get(loop, False))
+        return bool(state.stable.get(loop, False))
 
     @property
     def control_setpoint(self) -> float:

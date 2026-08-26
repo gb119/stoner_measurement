@@ -57,11 +57,15 @@ def test_temperature_uses_loop_waits_and_snapshots_outputs(monkeypatch, qapp, en
         readings={"A": reading}, setpoints={2: 125.0}, heater_outputs={2: 10.0},
         input_channels={2: "A"}, at_setpoint={2: False}, stable={2: False},
     )
-    reached = SimpleNamespace(
+    settling = SimpleNamespace(
         readings={"A": reading}, setpoints={2: 125.0}, heater_outputs={2: 8.0},
         input_channels={2: "A"}, at_setpoint={2: True}, stable={2: False},
     )
-    fake = _StateEngine([pending, reached])
+    stable = SimpleNamespace(
+        readings={"A": reading}, setpoints={2: 125.0}, heater_outputs={2: 7.0},
+        input_channels={2: "A"}, at_setpoint={2: True}, stable={2: True},
+    )
+    fake = _StateEngine([pending, settling, stable])
     _install_engine(
         monkeypatch,
         "stoner_measurement.plugins.command.set_temperature",
@@ -78,10 +82,35 @@ def test_temperature_uses_loop_waits_and_snapshots_outputs(monkeypatch, qapp, en
     command.execute()
 
     assert fake.calls == [("temperature", 2, 125.0)]
-    assert fake.index == 2
+    assert fake.index == 3
     assert command.output_value("Temperature") == 123.4
-    assert command.output_value("Heater Output") == 8.0
+    assert command.output_value("Heater Output") == 7.0
     assert command.output_value("At Setpoint") == 1.0
+    assert command.output_value("Stable") == 1.0
+
+
+def test_temperature_false_wait_expression_does_not_require_stability(monkeypatch, qapp, engine):
+    """A false wait condition captures one fresh state without blocking."""
+    state = SimpleNamespace(
+        readings={}, setpoints={1: 310.0}, heater_outputs={1: 0.0},
+        input_channels={}, at_setpoint={1: True}, stable={1: False},
+    )
+    fake = _StateEngine([state])
+    _install_engine(
+        monkeypatch,
+        "stoner_measurement.plugins.command.set_temperature",
+        "TemperatureControllerEngine",
+        fake,
+    )
+    command = SetTemperatureCommand()
+    command.setpoint_expr = "310.0"
+    command.wait_expr = "False"
+    engine.add_plugin("set_temperature", command)
+
+    command.execute()
+
+    assert fake.index == 1
+    assert command.output_value("Stable") == 0.0
 
 
 def test_field_false_wait_expression_takes_one_fresh_snapshot(monkeypatch, qapp, engine):

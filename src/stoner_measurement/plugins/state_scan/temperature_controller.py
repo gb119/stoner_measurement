@@ -18,9 +18,8 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
 
     In the configuration tabs, you choose the temperature-controller settings
     and the scan generator that defines the temperature points. During
-    execution, the plugin ramps to each set-point and waits until the
-    controller reports that the target has been reached according to the
-    underlying temperature-controller state logic.
+    execution, the plugin ramps to each set-point and waits until the engine
+    reports that the selected control loop is stable.
 
     The temperature-specific tab provides the detailed control-loop and
     stability settings defined by
@@ -32,11 +31,6 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     Attributes:
         loop (int):
             Control loop used by the underlying mixin to apply set-points.
-        wait_for_stable (bool):
-            When enabled by the inherited controller settings, wait for the
-            temperature controller to report a stable temperature rather than
-            only reaching the setpoint.
-
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
