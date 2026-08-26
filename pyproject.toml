@@ -85,6 +85,7 @@ motor_controller_sweep = "stoner_measurement.plugins.state_sweep.motor_controlle
 curve_fit = "stoner_measurement.plugins.transform.curve_fit:CurveFitPlugin"
 fourier_transform = "stoner_measurement.plugins.transform.fourier_transform:FourierTransformPlugin"
 savgol_filter = "stoner_measurement.plugins.transform.savgol_filter:SavitzkyGolayPlugin"
+symmetry_decomposition = "stoner_measurement.plugins.transform.symmetry_decomposition:SymmetryDecompositionPlugin"
 window_filter = "stoner_measurement.plugins.transform.window_filter:WindowFilterPlugin"
 x_offset_removal = "stoner_measurement.plugins.transform.voltage_offset:XOffsetRemovalPlugin"
 dummy = "stoner_measurement.plugins.trace.dummy:DummyPlugin"

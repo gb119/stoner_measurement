@@ -31,9 +31,11 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     Attributes:
         loop (int):
             Control loop used by the underlying mixin to apply set-points.
-        settle_timeout_minutes (float):
+        settle_timeout_minutes (float | str):
             Maximum time to wait for the selected loop to become stable at
-            each set-point. Defaults to ``20.0`` minutes.
+            each set-point, as a number or runtime expression in minutes.
+            Expressions are reevaluated at each point and may refer to the
+            current target through :attr:`value`. Defaults to ``20.0``.
         timed_out (bool):
             Whether the most recent set-point wait reached its stability
             timeout.
@@ -54,7 +56,7 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._init_temperature_controller_plugin()
-        self.settle_timeout_minutes = 20.0
+        self.settle_timeout_minutes: float | str = 20.0
 
     @property
     def name(self) -> str:
@@ -71,7 +73,7 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     @property
     def settle_timeout(self) -> float:
         """Return the configured stability timeout in seconds."""
-        return 60.0 * self.settle_timeout_minutes
+        return 60.0 * max(0.1, self.eval_float(self.settle_timeout_minutes))
 
     def to_json(self) -> dict[str, object]:
         data = super().to_json()
@@ -83,6 +85,6 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
         super()._restore_from_json(data)
         self._restore_temperature_settings(data)
         if "settle_timeout_minutes" in data:
-            self.settle_timeout_minutes = max(
-                0.1, float(data["settle_timeout_minutes"])
-            )
+            value = data["settle_timeout_minutes"]
+            if isinstance(value, (int, float, str)):
+                self.settle_timeout_minutes = value

@@ -43,8 +43,9 @@ class SetTemperatureCommand(SetEngineStateCommand):
         wait_expr (str):
             Boolean expression controlling whether execution waits for the
             selected loop to become stable. Defaults to ``"True"``.
-        settle_timeout_minutes (float):
-            Maximum stability wait in minutes. Defaults to ``20.0``.
+        settle_timeout_minutes (float | str):
+            Maximum stability wait in minutes, as a number or runtime
+            expression. Defaults to ``20.0``.
         timed_out (bool):
             Whether the most recent execution reached its stability timeout.
         instance_name (str):
@@ -77,7 +78,7 @@ class SetTemperatureCommand(SetEngineStateCommand):
         super().__init__(parent)
         self.setpoint_expr = "300.0"
         self.control_loop = 1
-        self.settle_timeout_minutes = 20.0
+        self.settle_timeout_minutes: float | str = 20.0
 
     @property
     def name(self) -> str:
@@ -101,7 +102,7 @@ class SetTemperatureCommand(SetEngineStateCommand):
     @property
     def wait_timeout_seconds(self) -> float:
         """Return the configured stability timeout in seconds."""
-        return 60.0 * self.settle_timeout_minutes
+        return 60.0 * max(0.1, self.eval_float(self.settle_timeout_minutes))
 
     def _ensure_engine(self):
         engine = TemperatureControllerEngine.instance()
@@ -140,16 +141,17 @@ class SetTemperatureCommand(SetEngineStateCommand):
         loop.valueChanged.connect(lambda value: setattr(self, "control_loop", int(value)))
         layout.addRow("Control loop:", loop)
 
-        timeout = SISpinBox(widget)
+        timeout = SISpinBox(widget, allow_expressions=True)
         timeout.setObjectName("temperature_settle_timeout_minutes")
         timeout.setOpts(bounds=(0.1, 1.0e6), decimals=3, step=1.0, suffix="min")
         timeout.setValue(self.settle_timeout_minutes)
         timeout.setToolTip(
             "Maximum time to wait for the selected loop to satisfy the "
-            "temperature stability criteria before the command continues."
+            "temperature stability criteria before the command continues. "
+            "Numbers are minutes; expressions are evaluated when the command runs."
         )
         timeout.sigValueChanged.connect(
-            lambda spin: setattr(self, "settle_timeout_minutes", float(spin.value()))
+            lambda spin: setattr(self, "settle_timeout_minutes", spin.value())
         )
         layout.addRow("Stability timeout:", timeout)
 
@@ -161,6 +163,4 @@ class SetTemperatureCommand(SetEngineStateCommand):
 
     def _restore_specific_json(self, data: dict[str, Any]) -> None:
         self.control_loop = max(1, int(data.get("control_loop", 1)))
-        self.settle_timeout_minutes = max(
-            0.1, float(data.get("settle_timeout_minutes", 20.0))
-        )
+        self.settle_timeout_minutes = data.get("settle_timeout_minutes", 20.0)

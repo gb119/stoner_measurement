@@ -237,7 +237,7 @@ class _TemperatureControllerSettingsWidget(QWidget):
         form.addRow("Control loop:", self._loop_spin)
 
         if hasattr(self._plugin, "settle_timeout_minutes"):
-            self._settle_timeout_spin = SISpinBox(self)
+            self._settle_timeout_spin = SISpinBox(self, allow_expressions=True)
             self._settle_timeout_spin.setObjectName("temperature_settle_timeout_minutes")
             self._settle_timeout_spin.setOpts(
                 bounds=(0.1, 1.0e6), decimals=3, step=1.0, suffix="min"
@@ -245,11 +245,13 @@ class _TemperatureControllerSettingsWidget(QWidget):
             self._settle_timeout_spin.setValue(self._plugin.settle_timeout_minutes)
             self._settle_timeout_spin.setToolTip(
                 "Maximum time to wait for the selected loop to satisfy the "
-                "temperature stability criteria before the scan continues."
+                "temperature stability criteria before the scan continues. "
+                "Numbers are minutes; expressions are evaluated separately "
+                "at each temperature point."
             )
             self._settle_timeout_spin.sigValueChanged.connect(
                 lambda spin: setattr(
-                    self._plugin, "settle_timeout_minutes", float(spin.value())
+                    self._plugin, "settle_timeout_minutes", spin.value()
                 )
             )
             form.addRow("Stability timeout:", self._settle_timeout_spin)

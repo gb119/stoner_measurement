@@ -107,7 +107,7 @@ def test_temperature_timeout_continues_and_records_status(monkeypatch, qapp, eng
         "TemperatureControllerEngine",
         fake,
     )
-    times = iter((0.0, 1.0))
+    times = iter((0.0, 10.0))
     monkeypatch.setattr(
         "stoner_measurement.plugins.command.set_engine_state.time.monotonic",
         lambda: next(times),
@@ -239,6 +239,8 @@ def test_common_and_specific_configuration_widgets(qapp):
     )
     assert timeout.value() == 20.0
     assert timeout.opts["suffix"] == "min"
+    timeout.setValue("timeout_for_target")
+    assert temperature.settle_timeout_minutes == "timeout_for_target"
 
     position = SetPositionCommand()
     position_widget = position.config_widget()
@@ -266,15 +268,17 @@ def test_specific_settings_round_trip(qapp, command, attribute, value):
     assert restored.wait_expr == "wait_for_it"
 
 
-def test_temperature_timeout_setting_round_trips(qapp):
+def test_temperature_timeout_expression_round_trips_and_evaluates(qapp, engine):
     command = SetTemperatureCommand()
-    command.settle_timeout_minutes = 35.0
+    command.settle_timeout_minutes = "timeout_minutes"
+    engine.add_plugin("set_temperature", command)
+    engine._namespace["timeout_minutes"] = 35.0  # noqa: SLF001
 
     restored = BasePlugin.from_json(command.to_json())
 
     assert isinstance(restored, SetTemperatureCommand)
-    assert restored.settle_timeout_minutes == 35.0
-    assert restored.wait_timeout_seconds == 2100.0
+    assert restored.settle_timeout_minutes == "timeout_minutes"
+    assert command.wait_timeout_seconds == 2100.0
 
 
 def test_reported_values_reference_final_snapshot(qapp):
