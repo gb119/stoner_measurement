@@ -93,6 +93,37 @@ class TraceData:
         for column in columns:
             self.names[column] = supplied_names.get(column, str(column))
             self.units[column] = supplied_units.get(column, "")
+        self._expected_columns = list(columns)
+        self._expected_column_roles = dict(self.column_roles)
+        self._expected_names = dict(self.names)
+        self._expected_units = dict(self.units)
+
+    @property
+    def expected_columns(self) -> list[str]:
+        """Return columns expected once this trace has acquired data."""
+        return list(self._expected_columns)
+
+    @property
+    def expected_column_roles(self) -> dict[str, str]:
+        """Return role metadata for the anticipated complete schema."""
+        return dict(self._expected_column_roles)
+
+    @property
+    def expected_names(self) -> dict[str, str]:
+        """Return display names for the anticipated complete schema."""
+        return dict(self._expected_names)
+
+    @property
+    def expected_units(self) -> dict[str, str]:
+        """Return units for the anticipated complete schema."""
+        return dict(self._expected_units)
+
+    def set_expected_schema(self, schema: TraceData) -> None:
+        """Advertise the columns and metadata expected after acquisition."""
+        self._expected_columns = list(schema.expected_columns)
+        self._expected_column_roles = dict(schema.column_roles)
+        self._expected_names = dict(schema.names)
+        self._expected_units = dict(schema.units)
 
     @classmethod
     def from_xy(

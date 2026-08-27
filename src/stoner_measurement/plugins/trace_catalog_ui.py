@@ -226,9 +226,9 @@ def trace_channel_items(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
     for trace_key, expression in traces.items():
         try:
             trace_data = plugin.eval(expression)
-            frame = trace_data.df
-            names = dict(getattr(trace_data, "names", {}) or {})
-            units = dict(getattr(trace_data, "units", {}) or {})
+            columns = getattr(trace_data, "expected_columns", list(trace_data.df.columns))
+            names = dict(getattr(trace_data, "expected_names", trace_data.names) or {})
+            units = dict(getattr(trace_data, "expected_units", trace_data.units) or {})
         except Exception:  # noqa: BLE001  # the catalogue may precede acquisition
             configured = _configured_trace_channels(plugin, trace_key, expression)
             if configured is not None:
@@ -238,7 +238,7 @@ def trace_channel_items(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
                 items[f"{trace_key} (y)"] = f"{expression}.y"
             continue
 
-        for column in frame.columns:
+        for column in columns:
             label = _channel_label(trace_key, column, names=names, units=units)
             items[label] = f"{expression}.df[{column!r}].to_numpy()"
     return items
@@ -250,9 +250,13 @@ def trace_channel_roles(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
     for trace_key, expression in traces.items():
         try:
             trace_data = plugin.eval(expression)
-            for column in trace_data.df.columns:
+            columns = getattr(trace_data, "expected_columns", list(trace_data.df.columns))
+            expected_roles = getattr(
+                trace_data, "expected_column_roles", trace_data.column_roles
+            )
+            for column in columns:
                 channel_expression = f"{expression}.df[{column!r}].to_numpy()"
-                roles[channel_expression] = trace_data.column_roles.get(column, "")
+                roles[channel_expression] = expected_roles.get(column, "")
         except Exception:  # noqa: BLE001  # the catalogue may precede acquisition
             configured = _configured_trace_channels(plugin, trace_key, expression)
             if configured is not None:
@@ -280,9 +284,10 @@ def trace_target_column_items(
     expression = traces[trace_key]
     try:
         trace_data = plugin.eval(expression)
-        frame = trace_data.df
-        names = dict(getattr(trace_data, "names", {}) or {})
-        units = dict(getattr(trace_data, "units", {}) or {})
+        columns = getattr(trace_data, "expected_columns", list(trace_data.df.columns))
+        roles = getattr(trace_data, "expected_column_roles", trace_data.column_roles)
+        names = dict(getattr(trace_data, "expected_names", trace_data.names) or {})
+        units = dict(getattr(trace_data, "expected_units", trace_data.units) or {})
     except Exception:  # noqa: BLE001  # the catalogue may precede acquisition
         configured = _configured_trace_channels(plugin, trace_key, expression)
         if configured is None:
@@ -296,15 +301,15 @@ def trace_target_column_items(
         }
 
     y_columns = list(
-        getattr(trace_data, "get_columns_by_role", lambda _role: [])(COLUMN_ROLE_Y)
+        column for column in columns if roles.get(column) == COLUMN_ROLE_Y
     )
     default_y = y_columns[0] if y_columns else None
     x_columns = list(
-        getattr(trace_data, "get_columns_by_role", lambda _role: [])(COLUMN_ROLE_X)
+        column for column in columns if roles.get(column) == COLUMN_ROLE_X
     )
     x_column = x_columns[0] if x_columns else None
     items = {}
-    for column in frame.columns:
+    for column in columns:
         if column == x_column:
             target_key = "x"
         else:

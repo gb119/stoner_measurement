@@ -129,6 +129,7 @@ _MAX_POINT_SIZE = 30.0
 _POINT_SIZE_STEP = 1.0
 _DEFAULT_LINE_WIDTH = 2.0
 _DEFAULT_POINT_SIZE = 8.0
+_TRACE_TITLE_COLUMN_WIDTH = 180
 _COLOUR_COLUMN_WIDTH = 90
 _AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
@@ -671,6 +672,11 @@ class PlotWidget(QWidget):
         self._pair_view_boxes: dict[tuple[str, str], pg.ViewBox] = {}
         # AxisItem registry: axis_name → AxisItem
         self._axis_items: dict[str, pg.AxisItem] = {}
+        # Distinct quantity labels received for each plot axis.
+        self._axis_labels: dict[str, set[AxisLabel]] = {
+            "bottom": set(),
+            "left": set(),
+        }
         # Axis orientation registry: axis_name → "x" | "y".
         self._axis_orientations: dict[str, Literal["x", "y"]] = {}
         # Axis side/position registry: y → left|right, x → top|bottom.
@@ -765,6 +771,7 @@ class PlotWidget(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         for col in range(1, 9):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+        self._trace_table.setColumnWidth(1, _TRACE_TITLE_COLUMN_WIDTH)
         self._trace_table.setColumnWidth(2, _COLOUR_COLUMN_WIDTH)
         self._trace_table.setColumnWidth(7, _AXIS_COLUMN_WIDTH)
         self._trace_table.setColumnWidth(8, _AXIS_COLUMN_WIDTH)
@@ -1116,6 +1123,7 @@ class PlotWidget(QWidget):
 
         trace_item = QTableWidgetItem(trace_name)
         trace_item.setFlags(trace_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        trace_item.setToolTip(trace_name)
         self._trace_table.setItem(row, 1, trace_item)
 
         colour_button = QPushButton(self._trace_table)
@@ -1776,7 +1784,7 @@ class PlotWidget(QWidget):
     def set_default_axis_labels(
         self, x_label: AxisLabel | str, y_label: AxisLabel | str
     ) -> None:
-        """Update the default bottom and left axis labels.
+        """Accumulate and display labels for the default bottom and left axes.
 
         Called by :class:`~stoner_measurement.plugins.command.PlotTraceCommand`
         when trace metadata (names and units from
@@ -1799,10 +1807,25 @@ class PlotWidget(QWidget):
             >>> widget._pg_widget.getPlotItem().getAxis("bottom").axis_label
             AxisLabel(label='Current', unit='A')
         """
-        if str(x_label):
-            self.set_axis_label("bottom", x_label)
-        if str(y_label):
-            self.set_axis_label("left", y_label)
+        self._accumulate_axis_label("bottom", x_label)
+        self._accumulate_axis_label("left", y_label)
+
+    def _accumulate_axis_label(self, axis_name: str, label: AxisLabel | str) -> None:
+        """Add one distinct quantity label to an axis and refresh its title."""
+        metadata = AxisLabel.coerce(label)
+        if not str(metadata) or metadata == AxisLabel(axis_name):
+            return
+        labels = self._axis_labels.setdefault(axis_name, set())
+        if metadata in labels:
+            return
+        labels.add(metadata)
+        ordered_labels = sorted(labels, key=lambda item: str(item).casefold())
+        display_label = (
+            ordered_labels[0]
+            if len(ordered_labels) == 1
+            else AxisLabel(", ".join(str(item) for item in ordered_labels))
+        )
+        self.set_axis_label(axis_name, display_label)
 
     def set_rolling_time_window(self, duration_seconds: float) -> None:
         """Fix the bottom axis to a real-time window ending at the present.
@@ -2041,7 +2064,7 @@ class PlotWidget(QWidget):
         self._refresh_trace_and_axis_controls()
 
     def clear_all(self) -> None:
-        """Remove all traces and their data.
+        """Remove all traces, their data, and accumulated axis labels.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -2055,6 +2078,8 @@ class PlotWidget(QWidget):
         self._colour_cycle = cycle(_TRACE_COLOURS)
         for name in list(self._traces.keys()):
             self.remove_trace(name)
+        for labels in self._axis_labels.values():
+            labels.clear()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Detach pyqtgraph items before Qt tears down the graphics scene."""
@@ -2380,6 +2405,7 @@ class PlotWidget(QWidget):
         self._axis_grid.pop(name, None)
         self._axis_auto_range.pop(name, None)
         self._axis_manual_range.pop(name, None)
+        self._axis_labels.pop(name, None)
         self._update_grid_state()
         self._refresh_trace_and_axis_controls()
 
@@ -2419,6 +2445,8 @@ class PlotWidget(QWidget):
         axis.set_axis_label(label)
         axis.setGrid(False)
         self._axis_items[name] = axis
+        self._axis_labels[name] = set()
+        self._accumulate_axis_label(name, label)
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         self._axis_orientations[name] = "y"
         self._register_axis_side(name, "y", side)
@@ -2468,8 +2496,7 @@ class PlotWidget(QWidget):
             1
         """
         if name in self._axis_items:
-            if str(label):
-                self.set_axis_label(name, label)
+            self._accumulate_axis_label(name, label)
             return
         self.add_y_axis(name, label or name)
 
@@ -2509,6 +2536,8 @@ class PlotWidget(QWidget):
         axis.set_axis_label(label)
         axis.setGrid(False)
         self._axis_items[name] = axis
+        self._axis_labels[name] = set()
+        self._accumulate_axis_label(name, label)
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
         self._axis_orientations[name] = "x"
         self._register_axis_side(name, "x", position)
@@ -2538,8 +2567,7 @@ class PlotWidget(QWidget):
                 Text label shown on the axis. Defaults to *name* when empty.
         """
         if name in self._axis_items:
-            if str(label):
-                self.set_axis_label(name, label)
+            self._accumulate_axis_label(name, label)
             return
         self.add_x_axis(name, label or name)
 

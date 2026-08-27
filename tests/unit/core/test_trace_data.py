@@ -124,6 +124,34 @@ class TestMetadata:
         with pytest.raises(ValueError, match="metadata references unknown columns"):
             TraceData(_frame(signal=[1.0]), names={"missing": "Missing"})
 
+    def test_expected_schema_reports_future_names_roles_and_units(self):
+        trace = TraceData()
+        schema = TraceData(
+            pd.DataFrame(
+                {
+                    "x": pd.Series(dtype=float),
+                    "voltage": pd.Series(dtype=float),
+                }
+            ),
+            column_roles={"x": COLUMN_ROLE_X, "voltage": COLUMN_ROLE_Y},
+            names={"x": "Field", "voltage": "Voltage"},
+            units={"x": "T", "voltage": "V"},
+        )
+
+        trace.set_expected_schema(schema)
+
+        assert trace.expected_columns == ["x", "voltage"]
+        assert trace.expected_column_roles["voltage"] == COLUMN_ROLE_Y
+        assert trace.expected_names["voltage"] == "Voltage"
+        assert trace.expected_units == {"x": "T", "voltage": "V"}
+
+    def test_expected_columns_preserve_dataframe_order(self):
+        trace = TraceData(
+            pd.DataFrame({"x": [0.0], "signal": [1.0], "aux": [2.0]}),
+            column_roles={"signal": COLUMN_ROLE_Y},
+        )
+
+        assert trace.expected_columns == ["x", "signal", "aux"]
 
 class TestArrayViews:
     def test_x_is_dataframe_column_and_index_is_integer_range(self):

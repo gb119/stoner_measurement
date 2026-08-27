@@ -18,7 +18,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z
+from stoner_measurement.core.trace_data import (
+    COLUMN_ROLE_X,
+    COLUMN_ROLE_Y,
+    COLUMN_ROLE_Z,
+    TraceData,
+)
 from stoner_measurement.plugins.trace_catalog_ui import trace_target_column_items
 from stoner_measurement.plugins.transform._trace_selection import TraceChannelSelectionMixin
 from stoner_measurement.plugins.transform.base import TransformPlugin
@@ -99,6 +104,7 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
 
         self.mode: str = MODE_AUTO
         self.channel_mode: str = CHANNELS_ALL
+        self.x_channel_key: str = "x"
         self.channel_keys: list[str] = []
         self.symmetric_trace_name: str = "symmetric"
         self.antisymmetric_trace_name: str = "antisymmetric"
@@ -143,14 +149,15 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
         del data
         try:
             source = self._get_selected_trace_data()
-            x = np.asarray(source.x, dtype=float)
+            x_column = self._selected_x_column(source)
+            x = source.df[x_column].to_numpy(dtype=float)
             columns = self._selected_columns(source)
             self._validate_input(x, source.row_count, columns)
             output_names = self._validated_output_names()
             branches = self._analysis_branches(x)
 
-            symmetric = self._copy_trace_data(source)
-            antisymmetric = self._copy_trace_data(source)
+            symmetric = self._build_output_trace(source, x_column, columns)
+            antisymmetric = self._build_output_trace(source, x_column, columns)
             for column in columns:
                 y = source.df[column].to_numpy(dtype=float)
                 sym, anti = self._decompose_channel(x, y, branches)
@@ -165,6 +172,36 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
 
         return {output_names[0]: symmetric, output_names[1]: antisymmetric}
 
+    def _build_output_trace(
+        self, source: TraceData, x_column: str, columns: list[str]
+    ) -> TraceData:
+        """Return an output trace containing the configured channel scope."""
+        if self.channel_mode == CHANNELS_ALL:
+            return self._copy_trace_data(source)
+
+        output_columns = [x_column, *columns]
+        roles = {column: source.column_roles[column] for column in output_columns}
+        roles[x_column] = COLUMN_ROLE_X
+        return TraceData(
+            source.df.loc[:, output_columns],
+            column_roles=roles,
+            names={column: source.names[column] for column in output_columns},
+            units={column: source.units[column] for column in output_columns},
+        )
+
+    def _selected_x_column(self, source: TraceData) -> str:
+        """Resolve the configured x-axis choice against a live trace."""
+        default_x = source.get_columns_by_role(COLUMN_ROLE_X)
+        primary_y = source.get_columns_by_role(COLUMN_ROLE_Y)
+        if self.channel_mode != CHANNELS_SELECTED or self.x_channel_key == "x":
+            if len(default_x) != 1:
+                raise ValueError("The source trace must contain exactly one x channel.")
+            return default_x[0]
+        column = primary_y[0] if self.x_channel_key == "" and primary_y else self.x_channel_key
+        if column not in source.df.columns:
+            raise ValueError("The selected x channel is not available in the source trace.")
+        return column
+
     def _channel_items_for_ui(self) -> dict[str, str]:
         """Return selectable y/z channel labels for the current source trace."""
         items = trace_target_column_items(
@@ -174,6 +211,25 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
             source = self._get_selected_trace_data()
         except Exception:
             return {label: key for label, key in items.items() if key != "x"}
+        if not any(
+            source.column_roles.get(column) in {COLUMN_ROLE_Y, COLUMN_ROLE_Z}
+            for column in source.df.columns
+        ):
+            allowed = {
+                column
+                for column, role in source.expected_column_roles.items()
+                if role in {COLUMN_ROLE_Y, COLUMN_ROLE_Z}
+            }
+            primary_y = [
+                column
+                for column, role in source.expected_column_roles.items()
+                if role == COLUMN_ROLE_Y
+            ]
+            return {
+                label: key
+                for label, key in items.items()
+                if (primary_y[0] if key == "" and primary_y else key) in allowed
+            }
         allowed = {
             column
             for column in source.df.columns
@@ -198,7 +254,9 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
 
         primary_y = source.get_columns_by_role(COLUMN_ROLE_Y)
         resolved = [primary_y[0] if key == "" and primary_y else key for key in self.channel_keys]
+        selected_x = self._selected_x_column(source)
         selected = [column for column in resolved if column in allowed]
+        selected = [column for column in selected if column != selected_x]
         if not selected:
             raise ValueError("No selected data channels are available in the source trace.")
         return list(dict.fromkeys(selected))
@@ -295,6 +353,10 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
         channel_mode.setCurrentIndex(max(0, channel_mode.findData(self.channel_mode)))
         layout.addRow("Process:", channel_mode)
 
+        x_channel = QComboBox(widget)
+        x_channel.setObjectName("symmetry_x_channel")
+        layout.addRow("X channel:", x_channel)
+
         channel_list = QListWidget(widget)
         channel_list.setObjectName("symmetry_channels")
         channel_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
@@ -314,9 +376,24 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
             nonlocal updating_channels
             updating_channels = True
             channel_list.clear()
+            all_items = trace_target_column_items(
+                self, self.engine_namespace.get("_traces", {}), self.trace_key
+            )
+            x_channel.blockSignals(True)
+            x_channel.clear()
+            for label, key in all_items.items():
+                x_channel.addItem(label, key)
+            selected_x_index = x_channel.findData(self.x_channel_key)
+            if selected_x_index < 0:
+                self.x_channel_key = "x"
+                selected_x_index = x_channel.findData("x")
+            x_channel.setCurrentIndex(max(0, selected_x_index))
+            x_channel.setEnabled(self.channel_mode == CHANNELS_SELECTED)
+            x_channel.blockSignals(False)
+
             items = self._channel_items_for_ui()
             for label, key in items.items():
-                if key == "x":
+                if key in {"x", self.x_channel_key}:
                     continue
                 item = QListWidgetItem(label, channel_list)
                 item.setData(Qt.ItemDataRole.UserRole, key)
@@ -344,18 +421,22 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
                 ]
             refresh_channels()
 
+        def apply_x_channel(_index: int) -> None:
+            self.x_channel_key = str(x_channel.currentData())
+            refresh_channels()
+
         def apply_output_name(attribute: str, edit: QLineEdit, fallback: str) -> None:
             previous = getattr(self, attribute)
             value = edit.text().strip() or fallback
             setattr(self, attribute, value)
             edit.setText(value)
-            if value != previous and self.sequence_engine is not None:
-                self.sequence_engine.refresh_data_catalogs()
+            self.rename_trace_output(previous, value)
 
         mode_combo.currentIndexChanged.connect(
             lambda _index: setattr(self, "mode", str(mode_combo.currentData()))
         )
         channel_mode.currentIndexChanged.connect(apply_channel_mode)
+        x_channel.currentIndexChanged.connect(apply_x_channel)
         channel_list.itemChanged.connect(lambda _item: apply_selected_channels())
         symmetric_name.editingFinished.connect(
             lambda: apply_output_name("symmetric_trace_name", symmetric_name, "symmetric")
@@ -447,6 +528,7 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
                 "trace_key": self.trace_key,
                 "mode": self.mode,
                 "channel_mode": self.channel_mode,
+                "x_channel_key": self.x_channel_key,
                 "channel_keys": list(self.channel_keys),
                 "symmetric_trace_name": self.symmetric_trace_name,
                 "antisymmetric_trace_name": self.antisymmetric_trace_name,
@@ -472,6 +554,7 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
         self.mode = mode if mode in _MODE_LABELS else MODE_AUTO
         channel_mode = str(data.get("channel_mode", CHANNELS_ALL))
         self.channel_mode = channel_mode if channel_mode in _CHANNEL_LABELS else CHANNELS_ALL
+        self.x_channel_key = str(data.get("x_channel_key", "x"))
         keys = data.get("channel_keys", [])
         self.channel_keys = [str(key) for key in keys] if isinstance(keys, list) else []
         self.symmetric_trace_name = str(data.get("symmetric_trace_name", "symmetric"))

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QColor, QPalette
 from qtpy.QtWidgets import QApplication, QTabBar
@@ -360,6 +362,7 @@ def theme_stylesheet() -> str:
     highlight = colour("highlight")
     selected_tab_background = colour("tab_selected_background")
     checkbox_checked_fill = colour("checkbox_checked_fill")
+    checkmark = (Path(__file__).parent / "resources" / "checkmark.svg").as_posix()
     selected_tab_border = colour("tab_selected_border")
     selected_tab_text = colour("tab_selected_text")
     tree_qss = tree_stylesheet()
@@ -396,7 +399,8 @@ QCheckBox {{
     spacing: 6px;
 }}
 
-QCheckBox::indicator {{
+QCheckBox::indicator,
+QAbstractItemView::indicator {{
     width: 16px;
     height: 16px;
     border: 1px solid {subtle_border};
@@ -404,10 +408,11 @@ QCheckBox::indicator {{
     background-color: {base};
 }}
 
-QCheckBox::indicator:checked {{
+QCheckBox::indicator:checked,
+QAbstractItemView::indicator:checked {{
     border: 1px solid {highlight};
     background-color: {checkbox_checked_fill};
-    image: none;
+    image: url("{checkmark}");
 }}
 
 QHeaderView::section {{

@@ -1080,6 +1080,18 @@ class SequenceEngine(QObject):
         """
         self._rebuild_data_catalogs()
 
+    def rename_trace_output(
+        self,
+        old_key: str,
+        new_key: str,
+        old_expression: str,
+        new_expression: str,
+    ) -> None:
+        """Remap downstream references and rebuild catalogues after an output rename."""
+        for plugin in self.all_plugins():
+            plugin.remap_trace_reference(old_key, new_key, old_expression, new_expression)
+        self._rebuild_data_catalogs()
+
     def all_plugins(self) -> list[BasePlugin]:
         """Return all plugin instances known to this engine.
 

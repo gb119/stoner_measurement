@@ -1390,6 +1390,27 @@ class BasePlugin(ABC):
         """
         return {}
 
+    def remap_trace_reference(
+        self,
+        old_key: str,
+        new_key: str,
+        old_expression: str,
+        new_expression: str,
+    ) -> None:
+        """Update common configuration references after a trace output is renamed."""
+        if getattr(self, "trace_key", None) == old_key:
+            self.trace_key = new_key  # type: ignore[attr-defined]
+
+        trace_selection = getattr(self, "trace_selection", None)
+        if isinstance(trace_selection, dict) and old_key in trace_selection:
+            selected = trace_selection.pop(old_key)
+            trace_selection.setdefault(new_key, selected)
+
+        for attribute in ("x_expr", "y_expr"):
+            expression = getattr(self, attribute, None)
+            if isinstance(expression, str) and old_expression in expression:
+                setattr(self, attribute, expression.replace(old_expression, new_expression))
+
     def reported_values(self) -> dict[str, str]:
         """Return a mapping of value names to Python expressions for accessing scalar data.
 

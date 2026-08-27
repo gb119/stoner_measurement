@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QComboBox, QLineEdit, QListWidget, QSpinBox
 
 from stoner_measurement.core import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
@@ -136,7 +137,7 @@ def test_multiple_cycles_pair_consecutive_opposite_direction_branches(engine):
     assert plugin.branch_directions == [1, -1, 1, -1]
 
 
-def test_selected_channel_scope_preserves_unselected_columns(engine):
+def test_selected_channel_scope_omits_unselected_columns(engine):
     x = np.array([-2.0, -0.7, 0.1, 1.3, 2.0])
     voltage = 3.0 + 2.0 * x
     resistance = 10.0 - 4.0 * x
@@ -144,15 +145,36 @@ def test_selected_channel_scope_preserves_unselected_columns(engine):
     plugin.mode = MODE_NON_HYSTERETIC
     plugin.channel_mode = CHANNELS_SELECTED
     plugin.channel_keys = ["voltage"]
-    source = _attach_source(engine, plugin, x, voltage=voltage, resistance=resistance)
+    _attach_source(engine, plugin, x, voltage=voltage, resistance=resistance)
 
     result = plugin.transform({})
 
+    assert result["symmetric"].columns == ["field", "voltage"]
+    assert result["antisymmetric"].columns == ["field", "voltage"]
     np.testing.assert_allclose(result["symmetric"].df["voltage"], 3.0)
-    np.testing.assert_array_equal(result["symmetric"].df["resistance"], source.df["resistance"])
-    np.testing.assert_array_equal(result["antisymmetric"].df["resistance"], source.df["resistance"])
+    np.testing.assert_allclose(result["antisymmetric"].df["voltage"], 2.0 * x)
     assert result["symmetric"].names["voltage"] == "Symmetric voltage"
     assert result["antisymmetric"].names["voltage"] == "Antisymmetric voltage"
+
+
+def test_selected_channel_scope_can_use_data_column_as_x(engine):
+    field = np.array([-3.0, -2.0, -1.0, 0.0, 1.0])
+    voltage = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    resistance = 5.0 + 3.0 * voltage
+    plugin = SymmetryDecompositionPlugin()
+    plugin.mode = MODE_NON_HYSTERETIC
+    plugin.channel_mode = CHANNELS_SELECTED
+    plugin.x_channel_key = ""
+    plugin.channel_keys = ["resistance"]
+    _attach_source(engine, plugin, field, voltage=voltage, resistance=resistance)
+
+    result = plugin.transform({})
+
+    assert result["symmetric"].columns == ["voltage", "resistance"]
+    assert result["symmetric"].column_roles == {"voltage": "x", "resistance": "z"}
+    np.testing.assert_array_equal(result["symmetric"].x, voltage)
+    np.testing.assert_allclose(result["symmetric"].df["resistance"], 5.0)
+    np.testing.assert_allclose(result["antisymmetric"].df["resistance"], 3.0 * voltage)
 
 
 def test_duplicate_x_values_are_consolidated_with_median_y():
@@ -169,6 +191,7 @@ def test_custom_output_names_are_catalogue_names_and_round_trip(qapp):
     plugin = SymmetryDecompositionPlugin()
     plugin.mode = MODE_HYSTERETIC
     plugin.channel_mode = CHANNELS_SELECTED
+    plugin.x_channel_key = "voltage"
     plugin.channel_keys = ["voltage", "resistance"]
     plugin.symmetric_trace_name = "even"
     plugin.antisymmetric_trace_name = "odd"
@@ -178,6 +201,7 @@ def test_custom_output_names_are_catalogue_names_and_round_trip(qapp):
     assert isinstance(restored, SymmetryDecompositionPlugin)
     assert restored.mode == MODE_HYSTERETIC
     assert restored.channel_mode == CHANNELS_SELECTED
+    assert restored.x_channel_key == "voltage"
     assert restored.channel_keys == ["voltage", "resistance"]
     assert restored.output_trace_names == ["even", "odd"]
     assert restored.reported_traces() == {
@@ -245,6 +269,7 @@ def test_general_and_advanced_tabs_follow_layout_conventions(engine, managed_qt_
     assert line_edits[1].text() == ""
     assert general.findChild(QComboBox, "symmetry_mode") is not None
     assert general.findChild(QComboBox, "symmetry_channel_mode") is not None
+    assert general.findChild(QComboBox, "symmetry_x_channel") is not None
     assert general.findChild(QListWidget, "symmetry_channels").count() == 2
     assert general.findChild(QLineEdit, "symmetric_trace_name").text() == "symmetric"
     assert general.findChild(QLineEdit, "antisymmetric_trace_name").text() == "antisymmetric"
@@ -252,6 +277,98 @@ def test_general_and_advanced_tabs_follow_layout_conventions(engine, managed_qt_
     assert advanced.findChild(SISpinBox, "symmetry_turning_prominence") is not None
     assert advanced.findChild(QComboBox, "symmetry_interpolation") is not None
     assert advanced.findChild(QComboBox, "symmetry_out_of_range") is not None
+
+
+def test_output_name_edit_remaps_catalogue_data_and_downstream_references(
+    engine, managed_qt_widget
+):
+    from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
+    from stoner_measurement.plugins.command.save import SaveCommand
+
+    plugin = SymmetryDecompositionPlugin()
+    plot = PlotTraceCommand()
+    save = SaveCommand()
+    plot.trace_key = "symmetry_decomposition:symmetric"
+    plot.x_expr = "symmetry_decomposition.data['symmetric'].x"
+    save.trace_selection = {"symmetry_decomposition:symmetric": False}
+    output = object()
+    plugin.data["symmetric"] = output
+    plugin.sequence_engine = engine
+    engine.update_step_plugin_catalog([plugin, plot, save])
+    general = managed_qt_widget(plugin.config_tabs()[0][1])
+    name_edit = general.findChild(QLineEdit, "symmetric_trace_name")
+
+    name_edit.setText("even")
+    name_edit.editingFinished.emit()
+
+    assert plugin.output_trace_names == ["even", "antisymmetric"]
+    assert plugin.data == {"even": output}
+    assert "symmetry_decomposition:even" in engine.traces_catalog
+    assert "symmetry_decomposition:symmetric" not in engine.traces_catalog
+    assert plot.trace_key == "symmetry_decomposition:even"
+    assert plot.x_expr == "symmetry_decomposition.data['even'].x"
+    assert save.trace_selection == {"symmetry_decomposition:even": False}
+
+
+def test_channel_list_uses_configured_scan_outputs_before_collection(
+    engine, managed_qt_widget
+):
+    from stoner_measurement.core.value_catalog import ValueCatalogEntry
+    from stoner_measurement.plugins.state_scan.counter import CounterPlugin
+
+    counter = CounterPlugin()
+    counter.collect_data = True
+    counter.collect_output_roles = {
+        "counter:Value": "y",
+        "curve_fit:Ic": "y",
+        "curve_fit:Rn": "y",
+    }
+    plugin = SymmetryDecompositionPlugin()
+    engine.add_plugin("counter", counter)
+    engine.add_plugin("symmetry_decomposition", plugin)
+    engine._namespace["_values"] = {  # noqa: SLF001
+        "counter:Value": ValueCatalogEntry("0.0", ""),
+        "curve_fit:Ic": ValueCatalogEntry("0.0", "A"),
+        "curve_fit:Rn": ValueCatalogEntry("0.0", "ohm"),
+    }
+    engine._namespace["_traces"] = {"counter.data": "counter.data"}  # noqa: SLF001
+    plugin.trace_key = "counter.data"
+
+    general = managed_qt_widget(plugin.config_tabs()[0][1])
+    channels = general.findChild(QListWidget, "symmetry_channels")
+
+    labels = {channels.item(row).text() for row in range(channels.count())}
+    assert {
+        "counter.data:counter:Value ()",
+        "counter.data:curve_fit:Ic (A)",
+        "counter.data:curve_fit:Rn (ohm)",
+    } <= labels
+
+
+def test_channel_list_uses_themed_item_checkboxes(engine, managed_qt_widget):
+    plugin = SymmetryDecompositionPlugin()
+    _attach_source(
+        engine,
+        plugin,
+        [-1.0, 0.0, 1.0],
+        voltage=[-1.0, 0.0, 1.0],
+        resistance=[1.0, 2.0, 3.0],
+    )
+    plugin.channel_mode = CHANNELS_SELECTED
+    plugin.channel_keys = ["", "resistance"]
+
+    general = managed_qt_widget(plugin.config_tabs()[0][1])
+    channels = general.findChild(QListWidget, "symmetry_channels")
+    assert [channels.item(row).text() for row in range(channels.count())] == [
+        "measurement:voltage ()",
+        "measurement:resistance ()",
+    ]
+    assert all(
+        channels.item(row).flags() & Qt.ItemFlag.ItemIsUserCheckable
+        for row in range(channels.count())
+    )
+    channels.item(0).setCheckState(Qt.CheckState.Unchecked)
+    assert plugin.channel_keys == ["resistance"]
 
 
 if __name__ == "__main__":

@@ -307,6 +307,22 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         self.transform_complete.emit(result)
         return result
 
+    def rename_trace_output(self, old_name: str, new_name: str) -> None:
+        """Rename a trace output and propagate its catalogue identity downstream."""
+        if old_name == new_name:
+            return
+        if old_name in self.data:
+            self.data[new_name] = self.data.pop(old_name)
+        if self.sequence_engine is None:
+            return
+        var = self.instance_name
+        self.sequence_engine.rename_trace_output(
+            f"{var}:{old_name}",
+            f"{var}:{new_name}",
+            f"{var}.data[{old_name!r}]",
+            f"{var}.data[{new_name!r}]",
+        )
+
     @property
     def has_lifecycle(self) -> bool:
         """Transform plugins have no instrument lifecycle.

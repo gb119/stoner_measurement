@@ -295,6 +295,8 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> p.data.df.empty
             True
         """
+        if self._data.row_count == 0 and self.sequence_engine is not None:
+            self._data.set_expected_schema(self.configured_trace_data())
         return self._data
 
     def _empty_trace_data(self) -> TraceData:
@@ -456,7 +458,34 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         names.update({column: str(column) for column in output_columns})
         units = {key: "" for key in names}
         units["state" if explicit_x is not None else "x"] = self.units
+        values_cat: dict[str, str] = self.engine_namespace.get("_values", {})
+        units.update(
+            {
+                column: str(getattr(values_cat.get(column), "units", "") or "")
+                for column in output_columns
+            }
+        )
         return TraceData(frame, column_roles=roles, names=names, units=units)
+
+    def configured_trace_data(self) -> TraceData:
+        """Return the configured collected-data schema before acquisition.
+
+        State scan and sweep traces are initially empty, so their live
+        :class:`TraceData` cannot yet advertise the selected catalogue outputs.
+        Configuration UIs use this schema-only trace to offer those channels
+        before the first row has been collected.
+        """
+        values_cat: dict[str, str] = self.engine_namespace.get("_values", {})
+        keys = self._resolve_collect_keys(values_cat, self.collect_outputs)
+        explicit_x = next(
+            (key for key in keys if self.collect_output_roles.get(key) == "x"), None
+        )
+        columns = ["x", "iteration", "stage"]
+        if explicit_x is not None:
+            columns.append("state")
+        columns.extend(key for key in keys if key != explicit_x)
+        frame = pd.DataFrame({column: pd.Series(dtype=float) for column in columns})
+        return self._build_collected_trace(frame, explicit_x)
 
     def inferred_output_roles(self, outputs: list[str]) -> dict[str, str]:
         """Return the automatic roles used when all catalogue outputs are selected.

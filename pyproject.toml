@@ -132,7 +132,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "stoner_measurement.conf" = ["*.yaml", "instruments/*.yaml", "resources/*.png", "sequences/*.json"]
 "stoner_measurement.conf.plugins" = ["*.yaml"]
-"stoner_measurement.ui" = ["*.png", "resources/*.png"]
+"stoner_measurement.ui" = ["*.png", "resources/*.png", "resources/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

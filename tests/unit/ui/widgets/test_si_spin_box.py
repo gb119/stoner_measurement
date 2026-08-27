@@ -30,6 +30,8 @@ class TestSISpinBox:
         """Global theme stylesheet should include checkbox and tab styling."""
         qss = theme_stylesheet()
         assert "QCheckBox::indicator" in qss
+        assert "QAbstractItemView::indicator" in qss
+        assert "checkmark.svg" in qss
         assert "QTabBar::tab:selected" in qss
 
     def test_value_with_explicit_suffix_unchanged(self, qapp):

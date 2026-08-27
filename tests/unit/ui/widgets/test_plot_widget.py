@@ -11,6 +11,7 @@ from stoner_measurement.ui.axis_mappings import AxisLabel, inverse_values, trans
 from stoner_measurement.ui.plot_widget import (
     _MAX_VISIBLE_TRACE_ROWS,
     _POINT_PICTOGRAMS,
+    _TRACE_TITLE_COLUMN_WIDTH,
     AxesConfigDialog,
     PlotWidget,
 )
@@ -120,6 +121,19 @@ class TestPlotWidget:
         widget.append_point("trace_d", 1.0, 2.0)
         assert widget._trace_style["trace_c"]["colour"] == first_colour
         assert widget._trace_style["trace_d"]["colour"] == second_colour
+
+    def test_clear_all_starts_fresh_axis_label_collection(self, qapp):
+        widget = self.make_plot_widget()
+        widget.set_default_axis_labels("Time (s)", "Voltage (V)")
+        widget.ensure_y_axis("right", "Ic (A)")
+
+        widget.clear_all()
+        widget.set_default_axis_labels("Field (T)", "Resistance (ohm)")
+        widget.ensure_y_axis("right", "Rn (ohm)")
+
+        assert widget._axis_items["bottom"].axis_label == AxisLabel("Field", "T")
+        assert widget._axis_items["left"].axis_label == AxisLabel("Resistance", "ohm")
+        assert widget._axis_items["right"].axis_label == AxisLabel("Rn", "ohm")
 
     def test_pg_widget_exists(self, qapp):
         widget = self.make_plot_widget()
@@ -507,6 +521,15 @@ class TestPlotWidget:
         widget.ensure_y_axis("dup", "Duplicate")
         assert widget.axis_names.count("dup") == 1
 
+    def test_ensure_shared_custom_axis_accumulates_distinct_labels(self, qapp):
+        widget = self.make_plot_widget()
+
+        widget.ensure_y_axis("right", "Ic (A)")
+        widget.ensure_y_axis("right", "Rn (ohm)")
+        widget.ensure_y_axis("right", "Ic (A)")
+
+        assert widget._axis_items["right"].axis_label == AxisLabel("Ic (A), Rn (ohm)")
+
     def test_ensure_y_axis_uses_name_as_label_fallback(self, qapp):
         widget = self.make_plot_widget()
         widget.ensure_y_axis("my_axis")
@@ -518,6 +541,26 @@ class TestPlotWidget:
         initial = sorted(widget.axis_names)
         widget.ensure_y_axis("left")
         assert sorted(widget.axis_names) == initial
+
+    def test_ensure_default_axes_preserves_accumulated_labels(self, qapp):
+        """Plot command axis checks must not overwrite combined metadata labels."""
+        widget = self.make_plot_widget()
+
+        widget.ensure_x_axis("bottom", "bottom")
+        widget.ensure_y_axis("left", "left")
+        widget.set_default_axis_labels("Voltage (V)", "Current (A)")
+        widget.ensure_x_axis("bottom", "Voltage (V)")
+        widget.ensure_y_axis("left", "Current (A)")
+        widget.ensure_x_axis("bottom", "bottom")
+        widget.ensure_y_axis("left", "left")
+        widget.set_default_axis_labels("Resistance (ohm)", "Power (W)")
+        widget.ensure_x_axis("bottom", "Resistance (ohm)")
+        widget.ensure_y_axis("left", "Power (W)")
+
+        assert widget._axis_items["bottom"].axis_label == AxisLabel(
+            "Resistance (ohm), Voltage (V)"
+        )
+        assert widget._axis_items["left"].axis_label == AxisLabel("Current (A), Power (W)")
 
     def test_ensure_x_axis_creates_new_axis(self, qapp):
         widget = self.make_plot_widget()
@@ -770,6 +813,39 @@ class TestPlotWidget:
             "Voltage", "V"
         )
 
+    def test_set_default_axis_labels_accumulates_distinct_labels(self, qapp):
+        widget = self.make_plot_widget()
+
+        widget.set_default_axis_labels("Time (s)", "Voltage (V)")
+        widget.set_default_axis_labels("Frequency (Hz)", "Current (A)")
+
+        assert widget._axis_items["bottom"].axis_label == AxisLabel(
+            "Frequency (Hz), Time (s)"
+        )
+        assert widget._axis_items["left"].axis_label == AxisLabel(
+            "Current (A), Voltage (V)"
+        )
+
+    def test_set_default_axis_labels_does_not_rewrite_repeated_labels(
+        self, qapp, monkeypatch
+    ):
+        widget = self.make_plot_widget()
+        original_set_axis_label = widget.set_axis_label
+        calls = []
+
+        def record_set_axis_label(name, label):
+            calls.append((name, label))
+            original_set_axis_label(name, label)
+
+        monkeypatch.setattr(widget, "set_axis_label", record_set_axis_label)
+        widget.set_default_axis_labels("Time (s)", "Voltage (V)")
+        widget.set_default_axis_labels("Time (s)", "Voltage (V)")
+
+        assert calls == [
+            ("bottom", AxisLabel("Time", "s")),
+            ("left", AxisLabel("Voltage", "V")),
+        ]
+
     def test_axis_uses_si_prefix_on_physical_unit(self, qapp):
         widget = self.make_plot_widget()
         widget.set_axis_label("bottom", AxisLabel("Current", "A"))
@@ -816,6 +892,14 @@ class TestPlotWidget:
         widget.append_point("my_trace", 1.0, 2.0)
         assert widget._trace_table.rowCount() == 1
         assert widget._trace_table.item(0, 1).text() == "my_trace"
+
+    def test_trace_table_gives_titles_more_space_and_full_name_tooltip(self, qapp):
+        widget = self.make_plot_widget()
+        trace_name = "a complete and descriptive trace title"
+        widget.append_point(trace_name, 1.0, 2.0)
+
+        assert widget._trace_table.columnWidth(1) == _TRACE_TITLE_COLUMN_WIDTH
+        assert widget._trace_table.item(0, 1).toolTip() == trace_name
 
     def test_trace_table_not_rebuilt_when_axis_assignment_is_unchanged(self, qapp):
         widget = self.make_plot_widget()
