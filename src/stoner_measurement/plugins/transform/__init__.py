@@ -6,6 +6,7 @@ implementations.
 """
 
 from stoner_measurement.plugins.transform.base import TransformPlugin
+from stoner_measurement.plugins.transform.branch_split import BranchSplitPlugin
 from stoner_measurement.plugins.transform.curve_fit import CurveFitPlugin
 from stoner_measurement.plugins.transform.fourier_transform import (
     FourierTransformPlugin,
@@ -19,6 +20,7 @@ from stoner_measurement.plugins.transform.window_filter import WindowFilterPlugi
 
 __all__ = [
     "CurveFitPlugin",
+    "BranchSplitPlugin",
     "FourierTransformPlugin",
     "SavitzkyGolayPlugin",
     "SymmetryDecompositionPlugin",

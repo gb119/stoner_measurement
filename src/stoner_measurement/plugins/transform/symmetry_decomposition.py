@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -25,6 +24,16 @@ from stoner_measurement.core.trace_data import (
     TraceData,
 )
 from stoner_measurement.plugins.trace_catalog_ui import trace_target_column_items
+from stoner_measurement.plugins.transform._branch_splitting import (
+    DEFAULT_MINIMUM_BRANCH_LENGTH,
+    DEFAULT_SMOOTHING_POLYORDER,
+    DEFAULT_SMOOTHING_WINDOW,
+    DEFAULT_TURNING_PROMINENCE,
+    BranchSplittingMixin,
+)
+from stoner_measurement.plugins.transform._branch_splitting import (
+    Branch as _Branch,
+)
 from stoner_measurement.plugins.transform._trace_selection import TraceChannelSelectionMixin
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.ui.widgets import SISpinBox
@@ -43,10 +52,6 @@ OUT_OF_RANGE_NAN = "nan"
 OUT_OF_RANGE_NEAREST = "nearest"
 OUT_OF_RANGE_EXTRAPOLATE = "extrapolate"
 
-DEFAULT_SMOOTHING_WINDOW = 11
-DEFAULT_SMOOTHING_POLYORDER = 2
-DEFAULT_TURNING_PROMINENCE = 0.01
-DEFAULT_MINIMUM_BRANCH_LENGTH = 10
 DEFAULT_INTERPOLATION = INTERPOLATION_PCHIP
 DEFAULT_OUT_OF_RANGE = OUT_OF_RANGE_NAN
 
@@ -70,15 +75,9 @@ _OUT_OF_RANGE_LABELS = {
 }
 
 
-@dataclass(frozen=True)
-class _Branch:
-    """One monotonic acquisition-order branch."""
-
-    indices: np.ndarray
-    direction: int
-
-
-class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
+class SymmetryDecompositionPlugin(
+    BranchSplittingMixin, TraceChannelSelectionMixin, TransformPlugin
+):
     """Decompose selected trace channels into symmetric and antisymmetric parts.
 
     For non-hysteretic data, the plugin interpolates each selected channel and
@@ -109,15 +108,9 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
         self.symmetric_trace_name: str = "symmetric"
         self.antisymmetric_trace_name: str = "antisymmetric"
 
-        self.smoothing_window: int = DEFAULT_SMOOTHING_WINDOW
-        self.smoothing_polyorder: int = DEFAULT_SMOOTHING_POLYORDER
-        self.turning_point_prominence: float = DEFAULT_TURNING_PROMINENCE
-        self.minimum_branch_length: int = DEFAULT_MINIMUM_BRANCH_LENGTH
+        self._init_branch_splitting()
         self.interpolation: str = DEFAULT_INTERPOLATION
         self.out_of_range: str = DEFAULT_OUT_OF_RANGE
-
-        self.turning_points: list[int] = []
-        self.branch_directions: list[int] = []
 
     @property
     def name(self) -> str:
@@ -288,20 +281,14 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
         if self.mode == MODE_NON_HYSTERETIC:
             return None
 
-        branches, turning_points = _detect_branches(
-            x,
-            smoothing_window=self.smoothing_window,
-            smoothing_polyorder=self.smoothing_polyorder,
-            prominence_fraction=self.turning_point_prominence,
-            minimum_length=self.minimum_branch_length,
-        )
+        branches = self._split_branches(x)
         usable = len(branches) >= 2 and {branch.direction for branch in branches} == {-1, 1}
         if not usable:
             if self.mode == MODE_HYSTERETIC:
                 raise ValueError("Could not identify both rising and falling x branches.")
+            self.turning_points = []
+            self.branch_directions = []
             return None
-        self.turning_points = turning_points
-        self.branch_directions = [branch.direction for branch in branches]
         return branches
 
     def _decompose_channel(
@@ -575,90 +562,6 @@ class SymmetryDecompositionPlugin(TraceChannelSelectionMixin, TransformPlugin):
         self.out_of_range = (
             out_of_range if out_of_range in _OUT_OF_RANGE_LABELS else DEFAULT_OUT_OF_RANGE
         )
-
-
-def _detect_branches(
-    x: np.ndarray,
-    *,
-    smoothing_window: int,
-    smoothing_polyorder: int,
-    prominence_fraction: float,
-    minimum_length: int,
-) -> tuple[list[_Branch], list[int]]:
-    """Smooth x and split it at prominent acquisition-order extrema."""
-    from scipy.signal import find_peaks, savgol_filter  # type: ignore[import-untyped]  # noqa: PLC0415, I001
-
-    n_points = len(x)
-    if n_points < 3:
-        return [], []
-    window = _valid_savgol_window(smoothing_window, n_points)
-    polyorder = min(max(0, int(smoothing_polyorder)), window - 1)
-    smoothed = savgol_filter(x, window, polyorder, mode="interp")
-    robust_span = float(np.percentile(smoothed, 95) - np.percentile(smoothed, 5))
-    span = robust_span if robust_span > 0.0 else float(np.ptp(smoothed))
-    prominence = max(0.0, float(prominence_fraction)) * span
-    distance = max(2, int(minimum_length))
-    peaks, peak_info = find_peaks(smoothed, prominence=prominence, distance=distance)
-    troughs, trough_info = find_peaks(-smoothed, prominence=prominence, distance=distance)
-    candidates = [
-        (int(index), 1, float(value))
-        for index, value in zip(peaks, peak_info["prominences"], strict=True)
-    ]
-    candidates.extend(
-        (int(index), -1, float(value))
-        for index, value in zip(troughs, trough_info["prominences"], strict=True)
-    )
-    candidates.sort()
-    alternating: list[tuple[int, int, float]] = []
-    for candidate in candidates:
-        if alternating and candidate[1] == alternating[-1][1]:
-            if candidate[2] > alternating[-1][2]:
-                alternating[-1] = candidate
-        else:
-            alternating.append(candidate)
-
-    turns = [item[0] for item in alternating]
-    turns = _remove_short_segments(turns, n_points, distance)
-    boundaries = [0, *(turn + 1 for turn in turns), n_points]
-    branches: list[_Branch] = []
-    for start, stop in zip(boundaries[:-1], boundaries[1:], strict=True):
-        indices: np.ndarray = np.arange(start, stop, dtype=int)
-        if len(indices) < 2:
-            continue
-        delta = float(smoothed[indices[-1]] - smoothed[indices[0]])
-        if delta == 0.0:
-            continue
-        branches.append(_Branch(indices=indices, direction=1 if delta > 0.0 else -1))
-    return branches, turns
-
-
-def _valid_savgol_window(requested: int, n_points: int) -> int:
-    window = max(3, int(requested))
-    if window % 2 == 0:
-        window += 1
-    if window > n_points:
-        window = n_points if n_points % 2 else n_points - 1
-    return max(3, window)
-
-
-def _remove_short_segments(turns: list[int], n_points: int, minimum: int) -> list[int]:
-    retained = list(turns)
-    while retained:
-        boundaries = [0, *(turn + 1 for turn in retained), n_points]
-        lengths = np.diff(np.asarray(boundaries, dtype=int))
-        short = np.flatnonzero(lengths < minimum)
-        if not len(short):
-            break
-        segment = int(short[0])
-        if segment == 0:
-            del retained[0]
-        elif segment == len(boundaries) - 2:
-            retained.pop()
-        else:
-            left = lengths[segment - 1]
-            right = lengths[segment + 1]
-            del retained[segment - 1 if left >= right else segment]
-    return retained
 
 
 def _best_counterpart(index: int, branches: list[_Branch], x: np.ndarray) -> _Branch:

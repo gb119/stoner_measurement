@@ -7,6 +7,8 @@ from stoner_measurement.plugins.state._magnet_controller_plugin import (
 )
 from stoner_measurement.plugins.state_sweep.base import StateSweepPlugin
 
+_LIMIT_READING_REL_TOLERANCE = 0.01
+
 
 class MagnetControllerSweepPlugin(MagnetControllerPluginMixin, StateSweepPlugin):
     """Sweep the magnetic field continuously while collecting data in motion.
@@ -96,6 +98,21 @@ class MagnetControllerSweepPlugin(MagnetControllerPluginMixin, StateSweepPlugin)
     def __next__(self) -> bool:
         """Advance the sweep using the configured sweep generator semantics."""
         return super().__next__()
+
+    @property
+    def limits(self) -> tuple[float, float]:
+        """Return symmetric limits with uncertainty for live field readings.
+
+        The driver continues to enforce the exact configured limit for target
+        commands.  The sweep loop, however, checks measured values and must
+        allow small regulation, calibration, and rounding differences at the
+        boundary.
+        """
+        _lower, upper = self._magnet_limits()
+        if upper == float("inf"):
+            return (float("-inf"), upper)
+        measured_limit = abs(upper) * (1.0 + _LIMIT_READING_REL_TOLERANCE)
+        return (-measured_limit, measured_limit)
 
     def to_json(self) -> dict[str, object]:
         data = super().to_json()

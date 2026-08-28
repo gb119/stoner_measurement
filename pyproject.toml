@@ -83,6 +83,7 @@ magnet_controller_sweep = "stoner_measurement.plugins.state_sweep.magnet_control
 temperature_controller_sweep = "stoner_measurement.plugins.state_sweep.temperature_controller:TemperatureControllerSweepPlugin"
 motor_controller_sweep = "stoner_measurement.plugins.state_sweep.motor_controller:MotorControllerSweepPlugin"
 curve_fit = "stoner_measurement.plugins.transform.curve_fit:CurveFitPlugin"
+branch_split = "stoner_measurement.plugins.transform.branch_split:BranchSplitPlugin"
 fourier_transform = "stoner_measurement.plugins.transform.fourier_transform:FourierTransformPlugin"
 savgol_filter = "stoner_measurement.plugins.transform.savgol_filter:SavitzkyGolayPlugin"
 symmetry_decomposition = "stoner_measurement.plugins.transform.symmetry_decomposition:SymmetryDecompositionPlugin"

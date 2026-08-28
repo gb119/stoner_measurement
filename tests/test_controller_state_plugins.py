@@ -695,6 +695,24 @@ def test_magnet_controller_sweep_advances_targets_from_multisegment_generator(mo
     assert math.isclose(engine.ramp_rate_calls[-1], 0.2)
 
 
+def test_magnet_sweep_limits_allow_small_measured_overshoot(monkeypatch, qapp):
+    engine = _FakeMagnetEngine()
+    engine._limits = SimpleNamespace(max_field=3.0)
+    monkeypatch.setattr(
+        magnet_module,
+        "MagnetControllerEngine",
+        type("FakeMagnetControllerEngine", (), {"instance": staticmethod(lambda: engine)}),
+    )
+
+    plugin = MagnetControllerSweepPlugin()
+
+    lower, upper = plugin.limits
+    assert math.isclose(lower, -3.03)
+    assert math.isclose(upper, 3.03)
+    assert plugin.limits[0] <= -3.004 <= plugin.limits[1]
+    assert plugin.limits[0] <= 3.004 <= plugin.limits[1]
+
+
 def test_temperature_controller_sweep_advances_targets_from_multisegment_generator(monkeypatch, qapp):
     from stoner_measurement.sweep import MultiSegmentRampSweepGenerator
 

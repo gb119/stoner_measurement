@@ -66,6 +66,7 @@ class TestPluginManager:
         assert "sweep_time" in pm.plugins
         assert "save" in pm.plugins
         assert "symmetry_decomposition" in pm.plugins
+        assert "branch_split" in pm.plugins
         assert "run_parallel" in pm.plugins
         assert "run_sequentially" in pm.plugins
 
