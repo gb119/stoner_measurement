@@ -73,6 +73,30 @@ def test_selected_data_channel_can_be_independent_variable(engine):
     assert np.all(np.diff(result["falling"].x) < 0)
 
 
+def test_split_branches_preserve_source_channel_units(engine):
+    field = np.r_[np.linspace(-1.0, 1.0, 21), np.linspace(1.0, -1.0, 21)[1:]]
+    plugin = BranchSplitPlugin()
+    source = _attach_source(
+        engine,
+        plugin,
+        pd.DataFrame(
+            {
+                "field": field,
+                "voltage": 2.0 * field,
+                "resistance": 10.0 + field,
+            }
+        ),
+        {"field": "x", "voltage": "y", "resistance": "z"},
+    )
+    source.units.update({"field": "T", "voltage": "V", "resistance": "Ω"})
+
+    result = plugin.transform({})
+
+    expected_units = {"field": "T", "voltage": "V", "resistance": "Ω"}
+    assert result["rising"].units == expected_units
+    assert result["falling"].units == expected_units
+
+
 def test_configuration_and_custom_output_names_round_trip(qapp):
     plugin = BranchSplitPlugin()
     plugin.channel_mode = CHANNELS_SELECTED

@@ -157,6 +157,26 @@ def test_selected_channel_scope_omits_unselected_columns(engine):
     assert result["antisymmetric"].names["voltage"] == "Antisymmetric voltage"
 
 
+def test_decomposed_traces_preserve_source_channel_units(engine):
+    x = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    plugin = SymmetryDecompositionPlugin()
+    plugin.mode = MODE_NON_HYSTERETIC
+    source = _attach_source(
+        engine,
+        plugin,
+        x,
+        voltage=3.0 + 2.0 * x,
+        resistance=10.0 - 4.0 * x,
+    )
+    source.units.update({"field": "T", "voltage": "V", "resistance": "Ω"})
+
+    result = plugin.transform({})
+
+    expected_units = {"field": "T", "voltage": "V", "resistance": "Ω"}
+    assert result["symmetric"].units == expected_units
+    assert result["antisymmetric"].units == expected_units
+
+
 def test_selected_channel_scope_can_use_data_column_as_x(engine):
     field = np.array([-3.0, -2.0, -1.0, 0.0, 1.0])
     voltage = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
@@ -342,6 +362,50 @@ def test_channel_list_uses_configured_scan_outputs_before_collection(
         "counter.data:counter:Value ()",
         "counter.data:curve_fit:Ic (A)",
         "counter.data:curve_fit:Rn (ohm)",
+    } <= labels
+
+
+def test_channel_list_refreshes_when_magnet_sweep_expected_outputs_change(
+    engine, managed_qt_widget, qapp
+):
+    from stoner_measurement.core.value_catalog import ValueCatalogEntry
+    from stoner_measurement.plugins.state_sweep import MagnetControllerSweepPlugin
+
+    sweep = MagnetControllerSweepPlugin()
+    sweep.collect_data = True
+    sweep.collect_outputs = [f"{sweep.instance_name}:Field"]
+    plugin = SymmetryDecompositionPlugin()
+    engine.add_plugin(sweep.instance_name, sweep)
+    engine.add_plugin("symmetry_decomposition", plugin)
+    engine._namespace["_values"] = {  # noqa: SLF001
+        f"{sweep.instance_name}:Field": ValueCatalogEntry("0.0", "T"),
+    }
+    engine._namespace["_traces"] = {  # noqa: SLF001
+        f"{sweep.instance_name}.data": f"{sweep.instance_name}.data"
+    }
+    plugin.trace_key = f"{sweep.instance_name}.data"
+    general = managed_qt_widget(plugin.config_tabs()[0][1])
+    channels = general.findChild(QListWidget, "symmetry_channels")
+
+    sweep.collect_outputs = [
+        f"{sweep.instance_name}:Field",
+        f"{sweep.instance_name}:Current",
+        f"{sweep.instance_name}:Voltage",
+    ]
+    updated_values = {
+        f"{sweep.instance_name}:Field": ValueCatalogEntry("0.0", "T"),
+        f"{sweep.instance_name}:Current": ValueCatalogEntry("0.0", "A"),
+        f"{sweep.instance_name}:Voltage": ValueCatalogEntry("0.0", "V"),
+    }
+    engine._namespace["_values"] = updated_values  # noqa: SLF001
+    engine.values_catalog_changed.emit(updated_values)
+    qapp.processEvents()
+
+    labels = {channels.item(row).text() for row in range(channels.count())}
+    assert {
+        f"{sweep.instance_name}.data:{sweep.instance_name}:Field (T)",
+        f"{sweep.instance_name}.data:{sweep.instance_name}:Current (A)",
+        f"{sweep.instance_name}.data:{sweep.instance_name}:Voltage (V)",
     } <= labels
 
 

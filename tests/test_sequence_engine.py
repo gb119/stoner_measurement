@@ -740,6 +740,8 @@ class TestDataCatalogs:
         cat = engine.values_catalog
         assert "dummy:Dummy mean" in cat
         assert "dummy:Dummy std" in cat
+        assert cat["dummy:Dummy mean"].units == "V"
+        assert cat["dummy:Dummy std"].units == "V"
 
     def test_multiple_plugins_merged_in_catalogs(self, engine):
         from stoner_measurement.plugins.state_control import CounterPlugin

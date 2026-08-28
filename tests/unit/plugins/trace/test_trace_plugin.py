@@ -34,6 +34,12 @@ class _SimpleTrace(TracePlugin):
         }
 
 
+class _UnitTrace(_SimpleTrace):
+    @property
+    def y_units(self) -> str:
+        return "V"
+
+
 class TestTracePlugin:
     def test_plugin_type(self, qapp):
         p = _SimpleTrace()
@@ -296,6 +302,15 @@ class TestTracePlugin:
 
     def test_y_units_default_empty(self, qapp):
         assert _SimpleTrace().y_units == ""
+
+    def test_channel_statistics_propagate_channel_units(self, qapp):
+        plugin = _UnitTrace()
+        plugin._set_report_channel_statistics(True)
+
+        assert plugin.reported_value_units() == {
+            "simpletrace:SimpleTrace mean": "V",
+            "simpletrace:SimpleTrace std": "V",
+        }
 
 
 if __name__ == "__main__":

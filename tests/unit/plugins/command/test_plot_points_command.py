@@ -120,6 +120,54 @@ class TestPlotPointsCommand:
         combos = widget.findChildren(QComboBox)
         assert len(combos) >= 1
 
+    def test_config_widget_refreshes_when_values_catalog_changes(
+        self, qapp, engine, managed_qt_widget
+    ):
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        command.x_key = "p:x"
+        command.y_entries = [{"key": "p:y", "label": "Y", "y_axis": "left"}]
+        widget = managed_qt_widget(command.config_widget())
+
+        engine.values_catalog_changed.emit(
+            {"p:x": "p_x", "p:y": "p_y", "p:new": "p_new"}
+        )
+        qapp.processEvents()
+
+        x_combo = widget.findChild(QComboBox, "plot_points_x_value")
+        scroll_area = widget.findChild(QScrollArea)
+        grid = scroll_area.widget().layout()
+        y_combo = grid.itemAtPosition(1, 1).widget()
+        assert [x_combo.itemText(index) for index in range(x_combo.count())] == [
+            "p:x",
+            "p:y",
+            "p:new",
+        ]
+        assert [y_combo.itemText(index) for index in range(y_combo.count())] == [
+            "p:x",
+            "p:y",
+            "p:new",
+        ]
+        assert x_combo.currentText() == "p:x"
+        assert y_combo.currentText() == "p:y"
+
+    def test_config_widget_normalises_removed_catalog_selections(
+        self, qapp, engine, managed_qt_widget
+    ):
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {"p:x": "p_x", "p:y": "p_y"}
+        command.x_key = "p:x"
+        command.y_entries = [{"key": "p:y", "label": "Y", "y_axis": "left"}]
+        managed_qt_widget(command.config_widget())
+
+        engine.values_catalog_changed.emit({"p:new": "p_new"})
+        qapp.processEvents()
+
+        assert command.x_key == "p:new"
+        assert command.y_entries[0]["key"] == "p:new"
+
     def test_config_widget_uses_transposed_y_series_layout(self, qapp, engine):
         command = PlotPointsCommand()
         engine.add_plugin("plot_points", command)

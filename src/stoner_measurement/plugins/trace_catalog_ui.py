@@ -191,6 +191,22 @@ def bind_trace_catalog_updates(
     widget._trace_catalog_bindings = bindings  # type: ignore[attr-defined]
 
 
+def bind_value_catalog_updates(
+    plugin: BasePlugin,
+    widget: QWidget,
+    callback: Callable[[dict[str, str]], None],
+) -> None:
+    """Call *callback* when the owning engine rebuilds its scalar-value catalogue."""
+    engine = plugin.sequence_engine
+    signal = getattr(engine, "values_catalog_changed", None)
+    if signal is None:
+        return
+    binding = _TraceCatalogBinding(signal, callback, widget)
+    bindings = getattr(widget, "_value_catalog_bindings", [])
+    bindings.append(binding)
+    widget._value_catalog_bindings = bindings  # type: ignore[attr-defined]
+
+
 def _channel_label(trace_key: str, column: Any, *, names: dict, units: dict) -> str:
     """Return the canonical ``trace:column (unit)`` channel label."""
     name = names.get(column) or str(column)

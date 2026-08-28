@@ -379,6 +379,42 @@ class Keithley2400SweepPlugin(TracePlugin):
                 values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return the source-column units for each IV statistic."""
+        if not self._report_channel_statistics:
+            return {}
+
+        response_name = (
+            "Conductance"
+            if self._differential_mode and self._differential_conductance
+            else "Resistance"
+        )
+        response_unit = "S" if response_name == "Conductance" else "Ω"
+        column_units = {
+            "Current": "A",
+            "Voltage": "V",
+            response_name: response_unit,
+            "Power": "W",
+            "Timestamp": "s",
+        }
+        if self._secondary_enabled:
+            prefix = self._secondary_prefix.strip() or "secondary"
+            response_symbol = "G" if response_name == "Conductance" else "R"
+            column_units.update(
+                {
+                    f"{prefix} V": "V",
+                    f"{prefix} {response_symbol}": response_unit,
+                    f"{prefix} P": "W",
+                }
+            )
+
+        var = self.instance_name
+        return {
+            f"{var}:IV {column} {statistic}": unit
+            for column, unit in column_units.items()
+            for statistic in ("mean", "std")
+        }
+
     def connect(self) -> None:
         """Open the SMU connection and verify its identity.
 

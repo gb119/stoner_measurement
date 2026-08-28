@@ -516,6 +516,25 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return the source-channel units for each derived IV statistic."""
+        if not self._report_channel_statistics:
+            return {}
+
+        response_column = "G" if self._differential_mode and self._differential_conductance else "R"
+        response_unit = "S" if response_column == "G" else "Ω"
+        column_units = {"V": self.y_units, response_column: response_unit, "P": "W"}
+        if self._secondary_enabled:
+            secondary_columns = self._secondary_column_names(response_name=response_column)
+            column_units.update(dict(zip(secondary_columns, (self.y_units, response_unit, "W"), strict=True)))
+
+        var = self.instance_name
+        return {
+            f"{var}:IV {column} {statistic}": unit
+            for column, unit in column_units.items()
+            for statistic in ("mean", "std")
+        }
+
     def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         """Acquire the sweep and return a single multicolumn ``"IV"`` trace.
 

@@ -98,6 +98,13 @@ class TestReportedValues:
             assert f"{prefix}:IV {column} mean" in values
             assert f"{prefix}:IV {column} std" in values
 
+        units = plugin.reported_value_units()
+        assert units[f"{prefix}:IV Current mean"] == "A"
+        assert units[f"{prefix}:IV Voltage std"] == "V"
+        assert units[f"{prefix}:IV Resistance mean"] == "Ω"
+        assert units[f"{prefix}:IV Power std"] == "W"
+        assert units[f"{prefix}:IV Timestamp mean"] == "s"
+
     def test_measure_updates_all_column_statistics_when_enabled(self):
         from stoner_measurement.instruments.keithley.k2400 import BufferReading
 
@@ -111,13 +118,18 @@ class TestReportedValues:
 
         plugin._acquire_buffer_records = MagicMock(return_value=buffer_records)
 
-        plugin.measure({})
+        trace = plugin.measure({})["IV"]
 
         assert plugin.channel_statistics["IV Current"]["mean"] == pytest.approx(0.0015)
         assert plugin.channel_statistics["IV Voltage"]["mean"] == pytest.approx(0.25)
         assert plugin.channel_statistics["IV Resistance"]["mean"] == pytest.approx(150.0)
         assert plugin.channel_statistics["IV Power"]["mean"] == pytest.approx(0.00045)
         assert plugin.channel_statistics["IV Timestamp"]["mean"] == pytest.approx(1.5)
+        assert trace.units["Resistance"] == "Ω"
+        assert trace.units["Power"] == "W"
+        statistic_units = plugin.reported_value_units()
+        assert statistic_units[f"{plugin.instance_name}:IV Resistance std"] == trace.units["Resistance"]
+        assert statistic_units[f"{plugin.instance_name}:IV Power mean"] == trace.units["Power"]
 
 
 class TestConfigureComplianceModes:

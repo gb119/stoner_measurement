@@ -164,6 +164,7 @@ def test_6221_measure_reduces_primary_and_secondary_readings(qapp):
     plugin._sweep_values = np.array([0.1, 0.9, 2.1, 2.9])
     plugin._secondary_enabled = True
     plugin._secondary_voltages = (2.0, -2.0, 2.0, -2.0)
+    plugin._set_report_channel_statistics(True)
 
     pairs = list(zip(plugin._sweep_values, (1.0, -1.0, 1.0, -1.0), strict=True))
     with patch.object(plugin, "_acquire_pairs", return_value=pairs):
@@ -174,6 +175,15 @@ def test_6221_measure_reduces_primary_and_secondary_readings(qapp):
     np.testing.assert_allclose(trace.df["P"], [0.1, 0.1, 0.1, 0.1])
     np.testing.assert_allclose(trace.df["secondary R"], [20.0, 20.0, 20.0, 20.0])
     np.testing.assert_allclose(trace.df["secondary P"], [0.2, 0.2, 0.2, 0.2])
+    assert trace.units["R"] == "Ω"
+    assert trace.units["P"] == "W"
+    assert trace.units["secondary R"] == "Ω"
+    assert trace.units["secondary P"] == "W"
+    statistic_units = plugin.reported_value_units()
+    assert statistic_units[f"{plugin.instance_name}:IV R mean"] == "Ω"
+    assert statistic_units[f"{plugin.instance_name}:IV P std"] == "W"
+    assert statistic_units[f"{plugin.instance_name}:IV secondary R std"] == "Ω"
+    assert statistic_units[f"{plugin.instance_name}:IV secondary P mean"] == "W"
 
 
 def test_2400_measure_reports_differential_conductance(qapp):
@@ -183,6 +193,7 @@ def test_2400_measure_reports_differential_conductance(qapp):
     plugin._delta_current = 0.1
     plugin._nominal_sweep_values = (0.0, 1.0, 2.0, 3.0)
     plugin._sweep_values = (0.1, 0.9, 2.1, 2.9)
+    plugin._set_report_channel_statistics(True)
     records = tuple(
         SimpleNamespace(voltage=v, current=i, resistance=None, time=t)
         for i, v, t in zip(
@@ -201,6 +212,12 @@ def test_2400_measure_reports_differential_conductance(qapp):
     np.testing.assert_allclose(trace.df["Conductance"], [0.1, 0.1, 0.1, 0.1])
     assert trace.units["Conductance"] == "S"
     np.testing.assert_allclose(trace.df["Power"], [0.1, 0.1, 0.1, 0.1])
+    assert trace.units["Power"] == "W"
+    statistic_units = plugin.reported_value_units()
+    assert statistic_units[f"{plugin.instance_name}:IV Conductance mean"] == "S"
+    assert statistic_units[f"{plugin.instance_name}:IV Conductance std"] == "S"
+    assert statistic_units[f"{plugin.instance_name}:IV Power mean"] == "W"
+    assert statistic_units[f"{plugin.instance_name}:IV Power std"] == "W"
 
 
 if __name__ == "__main__":

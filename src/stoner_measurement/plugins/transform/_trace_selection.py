@@ -22,6 +22,7 @@ from stoner_measurement.core.trace_data import COLUMN_ROLE_X, COLUMN_ROLE_Y, Tra
 from stoner_measurement.plugins.trace_catalog_ui import (
     TraceChannelComboBox,
     bind_trace_catalog_updates,
+    bind_value_catalog_updates,
     refresh_trace_source_widgets,
     trace_channel_items,
     trace_channel_roles,
@@ -191,15 +192,26 @@ class TraceChannelSelectionMixin:
         update_enabled = partial(self._update_data_source_enabled, ws, show_column_selector)
         update_enabled(self.advanced_mode)
         ws["advanced_check"].toggled.connect(update_enabled)
-        bind_trace_catalog_updates(
-            self,
-            ws["trace_combo"],
-            lambda traces: refresh_trace_source_widgets(
+        def _refresh_catalog(traces: dict[str, str]) -> None:
+            refresh_trace_source_widgets(
                 self,
                 ws,
                 traces,
                 show_column_selector=show_column_selector,
                 prefer_y_channel=True,
+            )
+            self._trigger_data_source_change(on_change)
+
+        bind_trace_catalog_updates(
+            self,
+            ws["trace_combo"],
+            _refresh_catalog,
+        )
+        bind_value_catalog_updates(
+            self,
+            ws["trace_combo"],
+            lambda _values: _refresh_catalog(
+                dict(self.engine_namespace.get("_traces", {}))
             ),
         )
 

@@ -405,6 +405,23 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 )
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return units for source settings and averaged lock-in outputs."""
+        var = self.instance_name
+        units = {
+            f"{var}.K6221.offset": "A",
+            f"{var}.K6221.amplitude": "A",
+            f"{var}.K6221.frequency": "Hz",
+        }
+        if not self._report_channel_statistics:
+            return units
+
+        for index, entry in enumerate(self._lockin_entries):
+            label = entry.label.strip() or f"LIA {index + 1}"
+            for output in entry.outputs:
+                units[f"{var}.{label}.{output.value}"] = output.unit
+        return units
+
     def set_scan_generator_class(self, cls) -> None:
         """Replace the scan generator class and update the displayed units."""
         super().set_scan_generator_class(cls)

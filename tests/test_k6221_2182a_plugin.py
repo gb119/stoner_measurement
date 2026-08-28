@@ -73,6 +73,10 @@ class TestIdentity:
         assert "k6221_dc_iv:IV R std" in vals
         assert "k6221_dc_iv:IV P mean" in vals
         assert "k6221_dc_iv:IV P std" in vals
+        units = plugin.reported_value_units()
+        assert units["k6221_dc_iv:IV V mean"] == "V"
+        assert units["k6221_dc_iv:IV R std"] == "Ω"
+        assert units["k6221_dc_iv:IV P mean"] == "W"
 
 
 # ---------------------------------------------------------------------------
@@ -903,11 +907,16 @@ class TestMeasure:
 
         fake_pairs = [(1e-3, 0.1), (2e-3, 0.4)]
         with patch.object(plugin, "_acquire_pairs", return_value=fake_pairs):
-            plugin.measure({})
+            trace = plugin.measure({})["IV"]
 
         assert plugin.channel_statistics["IV V"]["mean"] == pytest.approx(0.25)
         assert plugin.channel_statistics["IV R"]["mean"] == pytest.approx(150.0)
         assert plugin.channel_statistics["IV P"]["mean"] == pytest.approx(0.00045)
+        assert trace.units["R"] == "Ω"
+        assert trace.units["P"] == "W"
+        statistic_units = plugin.reported_value_units()
+        assert statistic_units[f"{plugin.instance_name}:IV R std"] == trace.units["R"]
+        assert statistic_units[f"{plugin.instance_name}:IV P mean"] == trace.units["P"]
 
     def test_measure_empty_sweep(self, qapp):
         """measure() must handle an empty sweep without raising."""

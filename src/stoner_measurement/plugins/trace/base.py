@@ -952,6 +952,24 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             )
         return values
 
+    def reported_value_units(self) -> dict[str, str]:
+        """Return channel units for the optional mean and standard-deviation outputs."""
+        if not self._report_channel_statistics:
+            return {}
+
+        var = self.instance_name
+        units: dict[str, str] = {}
+        for trace_name in self.trace_names:
+            channel_unit = self.y_units
+            trace_data = self.data.get(trace_name)
+            if trace_data is not None:
+                y_columns = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
+                if y_columns:
+                    channel_unit = trace_data.units[y_columns[0]]
+            units[f"{var}:{trace_name} mean"] = channel_unit
+            units[f"{var}:{trace_name} std"] = channel_unit
+        return units
+
     def _set_report_channel_statistics(self, enabled: bool) -> None:
         """Enable/disable reporting of per-channel mean/std scalar outputs."""
         self._report_channel_statistics = bool(enabled)

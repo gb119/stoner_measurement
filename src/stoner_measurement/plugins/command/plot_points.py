@@ -41,6 +41,7 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.plugins.trace_catalog_ui import bind_value_catalog_updates
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.axis_mappings import AxisLabel
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
@@ -489,10 +490,19 @@ class PlotPointsCommand(CommandPlugin):
         outer = QWidget(parent)
         outer_layout = QFormLayout(outer)
 
-        self._build_x_combos_section(outer, outer_layout, value_keys, x_axis_names)
+        x_combo = self._build_x_combos_section(outer, outer_layout, value_keys, x_axis_names)
 
         outer_layout.addRow(QLabel("<b>Y series:</b>", outer))
-        self._build_y_series_section(outer, outer_layout, value_keys, y_axis_names, ns)
+        rebuild_y_series = self._build_y_series_section(
+            outer, outer_layout, value_keys, y_axis_names, ns
+        )
+
+        def _refresh_values(catalog: dict[str, str]) -> None:
+            value_keys[:] = catalog.keys()
+            self._refresh_x_value_combo(x_combo, value_keys)
+            rebuild_y_series()
+
+        bind_value_catalog_updates(self, outer, _refresh_values)
 
         outer.setLayout(outer_layout)
         return outer
@@ -503,8 +513,9 @@ class PlotPointsCommand(CommandPlugin):
         outer_layout: QFormLayout,
         value_keys: list[str],
         x_axis_names: list[str],
-    ) -> None:
+    ) -> QComboBox:
         x_combo = QComboBox(outer)
+        x_combo.setObjectName("plot_points_x_value")
         if value_keys:
             x_combo.addItems(value_keys)
             if self.x_key in value_keys:
@@ -531,6 +542,22 @@ class PlotPointsCommand(CommandPlugin):
             x_axis_combo.setCurrentText(self.x_axis_name)
         x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
         outer_layout.addRow("X axis:", x_axis_combo)
+        return x_combo
+
+    def _refresh_x_value_combo(self, combo: QComboBox, value_keys: list[str]) -> None:
+        """Replace the x-value choices while retaining a still-valid selection."""
+        selected = self.x_key
+        combo.blockSignals(True)
+        combo.clear()
+        if not value_keys:
+            combo.addItem("(no values available)")
+        else:
+            combo.addItems(value_keys)
+            if selected not in value_keys:
+                selected = value_keys[0]
+                self.x_key = selected
+            combo.setCurrentText(selected)
+        combo.blockSignals(False)
 
     def _build_y_series_section(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -539,7 +566,7 @@ class PlotPointsCommand(CommandPlugin):
         value_keys: list[str],
         y_axis_names: list[str],
         ns: dict[str, Any],
-    ) -> None:
+    ) -> Callable[[], None]:
         scroll_area = QScrollArea(outer)
         scroll_area.setWidgetResizable(True)
         scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -569,6 +596,7 @@ class PlotPointsCommand(CommandPlugin):
         add_btn = QPushButton("Add Y series", outer)
         add_btn.clicked.connect(partial(self._add_y_series, value_keys, ns, _rebuild_columns))
         outer_layout.addRow(add_btn)
+        return _rebuild_columns
 
     def _populate_y_series_grid(self, context: _YSeriesEditorContext) -> None:
         """Recreate all y-series columns and connect their editors."""
@@ -645,6 +673,7 @@ class PlotPointsCommand(CommandPlugin):
     ) -> QComboBox:
         """Create a catalogue-value combo and normalise an invalid saved key."""
         combo = QComboBox(container)
+        combo.setObjectName(f"plot_points_y_value_{entry.get('key', '')}")
         if not value_keys:
             combo.addItem("(no values available)")
             return combo
