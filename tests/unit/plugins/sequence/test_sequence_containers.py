@@ -85,7 +85,10 @@ class TestRunSequentiallyPlugin:
             return [f"{'    ' * indent}calls.append({step!r})", ""]
 
         source = "\n".join(plugin.generate_action_code(0, ["a", "b"], _render))
-        exec(source, {"calls": calls, plugin.instance_name: plugin})  # noqa: S102
+        # Executing the generated source is the behaviour under test; the source is local and deterministic.
+        exec(  # noqa: S102  # nosec B102  # pylint: disable=exec-used
+            source, {"calls": calls, plugin.instance_name: plugin}
+        )
 
         assert calls == ["a", "b"]
         assert source.count("def ") == 1
@@ -163,14 +166,19 @@ class TestRunParallelPlugin:
 
         source = "\n".join(plugin.generate_action_code(0, [0, 1], _render))
         errors: list[BaseException] = []
-        thread, completed = _invoke_in_thread(
-            lambda: exec(  # noqa: S102
+
+        def _execute_source() -> None:
+            # Executing the generated source is the behaviour under test.
+            exec(  # noqa: S102  # nosec B102  # pylint: disable=exec-used
                 source,
                 {
                     "workers": [lambda: _worker(0), lambda: _worker(1)],
                     plugin.instance_name: plugin,
                 },
-            ),
+            )
+
+        thread, completed = _invoke_in_thread(
+            _execute_source,
             errors,
         )
 

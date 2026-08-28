@@ -297,7 +297,7 @@ class SettingsDialog(QDialog):
         move_out = QPushButton("Move Out", tab)
         move_out.clicked.connect(self._move_catalogue_item_out)
         save = QPushButton("Save Plugin List", tab)
-        save.clicked.connect(lambda: self._save_plugin_catalogue_from_ui())
+        save.clicked.connect(self._save_plugin_catalogue_from_ui)
         for button in (add_group, remove, move_up, move_down, move_in, move_out):
             buttons.addWidget(button)
         buttons.addStretch(1)

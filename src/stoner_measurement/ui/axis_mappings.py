@@ -124,6 +124,8 @@ class MappedAxisItem(pg.AxisItem):
         )
         self.enableAutoSIPrefix(True)
 
+    # PyQtGraph creates autoSIPrefixScale dynamically in AxisItem.labelString.
+    # pylint: disable=access-member-before-definition
     def labelString(self) -> str:  # noqa: N802
         """Put SI prefixes on units, never show PyQtGraph's ``x...`` factor."""
         if (
@@ -138,6 +140,7 @@ class MappedAxisItem(pg.AxisItem):
             return super().labelString()
         finally:
             self.autoSIPrefixScale = scale
+    # pylint: enable=access-member-before-definition
 
     def set_scale_mapping(self, scale: AxisScale, parameter: float = 1.0) -> None:
         """Select the coordinate mapping used to format this axis."""

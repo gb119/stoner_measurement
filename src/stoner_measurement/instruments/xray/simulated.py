@@ -97,7 +97,8 @@ class SimulatedXrayDiffractometer(XrayDiffractometer):
         self.poisson_noise = bool(poisson_noise)
         self.realtime = bool(realtime)
         self.motion_time_scale = max(0.0, float(motion_time_scale))
-        self._random = random.Random(seed)
+        # This generator models measurement noise; it is not used for security or cryptography.
+        self._random = random.Random(seed)  # nosec B311
 
     def confirm_identity(self) -> str:
         self.read_snapshot()

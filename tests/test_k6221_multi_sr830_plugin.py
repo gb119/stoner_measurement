@@ -207,8 +207,6 @@ class TestJsonRoundTrip:
 class TestUi:
     def test_settings_widget(self, qapp):
         """Single test for all UI checks (avoids pyqtgraph segfault on multiple widget creation cycles)."""
-        from qtpy.QtWidgets import QPushButton
-
         plugin = _make_plugin()
         tabs = plugin.config_tabs()
 

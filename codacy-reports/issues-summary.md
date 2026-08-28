@@ -2,111 +2,79 @@
 
 Repository: `gh/gb119/stoner_measurement`
 Branch: `main`
-Analyzed commit: `81367a75586d6c6084fa522e080bd42d0364a417`
-Downloaded: 2026-08-09
+Analyzed checkout: `23dfbf4fb8eedd31bf338e469b8d59cedb45763f`
+Downloaded: 2026-08-28
 
 ## Refresh Status
 
-- Codacy authentication succeeded.
-- `HEAD` and `origin/main` matched the analyzed commit when refreshed.
 - The issue list was downloaded with `--branch main --limit 1000`.
-- `codacy-reports/issues.json` is the authoritative 31-issue raw snapshot.
-- `codacy-reports/issues.csv` was regenerated from the same snapshot.
+- `codacy-reports/issues.json` is the authoritative raw snapshot.
+- `codacy-reports/issues.csv` was regenerated from that snapshot.
+- The snapshot contains **43 issues**: 4 Error, 5 High, 28 Warning, and 6 Info.
+- The previous snapshot contained 31 issues: 0 Error, 0 High, 30 Warning, and 1 Info.
 
-## Snapshot Totals
+## Current Pattern Split
 
-- Total: **31** (previously 35; net reduction of 4)
-- `Error`: **0**
-- `High`: **0**
-- `Warning`: **30** (previously 32)
-- `Info`: **1** (previously 3)
+- 22 `Prospector_mccabe` complexity findings.
+- 4 `PyLintPython3_E1102` guarded-callable false positives.
+- 4 `PyLintPython3_W0404` redundant imports.
+- 2 each of `Bandit_B102`, `PyLintPython3_E0203`, `PyLintPython3_W0108`,
+  `PyLintPython3_W0122`, and `Semgrep_codacy.python.i18n.no-hardcoded-strftime`.
+- 1 each of `Agentlinter_structure_modular-files`, `Bandit_B311`, and
+  `Prospector_pyflakes`.
 
-## Category and Pattern Split
+## Fixes Applied After This Snapshot
 
-- `Complexity` / `Prospector_mccabe`: 25
-- `BestPractice`:
-  - `Semgrep_codacy.python.i18n.no-hardcoded-strftime`: 4
-  - `Agentlinter_structure_modular-files`: 1
-- `CodeStyle` / `PyLintPython3_W0404`: 1
+These changes require Codacy reanalysis before their remote findings clear:
 
-## Exact Delta From The 35-Issue Snapshot
+- added narrow Pylint suppressions after explicit `callable()` guards for the
+  four `E1102` reports;
+- documented and suppressed the two test-only generated-code `exec` calls for
+  both Bandit and Pylint;
+- documented the deterministic simulator PRNG as non-cryptographic (`B311`);
+- documented and line-suppressed the two locale-independent timestamp formats;
+- documented PyQtGraph's dynamically initialised `autoSIPrefixScale` member;
+- removed three redundant local imports and the duplicate direct-run `pytest`
+  import;
+- replaced the unnecessary engine lambda with its callable class and connected
+  the save button directly to its slot.
 
-Codacy retired eight previous result IDs and created four new result IDs.
+If every analyzer accepts the scoped suppressions, this tranche should remove
+all 4 Error findings, all 5 High findings, and all 6 Info findings, plus 5 of
+the Warning findings. The expected remainder is 23 warnings: 22 complexity
+findings and the Agentlinter advisory.
 
-Cleared:
+## Prioritised Remaining Work
 
-- 2 plot-points complexity findings:
-  - `PlotPointsCommand.sequence_engine`: previous complexity 17
-  - `PlotPointsCommand._build_y_series_section`: previous complexity 35
-- 2 redundant imports:
-  - `tests/test_magnet_control.py`: `MagnetLimits`
-  - `tests/unit/plugins/trace/test_trace_plugin.py`: `pandas`
-- 4 previous timestamp result IDs at their old line numbers.
+### P1: Production UI and shared infrastructure
 
-New IDs:
+- `BasePlugin._general_config_widget` (22);
+- `_ScanPage.__init__` (29);
+- `AxesConfigDialog.axis_changes` (22);
+- `PlotWidget._open_axes_dialog` (23);
+- `DockPanel._refresh_plugins` (16);
+- `RoundDialWidget._preferred_label_values` (17).
 
-- 4 `no-hardcoded-strftime` results at the same four configuration backup
-  statements, shifted down one line by their explanatory comments.
+These have the widest runtime impact. Extract cohesive construction, parsing,
+and update helpers one method at a time, with offscreen Qt tests.
 
-These four are regenerated copies of the previous false-positive rule/file
-pairs, not four new code defects. The rule-specific `nosemgrep` identifiers
-were not recognised by Codacy. A plain line-scoped `# nosemgrep`, with the
-rationale retained on the preceding line, is the next suppression attempt.
+### P2: Hardware trace plugins
 
-The remaining `W0404` is another local `numpy` import in
-`tests/unit/plugins/trace/test_trace_plugin.py`. Its Codacy result ID persisted
-while the reported line moved from the removed duplicate at line 186 to the
-still-present duplicate now at line 234. Remove that import mechanically.
+- Keithley 6221/2182A: complexities 16, 18, 24, and 36.
+- Keithley 6221/Multi-SR830: complexities 24 and 40.
+- Keithley 2400: complexities 17 and 21.
 
-## Pending Working Tranche
+Preserve configuration ordering, restoration, trigger, and protocol boundaries.
+Unit tests reduce regression risk but do not replace live instrument validation.
 
-The following changes have been completed locally but are not part of the
-downloaded 31-issue snapshot yet:
+### P3: Test helpers and scenarios
 
-- replaced all four rule-specific timestamp directives with plain,
-  line-scoped `# nosemgrep` markers;
-- removed the remaining redundant local `numpy` import;
-- reduced `PlotTraceCommand.sequence_engine` below the McCabe threshold;
-- reduced the four small production helpers below the McCabe threshold:
-  - `TraceChannelSelectionMixin._wire_data_source_widgets`;
-  - `PressureControllerEngine._build_state`;
-  - `StatePlugin.collect`;
-  - `_IPythonConsoleWidget._shutdown_kernel`.
+Eight complexity findings are test-only (17–30). Consolidate repeated fake
+driver/controller construction first; split long scenarios only where doing so
+improves behavioural clarity. These do not affect runtime behaviour.
 
-If Codacy accepts the four plain suppressions and introduces no replacement
-findings, the next snapshot should contain 21 issues: 20 complexity findings
-and the single Agentlinter advisory.
+### P4: Repository guidance advisory
 
-## Priorities After Reanalysis
-
-### P1: shared or visual UI construction
-
-- `plugins/base_plugin.py::_general_config_widget` (22)
-- `ui/plot_widget.py::axis_changes` (22)
-- `ui/plot_widget.py::_open_axes_dialog` (23)
-- `ui/widgets/round_dial.py::_preferred_label_values` (17)
-
-These have wider UI impact and need concrete widget/interaction regression
-checks, so they follow the narrower production helpers.
-
-### P2: hardware trace-plugin complexity
-
-The Keithley trace configuration methods range from 17 to 36. Refactor them
-only one method at a time, preserving configuration, restoration, trigger,
-and hardware-protocol boundaries. Unit tests cannot replace live instrument
-validation for timing behaviour.
-
-### P3: test-only complexity
-
-The eight test/helper McCabe findings are lowest priority unless they impede
-maintenance or conceal duplicated setup. They do not affect runtime behaviour.
-
-## Import Policy
-
-- Prefer ordinary eager module-level imports.
-- Keep `TYPE_CHECKING` imports for annotation-only dependencies.
-- Keep runtime discovery/imports for plugins, drivers, resources, and genuine
-  optional dependencies.
-- Retain function-local imports only for demonstrated cycles, optional
-  dependencies, or deliberate test import-state behaviour.
-- Profile import cost before adopting Python 3.15 explicit lazy imports.
+The Agentlinter `AGENTS.md` modular-file warning is informational for this
+repository: the file is intentionally the single source of maintainer guidance.
+Do not split it solely to satisfy the heuristic.

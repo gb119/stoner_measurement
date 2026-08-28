@@ -407,8 +407,6 @@ class MagnetControllerEngine(QObject):
             ValueError:
                 If no driver is registered with the requested name.
         """
-        from stoner_measurement.instruments.magnet_controller import MagnetController
-
         manager = InstrumentDriverManager()
         manager.discover()
         driver_cls = manager.get(driver_name)

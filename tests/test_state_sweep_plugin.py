@@ -457,7 +457,7 @@ class TestStateSweepPlugin:
 
     def test_effective_poll_period_uses_engine_update_rate(self, qapp):
         plugin = _TestSweepPlugin()
-        plugin._engine = lambda: type("Engine", (), {"polling_rate_hz": 1.0})()
+        plugin._engine = type("Engine", (), {"polling_rate_hz": 1.0})
 
         assert plugin.effective_poll_period_seconds(0.05) == pytest.approx(1.0)
         assert plugin.effective_poll_period_seconds(1.5) == pytest.approx(1.5)
@@ -836,6 +836,4 @@ class TestSweepGenerators:
 
 
 if __name__ == "__main__":
-    import pytest
-
     raise SystemExit(pytest.main([__file__, "--pdb"]))

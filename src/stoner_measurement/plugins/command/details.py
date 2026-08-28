@@ -173,12 +173,14 @@ class DetailsCommand(CommandPlugin):
     @property
     def date(self) -> str:
         """Current local date formatted as ``YYYYMMDD``."""
-        return datetime.now().strftime("%Y%m%d")
+        # Stable machine-readable metadata is intentionally locale-independent.
+        return datetime.now().strftime("%Y%m%d")  # nosemgrep
 
     @property
     def time(self) -> str:
         """Current local time formatted as ``HHmmss`` at access time."""
-        return datetime.now().strftime("%H%M%S")
+        # Stable machine-readable metadata is intentionally locale-independent.
+        return datetime.now().strftime("%H%M%S")  # nosemgrep
 
     @property
     def rig(self) -> str:

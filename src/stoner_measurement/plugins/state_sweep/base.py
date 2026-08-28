@@ -549,7 +549,7 @@ class StateSweepPlugin(StatePlugin):
         engine_factory = getattr(self, "_engine", None)
         if not callable(engine_factory) or self._previous_engine_polling_rate_hz is not None:
             return
-        engine = engine_factory()
+        engine = engine_factory()  # pylint: disable=not-callable
         setter = getattr(engine, "set_polling_rate", None)
         if not callable(setter):
             return
@@ -567,7 +567,11 @@ class StateSweepPlugin(StatePlugin):
         self._previous_engine_polling_rate_hz = None
         engine_factory = getattr(self, "_engine", None)
         if callable(engine_factory):
-            setter = getattr(engine_factory(), "set_polling_rate", None)
+            setter = getattr(
+                engine_factory(),  # pylint: disable=not-callable
+                "set_polling_rate",
+                None,
+            )
             if callable(setter):
                 setter(previous)
 
@@ -632,7 +636,8 @@ class StateSweepPlugin(StatePlugin):
         engine_factory = getattr(self, "_engine", None)
         if not callable(engine_factory):
             return period
-        rate = max(0.0, float(getattr(engine_factory(), "polling_rate_hz", 0.0)))
+        engine = engine_factory()  # pylint: disable=not-callable
+        rate = max(0.0, float(getattr(engine, "polling_rate_hz", 0.0)))
         return max(period, 1.0 / rate) if rate > 0.0 else period
 
     # ------------------------------------------------------------------

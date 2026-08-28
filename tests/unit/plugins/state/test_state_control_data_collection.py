@@ -243,8 +243,6 @@ class TestStateControlDataCollection:
         assert d["collect_output_roles"] == {"a:value": "x", "b:value": "-"}
 
     def test_from_json_restores_data_collection_settings(self, qapp):
-        from stoner_measurement.plugins.base_plugin import BasePlugin
-
         p = _InstantState()
         p.collect_data = True
         p.clear_on_start = False

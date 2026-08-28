@@ -100,7 +100,9 @@ class BaseSweepGenerator(QObject, metaclass=_ABCQObjectMeta):
         """Resolve the minimum complete-loop period from the owning sweep plugin."""
         period = max(0.0, float(configured_seconds))
         resolver = getattr(self.state_sweep, "effective_poll_period_seconds", None)
-        return period if not callable(resolver) else float(resolver(period))
+        if not callable(resolver):
+            return period
+        return float(resolver(period))  # pylint: disable=not-callable
 
     def pace_iteration(self, started_at: float | None, configured_seconds: float) -> None:
         """Sleep only for the unconsumed part of the effective complete-loop period."""
