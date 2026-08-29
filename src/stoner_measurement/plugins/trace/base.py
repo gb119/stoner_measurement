@@ -60,7 +60,6 @@ from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QFrame,
-    QLineEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -69,7 +68,7 @@ from stoner_measurement.core.trace_data import COLUMN_ROLE_X, COLUMN_ROLE_Y, Tra
 from stoner_measurement.plugins.base_plugin import (
     BasePlugin,
     _ABCQObjectMeta,
-    instance_name_validation_error,
+    _populate_plugin_identity_form,
 )
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan import (
@@ -177,119 +176,71 @@ class _ScanPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(self._build_header(plugin))
+        layout.addWidget(self._build_separator())
+        layout.addWidget(self._build_output_options(plugin))
+        layout.addWidget(_ScanTabContainer(plugin, parent=self))
 
-        # --- Header form: instance name + optional generator selector ---
-        header_form = QFormLayout()
+    def _build_header(self, plugin: TracePlugin) -> QWidget:
+        """Build the plugin identity and scan-generator controls."""
+        header = QWidget(self)
+        form = QFormLayout(header)
+        _populate_plugin_identity_form(plugin, form, header)
 
-        name_edit = QLineEdit(plugin.instance_name)
-        name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
-        comment_edit = QLineEdit(plugin.comment)
-        comment_edit.setToolTip("Optional short note shown in the sequence list")
+        generator_selector = self._build_generator_selector(plugin, header)
+        if generator_selector is not None:
+            form.addRow("Generator type:", generator_selector)
+        return header
 
-        def _apply_name() -> None:
-            new_name = name_edit.text().strip()
-            error = instance_name_validation_error(new_name)
-            if error is None:
-                name_edit.setStyleSheet("")
-                plugin.instance_name = new_name
-            else:
-                name_edit.setStyleSheet("border: 1px solid red;")
-                name_edit.setToolTip(error)
-                name_edit.setText(plugin.instance_name)
+    @staticmethod
+    def _build_generator_selector(
+        plugin: TracePlugin,
+        parent: QWidget,
+    ) -> QComboBox | None:
+        """Return a selector when the plugin offers multiple scan generators."""
+        if len(plugin._scan_generator_classes) <= 1:
+            return None
 
-        name_edit.editingFinished.connect(_apply_name)
+        combo = QComboBox(parent)
+        for generator_class in plugin._scan_generator_classes:
+            combo.addItem(generator_class.display_name(), generator_class)
+        current_index = combo.findData(type(plugin.scan_generator))
+        if current_index >= 0:
+            combo.setCurrentIndex(current_index)
 
-        def _apply_comment() -> None:
-            plugin.comment = comment_edit.text().strip()
-            comment_edit.setText(plugin.comment)
+        def apply_selected_generator(index: int) -> None:
+            generator_class = combo.itemData(index)
+            if generator_class is not None and not isinstance(
+                plugin.scan_generator,
+                generator_class,
+            ):
+                plugin.set_scan_generator_class(generator_class)
 
-        comment_edit.editingFinished.connect(_apply_comment)
+        def refresh_selector() -> None:
+            index = combo.findData(type(plugin.scan_generator))
+            if index < 0 or combo.currentIndex() == index:
+                return
+            combo.blockSignals(True)
+            combo.setCurrentIndex(index)
+            combo.blockSignals(False)
 
-        name_changed_signal = getattr(plugin, "instance_name_changed", None)
-        if name_changed_signal is not None:
-            prev_sync = getattr(plugin, "_name_edit_sync", None)
-            if prev_sync is not None:
-                try:
-                    name_changed_signal.disconnect(prev_sync)
-                except (TypeError, RuntimeError):
-                    pass
+        combo.currentIndexChanged.connect(apply_selected_generator)
+        plugin.scan_generator_changed.connect(refresh_selector)
+        return combo
 
-            def _sync_name_edit(_old: str, _new: str) -> None:  # noqa: ARG001
-                current = plugin.instance_name
-                try:
-                    name_edit.setText(current)
-                    name_edit.setStyleSheet("")
-                except RuntimeError:
-                    try:
-                        name_changed_signal.disconnect(_sync_name_edit)
-                    except (TypeError, RuntimeError):
-                        pass
-
-            name_changed_signal.connect(_sync_name_edit)
-            plugin._name_edit_sync = _sync_name_edit  # type: ignore[attr-defined]
-
-        comment_changed_signal = getattr(plugin, "comment_changed", None)
-        if comment_changed_signal is not None:
-            prev_sync = getattr(plugin, "_comment_edit_sync", None)
-            if prev_sync is not None:
-                try:
-                    comment_changed_signal.disconnect(prev_sync)
-                except (TypeError, RuntimeError):
-                    pass
-
-            def _sync_comment_edit(_old: str, _new: str) -> None:  # noqa: ARG001
-                current = plugin.comment
-                try:
-                    comment_edit.setText(current)
-                except RuntimeError:
-                    try:
-                        comment_changed_signal.disconnect(_sync_comment_edit)
-                    except (TypeError, RuntimeError):
-                        pass
-
-            comment_changed_signal.connect(_sync_comment_edit)
-            plugin._comment_edit_sync = _sync_comment_edit  # type: ignore[attr-defined]
-
-        header_form.addRow("Instance name:", name_edit)
-        header_form.addRow("Comment:", comment_edit)
-
-        if len(plugin._scan_generator_classes) > 1:
-            combo = QComboBox()
-            for cls in plugin._scan_generator_classes:
-                combo.addItem(cls.display_name(), cls)
-            current_idx = combo.findData(type(plugin.scan_generator))
-            if current_idx >= 0:
-                combo.setCurrentIndex(current_idx)
-
-            def _on_type_changed(index: int) -> None:
-                cls = combo.itemData(index)
-                if cls is not None and not isinstance(plugin.scan_generator, cls):
-                    plugin.set_scan_generator_class(cls)
-
-            def _sync_type_combo() -> None:
-                current_cls = type(plugin.scan_generator)
-                idx = combo.findData(current_cls)
-                if idx >= 0 and combo.currentIndex() != idx:
-                    combo.blockSignals(True)
-                    combo.setCurrentIndex(idx)
-                    combo.blockSignals(False)
-
-            combo.currentIndexChanged.connect(_on_type_changed)
-            plugin.scan_generator_changed.connect(_sync_type_combo)
-            header_form.addRow("Generator type:", combo)
-
-        header_widget = QWidget()
-        header_widget.setLayout(header_form)
-        layout.addWidget(header_widget)
-
-        # --- Horizontal separator ---
+    @staticmethod
+    def _build_separator() -> QFrame:
+        """Return the separator between scan identity and output controls."""
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(separator)
+        return separator
 
-        # --- Common trace output options ---
-        output_form = QFormLayout()
+    def _build_output_options(self, plugin: TracePlugin) -> QWidget:
+        """Build the common trace-output options."""
+        output_widget = QWidget(self)
+        output_widget.setObjectName("trace_statistics_options")
+        output_form = QFormLayout(output_widget)
         stats_check = QCheckBox("Report channel average and standard deviation outputs")
         stats_check.setChecked(plugin._report_channel_statistics)
         stats_check.toggled.connect(plugin._set_report_channel_statistics)
@@ -298,14 +249,7 @@ class _ScanPage(QWidget):
         transpose_check.setChecked(plugin._transpose)
         transpose_check.toggled.connect(plugin._set_transpose)
         output_form.addRow(transpose_check)
-        output_widget = QWidget()
-        output_widget.setObjectName("trace_statistics_options")
-        output_widget.setLayout(output_form)
-        layout.addWidget(output_widget)
-
-        # --- Scan generator config widget (auto-refreshes on generator change) ---
-        scan_container = _ScanTabContainer(plugin, parent=self)
-        layout.addWidget(scan_container)
+        return output_widget
 
 
 class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):

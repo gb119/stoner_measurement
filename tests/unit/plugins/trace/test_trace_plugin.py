@@ -106,17 +106,28 @@ class TestTracePlugin:
         assert "Ramp Scan Generator" in labels
         assert "Arbitrary Function Scan Generator" in labels
 
-    def test_scan_page_contains_comment_editor(self, qapp):
-        from qtpy.QtWidgets import QLabel, QLineEdit
+    def test_scan_page_identity_editors_update_plugin(self, qapp):
+        """The Scan page reuses the standard editable plugin identity."""
+        from qtpy.QtWidgets import QLineEdit
 
         p = _SimpleTrace()
         scan_page = p.config_tabs()[0][1]
-        comment_label = next(
-            label for label in scan_page.findChildren(QLabel) if label.text() == "Comment:"
+        editors = scan_page.findChildren(QLineEdit)
+        name_editor = next(
+            editor for editor in editors if editor.toolTip().startswith("Python variable name")
         )
-        assert comment_label is not None
-        edits = scan_page.findChildren(QLineEdit)
-        assert len(edits) >= 2
+        comment_editor = next(
+            editor for editor in editors if editor.toolTip().startswith("Optional short note")
+        )
+
+        name_editor.setText("renamed_trace")
+        name_editor.editingFinished.emit()
+        comment_editor.setText("  calibration run  ")
+        comment_editor.editingFinished.emit()
+
+        assert p.instance_name == "renamed_trace"
+        assert p.comment == "calibration run"
+        assert comment_editor.text() == "calibration run"
 
     def test_scan_page_does_not_show_plugin_type(self, qapp):
         from qtpy.QtWidgets import QLabel

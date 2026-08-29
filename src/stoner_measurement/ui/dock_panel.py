@@ -1153,86 +1153,85 @@ class DockPanel(QWidget):
         self._plugin_list.clear()
         remaining = dict(self._plugin_manager.plugins)
 
-        def add_category(
-            label: str,
-            entries: list[tuple[str, BasePlugin, str]],
-            *,
-            preserve_order: bool = False,
-        ) -> None:
-            category_item = QTreeWidgetItem([label])
-            category_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self._plugin_list.addTopLevelItem(category_item)
-            ordered = (
-                entries
-                if preserve_order
-                else sorted(entries, key=lambda entry: entry[0])
-            )
-            for ep_name, plugin, leaf_label in ordered:
-                leaf = QTreeWidgetItem([leaf_label])
-                leaf.setData(0, _EP_NAME_ROLE, ep_name)
-                leaf.setToolTip(0, plugin.tooltip())
-                leaf.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                    | Qt.ItemFlag.ItemIsDragEnabled
-                )
-                category_item.addChild(leaf)
-            category_item.setExpanded(True)
-
-        def configured_tree_item(configured: dict) -> QTreeWidgetItem | None:
-            """Build one recursive configured group or plugin tree node."""
-            if "plugin" in configured:
-                ep_name = configured["plugin"]
-                plugin = remaining.pop(ep_name, None)
-                if plugin is None:
-                    return None
-                leaf = QTreeWidgetItem([configured.get("label", plugin.name)])
-                leaf.setData(0, _EP_NAME_ROLE, ep_name)
-                leaf.setToolTip(0, plugin.tooltip())
-                leaf.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                    | Qt.ItemFlag.ItemIsDragEnabled
-                )
-                return leaf
-
-            group_item = QTreeWidgetItem([configured["group"]])
-            group_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            for child_config in configured.get("items", []):
-                child = configured_tree_item(child_config)
-                if child is not None:
-                    group_item.addChild(child)
-            if group_item.childCount() == 0:
-                return None
-            group_item.setExpanded(True)
-            return group_item
-
         for configured in load_plugin_catalogue_config()["items"]:
-            item = configured_tree_item(configured)
+            item = self._configured_plugin_tree_item(configured, remaining)
             if item is not None:
                 self._plugin_list.addTopLevelItem(item)
 
-        by_type: dict[str, list[tuple[str, BasePlugin, str]]] = {}
-        for ep_name, plugin in remaining.items():
-            by_type.setdefault(plugin.plugin_type, []).append(
-                (ep_name, plugin, plugin.name)
+        self._add_fallback_plugin_categories(remaining)
+        self._filter_plugins(self._plugin_filter.text())
+
+    @staticmethod
+    def _plugin_tree_leaf(
+        ep_name: str,
+        plugin: BasePlugin,
+        label: str,
+    ) -> QTreeWidgetItem:
+        """Build a selectable, draggable leaf for one plugin entry point."""
+        leaf = QTreeWidgetItem([label])
+        leaf.setData(0, _EP_NAME_ROLE, ep_name)
+        leaf.setToolTip(0, plugin.tooltip())
+        leaf.setFlags(
+            Qt.ItemFlag.ItemIsEnabled
+            | Qt.ItemFlag.ItemIsSelectable
+            | Qt.ItemFlag.ItemIsDragEnabled
+        )
+        return leaf
+
+    def _configured_plugin_tree_item(
+        self,
+        configured: dict,
+        remaining: dict[str, BasePlugin],
+    ) -> QTreeWidgetItem | None:
+        """Build one configured plugin or recursive group, consuming used plugins."""
+        if "plugin" in configured:
+            ep_name = configured["plugin"]
+            plugin = remaining.pop(ep_name, None)
+            if plugin is None:
+                return None
+            return self._plugin_tree_leaf(
+                ep_name,
+                plugin,
+                configured.get("label", plugin.name),
             )
 
-        # Build the fallback class/type hierarchy after functional groups.
+        group = QTreeWidgetItem([configured["group"]])
+        group.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        for child_config in configured.get("items", []):
+            child = self._configured_plugin_tree_item(child_config, remaining)
+            if child is not None:
+                group.addChild(child)
+        if group.childCount() == 0:
+            return None
+        group.setExpanded(True)
+        return group
+
+    def _add_plugin_category(
+        self,
+        label: str,
+        entries: list[tuple[str, BasePlugin]],
+    ) -> None:
+        """Add one alphabetically ordered fallback category to the tree."""
+        category = QTreeWidgetItem([label])
+        category.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        for ep_name, plugin in sorted(entries):
+            category.addChild(self._plugin_tree_leaf(ep_name, plugin, plugin.name))
+        category.setExpanded(True)
+        self._plugin_list.addTopLevelItem(category)
+
+    def _add_fallback_plugin_categories(self, remaining: dict[str, BasePlugin]) -> None:
+        """Group plugins omitted from the configured catalogue by plugin type."""
+        by_type: dict[str, list[tuple[str, BasePlugin]]] = {}
+        for ep_name, plugin in remaining.items():
+            by_type.setdefault(plugin.plugin_type, []).append((ep_name, plugin))
+
+        known_types = {type_key for type_key, _label in _PLUGIN_TYPE_CATEGORIES}
         for type_key, label in _PLUGIN_TYPE_CATEGORIES:
-            fallback_entries = by_type.get(type_key)
-            if not fallback_entries:
-                continue
-            add_category(label, fallback_entries)
-
-        # Handle any plugin types not listed in _PLUGIN_TYPE_CATEGORIES.
-        known_types = {t for t, _ in _PLUGIN_TYPE_CATEGORIES}
+            if entries := by_type.get(type_key):
+                self._add_plugin_category(label, entries)
         for type_key, entries in sorted(by_type.items()):
-            if type_key in known_types:
-                continue
-            add_category(type_key.capitalize(), entries)
-
-        self._filter_plugins(self._plugin_filter.text())
+            if type_key not in known_types:
+                self._add_plugin_category(type_key.capitalize(), entries)
 
     def _refresh_monitors(self) -> None:
         """Sync monitoring widgets with the current plugin list."""

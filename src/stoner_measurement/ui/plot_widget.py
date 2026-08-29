@@ -193,6 +193,19 @@ class _AxisDialogChanges(TypedDict):
     visible_axes: dict[str, bool]
 
 
+class _AxisRowState(TypedDict):
+    """Normalised values collected from one axis-dialog table row."""
+
+    name: str
+    label: str
+    scale: AxisScale
+    scale_parameter: float
+    grid: bool
+    side: str
+    range: tuple[float | None, float | None]
+    visible: bool
+
+
 class _CoupledViewBox(pg.ViewBox):
     """ViewBox that notifies its owning PlotWidget about drag lifecycle."""
 
@@ -523,79 +536,86 @@ class AxesConfigDialog(QDialog):
                 Mapping containing updated labels, log/grid states, removed axes,
                 and visible axes to keep/add.
         """
-        labels: dict[str, str] = {}
-        log_scale: dict[str, bool] = {}
-        scales: dict[str, AxisScale] = {}
-        scale_parameters: dict[str, float] = {}
-        grid: dict[str, bool] = {}
-        side: dict[str, str] = {}
-        ranges: dict[str, tuple[float | None, float | None]] = {}
-        visible_axes: dict[str, bool] = {}
+        changes: _AxisDialogChanges = {
+            "labels": {},
+            "log_scale": {},
+            "scale": {},
+            "scale_parameter": {},
+            "grid": {},
+            "side": {},
+            "removed": {
+                "x": sorted(self._removed_axes["x"]),
+                "y": sorted(self._removed_axes["y"]),
+            },
+            "ranges": {},
+            "visible_axes": {},
+        }
         for axis_kind in ("x", "y"):
             table = self._tables[axis_kind]
             for row in range(table.rowCount()):
                 if table.isRowHidden(row):
                     continue
-                item = table.item(row, 1)
-                if item is None:
+                state = self._axis_row_state(table, row)
+                if state is None:
                     continue
-                axis_name = item.text()
-                visible_widget = table.cellWidget(row, 0)
-                label_widget = table.cellWidget(row, 2)
-                side_widget = table.cellWidget(row, 3)
-                scale_widget = table.cellWidget(row, 4)
-                parameter_widget = table.cellWidget(row, 5)
-                grid_widget = table.cellWidget(row, 6)
-                minimum_widget = table.cellWidget(row, 7)
-                maximum_widget = table.cellWidget(row, 8)
-                if isinstance(label_widget, QLineEdit):
-                    labels[axis_name] = label_widget.text().strip() or axis_name
-                if isinstance(side_widget, QComboBox):
-                    side[axis_name] = side_widget.currentText()
-                if isinstance(scale_widget, QComboBox):
-                    scale_name = scale_widget.currentText()
-                    if scale_name in AXIS_SCALES:
-                        scales[axis_name] = scale_name  # type: ignore[assignment]
-                        log_scale[axis_name] = scale_name == "log"
-                if isinstance(parameter_widget, QLineEdit):
-                    try:
-                        scale_parameters[axis_name] = float(parameter_widget.text())
-                    except ValueError:
-                        scale_parameters[axis_name] = 1.0
-                if isinstance(grid_widget, QCheckBox):
-                    grid[axis_name] = grid_widget.isChecked()
-                minimum = None
-                maximum = None
-                if isinstance(minimum_widget, QLineEdit):
-                    minimum_text = minimum_widget.text().strip()
-                    if minimum_text:
-                        try:
-                            minimum = float(minimum_text)
-                        except ValueError:
-                            minimum = None
-                if isinstance(maximum_widget, QLineEdit):
-                    maximum_text = maximum_widget.text().strip()
-                    if maximum_text:
-                        try:
-                            maximum = float(maximum_text)
-                        except ValueError:
-                            maximum = None
-                ranges[axis_name] = (minimum, maximum)
-                if isinstance(visible_widget, QCheckBox):
-                    visible_axes[axis_name] = visible_widget.isChecked()
+                axis_name = state["name"]
+                changes["labels"][axis_name] = state["label"]
+                changes["scale"][axis_name] = state["scale"]
+                changes["log_scale"][axis_name] = state["scale"] == "log"
+                changes["scale_parameter"][axis_name] = state["scale_parameter"]
+                changes["grid"][axis_name] = state["grid"]
+                changes["side"][axis_name] = state["side"]
+                changes["ranges"][axis_name] = state["range"]
+                changes["visible_axes"][axis_name] = state["visible"]
+        return changes
+
+    @staticmethod
+    def _optional_float(editor: QLineEdit) -> float | None:
+        """Return the editor's numeric value, treating blank or invalid text as auto."""
+        text = editor.text().strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    @classmethod
+    def _axis_row_state(cls, table: QTableWidget, row: int) -> _AxisRowState | None:
+        """Collect and normalise the controls from one visible axis row."""
+        name_item = table.item(row, 1)
+        if name_item is None:
+            return None
+
+        axis_name = name_item.text()
+        visible_editor = cast(QCheckBox, table.cellWidget(row, 0))
+        label_editor = cast(QLineEdit, table.cellWidget(row, 2))
+        side_editor = cast(QComboBox, table.cellWidget(row, 3))
+        scale_editor = cast(QComboBox, table.cellWidget(row, 4))
+        parameter_editor = cast(QLineEdit, table.cellWidget(row, 5))
+        grid_editor = cast(QCheckBox, table.cellWidget(row, 6))
+        minimum_editor = cast(QLineEdit, table.cellWidget(row, 7))
+        maximum_editor = cast(QLineEdit, table.cellWidget(row, 8))
+
+        scale_name = scale_editor.currentText()
+        scale = cast(AxisScale, scale_name if scale_name in AXIS_SCALES else "linear")
+        try:
+            scale_parameter = float(parameter_editor.text())
+        except ValueError:
+            scale_parameter = 1.0
+
         return {
-            "labels": labels,
-            "log_scale": log_scale,
-            "scale": scales,
-            "scale_parameter": scale_parameters,
-            "grid": grid,
-            "side": side,
-            "removed": {
-                "x": sorted(self._removed_axes["x"]),
-                "y": sorted(self._removed_axes["y"]),
-            },
-            "ranges": ranges,
-            "visible_axes": visible_axes,
+            "name": axis_name,
+            "label": label_editor.text().strip() or axis_name,
+            "scale": scale,
+            "scale_parameter": scale_parameter,
+            "grid": grid_editor.isChecked(),
+            "side": side_editor.currentText(),
+            "range": (
+                cls._optional_float(minimum_editor),
+                cls._optional_float(maximum_editor),
+            ),
+            "visible": visible_editor.isChecked(),
         }
 
 
@@ -1370,100 +1390,138 @@ class PlotWidget(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         changes = dialog.axis_changes()
-        labels = changes["labels"]
-        log_scale = changes["log_scale"]
-        scales = changes.get(
+        scales: dict[str, AxisScale] = changes.get(
             "scale",
-            {name: "log" if enabled else "linear" for name, enabled in log_scale.items()},
+            {
+                name: "log" if enabled else "linear"
+                for name, enabled in changes["log_scale"].items()
+            },
         )
-        scale_parameters = changes.get("scale_parameter", {})
-        grid = changes["grid"]
-        ranges = changes["ranges"]
         previous_manual = dict(self._axis_manual_range)
         previous_auto = dict(self._axis_auto_range)
-        sides = changes["side"]
-        removed_x = changes["removed"]["x"]
-        removed_y = changes["removed"]["y"]
-        visible_axes = changes["visible_axes"]
 
-        for axis_name, axis_label in labels.items():
+        self._apply_existing_axis_properties(changes, scales)
+        self._apply_dialog_axis_ranges(changes["ranges"], previous_manual, previous_auto)
+        self._remove_dialog_axes(changes["removed"])
+        self._add_dialog_axes("x", existing_x, changes, scales)
+        self._add_dialog_axes("y", existing_y, changes, scales)
+        self._apply_dialog_axis_visibility(changes["visible_axes"])
+
+    def _apply_existing_axis_properties(
+        self,
+        changes: _AxisDialogChanges,
+        scales: dict[str, AxisScale],
+    ) -> None:
+        """Apply non-range settings to axes that already exist."""
+        for axis_name, axis_label in changes["labels"].items():
             if axis_name in self._axis_items:
                 self.set_axis_label(axis_name, axis_label)
-        for axis_name, side in sides.items():
+        for axis_name, side in changes["side"].items():
             if axis_name in self._axis_items:
                 self.set_axis_side(axis_name, side)
         for axis_name, scale in scales.items():
             if axis_name in self._axis_items:
-                self.set_axis_scale(axis_name, scale, scale_parameters.get(axis_name, 1.0))
-        for axis_name, enabled in grid.items():
+                parameter = changes.get("scale_parameter", {}).get(axis_name, 1.0)
+                self.set_axis_scale(axis_name, scale, parameter)
+        for axis_name, enabled in changes["grid"].items():
             if axis_name in self._axis_items:
                 self.set_axis_grid(axis_name, enabled)
-        for axis_name, (minimum, maximum) in ranges.items():
-            if axis_name in self._axis_items:
-                previous_min_auto, previous_max_auto = previous_auto.get(axis_name, (True, True))
-                previous_minimum, previous_maximum = previous_manual.get(
-                    axis_name, self._axis_range(axis_name)
+
+    def _apply_dialog_axis_ranges(
+        self,
+        ranges: dict[str, tuple[float | None, float | None]],
+        previous_manual: dict[str, tuple[float, float]],
+        previous_auto: dict[str, tuple[bool, bool]],
+    ) -> None:
+        """Apply changed ranges while preserving untouched auto-range state."""
+        for axis_name, requested_range in ranges.items():
+            if axis_name not in self._axis_items:
+                continue
+            manual_range = previous_manual.get(axis_name, self._axis_range(axis_name))
+            auto_range = previous_auto.get(axis_name, (True, True))
+            if self._dialog_range_needs_update(requested_range, manual_range, auto_range):
+                self.set_axis_range(
+                    axis_name,
+                    minimum=requested_range[0],
+                    maximum=requested_range[1],
                 )
-                if minimum == (None if previous_min_auto else previous_minimum) and maximum == (
-                    None if previous_max_auto else previous_maximum
-                ):
-                    if previous_min_auto and previous_max_auto:
-                        continue
-                    if minimum == previous_minimum and maximum == previous_maximum:
-                        continue
-                self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
-        for axis_name in removed_x + removed_y:
+
+    @staticmethod
+    def _dialog_range_needs_update(
+        requested: tuple[float | None, float | None],
+        manual: tuple[float, float],
+        automatic: tuple[bool, bool],
+    ) -> bool:
+        """Return whether applying a dialog range can change current state."""
+        displayed = (
+            None if automatic[0] else manual[0],
+            None if automatic[1] else manual[1],
+        )
+        if requested != displayed:
+            return True
+        if automatic[0] and automatic[1]:
+            return False
+        return requested != manual
+
+    def _remove_dialog_axes(self, removed: _AxisNameBuckets) -> None:
+        """Remove axes marked for deletion in the accepted dialog."""
+        for axis_name in removed["x"] + removed["y"]:
             if axis_name in self._axis_items:
                 self.remove_axis(axis_name)
 
-        visible_x = {
+    def _add_dialog_axes(
+        self,
+        axis_kind: Literal["x", "y"],
+        existing_axes: set[str],
+        changes: _AxisDialogChanges,
+        scales: dict[str, AxisScale],
+    ) -> None:
+        """Create axes newly declared by the accepted dialog."""
+        valid_sides = {"top", "bottom"} if axis_kind == "x" else {"left", "right"}
+        removed_axes = changes["removed"][axis_kind]
+        new_axes = sorted(
             name
-            for name in labels
-            if name not in removed_x and sides.get(name) in {"top", "bottom"}
-        }
-        visible_y = {
-            name
-            for name in labels
-            if name not in removed_y and sides.get(name) in {"left", "right"}
-        }
-        added_x_axes = sorted(name for name in visible_x if name not in existing_x)
-        added_y_axes = sorted(name for name in visible_y if name not in existing_y)
-        for axis_name in added_x_axes:
-            axis_label = labels.get(axis_name, axis_name)
-            position = sides.get(axis_name, "top")
-            if position not in {"top", "bottom"}:
-                position = "top"
+            for name in changes["labels"]
+            if name not in existing_axes
+            and name not in removed_axes
+            and changes["side"].get(name) in valid_sides
+        )
+
+        for axis_name in new_axes:
+            self._add_dialog_axis(axis_kind, axis_name, changes)
+            self.set_axis_scale(
+                axis_name,
+                scales.get(axis_name, "linear"),
+                changes.get("scale_parameter", {}).get(axis_name, 1.0),
+            )
+            self.set_axis_grid(axis_name, changes["grid"].get(axis_name, False))
+            minimum, maximum = changes["ranges"].get(axis_name, (None, None))
+            self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
+
+    def _add_dialog_axis(
+        self,
+        axis_kind: Literal["x", "y"],
+        axis_name: str,
+        changes: _AxisDialogChanges,
+    ) -> None:
+        """Create one x or y axis using its validated dialog side."""
+        label = changes["labels"].get(axis_name, axis_name)
+        side = changes["side"][axis_name]
+        if axis_kind == "x":
             self.add_x_axis(
                 axis_name,
-                axis_label,
-                position=cast(Literal["bottom", "top"], position),
+                label,
+                position=cast(Literal["bottom", "top"], side),
             )
-            self.set_axis_scale(
-                axis_name,
-                scales.get(axis_name, "linear"),
-                scale_parameters.get(axis_name, 1.0),
-            )
-            self.set_axis_grid(axis_name, grid.get(axis_name, False))
-            minimum, maximum = ranges.get(axis_name, (None, None))
-            self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
-        for axis_name in added_y_axes:
-            axis_label = labels.get(axis_name, axis_name)
-            side = sides.get(axis_name, "right")
-            if side not in {"left", "right"}:
-                side = "right"
-            self.add_y_axis(
-                axis_name,
-                axis_label,
-                side=cast(Literal["left", "right"], side),
-            )
-            self.set_axis_scale(
-                axis_name,
-                scales.get(axis_name, "linear"),
-                scale_parameters.get(axis_name, 1.0),
-            )
-            self.set_axis_grid(axis_name, grid.get(axis_name, False))
-            minimum, maximum = ranges.get(axis_name, (None, None))
-            self.set_axis_range(axis_name, minimum=minimum, maximum=maximum)
+            return
+        self.add_y_axis(
+            axis_name,
+            label,
+            side=cast(Literal["left", "right"], side),
+        )
+
+    def _apply_dialog_axis_visibility(self, visible_axes: dict[str, bool]) -> None:
+        """Apply final visibility after axis additions and removals."""
         for axis_name, visible in visible_axes.items():
             if axis_name in self._axis_items:
                 self.set_axis_visible(axis_name, visible)

@@ -910,3 +910,26 @@ Result:
 - Verified 338 focused tab and panel tests, including stable selected and
   unselected widths for a large demi-bold label. The combined suite also
   completed cleanly: 2,855 tests passed and 1 was skipped.
+
+## CI Test-Load Diagnostics
+
+- Every test-matrix job writes JUnit XML so per-test durations can be compared
+  across Python and Qt combinations.
+- The PyQt6/Python 3.14 job records pytest test IDs as coverage contexts. Its
+  raw coverage database can therefore identify which tests executed each
+  source line without imposing the context-recording overhead on all four jobs.
+- Matrix coverage artifacts retain the raw database, Codacy XML, and JUnit XML
+  for 30 days. The merged XML and Codacy upload remain unchanged.
+- After downloading `coverage-data-pyqt6-3.14`, generate inspectable context
+  JSON with:
+
+```powershell
+coverage json `
+  --data-file=coverage-pyqt6-3.14 `
+  --show-contexts `
+  -o coverage-contexts.json
+```
+
+Use the context data and JUnit timings together when proposing test
+consolidation. A high test count or overlapping line coverage alone is not
+enough evidence to remove distinct branch, error-path, or lifecycle contracts.

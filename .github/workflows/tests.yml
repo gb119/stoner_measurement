@@ -88,7 +88,17 @@ jobs:
                   f"Expected qtpy to use {expected_api!r}, got {qtpy.API_NAME!r} instead."
               )
           PY
-          pytest --cov --cov-report=xml --cov-report=term-missing
+          pytest_args=(
+            --cov
+            --cov-report=xml
+            --cov-report=term-missing
+            --junitxml="test-results-${{ matrix.qt-backend }}-${{ matrix.python-version }}.xml"
+          )
+          if [[ "${{ matrix.qt-backend }}" == "pyqt6" \
+            && "${{ matrix.python-version }}" == "3.14" ]]; then
+            pytest_args+=(--cov-context=test)
+          fi
+          pytest "${pytest_args[@]}"
           mv .coverage coverage-${{ matrix.qt-backend }}-${{ matrix.python-version }}
 
       - name: Upload coverage data
@@ -99,6 +109,8 @@ jobs:
           path: |
             coverage-${{ matrix.qt-backend }}-${{ matrix.python-version }}
             coverage.xml
+            test-results-${{ matrix.qt-backend }}-${{ matrix.python-version }}.xml
+          retention-days: 30
 
   coverage:
     runs-on: windows-latest

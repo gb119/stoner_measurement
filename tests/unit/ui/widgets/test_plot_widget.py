@@ -314,6 +314,19 @@ class TestPlotWidget:
         assert changes["scale"]["left"] == "asinh"
         assert changes["scale_parameter"]["left"] == pytest.approx(2.5)
 
+        parameter_edit.setText("not a number")
+        minimum_edit = table.cellWidget(0, 7)
+        maximum_edit = table.cellWidget(0, 8)
+        assert isinstance(minimum_edit, QLineEdit)
+        assert isinstance(maximum_edit, QLineEdit)
+        minimum_edit.setText("invalid")
+        maximum_edit.clear()
+
+        invalid_changes = dialog.axis_changes()
+
+        assert invalid_changes["scale_parameter"]["left"] == pytest.approx(1.0)
+        assert invalid_changes["ranges"]["left"] == (None, None)
+
     def test_open_axes_dialog_applies_additions_and_removals(self, qapp, monkeypatch):
         widget = self.make_plot_widget()
         widget.add_y_axis("temp", "Temperature (K)")

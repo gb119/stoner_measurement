@@ -97,6 +97,111 @@ def is_reserved_instance_name(value: str) -> bool:
     return value in RESERVED_INSTANCE_NAMES
 
 
+def _replace_editor_sync(
+    plugin: BasePlugin,
+    signal_name: str,
+    callback_name: str,
+    callback: Callable[..., None],
+) -> None:
+    """Replace the stored callback that keeps one plugin editor in sync."""
+    signal = getattr(plugin, signal_name, None)
+    if signal is None:
+        return
+
+    previous_callback = getattr(plugin, callback_name, None)
+    if previous_callback is not None:
+        try:
+            signal.disconnect(previous_callback)
+        except (TypeError, RuntimeError):
+            pass
+
+    signal.connect(callback)
+    setattr(plugin, callback_name, callback)
+
+
+def _bind_instance_name_editor(plugin: BasePlugin, editor: QLineEdit) -> None:
+    """Bind *editor* to the validated instance name of *plugin*."""
+
+    def apply_editor_value() -> None:
+        new_name = editor.text().strip()
+        error = instance_name_validation_error(new_name)
+        if error is None:
+            editor.setStyleSheet("")
+            plugin.instance_name = new_name
+            return
+
+        editor.setStyleSheet(validation_error_lineedit_stylesheet())
+        editor.setToolTip(error)
+        editor.setText(plugin.instance_name)
+
+    def refresh_editor(_old: str, _new: str) -> None:  # noqa: ARG001
+        # A collision can cause a nested signal that restores the old name, so
+        # always read the authoritative property instead of trusting ``_new``.
+        try:
+            editor.setText(plugin.instance_name)
+            editor.setStyleSheet("")
+        except RuntimeError:
+            signal = getattr(plugin, "instance_name_changed", None)
+            if signal is not None:
+                try:
+                    signal.disconnect(refresh_editor)
+                except (TypeError, RuntimeError):
+                    pass
+
+    editor.editingFinished.connect(apply_editor_value)
+    _replace_editor_sync(
+        plugin,
+        "instance_name_changed",
+        "_name_edit_sync",
+        refresh_editor,
+    )
+
+
+def _bind_comment_editor(plugin: BasePlugin, editor: QLineEdit) -> None:
+    """Bind *editor* to the stripped comment of *plugin*."""
+
+    def apply_editor_value() -> None:
+        plugin.comment = editor.text().strip()
+        editor.setText(plugin.comment)
+
+    def refresh_editor(_old: str, _new: str) -> None:  # noqa: ARG001
+        try:
+            editor.setText(plugin.comment)
+        except RuntimeError:
+            signal = getattr(plugin, "comment_changed", None)
+            if signal is not None:
+                try:
+                    signal.disconnect(refresh_editor)
+                except (TypeError, RuntimeError):
+                    pass
+
+    editor.editingFinished.connect(apply_editor_value)
+    _replace_editor_sync(
+        plugin,
+        "comment_changed",
+        "_comment_edit_sync",
+        refresh_editor,
+    )
+
+
+def _populate_plugin_identity_form(
+    plugin: BasePlugin,
+    form: QFormLayout,
+    parent: QWidget,
+) -> None:
+    """Add the standard instance-name and comment editors to *form*."""
+    name_editor = QLineEdit(plugin.instance_name, parent)
+    name_editor.setToolTip("Python variable name used to access this plugin in the sequence engine")
+    _bind_instance_name_editor(plugin, name_editor)
+
+    comment_editor = QLineEdit(plugin.comment, parent)
+    comment_editor.setToolTip("Optional short note shown in the sequence list")
+    _bind_comment_editor(plugin, comment_editor)
+
+    form.addRow("Instance name:", name_editor)
+    form.addRow("Comment:", comment_editor)
+
+
 def _runtime_string_expr(expression: str) -> str:
     """Promote a templated string literal to an f-string for runtime evaluation.
 
@@ -903,97 +1008,7 @@ class BasePlugin(ABC):
         """
         widget = QWidget(parent)
         layout = QFormLayout(widget)
-
-        name_edit = QLineEdit(self.instance_name, widget)
-        name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
-        comment_edit = QLineEdit(self.comment, widget)
-        comment_edit.setToolTip("Optional short note shown in the sequence list")
-
-        def _apply() -> None:
-            new_name = name_edit.text().strip()
-            error = instance_name_validation_error(new_name)
-            if error is None:
-                name_edit.setStyleSheet("")
-                self.instance_name = new_name
-            else:
-                # Highlight the field and revert to the current valid value.
-                name_edit.setStyleSheet(validation_error_lineedit_stylesheet())
-                name_edit.setToolTip(
-                    error
-                )
-                name_edit.setText(self.instance_name)
-
-        name_edit.editingFinished.connect(_apply)
-
-        def _apply_comment() -> None:
-            self.comment = comment_edit.text().strip()
-            comment_edit.setText(self.comment)
-
-        comment_edit.editingFinished.connect(_apply_comment)
-
-        # Keep the name field in sync with the authoritative instance_name
-        # so that an external revert (e.g. collision detected by the dock
-        # panel) is immediately visible to the user.  Only plugins that
-        # sub-class QObject carry the instance_name_changed signal.
-        name_changed_signal = getattr(self, "instance_name_changed", None)
-        if name_changed_signal is not None:
-            # Disconnect any stale sync callback left by a previous call
-            # (relevant when config_tabs() recreates the widget on every
-            # selection rather than caching it).
-            prev_sync = getattr(self, "_name_edit_sync", None)
-            if prev_sync is not None:
-                try:
-                    name_changed_signal.disconnect(prev_sync)
-                except (TypeError, RuntimeError):
-                    pass
-
-            def _sync_name_edit(_old: str, _new: str) -> None:  # noqa: ARG001
-                # Read the authoritative value rather than trusting `_new`.
-                # When a rename is reverted (due to a collision), the revert
-                # fires a nested instance_name_changed before this outer
-                # handler returns.  By the time this callback runs, the
-                # authoritative instance_name may already have been reset to
-                # the reverted value; using `_new` would show stale text.
-                current = self.instance_name
-                try:
-                    name_edit.setText(current)
-                    name_edit.setStyleSheet("")
-                except RuntimeError:
-                    # The underlying C++ widget has been destroyed; remove
-                    # this stale connection.
-                    try:
-                        name_changed_signal.disconnect(_sync_name_edit)
-                    except (TypeError, RuntimeError):
-                        pass
-
-            name_changed_signal.connect(_sync_name_edit)
-            self._name_edit_sync = _sync_name_edit  # type: ignore[attr-defined]
-
-        comment_changed_signal = getattr(self, "comment_changed", None)
-        if comment_changed_signal is not None:
-            prev_sync = getattr(self, "_comment_edit_sync", None)
-            if prev_sync is not None:
-                try:
-                    comment_changed_signal.disconnect(prev_sync)
-                except (TypeError, RuntimeError):
-                    pass
-
-            def _sync_comment_edit(_old: str, _new: str) -> None:  # noqa: ARG001
-                current = self.comment
-                try:
-                    comment_edit.setText(current)
-                except RuntimeError:
-                    try:
-                        comment_changed_signal.disconnect(_sync_comment_edit)
-                    except (TypeError, RuntimeError):
-                        pass
-
-            comment_changed_signal.connect(_sync_comment_edit)
-            self._comment_edit_sync = _sync_comment_edit  # type: ignore[attr-defined]
-
-        layout.addRow("Instance name:", name_edit)
-        layout.addRow("Comment:", comment_edit)
-        widget.setLayout(layout)
+        _populate_plugin_identity_form(self, layout, widget)
         return widget
 
     @property

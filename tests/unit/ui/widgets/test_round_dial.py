@@ -122,6 +122,19 @@ class TestRoundDialWidget:
 
         assert widget._preferred_label_values() == [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0]  # noqa: SLF001
 
+    def test_preferred_label_values_deduplicates_full_circle_endpoint(
+        self,
+        qapp,
+        monkeypatch,
+    ):
+        widget = RoundDialWidget()
+        widget.setRange(0, 360)
+        widget.setScaleAngles(0, 360)
+        widget.setCustomLabels({0.0: "North", 360.0: "North"})
+        monkeypatch.setattr(widget, "_label_set_fits", lambda _values: True)
+
+        assert widget._preferred_label_values() == [0.0]  # noqa: SLF001
+
     def test_preferred_label_values_preserves_endpoints_with_middle_fallback(self, qapp, monkeypatch):
         widget = RoundDialWidget()
         widget.setRange(0, 100)

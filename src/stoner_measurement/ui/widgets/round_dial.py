@@ -901,22 +901,9 @@ class RoundDialWidget(QWidget):
         if centred_values is not None:
             return centred_values
 
-        if self._custom_labels:
-            custom_values = sorted(self._custom_labels.keys())
-            deduplicated: list[float] = []
-            seen_angles: list[float] = []
-            for value in custom_values:
-                angle = self._normalise_angle(self._value_to_angle(value))
-                if any(math.isclose(angle, existing, abs_tol=1e-6) for existing in seen_angles):
-                    continue
-                deduplicated.append(value)
-                seen_angles.append(angle)
-            if deduplicated and self._label_set_fits(deduplicated):
-                return deduplicated
-            compass_candidates = self._reduced_compass_label_sets(deduplicated)
-            for candidates in compass_candidates:
-                if self._label_set_fits(candidates):
-                    return candidates
+        custom_values = self._fitting_custom_label_values()
+        if custom_values is not None:
+            return custom_values
 
         if not self._preferred_label_counts:
             return self._iter_tick_values(self._label_step)
@@ -925,38 +912,66 @@ class RoundDialWidget(QWidget):
         if span <= 0:
             return [self._minimum]
 
-        full_circle = self._is_full_circle_scale()
         for count in self._preferred_label_counts:
             if count < 2:
                 continue
-            if full_circle:
-                step = span / count
-                candidates = [self._minimum + (index * step) for index in range(count)]
-            else:
-                step = span / (count - 1)
-                candidates = [self._minimum + (index * step) for index in range(count)]
-                candidates[-1] = self._maximum
+            candidates = self._evenly_spaced_label_values(count, span)
             if self._label_set_fits(candidates):
                 return candidates
 
+        return self._fallback_preferred_label_values(span)
+
+    def _fitting_custom_label_values(self) -> list[float] | None:
+        """Return the first non-overlapping set derived from custom labels."""
+        if not self._custom_labels:
+            return None
+
+        deduplicated = self._deduplicated_custom_label_values()
+        if deduplicated and self._label_set_fits(deduplicated):
+            return deduplicated
+        for candidates in self._reduced_compass_label_sets(deduplicated):
+            if self._label_set_fits(candidates):
+                return candidates
+        return None
+
+    def _deduplicated_custom_label_values(self) -> list[float]:
+        """Discard custom values that render at the same dial angle."""
+        values: list[float] = []
+        seen_angles: list[float] = []
+        for value in sorted(self._custom_labels):
+            angle = self._normalise_angle(self._value_to_angle(value))
+            if any(math.isclose(angle, seen, abs_tol=1e-6) for seen in seen_angles):
+                continue
+            values.append(value)
+            seen_angles.append(angle)
+        return values
+
+    def _evenly_spaced_label_values(self, count: int, span: float) -> list[float]:
+        """Return *count* labels without duplicating a full-circle endpoint."""
+        full_circle = self._is_full_circle_scale()
+        divisor = count if full_circle else count - 1
+        step = span / divisor
+        values = [self._minimum + (index * step) for index in range(count)]
+        if not full_circle:
+            values[-1] = self._maximum
+        return values
+
+    def _fallback_preferred_label_values(self, span: float) -> list[float]:
+        """Return the smallest requested set, optionally preserving endpoints."""
         fallback_count = self._preferred_label_counts[-1]
-        if fallback_count >= 2:
-            if full_circle:
-                step = span / fallback_count
-                candidates = [self._minimum + (index * step) for index in range(fallback_count)]
-            else:
-                step = span / (fallback_count - 1)
-                candidates = [self._minimum + (index * step) for index in range(fallback_count)]
-                candidates[-1] = self._maximum
-            if (
-                not full_circle
-                and self._preserve_endpoint_labels
-                and not self._label_set_fits(candidates)
-                and len(candidates) > 2
-            ):
-                return [candidates[0], candidates[len(candidates) // 2], candidates[-1]]
-            return candidates
-        return self._iter_tick_values(self._label_step)
+        if fallback_count < 2:
+            return self._iter_tick_values(self._label_step)
+
+        candidates = self._evenly_spaced_label_values(fallback_count, span)
+        should_reduce = (
+            not self._is_full_circle_scale()
+            and self._preserve_endpoint_labels
+            and not self._label_set_fits(candidates)
+            and len(candidates) > 2
+        )
+        if should_reduce:
+            return [candidates[0], candidates[len(candidates) // 2], candidates[-1]]
+        return candidates
 
     def _bidirectional_preferred_label_values(self) -> list[float] | None:
         if self._wrap:

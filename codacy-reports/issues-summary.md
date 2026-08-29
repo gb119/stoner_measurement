@@ -37,16 +37,25 @@ These changes require Codacy reanalysis before their remote findings clear:
 - removed three redundant local imports and the duplicate direct-run `pytest`
   import;
 - replaced the unnecessary engine lambda with its callable class and connected
-  the save button directly to its slot.
+  the save button directly to its slot;
+- extracted shared plugin identity-editor binding and split the trace Scan page
+  into header, generator-selector, output-option, and content builders;
+- separated axis-dialog row collection from normalisation and split accepted
+  plot-axis changes into property, range, removal, addition, and visibility
+  operations;
+- separated configured plugin-tree construction from fallback category
+  grouping in the dock panel;
+- separated round-dial custom-label, evenly-spaced, and endpoint-preserving
+  candidate selection.
 
 If every analyzer accepts the scoped suppressions, this tranche should remove
-all 4 Error findings, all 5 High findings, and all 6 Info findings, plus 5 of
-the Warning findings. The expected remainder is 23 warnings: 22 complexity
+all 4 Error findings, all 5 High findings, and all 6 Info findings, plus 11 of
+the Warning findings. The expected remainder is 17 warnings: 16 complexity
 findings and the Agentlinter advisory.
 
 ## Prioritised Remaining Work
 
-### P1: Production UI and shared infrastructure
+### Completed P1: Production UI and shared infrastructure
 
 - `BasePlugin._general_config_widget` (22);
 - `_ScanPage.__init__` (29);
@@ -55,8 +64,10 @@ findings and the Agentlinter advisory.
 - `DockPanel._refresh_plugins` (16);
 - `RoundDialWidget._preferred_label_values` (17).
 
-These have the widest runtime impact. Extract cohesive construction, parsing,
-and update helpers one method at a time, with offscreen Qt tests.
+These six methods were split into cohesive construction, parsing, selection,
+and update helpers. Local McCabe checks no longer report any of them at the
+Codacy threshold, and focused offscreen Qt tests cover the preserved behaviour.
+Codacy reanalysis is still required to clear the remote findings.
 
 ### P2: Hardware trace plugins
 
