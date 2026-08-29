@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
 
 
@@ -214,6 +215,41 @@ class TestPassThroughGpibTransport:
 
         assert resource.write_log == [b'SYST:COMM:SER:SEND "*IDN?;*STB?";ENT?']
         assert transport.last_stb == 0
+
+    def test_status_error_check_can_be_suppressed_for_recovery_command(self):
+        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
+
+        transport = PassThroughGpibTransport(address=22)
+        resource = self._FakeResource(responses=[b"4\n\n"])
+        transport._resource = resource
+
+        with transport.suppress_status_error_check():
+            transport.write(b"*CLS")
+
+        assert transport.last_stb == 4
+        assert transport._status_error_mask == 4
+
+    def test_status_error_still_raises_outside_recovery_command(self):
+        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
+
+        transport = PassThroughGpibTransport(address=22)
+        resource = self._FakeResource(responses=[b"4\n\n"])
+        transport._resource = resource
+
+        with pytest.raises(InstrumentError, match="STB=4"):
+            transport.write(b"BAD")
+
+    def test_serial_entry_retries_a_temporarily_empty_response(self, monkeypatch):
+        import stoner_measurement.instruments.transport.gpib_transport as gpib_module
+        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
+
+        monkeypatch.setattr(gpib_module, "sleep", lambda _seconds: None)
+        transport = PassThroughGpibTransport(address=22)
+        resource = self._FakeResource(responses=[b"\n\n", b"1\n\n"])
+        transport._resource = resource
+
+        assert transport._read_serial_entry_chunk() == b"1"
+        assert resource.write_log == [b"SYST:COMM:SER:ENT?"]
 
     def test_read_queries_ent_and_returns_payload_bytes(self):
         from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport

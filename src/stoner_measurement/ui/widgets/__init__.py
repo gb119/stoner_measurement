@@ -14,6 +14,17 @@ from stoner_measurement.ui.widgets.controller_connection import (
     set_address_widget_status,
     show_transport_widget,
 )
+from stoner_measurement.ui.widgets.daqmx_task_widget import (
+    DaqmxDeviceInfo,
+    DaqmxDiscoveryError,
+    DaqmxNamedResource,
+    DaqmxSelectionMode,
+    DaqmxSystemInfo,
+    DaqmxTaskDefinition,
+    DaqmxTaskDefinitionWidget,
+    DaqmxTaskKind,
+    discover_daqmx_system,
+)
 from stoner_measurement.ui.widgets.percent_slider import PercentSliderWidget
 from stoner_measurement.ui.widgets.round_dial import RoundDialWidget
 from stoner_measurement.ui.widgets.round_dial_demo import RoundDialDemoWidget
@@ -37,6 +48,14 @@ __all__ = [
     "FILTER_SERIAL",
     "AptControllerComboBox",
     "AutoSISpinBox",
+    "DaqmxDeviceInfo",
+    "DaqmxDiscoveryError",
+    "DaqmxNamedResource",
+    "DaqmxSelectionMode",
+    "DaqmxSystemInfo",
+    "DaqmxTaskDefinition",
+    "DaqmxTaskDefinitionWidget",
+    "DaqmxTaskKind",
     "RoundDialWidget",
     "RoundDialDemoWidget",
     "RoundDialPanel",
@@ -50,6 +69,7 @@ __all__ = [
     "selected_transport",
     "set_address_widget_status",
     "show_transport_widget",
+    "discover_daqmx_system",
     "VisaInterfaceType",
     "VisaResourceComboBox",
     "VisaResourceStatus",

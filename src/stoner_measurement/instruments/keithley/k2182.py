@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from stoner_measurement.instruments.electrometer import ElectrometerDataFormat
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley._scpi_data_format import (
     KeithleyByteOrder,
     KeithleyScpiDataFormatMixin,
@@ -52,7 +53,9 @@ class Keithley2182A(KeithleyScpiDataFormatMixin, Nanovoltmeter):
         buffer since the last session is discarded via
         :meth:`~stoner_measurement.instruments.transport.base.BaseTransport.flush`
         so that stale responses from previous commands cannot be misread as
-        replies to new queries.
+        replies to new queries. The instrument is then cleared and reset to
+        its IEEE-488.2 defaults, with reset completion confirmed before
+        normal status checking resumes.
 
         Raises:
             ConnectionError:
@@ -70,13 +73,18 @@ class Keithley2182A(KeithleyScpiDataFormatMixin, Nanovoltmeter):
         """
         super().connect()
         if isinstance(self.transport, PassThroughGpibTransport):
-            self.transport.write(b"*CLS", host=True)  # Clear error buffer on 6221
-        self.write("*CLS")
+            with self.transport.suppress_status_error_check():
+                self.transport.write(b"*CLS", host=True)  # Clear error buffer on 6221
+        self.reset()
 
     def reset(self) -> None:
-        """Send the standard IEEE 488.2 reset command (``*RST``).
+        """Clear and reset the 2182A, waiting until reset has completed.
 
-        Instruments that do not support ``*RST`` should override this method.
+        Status-byte and automatic error checks are suspended only for this
+        recovery sequence so that a stale Error Available bit cannot prevent
+        ``*CLS`` from clearing the condition. The sequence follows the 2182A
+        manual: clear status, issue ``*RST;*OPC?``, verify completion, and
+        clear any reset-time events before restoring normal error checking.
 
         Raises:
             ConnectionError:
@@ -84,17 +92,33 @@ class Keithley2182A(KeithleyScpiDataFormatMixin, Nanovoltmeter):
 
         Examples:
             >>> from stoner_measurement.instruments.transport import NullTransport
-            >>> from stoner_measurement.instruments.protocol import ScpiProtocol
-            >>> from stoner_measurement.instruments.base_instrument import BaseInstrument
-            >>> t = NullTransport()
-            >>> instr = BaseInstrument(t, ScpiProtocol())
-            >>> instr.connect()
+            >>> t = NullTransport(responses=[b"1\\n"])
+            >>> t.open()
+            >>> instr = Keithley2182A(t)
             >>> instr.reset()
             >>> t.write_log
-            [b'*RST\\n']
+            [b'*CLS\\n', b'*RST;*OPC?\\n', b'*CLS\\n']
             >>> instr.disconnect()
         """
-        self.write("*RST", slow=500)
+        with self._lock:
+            auto_check_errors = self.auto_check_errors
+            self.auto_check_errors = False
+            try:
+                with self.transport.suppress_status_error_check():
+                    # The 2182A manual states that *RST does not clear the
+                    # error queue and may take long enough to require *OPC?.
+                    # Clear stale status first, wait for reset completion,
+                    # then clear reset-time events before normal checked I/O.
+                    self.write("*CLS")
+                    response = self.query("*RST;*OPC?", slow=500)
+                    if response not in {"1", "+1"}:
+                        raise InstrumentError(
+                            "Unexpected operation-complete response after "
+                            f"2182A reset: {response!r}"
+                        )
+                    self.write("*CLS")
+            finally:
+                self.auto_check_errors = auto_check_errors
         self._initialise_data_format_state()
 
     @staticmethod

@@ -51,6 +51,7 @@ docs = [
     "sphinx-better-theme>=0.1.5",
 ]
 instruments = [
+    "nidaqmx>=1.0",
     "pylablib>=1.4",
     "pyft232>=0.12",
     "pyserial>=3.5",
@@ -90,6 +91,7 @@ symmetry_decomposition = "stoner_measurement.plugins.transform.symmetry_decompos
 window_filter = "stoner_measurement.plugins.transform.window_filter:WindowFilterPlugin"
 x_offset_removal = "stoner_measurement.plugins.transform.voltage_offset:XOffsetRemovalPlugin"
 dummy = "stoner_measurement.plugins.trace.dummy:DummyPlugin"
+daqmx_trace = "stoner_measurement.plugins.trace.daqmx:DaqmxTracePlugin"
 k6221_dc_iv = "stoner_measurement.plugins.trace.k6221_2182a:Keithley6221_2182APlugin"
 k6221_multi_sr830 = "stoner_measurement.plugins.trace.k6221_multi_sr830:Keithley6221_MultiSR830Plugin"
 k2400_dc_iv = "stoner_measurement.plugins.trace.keithley_2400:Keithley2400SweepPlugin"

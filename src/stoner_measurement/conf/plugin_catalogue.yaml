@@ -87,3 +87,7 @@ items:
     label: Scan
   - plugin: network_analyser
     label: Trace
+- group: Data Acquisition
+  items:
+  - plugin: daqmx_trace
+    label: DAQmx Trace

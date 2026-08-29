@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from stoner_measurement.instruments.electrometer import ElectrometerDataFormat
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.keithley import Keithley2182A, KeithleyByteOrder
 from stoner_measurement.instruments.nanovoltmeter import (
     NanovoltmeterCapabilities,
@@ -27,6 +28,24 @@ class TestKeithley2182A:
     def test_default_protocol_is_scpi(self):
         k = Keithley2182A(transport=NullTransport())
         assert isinstance(k.protocol, ScpiProtocol)
+
+    def test_connect_clears_resets_waits_and_clears_again(self):
+        t = NullTransport(responses=[b"1\n"])
+        k = Keithley2182A(transport=t)
+
+        k.connect()
+
+        assert t.write_log == [b"*CLS\n", b"*RST;*OPC?\n", b"*CLS\n"]
+        assert k.auto_check_errors is True
+
+    def test_reset_rejects_unexpected_operation_complete_response(self):
+        t = _null(responses=[b"0\n"])
+        k = Keithley2182A(transport=t)
+
+        with pytest.raises(InstrumentError, match="operation-complete response"):
+            k.reset()
+
+        assert k.auto_check_errors is True
 
     def test_measure_range_autorange_nplc(self):
         t = _null(responses=[b"1.0E-06\n", b"0.1\n", b"1\n", b"5.0\n"])

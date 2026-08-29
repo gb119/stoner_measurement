@@ -36,6 +36,7 @@ dependencies:
   - pytokens>=0.4.1
   - scipy>=1.17.1
   # Instrument communication
+  - nidaqmx-python>=1.0
   - pylablib>=1.4
   - pyserial>=3.5
   - pyvisa>=1.13

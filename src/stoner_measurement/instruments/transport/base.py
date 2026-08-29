@@ -11,6 +11,8 @@ import logging
 import re
 import urllib.parse
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from contextlib import contextmanager
 from enum import StrEnum
 
 from stoner_measurement.instruments.lock_registry import canonical_resource_key
@@ -155,7 +157,7 @@ class BaseTransport(ABC):
         """Close the physical connection to the instrument."""
 
     @abstractmethod
-    def write(self, data: bytes, slow: int|None = None) -> int:
+    def write(self, data: bytes, slow:int|None = None) -> int:
         """Send *data* to the instrument.
 
         Args:
@@ -358,6 +360,17 @@ class BaseTransport(ABC):
             True
         """
         return None
+
+    @contextmanager
+    def suppress_status_error_check(self) -> Iterator[None]:
+        """Temporarily permit recovery commands despite a stale status error.
+
+        Most transports do not reject writes based on an out-of-band status
+        byte, so the base implementation is a no-op. Status-aware transports
+        override this context manager to suspend only their low-level status
+        rejection while an instrument driver clears or resets the device.
+        """
+        yield
 
     def wait_for_srq(self, timeout: float) -> bool | None:
         """Wait for SRQ natively, or return ``None`` when unsupported."""

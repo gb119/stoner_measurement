@@ -16,6 +16,10 @@ from stoner_measurement.plugins.trace.base import (
     _ScanPage,
     _ScanTabContainer,
 )
+from stoner_measurement.plugins.trace.daqmx import (
+    DaqmxTracePlugin,
+    DaqmxTraceSettingsWidget,
+)
 from stoner_measurement.plugins.trace.dummy import DummyPlugin
 from stoner_measurement.plugins.trace.k6221_2182a import (
     ComplianceMode,
@@ -54,6 +58,8 @@ __all__ = [
     "ComplianceMode",
     "ConnectionMode",
     "DigitalFilterType",
+    "DaqmxTracePlugin",
+    "DaqmxTraceSettingsWidget",
     "DummyPlugin",
     "K2400ConnectionMode",
     "K2400RangeMode",

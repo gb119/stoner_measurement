@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from time import perf_counter, sleep
 from typing import TYPE_CHECKING
 
@@ -39,6 +41,7 @@ def _get_stb_from_response(response):
         return rc, response
     except ValueError as exc:
         raise InstrumentError(f"{response} did not seem to contain a status byte.") from exc
+
 
 class GpibTransport(BaseTransport):
     """GPIB transport using PyVISA.
@@ -398,6 +401,16 @@ class GpibTransport(BaseTransport):
         self._log_comms_traffic("IEEE", f"{stb=}")
         return stb
 
+    @contextmanager
+    def suppress_status_error_check(self) -> Iterator[None]:
+        """Temporarily disable rejection of writes with the error bit set."""
+        status_error_mask = self._status_error_mask
+        self._status_error_mask = None
+        try:
+            yield
+        finally:
+            self._status_error_mask = status_error_mask
+
     def wait_for_srq(self, timeout: float) -> bool | None:
         """Wait for the GPIB service-request line without command polling."""
         if self._resource is None:
@@ -583,7 +596,7 @@ class PassThroughGpibTransport(GpibTransport):
 
         self._log_comms_traffic("RX", response)
         self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
-        if self.last_stb & 4:
+        if self._status_error_mask is not None and self.last_stb & self._status_error_mask:
             raise InstrumentError(
                 f"Bad return status byte from {data.decode()}: STB={self.last_stb}"
             )
@@ -638,19 +651,19 @@ class PassThroughGpibTransport(GpibTransport):
         response = self._read_serial_entry_chunk()
         if slow is not None:
             self._resource.write_raw(b'SYST:COMM:SER:SEND "*STB?";ENT?')
-            rc=self._read_serial_entry_chunk()
-            response+=b";"+rc
+            rc = self._read_serial_entry_chunk()
+            response += b";" + rc
         self.last_stb, response = _get_stb_from_response(response)
 
         self._log_comms_traffic("RX", response)
         self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
-        if self.last_stb & 4:
+        if self._status_error_mask is not None and self.last_stb & self._status_error_mask:
             raise InstrumentError(
                 f"Bad return status byte from {data.decode()}: STB={self.last_stb}"
             )
         return response
 
-    def _read_serial_entry_chunk(self, num_bytes: int | None = None) -> str:
+    def _read_serial_entry_chunk(self, num_bytes: int | None = None) -> bytes:
         """Read a response from 2182A via 6221.
 
         If the response is blank (i.e. just newline) then reissue the ``SYST:COMM:SER:ENT?`` and try again. Repeat
@@ -675,23 +688,28 @@ class PassThroughGpibTransport(GpibTransport):
         command = b"SYST:COMM:SER:ENT?"
         accumulated = b""
 
-        while not (raw:=self._resource.read_raw()).endswith(b"\n\n"):
+        for _ in range(self._max_read_chunks):
+            raw = self._resource.read_raw()
+            if raw in (b"", b"\n", b"\r\n", b"\n\n", b"\r\n\n"):
+                self._resource.write_raw(command)
+                sleep(_DEFAULT_K6221_SERIAL_POLL)
+                continue
+            if raw.endswith(b"\n\n"):
+                is_binary = accumulated.startswith(b"#0") or raw.startswith(b"#0")
+                accumulated += raw[:-2] if is_binary else raw.strip()
+                self._log_comms_traffic("RX", f"Final message {accumulated}")
+                return accumulated
             self._log_comms_traffic("RX", f"Read frameL {raw}")
             is_binary = accumulated.startswith(b"#0") or raw.startswith(b"#0")
             accumulated += raw[:-1] if is_binary and raw.endswith(b"\n") else raw.strip()
-            if num_bytes and len(accumulated)>num_bytes:
-                accumulated=accumulated[:num_bytes]
-                raise InstrumentError(f"Overran bute count {num_bytes} message was {accumulated}")
+            if num_bytes and len(accumulated) > num_bytes:
+                accumulated = accumulated[:num_bytes]
+                raise InstrumentError(f"Overran byte count {num_bytes}; message was {accumulated!r}")
             self._resource.write_raw(command)
-            sleep (_DEFAULT_K6221_SERIAL_POLL)
-        is_binary = accumulated.startswith(b"#0") or raw.startswith(b"#0")
-        accumulated += raw[:-2] if is_binary else raw.strip()
-        self._log_comms_traffic("RX", f"Final message {accumulated}")
-
-        if accumulated:
-            return accumulated
-        raise InstrumentError(f"Incomplete response with no terminator {accumulated}")
-
+            sleep(_DEFAULT_K6221_SERIAL_POLL)
+        raise InstrumentError(
+            f"Incomplete response after {self._max_read_chunks} serial-entry reads: {accumulated}"
+        )
 
     def read(self, num_bytes: int | None = None) -> bytes:
         """Read one response frame from the instrument via the 6221's SYST:COMM:SER:ENT?.
@@ -719,7 +737,7 @@ class PassThroughGpibTransport(GpibTransport):
         self.last_stb, response = _get_stb_from_response(self._read_serial_entry_chunk())
         self._log_comms_traffic("RX", response)
         self._log_comms_traffic("IEEE", f"stb={self.last_stb}")
-        if self.last_stb & 4:
+        if self._status_error_mask is not None and self.last_stb & self._status_error_mask:
             raise InstrumentError(f"Bad return status byte during read: STB={self.last_stb}")
         return response
 
@@ -759,6 +777,7 @@ class PassThroughGpibTransport(GpibTransport):
         import pyvisa
 
         try:
-            self.write("*CLS")
+            with self.suppress_status_error_check():
+                self.write(b"*CLS")
         except pyvisa.errors.VisaIOError as exc:
             logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)
