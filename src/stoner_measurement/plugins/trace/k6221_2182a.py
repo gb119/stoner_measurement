@@ -23,6 +23,8 @@ import enum
 import logging
 import math
 import time
+from collections.abc import Callable, Iterable
+from functools import partial
 from typing import Any, cast
 
 import numpy as np
@@ -526,7 +528,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         column_units = {"V": self.y_units, response_column: response_unit, "P": "W"}
         if self._secondary_enabled:
             secondary_columns = self._secondary_column_names(response_name=response_column)
-            column_units.update(dict(zip(secondary_columns, (self.y_units, response_unit, "W"), strict=True)))
+            column_units.update(
+                dict(zip(secondary_columns, (self.y_units, response_unit, "W"), strict=True))
+            )
 
         var = self.instance_name
         return {
@@ -796,151 +800,125 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             >>> plugin = Keithley6221_2182APlugin()
             >>> # plugin.connect(); plugin.configure()  # requires real hardware
         """
-        # ---- Check connected ok ----
-        if self._k6221 is None:
-            self._log.error(
-                f"{self.__class__.__name__}:Not connected — call connect() before execute()."
-            )
-            raise RuntimeError("Not connected — call connect() before execute().")
-        if self._k2182a is None:
-            self._log.error(
-                f"{self.__class__.__name__}:DIRECT_GPIB mode selected but 2182A is not connected."
-            )
-            raise RuntimeError("DIRECT_GPIB mode selected but 2182A is not connected.")
-        if self._secondary_enabled and self._secondary_nanovoltmeter is None:
-            raise RuntimeError("Secondary nanovoltmeter is enabled but not connected.")
+        source, primary, secondary = self._connected_instruments()
 
         self._set_status(TraceStatus.CONFIGURING)
         try:
-            compliance = self.eval_float(self._compliance)
-            compliance_resistance = self.eval_float(self._compliance_resistance)
-            source_delay = self.eval_float(self._source_delay)
-            source_range = self.eval_float(self._source_range)
-            delta_current = self.eval_float(self._delta_current)
-            trigger_delay = self.eval_float(self._trigger_delay)
-            relative_value = self.eval_float(self._relative_value)
-            self._nominal_sweep_values = np.asarray(self.scan_generator.generate(), dtype=float)
-            self._sweep_values = (
-                modulate_current_sweep(self._nominal_sweep_values, delta_current)
-                if self._differential_mode
-                else self._nominal_sweep_values.copy()
-            )
-            n = len(self._sweep_values)
-            if n == 0:
-                raise ValueError("Scan generator produced no points.")
-            overrun_warning = self._parallel_overrun_warning()
-            if overrun_warning is not None:
-                self._log.warning(overrun_warning)
-
-            # ---- 6221: reset and configure LIST sweep ----
-            self._k6221.reset()
-
-            # Build current list — the driver's configure_custom_sweep handles
-            # batching into 100-point chunks automatically.
-            self._k6221.configure_custom_sweep(
-                tuple(float(v) for v in self._sweep_values),
-                delay=source_delay,
-            )
-
-            # ---- 6221: per-point compliance ----
-            if self._compliance_mode is ComplianceMode.RESISTANCE:
-                comp_values = [
-                    abs(float(v)) * compliance_resistance for v in self._sweep_values
-                ]
-                max_comp = max(comp_values) if comp_values else 0.0
-                if max_comp > _6221_MAX_COMPLIANCE_V:
-                    raise ValueError(
-                        f"Resistance-mode compliance would reach {max_comp:.3g} V "
-                        f"(max {_6221_MAX_COMPLIANCE_V} V for the 6221). "
-                        "Reduce the compliance resistance or the sweep currents."
-                    )
-            else:
-                comp_values = [compliance] * n
-            self._k6221.configure_list_compliance(comp_values)
-
-            # ---- 6221: output range ----
-            if self._source_range_mode is SourceRangeMode.AUTO:
-                self._k6221.set_sweep_range_mode("AUTO")
-            elif self._source_range_mode is SourceRangeMode.FIXED:
-                self._k6221.set_fixed_range(source_range)
-            else:
-                self._k6221.set_sweep_range_mode("BEST")
-            self._k6221.set_sweep_count(1)
-            self._k6221.configure_sweep_complete_srq()
-
-            # ---- 6221: trigger-link ----
-            # Output a trigger pulse after each source step and settling delay.
-            self._k6221.configure_arm()
-            self._k6221.configure_trigger(
-                source="TLIN",
-                direction="SOUR",
-                tlink_in=self._input_tlink,
-                tlink_out=self._output_tlink,
-                output="DEL",
-            )
-
-            # ---- 2182A: reset and configure ----
-            self._k2182a.reset()
-            meter_2182a = cast(Keithley2182A, self._k2182a)
-            transport_2182a = meter_2182a.transport
-            ascii_only = self._connection_mode is ConnectionMode.VIA_6221_SERIAL or isinstance(
-                transport_2182a,
-                (PassThroughGpibTransport, SerialTransport),
-            )
-            if ascii_only:
-                meter_2182a.set_data_format(KeithleyDataFormat.ASCII)
-            else:
-                meter_2182a.set_data_format(KeithleyDataFormat.SREAL)
-                meter_2182a.set_byte_order(KeithleyByteOrder.native())
-
-            self._k2182a.set_digits(self._digits)
-            self._k2182a.set_nplc(self._nplc)
-            self._k2182a.set_line_sync_enabled(self._line_sync)
-            self._k2182a.set_autozero_enabled(self._autozero)
-            if self._voltage_range > 0.0:
-                self._k2182a.set_autorange(False)
-                self._k2182a.set_range(self._voltage_range)
-            else:
-                self._k2182a.set_autorange(True)
-
-            filter_enabled = self._filter_type is not DigitalFilterType.OFF
-            self._k2182a.set_filter_enabled(filter_enabled)
-            if filter_enabled:
-                self._k2182a.set_filter_count(self._filter_count)
-                self._k2182a.set_filter_type(self._filter_type.name)
-
-            self._k2182a.set_analog_filter_enabled(self._analog_filter)
-            self._k2182a.set_relative_value(relative_value)
-            self._k2182a.set_relative_enabled(self._relative_enabled)
-
-            # ---- 2182A: trace buffer ----
-            self._k2182a.clear_buffer()
-            self._k2182a.set_buffer_size(n)
-            self._k2182a.set_buffer_feed_sense()
-            self._k2182a.set_buffer_feed_continuous_next()
-
-            # ---- 2182A: trigger ----
-            self._k2182a.set_trigger_source(NanovoltmeterTriggerSource.EXT)
-            self._k2182a.set_trigger_delay(trigger_delay)
-            self._k2182a.set_trigger_count(n)
-
-            if self._secondary_enabled:
-                assert self._secondary_nanovoltmeter is not None
-                self._configure_nanovoltmeter(
-                    self._secondary_nanovoltmeter,
-                    n,
-                    prefix="_secondary_",
-                )
-
-            # ---- 6221 arm to go ----
-            self._k6221.sweep_abort()
-            self._k6221.sweep_arm()
+            sweep_values = self._prepare_sweep_values()
+            self._configure_current_source(source, sweep_values)
+            self._configure_primary_nanovoltmeter(primary, len(sweep_values))
+            if secondary is not None:
+                self._configure_nanovoltmeter(secondary, len(sweep_values), prefix="_secondary_")
+            source.sweep_abort()
+            source.sweep_arm()
 
         except Exception as exc:
-            self._log.error(f"{self.__class__.__name__}: Exception during confgiure {exc}")
+            self._log.error(f"{self.__class__.__name__}: Exception during configure {exc}")
             self._set_status(TraceStatus.ERROR)
             raise
         self._set_status(TraceStatus.IDLE)
+
+    def _connected_instruments(
+        self,
+    ) -> tuple[Keithley6221, Keithley2182A, Nanovoltmeter | None]:
+        """Return configured instruments or raise a clear connection error."""
+        if self._k6221 is None:
+            message = "Not connected — call connect() before execute()."
+            self._log.error(f"{self.__class__.__name__}:{message}")
+            raise RuntimeError(message)
+        if self._k2182a is None:
+            message = "DIRECT_GPIB mode selected but 2182A is not connected."
+            self._log.error(f"{self.__class__.__name__}:{message}")
+            raise RuntimeError(message)
+        if self._secondary_enabled and self._secondary_nanovoltmeter is None:
+            raise RuntimeError("Secondary nanovoltmeter is enabled but not connected.")
+        return self._k6221, cast(Keithley2182A, self._k2182a), self._secondary_nanovoltmeter
+
+    def _prepare_sweep_values(self) -> np.ndarray:
+        """Generate and retain the physical current values for the next sweep."""
+        nominal_values = np.asarray(self.scan_generator.generate(), dtype=float)
+        if len(nominal_values) == 0:
+            raise ValueError("Scan generator produced no points.")
+        self._nominal_sweep_values = nominal_values
+        self._sweep_values = (
+            modulate_current_sweep(nominal_values, self.eval_float(self._delta_current))
+            if self._differential_mode
+            else nominal_values.copy()
+        )
+        overrun_warning = self._parallel_overrun_warning()
+        if overrun_warning is not None:
+            self._log.warning(overrun_warning)
+        return self._sweep_values
+
+    def _compliance_values(self, sweep_values: np.ndarray) -> list[float]:
+        """Return the per-point voltage compliance values for *sweep_values*."""
+        if self._compliance_mode is ComplianceMode.VOLTAGE:
+            return [self.eval_float(self._compliance)] * len(sweep_values)
+        resistance = self.eval_float(self._compliance_resistance)
+        values = [abs(float(current)) * resistance for current in sweep_values]
+        maximum = max(values)
+        if maximum > _6221_MAX_COMPLIANCE_V:
+            raise ValueError(
+                f"Resistance-mode compliance would reach {maximum:.3g} V "
+                f"(max {_6221_MAX_COMPLIANCE_V} V for the 6221). "
+                "Reduce the compliance resistance or the sweep currents."
+            )
+        return values
+
+    def _configure_current_source(self, source: Keithley6221, sweep_values: np.ndarray) -> None:
+        """Configure the 6221 sweep, compliance, range, and trigger link."""
+        source.reset()
+        source.configure_custom_sweep(
+            tuple(float(value) for value in sweep_values),
+            delay=self.eval_float(self._source_delay),
+        )
+        source.configure_list_compliance(self._compliance_values(sweep_values))
+        if self._source_range_mode is SourceRangeMode.FIXED:
+            source.set_fixed_range(self.eval_float(self._source_range))
+        else:
+            source.set_sweep_range_mode(self._source_range_mode.name)
+        source.set_sweep_count(1)
+        source.configure_sweep_complete_srq()
+        source.configure_arm()
+        source.configure_trigger(
+            source="TLIN",
+            direction="SOUR",
+            tlink_in=self._input_tlink,
+            tlink_out=self._output_tlink,
+            output="DEL",
+        )
+
+    def _configure_primary_nanovoltmeter(self, meter: Keithley2182A, count: int) -> None:
+        """Configure the primary 2182A measurement, buffer, and trigger settings."""
+        meter.reset()
+        ascii_only = self._connection_mode is ConnectionMode.VIA_6221_SERIAL or isinstance(
+            meter.transport, (PassThroughGpibTransport, SerialTransport)
+        )
+        meter.set_data_format(KeithleyDataFormat.ASCII if ascii_only else KeithleyDataFormat.SREAL)
+        if not ascii_only:
+            meter.set_byte_order(KeithleyByteOrder.native())
+        meter.set_digits(self._digits)
+        meter.set_nplc(self._nplc)
+        meter.set_line_sync_enabled(self._line_sync)
+        meter.set_autozero_enabled(self._autozero)
+        meter.set_autorange(self._voltage_range <= 0.0)
+        if self._voltage_range > 0.0:
+            meter.set_range(self._voltage_range)
+        filter_enabled = self._filter_type is not DigitalFilterType.OFF
+        meter.set_filter_enabled(filter_enabled)
+        if filter_enabled:
+            meter.set_filter_count(self._filter_count)
+            meter.set_filter_type(self._filter_type.name)
+        meter.set_analog_filter_enabled(self._analog_filter)
+        meter.set_relative_value(self.eval_float(self._relative_value))
+        meter.set_relative_enabled(self._relative_enabled)
+        meter.clear_buffer()
+        meter.set_buffer_size(count)
+        meter.set_buffer_feed_sense()
+        meter.set_buffer_feed_continuous_next()
+        meter.set_trigger_source(NanovoltmeterTriggerSource.EXT)
+        meter.set_trigger_delay(self.eval_float(self._trigger_delay))
+        meter.set_trigger_count(count)
 
     def _configure_nanovoltmeter(
         self,
@@ -1313,40 +1291,26 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 Serialised plugin dict as produced by :meth:`to_json`.
         """
         super()._restore_from_json(data)
+        self._restore_source_settings(data)
+        self._restore_primary_meter_settings(data)
+        self._restore_secondary_meter_settings(data.get("secondary_nanovoltmeter", {}))
+
+    def _restore_source_settings(self, data: dict[str, Any]) -> None:
+        """Restore connection, current-source, and trigger-link settings."""
         self._6221_resource = data.get("resource_6221", self._6221_resource)
         self._2182a_resource = data.get("resource_2182a", self._2182a_resource)
-        mode_str = data.get("connection_mode", self._connection_mode.value)
-        try:
-            self._connection_mode = ConnectionMode(mode_str)
-        except ValueError:
-            self._log.warning(
-                "Unknown connection_mode value %r in saved config; falling back to default (%s).",
-                mode_str,
-                self._connection_mode.value,
-            )
-        comp_mode_str = data.get("compliance_mode", self._compliance_mode.value)
-        try:
-            self._compliance_mode = ComplianceMode(comp_mode_str)
-        except ValueError:
-            self._log.warning(
-                "Unknown compliance_mode value %r in saved config; falling back to default (%s).",
-                comp_mode_str,
-                self._compliance_mode.value,
-            )
-        self._compliance = data.get("compliance", self._compliance)
-        self._compliance_resistance = data.get(
-            "compliance_resistance", self._compliance_resistance
+        self._connection_mode = self._saved_enum(
+            data, "connection_mode", self._connection_mode, ConnectionMode
         )
+        self._compliance_mode = self._saved_enum(
+            data, "compliance_mode", self._compliance_mode, ComplianceMode
+        )
+        self._compliance = data.get("compliance", self._compliance)
+        self._compliance_resistance = data.get("compliance_resistance", self._compliance_resistance)
         self._source_delay = data.get("source_delay", self._source_delay)
-        range_mode_str = data.get("source_range_mode", self._source_range_mode.value)
-        try:
-            self._source_range_mode = SourceRangeMode(range_mode_str)
-        except ValueError:
-            self._log.warning(
-                "Unknown source_range_mode value %r in saved config; falling back to default (%s).",
-                range_mode_str,
-                self._source_range_mode.value,
-            )
+        self._source_range_mode = self._saved_enum(
+            data, "source_range_mode", self._source_range_mode, SourceRangeMode
+        )
         self._source_range = float(data.get("source_range", self._source_range))
         self._differential_mode = bool(data.get("differential_mode", self._differential_mode))
         if self._differential_mode:
@@ -1354,6 +1318,25 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                 data.get("differential_conductance", self._differential_conductance)
             )
             self._delta_current = data.get("delta_current", self._delta_current)
+        self._output_tlink = int(data.get("output_tlink", self._output_tlink))
+        self._input_tlink = int(data.get("input_tlink", self._input_tlink))
+
+    def _saved_enum(self, data: dict[str, Any], key: str, current: Any, enum_type: Any) -> Any:
+        """Return a saved enum member, retaining *current* for an invalid value."""
+        value = data.get(key, current.value)
+        try:
+            return enum_type(value)
+        except ValueError:
+            self._log.warning(
+                "Unknown %s value %r in saved config; falling back to default (%s).",
+                key,
+                value,
+                current.value,
+            )
+            return current
+
+    def _restore_primary_meter_settings(self, data: dict[str, Any]) -> None:
+        """Restore primary 2182A measurement settings."""
         self._nplc = float(data.get("nplc", self._nplc))
         self._voltage_range = float(data.get("voltage_range", self._voltage_range))
         filter_type_str = data.get("filter_type")
@@ -1387,9 +1370,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._relative_enabled = bool(data.get("relative_enabled", self._relative_enabled))
         self._relative_value = data.get("relative_value", self._relative_value)
         self._digits = int(data.get("digits", self._digits))
-        self._output_tlink = int(data.get("output_tlink", self._output_tlink))
-        self._input_tlink = int(data.get("input_tlink", self._input_tlink))
-        secondary = data.get("secondary_nanovoltmeter", {})
+
+    def _restore_secondary_meter_settings(self, secondary: Any) -> None:
+        """Restore the optional secondary nanovoltmeter settings."""
         if not isinstance(secondary, dict):
             self._log.warning("Ignoring invalid secondary_nanovoltmeter configuration.")
             return
@@ -1409,15 +1392,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         self._secondary_prefix = (
             str(secondary.get("prefix", self._secondary_prefix)).strip() or "secondary"
         )
-        trigger_mode = secondary.get("trigger_mode", self._secondary_trigger_mode.value)
-        try:
-            self._secondary_trigger_mode = SecondaryTriggerMode(trigger_mode)
-        except ValueError:
-            self._log.warning(
-                "Unknown secondary trigger_mode value %r; falling back to %s.",
-                trigger_mode,
-                self._secondary_trigger_mode.value,
-            )
+        self._secondary_trigger_mode = self._saved_enum(
+            secondary, "trigger_mode", self._secondary_trigger_mode, SecondaryTriggerMode
+        )
         self._secondary_nplc = float(secondary.get("nplc", self._secondary_nplc))
         self._secondary_voltage_range = float(
             secondary.get("voltage_range", self._secondary_voltage_range)
@@ -1513,40 +1490,26 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         res_2182a.setEnabled(self._connection_mode is ConnectionMode.DIRECT_GPIB)
         res_2182a_label.setEnabled(self._connection_mode is ConnectionMode.DIRECT_GPIB)
 
-        _conn_widgets = (mode_combo, res_6221, res_2182a)
-
-        def _update_conn_widgets_enabled() -> None:
-            """Enable/disable connection controls based on connection status."""
-            disconnected = self._status in (TraceStatus.IDLE, TraceStatus.ERROR)
-            for w in _conn_widgets:
-                w.setEnabled(disconnected)
-            # The 2182A resource selector has the extra DIRECT_GPIB constraint.
-            if disconnected:
-                direct = self._connection_mode is ConnectionMode.DIRECT_GPIB
-                res_2182a.setEnabled(direct)
-                res_2182a_label.setEnabled(direct)
-
-        # Keep connection controls in sync with status changes.
-        self.status_changed.connect(lambda _: _update_conn_widgets_enabled())
-        # Apply initial state.
-        _update_conn_widgets_enabled()
-
-        def _on_mode_changed(index: int) -> None:
-            mode = mode_combo.itemData(index)
-            self._connection_mode = mode
-            direct = mode is ConnectionMode.DIRECT_GPIB
-            res_2182a.setEnabled(direct)
-            res_2182a_label.setEnabled(direct)
-
-        def _on_6221_resource_changed(text: str) -> None:
-            self._6221_resource = text.strip()
-
-        def _on_2182a_resource_changed(text: str) -> None:
-            self._2182a_resource = text.strip()
-
-        mode_combo.currentIndexChanged.connect(_on_mode_changed)
-        res_6221.currentTextChanged.connect(_on_6221_resource_changed)
-        res_2182a.currentTextChanged.connect(_on_2182a_resource_changed)
+        connection_widgets = (mode_combo, res_6221, res_2182a)
+        update_connection_controls = partial(
+            self._update_primary_connection_controls,
+            connection_widgets,
+            res_2182a,
+            res_2182a_label,
+        )
+        self.status_changed.connect(lambda _: update_connection_controls())
+        mode_combo.currentIndexChanged.connect(
+            lambda index: self._set_primary_connection_mode(
+                mode_combo.itemData(index), res_2182a, res_2182a_label
+            )
+        )
+        res_6221.currentTextChanged.connect(
+            lambda text: setattr(self, "_6221_resource", text.strip())
+        )
+        res_2182a.currentTextChanged.connect(
+            lambda text: setattr(self, "_2182a_resource", text.strip())
+        )
+        update_connection_controls()
 
         conn_form.addRow("Connection mode:", mode_combo)
         conn_form.addRow("6221 GPIB resource:", res_6221)
@@ -1588,24 +1551,13 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         compliance_layout.addWidget(compliance_level_label)
         compliance_layout.addWidget(compliance_level_sb)
 
-        def _on_comp_mode_changed(index: int) -> None:
-            mode = comp_mode_combo.itemData(index)
-            self._compliance_mode = mode
-            is_voltage = mode is ComplianceMode.VOLTAGE
-            compliance_level_sb.blockSignals(True)
-            compliance_level_label.setText("Level (V):" if is_voltage else "Level (Ω):")
-            compliance_level_sb.setSuffix("V" if is_voltage else "Ω")
-            compliance_level_sb.setMaximum(105.0 if is_voltage else 1e9)
-            compliance_level_sb.setValue(
-                self._compliance if is_voltage else self._compliance_resistance
+        comp_mode_combo.currentIndexChanged.connect(
+            lambda index: self._set_compliance_mode(
+                comp_mode_combo.itemData(index), compliance_level_label, compliance_level_sb
             )
-            compliance_level_sb.blockSignals(False)
-
-        comp_mode_combo.currentIndexChanged.connect(_on_comp_mode_changed)
-
-        delay_sb = SISpinBox(
-            suffix="s", value=self._source_delay, allow_expressions=True
         )
+
+        delay_sb = SISpinBox(suffix="s", value=self._source_delay, allow_expressions=True)
         delay_sb.setMinimum(1e-3)
         delay_sb.setMaximum(9999.0)
         delay_sb.setToolTip("Settling delay after each source step before triggering the 2182A.")
@@ -1648,38 +1600,22 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         differential_conductance.setObjectName("differential_conductance")
         differential_conductance.setChecked(self._differential_conductance)
         differential_conductance.setEnabled(self._differential_mode)
-        delta_current = SISpinBox(
-            suffix="A", value=self._delta_current, allow_expressions=True
-        )
+        delta_current = SISpinBox(suffix="A", value=self._delta_current, allow_expressions=True)
         delta_current.setObjectName("delta_current")
         delta_current.setMinimum(1e-15)
         delta_current.setMaximum(0.1)
         delta_current.setEnabled(self._differential_mode)
 
-        def _on_differential_mode_toggled(enabled: bool) -> None:
-            self._differential_mode = enabled
-            differential_conductance.setEnabled(enabled)
-            delta_current.setEnabled(enabled)
-
-        def _on_compliance_level_changed(value: float) -> None:
-            if self._compliance_mode is ComplianceMode.VOLTAGE:
-                self._compliance = value
-            else:
-                self._compliance_resistance = value
-
-        def _on_delay_changed(value: float) -> None:
-            self._source_delay = value
-
-        def _on_src_range_changed(index: int) -> None:
-            mode, val = src_range_combo.itemData(index)
-            self._source_range_mode = mode
-            if mode is SourceRangeMode.FIXED:
-                self._source_range = val
-
-        compliance_level_sb.valueChanged.connect(_on_compliance_level_changed)
-        delay_sb.valueChanged.connect(_on_delay_changed)
-        src_range_combo.currentIndexChanged.connect(_on_src_range_changed)
-        differential_enabled.toggled.connect(_on_differential_mode_toggled)
+        compliance_level_sb.valueChanged.connect(self._set_compliance_level)
+        delay_sb.valueChanged.connect(lambda value: setattr(self, "_source_delay", value))
+        src_range_combo.currentIndexChanged.connect(
+            lambda index: self._set_source_range(src_range_combo.itemData(index))
+        )
+        differential_enabled.toggled.connect(
+            lambda enabled: self._set_differential_mode(
+                enabled, differential_conductance, delta_current
+            )
+        )
         differential_conductance.toggled.connect(
             lambda enabled: setattr(self, "_differential_conductance", enabled)
         )
@@ -1733,9 +1669,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         digits_combo.setCurrentIndex(_digits_idx)
         digits_combo.setToolTip("Number of display and data digits for the 2182A.")
 
-        trigger_delay_sb = SISpinBox(
-            suffix="s", value=self._trigger_delay, allow_expressions=True
-        )
+        trigger_delay_sb = SISpinBox(suffix="s", value=self._trigger_delay, allow_expressions=True)
         trigger_delay_sb.setObjectName("trigger_delay")
         trigger_delay_sb.setMinimum(0.0)
         trigger_delay_sb.setMaximum(999999.999)
@@ -1837,39 +1771,26 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         relative_layout.addWidget(QLabel("Level:"))
         relative_layout.addWidget(relative_value_sb)
 
-        def _on_nplc_changed(index: int) -> None:
-            self._nplc = nplc_combo.itemData(index)
-
-        def _on_vrange_changed(value: float) -> None:
-            self._voltage_range = value
-
-        def _on_digits_changed(index: int) -> None:
-            self._digits = digits_combo.itemData(index)
-
-        def _on_filter_type_changed(index: int) -> None:
-            self._filter_type = filter_type_combo.itemData(index)
-            filter_count_sb.setEnabled(self._filter_type is not DigitalFilterType.OFF)
-
-        def _on_filter_count_changed(value: int) -> None:
-            self._filter_count = value
-
-        def _on_analog_filter_toggled(state: bool) -> None:
-            self._analog_filter = state
-
-        def _on_relative_toggled(state: bool) -> None:
-            self._relative_enabled = state
-            relative_value_sb.setEnabled(state)
-
-        nplc_combo.currentIndexChanged.connect(_on_nplc_changed)
-        vrange_combo.valueChanged.connect(_on_vrange_changed)
-        digits_combo.currentIndexChanged.connect(_on_digits_changed)
+        nplc_combo.currentIndexChanged.connect(
+            lambda index: setattr(self, "_nplc", nplc_combo.itemData(index))
+        )
+        vrange_combo.valueChanged.connect(lambda value: setattr(self, "_voltage_range", value))
+        digits_combo.currentIndexChanged.connect(
+            lambda index: setattr(self, "_digits", digits_combo.itemData(index))
+        )
         trigger_delay_sb.valueChanged.connect(lambda value: setattr(self, "_trigger_delay", value))
         autozero_chk.toggled.connect(lambda state: setattr(self, "_autozero", state))
         line_sync_chk.toggled.connect(lambda state: setattr(self, "_line_sync", state))
-        filter_type_combo.currentIndexChanged.connect(_on_filter_type_changed)
-        filter_count_sb.valueChanged.connect(_on_filter_count_changed)
-        analog_filter_chk.toggled.connect(_on_analog_filter_toggled)
-        relative_chk.toggled.connect(_on_relative_toggled)
+        filter_type_combo.currentIndexChanged.connect(
+            lambda index: self._set_primary_filter_type(
+                filter_type_combo.itemData(index), filter_count_sb
+            )
+        )
+        filter_count_sb.valueChanged.connect(lambda value: setattr(self, "_filter_count", value))
+        analog_filter_chk.toggled.connect(lambda state: setattr(self, "_analog_filter", state))
+        relative_chk.toggled.connect(
+            lambda state: self._set_primary_relative_enabled(state, relative_value_sb)
+        )
         relative_value_sb.valueChanged.connect(
             lambda value: setattr(self, "_relative_value", value)
         )
@@ -1904,14 +1825,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             "pulse from the 2182A to advance to the next source point."
         )
 
-        def _on_out_line_changed(value: int) -> None:
-            self._output_tlink = value
-
-        def _on_in_line_changed(value: int) -> None:
-            self._input_tlink = value
-
-        out_line_sb.valueChanged.connect(_on_out_line_changed)
-        in_line_sb.valueChanged.connect(_on_in_line_changed)
+        out_line_sb.valueChanged.connect(lambda value: setattr(self, "_output_tlink", value))
+        in_line_sb.valueChanged.connect(lambda value: setattr(self, "_input_tlink", value))
 
         trigger_lines_row = QWidget()
         trigger_lines_row.setObjectName("trigger_lines_row")
@@ -1942,6 +1857,71 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         pages.addTab(secondary_page, "Secondary nanovoltmeter")
         return pages
 
+    def _update_primary_connection_controls(
+        self,
+        controls: Iterable[QWidget],
+        secondary_resource: QWidget,
+        secondary_label: QWidget,
+    ) -> None:
+        """Apply connection-state and direct-GPIB constraints to primary controls."""
+        disconnected = self._status in (TraceStatus.IDLE, TraceStatus.ERROR)
+        for control in controls:
+            control.setEnabled(disconnected)
+        direct = disconnected and self._connection_mode is ConnectionMode.DIRECT_GPIB
+        secondary_resource.setEnabled(direct)
+        secondary_label.setEnabled(direct)
+
+    def _set_primary_connection_mode(
+        self, mode: ConnectionMode, secondary_resource: QWidget, secondary_label: QWidget
+    ) -> None:
+        """Store the connection mode and update its dependent resource field."""
+        self._connection_mode = mode
+        direct = mode is ConnectionMode.DIRECT_GPIB
+        secondary_resource.setEnabled(direct)
+        secondary_label.setEnabled(direct)
+
+    def _set_compliance_mode(self, mode: ComplianceMode, label: QLabel, level: SISpinBox) -> None:
+        """Switch the shared compliance editor between voltage and resistance."""
+        self._compliance_mode = mode
+        is_voltage = mode is ComplianceMode.VOLTAGE
+        level.blockSignals(True)
+        label.setText("Level (V):" if is_voltage else "Level (Ω):")
+        level.setSuffix("V" if is_voltage else "Ω")
+        level.setMaximum(105.0 if is_voltage else 1e9)
+        level.setValue(self._compliance if is_voltage else self._compliance_resistance)
+        level.blockSignals(False)
+
+    def _set_compliance_level(self, value: float) -> None:
+        """Store a compliance editor value in the active mode's setting."""
+        if self._compliance_mode is ComplianceMode.VOLTAGE:
+            self._compliance = value
+        else:
+            self._compliance_resistance = value
+
+    def _set_source_range(self, selection: tuple[SourceRangeMode, float]) -> None:
+        """Store a source-range combo selection."""
+        self._source_range_mode, value = selection
+        if self._source_range_mode is SourceRangeMode.FIXED:
+            self._source_range = value
+
+    def _set_differential_mode(
+        self, enabled: bool, conductance: QWidget, delta_current: QWidget
+    ) -> None:
+        """Store differential mode and expose its dependent controls."""
+        self._differential_mode = enabled
+        conductance.setEnabled(enabled)
+        delta_current.setEnabled(enabled)
+
+    def _set_primary_filter_type(self, filter_type: DigitalFilterType, count: QSpinBox) -> None:
+        """Store the primary filter type and update the count control."""
+        self._filter_type = filter_type
+        count.setEnabled(filter_type is not DigitalFilterType.OFF)
+
+    def _set_primary_relative_enabled(self, enabled: bool, value: QWidget) -> None:
+        """Store primary relative mode and update its value control."""
+        self._relative_enabled = enabled
+        value.setEnabled(enabled)
+
     def _secondary_config_page(self) -> QWidget:
         """Build the optional secondary-nanovoltmeter settings page."""
         page = QWidget()
@@ -1964,9 +1944,12 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         driver_combo = QComboBox()
         driver_combo.setObjectName("secondary_driver")
-        for driver_id, label in _NANOVOLTMETER_DRIVER_LABELS.items():
-            driver_combo.addItem(label, driver_id)
-        driver_combo.setCurrentIndex(driver_combo.findData(self._secondary_driver))
+        self._populate_combo(
+            driver_combo,
+            _NANOVOLTMETER_DRIVER_LABELS,
+            self._secondary_driver,
+            _NANOVOLTMETER_DRIVER_LABELS.__getitem__,
+        )
 
         resource = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         resource.setObjectName("secondary_resource")
@@ -2005,14 +1988,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         nplc = QComboBox()
         nplc.setObjectName("secondary_nplc")
-        for value in _2182A_NPLC_OPTIONS:
-            nplc.addItem(f"{value:g} PLC", value)
-        nplc.setCurrentIndex(
-            min(
-                range(nplc.count()),
-                key=lambda index: abs(nplc.itemData(index) - self._secondary_nplc),
-            )
-        )
         trigger_delay = SISpinBox(
             suffix="s", value=self._secondary_trigger_delay, allow_expressions=True
         )
@@ -2029,15 +2004,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         voltage_range = SIComboBox(unit="V")
         voltage_range.setObjectName("secondary_voltage_range")
-        voltage_range.addSpecialItem("Auto", 0.0)
-        for value in _2182A_FIXED_RANGES:
-            voltage_range.addValueItem(value)
-        voltage_range.setFloatValue(self._secondary_voltage_range)
         digits = QComboBox()
         digits.setObjectName("secondary_digits")
-        for value in _2182A_DIGITS_OPTIONS:
-            digits.addItem(f"{value}.5 digits", value)
-        digits.setCurrentIndex(digits.findData(self._secondary_digits))
         input_row = QWidget()
         input_layout = QHBoxLayout(input_row)
         input_layout.setContentsMargins(0, 0, 0, 0)
@@ -2060,10 +2028,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
         filter_type = QComboBox()
         filter_type.setObjectName("secondary_filter_type")
-        for filter_mode in Keithley2182A.CAPABILITIES.filter_types:
-            label = filter_mode.title()
-            filter_type.addItem(label, filter_mode)
-        filter_type.setCurrentIndex(filter_type.findData(self._secondary_filter_type))
         filter_count = QSpinBox()
         filter_count.setObjectName("secondary_filter_count")
         filter_count.setRange(1, 100)
@@ -2126,37 +2090,41 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
 
             for combo in (nplc, voltage_range, digits, filter_type):
                 combo.blockSignals(True)
-            nplc.clear()
-            for nplc_option in nplc_options:
-                nplc.addItem(f"{nplc_option:g} PLC", nplc_option)
             if self._secondary_nplc not in nplc_options:
                 self._secondary_nplc = capabilities.default_nplc or nplc_options[0]
-            nplc.setCurrentIndex(nplc.findData(self._secondary_nplc))
-
-            voltage_range.clear()
-            voltage_range.addSpecialItem("Auto", 0.0)
-            for range_option in range_options:
-                voltage_range.addValueItem(range_option)
+            self._populate_combo(
+                nplc,
+                nplc_options,
+                self._secondary_nplc,
+                lambda value: f"{value:g} PLC",
+            )
             if self._secondary_voltage_range not in (0.0, *range_options):
                 self._secondary_voltage_range = 0.0
-            voltage_range.setFloatValue(self._secondary_voltage_range)
-
-            digits.clear()
-            for digit_option in digit_options:
-                digits.addItem(f"{digit_option}.5 digits", digit_option)
+            self._populate_combo(
+                voltage_range,
+                (0.0, *range_options),
+                self._secondary_voltage_range,
+                lambda value: "Auto" if value == 0.0 else SIComboBox.format_si(value, "V"),
+            )
             if self._secondary_digits not in digit_options:
                 self._secondary_digits = capabilities.default_digits or digit_options[-1]
-            digits.setCurrentIndex(digits.findData(self._secondary_digits))
-
-            filter_type.clear()
-            for filter_label, filter_option in filter_options:
-                filter_type.addItem(filter_label, filter_option)
+            self._populate_combo(
+                digits,
+                digit_options,
+                self._secondary_digits,
+                lambda value: f"{value}.5 digits",
+            )
             supported_filters = tuple(filter_option for _, filter_option in filter_options)
             if self._secondary_filter_type not in supported_filters:
                 self._secondary_filter_type = (
                     capabilities.default_filter_type or supported_filters[0]
                 )
-            filter_type.setCurrentIndex(filter_type.findData(self._secondary_filter_type))
+            self._populate_combo(
+                filter_type,
+                supported_filters,
+                self._secondary_filter_type,
+                str.title,
+            )
             for combo in (nplc, voltage_range, digits, filter_type):
                 combo.blockSignals(False)
 
@@ -2225,20 +2193,40 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             lambda value: setattr(self, "_secondary_relative_value", value)
         )
         self.status_changed.connect(lambda _: update_connection_controls())
-        for signal in (
-            enabled.toggled,
-            trigger_mode.currentIndexChanged,
-            nplc.currentIndexChanged,
-            trigger_delay.valueChanged,
-            filter_type.currentIndexChanged,
-            filter_count.valueChanged,
-            analog_filter.toggled,
-        ):
-            signal.connect(lambda _: self._update_secondary_timing_warning(page))
+        self._connect_secondary_timing_signals(
+            page,
+            (
+                enabled.toggled,
+                trigger_mode.currentIndexChanged,
+                nplc.currentIndexChanged,
+                trigger_delay.valueChanged,
+                filter_type.currentIndexChanged,
+                filter_count.valueChanged,
+                analog_filter.toggled,
+            ),
+        )
         update_connection_controls()
         apply_driver_options()
         self._update_secondary_timing_warning(page)
         return page
+
+    @staticmethod
+    def _populate_combo(
+        combo: QComboBox,
+        values: Iterable[Any],
+        selected: Any,
+        label_for: Callable[[Any], str],
+    ) -> None:
+        """Replace a combo's value-labelled entries and restore its selection."""
+        combo.clear()
+        for value in values:
+            combo.addItem(label_for(value), value)
+        combo.setCurrentIndex(combo.findData(selected))
+
+    def _connect_secondary_timing_signals(self, page: QWidget, signals: Iterable[Any]) -> None:
+        """Refresh the timing warning whenever an influencing control changes."""
+        for signal in signals:
+            signal.connect(lambda _: self._update_secondary_timing_warning(page))
 
     def _update_secondary_timing_warning(self, page: QWidget) -> None:
         """Refresh the parallel-trigger overrun warning on the settings page."""

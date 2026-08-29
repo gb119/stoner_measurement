@@ -47,11 +47,18 @@ These changes require Codacy reanalysis before their remote findings clear:
   grouping in the dock panel;
 - separated round-dial custom-label, evenly-spaced, and endpoint-preserving
   candidate selection.
+- split the Keithley 6221/2182A and Keithley 2400 configuration paths into
+  sweep preparation, compliance, meter setup, and trigger-routing helpers;
+- split Multi-SR830 validation into source, threshold, per-lock-in, and
+  cross-lock-in checks, and extracted the lock-in editor's stateful callbacks;
+- shared capability-driven combo population across the optional
+  nanovoltmeter configuration pages.
 
 If every analyzer accepts the scoped suppressions, this tranche should remove
 all 4 Error findings, all 5 High findings, and all 6 Info findings, plus 11 of
-the Warning findings. The expected remainder is 17 warnings: 16 complexity
-findings and the Agentlinter advisory.
+the Warning findings. Together with the later production-plugin refactors, the
+expected remainder is 9 warnings: 8 test-only complexity findings and the
+Agentlinter advisory.
 
 ## Prioritised Remaining Work
 
@@ -69,7 +76,7 @@ and update helpers. Local McCabe checks no longer report any of them at the
 Codacy threshold, and focused offscreen Qt tests cover the preserved behaviour.
 Codacy reanalysis is still required to clear the remote findings.
 
-### P2: Hardware trace plugins
+### Completed P2: Hardware trace plugins
 
 - Keithley 6221/2182A: complexities 16, 18, 24, and 36.
 - Keithley 6221/Multi-SR830: complexities 24 and 40.
@@ -77,6 +84,11 @@ Codacy reanalysis is still required to clear the remote findings.
 
 Preserve configuration ordering, restoration, trigger, and protocol boundaries.
 Unit tests reduce regression risk but do not replace live instrument validation.
+
+The configuration and UI methods were split along those boundaries. Local
+McCabe checks no longer report any of the eight methods at the Codacy threshold.
+Focused fake-instrument and offscreen Qt coverage passes; live instrument
+validation remains outstanding.
 
 ### P3: Test helpers and scenarios
 

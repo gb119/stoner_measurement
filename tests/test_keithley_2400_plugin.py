@@ -14,6 +14,7 @@ from stoner_measurement.plugins.trace.keithley_2400 import (
     ConnectionMode,
     RangeMode,
     TerminalMode,
+    TriggerRouting,
 )
 
 
@@ -128,7 +129,10 @@ class TestReportedValues:
         assert trace.units["Resistance"] == "Ω"
         assert trace.units["Power"] == "W"
         statistic_units = plugin.reported_value_units()
-        assert statistic_units[f"{plugin.instance_name}:IV Resistance std"] == trace.units["Resistance"]
+        assert (
+            statistic_units[f"{plugin.instance_name}:IV Resistance std"]
+            == trace.units["Resistance"]
+        )
         assert statistic_units[f"{plugin.instance_name}:IV Power mean"] == trace.units["Power"]
 
 
@@ -239,6 +243,54 @@ class TestConfigureComplianceModes:
         plugin.configure()
 
         smu.enable_output.assert_called_once_with(False)
+
+
+class TestTriggerRouting:
+    """The extracted routing helpers should emit compact, explicit SCPI sequences."""
+
+    @pytest.mark.parametrize(
+        ("routing", "commands"),
+        [
+            (TriggerRouting.IMMEDIATE, [":ARM:SOUR IMM"]),
+            (TriggerRouting.BUS, [":ARM:SOUR BUS"]),
+            (
+                TriggerRouting.EXTERNAL,
+                [":ARM:SOUR TLIN", ":ARM:TCON:DIR ACC", ":ARM:TCON:ILIN 1"],
+            ),
+            (
+                TriggerRouting.TRIGGER_LINK,
+                [":ARM:SOUR TLIN", ":ARM:TCON:DIR ACC", ":ARM:TCON:ILIN 1"],
+            ),
+            (TriggerRouting.TIMER, [":ARM:SOUR TIM", ":ARM:TIM 0.1"]),
+        ],
+    )
+    def test_arm_routing_commands(self, routing, commands):
+        plugin = _make_plugin()
+        plugin._trigger_routing = routing
+        smu = MagicMock()
+
+        plugin._configure_arm_routing(smu)
+
+        assert [invocation.args[0] for invocation in smu.write.call_args_list] == commands
+
+    @pytest.mark.parametrize(
+        ("enabled", "commands"),
+        [
+            (False, [":TRIG:TCON:OUTP NONE"]),
+            (
+                True,
+                [":TRIG:TCON:DIR SOUR", ":TRIG:TCON:OLIN 2", ":TRIG:TCON:OUTP DEL"],
+            ),
+        ],
+    )
+    def test_trigger_output_commands(self, enabled, commands):
+        plugin = _make_plugin()
+        plugin._enable_trigger_out = enabled
+        smu = MagicMock()
+
+        plugin._configure_trigger_output(smu)
+
+        assert [invocation.args[0] for invocation in smu.write.call_args_list] == commands
 
 
 class TestExecuteLifecycle:

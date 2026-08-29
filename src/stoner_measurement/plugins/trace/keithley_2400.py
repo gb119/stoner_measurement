@@ -17,6 +17,7 @@ from __future__ import annotations
 import enum
 import math
 import time
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import numpy as np
@@ -463,160 +464,156 @@ class Keithley2400SweepPlugin(TracePlugin):
                 If the scan generator produces no points or the selected
                 compliance mode cannot be resolved for the generated sweep.
         """
-        if self._smu is None:
-            raise RuntimeError("Not connected — call connect() before configure().")
+        smu = self._connected_smu()
         if self._secondary_enabled and self._secondary_nanovoltmeter is None:
             raise RuntimeError("Secondary nanovoltmeter is enabled but not connected.")
 
         self._set_status(TraceStatus.CONFIGURING)
         try:
-            compliance = self.eval_float(self._compliance)
-            compliance_resistance = self.eval_float(self._compliance_resistance)
-            source_delay = self.eval_float(self._source_delay)
-            trigger_delay = self.eval_float(self._trigger_delay)
-            delta_current = self.eval_float(self._delta_current)
-            source_range = self.eval_float(self._source_range)
-            sense_range = self.eval_float(self._sense_range)
-            timer_interval = self.eval_float(self._timer_interval)
-            nominal_values = tuple(float(v) for v in self.scan_generator.generate())
-            if not nominal_values:
-                raise ValueError("Scan generator produced no points.")
-            if self._differential_mode and self._source_mode is not SweepSourceMode.CURRENT:
-                raise ValueError("Differential mode requires a current-source sweep.")
-
-            self._nominal_sweep_values = nominal_values
-            self._sweep_values = (
-                tuple(modulate_current_sweep(np.asarray(nominal_values), delta_current))
-                if self._differential_mode
-                else nominal_values
-            )
-            values = self._sweep_values
-            n_points = len(values)
-
-            self._smu.reset()
-            self._smu.check_error_queue(raise_on_error=False)
-            instrument_mode = (
-                SourceMode.VOLT if self._source_mode is SweepSourceMode.VOLTAGE else SourceMode.CURR
-            )
-            self._smu.enable_output(False)
-            self._smu.set_source_mode(instrument_mode)
-            self._smu.set_nplc(self._nplc)
-            self._smu.set_terminal_selection(
-                TerminalSelection.FRONT
-                if self._terminal_mode is TerminalMode.FRONT
-                else TerminalSelection.REAR
-            )
-            self._smu.set_remote_sense(self._connection_mode is ConnectionMode.FOUR_WIRE)
-            self._smu.set_source_autorange(
-                self._source_range_mode is RangeMode.AUTO, instrument_mode
-            )
-            if self._source_range_mode is RangeMode.FIXED:
-                self._smu.set_source_range(source_range, instrument_mode)
-            self._smu.set_sense_autorange(self._sense_range_mode is RangeMode.AUTO, instrument_mode)
-            if self._sense_range_mode is RangeMode.FIXED:
-                self._smu.set_sense_range(sense_range, instrument_mode)
-            self._smu.set_filter_enabled(self._filter_enabled, instrument_mode)
-            self._smu.set_filter_count(self._filter_count, instrument_mode)
-            self._smu.set_filter_type(self._filter_type, instrument_mode)
-            self._smu.set_median_filter_enabled(self._median_filter_enabled, instrument_mode)
-            self._smu.reset_timestamp()
-            self._smu.configure_source_sweep(
-                SourceSweepConfiguration(
-                    spacing=SweepSpacing.LIST,
-                    values=values,
-                    delay=source_delay,
-                )
-            )
-            if self._compliance_mode is ComplianceMode.RESISTANCE:
-                if compliance_resistance <= 0.0:
-                    raise ValueError("Compliance resistance must be positive.")
-                if self._source_mode is SweepSourceMode.CURRENT:
-                    compliance_limit = (
-                        max(abs(float(v)) for v in values) * compliance_resistance
-                    )
-                else:
-                    min_abs_voltage = min(
-                        abs(float(v))
-                        for v in values
-                        if not math.isclose(float(v), 0.0, abs_tol=1e-30)
-                    )
-                    compliance_limit = min_abs_voltage / compliance_resistance
-                self._smu.set_compliance(compliance_limit)
-            else:
-                self._smu.set_compliance(compliance)
-            self._smu.configure_buffer(n_points, elements=_BUFFER_ELEMENTS)
-
+            values = self._prepare_sweep_values()
+            self._configure_smu_measurement(smu, values)
             if self._secondary_enabled:
                 assert self._secondary_nanovoltmeter is not None
-                self._configure_secondary_nanovoltmeter(self._secondary_nanovoltmeter, n_points)
-
-            trigger_source = (
-                TriggerSource.TLIN
-                if self._secondary_enabled
-                else {
-                    TriggerRouting.IMMEDIATE: TriggerSource.IMM,
-                    TriggerRouting.BUS: TriggerSource.IMM,
-                    TriggerRouting.EXTERNAL: TriggerSource.IMM,
-                    TriggerRouting.TRIGGER_LINK: TriggerSource.TLIN,
-                    TriggerRouting.TIMER: TriggerSource.IMM,
-                }[self._trigger_routing]
-            )
-
-            trigger_count = (
-                n_points
-                if self._secondary_enabled
-                else self._trigger_count_override
-                if self._trigger_count_override > 0
-                else n_points
-            )
-            self._smu.configure_trigger_model(
-                TriggerModelConfiguration(
-                    trigger_source=trigger_source,
-                    trigger_count=trigger_count,
-                    trigger_delay=trigger_delay,
-                    arm_source=TriggerSource.IMM,
-                    arm_count=1 if self._secondary_enabled else self._arm_count,
-                )
-            )
-
-            if self._secondary_enabled:
-                self._smu.write(":ARM:SOUR IMM")
-                self._smu.configure_trigger_link_source_handshake(
-                    input_line=self._trigger_in_line,
-                    output_line=self._trigger_out_line,
-                )
-            elif self._trigger_routing is TriggerRouting.BUS:
-                self._smu.write(":ARM:SOUR BUS")
-            elif self._trigger_routing is TriggerRouting.EXTERNAL:
-                self._smu.write(":ARM:SOUR TLIN")
-                self._smu.write(":ARM:TCON:DIR ACC")
-                self._smu.write(f":ARM:TCON:ILIN {self._trigger_in_line}")
-            elif self._trigger_routing is TriggerRouting.TRIGGER_LINK:
-                self._smu.write(":ARM:SOUR TLIN")
-                self._smu.write(":ARM:TCON:DIR ACC")
-                self._smu.write(f":ARM:TCON:ILIN {self._trigger_in_line}")
-            elif self._trigger_routing is TriggerRouting.TIMER:
-                self._smu.write(":ARM:SOUR TIM")
-                self._smu.write(f":ARM:TIM {timer_interval}")
-            else:
-                self._smu.write(":ARM:SOUR IMM")
-
-            if not self._secondary_enabled:
-                if self._enable_trigger_out:
-                    self._smu.write(":TRIG:TCON:DIR SOUR")
-                    self._smu.write(f":TRIG:TCON:OLIN {self._trigger_out_line}")
-                    self._smu.write(":TRIG:TCON:OUTP DEL")
-                else:
-                    self._smu.write(":TRIG:TCON:OUTP NONE")
-            self._smu.configure_buffer_full_srq()
-            self._smu.check_error_queue()
+                self._configure_secondary_nanovoltmeter(self._secondary_nanovoltmeter, len(values))
+            self._configure_smu_triggering(smu, len(values))
+            smu.configure_buffer_full_srq()
+            smu.check_error_queue()
             if self._enable_output_during_measurement:
-                self._smu.enable_output(True)
+                smu.enable_output(True)
 
         except Exception:
             self._set_status(TraceStatus.ERROR)
             raise
         self._set_status(TraceStatus.IDLE)
+
+    def _connected_smu(self) -> Keithley2400:
+        """Return the connected source meter or raise a clear error."""
+        if self._smu is None:
+            raise RuntimeError("Not connected — call connect() before configure().")
+        return self._smu
+
+    def _prepare_sweep_values(self) -> tuple[float, ...]:
+        """Generate, validate, and retain the physical source values."""
+        nominal_values = tuple(float(value) for value in self.scan_generator.generate())
+        if not nominal_values:
+            raise ValueError("Scan generator produced no points.")
+        if self._differential_mode and self._source_mode is not SweepSourceMode.CURRENT:
+            raise ValueError("Differential mode requires a current-source sweep.")
+        self._nominal_sweep_values = nominal_values
+        self._sweep_values = (
+            tuple(
+                modulate_current_sweep(
+                    np.asarray(nominal_values), self.eval_float(self._delta_current)
+                )
+            )
+            if self._differential_mode
+            else nominal_values
+        )
+        return self._sweep_values
+
+    def _configure_smu_measurement(self, smu: Keithley2400, values: tuple[float, ...]) -> None:
+        """Configure source, sense, filtering, sweep, compliance, and buffer."""
+        instrument_mode = (
+            SourceMode.VOLT if self._source_mode is SweepSourceMode.VOLTAGE else SourceMode.CURR
+        )
+        smu.reset()
+        smu.check_error_queue(raise_on_error=False)
+        smu.enable_output(False)
+        smu.set_source_mode(instrument_mode)
+        smu.set_nplc(self._nplc)
+        smu.set_terminal_selection(
+            TerminalSelection.FRONT
+            if self._terminal_mode is TerminalMode.FRONT
+            else TerminalSelection.REAR
+        )
+        smu.set_remote_sense(self._connection_mode is ConnectionMode.FOUR_WIRE)
+        smu.set_source_autorange(self._source_range_mode is RangeMode.AUTO, instrument_mode)
+        if self._source_range_mode is RangeMode.FIXED:
+            smu.set_source_range(self.eval_float(self._source_range), instrument_mode)
+        smu.set_sense_autorange(self._sense_range_mode is RangeMode.AUTO, instrument_mode)
+        if self._sense_range_mode is RangeMode.FIXED:
+            smu.set_sense_range(self.eval_float(self._sense_range), instrument_mode)
+        smu.set_filter_enabled(self._filter_enabled, instrument_mode)
+        smu.set_filter_count(self._filter_count, instrument_mode)
+        smu.set_filter_type(self._filter_type, instrument_mode)
+        smu.set_median_filter_enabled(self._median_filter_enabled, instrument_mode)
+        smu.reset_timestamp()
+        smu.configure_source_sweep(
+            SourceSweepConfiguration(
+                spacing=SweepSpacing.LIST,
+                values=values,
+                delay=self.eval_float(self._source_delay),
+            )
+        )
+        smu.set_compliance(self._compliance_limit(values))
+        smu.configure_buffer(len(values), elements=_BUFFER_ELEMENTS)
+
+    def _compliance_limit(self, values: tuple[float, ...]) -> float:
+        """Resolve fixed or resistance-derived compliance for *values*."""
+        if self._compliance_mode is ComplianceMode.FIXED:
+            return self.eval_float(self._compliance)
+        resistance = self.eval_float(self._compliance_resistance)
+        if resistance <= 0.0:
+            raise ValueError("Compliance resistance must be positive.")
+        if self._source_mode is SweepSourceMode.CURRENT:
+            return max(abs(value) for value in values) * resistance
+        minimum_voltage = min(
+            abs(value) for value in values if not math.isclose(value, 0.0, abs_tol=1e-30)
+        )
+        return minimum_voltage / resistance
+
+    def _configure_smu_triggering(self, smu: Keithley2400, point_count: int) -> None:
+        """Configure the trigger model, arm routing, and optional trigger output."""
+        trigger_source = (
+            TriggerSource.TLIN
+            if self._secondary_enabled or self._trigger_routing is TriggerRouting.TRIGGER_LINK
+            else TriggerSource.IMM
+        )
+        trigger_count = (
+            point_count
+            if self._secondary_enabled or self._trigger_count_override <= 0
+            else self._trigger_count_override
+        )
+        smu.configure_trigger_model(
+            TriggerModelConfiguration(
+                trigger_source=trigger_source,
+                trigger_count=trigger_count,
+                trigger_delay=self.eval_float(self._trigger_delay),
+                arm_source=TriggerSource.IMM,
+                arm_count=1 if self._secondary_enabled else self._arm_count,
+            )
+        )
+        self._configure_arm_routing(smu)
+        if not self._secondary_enabled:
+            self._configure_trigger_output(smu)
+
+    def _configure_arm_routing(self, smu: Keithley2400) -> None:
+        """Apply the selected arm source or secondary-meter handshake."""
+        if self._secondary_enabled:
+            smu.write(":ARM:SOUR IMM")
+            smu.configure_trigger_link_source_handshake(
+                input_line=self._trigger_in_line,
+                output_line=self._trigger_out_line,
+            )
+        elif self._trigger_routing in {TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK}:
+            smu.write(":ARM:SOUR TLIN")
+            smu.write(":ARM:TCON:DIR ACC")
+            smu.write(f":ARM:TCON:ILIN {self._trigger_in_line}")
+        elif self._trigger_routing is TriggerRouting.TIMER:
+            smu.write(":ARM:SOUR TIM")
+            smu.write(f":ARM:TIM {self.eval_float(self._timer_interval)}")
+        else:
+            source = "BUS" if self._trigger_routing is TriggerRouting.BUS else "IMM"
+            smu.write(f":ARM:SOUR {source}")
+
+    def _configure_trigger_output(self, smu: Keithley2400) -> None:
+        """Enable or explicitly disable the trigger-link output pulse."""
+        if not self._enable_trigger_out:
+            smu.write(":TRIG:TCON:OUTP NONE")
+            return
+        smu.write(":TRIG:TCON:DIR SOUR")
+        smu.write(f":TRIG:TCON:OLIN {self._trigger_out_line}")
+        smu.write(":TRIG:TCON:OUTP DEL")
 
     def _configure_secondary_nanovoltmeter(self, meter: Nanovoltmeter, count: int) -> None:
         """Configure a capability-described meter for buffered external triggers."""
@@ -1017,9 +1014,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             str(data.get("compliance_mode", self._compliance_mode.value))
         )
         self._compliance = data.get("compliance", self._compliance)
-        self._compliance_resistance = data.get(
-            "compliance_resistance", self._compliance_resistance
-        )
+        self._compliance_resistance = data.get("compliance_resistance", self._compliance_resistance)
         self._nplc = float(data.get("nplc", self._nplc))
         self._source_delay = data.get("source_delay", self._source_delay)
         self._trigger_delay = data.get("trigger_delay", self._trigger_delay)
@@ -1216,16 +1211,12 @@ class Keithley2400SweepPlugin(TracePlugin):
             lambda idx: setattr(self, "_nplc", float(nplc_combo.itemData(idx)))
         )
 
-        source_delay_sb = SISpinBox(
-            suffix="s", value=self._source_delay, allow_expressions=True
-        )
+        source_delay_sb = SISpinBox(suffix="s", value=self._source_delay, allow_expressions=True)
         source_delay_sb.setMinimum(0.0)
         source_delay_sb.setMaximum(9999.0)
         source_delay_sb.valueChanged.connect(lambda value: setattr(self, "_source_delay", value))
 
-        trigger_delay_sb = SISpinBox(
-            suffix="s", value=self._trigger_delay, allow_expressions=True
-        )
+        trigger_delay_sb = SISpinBox(suffix="s", value=self._trigger_delay, allow_expressions=True)
         trigger_delay_sb.setMinimum(0.0)
         trigger_delay_sb.setMaximum(9999.0)
         trigger_delay_sb.valueChanged.connect(lambda value: setattr(self, "_trigger_delay", value))
@@ -1246,9 +1237,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         differential_conductance.setObjectName("differential_conductance")
         differential_conductance.setChecked(self._differential_conductance)
         differential_conductance.setEnabled(self._differential_mode)
-        delta_current = SISpinBox(
-            suffix="A", value=self._delta_current, allow_expressions=True
-        )
+        delta_current = SISpinBox(suffix="A", value=self._delta_current, allow_expressions=True)
         delta_current.setObjectName("delta_current")
         delta_current.setMinimum(1e-15)
         delta_current.setMaximum(10.0)
@@ -1356,9 +1345,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         arm_count_sb.setMaximum(100000)
         arm_count_sb.setValue(self._arm_count)
 
-        timer_sb = SISpinBox(
-            suffix="s", value=self._timer_interval, allow_expressions=True
-        )
+        timer_sb = SISpinBox(suffix="s", value=self._timer_interval, allow_expressions=True)
         timer_sb.setMinimum(1e-6)
         timer_sb.setMaximum(9999.0)
         timer_sb.setEnabled(self._trigger_routing is TriggerRouting.TIMER)
@@ -1514,9 +1501,12 @@ class Keithley2400SweepPlugin(TracePlugin):
 
         driver = QComboBox()
         driver.setObjectName("secondary_driver")
-        for key, label in NANOVOLTMETER_DRIVER_LABELS.items():
-            driver.addItem(label, key)
-        driver.setCurrentIndex(driver.findData(self._secondary_driver))
+        self._populate_combo(
+            driver,
+            NANOVOLTMETER_DRIVER_LABELS,
+            self._secondary_driver,
+            NANOVOLTMETER_DRIVER_LABELS.__getitem__,
+        )
 
         resource = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         resource.setObjectName("secondary_resource")
@@ -1621,41 +1611,45 @@ class Keithley2400SweepPlugin(TracePlugin):
             capabilities = NANOVOLTMETER_DRIVERS[self._secondary_driver].CAPABILITIES
             for combo in (nplc, voltage_range, digits, filter_type):
                 combo.blockSignals(True)
-            nplc.clear()
-            for nplc_value in capabilities.nplc_values:
-                nplc.addItem(f"{nplc_value:g} PLC", nplc_value)
             if self._secondary_nplc not in capabilities.nplc_values:
                 self._secondary_nplc = capabilities.default_nplc or capabilities.nplc_values[0]
-            nplc.setCurrentIndex(nplc.findData(self._secondary_nplc))
-
-            voltage_range.clear()
-            voltage_range.addItem("Auto", 0.0)
-            for range_value in capabilities.fixed_voltage_ranges:
-                voltage_range.addItem(f"{range_value:g} V", range_value)
+            self._populate_combo(
+                nplc,
+                capabilities.nplc_values,
+                self._secondary_nplc,
+                lambda value: f"{value:g} PLC",
+            )
             if self._secondary_voltage_range not in (
                 0.0,
                 *capabilities.fixed_voltage_ranges,
             ):
                 self._secondary_voltage_range = 0.0
-            voltage_range.setCurrentIndex(voltage_range.findData(self._secondary_voltage_range))
-
-            digits.clear()
-            for digit_value in capabilities.digit_values:
-                digits.addItem(f"{digit_value}.5 digits", digit_value)
+            self._populate_combo(
+                voltage_range,
+                (0.0, *capabilities.fixed_voltage_ranges),
+                self._secondary_voltage_range,
+                lambda value: "Auto" if value == 0.0 else f"{value:g} V",
+            )
             if self._secondary_digits not in capabilities.digit_values:
                 self._secondary_digits = (
                     capabilities.default_digits or capabilities.digit_values[-1]
                 )
-            digits.setCurrentIndex(digits.findData(self._secondary_digits))
-
-            filter_type.clear()
-            for filter_value in capabilities.filter_types:
-                filter_type.addItem(filter_value.title(), filter_value)
+            self._populate_combo(
+                digits,
+                capabilities.digit_values,
+                self._secondary_digits,
+                lambda value: f"{value}.5 digits",
+            )
             if self._secondary_filter_type not in capabilities.filter_types:
                 self._secondary_filter_type = (
                     capabilities.default_filter_type or capabilities.filter_types[0]
                 )
-            filter_type.setCurrentIndex(filter_type.findData(self._secondary_filter_type))
+            self._populate_combo(
+                filter_type,
+                capabilities.filter_types,
+                self._secondary_filter_type,
+                str.title,
+            )
             for combo in (nplc, voltage_range, digits, filter_type):
                 combo.blockSignals(False)
 
@@ -1734,6 +1728,19 @@ class Keithley2400SweepPlugin(TracePlugin):
         set_enabled(self._secondary_enabled)
         apply_capabilities()
         return page
+
+    @staticmethod
+    def _populate_combo(
+        combo: QComboBox,
+        values: Iterable[Any],
+        selected: Any,
+        label_for: Callable[[Any], str],
+    ) -> None:
+        """Replace a combo's value-labelled entries and restore its selection."""
+        combo.clear()
+        for value in values:
+            combo.addItem(label_for(value), value)
+        combo.setCurrentIndex(combo.findData(selected))
 
     def _about_html(self) -> str:
         """Return HTML for the About tab."""

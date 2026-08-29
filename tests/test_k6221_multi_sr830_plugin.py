@@ -329,7 +329,9 @@ class TestUi:
         assert table.minimumHeight() == expected_height
         assert table.maximumHeight() == expected_height
         assert lockins_page is not None
-        assert lockins_page.layout().itemAt(lockins_page.layout().count() - 1).spacerItem() is not None
+        assert (
+            lockins_page.layout().itemAt(lockins_page.layout().count() - 1).spacerItem() is not None
+        )
 
     def test_offset_compensation_control_explains_software_only_correction(self, qapp):
         plugin = _make_plugin()
@@ -347,7 +349,9 @@ class TestUi:
         settings = plugin.config_tabs()[1][1]
         table = settings.findChildren(QTableWidget)[0]
         checkbox = next(
-            control for control in settings.findChildren(QCheckBox) if control.text() == "Add offset to readings"
+            control
+            for control in settings.findChildren(QCheckBox)
+            if control.text() == "Add offset to readings"
         )
         offset_spin = table.cellWidget(_row_with_label(table, "Offset (%)"), 0)
 
@@ -426,7 +430,11 @@ class TestUi:
         plugin = _make_plugin()
         settings = plugin.config_tabs()[1][1]
         table = settings.findChildren(QTableWidget)[0]
-        read_button = next(button for button in settings.findChildren(QPushButton) if button.text() == "Read Lockin")
+        read_button = next(
+            button
+            for button in settings.findChildren(QPushButton)
+            if button.text() == "Read Lockin"
+        )
         plugin.read_temporary_instrument_settings = MagicMock(
             return_value=(
                 {"amplitude": 2e-3, "offset": 1e-4, "frequency": 123.0},
@@ -1141,22 +1149,83 @@ class TestGpibTrigger:
 
 
 class TestValidation:
-    def test_invalid_harmonic_raises(self, qapp):
+    @pytest.mark.parametrize(
+        ("attribute", "value", "message"),
+        [
+            ("_6221_resource", " ", "6221 resource"),
+            ("_waveform_amplitude", -1.0, "amplitude"),
+            ("_waveform_frequency", 0.0, "frequency"),
+            ("_phase_marker_tlink", 0, "trigger-link"),
+            ("_read_rate_multiple", -1.0, "cooldown"),
+            ("_auto_sensitivity_low", -0.1, "low threshold"),
+            ("_auto_sensitivity_high", 1.1, "high threshold"),
+            ("_filter_slope", 1, "Filter slope"),
+            ("_time_constant", -1.0, "Time constant"),
+            ("_source_range_mode", "INVALID", "range mode"),
+        ],
+    )
+    def test_invalid_common_setting_raises(self, qapp, attribute, value, message):
         plugin = _make_plugin()
-        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR", harmonic=0)]
-        plugin._k6221 = MagicMock()
-        plugin._lockins = [MagicMock()]
-        with pytest.raises(ValueError, match="harmonic"):
-            plugin.configure()
+        setattr(plugin, attribute, value)
 
-    def test_invalid_source_range_mode_raises(self, qapp):
+        with pytest.raises(ValueError, match=message):
+            plugin._validate_configuration()
+
+    def test_auto_sensitivity_thresholds_must_be_ordered(self, qapp):
         plugin = _make_plugin()
-        plugin._source_range_mode = "INVALID"
-        plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
-        plugin._k6221 = MagicMock()
-        plugin._lockins = [MagicMock()]
-        with pytest.raises(ValueError, match="range mode"):
-            plugin.configure()
+        plugin._auto_sensitivity_low = 0.8
+        plugin._auto_sensitivity_high = 0.2
+
+        with pytest.raises(ValueError, match="lower than"):
+            plugin._validate_configuration()
+
+    @pytest.mark.parametrize(
+        ("overrides", "message"),
+        [
+            ({"label": " "}, "non-empty label"),
+            ({"resource": " "}, "resource string"),
+            ({"sensitivity": -1.0}, "sensitivity"),
+            ({"outputs": ()}, "between 1 and 4 outputs"),
+            ({"outputs": (LockInOutput.X, LockInOutput.X)}, "outputs must be unique"),
+            ({"harmonic": 0}, "harmonic"),
+        ],
+    )
+    def test_invalid_lockin_entry_raises(self, qapp, overrides, message):
+        plugin = _make_plugin()
+        settings = {"label": "A", "resource": "GPIB0::8::INSTR", **overrides}
+        plugin._lockin_entries = [LockInEntry(**settings)]
+
+        with pytest.raises(ValueError, match=message):
+            plugin._validate_configuration()
+
+    def test_at_least_one_lockin_is_required(self, qapp):
+        plugin = _make_plugin()
+        plugin._lockin_entries = []
+
+        with pytest.raises(ValueError, match="At least one"):
+            plugin._validate_configuration()
+
+    @pytest.mark.parametrize(
+        ("second_entry", "message"),
+        [
+            (LockInEntry(label="A", resource="GPIB0::9::INSTR"), "label must be unique"),
+            (LockInEntry(label="B", resource="GPIB0::8::INSTR"), "resource must be unique"),
+        ],
+    )
+    def test_lockin_identity_must_be_unique(self, qapp, second_entry, message):
+        plugin = _make_plugin()
+        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR")]
+        plugin._lockin_entries.append(second_entry)
+
+        with pytest.raises(ValueError, match=message):
+            plugin._validate_configuration()
+
+    def test_6221_and_lockin_resources_must_differ(self, qapp):
+        plugin = _make_plugin()
+        plugin._lockin_entries[0].resource = plugin._6221_resource
+
+        with pytest.raises(ValueError, match="conflicts"):
+            plugin._validate_configuration()
 
 
 class TestConnect:

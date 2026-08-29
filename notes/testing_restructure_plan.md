@@ -933,3 +933,22 @@ coverage json `
 Use the context data and JUnit timings together when proposing test
 consolidation. A high test count or overlapping line coverage alone is not
 enough evidence to remove distinct branch, error-path, or lifecycle contracts.
+
+## Coverage-Guided Hardware Plugin Maintenance
+
+- Used the retained PyQt6/Python 3.14 context database and all four JUnit
+  reports to distinguish runtime hotspots from merely numerous tests.
+- Patched the Keithley 6221 driver's real settling delay only in its
+  transport-isolated unit module; its 38 tests retain their command assertions
+  without spending roughly five seconds sleeping.
+- Replaced the two narrow Multi-SR830 validation scenarios with parameterized
+  common-setting, per-lock-in, and uniqueness contracts covering the extracted
+  validation helpers.
+- Added a compact parameterized Keithley 2400 routing table covering immediate,
+  bus, external, trigger-link, timer, and trigger-output command sequences.
+- Kept application and Qt lifecycle tests isolated; coverage overlap was not
+  used as evidence to share live application instances or remove lifecycle
+  contracts.
+- Verified the changed files with Ruff formatting/linting and local McCabe
+  checks at the Codacy threshold. The complete offscreen PyQt6 suite passed:
+  3,323 tests passed and 1 dependency-path test was skipped.

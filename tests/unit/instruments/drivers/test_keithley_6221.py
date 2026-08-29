@@ -17,6 +17,12 @@ from stoner_measurement.instruments.protocol import ScpiProtocol
 from stoner_measurement.instruments.transport import NullTransport
 
 
+@pytest.fixture(autouse=True)
+def _skip_instrument_settling_delays(monkeypatch):
+    """Keep hardware settling delays out of transport-isolated unit tests."""
+    monkeypatch.setattr("stoner_measurement.instruments.keithley.k6221.sleep", lambda _delay: None)
+
+
 def _null(responses=None):
     """Return an open NullTransport pre-loaded with *responses*."""
     transport = NullTransport(responses=responses or [])
@@ -470,9 +476,7 @@ class TestKeithley6221:
 
         src = _MinimalSource(_null(), ScpiProtocol())
         with pytest.raises(NotImplementedError, match="has_sweep"):
-            src.configure_sweep(
-                CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIN)
-            )
+            src.configure_sweep(CurrentSweepConfiguration(spacing=CurrentSweepSpacing.LIN))
         with pytest.raises(NotImplementedError, match="has_pulsed_sweep"):
             src.configure_pulsed_sweep(
                 CurrentSweepConfiguration(

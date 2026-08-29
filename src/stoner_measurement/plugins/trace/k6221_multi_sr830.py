@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -455,7 +456,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         transports: list[GpibTransport] = []
         self._lockins = []
         try:
-            transport_6221 = GpibTransport.from_resource_string(self._6221_resource, timeout=10.0, poll_time=0.05)
+            transport_6221 = GpibTransport.from_resource_string(
+                self._6221_resource, timeout=10.0, poll_time=0.05
+            )
             transports.append(transport_6221)
             self._k6221 = Keithley6221(transport_6221)
             self._k6221.connect()
@@ -463,7 +466,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
             with ThreadPoolExecutor(max_workers=max(1, len(self._lockin_entries))) as executor:
                 futures = [
-                    executor.submit(self._connect_one_lockin, entry) for entry in self._lockin_entries
+                    executor.submit(self._connect_one_lockin, entry)
+                    for entry in self._lockin_entries
                 ]
                 first_error: Exception | None = None
                 for future in futures:
@@ -540,7 +544,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     def _connect_temporary_6221(self) -> tuple[GpibTransport, Keithley6221]:
         """Open and identity-check the configured 6221 for a temporary UI action."""
-        transport = GpibTransport.from_resource_string(self._6221_resource, timeout=10.0, poll_time=0.05)
+        transport = GpibTransport.from_resource_string(
+            self._6221_resource, timeout=10.0, poll_time=0.05
+        )
         try:
             source = Keithley6221(transport)
             source.connect()
@@ -577,7 +583,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             finally:
                 transport.close()
 
-    def read_temporary_instrument_settings(self, indices: list[int]) -> tuple[dict[str, float], list[tuple[int, dict[str, Any]]]]:
+    def read_temporary_instrument_settings(
+        self, indices: list[int]
+    ) -> tuple[dict[str, float], list[tuple[int, dict[str, Any]]]]:
         """Read the 6221 and selected SR830s without retaining their connections."""
         if not indices:
             raise ValueError("At least one SR830 must be selected.")
@@ -754,7 +762,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         else:
             offset_outputs = selected_offset_outputs
         entry.auto_offsets.clear()
-        measured_values = lockin.measure_outputs(offset_outputs) if entry.offset_auto and offset_outputs else {}
+        measured_values = (
+            lockin.measure_outputs(offset_outputs) if entry.offset_auto and offset_outputs else {}
+        )
         for output in offset_outputs:
             channel = output.offset_channel()
             if channel is None:
@@ -781,7 +791,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 If the instruments are not connected.
         """
         if self._k6221 is None or not self._lockins:
-            raise RuntimeError("Not connected — call connect() and configure() before auto_offset().")
+            raise RuntimeError(
+                "Not connected — call connect() and configure() before auto_offset()."
+            )
         self._k6221.enable_output(True)
         try:
             self._wait_for_offset_stability()
@@ -896,7 +908,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             "line_filter",
         )
         self._read_rate_multiple = data.get("read_rate_multiple", self._read_rate_multiple)
-        self._auto_sensitivity_enabled = bool(data.get("auto_sensitivity_enabled", self._auto_sensitivity_enabled))
+        self._auto_sensitivity_enabled = bool(
+            data.get("auto_sensitivity_enabled", self._auto_sensitivity_enabled)
+        )
         self._auto_sensitivity_low = data.get("auto_sensitivity_low", self._auto_sensitivity_low)
         self._auto_sensitivity_high = data.get("auto_sensitivity_high", self._auto_sensitivity_high)
         saved_offset_preference = data.get("offset_enabled")
@@ -906,7 +920,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         restored_entries = data.get("lockins", [])
         if isinstance(restored_entries, list) and restored_entries:
             self._lockin_entries = [
-                self._restore_lockin_entry(entry, index) for index, entry in enumerate(restored_entries)
+                self._restore_lockin_entry(entry, index)
+                for index, entry in enumerate(restored_entries)
             ]
         if saved_offset_preference is None:
             self._enable_offset_addition_for_nonzero_offsets()
@@ -932,7 +947,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         resource_6221 = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         resource_6221.setCurrentText(self._6221_resource)
-        resource_6221.currentTextChanged.connect(lambda text: setattr(self, "_6221_resource", text.strip()))
+        resource_6221.currentTextChanged.connect(
+            lambda text: setattr(self, "_6221_resource", text.strip())
+        )
 
         scan_mode_combo = QComboBox()
         scan_mode_combo.addItem("Scan amplitude", WaveformScanMode.AMPLITUDE)
@@ -984,13 +1001,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lambda index: setattr(self, "_source_range_mode", range_combo.itemData(index))
         )
 
-        def _on_scan_mode_changed(index: int) -> None:
-            mode = scan_mode_combo.itemData(index)
-            if isinstance(mode, WaveformScanMode):
-                self._scan_mode = mode
-                self._apply_scan_units()
-
-        scan_mode_combo.currentIndexChanged.connect(_on_scan_mode_changed)
+        scan_mode_combo.currentIndexChanged.connect(
+            lambda index: self._set_scan_mode(scan_mode_combo.itemData(index))
+        )
 
         source_form.addRow("6221 resource:", resource_6221)
         source_form.addRow("Scan parameter:", scan_mode_combo)
@@ -1008,7 +1021,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         for value in _SR830_TIME_CONSTANTS:
             time_constant_combo.addValueItem(value)
         time_constant_combo.setFloatValue(self._time_constant)
-        time_constant_combo.valueChanged.connect(lambda value: setattr(self, "_time_constant", float(value)))
+        time_constant_combo.valueChanged.connect(
+            lambda value: setattr(self, "_time_constant", float(value))
+        )
 
         slope_combo = QComboBox()
         for slope in _SR830_FILTER_SLOPES:
@@ -1036,32 +1051,34 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lambda index: setattr(self, "_line_filter", line_filter_combo.itemData(index))
         )
 
-        read_multiple_sb = SISpinBox(
-            value=self._read_rate_multiple, allow_expressions=True
-        )
+        read_multiple_sb = SISpinBox(value=self._read_rate_multiple, allow_expressions=True)
         read_multiple_sb.setMinimum(0.0)
         read_multiple_sb.setMaximum(1000.0)
-        read_multiple_sb.valueChanged.connect(lambda value: setattr(self, "_read_rate_multiple", value))
+        read_multiple_sb.valueChanged.connect(
+            lambda value: setattr(self, "_read_rate_multiple", value)
+        )
 
         auto_enabled = QCheckBox("Enable auto-sensitivity")
         auto_enabled.setChecked(self._auto_sensitivity_enabled)
-        auto_enabled.toggled.connect(lambda checked: setattr(self, "_auto_sensitivity_enabled", bool(checked)))
-
-        auto_low_sb = SISpinBox(
-            value=self._auto_sensitivity_low, allow_expressions=True
+        auto_enabled.toggled.connect(
+            lambda checked: setattr(self, "_auto_sensitivity_enabled", bool(checked))
         )
+
+        auto_low_sb = SISpinBox(value=self._auto_sensitivity_low, allow_expressions=True)
         auto_low_sb.setMinimum(0.0)
         auto_low_sb.setMaximum(1.0)
         auto_low_sb.setSingleStep(0.05)
-        auto_low_sb.valueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_low", value))
-
-        auto_high_sb = SISpinBox(
-            value=self._auto_sensitivity_high, allow_expressions=True
+        auto_low_sb.valueChanged.connect(
+            lambda value: setattr(self, "_auto_sensitivity_low", value)
         )
+
+        auto_high_sb = SISpinBox(value=self._auto_sensitivity_high, allow_expressions=True)
         auto_high_sb.setMinimum(0.0)
         auto_high_sb.setMaximum(1.0)
         auto_high_sb.setSingleStep(0.05)
-        auto_high_sb.valueChanged.connect(lambda value: setattr(self, "_auto_sensitivity_high", value))
+        auto_high_sb.valueChanged.connect(
+            lambda value: setattr(self, "_auto_sensitivity_high", value)
+        )
 
         common_form.addRow("Time constant:", time_constant_combo)
         common_form.addRow("Filter slope:", slope_combo)
@@ -1078,7 +1095,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         resistance_enabled = QCheckBox("Create resistance-derived channels")
         resistance_enabled.setChecked(self._resistance_enabled)
-        resistance_enabled.toggled.connect(lambda checked: setattr(self, "_resistance_enabled", bool(checked)))
+        resistance_enabled.toggled.connect(
+            lambda checked: setattr(self, "_resistance_enabled", bool(checked))
+        )
 
         derived_form.addRow(resistance_enabled)
         sc_layout.addWidget(derived_group)
@@ -1104,28 +1123,18 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         )
         label_edits: dict[int, QLineEdit] = {}
 
-        def _update_selected_label_styles() -> None:
-            selected_columns = {index.column() for index in lockins_table.selectedIndexes()}
-            has_selection = bool(selected_columns)
-            auto_offset_button.setEnabled(has_selection)
-            read_lockin_button.setEnabled(has_selection)
-            for column, editor in label_edits.items():
-                if column in selected_columns:
-                    editor.setStyleSheet(
-                        "QLineEdit {"
-                        f"background-color: {colour('alternate_base')};"
-                        f"border: 1px solid {colour('tab_selected_border')};"
-                        "}"
-                    )
-                else:
-                    editor.setStyleSheet("")
-
-        lockins_table.itemSelectionChanged.connect(_update_selected_label_styles)
-
         add_button = QPushButton("Add lock-in")
         remove_button = QPushButton("Remove selected")
         auto_offset_button = QPushButton("Run auto-offset")
         read_lockin_button = QPushButton("Read Lockin")
+        update_selected_label_styles = partial(
+            self._update_selected_label_styles,
+            lockins_table,
+            label_edits,
+            auto_offset_button,
+            read_lockin_button,
+        )
+        lockins_table.itemSelectionChanged.connect(update_selected_label_styles)
         self._enable_offset_addition_for_nonzero_offsets()
         offset_enabled_check = QCheckBox("Add offset to readings")
         offset_enabled_check.setToolTip(
@@ -1133,7 +1142,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             "the signal before the lock-in output was zeroed. This does not change the lock-in settings."
         )
         offset_enabled_check.setChecked(self._offset_enabled)
-        offset_enabled_check.toggled.connect(lambda checked: setattr(self, "_offset_enabled", bool(checked)))
+        offset_enabled_check.toggled.connect(
+            lambda checked: setattr(self, "_offset_enabled", bool(checked))
+        )
         self.offset_addition_changed.connect(offset_enabled_check.setChecked)
 
         def _refresh_lockin_table() -> None:
@@ -1142,7 +1153,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             n_cols = len(self._lockin_entries)
             lockins_table.setColumnCount(n_cols)
             for col in range(n_cols):
-                lockins_table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+                lockins_table.horizontalHeader().setSectionResizeMode(
+                    col, QHeaderView.ResizeMode.Stretch
+                )
                 lockins_table.setColumnWidth(col, 180)
 
             for col, entry in enumerate(self._lockin_entries):
@@ -1156,7 +1169,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 resource_widget = VisaResourceComboBox(resource_filter=FILTER_GPIB)
                 resource_widget.setCurrentText(entry.resource)
                 resource_widget.currentTextChanged.connect(
-                    lambda text, *, idx=col: setattr(self._lockin_entries[idx], "resource", text.strip())
+                    lambda text, *, idx=col: setattr(
+                        self._lockin_entries[idx], "resource", text.strip()
+                    )
                 )
                 lockins_table.setCellWidget(_ROW_RESOURCE, col, resource_widget)
 
@@ -1169,15 +1184,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 else:
                     sensitivity_combo.setFloatValue(entry.sensitivity)
 
-                def _set_sensitivity(index: int, *, idx: int = col, combo: SIComboBox = sensitivity_combo) -> None:
-                    selected = combo.itemData(index)
-                    self._lockin_entries[idx].auto_sensitivity = selected is None
-                    if selected is None:
-                        self._auto_sensitivity_enabled = True
-                    if selected is not None:
-                        self._lockin_entries[idx].sensitivity = float(selected)
-
-                sensitivity_combo.currentIndexChanged.connect(_set_sensitivity)
+                sensitivity_combo.currentIndexChanged.connect(
+                    lambda index, *, idx=col, combo=sensitivity_combo: self._set_lockin_sensitivity(
+                        idx, combo.itemData(index)
+                    )
+                )
                 lockins_table.setCellWidget(_ROW_SENSITIVITY, col, sensitivity_combo)
 
                 harmonic_spin = QSpinBox()
@@ -1185,7 +1196,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 harmonic_spin.setMaximum(_SR830_MAX_HARMONIC)
                 harmonic_spin.setValue(entry.harmonic)
                 harmonic_spin.valueChanged.connect(
-                    lambda value, *, idx=col: setattr(self._lockin_entries[idx], "harmonic", int(value))
+                    lambda value, *, idx=col: setattr(
+                        self._lockin_entries[idx], "harmonic", int(value)
+                    )
                 )
                 lockins_table.setCellWidget(_ROW_HARMONIC, col, harmonic_spin)
 
@@ -1197,7 +1210,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 phase_spin.setMinimum(-360.0)
                 phase_spin.setMaximum(360.0)
                 phase_spin.valueChanged.connect(
-                    lambda value, *, idx=col: setattr(self._lockin_entries[idx], "phase", float(value))
+                    lambda value, *, idx=col: setattr(
+                        self._lockin_entries[idx], "phase", float(value)
+                    )
                 )
                 phase_spin.autoChanged.connect(
                     lambda automatic, *, idx=col, spin=phase_spin: setattr(
@@ -1208,7 +1223,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 )
                 lockins_table.setCellWidget(_ROW_PHASE, col, phase_spin)
 
-                offset_local = AutoSISpinBox(suffix="%", value=entry.offset_pct, auto=entry.offset_auto)
+                offset_local = AutoSISpinBox(
+                    suffix="%", value=entry.offset_pct, auto=entry.offset_auto
+                )
                 offset_local.setMinimum(-105.0)
                 offset_local.setMaximum(105.0)
 
@@ -1226,52 +1243,25 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
                 output_checks: list[tuple[LockInOutput, QCheckBox]] = []
 
-                def _make_sync_outputs_from_checks(
-                    checks: list[tuple[LockInOutput, QCheckBox]],
-                    offset_widget: SISpinBox,
-                    expand_widget: QComboBox,
-                    idx: int,
-                ) -> Callable[[], None]:
-                    def _sync_outputs_from_checks() -> None:
-                        outputs = tuple(output for output, checkbox in checks if checkbox.isChecked())
-                        if not outputs:
-                            checks[0][1].blockSignals(True)
-                            checks[0][1].setChecked(True)
-                            checks[0][1].blockSignals(False)
-                            outputs = (checks[0][0],)
-                        self._lockin_entries[idx].outputs = outputs
-                        supports_offset = any(output.offset_channel() is not None for output in outputs)
-                        offset_widget.setEnabled(supports_offset)
-                        expand_widget.setEnabled(supports_offset)
-
-                    return _sync_outputs_from_checks
-
-                _sync_outputs_from_checks = _make_sync_outputs_from_checks(
+                sync_outputs = partial(
+                    self._sync_lockin_outputs,
                     output_checks,
                     offset_local,
                     expand_combo,
                     col,
                 )
 
-                def _make_output_toggled_handler() -> Callable[[bool], None]:
-                    def _handle_output_toggled(_checked: bool) -> None:
-                        _sync_outputs_from_checks()
-
-                    return _handle_output_toggled
-
                 for output in LockInOutput:
                     checkbox = QCheckBox(output.value)
                     checkbox.setStyleSheet("background: transparent;")
                     checkbox.setChecked(output in entry.outputs)
-                    checkbox.toggled.connect(_make_output_toggled_handler())
+                    checkbox.toggled.connect(lambda _checked, sync=sync_outputs: sync())
                     output_checks.append((output, checkbox))
                     lockins_table.setCellWidget(_LOCKIN_OUTPUT_ROWS[output], col, checkbox)
 
-                def _set_offset(value: float, *, idx: int = col) -> None:
-                    self._lockin_entries[idx].offset_pct = float(value)
-                    self._enable_offset_addition_for_nonzero_offsets()
-
-                offset_local.valueChanged.connect(_set_offset)
+                offset_local.valueChanged.connect(
+                    lambda value, *, idx=col: self._set_lockin_offset(idx, value)
+                )
                 offset_local.autoChanged.connect(
                     lambda automatic, *, idx=col: setattr(
                         self._lockin_entries[idx], "offset_auto", bool(automatic)
@@ -1290,86 +1280,32 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 lockins_table.setCellWidget(_ROW_OFFSET_PCT, col, offset_local)
                 lockins_table.setCellWidget(_ROW_EXPAND, col, expand_combo)
                 lockins_table.setCellWidget(_ROW_RESERVE, col, reserve_combo)
-                _sync_outputs_from_checks()
+                sync_outputs()
 
             remove_button.setEnabled(len(self._lockin_entries) > 1)
             lockins_table.blockSignals(False)
-            _update_selected_label_styles()
+            update_selected_label_styles()
 
-        def _next_lockin_label() -> str:
-            return f"LIA {len(self._lockin_entries) + 1}"
-
-        def _add_lockin() -> None:
-            self._lockin_entries.append(LockInEntry(label=_next_lockin_label(), resource="GPIB0::9::INSTR"))
-            _refresh_lockin_table()
-
-        def _remove_selected_lockin() -> None:
-            selected = sorted({index.column() for index in lockins_table.selectedIndexes()}, reverse=True)
-            if not selected or len(self._lockin_entries) == 1:
-                return
-            for col in selected:
-                self._lockin_entries.pop(col)
-            _refresh_lockin_table()
-
-        add_button.clicked.connect(_add_lockin)
-        remove_button.clicked.connect(_remove_selected_lockin)
-
-        def _selected_lockin_indices() -> list[int]:
-            return sorted({index.column() for index in lockins_table.selectedIndexes()})
-
-        def _safe_auto_offset() -> None:
-            """Auto-offset selected lock-ins through temporary connections."""
-            selected = _selected_lockin_indices()
-            try:
-                self.auto_offset_temporary_lockins(selected)
-                _refresh_lockin_table()
-                for column in selected:
-                    lockins_table.selectColumn(column)
-            except (OSError, RuntimeError, ValueError, pyvisa.Error) as exc:
-                self._log.warning("Auto-offset not available: %s", exc)
-
-        def _safe_read_lockins() -> None:
-            """Read the source and selected lock-ins, then refresh their controls."""
-            selected = _selected_lockin_indices()
-            try:
-                source_settings, lockin_settings = self.read_temporary_instrument_settings(selected)
-                self._waveform_amplitude = source_settings["amplitude"]
-                self._waveform_offset = source_settings["offset"]
-                self._waveform_frequency = source_settings["frequency"]
-                amplitude_sb.setValue(self._waveform_amplitude)
-                offset_sb.setValue(self._waveform_offset)
-                frequency_sb.setValue(self._waveform_frequency)
-
-                for index, settings in lockin_settings:
-                    self._time_constant = settings["time_constant"]
-                    self._filter_slope = settings["filter_slope"]
-                    self._input_coupling = settings["input_coupling"]
-                    self._line_filter = settings["line_filter"]
-                    entry = self._lockin_entries[index]
-                    entry.sensitivity = settings["sensitivity"]
-                    entry.auto_sensitivity = False
-                    entry.harmonic = settings["harmonic"]
-                    entry.phase = settings["phase"]
-                    entry.reserve_mode = settings["reserve_mode"]
-                    offsets = settings["offsets"]
-                    entry.auto_offsets = {channel: value[0] for channel, value in offsets.items()}
-                    if offsets:
-                        entry.offset_pct, entry.expand = next(iter(offsets.values()))
-                        entry.offset_auto = False
-
-                time_constant_combo.setFloatValue(self._time_constant)
-                slope_combo.setCurrentIndex(slope_combo.findData(self._filter_slope))
-                coupling_combo.setCurrentIndex(coupling_combo.findData(self._input_coupling))
-                line_filter_combo.setCurrentIndex(line_filter_combo.findData(self._line_filter))
-                self._enable_offset_addition_for_nonzero_offsets()
-                _refresh_lockin_table()
-                for column in selected:
-                    lockins_table.selectColumn(column)
-            except (OSError, RuntimeError, ValueError, pyvisa.Error) as exc:
-                self._log.warning("Instrument settings could not be read: %s", exc)
-
-        auto_offset_button.clicked.connect(_safe_auto_offset)
-        read_lockin_button.clicked.connect(_safe_read_lockins)
+        add_button.clicked.connect(lambda: self._add_lockin_entry(_refresh_lockin_table))
+        remove_button.clicked.connect(
+            lambda: self._remove_selected_lockins(lockins_table, _refresh_lockin_table)
+        )
+        auto_offset_button.clicked.connect(
+            lambda: self._auto_offset_selected_lockins(lockins_table, _refresh_lockin_table)
+        )
+        read_lockin_button.clicked.connect(
+            lambda: self._read_selected_lockins(
+                lockins_table,
+                _refresh_lockin_table,
+                amplitude_sb,
+                offset_sb,
+                frequency_sb,
+                time_constant_combo,
+                slope_combo,
+                coupling_combo,
+                line_filter_combo,
+            )
+        )
         _refresh_lockin_table()
 
         buttons_layout = QHBoxLayout()
@@ -1390,6 +1326,166 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         root_layout.addWidget(tab_widget)
         return root
 
+    def _set_scan_mode(self, mode: Any) -> None:
+        """Store a valid scan mode and update the scan generator units."""
+        if isinstance(mode, WaveformScanMode):
+            self._scan_mode = mode
+            self._apply_scan_units()
+
+    @staticmethod
+    def _selected_lockin_indices(table: QTableWidget) -> list[int]:
+        """Return selected lock-in columns in stable order."""
+        return sorted({index.column() for index in table.selectedIndexes()})
+
+    @staticmethod
+    def _update_selected_label_styles(
+        table: QTableWidget,
+        label_edits: dict[int, QLineEdit],
+        auto_offset_button: QPushButton,
+        read_button: QPushButton,
+    ) -> None:
+        """Highlight selected label editors and enable selection actions."""
+        selected = {index.column() for index in table.selectedIndexes()}
+        auto_offset_button.setEnabled(bool(selected))
+        read_button.setEnabled(bool(selected))
+        selected_style = (
+            "QLineEdit {"
+            f"background-color: {colour('alternate_base')};"
+            f"border: 1px solid {colour('tab_selected_border')};"
+            "}"
+        )
+        for column, editor in label_edits.items():
+            editor.setStyleSheet(selected_style if column in selected else "")
+
+    def _set_lockin_sensitivity(self, index: int, selected: float | None) -> None:
+        """Store an automatic or explicit sensitivity selection."""
+        entry = self._lockin_entries[index]
+        entry.auto_sensitivity = selected is None
+        if selected is None:
+            self._auto_sensitivity_enabled = True
+        else:
+            entry.sensitivity = float(selected)
+
+    def _sync_lockin_outputs(
+        self,
+        checks: list[tuple[LockInOutput, QCheckBox]],
+        offset_widget: QWidget,
+        expand_widget: QWidget,
+        index: int,
+    ) -> None:
+        """Store selected outputs, retaining one output and updating dependencies."""
+        outputs = tuple(output for output, checkbox in checks if checkbox.isChecked())
+        if not outputs:
+            default_output, default_check = checks[0]
+            default_check.blockSignals(True)
+            default_check.setChecked(True)
+            default_check.blockSignals(False)
+            outputs = (default_output,)
+        self._lockin_entries[index].outputs = outputs
+        supports_offset = any(output.offset_channel() is not None for output in outputs)
+        offset_widget.setEnabled(supports_offset)
+        expand_widget.setEnabled(supports_offset)
+
+    def _set_lockin_offset(self, index: int, value: float) -> None:
+        """Store a manual output offset and enable compensation when needed."""
+        self._lockin_entries[index].offset_pct = float(value)
+        self._enable_offset_addition_for_nonzero_offsets()
+
+    def _add_lockin_entry(self, refresh: Callable[[], None]) -> None:
+        """Append a conventionally named lock-in entry and refresh the editor."""
+        label = f"LIA {len(self._lockin_entries) + 1}"
+        self._lockin_entries.append(LockInEntry(label=label, resource="GPIB0::9::INSTR"))
+        refresh()
+
+    def _remove_selected_lockins(self, table: QTableWidget, refresh: Callable[[], None]) -> None:
+        """Remove selected entries while retaining at least one lock-in."""
+        selected = reversed(self._selected_lockin_indices(table))
+        selected = list(selected)
+        if not selected or len(self._lockin_entries) == 1:
+            return
+        for column in selected:
+            self._lockin_entries.pop(column)
+        refresh()
+
+    def _restore_lockin_selection(self, table: QTableWidget, columns: list[int]) -> None:
+        """Restore selected columns after rebuilding the lock-in table."""
+        for column in columns:
+            table.selectColumn(column)
+
+    def _auto_offset_selected_lockins(
+        self, table: QTableWidget, refresh: Callable[[], None]
+    ) -> None:
+        """Auto-offset selected lock-ins through temporary connections."""
+        selected = self._selected_lockin_indices(table)
+        try:
+            self.auto_offset_temporary_lockins(selected)
+            refresh()
+            self._restore_lockin_selection(table, selected)
+        except (OSError, RuntimeError, ValueError, pyvisa.Error) as exc:
+            self._log.warning("Auto-offset not available: %s", exc)
+
+    def _read_selected_lockins(
+        self,
+        table: QTableWidget,
+        refresh: Callable[[], None],
+        amplitude: SISpinBox,
+        offset: SISpinBox,
+        frequency: SISpinBox,
+        time_constant: SIComboBox,
+        slope: QComboBox,
+        coupling: QComboBox,
+        line_filter: QComboBox,
+    ) -> None:
+        """Read source and selected lock-ins, then refresh their controls."""
+        selected = self._selected_lockin_indices(table)
+        try:
+            source_settings, lockin_settings = self.read_temporary_instrument_settings(selected)
+            self._apply_read_source_settings(source_settings, amplitude, offset, frequency)
+            for index, settings in lockin_settings:
+                self._apply_read_lockin_settings(index, settings)
+            time_constant.setFloatValue(self._time_constant)
+            slope.setCurrentIndex(slope.findData(self._filter_slope))
+            coupling.setCurrentIndex(coupling.findData(self._input_coupling))
+            line_filter.setCurrentIndex(line_filter.findData(self._line_filter))
+            self._enable_offset_addition_for_nonzero_offsets()
+            refresh()
+            self._restore_lockin_selection(table, selected)
+        except (OSError, RuntimeError, ValueError, pyvisa.Error) as exc:
+            self._log.warning("Instrument settings could not be read: %s", exc)
+
+    def _apply_read_source_settings(
+        self,
+        settings: dict[str, Any],
+        amplitude: SISpinBox,
+        offset: SISpinBox,
+        frequency: SISpinBox,
+    ) -> None:
+        """Store source settings read from the instrument and update editors."""
+        self._waveform_amplitude = settings["amplitude"]
+        self._waveform_offset = settings["offset"]
+        self._waveform_frequency = settings["frequency"]
+        amplitude.setValue(self._waveform_amplitude)
+        offset.setValue(self._waveform_offset)
+        frequency.setValue(self._waveform_frequency)
+
+    def _apply_read_lockin_settings(self, index: int, settings: dict[str, Any]) -> None:
+        """Store common and per-lock-in settings read from one SR830."""
+        self._time_constant = settings["time_constant"]
+        self._filter_slope = settings["filter_slope"]
+        self._input_coupling = settings["input_coupling"]
+        self._line_filter = settings["line_filter"]
+        entry = self._lockin_entries[index]
+        entry.sensitivity = settings["sensitivity"]
+        entry.auto_sensitivity = False
+        entry.harmonic = settings["harmonic"]
+        entry.phase = settings["phase"]
+        entry.reserve_mode = settings["reserve_mode"]
+        offsets = settings["offsets"]
+        entry.auto_offsets = {channel: value[0] for channel, value in offsets.items()}
+        if offsets:
+            entry.offset_pct, entry.expand = next(iter(offsets.values()))
+            entry.offset_auto = False
+
     def _channel_specs(self) -> list[ChannelSpec]:
         specs: list[ChannelSpec] = []
         for index, entry in enumerate(self._lockin_entries):
@@ -1397,7 +1493,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             append_suffix = len(entry.outputs) > 1
             for output in entry.outputs:
                 output_name = f"{base_name} {output.value}" if append_suffix else base_name
-                specs.append(ChannelSpec(lockin_index=index, output=output, name=output_name, unit=output.unit))
+                specs.append(
+                    ChannelSpec(
+                        lockin_index=index, output=output, name=output_name, unit=output.unit
+                    )
+                )
                 if self._resistance_enabled and output is not LockInOutput.THETA:
                     specs.append(
                         ChannelSpec(
@@ -1411,11 +1511,30 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return specs
 
     def _validate_configuration(self) -> None:
+        """Validate source, automatic-ranging, and lock-in configuration."""
         waveform_amplitude = self.eval_float(self._waveform_amplitude)
         waveform_frequency = self.eval_float(self._waveform_frequency)
         read_rate_multiple = self.eval_float(self._read_rate_multiple)
         auto_sensitivity_low = self.eval_float(self._auto_sensitivity_low)
         auto_sensitivity_high = self.eval_float(self._auto_sensitivity_high)
+        self._validate_source_settings(
+            waveform_amplitude,
+            waveform_frequency,
+            read_rate_multiple,
+        )
+        self._validate_auto_sensitivity_thresholds(
+            auto_sensitivity_low,
+            auto_sensitivity_high,
+        )
+        self._validate_lockin_entries()
+
+    def _validate_source_settings(
+        self,
+        waveform_amplitude: float,
+        waveform_frequency: float,
+        read_rate_multiple: float,
+    ) -> None:
+        """Validate settings shared by the 6221 source and acquisition loop."""
         if not self._6221_resource.strip():
             raise ValueError("A 6221 resource must be configured.")
         if not self._lockin_entries:
@@ -1428,12 +1547,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             raise ValueError("Phase-marker trigger-link line must be in the range 1..6.")
         if read_rate_multiple < 0.0:
             raise ValueError("Read cooldown multiple must be non-negative.")
-        if not 0.0 <= auto_sensitivity_low <= 1.0:
-            raise ValueError("Auto-sensitivity low threshold must lie between 0 and 1.")
-        if not 0.0 <= auto_sensitivity_high <= 1.0:
-            raise ValueError("Auto-sensitivity high threshold must lie between 0 and 1.")
-        if auto_sensitivity_low >= auto_sensitivity_high:
-            raise ValueError("Auto-sensitivity low threshold must be lower than the high threshold.")
         if self._filter_slope not in _SR830_FILTER_SLOPES:
             raise ValueError(f"Filter slope must be one of {_SR830_FILTER_SLOPES!r}.")
         if self._time_constant not in _SR830_TIME_CONSTANTS:
@@ -1441,23 +1554,24 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         if self._source_range_mode not in {"AUTO", "BEST", "FIXED"}:
             raise ValueError("Source range mode must be one of 'AUTO', 'BEST', or 'FIXED'.")
 
+    @staticmethod
+    def _validate_auto_sensitivity_thresholds(low: float, high: float) -> None:
+        """Validate the lower and upper automatic-sensitivity thresholds."""
+        if not 0.0 <= low <= 1.0:
+            raise ValueError("Auto-sensitivity low threshold must lie between 0 and 1.")
+        if not 0.0 <= high <= 1.0:
+            raise ValueError("Auto-sensitivity high threshold must lie between 0 and 1.")
+        if low >= high:
+            raise ValueError(
+                "Auto-sensitivity low threshold must be lower than the high threshold."
+            )
+
+    def _validate_lockin_entries(self) -> None:
+        """Validate every SR830 entry and cross-entry uniqueness constraints."""
         labels: list[str] = []
         resources: list[str] = []
         for index, entry in enumerate(self._lockin_entries, start=1):
-            label = entry.label.strip()
-            resource = entry.resource.strip()
-            if not label:
-                raise ValueError(f"Lock-in {index} must have a non-empty label.")
-            if not resource:
-                raise ValueError(f"Lock-in {label!r} must have a non-empty resource string.")
-            if entry.sensitivity not in _SR830_SENSITIVITIES:
-                raise ValueError(f"Lock-in {label!r} sensitivity must be one of {_SR830_SENSITIVITIES!r}.")
-            if not 1 <= len(entry.outputs) <= 4:
-                raise ValueError(f"Lock-in {label!r} must define between 1 and 4 outputs.")
-            if len(set(entry.outputs)) != len(entry.outputs):
-                raise ValueError(f"Lock-in {label!r} outputs must be unique.")
-            if not 1 <= entry.harmonic <= _SR830_MAX_HARMONIC:
-                raise ValueError(f"Lock-in {label!r} harmonic must be between 1 and {_SR830_MAX_HARMONIC}.")
+            label, resource = self._validate_lockin_entry(index, entry)
             labels.append(label)
             resources.append(resource)
 
@@ -1467,10 +1581,32 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             raise ValueError("Each SR830 resource must be unique.")
         if self._6221_resource.strip() in resources:
             raise ValueError("The 6221 resource conflicts with an SR830 resource.")
-
         channel_names = [spec.name for spec in self._channel_specs()]
         if len(set(channel_names)) != len(channel_names):
             raise ValueError("Derived channel names must be unique.")
+
+    @staticmethod
+    def _validate_lockin_entry(index: int, entry: LockInEntry) -> tuple[str, str]:
+        """Validate one SR830 entry and return its normalised identity fields."""
+        label = entry.label.strip()
+        resource = entry.resource.strip()
+        if not label:
+            raise ValueError(f"Lock-in {index} must have a non-empty label.")
+        if not resource:
+            raise ValueError(f"Lock-in {label!r} must have a non-empty resource string.")
+        if entry.sensitivity not in _SR830_SENSITIVITIES:
+            raise ValueError(
+                f"Lock-in {label!r} sensitivity must be one of {_SR830_SENSITIVITIES!r}."
+            )
+        if not 1 <= len(entry.outputs) <= 4:
+            raise ValueError(f"Lock-in {label!r} must define between 1 and 4 outputs.")
+        if len(set(entry.outputs)) != len(entry.outputs):
+            raise ValueError(f"Lock-in {label!r} outputs must be unique.")
+        if not 1 <= entry.harmonic <= _SR830_MAX_HARMONIC:
+            raise ValueError(
+                f"Lock-in {label!r} harmonic must be between 1 and {_SR830_MAX_HARMONIC}."
+            )
+        return label, resource
 
     def _apply_scan_units(self) -> None:
         self.scan_generator.units = self.x_units
@@ -1514,7 +1650,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             self.eval_float(self._waveform_offset)
         )
 
-    def _run_auto_phase(self, output_off:bool = False) -> None:
+    def _run_auto_phase(self, output_off: bool = False) -> None:
         """Enable the 6221 output, settle, and run auto-phase for entries that request it."""
         if not any(entry.phase is None for entry in self._lockin_entries):
             return
@@ -1566,7 +1702,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     reading = readings[entry.resource]
                     output_value = reading.output_values[spec.output]
                     if self._offset_enabled:
-                        output_value = self._apply_offset_correction(entry, spec.output, output_value)
+                        output_value = self._apply_offset_correction(
+                            entry, spec.output, output_value
+                        )
                     if spec.derived_resistance:
                         value = self._convert_to_resistance(output_value, current_amplitude)
                     else:
@@ -1660,9 +1798,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             if channel_name in LockInOutputChannel._value2member_map_
         }
         offset_channels.update(
-            channel
-            for output in entry.outputs
-            if (channel := output.offset_channel()) is not None
+            channel for output in entry.outputs if (channel := output.offset_channel()) is not None
         )
         if not offset_channels:
             return False
@@ -1738,14 +1874,18 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         new_index = index
         if ratio < self.eval_float(self._auto_sensitivity_low) and index > 0:
             new_index = index - 1
-        elif ratio > self.eval_float(self._auto_sensitivity_high) and index < len(sensitivities) - 1:
+        elif (
+            ratio > self.eval_float(self._auto_sensitivity_high) and index < len(sensitivities) - 1
+        ):
             new_index = index + 1
         if new_index != index:
             new_sensitivity = sensitivities[new_index]
             lockin.set_sensitivity(new_sensitivity)
             entry.sensitivity = new_sensitivity
 
-    def _apply_offset_correction(self, entry: LockInEntry, output: LockInOutput, value: float) -> float:
+    def _apply_offset_correction(
+        self, entry: LockInEntry, output: LockInOutput, value: float
+    ) -> float:
         """Return the true signal value by reversing the SR830 output offset.
 
         When the SR830 has an offset applied, the SNAP output equals
@@ -1776,7 +1916,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _enable_offset_addition_for_nonzero_offsets(self) -> None:
         """Enable adding offsets to readings when any configured offset is nonzero."""
         has_offset = any(
-            abs(entry.offset_pct) > 0.0 or any(abs(value) > 0.0 for value in entry.auto_offsets.values())
+            abs(entry.offset_pct) > 0.0
+            or any(abs(value) > 0.0 for value in entry.auto_offsets.values())
             for entry in self._lockin_entries
         )
         if not has_offset or self._offset_enabled:
@@ -1802,7 +1943,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             return LockInEntry(label=default_label)
         auto_offsets_raw = data.get("auto_offsets", {})
         auto_offsets: dict[str, float] = (
-            {str(k): float(v) for k, v in auto_offsets_raw.items()} if isinstance(auto_offsets_raw, dict) else {}
+            {str(k): float(v) for k, v in auto_offsets_raw.items()}
+            if isinstance(auto_offsets_raw, dict)
+            else {}
         )
         phase_raw = data.get("phase", 0.0)
         phase = (
@@ -1841,7 +1984,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         try:
             return self._parse_outputs(values)
         except ValueError:
-            self._log.warning("Unknown output selection %r in saved config; falling back to %s.", values, LockInOutput.X)
+            self._log.warning(
+                "Unknown output selection %r in saved config; falling back to %s.",
+                values,
+                LockInOutput.X,
+            )
             return (LockInOutput.X,)
 
     @staticmethod
@@ -1853,7 +2000,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             ``"THETA"`` in text input fields.
         """
         if isinstance(value, str):
-            tokens = [token.strip() for token in value.replace(";", ",").split(",") if token.strip()]
+            tokens = [
+                token.strip() for token in value.replace(";", ",").split(",") if token.strip()
+            ]
         elif isinstance(value, list):
             tokens = [token for token in value if str(token).strip()]
         elif isinstance(value, tuple):
