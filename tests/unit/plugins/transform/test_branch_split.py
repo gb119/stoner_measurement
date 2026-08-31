@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QComboBox, QLineEdit, QListWidget
+from qtpy.QtWidgets import QComboBox, QFormLayout, QLineEdit, QListWidget
 
 from stoner_measurement.core import TraceData
 from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -221,7 +221,10 @@ def test_default_json_omits_advanced_values_and_invalid_mode_restores_to_all(qap
 def test_advanced_configuration_controls_update_branch_settings(qapp, managed_qt_widget):
     plugin = BranchSplitPlugin()
     widget = managed_qt_widget(plugin._build_advanced_tab())  # noqa: SLF001
-    controls = [widget.layout().itemAt(row, 1).widget() for row in range(4)]
+    controls = [
+        widget.layout().itemAt(row, QFormLayout.ItemRole.FieldRole).widget()
+        for row in range(4)
+    ]
 
     controls[0].setValue(9)
     controls[1].setValue(3)
