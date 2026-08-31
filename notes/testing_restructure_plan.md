@@ -952,3 +952,25 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - Verified the changed files with Ruff formatting/linting and local McCabe
   checks at the Codacy threshold. The complete offscreen PyQt6 suite passed:
   3,323 tests passed and 1 dependency-path test was skipped.
+
+## Priority Cold-Spot Coverage
+
+- Added behaviour-focused coverage for the highest-value missed-line areas in:
+  - `tests/unit/ui/widgets/test_round_dial.py`
+  - `tests/unit/plugins/trace/test_daqmx_runtime.py`
+  - `tests/unit/plugins/monitor/test_pressure_controller.py`
+  - `tests/unit/plugins/transform/test_branch_split.py`
+  - `tests/unit/instruments/transport/test_ftdi_d2xx_transport.py`
+- Moved the small top-level `tests/test_pressure_monitor_plugin.py` module into
+  the canonical monitor-plugin unit-test directory while extending it.
+- Round-dial additions cover public range validation, clock/compass modes,
+  label selection, theme colours, geometry, and complete offscreen rendering.
+- DAQmx runtime additions cover task-definition validation, physical/global/
+  saved task construction, resource cleanup, finite timing, trigger routing,
+  output shaping, reads, and lifecycle calls through hardware-free fakes.
+- Pressure-monitor and branch-split additions cover channel selection,
+  missing-data/error behaviour, conditional catalogues, persistence, and Qt
+  configuration interactions.
+- FTDI D2XX coverage uses a narrow fake native library to exercise index and
+  serial opening, timeout configuration, I/O, short writes, partial reads,
+  timeout, purge, cleanup, and status errors without a driver or device.
