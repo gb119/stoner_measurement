@@ -100,6 +100,7 @@ class TraceChannelSelectionMixin:
         traces: dict[str, str],
         *,
         show_column_selector: bool = True,
+        show_advanced_inputs: bool = True,
     ) -> dict[str, Any]:
         """Create trace/channel selection widgets for a transform data tab."""
         trace_keys = list(traces.keys())
@@ -118,24 +119,28 @@ class TraceChannelSelectionMixin:
 
         column_combo = self._build_column_combo(widget) if show_column_selector else None
 
-        advanced_check = QCheckBox(widget)
-        advanced_check.setChecked(self.advanced_mode)
+        advanced_check = None
+        x_combo = None
+        y_combo = None
+        if show_advanced_inputs:
+            advanced_check = QCheckBox(widget)
+            advanced_check.setChecked(self.advanced_mode)
 
-        x_combo = TraceChannelComboBox(widget)
-        self.x_expr = x_combo.set_channels(
-            channel_items,
-            channel_roles,
-            self.x_expr,
-            preferred_role=COLUMN_ROLE_X,
-        )
+            x_combo = TraceChannelComboBox(widget)
+            self.x_expr = x_combo.set_channels(
+                channel_items,
+                channel_roles,
+                self.x_expr,
+                preferred_role=COLUMN_ROLE_X,
+            )
 
-        y_combo = TraceChannelComboBox(widget)
-        self.y_expr = y_combo.set_channels(
-            channel_items,
-            channel_roles,
-            self.y_expr,
-            preferred_role=COLUMN_ROLE_Y,
-        )
+            y_combo = TraceChannelComboBox(widget)
+            self.y_expr = y_combo.set_channels(
+                channel_items,
+                channel_roles,
+                self.y_expr,
+                preferred_role=COLUMN_ROLE_Y,
+            )
 
         return {
             "trace_combo": trace_combo,
@@ -171,6 +176,7 @@ class TraceChannelSelectionMixin:
         ws: dict[str, Any],
         *,
         show_column_selector: bool = True,
+        show_advanced_inputs: bool = True,
         on_change: Any | None = None,
     ) -> None:
         """Connect widget signals so plugin selection attributes stay in sync."""
@@ -181,23 +187,25 @@ class TraceChannelSelectionMixin:
             ws["column_combo"].currentIndexChanged.connect(
                 partial(self._apply_column_source, ws["column_combo"], on_change)
             )
-        ws["advanced_check"].toggled.connect(partial(self._apply_advanced_source, on_change))
-        ws["x_combo"].currentTextChanged.connect(
-            partial(self._apply_channel_source, "x_expr", ws["channel_items"], on_change)
-        )
-        ws["y_combo"].currentTextChanged.connect(
-            partial(self._apply_channel_source, "y_expr", ws["channel_items"], on_change)
-        )
+        if show_advanced_inputs:
+            ws["advanced_check"].toggled.connect(partial(self._apply_advanced_source, on_change))
+            ws["x_combo"].currentTextChanged.connect(
+                partial(self._apply_channel_source, "x_expr", ws["channel_items"], on_change)
+            )
+            ws["y_combo"].currentTextChanged.connect(
+                partial(self._apply_channel_source, "y_expr", ws["channel_items"], on_change)
+            )
 
-        update_enabled = partial(self._update_data_source_enabled, ws, show_column_selector)
-        update_enabled(self.advanced_mode)
-        ws["advanced_check"].toggled.connect(update_enabled)
+            update_enabled = partial(self._update_data_source_enabled, ws, show_column_selector)
+            update_enabled(self.advanced_mode)
+            ws["advanced_check"].toggled.connect(update_enabled)
         def _refresh_catalog(traces: dict[str, str]) -> None:
             refresh_trace_source_widgets(
                 self,
                 ws,
                 traces,
                 show_column_selector=show_column_selector,
+                show_advanced_inputs=show_advanced_inputs,
                 prefer_y_channel=True,
             )
             self._trigger_data_source_change(on_change)

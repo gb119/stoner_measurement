@@ -40,7 +40,60 @@ _CHANNEL_LABELS = {CHANNELS_ALL: "All channels", CHANNELS_SELECTED: "Selected ch
 
 
 class BranchSplitPlugin(BranchSplittingMixin, TraceChannelSelectionMixin, TransformPlugin):
-    """Create separate traces containing rows from rising and falling x branches."""
+    """Split a cyclic trace into rising and falling acquisition branches.
+
+    Use this transform when a trace contains both increasing and decreasing
+    passes through an independent variable, such as the two directions of a
+    field, voltage, or position sweep. The transform detects turning points in
+    acquisition order and produces separate traces containing all rising
+    branches and all falling branches.
+
+    The **General** tab selects the source trace, the independent variable,
+    the output channel scope, and the names of the two output traces. Choose
+    **All channels** to retain every source column, or **Selected channels** to
+    choose a subset. The independent variable is retained as the x column in
+    both outputs. The **Advanced** tab controls Savitzky-Golay smoothing,
+    turning-point prominence, and the minimum accepted branch length.
+
+    The source must contain at least three finite independent-variable values
+    and identifiable branches in both directions. Output rows retain their
+    original acquisition order and preserve source names, units, and column
+    roles where possible. Invalid configuration or a trace with only one
+    direction is logged and produces no output.
+
+    Attributes:
+        trace_key (str):
+            Catalogue key of the source trace.
+        channel_mode (str):
+            Whether all source channels or only selected channels are copied.
+        x_channel_key (str):
+            Selected independent-variable key; ``"x"`` uses the source x role.
+        channel_keys (list[str]):
+            Selected output-channel keys when ``channel_mode`` is
+            ``"selected"``.
+        rising_trace_name (str):
+            Output name for rows whose independent variable increases.
+        falling_trace_name (str):
+            Output name for rows whose independent variable decreases.
+        turning_points (list[int]):
+            Acquisition indices of the most recently detected turning points.
+        branch_directions (list[int]):
+            Directions of the most recently detected branches, using ``1``
+            for rising and ``-1`` for falling.
+
+    Notes:
+        Advanced settings are omitted from JSON while they retain their
+        defaults, keeping saved sequences compact.
+
+    Examples:
+        >>> from qtpy.QtWidgets import QApplication
+        >>> _ = QApplication.instance() or QApplication([])
+        >>> plugin = BranchSplitPlugin()
+        >>> plugin.output_trace_names
+        ['rising', 'falling']
+        >>> plugin.channel_mode
+        'all'
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -152,7 +205,10 @@ class BranchSplitPlugin(BranchSplittingMixin, TraceChannelSelectionMixin, Transf
         widget = QWidget(parent)
         layout = QFormLayout(widget)
         ws = self._create_data_source_widgets(
-            widget, self.engine_namespace.get("_traces", {}), show_column_selector=False
+            widget,
+            self.engine_namespace.get("_traces", {}),
+            show_column_selector=False,
+            show_advanced_inputs=False,
         )
         layout.addRow("Trace:", ws["trace_combo"])
         channel_mode = QComboBox(widget)
@@ -239,7 +295,12 @@ class BranchSplitPlugin(BranchSplittingMixin, TraceChannelSelectionMixin, Transf
         falling_name.editingFinished.connect(
             lambda: apply_name("falling_trace_name", falling_name, "falling")
         )
-        self._wire_data_source_widgets(ws, show_column_selector=False, on_change=refresh)
+        self._wire_data_source_widgets(
+            ws,
+            show_column_selector=False,
+            show_advanced_inputs=False,
+            on_change=refresh,
+        )
         refresh()
         return widget
 

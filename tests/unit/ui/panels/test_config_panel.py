@@ -24,9 +24,9 @@ class TestConfigPanel:
         plugin = DummyPlugin()
         panel.show_plugin(plugin)
         assert panel.tabs.count() == 3
-        assert panel.tabs.tabText(0) == "Dummy \u2013 Scan"
-        assert panel.tabs.tabText(1) == "Dummy \u2013 Settings"
-        assert panel.tabs.tabText(2) == "Dummy \u2013 About"
+        assert panel.tabs.tabText(0) == "Scan"
+        assert panel.tabs.tabText(1) == "Settings"
+        assert panel.tabs.tabText(2) == "About"
 
     def test_show_plugin_none_clears_tabs(self, plugin_manager):
         panel = ConfigPanel(plugin_manager=plugin_manager)

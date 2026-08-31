@@ -89,8 +89,8 @@ class TestCommandPlugin:
 
     def test_config_tabs_includes_config_and_about_tabs(self, qapp):
         tabs = _Noop().config_tabs()
-        assert tabs[0][0] == "Noop"
-        assert tabs[-1][0] == "Noop – About"
+        assert tabs[0][0] == "General"
+        assert tabs[-1][0] == "About"
 
     def test_execute_called_via_sequence(self, qapp, engine):
         """CommandPlugin.execute() is called when the sequence script runs."""

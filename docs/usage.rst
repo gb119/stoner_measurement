@@ -232,9 +232,11 @@ methods.
 Returns a list of ``(tab_title, widget)`` pairs.  Each pair becomes one tab
 in the right-hand **configuration panel**.
 
-The default implementation wraps ``config_widget()`` in a single-element
-list using ``name`` as the tab title.  Override ``config_tabs()`` directly
-when a plugin needs **more than one tab** or a custom tab title.
+The default implementation places ``config_widget()`` on a concise
+``Settings`` tab. Tab titles should describe the page's role without
+repeating the plugin name, because the selected sequence step already identifies
+the plugin. Override ``config_tabs()`` directly when a plugin needs **more
+than one tab** or a custom role title.
 
 .. code-block:: python
 
@@ -242,8 +244,8 @@ when a plugin needs **more than one tab** or a custom tab title.
         settings = self.config_widget(parent=parent)
         about    = QLabel("My plugin v1.0", parent)
         return [
-            ("MyPlugin \u2013 Settings", settings),
-            ("MyPlugin \u2013 About",    about),
+            ("Settings", settings),
+            ("About",    about),
         ]
 
 ``config_widget(parent=None) → QWidget``

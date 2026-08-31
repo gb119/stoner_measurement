@@ -18,7 +18,6 @@ from qtpy.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -29,6 +28,7 @@ from stoner_measurement.plugins.trace.daqmx_runtime import (
     NidaqmxRuntime,
     validate_task_definition,
 )
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.widgets import (
     DaqmxInputTrigger,
     DaqmxInputTriggerMode,
@@ -83,7 +83,7 @@ def _build_output_trigger_values(
     return values
 
 
-class DaqmxTraceSettingsWidget(QTabWidget):
+class DaqmxTraceSettingsWidget(FontAwareTabWidget):
     """General DAQmx task/timing controls and reusable trigger configuration."""
 
     def __init__(

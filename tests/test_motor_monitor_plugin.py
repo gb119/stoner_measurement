@@ -358,16 +358,16 @@ def test_config_widget_created(monkeypatch):
 
 
 def test_config_tabs_has_general_tab(monkeypatch):
-    """The default config tabs include the plugin tab and General."""
+    """The default config tabs include concise General and Settings tabs."""
     engine = _FakeEngine()
     plugin = _make_plugin(engine, monkeypatch)
 
     tabs = plugin.config_tabs()
     tab_titles = [title for title, _ in tabs]
     assert tab_titles[0] == "General"
-    assert tab_titles[1] == "Motor Angle Monitor"
+    assert tab_titles[1] == "Settings"
     assert "General" in tab_titles
-    assert "Motor Angle Monitor" in tab_titles
+    assert "Settings" in tab_titles
 
 
 def test_widget_rebuilds_catalogs_on_output_settings_change(monkeypatch):

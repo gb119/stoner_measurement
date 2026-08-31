@@ -190,7 +190,7 @@ class TestDetailsCommand:
         assert [title for title, _widget in tabs] == [
             "General",
             "Metadata",
-            "Details – About",
+            "About",
         ]
         assert tabs[1][1].findChild(QTableWidget, "detailsMetadataTable") is not None
 

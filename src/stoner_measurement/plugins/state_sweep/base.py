@@ -492,12 +492,12 @@ class StateSweepPlugin(StatePlugin):
             return self._cached_config_tabs
 
         tabs: list[tuple[str, QWidget]] = [
-            (f"{self.name} \u2013 Sweep", _StateSweepPage(self)),
-            (f"{self.name} \u2013 Data", _StateSweepDataPage(self)),
+            ("Sweep", _StateSweepPage(self)),
+            ("Data", _StateSweepDataPage(self)),
         ]
 
         settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
-        tabs.append((f"{self.name} \u2013 Settings", settings_widget))
+        tabs.append(("Settings", settings_widget))
 
         about_tab = self._make_about_tab()
         if about_tab is not None:

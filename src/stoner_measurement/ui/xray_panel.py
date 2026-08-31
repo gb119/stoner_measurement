@@ -22,12 +22,12 @@ from qtpy.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.theme import colour, value_display_frame_stylesheet
 from stoner_measurement.ui.value_watch import seven_segment_font_family
 from stoner_measurement.ui.widgets import StatusLineEdit, VisaResourceStatus
@@ -292,7 +292,7 @@ class XrayControlPanel(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        self._tabs = QTabWidget(self)
+        self._tabs = FontAwareTabWidget(self)
         self._tabs.addTab(self._build_connection_tab(), "Connection")
         self._tabs.addTab(self._build_control_tab(), "Control")
         self._tabs.addTab(self._build_instrument_settings_tab(), "Instrument settings")

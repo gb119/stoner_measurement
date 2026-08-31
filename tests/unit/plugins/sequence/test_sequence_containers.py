@@ -57,7 +57,7 @@ def test_configuration_tabs_are_general_then_about(
 
     assert [title for title, _ in tabs] == [
         "General",
-        f"{plugin.name} – About",
+        "About",
     ]
     general_widget = tabs[0][1]
     assert len(general_widget.findChildren(QLineEdit)) == 2

@@ -10,6 +10,7 @@ from qtpy.QtCore import QPointF
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import QInputDialog, QMessageBox
 
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabBar
 from stoner_measurement.ui.widgets import VisaResourceStatus
 from stoner_measurement.ui.xray_panel import XrayControlPanel
 from stoner_measurement.xray_control import XrayControllerEngine, XrayMotionMode
@@ -67,6 +68,7 @@ def test_connection_tab_exposes_instruments_and_colours_device_status(panel):
 
 
 def test_panel_exposes_locked_instrument_settings_tab(panel):
+    assert isinstance(panel._tabs.tabBar(), FontAwareTabBar)  # noqa: SLF001
     assert [panel._tabs.tabText(index) for index in range(panel._tabs.count())] == [  # noqa: SLF001
         "Connection",
         "Control",

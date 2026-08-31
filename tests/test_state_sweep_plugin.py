@@ -105,6 +105,11 @@ class TestStateSweepPlugin:
     def test_plugin_type(self, qapp):
         assert _TestSweepPlugin().plugin_type == "state_sweep"
 
+    def test_config_tabs_use_concise_role_titles(self, qapp):
+        titles = [title for title, _widget in _TestSweepPlugin().config_tabs()]
+
+        assert titles == ["Sweep", "Data", "Settings", "About"]
+
     def test_next_returns_false_when_exhausted(self, qapp):
         plugin = _TestSweepPlugin()
         plugin.sweep_generator = _FiniteSweepGenerator(

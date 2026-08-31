@@ -340,6 +340,7 @@ def refresh_trace_source_widgets(
     traces: dict[str, str],
     *,
     show_column_selector: bool = True,
+    show_advanced_inputs: bool = True,
     prefer_y_channel: bool = False,
 ) -> None:
     """Refresh common trace, column, and advanced x/y source selectors."""
@@ -370,21 +371,22 @@ def refresh_trace_source_widgets(
         plugin._populate_column_combo(column_combo, plugin.trace_key)
         column_combo.blockSignals(False)
 
-    items = trace_channel_items(plugin, traces)
-    roles = trace_channel_roles(plugin, traces)
-    widgets["channel_items"].clear()
-    widgets["channel_items"].update(items)
-    _refresh_channel_combo(
-        plugin, widgets["x_combo"], items, roles, "x_expr", preferred_axis="x"
-    )
-    _refresh_channel_combo(
-        plugin,
-        widgets["y_combo"],
-        items,
-        roles,
-        "y_expr",
-        preferred_axis="y" if prefer_y_channel else None,
-    )
+    if show_advanced_inputs:
+        items = trace_channel_items(plugin, traces)
+        roles = trace_channel_roles(plugin, traces)
+        widgets["channel_items"].clear()
+        widgets["channel_items"].update(items)
+        _refresh_channel_combo(
+            plugin, widgets["x_combo"], items, roles, "x_expr", preferred_axis="x"
+        )
+        _refresh_channel_combo(
+            plugin,
+            widgets["y_combo"],
+            items,
+            roles,
+            "y_expr",
+            preferred_axis="y" if prefer_y_channel else None,
+        )
 
 
 def _refresh_channel_combo(

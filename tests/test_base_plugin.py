@@ -241,14 +241,14 @@ class TestBasePluginDefaults:
         assert isinstance(tabs, list)
         assert len(tabs) == 2
         title, widget = tabs[0]
-        assert title == "Minimal"
+        assert title == "Settings"
         from qtpy.QtWidgets import QWidget
         assert isinstance(widget, QWidget)
 
-    def test_config_tabs_title_matches_name(self, qapp):
+    def test_config_tabs_uses_concise_settings_title(self, qapp):
         plugin = _MinimalPlugin()
         tabs = plugin.config_tabs()
-        assert tabs[0][0] == plugin.name
+        assert tabs[0][0] == "Settings"
 
     def test_config_tabs_general_tab_is_last(self, qapp):
         plugin = _MinimalPlugin()

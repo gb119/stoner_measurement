@@ -498,22 +498,22 @@ class StateScanPlugin(StatePlugin):
             >>> plugin = CounterPlugin()
             >>> tabs = plugin.config_tabs()
             >>> tabs[0][0]
-            'Counter \u2013 Scan'
+            'Scan'
             >>> tabs[1][0]
-            'Counter \u2013 Data'
+            'Data'
             >>> tabs[2][0]
-            'Counter \u2013 Settings'
+            'Settings'
         """
         if self._cached_config_tabs is not None:
             return self._cached_config_tabs
 
         tabs: list[tuple[str, QWidget]] = [
-            (f"{self.name} \u2013 Scan", _StateScanPage(self)),
-            (f"{self.name} \u2013 Data", _StateScanDataPage(self)),
+            ("Scan", _StateScanPage(self)),
+            ("Data", _StateScanDataPage(self)),
         ]
 
         settings_widget: QWidget = self._plugin_config_tabs() or QWidget()
-        tabs.append((f"{self.name} \u2013 Settings", settings_widget))
+        tabs.append(("Settings", settings_widget))
 
         about_tab = self._make_about_tab()
         if about_tab is not None:

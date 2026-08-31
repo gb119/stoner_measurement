@@ -274,7 +274,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
         Returns:
             (list[tuple[str, QWidget]]):
-                A list containing ``(self.name, combined_widget)`` and
+                A list containing ``("General", combined_widget)`` and
                 optionally an *About* tab.
 
         Examples:
@@ -289,7 +289,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> len(tabs)
             1
             >>> tabs[0][0]
-            'Noop'
+            'General'
         """
         def _build_tabs() -> list[tuple[str, QWidget]]:
             combined = QWidget(parent)
@@ -303,7 +303,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             layout.addWidget(self.config_widget())
             layout.addStretch()
             combined.setLayout(layout)
-            tabs = [(self.name, combined)]
+            tabs = [("General", combined)]
             about_tab = self._make_about_tab()
             if about_tab is not None:
                 tabs.append(about_tab)

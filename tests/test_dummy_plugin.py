@@ -108,9 +108,9 @@ class TestDummyPlugin:
         tabs = _register_tab_widgets(qtbot, plugin.config_tabs())
         titles = [t for t, _ in tabs]
         assert titles == [
-            "Dummy \u2013 Scan",
-            "Dummy \u2013 Settings",
-            "Dummy \u2013 About",
+            "Scan",
+            "Settings",
+            "About",
         ]
 
     def test_config_tabs_widgets_are_qwidgets(self, qapp, qtbot):

@@ -533,9 +533,9 @@ def test_config_tabs_has_general_tab(monkeypatch, qapp):
     tabs = plugin.config_tabs()
     tab_titles = [title for title, _ in tabs]
     assert tab_titles[0] == "General"
-    assert tab_titles[1] == "Temperature Monitor"
+    assert tab_titles[1] == "Settings"
     assert "General" in tab_titles
-    assert "Temperature Monitor" in tab_titles
+    assert "Settings" in tab_titles
 
 
 def test_widget_rebuilds_catalogs_on_output_settings_change(monkeypatch, qapp):

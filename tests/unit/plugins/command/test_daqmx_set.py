@@ -145,7 +145,7 @@ def test_settings_have_one_command_tab_and_no_scan_or_data_pages(qapp, managed_q
     value = combined.findChild(SISpinBox, "daqmx_set_value")
 
     titles = [title for title, _widget in tabs]
-    assert titles[0] == "Set DAQmx"
+    assert titles[0] == "General"
     assert not any(title.endswith((" - Scan", " - Data")) for title in titles)
     assert settings is not None
     assert settings.tabText(0) == "General"

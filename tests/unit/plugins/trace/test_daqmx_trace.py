@@ -17,6 +17,7 @@ from stoner_measurement.plugins.trace.daqmx import (
 )
 from stoner_measurement.plugins.trace.daqmx_runtime import validate_task_definition
 from stoner_measurement.scan import ListScanGenerator
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabBar
 from stoner_measurement.ui.widgets import (
     DaqmxDeviceInfo,
     DaqmxInputTrigger,
@@ -384,6 +385,7 @@ def test_settings_fix_direction_and_disable_optional_output(managed_qt_widget):
     plugin = DaqmxTracePlugin()
     settings = managed_qt_widget(DaqmxTraceSettingsWidget(plugin))
 
+    assert isinstance(settings.tabBar(), FontAwareTabBar)
     assert settings.acquisition_widget.task_kind() is DaqmxTaskKind.ACQUISITION
     assert settings.output_widget.task_kind() is DaqmxTaskKind.OUTPUT
     assert isinstance(settings.widget(0), QScrollArea)

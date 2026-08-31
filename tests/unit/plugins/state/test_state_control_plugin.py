@@ -42,6 +42,11 @@ class TestStateControlPlugin:
     def test_plugin_type(self, qapp):
         assert _InstantState().plugin_type == "state_scan"
 
+    def test_config_tabs_use_concise_role_titles(self, qapp):
+        titles = [title for title, _widget in _InstantState().config_tabs()]
+
+        assert titles == ["Scan", "Data", "Settings", "About"]
+
     def test_state_name(self, qapp):
         assert _InstantState().state_name == "Voltage"
 

@@ -99,7 +99,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         def _build_tabs() -> list[tuple[str, QWidget]]:
             tabs = [
                 ("General", self._general_config_widget(parent=parent)),
-                (self.name, self.config_widget(parent=parent)),
+                ("Settings", self.config_widget(parent=parent)),
             ]
             about_tab = self._make_about_tab()
             if about_tab is not None:

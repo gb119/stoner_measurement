@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from qtpy.QtCore import QSize, Qt
-from qtpy.QtWidgets import QSizePolicy, QStyle, QTableWidget, QTabWidget, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QSizePolicy, QStyle, QTableWidget, QVBoxLayout, QWidget
+
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 
 
 def set_table_visible_row_count(table: QTableWidget, row_count: int) -> None:
@@ -74,7 +76,7 @@ class MaximumAspectRatioWidget(QWidget):
         super().resizeEvent(event)
 
 
-class ContentWrappingTabWidget(QTabWidget):
+class ContentWrappingTabWidget(FontAwareTabWidget):
     """A tab widget whose preferred height wraps its tallest page."""
 
     def __init__(self, parent: QWidget | None = None) -> None:

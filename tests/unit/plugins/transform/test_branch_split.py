@@ -249,12 +249,14 @@ def test_data_configuration_selects_x_outputs_and_trace_names(
         {"field": "x", "signal": "y", "auxiliary": "z"},
     )
     widget = managed_qt_widget(plugin._build_data_tab())  # noqa: SLF001
+    layout = widget.layout()
     mode = widget.findChild(QComboBox, "branch_split_channel_mode")
     x_channel = widget.findChild(QComboBox, "branch_split_x_channel")
     channels = widget.findChild(QListWidget, "branch_split_channels")
     rising_name = widget.findChild(QLineEdit, "rising_trace_name")
     falling_name = widget.findChild(QLineEdit, "falling_trace_name")
 
+    assert all(layout.indexOf(combo) >= 0 for combo in widget.findChildren(QComboBox))
     assert channels.isEnabled() is False
     mode.setCurrentIndex(mode.findData(CHANNELS_SELECTED))
     x_channel.setCurrentIndex(x_channel.findData(""))
@@ -277,6 +279,16 @@ def test_data_configuration_selects_x_outputs_and_trace_names(
     falling_name.editingFinished.emit()
 
     assert plugin.output_trace_names == ["up", "down"]
+
+
+def test_about_documentation_describes_configuration_and_outputs(qapp):
+    html = BranchSplitPlugin()._about_html()  # noqa: SLF001
+
+    assert html is not None
+    assert "General" in html
+    assert "Advanced" in html
+    assert "rising" in html
+    assert "falling" in html
 
 
 def test_blank_output_name_in_configuration_uses_default(

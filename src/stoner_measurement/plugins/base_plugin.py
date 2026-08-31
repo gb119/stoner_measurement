@@ -1147,7 +1147,7 @@ class BasePlugin(ABC):
             return None
         about_widget = QTextBrowser()
         about_widget.setHtml(about_html)
-        return (f"{self.name} \u2013 About", about_widget)
+        return ("About", about_widget)
 
     def _get_cached_config_tabs(
         self,
@@ -1175,8 +1175,8 @@ class BasePlugin(ABC):
         """Return a list of ``(tab_title, widget)`` pairs for the config panel.
 
         Each pair contributes one tab to the right-hand configuration panel.
-        The default implementation wraps :meth:`config_widget` in a list using
-        :attr:`name` as the tab title, appends a *General* tab containing
+        The default implementation wraps :meth:`config_widget` in a *Settings*
+        tab, appends a *General* tab containing
         the instance-name editor, and optionally appends an *About* tab whose
         HTML content is provided by :meth:`_about_html`.
 
@@ -1203,13 +1203,13 @@ class BasePlugin(ABC):
             >>> len(tabs)
             2
             >>> tabs[0][0]
-            'Minimal'
+            'Settings'
             >>> tabs[1][0]
             'General'
         """
         def _build_tabs() -> list[tuple[str, QWidget]]:
             tabs = [
-                (self.name, self.config_widget(parent=parent)),
+                ("Settings", self.config_widget(parent=parent)),
                 ("General", self._general_config_widget(parent=parent)),
             ]
             about_tab = self._make_about_tab()

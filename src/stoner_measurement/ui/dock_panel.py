@@ -36,7 +36,6 @@ from qtpy.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
-    QTabBar,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -47,6 +46,7 @@ from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.base_plugin import is_reserved_instance_name
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.resources import load_plugin_catalogue_config
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabBar
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -1061,7 +1061,7 @@ class DockPanel(QWidget):
         # --- Sequence steps ---
         sequence_layout.addWidget(QLabel("<b>Sequence Steps</b>"))
 
-        self._sequence_tabs = QTabBar(self)
+        self._sequence_tabs = FontAwareTabBar(self)
         self._sequence_tabs.setDocumentMode(True)
         self._sequence_tabs.setDrawBase(False)
         self._sequence_tabs.setExpanding(False)
@@ -1136,7 +1136,7 @@ class DockPanel(QWidget):
         plugin_manager.plugins_changed.connect(self._refresh_monitors)
 
     @property
-    def sequence_tabs(self) -> QTabBar:
+    def sequence_tabs(self) -> FontAwareTabBar:
         """Tab bar representing the open measurement-sequence documents."""
         return self._sequence_tabs
 

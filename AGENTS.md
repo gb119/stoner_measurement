@@ -80,6 +80,25 @@ $env:QT_QPA_FONTDIR = "C:\Windows\Fonts"
 Without `QT_QPA_FONTDIR`, Qt's offscreen platform may discover no system fonts
 and render labels, button text, and editor content as square placeholder glyphs.
 
+## Shared Qt Widgets
+
+- Before constructing or subclassing a raw Qt widget, check
+  `stoner_measurement.ui` and `stoner_measurement.ui.widgets` for the
+  repository's shared equivalent. Use the shared widget so that application
+  styling, sizing, accessibility, persistence, and cross-binding behaviour
+  remain consistent.
+- Use `FontAwareTabWidget` instead of `QTabWidget` and `FontAwareTabBar`
+  instead of `QTabBar`. Specialized tab widgets should inherit from
+  `FontAwareTabWidget`; standalone tab bars should be `FontAwareTabBar`. These
+  classes reserve enough space for the selected bold label and prevent tab
+  text from being clipped when selection changes.
+- Use `SISpinBox` for physical quantities and rates that support SI units or
+  prefixes rather than a raw `QDoubleSpinBox`.
+- Keep configuration-tab titles concise and role-based, such as `General`,
+  `Scan`, `Data`, `Settings`, and `About`. Do not prefix them with the
+  plugin or class name; the selected sequence step already provides that
+  identity.
+
 ## Qt Configuration Pages
 
 - Top-pack configuration-page controls: add widgets and layouts at their
