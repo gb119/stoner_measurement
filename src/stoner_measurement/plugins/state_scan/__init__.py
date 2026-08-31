@@ -6,6 +6,7 @@ Exports :class:`StateScanPlugin` (abstract base) and :class:`CounterPlugin`
 
 from stoner_measurement.plugins.state_scan.base import StateScanPlugin
 from stoner_measurement.plugins.state_scan.counter import CounterPlugin
+from stoner_measurement.plugins.state_scan.daqmx import DaqmxPointScanPlugin
 from stoner_measurement.plugins.state_scan.keithley_2400 import (
     Keithley2400PointScanPlugin,
 )
@@ -27,6 +28,7 @@ from stoner_measurement.plugins.state_scan.xray_diffractometer import (
 
 __all__ = [
     "CounterPlugin",
+    "DaqmxPointScanPlugin",
     "Keithley2400PointScanPlugin",
     "MagnetControllerScanPlugin",
     "MotorControllerScanPlugin",

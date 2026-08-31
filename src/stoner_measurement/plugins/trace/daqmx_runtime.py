@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 
 from stoner_measurement.ui.widgets import (
+    DaqmxInputTrigger,
+    DaqmxInputTriggerMode,
     DaqmxSelectionMode,
     DaqmxTaskDefinition,
     DaqmxTaskKind,
@@ -43,8 +45,7 @@ def validate_task_definition(definition: DaqmxTaskDefinition) -> None:
                     "available in the DAQmx trace plugin."
                 )
             raise ValueError(
-                f"{family.upper()} channels are not valid for a "
-                f"{definition.task_kind.value} task."
+                f"{family.upper()} channels are not valid for a {definition.task_kind.value} task."
             )
         if definition.custom_scale and family not in {"ai", "ao"}:
             raise ValueError("Custom scales can only be used with analog channels.")
@@ -57,9 +58,7 @@ def validate_task_definition(definition: DaqmxTaskDefinition) -> None:
         raise ValueError("Select a MAX saved task.")
 
 
-def _physical_channel_family(
-    channel: str, task_kind: DaqmxTaskKind | None = None
-) -> str:
+def _physical_channel_family(channel: str, task_kind: DaqmxTaskKind | None = None) -> str:
     """Return the DAQmx subsystem token embedded in a physical channel name."""
     suffix = channel.split("/", 1)[-1].lower()
     for family in ("ai", "ao", "di", "do", "ci", "co"):
@@ -78,8 +77,10 @@ class NidaqmxRuntime:
     def __init__(self) -> None:
         try:
             import nidaqmx  # type: ignore[import-not-found]
-            from nidaqmx import constants  # type: ignore[import-not-found]
-            from nidaqmx import system  # type: ignore[import-not-found]
+            from nidaqmx import (  # type: ignore[import-not-found]
+                constants,
+                system,
+            )
         except (ImportError, OSError) as exc:
             raise DaqmxRuntimeError(
                 "The DAQmx trace plugin requires the optional 'nidaqmx' package and "
@@ -98,7 +99,9 @@ class NidaqmxRuntime:
         task = self._nidaqmx.Task()
         try:
             if definition.selection_mode is DaqmxSelectionMode.GLOBAL_CHANNELS:
-                channels = [self._system.global_channels[name] for name in definition.global_channels]
+                channels = [
+                    self._system.global_channels[name] for name in definition.global_channels
+                ]
                 task.add_global_channels(channels)
             else:
                 self._add_physical_channels(task, definition)
@@ -107,10 +110,25 @@ class NidaqmxRuntime:
             raise
         return task
 
+    def create_digital_output_task(self, line: str) -> Any:
+        """Create a one-line digital output task for an exported trigger pulse."""
+        task = self._nidaqmx.Task()
+        try:
+            task.do_channels.add_do_chan(
+                line,
+                line_grouping=self._constants.LineGrouping.CHAN_PER_LINE,
+            )
+            if int(task.number_of_channels) != 1:
+                raise DaqmxRuntimeError(
+                    "The output trigger must select exactly one digital output line."
+                )
+        except Exception:
+            task.close()
+            raise
+        return task
+
     def _add_physical_channels(self, task: Any, definition: DaqmxTaskDefinition) -> None:
-        family = _physical_channel_family(
-            definition.physical_channels[0], definition.task_kind
-        )
+        family = _physical_channel_family(definition.physical_channels[0], definition.task_kind)
         for channel in definition.physical_channels:
             if family == "ai":
                 kwargs: dict[str, Any] = {}
@@ -164,6 +182,23 @@ class NidaqmxRuntime:
             samps_per_chan=samples,
         )
 
+    def configure_input_start_trigger(self, task: Any, trigger: DaqmxInputTrigger) -> None:
+        """Configure or disable the acquisition task's external start trigger."""
+        if trigger.mode is DaqmxInputTriggerMode.IMMEDIATE:
+            task.triggers.start_trigger.disable_start_trig()
+            return
+        if trigger.mode is DaqmxInputTriggerMode.DIGITAL:
+            task.triggers.start_trigger.cfg_dig_edge_start_trig(
+                trigger.terminal,
+                trigger_edge=getattr(self._constants.Edge, trigger.edge.name),
+            )
+            return
+        task.triggers.start_trigger.cfg_anlg_edge_start_trig(
+            trigger_source=trigger.terminal,
+            trigger_slope=getattr(self._constants.Slope, trigger.edge.name),
+            trigger_level=trigger.analog_level,
+        )
+
     @staticmethod
     def input_sample_clock_source(input_task: Any) -> str:
         """Return the acquisition subsystem's internal sample-clock terminal."""
@@ -210,11 +245,11 @@ class NidaqmxRuntime:
     def write_output(task: Any, values: np.ndarray) -> None:
         """Preload one finite output buffer without implicitly starting it."""
         count = int(task.number_of_channels)
-        channel_type = getattr(task.channels.chan_type, "name", str(task.channels.chan_type)).upper()
+        channel_type = getattr(
+            task.channels.chan_type, "name", str(task.channels.chan_type)
+        ).upper()
         prepared = values != 0 if channel_type == "DIGITAL_OUTPUT" else values
-        data: Any = (
-            prepared.tolist() if count == 1 else np.tile(prepared, (count, 1)).tolist()
-        )
+        data: Any = prepared.tolist() if count == 1 else np.tile(prepared, (count, 1)).tolist()
         task.write(data, auto_start=False)
 
     @staticmethod

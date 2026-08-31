@@ -25,6 +25,16 @@ from stoner_measurement.ui.widgets.daqmx_task_widget import (
     DaqmxTaskKind,
     discover_daqmx_system,
 )
+from stoner_measurement.ui.widgets.daqmx_trigger_widget import (
+    DaqmxInputTrigger,
+    DaqmxInputTriggerMode,
+    DaqmxInputTriggerWidget,
+    DaqmxOutputTrigger,
+    DaqmxOutputTriggerWidget,
+    DaqmxTriggerEdge,
+    DaqmxTriggerIdleState,
+    DaqmxTriggerPulsePreview,
+)
 from stoner_measurement.ui.widgets.percent_slider import PercentSliderWidget
 from stoner_measurement.ui.widgets.round_dial import RoundDialWidget
 from stoner_measurement.ui.widgets.round_dial_demo import RoundDialDemoWidget
@@ -50,12 +60,20 @@ __all__ = [
     "AutoSISpinBox",
     "DaqmxDeviceInfo",
     "DaqmxDiscoveryError",
+    "DaqmxInputTrigger",
+    "DaqmxInputTriggerMode",
+    "DaqmxInputTriggerWidget",
     "DaqmxNamedResource",
+    "DaqmxOutputTrigger",
+    "DaqmxOutputTriggerWidget",
     "DaqmxSelectionMode",
     "DaqmxSystemInfo",
     "DaqmxTaskDefinition",
     "DaqmxTaskDefinitionWidget",
     "DaqmxTaskKind",
+    "DaqmxTriggerEdge",
+    "DaqmxTriggerIdleState",
+    "DaqmxTriggerPulsePreview",
     "RoundDialWidget",
     "RoundDialDemoWidget",
     "RoundDialPanel",

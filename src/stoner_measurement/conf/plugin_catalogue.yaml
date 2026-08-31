@@ -89,5 +89,9 @@ items:
     label: Trace
 - group: Data Acquisition
   items:
+  - plugin: daqmx_set
+    label: Set DAQmx
+  - plugin: daqmx_point_scan
+    label: DAQmx Point Scan
   - plugin: daqmx_trace
     label: DAQmx Trace

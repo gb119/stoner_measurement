@@ -73,6 +73,8 @@ stoner-measurement-round-dial-demo = "stoner_measurement.round_dial_demo:main"
 
 [project.entry-points."stoner_measurement.plugins"]
 counter = "stoner_measurement.plugins.state_scan.counter:CounterPlugin"
+daqmx_point_scan = "stoner_measurement.plugins.state_scan.daqmx:DaqmxPointScanPlugin"
+daqmx_set = "stoner_measurement.plugins.command.daqmx_set:DaqmxSetCommand"
 magnet_controller_scan = "stoner_measurement.plugins.state_scan.magnet_controller:MagnetControllerScanPlugin"
 k2400_point_scan = "stoner_measurement.plugins.state_scan.keithley_2400:Keithley2400PointScanPlugin"
 network_analyser_point_scan = "stoner_measurement.plugins.state_scan.network_analyser:NetworkAnalyserPointScanPlugin"

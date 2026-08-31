@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any
 
 import numpy as np
@@ -29,19 +30,72 @@ from stoner_measurement.plugins.trace.daqmx_runtime import (
     validate_task_definition,
 )
 from stoner_measurement.ui.widgets import (
+    DaqmxInputTrigger,
+    DaqmxInputTriggerMode,
+    DaqmxInputTriggerWidget,
+    DaqmxOutputTrigger,
+    DaqmxOutputTriggerWidget,
+    DaqmxSystemInfo,
     DaqmxTaskDefinition,
     DaqmxTaskDefinitionWidget,
     DaqmxTaskKind,
+    DaqmxTriggerIdleState,
     SISpinBox,
 )
 
 
-class DaqmxTraceSettingsWidget(QTabWidget):
-    """General DAQmx task/timing controls and an advanced trigger placeholder."""
+def _duration_in_samples(name: str, duration: float, rate: float) -> int:
+    """Convert a positive pulse duration to representable hardware samples."""
+    samples = int(round(duration * rate))
+    if samples < 1:
+        raise ValueError(
+            f"Output trigger {name} ({duration:g} s) is shorter than the "
+            f"hardware sample period ({1.0 / rate:g} s)."
+        )
+    return samples
 
-    def __init__(self, plugin: DaqmxTracePlugin, parent: QWidget | None = None) -> None:
+
+def _build_output_trigger_values(
+    trigger: DaqmxOutputTrigger, rate: float, sample_count: int
+) -> np.ndarray:
+    """Build one finite digital pulse synchronized to the generated scan."""
+    high_samples = _duration_in_samples("high time", trigger.high_time, rate)
+    low_samples = _duration_in_samples("low time", trigger.low_time, rate)
+    delay_samples = 0
+    if trigger.delay > 0:
+        delay_samples = _duration_in_samples("delay", trigger.delay, rate)
+    phase_sample = int(round((trigger.phase_angle / 360.0) * sample_count))
+    active_samples, trailing_samples = (
+        (high_samples, low_samples)
+        if trigger.idle_state is DaqmxTriggerIdleState.LOW
+        else (low_samples, high_samples)
+    )
+    active_start = phase_sample + delay_samples
+    required_samples = active_start + active_samples + trailing_samples
+    if required_samples > sample_count:
+        raise ValueError(
+            "The output trigger phase, delay, pulse, and trailing idle time do not "
+            "fit within the generated scan."
+        )
+    idle = trigger.idle_state is DaqmxTriggerIdleState.HIGH
+    values = np.full(sample_count, idle, dtype=bool)
+    values[active_start : active_start + active_samples] = not idle
+    return values
+
+
+class DaqmxTraceSettingsWidget(QTabWidget):
+    """General DAQmx task/timing controls and reusable trigger configuration."""
+
+    def __init__(
+        self,
+        plugin: DaqmxTracePlugin,
+        parent: QWidget | None = None,
+        *,
+        point_timing: bool = False,
+    ) -> None:
         super().__init__(parent)
         self._plugin = plugin
+        self._point_timing = point_timing
         self.addTab(self._build_general_page(), "General")
         self.addTab(self._build_advanced_page(), "Advanced")
 
@@ -66,13 +120,16 @@ class DaqmxTraceSettingsWidget(QTabWidget):
         )
         self.sample_rate_spin.setMinimum(0.001)
         self.sample_rate_spin.setMaximum(10_000_000.0)
-        timing_form.addRow("Scan point rate", self.sample_rate_spin)
+        rate_label = "Acquisition sample rate" if self._point_timing else "Scan point rate"
+        timing_form.addRow(rate_label, self.sample_rate_spin)
         self.oversampling_spin = QSpinBox(timing_group)
         self.oversampling_spin.setRange(1, 100_000)
         self.oversampling_spin.setValue(self._plugin._oversampling)
-        timing_form.addRow("Input oversampling", self.oversampling_spin)
+        oversampling_label = "Samples per point" if self._point_timing else "Input oversampling"
+        timing_form.addRow(oversampling_label, self.oversampling_spin)
         self.input_rate_label = QLabel(timing_group)
-        timing_form.addRow("Hardware sample rate", self.input_rate_label)
+        derived_label = "Point acquisition time" if self._point_timing else "Hardware sample rate"
+        timing_form.addRow(derived_label, self.input_rate_label)
         self.sample_rate_spin.valueChanged.connect(self._set_sample_rate)
         self.oversampling_spin.valueChanged.connect(self._set_oversampling)
         self._refresh_input_rate()
@@ -86,10 +143,14 @@ class DaqmxTraceSettingsWidget(QTabWidget):
         )
         self.acquisition_widget.set_definition(self._plugin._acquisition_definition)
         self.acquisition_widget.definition_changed.connect(self._set_acquisition_definition)
+        self.acquisition_widget.snapshot_changed.connect(self._set_trigger_resources)
         acquisition_layout.addWidget(self.acquisition_widget)
         layout.addWidget(acquisition_group)
 
-        self.output_enabled_check = QCheckBox("Generate an output waveform", page)
+        output_label = (
+            "Generate an output value" if self._point_timing else "Generate an output waveform"
+        )
+        self.output_enabled_check = QCheckBox(output_label, page)
         self.output_enabled_check.setChecked(self._plugin._output_enabled)
         layout.addWidget(self.output_enabled_check)
         self.output_group = QGroupBox("Output task", page)
@@ -100,6 +161,7 @@ class DaqmxTraceSettingsWidget(QTabWidget):
         )
         self.output_widget.set_definition(self._plugin._output_definition)
         self.output_widget.definition_changed.connect(self._set_output_definition)
+        self.output_widget.snapshot_changed.connect(self._set_trigger_resources)
         output_layout.addWidget(self.output_widget)
         self.output_group.setEnabled(self._plugin._output_enabled)
         self.output_enabled_check.toggled.connect(self._set_output_enabled)
@@ -108,20 +170,46 @@ class DaqmxTraceSettingsWidget(QTabWidget):
         self.general_scroll.setWidget(page)
         return self.general_scroll
 
-    def _build_advanced_page(self) -> QWidget:
-        page = QWidget(self)
+    def _build_advanced_page(self) -> QScrollArea:
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.advanced_scroll = scroll
+        page = QWidget(scroll)
+        self.advanced_page = page
         layout = QVBoxLayout(page)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        label = QLabel(
-            "External start, reference, pause, and exported trigger routing will be "
-            "configured here. For now, an enabled output task uses the acquisition "
-            "sample clock and is armed from its internal start event.",
-            page,
+        self.input_trigger_widget = DaqmxInputTriggerWidget(
+            page, trigger=self._plugin._input_trigger
         )
-        label.setWordWrap(True)
-        layout.addWidget(label)
+        self.output_trigger_widget = DaqmxOutputTriggerWidget(
+            page, trigger=self._plugin._output_trigger
+        )
+        self.input_trigger_widget.trigger_changed.connect(self._set_input_trigger)
+        self.output_trigger_widget.trigger_changed.connect(self._set_output_trigger)
+        alignment = Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        layout.addWidget(self.input_trigger_widget, 0, alignment)
+        layout.addWidget(self.output_trigger_widget, 0, alignment)
         layout.addStretch(1)
-        return page
+        scroll.setWidget(page)
+        return scroll
+
+    def _set_input_trigger(self, value: DaqmxInputTrigger) -> None:
+        self._plugin._input_trigger = value
+
+    def _set_output_trigger(self, value: DaqmxOutputTrigger) -> None:
+        self._plugin._output_trigger = value
+
+    def _set_trigger_resources(self, snapshot: DaqmxSystemInfo) -> None:
+        terminals = tuple(terminal for device in snapshot.devices for terminal in device.terminals)
+        lines = tuple(
+            line
+            for device in snapshot.devices
+            for line in device.digital_outputs
+            if "/line" in line.casefold()
+        )
+        self.input_trigger_widget.set_available_terminals(terminals)
+        self.output_trigger_widget.set_available_lines(lines)
 
     def _set_acquisition_definition(self, value: DaqmxTaskDefinition) -> None:
         self._plugin._acquisition_definition = value
@@ -142,24 +230,93 @@ class DaqmxTraceSettingsWidget(QTabWidget):
         self._refresh_input_rate()
 
     def _refresh_input_rate(self) -> None:
-        input_rate = self.sample_rate_spin.value() * self.oversampling_spin.value()
-        self.input_rate_label.setText(f"{input_rate:g} Hz")
+        if self._point_timing:
+            duration = self.oversampling_spin.value() / self.sample_rate_spin.value()
+            self.input_rate_label.setText(f"{duration:g} s")
+        else:
+            input_rate = self.sample_rate_spin.value() * self.oversampling_spin.value()
+            self.input_rate_label.setText(f"{input_rate:g} Hz")
 
 
 class DaqmxTracePlugin(TracePlugin):
-    """Acquire a finite DAQmx trace, optionally with synchronized generation.
+    """Acquire a hardware-timed DAQmx trace with optional synchronized output.
 
-    The scan generator defines both the x values and the finite point count. An
-    optional output task holds each value for one configured point interval.
-    Input channels run at an integer multiple of the point rate; the output
-    buffer repeats each value at that same hardware rate and shares the input
-    sample clock. Consecutive input samples in each point window are averaged
-    to return one reading per scan value.
+    Use this plugin when a complete input trace should be acquired as one
+    finite NI-DAQmx operation. The scan generator supplies the x values. If
+    output generation is enabled, those values are also written to the
+    selected output task while the acquisition runs. This is the most
+    efficient DAQmx workflow when no other sequence steps need to execute
+    between points. Use
+    :class:`~stoner_measurement.plugins.state_scan.daqmx.DaqmxPointScanPlugin`
+    when nested sequence steps must run at every value, or
+    :class:`~stoner_measurement.plugins.command.daqmx_set.DaqmxSetCommand`
+    for one set-and-acquire operation.
 
-    Physical AI/AO and DI/DO tasks are supported, as are compatible MAX global
-    channels and saved tasks. Counter channels require measurement-specific
-    configuration and are intentionally rejected for now. The Advanced page is
-    reserved for explicit external and exported trigger routing.
+    The **Scan** tab defines the finite sequence of values. On the **Settings**
+    tab, the nested **General** page sets the scan-point rate, input
+    oversampling, acquisition task, and optional output task. Acquisition
+    channels may be selected directly from a device, from NI MAX global
+    channels, or by loading a saved task. Physical analogue and digital input
+    channels are supported. The optional output task similarly supports
+    analogue or digital outputs. Custom NI scales may be selected for analogue
+    physical channels. Counter input and output channels are not supported.
+
+    The configured scan-point rate is multiplied by **Input oversampling** to
+    obtain the hardware sample rate. Every scan value occupies that many
+    consecutive hardware samples. The output buffer repeats the value across
+    the same window, and the acquisition samples in the window are averaged to
+    produce one result. The returned ``DAQmx Trace`` contains ``Scan value`` as
+    its x column and one floating-point data column for every discovered input
+    channel. The first input is assigned the y role and subsequent inputs the
+    z role, so the trace can be consumed directly by plot, save, fit, and
+    transform plugins.
+
+    The **Advanced** page configures input and output triggering. The input
+    task may start immediately or from a rising or falling digital or analogue
+    edge. An analogue edge also has a trigger-level setting. Input triggering
+    is applied to the acquisition task, which remains the timing master.
+
+    **Generate an output trigger pulse** creates a separate one-line,
+    hardware-timed digital-output task. It shares the acquisition sample clock
+    and is armed from the acquisition task's internal start event. **Phase** is
+    a normalized position through the generated scan: 0 degrees is the start
+    and 360 degrees is the end. Delay, high time, low time, and idle polarity
+    define the pulse around that position. All pulse times are quantized to the
+    hardware sample period and the complete pulse must fit inside the finite
+    scan. Optional waveform and trigger-output tasks are armed before the
+    acquisition task so that an external input trigger starts them together.
+
+    Direct physical channels, global channels, and saved tasks must resolve to
+    compatible DAQmx task types. Automatic sample-clock and start-event routing
+    is based on the acquisition device's internal terminals. Some device
+    combinations require explicit NI routing that this plugin cannot infer;
+    cross-device synchronization should therefore be verified on the intended
+    hardware.
+
+    Attributes:
+        scan_generator (BaseScanGenerator):
+            Generator defining the trace values and finite point count.
+        _sample_rate_hz (float):
+            Requested scan-point rate in hertz.
+        _oversampling (int):
+            Number of acquisition samples averaged for each scan value.
+        _output_enabled (bool):
+            Whether the scan values are generated by the output task.
+        _input_trigger (DaqmxInputTrigger):
+            Start-trigger configuration applied to the acquisition task.
+        _output_trigger (DaqmxOutputTrigger):
+            Optional synchronized digital pulse configuration.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        For a voltage-driven analogue-input trace, select an ``ao`` channel as
+        the output task, one or more ``ai`` channels as the acquisition task,
+        choose a scan generator, and enable output generation. A point rate of
+        100 Hz with oversampling 10 runs the hardware at 1 kHz and returns one
+        averaged reading every 10 ms.
     """
 
     def __init__(
@@ -169,17 +326,18 @@ class DaqmxTracePlugin(TracePlugin):
         runtime_factory: Callable[[], Any] = NidaqmxRuntime,
     ) -> None:
         super().__init__(parent)
-        self._acquisition_definition = DaqmxTaskDefinition(
-            task_kind=DaqmxTaskKind.ACQUISITION
-        )
+        self._acquisition_definition = DaqmxTaskDefinition(task_kind=DaqmxTaskKind.ACQUISITION)
         self._output_definition = DaqmxTaskDefinition(task_kind=DaqmxTaskKind.OUTPUT)
         self._output_enabled = False
         self._sample_rate_hz = 1000.0
         self._oversampling = 1
+        self._input_trigger = DaqmxInputTrigger()
+        self._output_trigger = DaqmxOutputTrigger()
         self._runtime_factory = runtime_factory
         self._runtime: Any | None = None
         self._input_task: Any | None = None
         self._output_task: Any | None = None
+        self._trigger_output_task: Any | None = None
         self._scan_values: np.ndarray | None = None
         self._input_channel_names: tuple[str, ...] = ()
         self._configured = False
@@ -212,6 +370,32 @@ class DaqmxTracePlugin(TracePlugin):
             raise ValueError("The scan/output sample rate must be positive.")
         if self._oversampling < 1:
             raise ValueError("Input oversampling must be at least one.")
+        if self._input_trigger.mode is not DaqmxInputTriggerMode.IMMEDIATE:
+            if not self._input_trigger.terminal:
+                raise ValueError("Select an input trigger terminal.")
+            if self._input_trigger.mode is DaqmxInputTriggerMode.ANALOG and not np.isfinite(
+                self._input_trigger.analog_level
+            ):
+                raise ValueError("The analogue input trigger level must be finite.")
+        if self._output_trigger.enabled:
+            if not self._output_trigger.line:
+                raise ValueError("Select a digital output trigger line.")
+            if "/line" not in self._output_trigger.line.casefold():
+                raise ValueError("The output trigger must select one digital output line.")
+            timing_values = (
+                self._output_trigger.phase_angle,
+                self._output_trigger.delay,
+                self._output_trigger.high_time,
+                self._output_trigger.low_time,
+            )
+            if not all(np.isfinite(value) for value in timing_values):
+                raise ValueError("Output trigger timing values must all be finite.")
+            if not 0.0 <= self._output_trigger.phase_angle <= 360.0:
+                raise ValueError("Output trigger phase must be between 0 and 360 degrees.")
+            if self._output_trigger.delay < 0:
+                raise ValueError("Output trigger delay cannot be negative.")
+            if self._output_trigger.high_time <= 0 or self._output_trigger.low_time <= 0:
+                raise ValueError("Output trigger high and low times must be positive.")
 
     def connect(self) -> None:
         """Create and verify DAQmx tasks without starting acquisition or output."""
@@ -220,6 +404,7 @@ class DaqmxTracePlugin(TracePlugin):
         runtime: Any | None = None
         input_task: Any | None = None
         output_task: Any | None = None
+        trigger_output_task: Any | None = None
         try:
             self._validate_configuration()
             runtime = self._runtime_factory()
@@ -228,16 +413,21 @@ class DaqmxTracePlugin(TracePlugin):
             if self._output_enabled:
                 output_task = runtime.create_task(self._output_definition)
                 runtime.verify_task(output_task, DaqmxTaskKind.OUTPUT)
+            if self._output_trigger.enabled:
+                trigger_output_task = runtime.create_digital_output_task(self._output_trigger.line)
+                runtime.verify_task(trigger_output_task, DaqmxTaskKind.OUTPUT)
         except Exception:
             if runtime is not None:
-                for task in (output_task, input_task):
+                for task in (trigger_output_task, output_task, input_task):
                     if task is not None:
-                        runtime.close(task)
+                        with suppress(Exception):
+                            runtime.close(task)
             self._set_status(TraceStatus.ERROR)
             raise
         self._runtime = runtime
         self._input_task = input_task
         self._output_task = output_task
+        self._trigger_output_task = trigger_output_task
         self._set_status(TraceStatus.IDLE)
 
     def configure(self) -> None:
@@ -262,21 +452,39 @@ class DaqmxTracePlugin(TracePlugin):
                 hardware_rate,
                 hardware_samples,
             )
+            self._runtime.configure_input_start_trigger(self._input_task, self._input_trigger)
+            sample_clock_source = ""
+            if self._output_task is not None or self._trigger_output_task is not None:
+                sample_clock_source = self._runtime.input_sample_clock_source(self._input_task)
             if self._output_task is not None:
                 self._runtime.prepare_for_configuration(self._output_task)
                 self._runtime.configure_finite_timing(
                     self._output_task,
                     hardware_rate,
                     hardware_samples,
-                    source=self._runtime.input_sample_clock_source(self._input_task),
+                    source=sample_clock_source,
                 )
-                self._runtime.configure_output_start_from_input(
-                    self._output_task, self._input_task
-                )
+                self._runtime.configure_output_start_from_input(self._output_task, self._input_task)
                 self._runtime.write_output(
                     self._output_task, np.repeat(scan_values, self._oversampling)
                 )
                 self._runtime.commit_task(self._output_task)
+            if self._trigger_output_task is not None:
+                trigger_values = _build_output_trigger_values(
+                    self._output_trigger, hardware_rate, hardware_samples
+                )
+                self._runtime.prepare_for_configuration(self._trigger_output_task)
+                self._runtime.configure_finite_timing(
+                    self._trigger_output_task,
+                    hardware_rate,
+                    hardware_samples,
+                    source=sample_clock_source,
+                )
+                self._runtime.configure_output_start_from_input(
+                    self._trigger_output_task, self._input_task
+                )
+                self._runtime.write_output(self._trigger_output_task, trigger_values)
+                self._runtime.commit_task(self._trigger_output_task)
             self._runtime.commit_task(self._input_task)
             channel_names = self._runtime.channel_names(self._input_task)
             if not channel_names:
@@ -307,14 +515,20 @@ class DaqmxTracePlugin(TracePlugin):
         try:
             if self._output_task is not None:
                 self._runtime.start(self._output_task)
+            if self._trigger_output_task is not None:
+                self._runtime.start(self._trigger_output_task)
             self._runtime.start(self._input_task)
             raw = np.asarray(
                 self._runtime.read(self._input_task, sample_count, timeout), dtype=float
             )
             if self._output_task is not None:
                 self._runtime.wait_until_done(self._output_task, timeout)
+            if self._trigger_output_task is not None:
+                self._runtime.wait_until_done(self._trigger_output_task, timeout)
         finally:
             self._runtime.stop(self._input_task)
+            if self._trigger_output_task is not None:
+                self._runtime.stop(self._trigger_output_task)
             if self._output_task is not None:
                 self._runtime.stop(self._output_task)
 
@@ -346,13 +560,14 @@ class DaqmxTracePlugin(TracePlugin):
         runtime, self._runtime = self._runtime, None
         input_task, self._input_task = self._input_task, None
         output_task, self._output_task = self._output_task, None
+        trigger_output_task, self._trigger_output_task = self._trigger_output_task, None
         self._configured = False
         self._scan_values = None
         self._input_channel_names = ()
         failures: list[Exception] = []
         if runtime is not None:
             self._set_status(TraceStatus.DISCONNECTING)
-            for task in (output_task, input_task):
+            for task in (trigger_output_task, output_task, input_task):
                 if task is not None:
                     try:
                         runtime.stop(task)
@@ -369,7 +584,7 @@ class DaqmxTracePlugin(TracePlugin):
             ) from failures[0]
 
     def to_json(self) -> dict[str, Any]:
-        """Serialize task definitions and hardware timing."""
+        """Serialize task definitions, timing, and non-default advanced settings."""
         data = super().to_json()
         data.update(
             {
@@ -380,19 +595,31 @@ class DaqmxTracePlugin(TracePlugin):
                 "oversampling": self._oversampling,
             }
         )
+        if self._input_trigger != DaqmxInputTrigger():
+            data["input_trigger"] = self._input_trigger.to_dict()
+        if self._output_trigger != DaqmxOutputTrigger():
+            data["output_trigger"] = self._output_trigger.to_dict()
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
         super()._restore_from_json(data)
         if "acquisition_task" in data:
-            self._acquisition_definition = DaqmxTaskDefinition.from_dict(
-                data["acquisition_task"]
-            )
+            self._acquisition_definition = DaqmxTaskDefinition.from_dict(data["acquisition_task"])
         if "output_task" in data:
             self._output_definition = DaqmxTaskDefinition.from_dict(data["output_task"])
         self._output_enabled = bool(data.get("output_enabled", self._output_enabled))
         self._sample_rate_hz = float(data.get("sample_rate_hz", self._sample_rate_hz))
         self._oversampling = max(1, int(data.get("oversampling", self._oversampling)))
+        self._input_trigger = (
+            DaqmxInputTrigger.from_dict(data["input_trigger"])
+            if "input_trigger" in data
+            else DaqmxInputTrigger()
+        )
+        self._output_trigger = (
+            DaqmxOutputTrigger.from_dict(data["output_trigger"])
+            if "output_trigger" in data
+            else DaqmxOutputTrigger()
+        )
 
     def _plugin_config_tabs(self) -> QWidget:
         """Return nested General and Advanced DAQmx settings pages."""

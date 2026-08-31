@@ -23,6 +23,7 @@ and :class:`EditFunctionScanCommand` from
 
 from stoner_measurement.plugins.command.alert import AlertCommand
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.plugins.command.daqmx_set import DaqmxSetCommand
 from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.command.edit_function_scan import EditFunctionScanCommand
 from stoner_measurement.plugins.command.if_command import IfCommand
@@ -59,6 +60,7 @@ __all__ = [
     "BreakIfCommand",
     "CommandPlugin",
     "ContinueIfCommand",
+    "DaqmxSetCommand",
     "DetailsCommand",
     "EditFunctionScanCommand",
     "IfCommand",

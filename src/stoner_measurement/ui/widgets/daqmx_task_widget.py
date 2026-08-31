@@ -243,6 +243,7 @@ class DaqmxTaskDefinitionWidget(QWidget):
     definition_changed = pyqtSignal(object)
     refresh_requested = pyqtSignal()
     discovery_failed = pyqtSignal(str)
+    snapshot_changed = pyqtSignal(object)
 
     _MODE_LABELS = {
         DaqmxSelectionMode.PHYSICAL_CHANNELS: "Physical channels",
@@ -331,8 +332,7 @@ class DaqmxTaskDefinitionWidget(QWidget):
         self.global_channel_list = QListWidget(page)
         list_row_height = self.global_channel_list.fontMetrics().height() + 8
         self.global_channel_list.setFixedHeight(
-            self._visible_channel_rows * list_row_height
-            + 2 * self.global_channel_list.frameWidth()
+            self._visible_channel_rows * list_row_height + 2 * self.global_channel_list.frameWidth()
         )
         layout.addWidget(self.global_channel_list)
         return page
@@ -411,6 +411,7 @@ class DaqmxTaskDefinitionWidget(QWidget):
                 f"{len(snapshot.saved_tasks)} saved task(s)."
             )
         self._emit_definition_changed()
+        self.snapshot_changed.emit(snapshot)
 
     def definition(self) -> DaqmxTaskDefinition:
         """Return the complete current task selection."""
