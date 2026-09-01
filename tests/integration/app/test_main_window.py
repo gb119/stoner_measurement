@@ -15,6 +15,28 @@ class TestMainWindow:
         assert window.dock_panel is not None
         assert window.plot_widget is not None
 
+    def test_collapsing_config_panel_gives_width_to_plot_and_restores_it(
+        self, plugin_manager, managed_qt_widget, qapp
+    ):
+        window = managed_qt_widget(MainWindow(plugin_manager=plugin_manager))
+        window.resize(1200, 700)
+        window.show()
+        qapp.processEvents()
+        expanded_sizes = window._splitter.sizes()
+
+        window.config_panel.set_collapsed(True)
+        qapp.processEvents()
+        collapsed_sizes = window._splitter.sizes()
+
+        assert collapsed_sizes[2] < expanded_sizes[2]
+        assert collapsed_sizes[1] > expanded_sizes[1]
+
+        window.config_panel.set_collapsed(False)
+        qapp.processEvents()
+        restored_sizes = window._splitter.sizes()
+
+        assert abs(restored_sizes[2] - expanded_sizes[2]) <= 1
+
     def test_plugin_and_sequence_lists_use_adjustable_vertical_splitter(
         self, plugin_manager, managed_qt_widget
     ):

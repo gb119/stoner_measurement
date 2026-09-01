@@ -66,6 +66,10 @@ class MainWindow(QWidget):
         self._splitter.addWidget(self._dock_panel)
         self._splitter.addWidget(self._plot_widget)
         self._splitter.addWidget(self._config_panel)
+        self._splitter.setCollapsible(2, False)
+        self._config_panel.collapsed_changed.connect(self._config_panel_collapsed)
+        self._splitter_initialized = False
+        self._expanded_config_width = 0
 
         # ---- Script Editor tab -----------------------------------------
         self._script_tab = ScriptTab(self)
@@ -82,12 +86,40 @@ class MainWindow(QWidget):
         self.setLayout(layout)
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
-        """Maintain 25 / 50 / 25 proportions when the window is resized."""
+        """Apply the initial 25 / 50 / 25 measurement-panel proportions."""
         super().resizeEvent(event)
+        if self._splitter_initialized:
+            return
         total = self._splitter.width()
         if total > 0:
             quarter = total // 4
             self._splitter.setSizes([quarter, total - 2 * quarter, quarter])
+            self._expanded_config_width = quarter
+            self._splitter_initialized = True
+
+    def _config_panel_collapsed(self, collapsed: bool) -> None:
+        """Give the plot the released width and restore it on expansion."""
+        sizes = self._splitter.sizes()
+        if len(sizes) != 3:
+            return
+
+        if collapsed:
+            self._expanded_config_width = sizes[2]
+            compact_width = self._config_panel.sizeHint().width()
+            released_width = max(0, sizes[2] - compact_width)
+            self._splitter.setSizes(
+                [sizes[0], sizes[1] + released_width, compact_width]
+            )
+            return
+
+        target_width = max(
+            self._expanded_config_width,
+            self._config_panel.minimumSizeHint().width(),
+        )
+        gained_width = max(0, target_width - sizes[2])
+        minimum_plot_width = self._plot_widget.minimumSizeHint().width()
+        plot_width = max(minimum_plot_width, sizes[1] - gained_width)
+        self._splitter.setSizes([sizes[0], plot_width, target_width])
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Close lifecycle-sensitive children before destroying the window."""

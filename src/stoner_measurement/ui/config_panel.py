@@ -9,11 +9,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QApplication, QLabel, QTabWidget, QVBoxLayout, QWidget
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtWidgets import (
+    QApplication,
+    QLabel,
+    QTabBar,
+    QTabWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from stoner_measurement.core.plugin_manager import PluginManager
-from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabBar, FontAwareTabWidget
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -55,6 +63,8 @@ class ConfigPanel(QWidget):
         0
     """
 
+    collapsed_changed = Signal(bool)
+
     def __init__(
         self,
         plugin_manager: PluginManager,
@@ -63,14 +73,56 @@ class ConfigPanel(QWidget):
         super().__init__(parent)
         self._plugin_manager = plugin_manager
         self._shown_plugin: BasePlugin | None = None
+        self._collapsed = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         self._tabs = FontAwareTabWidget()
         self._tabs.setObjectName("configTabs")
+
+        self._collapse_button = QToolButton(self._tabs)
+        self._collapse_button.setObjectName("collapseConfigPanelButton")
+        self._collapse_button.setText("»")
+        chevron_font = self._collapse_button.font()
+        chevron_font.setPointSizeF(chevron_font.pointSizeF() * 1.5)
+        chevron_font.setBold(True)
+        self._collapse_button.setFont(chevron_font)
+        self._collapse_button.setToolTip("Collapse configuration panel")
+        self._collapse_button.setAccessibleName("Collapse configuration panel")
+        self._collapse_button.setAutoRaise(True)
+        self._collapse_button.clicked.connect(lambda: self.set_collapsed(True))
+        self._tabs.setCornerWidget(self._collapse_button, Qt.Corner.TopRightCorner)
+
+        self._collapsed_view = QWidget(self)
+        self._collapsed_view.setObjectName("collapsedConfigPanel")
+        collapsed_layout = QVBoxLayout(self._collapsed_view)
+        collapsed_layout.setContentsMargins(0, 0, 0, 0)
+        collapsed_layout.setSpacing(0)
+
+        self._expand_button = QToolButton(self._collapsed_view)
+        self._expand_button.setObjectName("expandConfigPanelButton")
+        self._expand_button.setText("«")
+        self._expand_button.setFont(chevron_font)
+        self._expand_button.setToolTip("Expand configuration panel")
+        self._expand_button.setAccessibleName("Expand configuration panel")
+        self._expand_button.setAutoRaise(True)
+        self._expand_button.clicked.connect(lambda: self.set_collapsed(False))
+        collapsed_layout.addWidget(self._expand_button, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self._collapsed_tabs = FontAwareTabBar(self._collapsed_view)
+        self._collapsed_tabs.setObjectName("collapsedConfigTabs")
+        self._collapsed_tabs.setShape(QTabBar.Shape.RoundedEast)
+        self._collapsed_tabs.setExpanding(False)
+        self._collapsed_tabs.setAccessibleName("Configuration tabs")
+        self._collapsed_tabs.tabBarClicked.connect(self._expand_to_tab)
+        collapsed_layout.addWidget(self._collapsed_tabs, 0, Qt.AlignmentFlag.AlignTop)
+        collapsed_layout.addStretch(1)
+
         layout.addWidget(self._tabs)
+        layout.addWidget(self._collapsed_view)
         self.setLayout(layout)
+        self._collapsed_view.hide()
 
         plugin_manager.plugins_changed.connect(self._sync_tabs)
 
@@ -97,6 +149,26 @@ class ConfigPanel(QWidget):
             self._tabs.removeTab(0)
             widget.hide()
             widget.setParent(None)
+        while self._collapsed_tabs.count() > 0:
+            self._collapsed_tabs.removeTab(0)
+
+    def _sync_collapsed_tabs(self) -> None:
+        """Mirror visible configuration labels into the collapsed tab strip."""
+        while self._collapsed_tabs.count() > 0:
+            self._collapsed_tabs.removeTab(0)
+        for index in range(self._tabs.count()):
+            collapsed_index = self._collapsed_tabs.addTab(
+                self._tabs.tabIcon(index), self._tabs.tabText(index)
+            )
+            self._collapsed_tabs.setTabEnabled(collapsed_index, self._tabs.isTabEnabled(index))
+            self._collapsed_tabs.setTabToolTip(collapsed_index, self._tabs.tabToolTip(index))
+
+    def _expand_to_tab(self, index: int) -> None:
+        """Expand the panel and focus the tab chosen in the collapsed strip."""
+        if index < 0:
+            return
+        self._tabs.setCurrentIndex(index)
+        self.set_collapsed(False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -106,6 +178,37 @@ class ConfigPanel(QWidget):
     def tabs(self) -> QTabWidget:
         """The underlying :class:`QTabWidget`."""
         return self._tabs
+
+    @property
+    def collapsed_tabs(self) -> QTabBar:
+        """The vertical tab strip displayed while the panel is collapsed."""
+        return self._collapsed_tabs
+
+    @property
+    def collapse_button(self) -> QToolButton:
+        """Button that collapses the configuration panel."""
+        return self._collapse_button
+
+    @property
+    def expand_button(self) -> QToolButton:
+        """Button that restores the configuration panel."""
+        return self._expand_button
+
+    @property
+    def is_collapsed(self) -> bool:
+        """Whether only the vertical configuration tab strip is visible."""
+        return self._collapsed
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        """Switch between the full configuration pages and compact tab strip."""
+        collapsed = bool(collapsed)
+        if collapsed == self._collapsed:
+            return
+        self._collapsed = collapsed
+        self._tabs.setVisible(not collapsed)
+        self._collapsed_view.setVisible(collapsed)
+        self.updateGeometry()
+        self.collapsed_changed.emit(collapsed)
 
     def show_plugin(self, plugin: BasePlugin | None) -> None:
         """Display the configuration tabs for *plugin*, replacing any currently shown tabs.
@@ -147,6 +250,7 @@ class ConfigPanel(QWidget):
 
         for title, widget in plugin.config_tabs():
             self._tabs.addTab(widget, title)
+        self._sync_collapsed_tabs()
         self._shown_plugin = plugin
 
     def show_placeholder(self) -> None:
@@ -170,6 +274,7 @@ class ConfigPanel(QWidget):
         placeholder = QLabel("Select a sequence step to configure.")
         placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._tabs.addTab(placeholder, "Configuration")
+        self._sync_collapsed_tabs()
 
     def commit_pending_changes(self) -> None:
         """Commit any pending edits in the currently displayed configuration tabs.

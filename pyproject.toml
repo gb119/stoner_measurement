@@ -142,6 +142,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore:For consistency across implementations, it is recommended that `do_history`.*:PendingDeprecationWarning:ipykernel\\.kernelbase",
+]
 
 [tool.ruff]
 line-length = 100

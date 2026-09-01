@@ -55,6 +55,11 @@ from stoner_measurement.plugins.trace_catalog_ui import (
     trace_channel_roles,
 )
 from stoner_measurement.plugins.transform.base import TransformPlugin
+from stoner_measurement.plugins.transform.fit_function_library import (
+    FitFunctionLibraryWidget,
+    FitFunctionTab,
+    module_execution_context,
+)
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.editor_widget import EditorWidget
 from stoner_measurement.ui.theme import colour
@@ -681,9 +686,12 @@ class CurveFitPlugin(TransformPlugin):
       data-selection controls. In simple mode choose a trace and optionally a
       specific y-column. In advanced mode provide expressions for x, y, and
       optional y-uncertainty data.
-    * **Fit Function** — write the fitting function as Python source code.
-      The function must be named ``fit``. An optional ``p0(x, y)`` function
-      can be added to generate initial parameter guesses automatically.
+    * **Fit Function** — write the fitting function as Python source code or
+      load a reusable module from the bundled **Standard functions** or
+      per-user **User functions** library. The function must be named ``fit``.
+      An optional ``p0(x, y)`` function can generate initial parameter guesses.
+      The complete editor source is executed, so imports and helper functions
+      are available to both callables.
     * **Parameters** — a table with one column per detected parameter.  Each
       parameter column lets you set optional minimum, initial, and maximum
       values plus the SI unit propagated with its scalar outputs. Optional
@@ -695,6 +703,15 @@ class CurveFitPlugin(TransformPlugin):
 
     This plugin executes user-supplied Python fit code. Only use trusted fit
     definitions in normal workflows.
+
+    Library discovery accepts modules containing only imports, function
+    definitions, and an optional module docstring at top level. A module must
+    define ``fit`` with at least two positional parameters; when present,
+    ``p0`` must take exactly ``(x, y)``. **Load** copies the complete module
+    source into the editor. **Save…** writes the editor source beneath the
+    per-user ``user_functions`` package and creates any missing package
+    directories and ``__init__.py`` files. Double-clicking a module is
+    equivalent to selecting it and pressing **Load**.
 
     After a fit has run, each fitted parameter can be read directly by its
     function-signature name. For example, ``curve_fit.a`` returns the same
@@ -723,6 +740,10 @@ class CurveFitPlugin(TransformPlugin):
         fit_code (str):
             Python source code defining the ``fit(x, …)`` function and
             optionally a ``p0(x, y)`` function.
+        fit_module_name (str):
+            Qualified library-module name last loaded or saved. It supplies
+            package context for relative imports; :attr:`fit_code` remains the
+            authoritative, serialised source executed by the transform.
         param_names (list[str]):
             Parameter names extracted from the ``fit`` function signature.
             Updated automatically whenever :attr:`fit_code` changes.
@@ -810,6 +831,7 @@ class CurveFitPlugin(TransformPlugin):
         self.y_error_expr: str = ""
         # Fit function source code
         self.fit_code: str = _DEFAULT_FIT_CODE
+        self.fit_module_name: str = ""
         # Detected parameter names (derived from fit_code)
         self.param_names: list[str] = _parse_fit_params(self.fit_code)
         # Per-parameter bounds/initial settings
@@ -1449,7 +1471,10 @@ class CurveFitPlugin(TransformPlugin):
             (tuple[callable | None, callable | None]):
                 The compiled ``fit`` and optional ``p0`` callables.
         """
-        ns: dict[str, Any] = {"__builtins__": __builtins__}
+        ns: dict[str, Any] = {
+            "__builtins__": __builtins__,
+            **module_execution_context(self.fit_module_name),
+        }
         ns["np"] = np
         ns["numpy"] = np
         ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
@@ -1928,7 +1953,7 @@ class CurveFitPlugin(TransformPlugin):
                 ``(fit_function_widget, editor)`` where *editor* is needed by
                 :meth:`_build_fit_and_param_tabs` to wire the code-change signal.
         """
-        fit_widget = QWidget(parent)
+        fit_widget = FitFunctionTab(parent)
         fit_layout = QVBoxLayout(fit_widget)
 
         hint_label = QLabel(
@@ -1941,8 +1966,9 @@ class CurveFitPlugin(TransformPlugin):
         fit_layout.addWidget(hint_label)
 
         namespace_label = QLabel(
-            "<i>Runtime namespace includes Python built-ins and "
-            "<code>numpy</code> available as <code>np</code> and <code>numpy</code>.</i>",
+            "<i>The complete source is executed, including imports and helper functions. "
+            "The runtime namespace also provides <code>numpy</code> as <code>np</code> "
+            "and <code>numpy</code>.</i>",
             fit_widget,
         )
         namespace_label.setWordWrap(True)
@@ -1953,8 +1979,17 @@ class CurveFitPlugin(TransformPlugin):
         if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
             editor.set_syntax_error(self.fit_code_syntax_error_line, self.fit_code_syntax_error_message)
         fit_layout.addWidget(editor)
+
+        library = FitFunctionLibraryWidget(editor, fit_widget)
+        library.module_activated.connect(self._set_fit_module_name)
+        fit_layout.addWidget(library, 1)
+        fit_widget.set_editor(editor)
         fit_widget.setLayout(fit_layout)
         return fit_widget, editor
+
+    def _set_fit_module_name(self, module_name: str) -> None:
+        """Record the package context for the source loaded into the editor."""
+        self.fit_module_name = module_name
 
     def _build_fit_and_param_tabs(self, parent: QWidget | None) -> tuple[QWidget, QWidget]:
         """Build the *Fit Function* and *Parameters* tab widgets.
@@ -2073,7 +2108,8 @@ class CurveFitPlugin(TransformPlugin):
             (dict[str, Any]):
                 Base dict extended with ``"trace_key"``, ``"column_key"``,
                 ``"advanced_mode"``, ``"x_expr"``, ``"y_expr"``,
-                ``"y_error_expr"``, ``"fit_code"``, ``"param_names"``,
+                ``"y_error_expr"``, ``"fit_code"``, ``"fit_module_name"``,
+                ``"param_names"``,
                 ``"param_settings"``, ``"report_initial_values"``,
                 ``"show_initial_trace"``,
                 and ``"show_best_fit_trace"``.
@@ -2098,6 +2134,7 @@ class CurveFitPlugin(TransformPlugin):
         d["y_expr"] = self.y_expr
         d["y_error_expr"] = self.y_error_expr
         d["fit_code"] = self.fit_code
+        d["fit_module_name"] = self.fit_module_name
         d["param_names"] = self.param_names
         d["param_settings"] = self.param_settings
         d["report_initial_values"] = self.report_initial_values
@@ -2119,6 +2156,7 @@ class CurveFitPlugin(TransformPlugin):
         self.y_expr = data.get("y_expr", "")
         self.y_error_expr = data.get("y_error_expr", "")
         self.fit_code = data.get("fit_code", _DEFAULT_FIT_CODE)
+        self.fit_module_name = data.get("fit_module_name", "")
         self.param_names = data.get("param_names", _parse_fit_params(self.fit_code))
         raw_settings = data.get("param_settings", {})
         self.param_settings = {}

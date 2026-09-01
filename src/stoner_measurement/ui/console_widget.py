@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import html as _html_lib
 import logging
 import weakref
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -517,11 +519,43 @@ QToolTip {{
     def _stop_kernel_manager(kernel_manager) -> None:
         """Stop the kernel unless Qt has already deleted the manager wrapper."""
         try:
+            _IPythonConsoleWidget._settle_iopub_gc_task(kernel_manager)
             kernel_manager.shutdown_kernel()
         except RuntimeError as exc:
             if not _is_deleted_qt_wrapper_error(exc):
                 raise
             logger.debug("QtConsole kernel manager was already deleted during shutdown")
+
+    @staticmethod
+    def _settle_iopub_gc_task(kernel_manager) -> None:
+        """Cancel ipykernel's event-pipe task before its I/O loop is closed.
+
+        ipykernel 7.3 cancels this task after stopping its event loop, which
+        prevents the cancellation from being processed and makes asyncio write
+        a noisy ``Task was destroyed but it is pending!`` message to stderr.
+        Settling this one known background task while the loop is still running
+        avoids that message without changing the process-wide asyncio handler.
+        """
+        kernel = getattr(kernel_manager, "kernel", None)
+        iopub_thread = getattr(kernel, "iopub_thread", None)
+        task = getattr(iopub_thread, "_event_pipe_gc_task", None)
+        io_loop = getattr(iopub_thread, "io_loop", None)
+        asyncio_loop = getattr(io_loop, "asyncio_loop", None)
+        if task is None or task.done() or asyncio_loop is None or not asyncio_loop.is_running():
+            return
+
+        async def cancel_and_wait() -> None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(cancel_and_wait(), asyncio_loop)
+            future.result(timeout=1.0)
+        except (FutureTimeoutError, RuntimeError):
+            logger.debug("Could not settle ipykernel IOPub cleanup task before shutdown", exc_info=True)
 
     def __del__(self) -> None:
         """Ensure in-process kernel channels are stopped on garbage collection."""

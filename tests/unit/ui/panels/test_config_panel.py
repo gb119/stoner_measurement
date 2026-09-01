@@ -1,6 +1,8 @@
-﻿"""Tests for ConfigPanel."""
+"""Tests for ConfigPanel."""
 
 from __future__ import annotations
+
+from qtpy.QtWidgets import QTabBar
 
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.plugins.trace import DummyPlugin
@@ -101,3 +103,69 @@ class TestConfigPanel:
         panel = ConfigPanel(plugin_manager=pm)
         panel.show_placeholder()
         assert panel.tabs.count() == 1
+
+    def test_collapse_shows_vertical_tab_strip(self, plugin_manager, managed_qt_widget):
+        """Collapsing uses right-facing vertical labels in top-to-bottom order."""
+        panel = managed_qt_widget(ConfigPanel(plugin_manager=plugin_manager))
+        panel.show_plugin(DummyPlugin())
+
+        panel.collapse_button.click()
+
+        assert panel.is_collapsed
+        assert panel.tabs.isHidden()
+        assert panel.collapsed_tabs.isVisibleTo(panel)
+        assert panel.collapsed_tabs.shape() == QTabBar.Shape.RoundedEast
+        assert [
+            panel.collapsed_tabs.tabText(index) for index in range(panel.collapsed_tabs.count())
+        ] == ["Scan", "Settings", "About"]
+
+    def test_chevrons_are_bold_and_fifty_percent_larger(
+        self, plugin_manager, managed_qt_widget
+    ):
+        panel = managed_qt_widget(ConfigPanel(plugin_manager=plugin_manager))
+        normal_size = panel.font().pointSizeF()
+
+        for button in (panel.collapse_button, panel.expand_button):
+            assert button.font().bold()
+            assert button.font().pointSizeF() == normal_size * 1.5
+
+    def test_changing_plugin_preserves_collapsed_state(self, plugin_manager, managed_qt_widget):
+        """Selecting another sequence step must not expand the config pages."""
+        panel = managed_qt_widget(ConfigPanel(plugin_manager=plugin_manager))
+        panel.show_plugin(DummyPlugin())
+        panel.set_collapsed(True)
+
+        panel.show_plugin(DummyPlugin())
+
+        assert panel.is_collapsed
+        assert panel.tabs.isHidden()
+        assert panel.collapsed_tabs.count() == panel.tabs.count()
+
+    def test_expand_button_restores_previous_tab(self, plugin_manager, managed_qt_widget):
+        panel = managed_qt_widget(ConfigPanel(plugin_manager=plugin_manager))
+        panel.show_plugin(DummyPlugin())
+        panel.tabs.setCurrentIndex(2)
+        panel.set_collapsed(True)
+
+        panel.expand_button.click()
+
+        assert not panel.is_collapsed
+        assert panel.tabs.currentIndex() == 2
+
+    def test_collapsed_tab_expands_and_focuses_clicked_page(
+        self, plugin_manager, managed_qt_widget
+    ):
+        panel = managed_qt_widget(ConfigPanel(plugin_manager=plugin_manager))
+        panel.show_plugin(DummyPlugin())
+        panel.set_collapsed(True)
+
+        panel.collapsed_tabs.tabBarClicked.emit(1)
+
+        assert not panel.is_collapsed
+        assert panel.tabs.currentIndex() == 1
+
+
+if __name__ == "__main__":
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

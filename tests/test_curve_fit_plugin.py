@@ -590,6 +590,7 @@ class TestCurveFitSerialization:
             "y_expr",
             "y_error_expr",
             "fit_code",
+            "fit_module_name",
             "param_names",
             "param_settings",
         ):
@@ -607,6 +608,7 @@ class TestCurveFitSerialization:
         p.y_expr = "my_y"
         p.y_error_expr = "my_e"
         p.fit_code = "def fit(x, amp, freq): return amp * x + freq"
+        p.fit_module_name = "user_functions.transport.hall"
         p.param_names = ["amp", "freq"]
         p.param_settings = {
             "amp": {"min": 0.0, "initial": 1.0, "max": 10.0},
@@ -625,6 +627,7 @@ class TestCurveFitSerialization:
         assert restored.y_expr == "my_y"
         assert restored.y_error_expr == "my_e"
         assert "def fit" in restored.fit_code
+        assert restored.fit_module_name == "user_functions.transport.hall"
         assert restored.param_names == ["amp", "freq"]
         assert restored.param_settings["amp"]["min"] == 0.0
         assert restored.param_settings["freq"]["initial"] == 0.5
