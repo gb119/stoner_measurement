@@ -13,11 +13,14 @@ from stoner_measurement.plugins.trace.daqmx_runtime import (
     validate_task_definition,
 )
 from stoner_measurement.ui.widgets import (
+    DaqmxChannelFamily,
+    DaqmxInputRange,
     DaqmxInputTrigger,
     DaqmxInputTriggerMode,
     DaqmxSelectionMode,
     DaqmxTaskDefinition,
     DaqmxTaskKind,
+    DaqmxTerminalConfiguration,
     DaqmxTriggerEdge,
 )
 
@@ -43,6 +46,9 @@ def _runtime() -> NidaqmxRuntime:
         Slope=SimpleNamespace(RISING="slope-rising", FALLING="slope-falling"),
         LineGrouping=SimpleNamespace(CHAN_PER_LINE="channel-per-line"),
         VoltageUnits=SimpleNamespace(FROM_CUSTOM_SCALE="custom-scale"),
+        TerminalConfiguration=SimpleNamespace(
+            RSE="rse", NRSE="nrse", DIFF="differential"
+        ),
         TaskMode=SimpleNamespace(
             TASK_VERIFY="verify", TASK_UNRESERVE="unreserve", TASK_COMMIT="commit"
         ),
@@ -56,12 +62,14 @@ def _definition(
     kind: DaqmxTaskKind = DaqmxTaskKind.ACQUISITION,
     channels: tuple[str, ...] = ("Dev1/ai0",),
     scale: str = "",
+    terminal_configuration: DaqmxTerminalConfiguration = DaqmxTerminalConfiguration.DEFAULT,
 ) -> DaqmxTaskDefinition:
     return DaqmxTaskDefinition(
         task_kind=kind,
         device="Dev1",
         physical_channels=channels,
         custom_scale=scale,
+        terminal_configuration=terminal_configuration,
     )
 
 
@@ -163,6 +171,32 @@ def test_task_definition_validation_accepts_supported_sources(definition):
     validate_task_definition(definition)
 
 
+def test_analogue_plugin_validation_rejects_digital_physical_channels():
+    with pytest.raises(ValueError, match="Select analog channels"):
+        validate_task_definition(
+            _definition(channels=("Dev1/di0",)), DaqmxChannelFamily.ANALOG
+        )
+
+
+@pytest.mark.parametrize(
+    ("input_range", "message"),
+    [
+        (DaqmxInputRange("Dev1/ai0", float("nan")), "must be finite"),
+        (DaqmxInputRange("Dev1/ai0", 0.0), "must be positive"),
+        (DaqmxInputRange("Dev1/ai0", -2.0), "must be positive"),
+    ],
+)
+def test_task_definition_validation_rejects_invalid_input_ranges(input_range, message):
+    definition = DaqmxTaskDefinition(
+        device="Dev1",
+        physical_channels=("Dev1/ai0",),
+        input_ranges=(input_range,),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        validate_task_definition(definition)
+
+
 def test_digital_output_task_closes_when_line_expands_to_multiple_channels():
     runtime = _runtime()
     calls = []
@@ -221,10 +255,19 @@ def test_create_task_adds_global_channels_and_closes_on_failure():
     ("definition", "collection", "method", "expected_kwargs"),
     [
         (
-            _definition(scale="gain"),
+            _definition(
+                scale="gain",
+                terminal_configuration=DaqmxTerminalConfiguration.DIFFERENTIAL,
+            ),
             "ai_channels",
             "add_ai_voltage_chan",
-            {"units": "custom-scale", "custom_scale_name": "gain"},
+            {
+                "terminal_config": "differential",
+                "min_val": -10.0,
+                "max_val": 10.0,
+                "units": "custom-scale",
+                "custom_scale_name": "gain",
+            },
         ),
         (
             _definition(kind=DaqmxTaskKind.OUTPUT, channels=("Dev1/ao0",)),
@@ -254,6 +297,68 @@ def test_create_task_adds_each_supported_physical_channel_family(
 
     assert runtime.create_task(definition) is task
     assert calls == [(definition.physical_channels[0], expected_kwargs)]
+
+
+@pytest.mark.parametrize(
+    ("configuration", "expected_constant"),
+    [
+        (DaqmxTerminalConfiguration.RSE, "rse"),
+        (DaqmxTerminalConfiguration.NRSE, "nrse"),
+        (DaqmxTerminalConfiguration.DIFFERENTIAL, "differential"),
+    ],
+)
+def test_analogue_input_terminal_configuration_maps_to_nidaqmx(
+    configuration, expected_constant
+):
+    runtime = _runtime()
+    calls = []
+    task = SimpleNamespace(
+        ai_channels=SimpleNamespace(
+            add_ai_voltage_chan=lambda channel, **kwargs: calls.append((channel, kwargs))
+        ),
+        close=lambda: None,
+    )
+    runtime._nidaqmx = SimpleNamespace(Task=lambda: task)
+
+    runtime.create_task(_definition(terminal_configuration=configuration))
+
+    assert calls == [
+        (
+            "Dev1/ai0",
+            {
+                "min_val": -10.0,
+                "max_val": 10.0,
+                "terminal_config": expected_constant,
+            },
+        )
+    ]
+
+
+def test_analogue_input_ranges_are_applied_per_channel():
+    runtime = _runtime()
+    calls = []
+    task = SimpleNamespace(
+        ai_channels=SimpleNamespace(
+            add_ai_voltage_chan=lambda channel, **kwargs: calls.append((channel, kwargs))
+        ),
+        close=lambda: None,
+    )
+    runtime._nidaqmx = SimpleNamespace(Task=lambda: task)
+    definition = DaqmxTaskDefinition(
+        device="Dev1",
+        physical_channels=("Dev1/ai0", "Dev1/ai1"),
+        input_ranges=(
+            DaqmxInputRange("Dev1/ai0", 0.1),
+            DaqmxInputRange("Dev1/ai1", 5.0),
+        ),
+    )
+
+    runtime.create_task(definition)
+
+    assert calls == [
+        ("Dev1/ai0", {"min_val": -0.1, "max_val": 0.1}),
+        ("Dev1/ai1", {"min_val": -5.0, "max_val": 5.0}),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -287,6 +392,17 @@ def test_verify_task_rejects_opposite_channel_direction():
 
     with pytest.raises(DaqmxRuntimeError, match="analog output channels"):
         runtime.verify_task(task, DaqmxTaskKind.ACQUISITION)
+
+
+def test_verify_task_rejects_wrong_channel_family():
+    runtime = _runtime()
+    task = SimpleNamespace(
+        channels=SimpleNamespace(chan_type=SimpleNamespace(name="DIGITAL_INPUT")),
+        control=lambda _mode: pytest.fail("invalid task should not be verified"),
+    )
+
+    with pytest.raises(DaqmxRuntimeError, match="digital channels; expected analog"):
+        runtime.verify_task(task, DaqmxTaskKind.ACQUISITION, DaqmxChannelFamily.ANALOG)
 
 
 def test_prepare_timing_and_commit_use_expected_task_modes():

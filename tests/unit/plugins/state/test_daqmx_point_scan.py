@@ -13,6 +13,7 @@ from stoner_measurement.plugins.state_scan.daqmx import (
     DaqmxPointScanSettingsWidget,
 )
 from stoner_measurement.ui.widgets import (
+    DaqmxChannelFamily,
     DaqmxInputTrigger,
     DaqmxInputTriggerMode,
     DaqmxOutputTrigger,
@@ -57,8 +58,13 @@ class _FakeRuntime:
         self.calls.append(("create", "trigger_output", line))
         return task
 
-    def verify_task(self, task, kind):
+    def verify_task(self, task, kind, channel_family=None):
         assert task.kind is kind
+        assert channel_family is (
+            DaqmxChannelFamily.DIGITAL
+            if task.role == "trigger_output"
+            else DaqmxChannelFamily.ANALOG
+        )
         self.calls.append(("verify", task.role))
 
     def prepare_for_configuration(self, task):

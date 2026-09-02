@@ -8,11 +8,13 @@ from typing import Any
 import numpy as np
 
 from stoner_measurement.ui.widgets import (
+    DaqmxChannelFamily,
     DaqmxInputTrigger,
     DaqmxInputTriggerMode,
     DaqmxSelectionMode,
     DaqmxTaskDefinition,
     DaqmxTaskKind,
+    DaqmxTerminalConfiguration,
 )
 
 
@@ -20,7 +22,10 @@ class DaqmxRuntimeError(RuntimeError):
     """Raised for unsupported or inconsistent DAQmx task configurations."""
 
 
-def validate_task_definition(definition: DaqmxTaskDefinition) -> None:
+def validate_task_definition(
+    definition: DaqmxTaskDefinition,
+    channel_family: DaqmxChannelFamily | None = None,
+) -> None:
     """Validate that *definition* selects exactly one usable task source."""
     if definition.selection_mode is DaqmxSelectionMode.PHYSICAL_CHANNELS:
         if not definition.device:
@@ -47,8 +52,25 @@ def validate_task_definition(definition: DaqmxTaskDefinition) -> None:
             raise ValueError(
                 f"{family.upper()} channels are not valid for a {definition.task_kind.value} task."
             )
+        actual_family = (
+            DaqmxChannelFamily.ANALOG if family in {"ai", "ao"} else DaqmxChannelFamily.DIGITAL
+        )
+        if channel_family is not None and actual_family is not channel_family:
+            raise ValueError(
+                f"Select {channel_family.value} channels for this DAQmx plugin."
+            )
         if definition.custom_scale and family not in {"ai", "ao"}:
             raise ValueError("Custom scales can only be used with analog channels.")
+        if family == "ai":
+            ranges = {item.channel: item for item in definition.input_ranges}
+            for channel in definition.physical_channels:
+                input_range = ranges.get(channel)
+                if input_range is None:
+                    continue
+                if not np.isfinite(input_range.range):
+                    raise ValueError(f"The input range for {channel} must be finite.")
+                if input_range.range <= 0:
+                    raise ValueError(f"The input range for {channel} must be positive.")
         return
     if definition.selection_mode is DaqmxSelectionMode.GLOBAL_CHANNELS:
         if not definition.global_channels:
@@ -129,9 +151,24 @@ class NidaqmxRuntime:
 
     def _add_physical_channels(self, task: Any, definition: DaqmxTaskDefinition) -> None:
         family = _physical_channel_family(definition.physical_channels[0], definition.task_kind)
+        input_ranges = {item.channel: item for item in definition.input_ranges}
         for channel in definition.physical_channels:
             if family == "ai":
-                kwargs: dict[str, Any] = {}
+                input_range = input_ranges.get(channel)
+                range_limit = 10.0 if input_range is None else input_range.range
+                kwargs: dict[str, Any] = {
+                    "min_val": -range_limit,
+                    "max_val": range_limit,
+                }
+                if definition.terminal_configuration is not DaqmxTerminalConfiguration.DEFAULT:
+                    terminal_name = {
+                        DaqmxTerminalConfiguration.RSE: "RSE",
+                        DaqmxTerminalConfiguration.NRSE: "NRSE",
+                        DaqmxTerminalConfiguration.DIFFERENTIAL: "DIFF",
+                    }[definition.terminal_configuration]
+                    kwargs["terminal_config"] = getattr(
+                        self._constants.TerminalConfiguration, terminal_name
+                    )
                 if definition.custom_scale:
                     kwargs.update(
                         units=self._constants.VoltageUnits.FROM_CUSTOM_SCALE,
@@ -151,7 +188,12 @@ class NidaqmxRuntime:
             elif family == "do":
                 task.do_channels.add_do_chan(channel)
 
-    def verify_task(self, task: Any, expected_kind: DaqmxTaskKind) -> None:
+    def verify_task(
+        self,
+        task: Any,
+        expected_kind: DaqmxTaskKind,
+        channel_family: DaqmxChannelFamily | None = None,
+    ) -> None:
         """Verify task resources and its acquisition/output direction."""
         actual = getattr(task.channels.chan_type, "name", str(task.channels.chan_type)).upper()
         allowed = {
@@ -162,6 +204,17 @@ class NidaqmxRuntime:
             raise DaqmxRuntimeError(
                 f"DAQmx task contains {actual.replace('_', ' ').lower()} channels; expected "
                 f"an {expected_kind.value} task."
+            )
+        actual_family = {
+            "ANALOG_INPUT": DaqmxChannelFamily.ANALOG,
+            "ANALOG_OUTPUT": DaqmxChannelFamily.ANALOG,
+            "DIGITAL_INPUT": DaqmxChannelFamily.DIGITAL,
+            "DIGITAL_OUTPUT": DaqmxChannelFamily.DIGITAL,
+        }[actual]
+        if channel_family is not None and actual_family is not channel_family:
+            raise DaqmxRuntimeError(
+                f"DAQmx task contains {actual_family.value} channels; expected "
+                f"{channel_family.value} channels."
             )
         task.control(self._constants.TaskMode.TASK_VERIFY)
 

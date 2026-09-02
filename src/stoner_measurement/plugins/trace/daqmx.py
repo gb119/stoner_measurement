@@ -30,6 +30,7 @@ from stoner_measurement.plugins.trace.daqmx_runtime import (
 )
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.widgets import (
+    DaqmxChannelFamily,
     DaqmxInputTrigger,
     DaqmxInputTriggerMode,
     DaqmxInputTriggerWidget,
@@ -139,7 +140,9 @@ class DaqmxTraceSettingsWidget(FontAwareTabWidget):
         acquisition_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         acquisition_layout = QVBoxLayout(acquisition_group)
         self.acquisition_widget = DaqmxTaskDefinitionWidget(
-            acquisition_group, task_kind=DaqmxTaskKind.ACQUISITION
+            acquisition_group,
+            task_kind=DaqmxTaskKind.ACQUISITION,
+            channel_family=DaqmxChannelFamily.ANALOG,
         )
         self.acquisition_widget.set_definition(self._plugin._acquisition_definition)
         self.acquisition_widget.definition_changed.connect(self._set_acquisition_definition)
@@ -157,7 +160,9 @@ class DaqmxTraceSettingsWidget(FontAwareTabWidget):
         self.output_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         output_layout = QVBoxLayout(self.output_group)
         self.output_widget = DaqmxTaskDefinitionWidget(
-            self.output_group, task_kind=DaqmxTaskKind.OUTPUT
+            self.output_group,
+            task_kind=DaqmxTaskKind.OUTPUT,
+            channel_family=DaqmxChannelFamily.ANALOG,
         )
         self.output_widget.set_definition(self._plugin._output_definition)
         self.output_widget.definition_changed.connect(self._set_output_definition)
@@ -256,10 +261,15 @@ class DaqmxTracePlugin(TracePlugin):
     tab, the nested **General** page sets the scan-point rate, input
     oversampling, acquisition task, and optional output task. Acquisition
     channels may be selected directly from a device, from NI MAX global
-    channels, or by loading a saved task. Physical analogue and digital input
-    channels are supported. The optional output task similarly supports
-    analogue or digital outputs. Custom NI scales may be selected for analogue
-    physical channels. Counter input and output channels are not supported.
+    channels, or by loading a saved task. Acquisition channels are restricted
+    to analogue inputs. The optional output task is
+    similarly restricted to analogue outputs. Custom NI scales may be selected
+    for analogue physical channels. Each physical input has its own symmetric
+    range, defaulting to +/-10 V, so NI-DAQmx can select an appropriate
+    hardware gain. Available device ranges are discovered when possible. A
+    common RSE, NRSE, or differential
+    terminal mode can be applied to every selected physical acquisition
+    channel. Counter input and output channels are not supported.
 
     The configured scan-point rate is multiplied by **Input oversampling** to
     obtain the hardware sample rate. Every scan value occupies that many
@@ -361,11 +371,11 @@ class DaqmxTracePlugin(TracePlugin):
     def _validate_configuration(self) -> None:
         if self._acquisition_definition.task_kind is not DaqmxTaskKind.ACQUISITION:
             raise ValueError("The acquisition task definition has the wrong direction.")
-        validate_task_definition(self._acquisition_definition)
+        validate_task_definition(self._acquisition_definition, DaqmxChannelFamily.ANALOG)
         if self._output_enabled:
             if self._output_definition.task_kind is not DaqmxTaskKind.OUTPUT:
                 raise ValueError("The output task definition has the wrong direction.")
-            validate_task_definition(self._output_definition)
+            validate_task_definition(self._output_definition, DaqmxChannelFamily.ANALOG)
         if not np.isfinite(self._sample_rate_hz) or self._sample_rate_hz <= 0:
             raise ValueError("The scan/output sample rate must be positive.")
         if self._oversampling < 1:
@@ -409,13 +419,19 @@ class DaqmxTracePlugin(TracePlugin):
             self._validate_configuration()
             runtime = self._runtime_factory()
             input_task = runtime.create_task(self._acquisition_definition)
-            runtime.verify_task(input_task, DaqmxTaskKind.ACQUISITION)
+            runtime.verify_task(
+                input_task, DaqmxTaskKind.ACQUISITION, DaqmxChannelFamily.ANALOG
+            )
             if self._output_enabled:
                 output_task = runtime.create_task(self._output_definition)
-                runtime.verify_task(output_task, DaqmxTaskKind.OUTPUT)
+                runtime.verify_task(
+                    output_task, DaqmxTaskKind.OUTPUT, DaqmxChannelFamily.ANALOG
+                )
             if self._output_trigger.enabled:
                 trigger_output_task = runtime.create_digital_output_task(self._output_trigger.line)
-                runtime.verify_task(trigger_output_task, DaqmxTaskKind.OUTPUT)
+                runtime.verify_task(
+                    trigger_output_task, DaqmxTaskKind.OUTPUT, DaqmxChannelFamily.DIGITAL
+                )
         except Exception:
             if runtime is not None:
                 for task in (trigger_output_task, output_task, input_task):

@@ -1110,7 +1110,7 @@ class MeasurementApp(QMainWindow):
         """Dispatch the Cut action to the appropriate handler for the active tab.
 
         On the *Measurement* tab the selected sequence step is cut to the
-        internal JSON clipboard.  On the *Script Editor* tab, the standard
+        system clipboard as JSON.  On the *Script Editor* tab, the standard
         ``cut()`` method is called on whichever focusable text widget currently
         has keyboard focus (i.e. the script editor or the REPL command line).
         """
@@ -1126,7 +1126,7 @@ class MeasurementApp(QMainWindow):
         """Dispatch the Copy action to the appropriate handler for the active tab.
 
         On the *Measurement* tab the selected sequence step is copied to the
-        internal JSON clipboard.  On the *Script Editor* tab, the standard
+        system clipboard as JSON.  On the *Script Editor* tab, the standard
         ``copy()`` method is called on the focused text widget.
         """
         if self._main_window.tabs.currentIndex() == self._TAB_MEASUREMENT:
@@ -1140,7 +1140,7 @@ class MeasurementApp(QMainWindow):
     def _on_paste(self) -> None:
         """Dispatch the Paste action to the appropriate handler for the active tab.
 
-        On the *Measurement* tab the step stored in the internal JSON clipboard
+        On the *Measurement* tab valid sequence JSON from the system clipboard
         is inserted into the sequence tree after the currently selected item.
         On the *Script Editor* tab, the standard ``paste()`` method is called
         on the focused text widget.

@@ -19,6 +19,7 @@ from stoner_measurement.plugins.trace.daqmx_runtime import validate_task_definit
 from stoner_measurement.scan import ListScanGenerator
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabBar
 from stoner_measurement.ui.widgets import (
+    DaqmxChannelFamily,
     DaqmxDeviceInfo,
     DaqmxInputTrigger,
     DaqmxInputTriggerMode,
@@ -72,8 +73,13 @@ class _FakeRuntime:
         self.calls.append(("create", "trigger_output", line))
         return task
 
-    def verify_task(self, task, kind):
+    def verify_task(self, task, kind, channel_family=None):
         assert task.kind is kind
+        assert channel_family is (
+            DaqmxChannelFamily.DIGITAL
+            if task.role == "trigger_output"
+            else DaqmxChannelFamily.ANALOG
+        )
         self.calls.append(("verify", task.role))
 
     def prepare_for_configuration(self, task):
@@ -352,8 +358,8 @@ def test_disconnect_attempts_every_close_after_cleanup_failure(qapp):
 
 def test_trigger_output_connect_failure_closes_every_created_task(qapp):
     class _FailingVerifyRuntime(_FakeRuntime):
-        def verify_task(self, task, kind):
-            super().verify_task(task, kind)
+        def verify_task(self, task, kind, channel_family=None):
+            super().verify_task(task, kind, channel_family)
             if task.role == "trigger_output":
                 raise RuntimeError("trigger output verification failed")
 
@@ -388,6 +394,8 @@ def test_settings_fix_direction_and_disable_optional_output(managed_qt_widget):
     assert isinstance(settings.tabBar(), FontAwareTabBar)
     assert settings.acquisition_widget.task_kind() is DaqmxTaskKind.ACQUISITION
     assert settings.output_widget.task_kind() is DaqmxTaskKind.OUTPUT
+    assert settings.acquisition_widget.channel_family() is DaqmxChannelFamily.ANALOG
+    assert settings.output_widget.channel_family() is DaqmxChannelFamily.ANALOG
     assert isinstance(settings.widget(0), QScrollArea)
     assert isinstance(settings.sample_rate_spin, SISpinBox)
     first_group = settings.general_layout.itemAt(0).widget()

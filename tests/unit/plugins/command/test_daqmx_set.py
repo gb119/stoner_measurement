@@ -13,6 +13,7 @@ from stoner_measurement.plugins.command.daqmx_set import (
     DaqmxSetSettingsWidget,
 )
 from stoner_measurement.ui.widgets import (
+    DaqmxChannelFamily,
     DaqmxOutputTrigger,
     DaqmxSelectionMode,
     DaqmxTaskDefinition,
@@ -52,8 +53,9 @@ class _FakeRuntime:
         self.calls.append(("create", role))
         return task
 
-    def verify_task(self, task, kind):
+    def verify_task(self, task, kind, channel_family=None):
         assert task.kind is kind
+        assert channel_family is DaqmxChannelFamily.ANALOG
 
     def prepare_for_configuration(self, task):
         self.calls.append(("prepare", task.role))

@@ -811,12 +811,21 @@ class PlotTraceCommand(CommandPlugin):
                 and then ``"y"``.
 
         Notes:
+            X-axis metadata is resolved from the column currently carrying
+            :data:`~stoner_measurement.core.trace_data.COLUMN_ROLE_X`, rather
+            than assuming that column is literally named ``"x"``.
+
             Fallback priority for y-axis metadata is:
             ``y_key`` argument → :attr:`column_key` → ``"y"``.
         """
         names = getattr(trace_data, "names", {})
         units = getattr(trace_data, "units", {})
-        x_name = names.get("x", "")
+        get_columns_by_role = getattr(trace_data, "get_columns_by_role", None)
+        x_columns = (
+            get_columns_by_role(COLUMN_ROLE_X) if callable(get_columns_by_role) else []
+        )
+        x_key = x_columns[0] if x_columns else "x"
+        x_name = names.get(x_key, "")
         if y_key:
             resolved_y_key = y_key
         elif self.column_key:
@@ -824,7 +833,7 @@ class PlotTraceCommand(CommandPlugin):
         else:
             resolved_y_key = "y"
         y_name = names.get(resolved_y_key, "")
-        x_unit = units.get("x", "")
+        x_unit = units.get(x_key, "")
         y_unit = units.get(resolved_y_key, "")
         if x_name.strip().lower() == "x" and not x_unit:
             x_name = ""

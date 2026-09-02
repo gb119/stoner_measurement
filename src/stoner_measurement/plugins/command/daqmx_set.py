@@ -65,9 +65,12 @@ class DaqmxSetCommand(CommandPlugin):
     point-acquisition time.
 
     Acquisition and output tasks may be selected from direct physical
-    channels, NI MAX global channels, or saved tasks. Physical analogue and
-    digital input/output channels are supported, and custom NI scales may be
-    used with analogue physical channels. Counter channels are not supported.
+    channels, NI MAX global channels, or saved tasks. Acquisition and
+    value-output tasks are restricted to analogue channels, and custom NI
+    scales may be used with physical channels. Each physical input has its own
+    symmetric range, defaulting to +/-10 V and populated from the device where
+    possible. A common RSE, NRSE, or differential mode applies to all selected
+    physical inputs. Counter channels are not supported.
 
     Each execution creates and verifies the selected tasks, writes the output
     value as a constant buffer for the configured number of samples, and

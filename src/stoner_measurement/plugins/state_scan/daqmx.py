@@ -19,6 +19,7 @@ from stoner_measurement.plugins.trace.daqmx_runtime import (
     validate_task_definition,
 )
 from stoner_measurement.ui.widgets import (
+    DaqmxChannelFamily,
     DaqmxInputTrigger,
     DaqmxInputTriggerMode,
     DaqmxOutputTrigger,
@@ -55,9 +56,11 @@ class DaqmxPointScanPlugin(StateScanPlugin):
     sample rate, number of samples per point, acquisition task, and optional
     output task. It also displays the resulting point-acquisition time. Tasks
     may use direct physical channels, NI MAX global channels, or saved tasks.
-    Physical analogue and digital input/output channels are supported, with
-    custom NI scales available for analogue channels. Counter channels are not
-    supported.
+    Acquisition and value-output tasks are restricted to analogue channels,
+    with custom NI scales available for physical channels. Each physical input
+    has its own symmetric range, defaulting to +/-10 V and populated from the
+    device where possible. A common RSE, NRSE, or differential mode applies to
+    all selected physical inputs. Counter channels are not supported.
 
     For every scan value, an enabled output task writes a constant buffer of
     **Samples per point** values. The input task acquires the same number of
@@ -170,11 +173,11 @@ class DaqmxPointScanPlugin(StateScanPlugin):
     def _validate_configuration(self) -> None:
         if self._acquisition_definition.task_kind is not DaqmxTaskKind.ACQUISITION:
             raise ValueError("The acquisition task definition has the wrong direction.")
-        validate_task_definition(self._acquisition_definition)
+        validate_task_definition(self._acquisition_definition, DaqmxChannelFamily.ANALOG)
         if self._output_enabled:
             if self._output_definition.task_kind is not DaqmxTaskKind.OUTPUT:
                 raise ValueError("The output task definition has the wrong direction.")
-            validate_task_definition(self._output_definition)
+            validate_task_definition(self._output_definition, DaqmxChannelFamily.ANALOG)
         if not np.isfinite(self._sample_rate_hz) or self._sample_rate_hz <= 0:
             raise ValueError("The acquisition sample rate must be positive.")
         if self._oversampling < 1:
@@ -217,13 +220,19 @@ class DaqmxPointScanPlugin(StateScanPlugin):
             self._validate_configuration()
             runtime = self._runtime_factory()
             input_task = runtime.create_task(self._acquisition_definition)
-            runtime.verify_task(input_task, DaqmxTaskKind.ACQUISITION)
+            runtime.verify_task(
+                input_task, DaqmxTaskKind.ACQUISITION, DaqmxChannelFamily.ANALOG
+            )
             if self._output_enabled:
                 output_task = runtime.create_task(self._output_definition)
-                runtime.verify_task(output_task, DaqmxTaskKind.OUTPUT)
+                runtime.verify_task(
+                    output_task, DaqmxTaskKind.OUTPUT, DaqmxChannelFamily.ANALOG
+                )
             if self._output_trigger.enabled:
                 trigger_output_task = runtime.create_digital_output_task(self._output_trigger.line)
-                runtime.verify_task(trigger_output_task, DaqmxTaskKind.OUTPUT)
+                runtime.verify_task(
+                    trigger_output_task, DaqmxTaskKind.OUTPUT, DaqmxChannelFamily.DIGITAL
+                )
         except Exception:
             if runtime is not None:
                 for task in (trigger_output_task, output_task, input_task):

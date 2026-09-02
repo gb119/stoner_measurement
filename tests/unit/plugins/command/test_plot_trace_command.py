@@ -504,6 +504,48 @@ class TestPlotTraceCommand:
         assert len(labels) == 1
         assert labels[0] == (AxisLabel("Current", "A"), AxisLabel("Voltage", "V"))
 
+    @pytest.mark.parametrize(
+        ("producer_transpose", "plot_transpose"),
+        [(True, False), (False, True)],
+        ids=("trace-plugin", "plot-trace"),
+    )
+    def test_plot_axis_labels_follow_transpose_location(
+        self,
+        qapp,
+        engine,
+        producer_transpose,
+        plot_transpose,
+    ):
+        """Either transpose location moves the dependent label and unit to X."""
+        from stoner_measurement.core import TraceData
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        data = {
+            "Dummy": TraceData.from_xy(
+                np.array([-1.0, 1.0]),
+                np.array([-5.0, 5.0]),
+                names={"x": "Current", "y": "Voltage"},
+                units={"x": "A", "y": "V"},
+            )
+        }
+        trace_data = (
+            DummyPlugin._transpose_trace_roles(data)["Dummy"]  # noqa: SLF001
+            if producer_transpose
+            else data["Dummy"]
+        )
+        cmd = PlotTraceCommand()
+        cmd.transpose = plot_transpose
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["td"] = trace_data  # noqa: SLF001
+        engine._namespace["_traces"] = {"dummy:Dummy": "td"}  # noqa: SLF001
+        cmd.trace_key = "dummy:Dummy"
+
+        labels: list[tuple[AxisLabel, AxisLabel]] = []
+        cmd.plot_axis_labels.connect(lambda x, y: labels.append((x, y)))
+        cmd.execute()
+
+        assert labels == [(AxisLabel("Voltage", "V"), AxisLabel("Current", "A"))]
+
     def test_advanced_mode_uses_selected_channel_names_and_units_for_axes(self, qapp, engine):
         """Advanced selections use the same labels displayed by the channel selectors."""
         from stoner_measurement.core import TraceData

@@ -29,6 +29,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -58,6 +59,10 @@ _PLUGIN_INSTANCE_ROLE = Qt.ItemDataRole.UserRole + 1
 # plugins list into the sequence tree.  The payload is the UTF-8–encoded
 # entry-point name (plugin registry key).
 _PLUGIN_EP_MIME_TYPE = "application/x-stoner-plugin-ep"
+
+# Standard MIME type used alongside plain text for sequence-step JSON copied
+# to the operating-system clipboard.
+_SEQUENCE_JSON_MIME_TYPE = "application/json"
 
 # Recursive type alias describing one element of the sequence_steps list.
 # A leaf step is a plugin instance; a sequence-plugin step with sub-steps is a
@@ -1034,7 +1039,7 @@ class DockPanel(QWidget):
         # Keeps strong Python references to per-step plugin instances so they
         # are not garbage-collected while stored only via QTreeWidgetItem.setData()..
         self._step_plugins: list[BasePlugin] = []
-        # JSON clipboard for cut/copy/paste of sequence steps.
+        # Retained fallback for cut/copy/paste when the system clipboard is empty.
         self._clipboard_step_json: str | None = None
 
         layout = QVBoxLayout(self)
@@ -1934,13 +1939,56 @@ class DockPanel(QWidget):
 
     @property
     def has_clipboard_step(self) -> bool:
-        """``True`` when the internal sequence-step clipboard contains data.
+        """``True`` when a valid sequence-step payload is available to paste.
 
         Returns:
             (bool):
                 Whether there is a copied/cut step ready to paste.
         """
-        return self._clipboard_step_json is not None
+        return self._clipboard_json_for_paste() is not None
+
+    @staticmethod
+    def _is_sequence_step_json(text: str) -> bool:
+        """Return whether *text* has the canonical sequence-step JSON shape."""
+        try:
+            data = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        steps = data.get("steps")
+        if not isinstance(steps, list) or not steps:
+            return False
+
+        def _is_step(value: object) -> bool:
+            if not isinstance(value, dict):
+                return False
+            plugin = value.get("plugin")
+            if not isinstance(plugin, dict) or not isinstance(plugin.get("class"), str):
+                return False
+            sub_steps = value.get("sub_steps", [])
+            return isinstance(sub_steps, list) and all(_is_step(step) for step in sub_steps)
+
+        return all(_is_step(step) for step in steps)
+
+    def _clipboard_json_for_paste(self) -> str | None:
+        """Return valid sequence JSON from the system or internal clipboard."""
+        clipboard = QApplication.clipboard()
+        mime_data = clipboard.mimeData()
+        text = mime_data.text()
+        if not text and mime_data.hasFormat(_SEQUENCE_JSON_MIME_TYPE):
+            text = bytes(mime_data.data(_SEQUENCE_JSON_MIME_TYPE)).decode(
+                "utf-8", errors="replace"
+            )
+        if text.strip():
+            return text if self._is_sequence_step_json(text) else None
+        if mime_data.formats():
+            return None
+        if self._clipboard_step_json is not None and self._is_sequence_step_json(
+            self._clipboard_step_json
+        ):
+            return self._clipboard_step_json
+        return None
 
     @staticmethod
     def _compute_paste_name(name: str, existing: set[str]) -> str:
@@ -2055,13 +2103,14 @@ class DockPanel(QWidget):
     # ------------------------------------------------------------------
 
     def copy_selected_step(self) -> bool:
-        """Copy the currently selected sequence step(s) to the internal clipboard.
+        """Copy the selected sequence step(s) as system-clipboard JSON.
 
         All selected steps (including any sub-steps) are serialised to JSON
-        and stored in :attr:`_clipboard_step_json`.  When a selected item's
-        parent is also selected the child is omitted — its data is already
-        captured inside the parent's serialised sub-steps.  Returns ``False``
-        when nothing is selected.
+        and published as plain text and ``application/json``.  A retained copy
+        is also stored in :attr:`_clipboard_step_json`.  When a selected item's
+        parent is also selected the child is omitted because its data is
+        already captured inside the parent's serialised sub-steps.  Returns
+        ``False`` when nothing is selected.
 
         Returns:
             (bool):
@@ -2105,10 +2154,17 @@ class DockPanel(QWidget):
         root_items = [item for item in items if not _has_selected_ancestor(item)]
         steps = [self._item_to_step(item) for item in root_items]
         self._clipboard_step_json = json.dumps(sequence_to_json(steps))
+        mime_data = QMimeData()
+        mime_data.setText(self._clipboard_step_json)
+        mime_data.setData(
+            _SEQUENCE_JSON_MIME_TYPE,
+            self._clipboard_step_json.encode("utf-8"),
+        )
+        QApplication.clipboard().setMimeData(mime_data)
         return True
 
     def cut_selected_step(self) -> bool:
-        """Cut the currently selected sequence step(s) to the internal clipboard.
+        """Cut the selected sequence step(s) to the system clipboard as JSON.
 
         Equivalent to :meth:`copy_selected_step` followed by removing all
         selected steps from the tree.  Returns ``False`` when nothing is
@@ -2139,12 +2195,14 @@ class DockPanel(QWidget):
         return True
 
     def paste_step(self) -> bool:
-        """Paste step(s) from the internal clipboard into the sequence tree.
+        """Paste step(s) from valid system-clipboard JSON into the sequence tree.
 
-        All steps in the clipboard are inserted immediately after the current
-        item (at the same level of nesting), preserving their original order.
-        When nothing is selected every step is appended at the top level.
-        Instance names are adjusted using :meth:`_compute_paste_name` to avoid
+        Plain text with the canonical sequence JSON structure is accepted.  A
+        retained internal payload is used only when the system clipboard is
+        empty.  All steps are inserted immediately after the current item (at
+        the same nesting level), preserving their original order.  When
+        nothing is selected every step is appended at the top level.  Instance
+        names are adjusted using :meth:`_compute_paste_name` to avoid
         collisions with existing names.  All newly inserted items are selected
         after the paste.
 
@@ -2171,11 +2229,15 @@ class DockPanel(QWidget):
         """
         from stoner_measurement.core.serializer import sequence_from_json
 
-        if self._clipboard_step_json is None:
+        clipboard_json = self._clipboard_json_for_paste()
+        if clipboard_json is None:
             return False
 
-        data = json.loads(self._clipboard_step_json)
-        steps = sequence_from_json(data)
+        data = json.loads(clipboard_json)
+        try:
+            steps = sequence_from_json(data)
+        except (AttributeError, ImportError, KeyError, TypeError, ValueError):
+            return False
         if not steps:
             return False
 
@@ -2276,7 +2338,7 @@ class DockPanel(QWidget):
 
         act_paste = menu.addAction("&Paste Step")
         act_paste.setShortcut(QKeySequence.StandardKey.Paste)
-        act_paste.setEnabled(self._clipboard_step_json is not None)
+        act_paste.setEnabled(self.has_clipboard_step)
         act_paste.triggered.connect(self.paste_step)
 
         menu.addSeparator()

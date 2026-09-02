@@ -15,14 +15,17 @@ from stoner_measurement.ui.widgets.controller_connection import (
     show_transport_widget,
 )
 from stoner_measurement.ui.widgets.daqmx_task_widget import (
+    DaqmxChannelFamily,
     DaqmxDeviceInfo,
     DaqmxDiscoveryError,
+    DaqmxInputRange,
     DaqmxNamedResource,
     DaqmxSelectionMode,
     DaqmxSystemInfo,
     DaqmxTaskDefinition,
     DaqmxTaskDefinitionWidget,
     DaqmxTaskKind,
+    DaqmxTerminalConfiguration,
     discover_daqmx_system,
 )
 from stoner_measurement.ui.widgets.daqmx_trigger_widget import (
@@ -58,9 +61,11 @@ __all__ = [
     "FILTER_SERIAL",
     "AptControllerComboBox",
     "AutoSISpinBox",
+    "DaqmxChannelFamily",
     "DaqmxDeviceInfo",
     "DaqmxDiscoveryError",
     "DaqmxInputTrigger",
+    "DaqmxInputRange",
     "DaqmxInputTriggerMode",
     "DaqmxInputTriggerWidget",
     "DaqmxNamedResource",
@@ -71,6 +76,7 @@ __all__ = [
     "DaqmxTaskDefinition",
     "DaqmxTaskDefinitionWidget",
     "DaqmxTaskKind",
+    "DaqmxTerminalConfiguration",
     "DaqmxTriggerEdge",
     "DaqmxTriggerIdleState",
     "DaqmxTriggerPulsePreview",

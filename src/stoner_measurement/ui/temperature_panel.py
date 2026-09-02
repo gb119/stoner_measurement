@@ -822,33 +822,44 @@ class TemperatureControlPanel(QWidget):
         else:
             self._chart_curves[key].setData(xs, ys)
 
-    def _align_buf_to_xs(self, key: str, xs: list[float], fill_value: float) -> list[float]:
-        """Return the value buffer for *key*, aligned to the length of *xs*.
+    def _append_chart_sample(
+        self,
+        key: str,
+        timestamp: float,
+        value: float,
+        now_ts: float,
+        duration_s: float,
+    ) -> tuple[list[float], list[float]]:
+        """Append and time-trim one sample for a chart trace.
 
-        Missing leading values are filled with *fill_value*; excess leading
-        values are trimmed.  The final element is always set to *fill_value*
-        to record the current reading.
+        Each trace retains its own timestamps so values remain paired with the
+        poll that produced them when the rolling window starts discarding old
+        samples.
 
         Args:
             key (str):
                 Buffer identifier in :attr:`_chart_values`.
-            xs (list[float]):
-                Reference X-axis sequence whose length determines the target
-                buffer length.
-            fill_value (float):
-                Value used to pad or update the buffer.
+            timestamp (float):
+                Sample time as a Unix timestamp.
+            value (float):
+                Value recorded at *timestamp*.
+            now_ts (float):
+                Current time as a Unix timestamp.
+            duration_s (float):
+                Length of the retained rolling window in seconds.
 
         Returns:
-            (list[float]):
-                The aligned buffer (also stored in :attr:`_chart_values`).
+            (tuple[list[float], list[float]]):
+                Retained absolute timestamps and their paired values.
         """
+        times = self._chart_times.setdefault(key, [])
         buf = self._chart_values.setdefault(key, [])
-        while len(buf) < len(xs):
-            buf.insert(0, fill_value)
-        while len(buf) > len(xs):
+        times.append(timestamp)
+        buf.append(value)
+        while times and now_ts - times[0] > duration_s:
+            times.pop(0)
             buf.pop(0)
-        buf[-1] = fill_value
-        return buf
+        return times, buf
 
     def _update_chart(self, state: TemperatureEngineState, now_ts: float) -> None:
         """Append the latest readings to chart buffers and redraw curves.
@@ -868,16 +879,11 @@ class TemperatureControlPanel(QWidget):
 
         for i, (ch, reading) in enumerate(state.readings.items()):
             ts = reading.timestamp.timestamp()
-            buf_t = self._chart_times.setdefault(ch, [])
-            buf_v = self._chart_values.setdefault(ch, [])
-            buf_t.append(ts)
-            buf_v.append(reading.value)
-            # Trim old data.
-            while buf_t and now_ts - buf_t[0] > duration_s:
-                buf_t.pop(0)
-                buf_v.pop(0)
-            xs = [t - now_ts for t in buf_t]
             trace_name = f"T_{ch}"
+            buf_t, buf_v = self._append_chart_sample(
+                trace_name, ts, reading.value, now_ts, duration_s
+            )
+            xs = [t - now_ts for t in buf_t]
             self._chart_widget.set_trace(trace_name, xs, buf_v)
             self._chart_widget.assign_trace_axes(trace_name, y_axis="left")
             self._chart_widget.set_trace_style(
@@ -897,12 +903,15 @@ class TemperatureControlPanel(QWidget):
                     self._update_legend_value("dT/dt", f"{rate_ys[-1]:.3f} K/min")
 
         # Setpoint traces
-        ts_ref = self._chart_times.get(next(iter(state.readings), ""), [])
-        if ts_ref:
-            xs = [t - now_ts for t in ts_ref]
+        reference_reading = next(iter(state.readings.values()), None)
+        if reference_reading is not None:
+            sample_ts = reference_reading.timestamp.timestamp()
             for loop, sp in state.setpoints.items():
-                sp_buf = self._align_buf_to_xs(f"SP_{loop}", xs, sp)
                 trace_name = f"SP_{loop}"
+                sp_times, sp_buf = self._append_chart_sample(
+                    trace_name, sample_ts, sp, now_ts, duration_s
+                )
+                xs = [t - now_ts for t in sp_times]
                 self._chart_widget.set_trace(trace_name, xs, sp_buf)
                 self._chart_widget.assign_trace_axes(trace_name, y_axis="left")
                 self._chart_widget.set_trace_style(
@@ -913,15 +922,21 @@ class TemperatureControlPanel(QWidget):
                 self._update_legend_value(trace_name, f"{sp:.2f} K")
 
             for loop, ho in state.heater_outputs.items():
-                h_buf = self._align_buf_to_xs(f"H_{loop}", xs, ho)
                 trace_name = f"H_{loop}"
+                heater_times, h_buf = self._append_chart_sample(
+                    trace_name, sample_ts, ho, now_ts, duration_s
+                )
+                xs = [t - now_ts for t in heater_times]
                 self._chart_widget.set_trace(trace_name, xs, h_buf)
                 self._chart_widget.assign_trace_axes(trace_name, y_axis="output")
                 self._chart_widget.set_trace_style(trace_name, colour=_HEATER_COLOUR.name())
                 self._update_legend_value(trace_name, f"{ho:.1f} %")
 
             if state.needle_valve is not None:
-                nv_buf = self._align_buf_to_xs("NV", xs, state.needle_valve)
+                needle_times, nv_buf = self._append_chart_sample(
+                    "NV", sample_ts, state.needle_valve, now_ts, duration_s
+                )
+                xs = [t - now_ts for t in needle_times]
                 self._chart_widget.set_trace("NV", xs, nv_buf)
                 self._chart_widget.assign_trace_axes("NV", y_axis="output")
                 self._chart_widget.set_trace_style(

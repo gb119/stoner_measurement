@@ -40,6 +40,14 @@ class _UnitTrace(_SimpleTrace):
         return "V"
 
 
+def _managed_config_tabs(plugin, managed_qt_widget):
+    """Create and retain every top-level configuration page for a test."""
+    tabs = plugin.config_tabs()
+    for _title, page in tabs:
+        managed_qt_widget(page)
+    return tabs
+
+
 class TestTracePlugin:
     def test_plugin_type(self, qapp):
         p = _SimpleTrace()
@@ -55,11 +63,11 @@ class TestTracePlugin:
     def test_y_label_default(self, qapp):
         assert _SimpleTrace().y_label == "y"
 
-    def test_config_widget_default(self, qapp):
+    def test_config_widget_default(self, qapp, managed_qt_widget):
         from qtpy.QtWidgets import QWidget
 
         p = _SimpleTrace()
-        w = p.config_widget()
+        w = managed_qt_widget(p.config_widget())
         assert isinstance(w, QWidget)
 
     def test_monitor_widget_default_none(self, qapp):
@@ -71,33 +79,33 @@ class TestTracePlugin:
         p = _SimpleTrace()
         assert isinstance(p.scan_generator, FunctionScanGenerator)
 
-    def test_config_tabs_scan_tab_is_first(self, qapp):
+    def test_config_tabs_scan_tab_is_first(self, qapp, managed_qt_widget):
         p = _SimpleTrace()
-        tabs = p.config_tabs()
+        tabs = _managed_config_tabs(p, managed_qt_widget)
         assert len(tabs) >= 2
         assert "Scan" in tabs[0][0]
         assert "Type" not in tabs[0][0]
 
-    def test_config_tabs_settings_tab_is_second(self, qapp):
+    def test_config_tabs_settings_tab_is_second(self, qapp, managed_qt_widget):
         p = _SimpleTrace()
-        tabs = p.config_tabs()
+        tabs = _managed_config_tabs(p, managed_qt_widget)
         assert "Settings" in tabs[1][0]
 
-    def test_scan_page_contains_generator_type_selector(self, qapp):
+    def test_scan_page_contains_generator_type_selector(self, qapp, managed_qt_widget):
         """Generator type selector is embedded in the Scan page."""
         from qtpy.QtWidgets import QComboBox
 
         p = _SimpleTrace()
-        tabs = p.config_tabs()
+        tabs = _managed_config_tabs(p, managed_qt_widget)
         scan_page = tabs[0][1]
         combos = scan_page.findChildren(QComboBox)
         assert len(combos) >= 1
 
-    def test_scan_page_uses_humanised_generator_names(self, qapp):
+    def test_scan_page_uses_humanised_generator_names(self, qapp, managed_qt_widget):
         from qtpy.QtWidgets import QComboBox
 
         p = _SimpleTrace()
-        scan_page = p.config_tabs()[0][1]
+        scan_page = _managed_config_tabs(p, managed_qt_widget)[0][1]
         combo = next(iter(scan_page.findChildren(QComboBox)), None)
 
         assert combo is not None
@@ -106,12 +114,12 @@ class TestTracePlugin:
         assert "Ramp Scan Generator" in labels
         assert "Arbitrary Function Scan Generator" in labels
 
-    def test_scan_page_identity_editors_update_plugin(self, qapp):
+    def test_scan_page_identity_editors_update_plugin(self, qapp, managed_qt_widget):
         """The Scan page reuses the standard editable plugin identity."""
         from qtpy.QtWidgets import QLineEdit
 
         p = _SimpleTrace()
-        scan_page = p.config_tabs()[0][1]
+        scan_page = _managed_config_tabs(p, managed_qt_widget)[0][1]
         editors = scan_page.findChildren(QLineEdit)
         name_editor = next(
             editor for editor in editors if editor.toolTip().startswith("Python variable name")
@@ -129,19 +137,19 @@ class TestTracePlugin:
         assert p.comment == "calibration run"
         assert comment_editor.text() == "calibration run"
 
-    def test_scan_page_does_not_show_plugin_type(self, qapp):
+    def test_scan_page_does_not_show_plugin_type(self, qapp, managed_qt_widget):
         from qtpy.QtWidgets import QLabel
 
         p = _SimpleTrace()
-        scan_page = p.config_tabs()[0][1]
+        scan_page = _managed_config_tabs(p, managed_qt_widget)[0][1]
         labels = [label.text() for label in scan_page.findChildren(QLabel)]
         assert "Plugin type:" not in labels
 
-    def test_config_tabs_scan_widget_is_qwidget(self, qapp):
+    def test_config_tabs_scan_widget_is_qwidget(self, qapp, managed_qt_widget):
         from qtpy.QtWidgets import QWidget
 
         p = _SimpleTrace()
-        tabs = p.config_tabs()
+        tabs = _managed_config_tabs(p, managed_qt_widget)
         assert isinstance(tabs[0][1], QWidget)
 
     def test_set_scan_generator_class(self, qapp):
@@ -170,37 +178,41 @@ class TestTracePlugin:
         p.set_scan_generator_class(SteppedScanGenerator)
         assert len(received) == 1
 
-    def test_scan_tab_container_refreshes_on_change(self, qapp):
+    def test_scan_tab_container_refreshes_on_change(self, qapp, managed_qt_widget):
         from qtpy.QtWidgets import QWidget
 
         from stoner_measurement.plugins.trace import _ScanTabContainer
         from stoner_measurement.scan import SteppedScanGenerator
 
         p = _SimpleTrace()
-        container = _ScanTabContainer(p)
+        container = managed_qt_widget(_ScanTabContainer(p))
         p.set_scan_generator_class(SteppedScanGenerator)
         assert isinstance(container, QWidget)
 
-    def test_scan_page_and_generator_container_pack_contents_at_top(self, qapp):
+    def test_scan_page_and_generator_container_pack_contents_at_top(
+        self, qapp, managed_qt_widget
+    ):
         from stoner_measurement.plugins.trace import _ScanTabContainer
         from stoner_measurement.scan import ListScanGenerator
 
         p = _SimpleTrace()
         p.set_scan_generator_class(ListScanGenerator)
-        scan_page = p.config_tabs()[0][1]
+        scan_page = _managed_config_tabs(p, managed_qt_widget)[0][1]
         scan_container = scan_page.findChild(_ScanTabContainer)
 
         assert scan_page.layout().alignment() & Qt.AlignmentFlag.AlignTop
         assert scan_container is not None
         assert scan_container.layout().alignment() & Qt.AlignmentFlag.AlignTop
 
-    def test_statistics_switch_is_immediately_above_scan_generator(self, qapp):
+    def test_statistics_switch_is_immediately_above_scan_generator(
+        self, qapp, managed_qt_widget
+    ):
         from qtpy.QtWidgets import QWidget
 
         from stoner_measurement.plugins.trace import _ScanTabContainer
 
         p = _SimpleTrace()
-        scan_page = p.config_tabs()[0][1]
+        scan_page = _managed_config_tabs(p, managed_qt_widget)[0][1]
         statistics = scan_page.findChild(QWidget, "trace_statistics_options")
         scan_container = scan_page.findChild(_ScanTabContainer)
         layout = scan_page.layout()
