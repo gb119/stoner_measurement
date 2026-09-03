@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
 from qtpy.QtCore import QEvent, QSize, Qt  # pylint: disable=no-name-in-module
-from qtpy.QtGui import QFont, QFontMetrics  # pylint: disable=no-name-in-module
+from qtpy.QtGui import QFont, QFontMetricsF  # pylint: disable=no-name-in-module
 from qtpy.QtWidgets import QTabBar, QTabWidget, QWidget  # pylint: disable=no-name-in-module
 
 
@@ -23,24 +25,29 @@ class FontAwareTabBar(QTabBar):
         normal_font = self.font()
         selected_font = QFont(normal_font)
         selected_font.setWeight(QFont.Weight.DemiBold)
-        normal_width = QFontMetrics(normal_font).horizontalAdvance(text)
-        selected_width = QFontMetrics(selected_font).horizontalAdvance(text)
-        width_allowance = max(0, selected_width - normal_width)
+        normal_width = QFontMetricsF(normal_font).horizontalAdvance(text)
+        selected_width = QFontMetricsF(selected_font).horizontalAdvance(text)
+        width_allowance = max(0, math.ceil(selected_width - normal_width))
         vertical = self.shape() in {
             QTabBar.Shape.RoundedWest,
             QTabBar.Shape.RoundedEast,
             QTabBar.Shape.TriangularWest,
             QTabBar.Shape.TriangularEast,
         }
-        if vertical:
-            result.setHeight(result.height() + width_allowance)
-        else:
-            result.setWidth(result.width() + width_allowance)
+        # ``super().tabSizeHint()`` already reflects the selected-state font
+        # from the stylesheet. Add the bold allowance only while the tab is
+        # unselected; otherwise it would be counted twice and the tab would
+        # grow when selected.
+        if index != self.currentIndex():
+            if vertical:
+                result.setHeight(result.height() + width_allowance)
+            else:
+                result.setWidth(result.width() + width_allowance)
 
         # A newly inserted first tab is already selected before Qt asks for its
-        # size hint, while other tabs begin unselected. Applying the allowance
-        # in both states avoids caching a normal-font width for that first tab.
-        # Retaining the largest result also absorbs style rounding differences.
+        # size hint, so its native selected extent seeds the cache. Other tabs
+        # reserve the same font difference while unselected. Retaining the
+        # largest result also absorbs style rounding differences.
         cache_key = (index, vertical)
         extent = result.height() if vertical else result.width()
         reserved_extent = max(extent, self._reserved_extents.get(cache_key, 0))

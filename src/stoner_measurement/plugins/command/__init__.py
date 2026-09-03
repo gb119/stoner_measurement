@@ -33,6 +33,10 @@ from stoner_measurement.plugins.command.network_analyser_set import (
     NetworkAnalyserSetCommand,
 )
 from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
+from stoner_measurement.plugins.command.plot_markers import (
+    AddPlotMarkerCommand,
+    RemovePlotMarkersCommand,
+)
 from stoner_measurement.plugins.command.plot_points import PlotPointsCommand
 from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
 from stoner_measurement.plugins.command.pressure_gauge_channel import (
@@ -56,6 +60,7 @@ from stoner_measurement.plugins.command.status import StatusCommand
 from stoner_measurement.plugins.command.wait import WaitCommand
 
 __all__ = [
+    "AddPlotMarkerCommand",
     "AlertCommand",
     "BreakIfCommand",
     "CommandPlugin",
@@ -72,6 +77,7 @@ __all__ = [
     "PressureGaugeChannelCommand",
     "PressureSetFlowCommand",
     "ReadDiffractometerCommand",
+    "RemovePlotMarkersCommand",
     "SaveCommand",
     "SetFieldCommand",
     "SetDiffractometerCommand",

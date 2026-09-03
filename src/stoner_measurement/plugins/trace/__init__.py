@@ -21,6 +21,7 @@ from stoner_measurement.plugins.trace.daqmx import (
     DaqmxTraceSettingsWidget,
 )
 from stoner_measurement.plugins.trace.dummy import DummyPlugin
+from stoner_measurement.plugins.trace.function_trace import FunctionTracePlugin
 from stoner_measurement.plugins.trace.k6221_2182a import (
     ComplianceMode,
     ConnectionMode,
@@ -61,6 +62,7 @@ __all__ = [
     "DaqmxTracePlugin",
     "DaqmxTraceSettingsWidget",
     "DummyPlugin",
+    "FunctionTracePlugin",
     "K2400ConnectionMode",
     "K2400RangeMode",
     "K2400TerminalMode",

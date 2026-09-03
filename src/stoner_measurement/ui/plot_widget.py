@@ -10,13 +10,14 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from itertools import cycle
 from typing import Literal, TypedDict, cast
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QPoint, Qt
-from qtpy.QtGui import QColor
+from qtpy.QtCore import QPoint, QPointF, Qt
+from qtpy.QtGui import QColor, QCursor
 from qtpy.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -29,6 +30,7 @@ from qtpy.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QStyle,
     QTableWidget,
@@ -134,6 +136,19 @@ _COLOUR_COLUMN_WIDTH = 90
 _AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
+_MARKER_HIT_RADIUS = 14.0
+
+
+@dataclass
+class _DataMarker:
+    """One labelled marker anchored to raw named-axis coordinates."""
+
+    marker_id: int
+    x: float
+    y: float
+    x_axis: str
+    y_axis: str
+    item: pg.TargetItem
 
 
 def _safe_remove_graphics_item(parent: object, item: object) -> None:
@@ -683,6 +698,8 @@ class PlotWidget(QWidget):
         self._active_mouse_view_box: pg.ViewBox | None = None
         self._updating_mouse_axis_coupling = False
         self._autoscale_new_data = True
+        self._data_markers: list[_DataMarker] = []
+        self._next_data_marker_id = 1
         # Colour cycle for auto-assignment
         self._colour_cycle = cycle(_TRACE_COLOURS)
 
@@ -737,9 +754,7 @@ class PlotWidget(QWidget):
         self._home_button.setAccessibleName("Home")
         self._home_button.clicked.connect(self.reset_all_view_ranges)
         self._autoscale_button = QPushButton(self)
-        self._autoscale_button.setIcon(
-            style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
-        )
+        self._autoscale_button.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
         self._autoscale_button.setToolTip("Autoscale when new data is plotted")
         self._autoscale_button.setAccessibleName("Autoscale new data")
         self._autoscale_button.setCheckable(True)
@@ -753,9 +768,7 @@ class PlotWidget(QWidget):
         )
         self._autoscale_button.toggled.connect(self._set_autoscale_new_data)
         self._clear_button = QPushButton(self)
-        self._clear_button.setIcon(
-            style.standardIcon(QStyle.StandardPixmap.SP_DialogDiscardButton)
-        )
+        self._clear_button.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogDiscardButton))
         self._clear_button.setToolTip("Clear all plotted data")
         self._clear_button.setAccessibleName("Clear plot")
         self._clear_button.clicked.connect(self.clear_all)
@@ -764,6 +777,14 @@ class PlotWidget(QWidget):
         controls.addWidget(self._autoscale_button)
         controls.addWidget(self._clear_button)
         controls.addStretch(1)
+        self._coordinate_label = QLabel("", self)
+        self._coordinate_label.setObjectName("plotCoordinateDisplay")
+        self._coordinate_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._coordinate_label.setMinimumWidth(150)
+        self._coordinate_label.setToolTip("Pointer coordinates for the visible plot axes")
+        controls.addWidget(self._coordinate_label)
         layout.addLayout(controls)
 
     def _set_autoscale_new_data(self, enabled: bool) -> None:
@@ -806,6 +827,11 @@ class PlotWidget(QWidget):
         self._pg_widget.setBackground(colour("plot_background"))
         scene = self._pg_widget.scene()
         scene.sigMouseClicked.connect(self._on_scene_mouse_clicked)
+        self._mouse_move_proxy = pg.SignalProxy(
+            scene.sigMouseMoved,
+            rateLimit=30,
+            slot=self._on_scene_mouse_moved,
+        )
         if hasattr(scene, "sigMouseDragged"):
             scene.sigMouseDragged.connect(self._on_scene_mouse_dragged)
         axis_items["left"].set_axis_label(AxisLabel("Value"))
@@ -1058,13 +1084,176 @@ class PlotWidget(QWidget):
             self._right_dragged = True
 
     def _on_scene_mouse_clicked(self, ev) -> None:
-        """Open axis settings only for a plain right-click release, not a drag."""
+        """Open the plot context menu for a plain right-click release."""
         self._end_mouse_axis_coupling()
         if ev.button() == Qt.MouseButton.RightButton:
             if getattr(self, "_right_dragged", False):
                 self._right_dragged = False
                 return
-            self._open_axes_dialog()
+            scene_pos = ev.scenePos()
+            if not self._plot_item.vb.sceneBoundingRect().contains(scene_pos):
+                return
+            menu = self._build_plot_context_menu(scene_pos)
+            screen_pos = ev.screenPos() if hasattr(ev, "screenPos") else QCursor.pos()
+            if hasattr(screen_pos, "toPoint"):
+                screen_pos = screen_pos.toPoint()
+            menu.exec(screen_pos)
+
+    def _on_scene_mouse_moved(self, event) -> None:
+        """Update the throttled toolbar coordinate display from a scene position."""
+        if not hasattr(self, "_coordinate_label"):
+            return
+        scene_pos = event[0] if isinstance(event, (tuple, list)) else event
+        if not self._plot_item.vb.sceneBoundingRect().contains(scene_pos):
+            self._coordinate_label.clear()
+            return
+        x_values, y_values = self._axis_values_at_scene_position(scene_pos)
+        self._coordinate_label.setText(self._format_pointer_coordinates(x_values, y_values))
+
+    def _axis_values_at_scene_position(self, scene_pos: QPointF) -> tuple[list[float], list[float]]:
+        """Return raw pointer values for every registered x and y axis."""
+        x_values = [
+            self._axis_value_at_scene_position(name, scene_pos) for name in self._x_axis_names()
+        ]
+        y_values = [
+            self._axis_value_at_scene_position(name, scene_pos) for name in self._y_axis_names()
+        ]
+        return x_values, y_values
+
+    def _axis_value_at_scene_position(self, axis_name: str, scene_pos: QPointF) -> float:
+        """Map one scene coordinate into the raw units of *axis_name*."""
+        orientation = self._axis_orientations[axis_name]
+        index = 0 if orientation == "x" else 1
+        pair = next(
+            (axes for axes in self._pair_view_boxes if axes[index] == axis_name),
+            ("bottom", "left"),
+        )
+        point = self._pair_view_boxes[pair].mapSceneToView(scene_pos)
+        mapped = point.x() if orientation == "x" else point.y()
+        return float(self._inverse_axis_values(axis_name, [mapped])[0])
+
+    @staticmethod
+    def _format_pointer_coordinates(x_values: list[float], y_values: list[float]) -> str:
+        """Format one or multiple axis-coordinate pairs compactly."""
+
+        def values_text(values: list[float]) -> str:
+            rendered = [f"{value:.6g}" for value in values]
+            return rendered[0] if len(rendered) == 1 else f"[{', '.join(rendered)}]"
+
+        return f"({values_text(x_values)}, {values_text(y_values)})"
+
+    def _build_plot_context_menu(self, scene_pos: QPointF) -> QMenu:
+        """Build the context-sensitive menu for one plot-area position."""
+        menu = QMenu(self)
+        configure = menu.addAction("Configure Axes…")
+        configure.triggered.connect(self._open_axes_dialog)
+        nearby = self._nearest_data_marker(scene_pos)
+        if nearby is None:
+            add = menu.addAction("Add Data Marker")
+            add.triggered.connect(lambda: self._add_data_marker_at_scene_position(scene_pos))
+        else:
+            remove = menu.addAction("Remove Data Marker")
+            remove.triggered.connect(lambda: self.remove_data_marker(nearby.marker_id))
+        remove_all = menu.addAction("Remove All Data Markers")
+        remove_all.setEnabled(bool(self._data_markers))
+        remove_all.triggered.connect(self.clear_data_markers)
+        return menu
+
+    def _add_data_marker_at_scene_position(self, scene_pos: QPointF) -> None:
+        """Add a labelled marker at the primary axes' raw data coordinates."""
+        point = self._plot_item.vb.mapSceneToView(scene_pos)
+        x = float(self._inverse_axis_values("bottom", [point.x()])[0])
+        y = float(self._inverse_axis_values("left", [point.y()])[0])
+        self.add_data_marker(x, y)
+
+    @pyqtSlot(float, float)
+    @pyqtSlot(float, float, object)
+    def add_data_marker(
+        self,
+        x: float,
+        y: float,
+        label: str | None = None,
+        *,
+        x_axis: str = "bottom",
+        y_axis: str = "left",
+    ) -> int:
+        """Add a fixed data-coordinate marker and return its stable ID.
+
+        The optional axis names allow callers to anchor a marker to any
+        registered x/y pair. The marker follows zooming, panning, and scale
+        mapping changes. When *label* is omitted its raw coordinates are used.
+        """
+        if self._axis_orientations.get(x_axis) != "x":
+            raise KeyError(f"Unknown x-axis: {x_axis!r}")
+        if self._axis_orientations.get(y_axis) != "y":
+            raise KeyError(f"Unknown y-axis: {y_axis!r}")
+        view_box = self._create_pair_view_box(x_axis, y_axis)
+        marker_id = self._next_data_marker_id
+        self._next_data_marker_id += 1
+        item = pg.TargetItem(
+            pos=(
+                float(self._mapped_axis_values(x_axis, [x])[0]),
+                float(self._mapped_axis_values(y_axis, [y])[0]),
+            ),
+            size=12,
+            symbol="o",
+            pen=pg.mkPen(colour("trace_orange"), width=2),
+            brush=pg.mkBrush(colour("plot_background")),
+            movable=False,
+            label=label or self._format_pointer_coordinates([x], [y]),
+            labelOpts={"color": colour("plot_foreground")},
+        )
+        marker = _DataMarker(
+            marker_id=marker_id,
+            x=float(x),
+            y=float(y),
+            x_axis=x_axis,
+            y_axis=y_axis,
+            item=item,
+        )
+        self._data_markers.append(marker)
+        view_box.addItem(item)
+        return marker_id
+
+    def _nearest_data_marker(self, scene_pos: QPointF) -> _DataMarker | None:
+        """Return a marker within the fixed screen-space hit radius."""
+        nearest: _DataMarker | None = None
+        nearest_distance = _MARKER_HIT_RADIUS
+        for marker in self._data_markers:
+            view_box = self._pair_view_boxes[(marker.x_axis, marker.y_axis)]
+            marker_scene_pos = view_box.mapViewToScene(marker.item.pos())
+            delta = marker_scene_pos - scene_pos
+            distance = float(np.hypot(delta.x(), delta.y()))
+            if distance <= nearest_distance:
+                nearest = marker
+                nearest_distance = distance
+        return nearest
+
+    def remove_data_marker(self, marker_id: int) -> bool:
+        """Remove the marker with *marker_id* and report whether it existed."""
+        marker = next(
+            (candidate for candidate in self._data_markers if candidate.marker_id == marker_id),
+            None,
+        )
+        if marker is None:
+            return False
+        view_box = self._pair_view_boxes[(marker.x_axis, marker.y_axis)]
+        view_box.removeItem(marker.item)
+        self._data_markers.remove(marker)
+        return True
+
+    def clear_data_markers(self) -> None:
+        """Remove every labelled data marker from the plot."""
+        for marker_id in [marker.marker_id for marker in self._data_markers]:
+            self.remove_data_marker(marker_id)
+
+    def _refresh_data_markers(self) -> None:
+        """Reposition markers after changing the primary axis mapping."""
+        for marker in self._data_markers:
+            marker.item.setPos(
+                float(self._mapped_axis_values(marker.x_axis, [marker.x])[0]),
+                float(self._mapped_axis_values(marker.y_axis, [marker.y])[0]),
+            )
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         """Track right-button press state."""
@@ -1839,9 +2028,7 @@ class PlotWidget(QWidget):
             return self._pending_data_updates > 0
 
     @pyqtSlot(object, object)
-    def set_default_axis_labels(
-        self, x_label: AxisLabel | str, y_label: AxisLabel | str
-    ) -> None:
+    def set_default_axis_labels(self, x_label: AxisLabel | str, y_label: AxisLabel | str) -> None:
         """Accumulate and display labels for the default bottom and left axes.
 
         Called by :class:`~stoner_measurement.plugins.command.PlotTraceCommand`
@@ -2134,6 +2321,7 @@ class PlotWidget(QWidget):
             []
         """
         self._colour_cycle = cycle(_TRACE_COLOURS)
+        self.clear_data_markers()
         for name in list(self._traces.keys()):
             self.remove_trace(name)
         for labels in self._axis_labels.values():
@@ -2148,6 +2336,8 @@ class PlotWidget(QWidget):
         """Remove traces and error bars while the plot scene is still valid."""
         if not hasattr(self, "_plot_item"):
             return
+
+        self.clear_data_markers()
 
         for trace_name, error_bar_item in list(self._error_bar_items.items()):
             x_ax, y_ax = self._trace_axes.get(trace_name, ("bottom", "left"))
@@ -2264,6 +2454,7 @@ class PlotWidget(QWidget):
             view_box.setLogMode("y", self._axis_scale.get(y_axis) == "log")
         for trace_name in self._traces:
             self._update_trace_display(trace_name)
+        self._refresh_data_markers()
         self._refresh_all_auto_ranges()
         self._reapply_manual_axis_ranges()
 

@@ -16,11 +16,18 @@ Prefer `conda run -n stoner_measurement ...` over `conda activate`, because
 Codex shell calls may run as separate non-interactive PowerShell sessions and
 activation may not persist between commands.
 
-If `conda` is not on `PATH`, use the full executable path:
+If `CONDA_EXE` is set, prefer it because the Conda installation varies between
+testing machines:
 
 ```powershell
-C:\ProgramData\anaconda3\Scripts\conda.exe run -n stoner_measurement <command>
+& $env:CONDA_EXE run -n stoner_measurement <command>
 ```
+
+Otherwise, use the Conda executable from either
+`C:\ProgramData\anaconda3\Scripts` or
+`C:\ProgramData\Miniforge3\Scripts`, depending on the machine. Never use the
+Conda installation under `C:\ProgramData\Miniconda3\Scripts`; it does not host
+the project's environment reliably.
 
 ## Tools
 
@@ -126,8 +133,10 @@ global `codacy` command exists.
 - Do not assume globally installed Python tooling; prefer the conda environment.
 - If a command fails outside the environment, retry it through
   `conda run -n stoner_measurement`.
-- If `conda` is not available on `PATH`, retry with
-  `C:\ProgramData\anaconda3\Scripts\conda.exe run -n stoner_measurement`.
+- If `CONDA_EXE` is set, use it. Otherwise, if `conda` is not available on
+  `PATH`, retry with `C:\ProgramData\anaconda3\Scripts\conda.exe` or
+  `C:\ProgramData\Miniforge3\Scripts\conda.exe`, depending on which exists.
+- Never use `C:\ProgramData\Miniconda3\Scripts\conda.exe` for this repository.
 - Before adding, moving, or rewriting tests, read
   `notes/testing_guidelines.md`. Keep migration progress in
   `notes/testing_restructure_plan.md`.

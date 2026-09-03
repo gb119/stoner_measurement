@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from qtpy.QtCore import QPointF
 from qtpy.QtGui import QColor
-from qtpy.QtWidgets import QComboBox, QDialog, QHeaderView, QLineEdit
+from qtpy.QtWidgets import QComboBox, QDialog, QHeaderView, QLabel, QLineEdit
 
 from stoner_measurement.ui.axis_mappings import AxisLabel, inverse_values, transform_values
 from stoner_measurement.ui.plot_widget import (
@@ -168,6 +169,91 @@ class TestPlotWidget:
         assert "QPushButton:checked" in widget._autoscale_button.styleSheet()
         assert "background-color" in widget._autoscale_button.styleSheet()
         assert not widget._clear_button.icon().isNull()
+
+    def test_pointer_coordinates_are_displayed_at_right_of_controls(self, qapp):
+        widget = self.make_plot_widget()
+        widget.resize(800, 500)
+        widget.show()
+        qapp.processEvents()
+        widget._plot_item.vb.setRange(xRange=(0.0, 10.0), yRange=(-2.0, 2.0), padding=0.0)
+        scene_pos = widget._plot_item.vb.mapViewToScene(QPointF(2.5, 1.25))
+
+        widget._on_scene_mouse_moved((scene_pos,))
+
+        label = widget.findChild(QLabel, "plotCoordinateDisplay")
+        assert label is widget._coordinate_label
+        assert label.text() == "(2.5, 1.25)"
+        assert widget.layout().itemAt(0).layout().itemAt(5).widget() is label
+
+    def test_multiple_axis_coordinates_use_list_format(self, qapp):
+        assert PlotWidget._format_pointer_coordinates([1.0, 2.0], [3.0, 4.0]) == (
+            "([1, 2], [3, 4])"
+        )
+
+    def test_plot_context_menu_adds_and_removes_nearby_marker(self, qapp):
+        widget = self.make_plot_widget()
+        widget.resize(800, 500)
+        widget.show()
+        qapp.processEvents()
+        widget._plot_item.vb.setRange(xRange=(0.0, 10.0), yRange=(0.0, 10.0), padding=0.0)
+        scene_pos = widget._plot_item.vb.mapViewToScene(QPointF(3.0, 4.0))
+
+        menu = widget._build_plot_context_menu(scene_pos)
+        actions = {action.text(): action for action in menu.actions()}
+        assert set(actions) == {
+            "Configure Axes…",
+            "Add Data Marker",
+            "Remove All Data Markers",
+        }
+        assert not actions["Remove All Data Markers"].isEnabled()
+        actions["Add Data Marker"].trigger()
+
+        assert len(widget._data_markers) == 1
+        marker = widget._data_markers[0]
+        assert marker.x == pytest.approx(3.0)
+        assert marker.y == pytest.approx(4.0)
+        assert marker.item in widget._plot_item.vb.addedItems
+
+        nearby_menu = widget._build_plot_context_menu(scene_pos)
+        nearby_actions = {action.text(): action for action in nearby_menu.actions()}
+        assert "Add Data Marker" not in nearby_actions
+        assert nearby_actions["Remove All Data Markers"].isEnabled()
+        nearby_actions["Remove Data Marker"].trigger()
+        assert widget._data_markers == []
+
+    def test_data_markers_stay_at_data_coordinates_and_clear_with_plot(self, qapp):
+        widget = self.make_plot_widget()
+        widget.resize(800, 500)
+        widget.show()
+        qapp.processEvents()
+        widget._plot_item.vb.setRange(xRange=(0.0, 10.0), yRange=(0.0, 10.0), padding=0.0)
+        widget._add_data_marker_at_scene_position(
+            widget._plot_item.vb.mapViewToScene(QPointF(6.0, 7.0))
+        )
+        marker = widget._data_markers[0]
+
+        widget._plot_item.vb.setRange(xRange=(5.0, 7.0), yRange=(6.0, 8.0), padding=0.0)
+        mapped = widget._plot_item.vb.mapSceneToView(
+            widget._plot_item.vb.mapViewToScene(marker.item.pos())
+        )
+        assert mapped.x() == pytest.approx(6.0)
+        assert mapped.y() == pytest.approx(7.0)
+
+        widget.clear_all()
+        assert widget._data_markers == []
+        assert marker.item not in widget._plot_item.vb.addedItems
+
+    def test_public_data_marker_api_adds_removes_and_reports_missing_ids(self, qapp):
+        widget = self.make_plot_widget()
+
+        marker_id = widget.add_data_marker(1.5, -2.5, label="Turning point")
+
+        assert marker_id == 1
+        assert widget._data_markers[0].marker_id == marker_id
+        assert widget._data_markers[0].item.label().toPlainText() == "Turning point"
+        assert widget.remove_data_marker(marker_id) is True
+        assert widget.remove_data_marker(marker_id) is False
+        assert widget._data_markers == []
 
     def test_autoscale_button_controls_range_updates_for_new_data(self, qapp):
         widget = self.make_plot_widget()
@@ -570,9 +656,7 @@ class TestPlotWidget:
         widget.ensure_x_axis("bottom", "Resistance (ohm)")
         widget.ensure_y_axis("left", "Power (W)")
 
-        assert widget._axis_items["bottom"].axis_label == AxisLabel(
-            "Resistance (ohm), Voltage (V)"
-        )
+        assert widget._axis_items["bottom"].axis_label == AxisLabel("Resistance (ohm), Voltage (V)")
         assert widget._axis_items["left"].axis_label == AxisLabel("Current (A), Power (W)")
 
     def test_ensure_x_axis_creates_new_axis(self, qapp):
@@ -832,16 +916,10 @@ class TestPlotWidget:
         widget.set_default_axis_labels("Time (s)", "Voltage (V)")
         widget.set_default_axis_labels("Frequency (Hz)", "Current (A)")
 
-        assert widget._axis_items["bottom"].axis_label == AxisLabel(
-            "Frequency (Hz), Time (s)"
-        )
-        assert widget._axis_items["left"].axis_label == AxisLabel(
-            "Current (A), Voltage (V)"
-        )
+        assert widget._axis_items["bottom"].axis_label == AxisLabel("Frequency (Hz), Time (s)")
+        assert widget._axis_items["left"].axis_label == AxisLabel("Current (A), Voltage (V)")
 
-    def test_set_default_axis_labels_does_not_rewrite_repeated_labels(
-        self, qapp, monkeypatch
-    ):
+    def test_set_default_axis_labels_does_not_rewrite_repeated_labels(self, qapp, monkeypatch):
         widget = self.make_plot_widget()
         original_set_axis_label = widget.set_axis_label
         calls = []
