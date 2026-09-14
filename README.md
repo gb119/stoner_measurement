@@ -13,21 +13,50 @@
 Stoner Measurement is a desktop application for building, running, and saving
 automated laboratory measurements.
 
+Build transport and cryogenic experiments graphically, combine point-by-point
+scans with continuous sweeps, and inspect readings and processed traces live —
+with editable Python available for custom control.
+
 It is designed for experimental scientists who want to combine common
 measurement actions — such as setting fields, changing temperature, waiting for
 stability, collecting readings, monitoring values, and plotting data live —
 without needing to write code for every measurement.
 
-You can use it in two ways:
+You create a measurement sequence from a set of sequence plugins. Plugins support,
+amongst other things:
 
-- **Measurement mode** — build a measurement by adding steps in the graphical
-  interface.
-- **Script Editor mode** — run or edit Python directly when you want more
-  control.
+- electrical transport measurements
+- point-by-point scans of magnetic field, temperature, rotational angle, and gate voltage,
+  with measurements taken after each set-point is reached
+- continuous sweeps of magnetic field, temperature, and angle, with data acquisition
+  running alongside the sweep
+- flow control primitives — loop breaks, conditional statements, and more
+- filtering, fitting, and FFT analysis
+- sending data to be plotted — either complete traces of (x, y) points or individual
+  (x, y) data points
+- saving data to tab-delimited text files or NeXus HDF5 files
+
+Saved data files retain the measurement sequence and its configuration, so you
+can reconstruct the entire sequence in the graphical editor to inspect, modify,
+and rerun it. Keeping the procedure with the results supports repeatability and
+experimental provenance.
+
+Scans and sweeps are distinct sequence operations: choose whether to measure at
+individual set-points or keep acquiring data while the experimental conditions
+change continuously. Both can be combined with nested sequences and flow control.
+
+After the sequence is defined, it is converted to a Python script and run on an embedded Python
+kernel that provides runtime support for interacting with the GUI, managing state, and evaluating
+arbitrary expressions using the script state as context.
 
 During a run, the application can display live plots, show logged messages,
 track live values, and open dedicated temperature-control and magnet-control
 panels.
+
+The Python kernel is also connected to an IPython console so you can interact with the measurement
+and hardware directly in the console. Because the measurement sequence is converted to Python, if you
+need more sophisticated and fine-grained control than the sequence gives you, you can edit a Python
+script (or write one from scratch!) and then run it on the application's kernel and runtime.
 
 ## What you can do with it
 
@@ -45,8 +74,10 @@ The application supports instrument drivers for common laboratory roles such as:
 - source meters
 - current sources
 - nanovoltmeters
+- lock-in amplifiers
 - magnet controllers
 - temperature controllers
+- ADC/DAC cards
 
 ## Main parts of the application
 
@@ -157,6 +188,12 @@ The application supports saving and loading both:
 
 The New, Open, Save, and Save As actions automatically apply to whichever main
 tab is currently active.
+
+You can also use **Import Sequence from Data…** to reconstruct a measurement
+sequence from the metadata in a saved tab-delimited or NeXus HDF5 data file.
+The restored sequence can be inspected and edited in the graphical editor,
+allowing you to repeat or adapt an earlier experiment without rebuilding its
+procedure manually.
 
 ## Installation
 
