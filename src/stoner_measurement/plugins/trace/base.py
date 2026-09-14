@@ -69,6 +69,7 @@ from stoner_measurement.plugins.base_plugin import (
     BasePlugin,
     _ABCQObjectMeta,
     _populate_plugin_identity_form,
+    lifecycle_noop,
 )
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.scan import (
@@ -489,6 +490,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     # Lifecycle API
     # ------------------------------------------------------------------
 
+    @lifecycle_noop
     def connect(self) -> None:
         """Open instrument connections and verify the instrument identity.
 
@@ -517,6 +519,7 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             True
         """
 
+    @lifecycle_noop
     def configure(self) -> None:
         """Apply plugin settings to the instrument.
 

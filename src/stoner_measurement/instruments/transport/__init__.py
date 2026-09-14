@@ -18,11 +18,15 @@ from stoner_measurement.instruments.transport.gpib_transport import (
     PassThroughGpibTransport,
 )
 from stoner_measurement.instruments.transport.null_transport import NullTransport
-from stoner_measurement.instruments.transport.serial_transport import SerialTransport
+from stoner_measurement.instruments.transport.serial_transport import (
+    EchoSerialTransport,
+    SerialTransport,
+)
 from stoner_measurement.instruments.transport.udp_transport import UdpTransport
 
 __all__ = [
     "BaseTransport",
+    "EchoSerialTransport",
     "EthernetTransport",
     "FtdiD2xxError",
     "FtdiD2xxTransport",

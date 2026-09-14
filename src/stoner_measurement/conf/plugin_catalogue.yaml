@@ -19,6 +19,8 @@ items:
     label: Plot Trace
 - group: Sequence Execution
   items:
+  - plugin: reconfigure
+    label: Reconfigure
   - plugin: if_command
     label: If
   - plugin: counter

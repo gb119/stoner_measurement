@@ -6,7 +6,46 @@ test layout and philosophy guidance lives in `notes/testing_guidelines.md`.
 This document records the test-suite restructure so future Codex sessions can
 continue without rediscovering the same coverage map.
 
+## 2026-09-14: Per-lock-in settings and fresh overload checks
+
+- Added 15 focused cases in
+  `tests/unit/plugins/trace/test_k6221_lockin_settings.py` for legacy JSON
+  migration, independent controls/configuration/readback, current-input ranges
+  and units, range rounding, and cleared versus reasserted overload flags.
+- Updated affected expectations in `tests/test_k6221_multi_sr830_plugin.py`;
+  its remaining lifecycle/acquisition/UI coverage remains in that legacy file.
+  Added the native inverted-B command test to the SR7265 driver unit tests.
+- Validation through `conda run -n stoner_measurement`, with
+  `QT_QPA_PLATFORM=offscreen` and `QT_QPA_FONTDIR=C:\Windows\Fonts`:
+  `pytest tests/unit/plugins/trace/test_k6221_lockin_settings.py
+  tests/test_k6221_multi_sr830_plugin.py
+  tests/unit/instruments/drivers/test_sr7265.py
+  tests/unit/instruments/drivers/test_srs830.py
+  tests/unit/instruments/contracts/test_lockin_amplifier_exports.py -q --tb=short`
+  passed all 144 tests. Full collection found 3,613 tests; Ruff passed for the
+  changed plugin, SR7265 driver, and affected test modules. No bench validation
+  was performed.
+
 ## Current Baseline
+
+### 2026-09-14: Reconfigure and shared lifecycle contract
+
+- Added `tests/unit/plugins/command/test_reconfigure_command.py` with 22 cases
+  covering selection unions, optional startup suppression, removal and disable
+  rebuilding, JSON/rename preservation, standalone generated scripts, runtime
+  conditional/loop behavior, fresh-run readiness, and reconnect cleanup.
+- Resource tests cover repeated calls, partial connection failure, cleanup
+  failure preventing replacement, failed configuration invalidating readiness,
+  and the concrete 6221/lock-in plugin releasing previous driver instances.
+- No legacy tests moved. Full offscreen suite: **3,631 passed, 1 skipped**
+  (`conda run -n stoner_measurement pytest -q --tb=short`). Three additional
+  focused cases were then added; all **22** Reconfigure cases passed together.
+  Ruff passed for the changed lifecycle, engine, UI and command modules.
+- Refreshed the editable installation with
+  `pip install --no-user --no-deps --no-build-isolation -e .` through the
+  project Conda environment and verified the Reconfigure entry point loads.
+- Real hardware reconnection remains a bench-validation boundary. Resource
+  tests use fake transports/drivers and do not establish instrument timing.
 
 Baseline command, run from the repository root:
 

@@ -32,6 +32,7 @@ import logging
 import re
 from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Callable
+from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 import asteval
@@ -69,9 +70,7 @@ _APPLICATION_RESERVED_INSTANCE_NAMES = frozenset(
     }
 )
 RESERVED_INSTANCE_NAMES = (
-    frozenset(keyword.kwlist)
-    | frozenset(dir(builtins))
-    | _APPLICATION_RESERVED_INSTANCE_NAMES
+    frozenset(keyword.kwlist) | frozenset(dir(builtins)) | _APPLICATION_RESERVED_INSTANCE_NAMES
 )
 
 
@@ -80,7 +79,9 @@ class ReservedInstanceNameError(ValueError):
 
     def __init__(self, instance_name: str) -> None:
         self.instance_name = instance_name
-        super().__init__(f"instance_name {instance_name!r} is reserved by Python or the application")
+        super().__init__(
+            f"instance_name {instance_name!r} is reserved by Python or the application"
+        )
 
 
 def instance_name_validation_error(value: object) -> str | None:
@@ -350,7 +351,9 @@ def _render_section_items(lines: list[str]) -> str:
 
 def _render_code_block_html(lines: list[str], strip_indent: int = 4) -> str:
     """Render *lines* as an HTML ``<pre><code>`` block, stripping *strip_indent* spaces."""
-    stripped = [line[strip_indent:] if line.startswith(" " * strip_indent) else line for line in lines]
+    stripped = [
+        line[strip_indent:] if line.startswith(" " * strip_indent) else line for line in lines
+    ]
     return f"<pre><code>{_html_mod.escape(chr(10).join(stripped).strip())}</code></pre>"
 
 
@@ -454,6 +457,58 @@ class _ABCQObjectMeta(type(QObject), ABCMeta):
     """Combined metaclass that resolves the conflict between QObject and ABCMeta."""
 
 
+def lifecycle_noop(method: Callable) -> Callable:
+    """Mark a default lifecycle operation that requires no hardware setup."""
+    method._lifecycle_noop = True
+    return method
+
+
+def _tracked_lifecycle(method: Callable, phase: str) -> Callable:
+    """Record successful setup and invalidate readiness when setup fails."""
+
+    @wraps(method)
+    def tracked(self, *args, **kwargs):
+        outermost = not self._lifecycle_depth
+        if phase == "connect" and outermost:
+            if self._lifecycle_connection_attempted:
+                self.disconnect()
+            self._lifecycle_connection_attempted = True
+        if phase in {"connect", "disconnect"}:
+            self._lifecycle_connected = False
+        self._lifecycle_configured = False
+        self._lifecycle_depth += 1
+        try:
+            result = method(self, *args, **kwargs)
+        except BaseException:
+            if phase == "connect":
+                self._lifecycle_connected = False
+            self._lifecycle_configured = False
+            raise
+        finally:
+            self._lifecycle_depth -= 1
+        if phase == "connect":
+            self._lifecycle_connected = True
+        elif phase == "configure":
+            self._lifecycle_configured = True
+        elif phase == "disconnect" and outermost:
+            self._lifecycle_connection_attempted = False
+        return result
+
+    return tracked
+
+
+def _guarded_plugin_action(method: Callable) -> Callable:
+    """Check deferred or sequence-managed setup before a public action."""
+
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        if not self._lifecycle_depth and (self.delay_configuration or self._lifecycle_managed):
+            self.require_ready()
+        return method(self, *args, **kwargs)
+
+    return guarded
+
+
 class BasePlugin(ABC):
     """Abstract root class shared by all measurement plugins.
 
@@ -514,6 +569,77 @@ class BasePlugin(ABC):
     _name_edit_sync: Callable | None = None
     #: When ``True`` this plugin is disabled and will not contribute generated code.
     disabled: bool = False
+    #: Derived by the sequence's Reconfigure selections; no direct UI control.
+    delay_configuration: bool = False
+    _lifecycle_connected: bool = False
+    _lifecycle_configured: bool = False
+    _lifecycle_managed: bool = False
+    _lifecycle_depth: int = 0
+    _lifecycle_connection_attempted: bool = False
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        """Track overridden lifecycle operations without changing their public API."""
+        super().__init_subclass__(**kwargs)
+        for phase in ("connect", "configure", "disconnect"):
+            method = cls.__dict__.get(phase)
+            if callable(method) and not getattr(method, "_lifecycle_noop", False):
+                setattr(cls, phase, _tracked_lifecycle(method, phase))
+        for action in ("execute", "measure", "execute_sequence", "scan_points", "read"):
+            method = cls.__dict__.get(action)
+            if callable(method):
+                setattr(cls, action, _guarded_plugin_action(method))
+
+    @lifecycle_noop
+    def connect(self) -> None:
+        """Open owned resources; repeated calls must first release existing ones.
+
+        The shared lifecycle wrapper calls ``disconnect()`` before retrying a
+        previous connection attempt, including a partially failed attempt.
+        Resource-owning plugins must implement idempotent ``disconnect()`` that
+        also closes partially opened resources and clears their references.
+        The default is a no-op for plugins without hardware resources.
+        """
+
+    @lifecycle_noop
+    def configure(self) -> None:
+        """Default configuration phase for plugins without setup work."""
+
+    @lifecycle_noop
+    def disconnect(self) -> None:
+        """Default cleanup phase for plugins without hardware resources."""
+        self._lifecycle_connected = False
+        self._lifecycle_configured = False
+        self._lifecycle_connection_attempted = False
+
+    def begin_sequence(self) -> None:
+        """Reset readiness for a fresh generated-script run."""
+        self._lifecycle_managed = True
+        self._lifecycle_connected = False
+        self._lifecycle_configured = False
+
+    def require_ready(self) -> None:
+        """Reject execution until every meaningful lifecycle phase has succeeded."""
+        if not self.has_lifecycle:
+            return
+        missing = []
+        for phase, complete in (
+            ("connect", self._lifecycle_connected),
+            ("configure", self._lifecycle_configured),
+        ):
+            if not complete and not getattr(getattr(type(self), phase), "_lifecycle_noop", False):
+                missing.append(f"{phase}()")
+        if missing:
+            raise RuntimeError(
+                f"Plugin {self.instance_name!r} cannot execute before {' and '.join(missing)} succeeds. "
+                "Place a Reconfigure step selecting this instance before it runs."
+            )
+
+    def reconfigure(self) -> None:
+        """Reconnect safely, then apply this instance's settings at the current step."""
+        if not self.has_lifecycle:
+            return
+        self.connect()
+        self.configure()
 
     @property
     def is_loop_container(self) -> bool:
@@ -774,7 +900,7 @@ class BasePlugin(ABC):
         try:
             return self._instance_name
         except AttributeError:
-            instance = getattr(self,"_DEFAULT_INSTANCE", self.name)
+            instance = getattr(self, "_DEFAULT_INSTANCE", self.name)
             return instance.lower().replace(" ", "_").replace("-", "_")
 
     @instance_name.setter
@@ -1207,6 +1333,7 @@ class BasePlugin(ABC):
             >>> tabs[1][0]
             'General'
         """
+
         def _build_tabs() -> list[tuple[str, QWidget]]:
             tabs = [
                 ("Settings", self.config_widget(parent=parent)),

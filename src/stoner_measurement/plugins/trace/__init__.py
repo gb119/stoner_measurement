@@ -32,6 +32,7 @@ from stoner_measurement.plugins.trace.k6221_2182a import (
 )
 from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
     Keithley6221_MultiSR830Plugin,
+    LockInModel,
     LockInOutput,
     WaveformScanMode,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "Keithley2400SweepPlugin",
     "Keithley6221_2182APlugin",
     "Keithley6221_MultiSR830Plugin",
+    "LockInModel",
     "SweepSourceMode",
     "TriggerRouting",
     "LockInOutput",

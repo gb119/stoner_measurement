@@ -48,6 +48,7 @@ class LockInInputSource(Enum):
     """Input source selection for lock-in amplifiers."""
 
     A = "A"
+    B = "B"
     A_MINUS_B = "A_MINUS_B"
     I_1MOHM = "I_1MOHM"
     I_100MOHM = "I_100MOHM"

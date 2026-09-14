@@ -131,6 +131,7 @@ class SequenceDocument:
     path: Path | None = None
     clean_digest: str = ""
 
+
 class MeasurementApp(QMainWindow):
     """Top-level application window.
 
@@ -239,6 +240,9 @@ class MeasurementApp(QMainWindow):
         # Use an intermediate slot so step plugins are synced into the engine
         # namespace (and _traces rebuilt) before the config widget is shown.
         self._main_window.dock_panel.plugin_selected.connect(self._on_plugin_selected_for_config)
+        self._main_window.dock_panel.sequence_structure_changed.connect(
+            self._sync_sequence_steps_to_engine
+        )
         self._main_window.sequence_tabs.currentChanged.connect(self._on_sequence_tab_changed)
         self._main_window.sequence_tabs.tabCloseRequested.connect(self._close_sequence_tab)
         self._main_window.sequence_tabs.tabMoved.connect(self._on_sequence_tab_moved)
@@ -639,9 +643,7 @@ class MeasurementApp(QMainWindow):
             if status.startswith(state):
                 background_colour = status_colour
                 break
-        sequence_tabs_enabled = not (
-            status.startswith("Running") or status.startswith("Paused")
-        )
+        sequence_tabs_enabled = not (status.startswith("Running") or status.startswith("Paused"))
         self._main_window.sequence_tabs.setEnabled(sequence_tabs_enabled)
         self._show_status_message(status, background_colour)
 
@@ -725,7 +727,9 @@ class MeasurementApp(QMainWindow):
         self._act_stop.triggered.connect(self._on_stop)
 
         self._act_generate = QAction(make_generate_icon(), "&Generate Code", self)
-        self._act_generate.setStatusTip("Render the current sequence steps as Python code in the editor")
+        self._act_generate.setStatusTip(
+            "Render the current sequence steps as Python code in the editor"
+        )
         self._act_generate.triggered.connect(self._on_load_to_editor)
 
     def _build_edit_actions(self) -> None:
@@ -757,7 +761,9 @@ class MeasurementApp(QMainWindow):
         """Create view, engine panel, and help QAction instances."""
         self._act_view_measurement = QAction("&Measurement", self)
         self._act_view_measurement.setStatusTip("Switch to the Measurement tab")
-        self._act_view_measurement.triggered.connect(lambda: self._main_window.tabs.setCurrentIndex(0))
+        self._act_view_measurement.triggered.connect(
+            lambda: self._main_window.tabs.setCurrentIndex(0)
+        )
 
         self._act_view_editor = QAction("&Script Editor", self)
         self._act_view_editor.setStatusTip("Switch to the Script Editor tab")
@@ -778,12 +784,16 @@ class MeasurementApp(QMainWindow):
         self._act_show_data_manager.setStatusTip("Inspect and save completed trace data")
         self._act_show_data_manager.triggered.connect(self._on_show_data_manager)
 
-        self._act_show_temp_panel = QAction(make_temperature_icon(), "Show &Temperature Control", self)
+        self._act_show_temp_panel = QAction(
+            make_temperature_icon(), "Show &Temperature Control", self
+        )
         self._act_show_temp_panel.setStatusTip("Open the temperature controller panel")
         self._act_show_temp_panel.triggered.connect(self._on_show_temp_panel)
 
         self._act_stop_temp_engine = QAction("Stop Temperature &Engine", self)
-        self._act_stop_temp_engine.setStatusTip("Stop the temperature controller engine and disconnect hardware")
+        self._act_stop_temp_engine.setStatusTip(
+            "Stop the temperature controller engine and disconnect hardware"
+        )
         self._act_stop_temp_engine.triggered.connect(self._on_stop_temp_engine)
 
         self._act_show_magnet_panel = QAction(make_magnet_icon(), "Show &Magnet Control", self)
@@ -791,7 +801,9 @@ class MeasurementApp(QMainWindow):
         self._act_show_magnet_panel.triggered.connect(self._on_show_magnet_panel)
 
         self._act_stop_magnet_engine = QAction("Stop Magnet &Engine", self)
-        self._act_stop_magnet_engine.setStatusTip("Stop the magnet controller engine and disconnect hardware")
+        self._act_stop_magnet_engine.setStatusTip(
+            "Stop the magnet controller engine and disconnect hardware"
+        )
         self._act_stop_magnet_engine.triggered.connect(self._on_stop_magnet_engine)
 
         self._act_show_motor_panel = QAction(make_motor_icon(), "Show &Motor Control", self)
@@ -799,15 +811,21 @@ class MeasurementApp(QMainWindow):
         self._act_show_motor_panel.triggered.connect(self._on_show_motor_panel)
 
         self._act_stop_motor_engine = QAction("Stop Motor &Engine", self)
-        self._act_stop_motor_engine.setStatusTip("Stop the motor controller engine and disconnect hardware")
+        self._act_stop_motor_engine.setStatusTip(
+            "Stop the motor controller engine and disconnect hardware"
+        )
         self._act_stop_motor_engine.triggered.connect(self._on_stop_motor_engine)
 
-        self._act_show_pressure_panel = QAction(make_pressure_icon(), "Show &Pressure Control", self)
+        self._act_show_pressure_panel = QAction(
+            make_pressure_icon(), "Show &Pressure Control", self
+        )
         self._act_show_pressure_panel.setStatusTip("Open the pressure controller panel")
         self._act_show_pressure_panel.triggered.connect(self._on_show_pressure_panel)
 
         self._act_stop_pressure_engine = QAction("Stop Pressure &Engine", self)
-        self._act_stop_pressure_engine.setStatusTip("Stop the pressure controller engine and disconnect hardware")
+        self._act_stop_pressure_engine.setStatusTip(
+            "Stop the pressure controller engine and disconnect hardware"
+        )
         self._act_stop_pressure_engine.triggered.connect(self._on_stop_pressure_engine)
 
         self._act_show_xray_panel = QAction(make_xray_icon(), "Show &X-ray Control", self)
@@ -1033,7 +1051,9 @@ class MeasurementApp(QMainWindow):
             self._act_save.setStatusTip("Save the current measurement sequence")
             self._act_save_as.setText("Save Sequence &As…")
             self._act_save_as.setStatusTip("Save the current measurement sequence to a new file")
-            self._act_run.setStatusTip("Convert the measurement sequence to a script and execute it")
+            self._act_run.setStatusTip(
+                "Convert the measurement sequence to a script and execute it"
+            )
             self._act_generate.setStatusTip(
                 "Render the current sequence steps as Python code in the editor (without switching tabs)"
             )
@@ -1057,7 +1077,9 @@ class MeasurementApp(QMainWindow):
             self._act_save_as.setText("Save Script &As…")
             self._act_save_as.setStatusTip("Save the current sequence script to a new file")
             self._act_run.setStatusTip("Execute the sequence script in the editor")
-            self._act_generate.setStatusTip("Render the current sequence steps as Python code in the editor")
+            self._act_generate.setStatusTip(
+                "Render the current sequence steps as Python code in the editor"
+            )
             self._act_cut.setText("Cu&t")
             self._act_cut.setStatusTip("Cut the selected text")
             self._act_copy.setText("&Copy")
@@ -1810,7 +1832,9 @@ class MeasurementApp(QMainWindow):
             plugins = self._plugin_manager.plugins
             _, line_map = self._engine.generate_sequence_code(steps, plugins, return_line_map=True)
         self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
-        error_message = self._engine.validate_script_syntax(script, customised=customised, line_map=line_map)
+        error_message = self._engine.validate_script_syntax(
+            script, customised=customised, line_map=line_map
+        )
         if error_message is not None:
             QMessageBox.warning(self, "Script Syntax Error", error_message)
             return
@@ -1924,7 +1948,9 @@ class MeasurementApp(QMainWindow):
         else:
             # Current tab is unmodified generated (or fresh): replace its content.
             pane.set_text(code)
-        error_message = self._engine.validate_script_syntax(code, customised=False, line_map=line_map)
+        error_message = self._engine.validate_script_syntax(
+            code, customised=False, line_map=line_map
+        )
         if error_message is not None:
             self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
             QMessageBox.warning(self, "Generated Script Syntax Error", error_message)
@@ -2014,10 +2040,8 @@ class MeasurementApp(QMainWindow):
             self._apply_app_config()
             new_theme = theme_setting(config=self._app_config)
             specialist_font_changed = (
-                editor_font_size_setting(config=self._app_config)
-                != previous_editor_font_size
-                or console_font_size_setting(config=self._app_config)
-                != previous_console_font_size
+                editor_font_size_setting(config=self._app_config) != previous_editor_font_size
+                or console_font_size_setting(config=self._app_config) != previous_console_font_size
             )
             if new_theme != previous_theme or specialist_font_changed:
                 QMessageBox.information(
@@ -2049,9 +2073,7 @@ class MeasurementApp(QMainWindow):
             else:
                 dirty = self._measurement_digest() != document.clean_digest
                 suffix = " *" if dirty else ""
-                self.setWindowTitle(
-                    f"Stoner Measurement — {document.display_name}{suffix}"
-                )
+                self.setWindowTitle(f"Stoner Measurement — {document.display_name}{suffix}")
             return
         pane = self._main_window.script_tab.current_pane()
         if pane is None or pane.path is None:

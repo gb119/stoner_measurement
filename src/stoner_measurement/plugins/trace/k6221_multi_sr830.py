@@ -1,4 +1,4 @@
-"""Keithley 6221 + multiple SR830 trace plugin."""
+"""Keithley 6221 + multiple lock-in amplifier trace plugin."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -45,6 +45,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInReferenceSource,
     LockInReserveMode,
 )
+from stoner_measurement.instruments.signal_recovery import SR7265, SR7265Status
 from stoner_measurement.instruments.srs.sr830 import SRS830, SRS830LIAStatus
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
@@ -67,24 +68,34 @@ _SR830_TIME_CONSTANTS: tuple[float, ...] = SRS830.supported_time_constants()
 _SR830_SENSITIVITIES: tuple[float, ...] = SRS830.supported_sensitivities()
 _SR830_FILTER_SLOPES: tuple[int, ...] = SRS830.supported_filter_slopes()
 _SR830_MAX_HARMONIC: int = SRS830.max_harmonic()
+_SR7265_TIME_CONSTANTS: tuple[float, ...] = SR7265.supported_time_constants()
+_SR7265_FILTER_SLOPES: tuple[int, ...] = SR7265.supported_filter_slopes()
+_SR7265_MAX_HARMONIC: int = SR7265.max_harmonic()
 _SR830_STATUS_IFC = 1 << 1
+_SR7265_STATUS_COMMAND_COMPLETE = 1 << 0
 _SR830_STATUS_LIA = 1 << 3
 _TRACE_NAME = "Signals"
+SupportedLockIn = SRS830 | SR7265
 
 # Row indices for the transposed lock-in configuration table.
 _ROW_LABEL = 0
-_ROW_RESOURCE = 1
-_ROW_OUTPUT_X = 2
-_ROW_OUTPUT_Y = 3
-_ROW_OUTPUT_R = 4
-_ROW_OUTPUT_THETA = 5
-_ROW_SENSITIVITY = 6
-_ROW_HARMONIC = 7
-_ROW_PHASE = 8
-_ROW_OFFSET_PCT = 9
-_ROW_EXPAND = 10
-_ROW_RESERVE = 11
-_LOCKIN_TABLE_ROWS = 12
+_ROW_MODEL = 1
+_ROW_RESOURCE = 2
+_ROW_OUTPUT_X = 3
+_ROW_OUTPUT_Y = 4
+_ROW_OUTPUT_R = 5
+_ROW_OUTPUT_THETA = 6
+_ROW_SENSITIVITY = 7
+_ROW_HARMONIC = 8
+_ROW_PHASE = 9
+_ROW_OFFSET_PCT = 10
+_ROW_EXPAND = 11
+_ROW_RESERVE = 12
+_ROW_INPUT = 13
+_ROW_SLOPE = 14
+_ROW_COUPLING = 15
+_ROW_LINE_FILTER = 16
+_LOCKIN_TABLE_ROWS = 17
 
 _LOCKIN_OUTPUT_ROWS: dict[LockInOutput, int] = {
     LockInOutput.X: _ROW_OUTPUT_X,
@@ -95,6 +106,7 @@ _LOCKIN_OUTPUT_ROWS: dict[LockInOutput, int] = {
 
 _LOCKIN_ROW_LABELS: list[str] = [
     "Label",
+    "Model",
     "Resource",
     "Output X",
     "Output Y",
@@ -106,6 +118,10 @@ _LOCKIN_ROW_LABELS: list[str] = [
     "Offset (%)",
     "Expand",
     "Reserve",
+    "Input",
+    "Filter slope",
+    "Coupling",
+    "Line filter",
 ]
 
 
@@ -117,17 +133,140 @@ class WaveformScanMode(enum.Enum):
     FREQUENCY = "frequency"
 
 
+class LockInModel(enum.Enum):
+    """Lock-in models supported by the 6221 trace plugin."""
+
+    SR830 = "SR830"
+    SR7265 = "SR7265"
+
+    @property
+    def display_name(self) -> str:
+        """Return the model name shown in the configuration editor."""
+        if self is LockInModel.SR7265:
+            return SR7265.DISPLAY_NAME
+        return "SRS SR830"
+
+
+def _lockin_driver_class(model: LockInModel) -> type[SRS830] | type[SR7265]:
+    """Return the concrete driver class for *model*."""
+    if model is LockInModel.SR7265:
+        return SR7265
+    return SRS830
+
+
+def _lockin_time_constants(model: LockInModel) -> tuple[float, ...]:
+    """Return time constants supported by *model*."""
+    if model is LockInModel.SR7265:
+        return _SR7265_TIME_CONSTANTS
+    return _SR830_TIME_CONSTANTS
+
+
+def _is_current_input(source: LockInInputSource) -> bool:
+    """Return whether the selected input measures current."""
+    return source in (LockInInputSource.I_1MOHM, LockInInputSource.I_100MOHM)
+
+
+def _lockin_input_options(model: LockInModel) -> list[tuple[str, LockInInputSource]]:
+    """Return model-supported input modes with hardware-specific labels."""
+    options = [("A", LockInInputSource.A), ("A-B", LockInInputSource.A_MINUS_B)]
+    if model is LockInModel.SR7265:
+        options.insert(1, ("B (inverted)", LockInInputSource.B))
+        options.extend(
+            [
+                ("Current (wide bandwidth)", LockInInputSource.I_1MOHM),
+                ("Current (low noise)", LockInInputSource.I_100MOHM),
+            ]
+        )
+    else:
+        options.extend(
+            [
+                ("Current (1 MΩ)", LockInInputSource.I_1MOHM),
+                ("Current (100 MΩ)", LockInInputSource.I_100MOHM),
+            ]
+        )
+    return options
+
+
+def _lockin_sensitivities(
+    model: LockInModel, source: LockInInputSource = LockInInputSource.A_MINUS_B
+) -> tuple[float, ...]:
+    """Return full-scale ranges in volts or amperes for the selected input."""
+    if model is LockInModel.SR7265:
+        return SR7265.supported_sensitivities(source)
+    if _is_current_input(source):
+        values = tuple(value * 1e-6 for value in _SR830_SENSITIVITIES)
+        if source is LockInInputSource.I_100MOHM:
+            return tuple(value for value in values if value <= 1e-8)
+        return values
+    return _SR830_SENSITIVITIES
+
+
+def _sensitivity_driver_scale(model: LockInModel, source: LockInInputSource) -> float:
+    """Adapt the SR830 driver's voltage-indexed sensitivity API to amperes."""
+    return 1e-6 if model is LockInModel.SR830 and _is_current_input(source) else 1.0
+
+
+def _sensitivity_index(value: float, sensitivities: tuple[float, ...]) -> int | None:
+    """Match a hardware range despite floating-point unit conversion rounding."""
+    return next(
+        (
+            index
+            for index, sensitivity in enumerate(sensitivities)
+            if math.isclose(value, sensitivity, rel_tol=1e-9)
+        ),
+        None,
+    )
+
+
+def _output_unit(entry: LockInEntry, output: LockInOutput) -> str:
+    """Return the physical unit of an output in the selected input mode."""
+    return (
+        "A"
+        if _is_current_input(entry.input_source) and output is not LockInOutput.THETA
+        else output.unit
+    )
+
+
+def _lockin_filter_slopes(model: LockInModel) -> tuple[int, ...]:
+    """Return filter slopes supported by *model*."""
+    if model is LockInModel.SR7265:
+        return _SR7265_FILTER_SLOPES
+    return _SR830_FILTER_SLOPES
+
+
+def _lockin_max_harmonic(model: LockInModel) -> int:
+    """Return the largest detection harmonic supported by *model*."""
+    if model is LockInModel.SR7265:
+        return _SR7265_MAX_HARMONIC
+    return _SR830_MAX_HARMONIC
+
+
+def _lockin_has_output_offsets(model: LockInModel) -> bool:
+    """Return whether *model* implements output offset and expansion."""
+    return model is LockInModel.SR830
+
+
 @dataclass
 class LockInEntry:
-    """Configuration for one SR830 instance.
+    """Configuration for one lock-in amplifier instance.
 
     Attributes:
         label (str):
             Human-readable name used to identify this lock-in's channels.
+        model (LockInModel):
+            Concrete lock-in model used for connection and configuration.
         resource (str):
-            VISA resource string for the SR830 instrument.
+            VISA resource string for the lock-in instrument.
+        filter_slope (int):
+            Output-filter slope in dB/octave.
+        input_coupling (LockInInputCoupling):
+            AC or DC input coupling.
+        line_filter (LockInLineFilter):
+            Line-frequency notch filters to enable.
+        input_source (LockInInputSource):
+            Voltage or current input mode supported by the selected model.
         sensitivity (float):
-            Initial input sensitivity in volts.
+            Initial input sensitivity in volts or amperes for the input mode.
         offset_pct (float):
             Output offset as a percentage of full scale (−105 to +105).
         offset_auto (bool):
@@ -154,7 +293,12 @@ class LockInEntry:
     """
 
     label: str = "LIA 1"
+    model: LockInModel = LockInModel.SR830
     resource: str = "GPIB0::8::INSTR"
+    filter_slope: int = 12
+    input_coupling: LockInInputCoupling = LockInInputCoupling.AC
+    line_filter: LockInLineFilter = LockInLineFilter.NONE
+    input_source: LockInInputSource = LockInInputSource.A_MINUS_B
     sensitivity: float = 1e-3
     offset_pct: float = 0.0
     offset_auto: bool = False
@@ -170,7 +314,12 @@ class LockInEntry:
         """Return a JSON-friendly representation of this entry."""
         return {
             "label": self.label,
+            "model": self.model.value,
             "resource": self.resource,
+            "filter_slope": self.filter_slope,
+            "input_coupling": self.input_coupling.value,
+            "line_filter": self.line_filter.value,
+            "input_source": self.input_source.value,
             "sensitivity": self.sensitivity,
             "offset_pct": self.offset_pct,
             "offset_auto": self.offset_auto,
@@ -197,36 +346,37 @@ class ChannelSpec:
 
 @dataclass(frozen=True)
 class LockInReading:
-    """One SR830 reading plus the value used for auto-sensitivity decisions."""
+    """One lock-in reading plus the value used for auto-sensitivity decisions."""
 
     output_values: dict[LockInOutput, float]
     ratio_signal: float
 
 
 class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-name
-    """Measure one swept 6221 waveform parameter with one or more SR830 lock-ins.
+    """Measure one swept 6221 parameter with one or more supported lock-ins.
 
     Use this plugin when a Keithley 6221 provides an AC excitation and one or
-    more SR830 lock-in amplifiers measure the response. It is designed for
-    experiments where you want to scan the waveform amplitude, offset, or
-    frequency and record one or more lock-in outputs for each point.
+    more SRS SR830 or SIGNAL RECOVERY 7265 lock-in amplifiers measure the
+    response. It is designed for experiments where you want to scan the
+    waveform amplitude, offset, or frequency and record one or more lock-in
+    outputs for each point.
 
     In the configuration tabs you first choose the 6221 connection and source
     settings, including the GPIB resource, the waveform parameter to scan, the
     fixed sine settings that are not being swept, the trigger-link output line,
-    and the source-range policy. The same page also provides common SR830
-    settings such as time constant, filter slope, input coupling, line-filter
-    rejection, and the cooldown multiple used to decide how long to wait
+    and the source-range policy. The same page also provides common lock-in
+    settings such as time constant, auto-ranging thresholds,
+    and the cooldown multiple used to decide how long to wait
     between successive readings. A resistance-conversion option can be enabled
     to add derived resistance channels from the measured lock-in voltages.
 
     The second tab contains the lock-in configuration table. Each column
-    represents one SR830. For each lock-in you set a human-readable label,
-    resource string, selected output channels, sensitivity, whether that
-    lock-in participates in auto-sensitivity, harmonic, numeric or automatic
-    reference phase, output offset, expand factor, and reserve mode. Multiple
-    outputs may be selected for each lock-in using separate check boxes for X,
-    Y, R, and THETA.
+    represents one instrument. For each lock-in you choose its model and set a
+    human-readable label, resource string, selected output channels,
+    sensitivity, whether it participates in auto-sensitivity, harmonic, and
+    numeric or automatic reference phase. SR830 entries also provide output
+    offset, expand factor, and reserve mode. Multiple outputs may be selected
+    for each lock-in using separate check boxes for X, Y, R, and THETA.
 
     The scan generator defines the swept values. The plugin returns one trace
     per configured output channel, using the lock-in labels to build readable
@@ -256,13 +406,13 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         _phase_marker_tlink (int):
             Trigger-link output line used by the 6221 phase marker.
         _time_constant (float):
-            Common SR830 time constant in seconds.
+            Common lock-in time constant in seconds.
         _filter_slope (int):
-            Common SR830 low-pass filter slope in dB/octave.
+            Legacy migration default for the per-lock-in filter slope.
         _input_coupling (LockInInputCoupling):
-            Common SR830 input coupling mode.
+            Legacy migration default for per-lock-in input coupling.
         _line_filter (LockInLineFilter):
-            Common SR830 line-frequency rejection setting.
+            Legacy migration default for per-lock-in line rejection.
         _read_rate_multiple (float):
             Multiplier applied to the time constant when enforcing a minimum
             interval between readings.
@@ -332,7 +482,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._lockin_entries: list[LockInEntry] = [LockInEntry()]
 
         self._k6221: Keithley6221 | None = None
-        self._lockins: list[SRS830] = []
+        self._lockins: list[SupportedLockIn] = []
         self._sweep_values: np.ndarray | None = None
         self._last_read_at: dict[str, float] = {}
 
@@ -372,7 +522,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         """Return the default dependent-axis unit."""
         if not self._lockin_entries:
             return "V"
-        return self._lockin_entries[0].outputs[0].unit
+        return _output_unit(self._lockin_entries[0], self._lockin_entries[0].outputs[0])
 
     @property
     def trace_names(self) -> list[str]:
@@ -380,7 +530,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return [_TRACE_NAME]
 
     def reported_values(self) -> dict[str, str]:
-        """Return configured 6221 values and averaged outputs from every SR830.
+        """Return configured 6221 values and averaged outputs from every lock-in.
 
         Lock-in catalogue names use ``instance.label.output`` so that every
         selected output remains independently addressable even though the
@@ -420,7 +570,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         for index, entry in enumerate(self._lockin_entries):
             label = entry.label.strip() or f"LIA {index + 1}"
             for output in entry.outputs:
-                units[f"{var}.{label}.{output.value}"] = output.unit
+                units[f"{var}.{label}.{output.value}"] = _output_unit(entry, output)
         return units
 
     def set_scan_generator_class(self, cls) -> None:
@@ -450,7 +600,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         }
 
     def connect(self) -> None:
-        """Open the 6221 and all configured SR830 connections."""
+        """Open the 6221 and all configured lock-in connections."""
         self._validate_configuration()
         self._set_status(TraceStatus.CONNECTING)
         transports: list[GpibTransport] = []
@@ -500,8 +650,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._last_read_at = {}
         self._set_status(TraceStatus.IDLE)
 
-    def _connect_one_lockin(self, entry: LockInEntry) -> tuple[GpibTransport, SRS830]:
-        """Create, connect, and identity-verify one SR830.
+    def _connect_one_lockin(self, entry: LockInEntry) -> tuple[GpibTransport, SupportedLockIn]:
+        """Create, connect, and identity-verify one configured lock-in.
 
         If any step fails the transport is closed before propagating the
         exception, preventing transport resource leaks in the calling
@@ -513,26 +663,32 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         Returns:
             (GpibTransport):
-                Opened transport bound to the SR830.
-            (SRS830):
-                Connected and verified SR830 instrument driver.
+                Opened transport bound to the lock-in.
+            (LockInAmplifier):
+                Connected and verified concrete lock-in driver.
 
         Raises:
             RuntimeError:
-                If the instrument identity does not contain ``"SR830"``.
+                If the instrument identity does not match the selected model.
         """
         transport = GpibTransport.from_resource_string(
             entry.resource,
             timeout=10.0,
-            command_complete_mask=_SR830_STATUS_IFC,
+            command_complete_mask=(
+                _SR7265_STATUS_COMMAND_COMPLETE
+                if entry.model is LockInModel.SR7265
+                else _SR830_STATUS_IFC
+            ),
         )
         try:
-            lockin = SRS830(transport)
+            lockin = _lockin_driver_class(entry.model)(transport)
             lockin.connect()
             identity = lockin.identify()
-            if "SR830" not in identity.upper():
+            identity_token = "7265" if entry.model is LockInModel.SR7265 else "SR830"
+            if identity_token not in identity.upper():
                 raise RuntimeError(
-                    f"Unexpected SR830 identity {identity!r} for resource {entry.resource!r}."
+                    f"Unexpected {entry.model.value} identity {identity!r} "
+                    f"for resource {entry.resource!r}."
                 )
         except Exception:
             try:
@@ -566,16 +722,22 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 "filter_slope": lockin.get_filter_slope(),
                 "input_coupling": lockin.get_input_coupling(),
                 "line_filter": lockin.get_line_filter(),
+                "input_source": lockin.get_input_source(),
                 "sensitivity": lockin.get_sensitivity(),
                 "harmonic": lockin.get_harmonic(),
                 "phase": lockin.get_reference_phase(),
-                "reserve_mode": lockin.get_reserve_mode(),
                 "offsets": {},
             }
-            for output in entry.outputs:
-                channel = output.offset_channel()
-                if channel is not None:
-                    settings["offsets"][channel.value] = lockin.get_output_offset(channel)
+            settings["sensitivity"] *= _sensitivity_driver_scale(
+                entry.model, settings["input_source"]
+            )
+            if entry.model is LockInModel.SR830:
+                sr830 = cast(SRS830, lockin)
+                settings["reserve_mode"] = sr830.get_reserve_mode()
+                for output in entry.outputs:
+                    channel = output.offset_channel()
+                    if channel is not None:
+                        settings["offsets"][channel.value] = sr830.get_output_offset(channel)
             return index, settings
         finally:
             try:
@@ -586,9 +748,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def read_temporary_instrument_settings(
         self, indices: list[int]
     ) -> tuple[dict[str, float], list[tuple[int, dict[str, Any]]]]:
-        """Read the 6221 and selected SR830s without retaining their connections."""
+        """Read the 6221 and selected lock-ins without retaining their connections."""
         if not indices:
-            raise ValueError("At least one SR830 must be selected.")
+            raise ValueError("At least one lock-in must be selected.")
         transport, source = self._connect_temporary_6221()
         try:
             source_settings = {
@@ -607,9 +769,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return source_settings, results
 
     def auto_offset_temporary_lockins(self, indices: list[int]) -> None:
-        """Auto-offset selected SR830s in parallel using temporary connections."""
+        """Auto-offset selected supported lock-ins using temporary connections."""
         if not indices:
-            raise ValueError("At least one SR830 must be selected.")
+            raise ValueError("At least one lock-in must be selected.")
         source_transport, source = self._connect_temporary_6221()
 
         def _offset_one(index: int) -> None:
@@ -638,7 +800,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._enable_offset_addition_for_nonzero_offsets()
 
     def configure(self) -> None:
-        """Apply the stored 6221 and SR830 settings to the connected hardware.
+        """Apply the stored 6221 and lock-in settings to connected hardware.
 
         On successful completion the 6221 output is left enabled so subsequent
         measurements can reuse the configured waveform without reconfiguration.
@@ -686,8 +848,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._record_read_timestamp(timestamp)
         self._set_status(TraceStatus.IDLE)
 
-    def _configure_one_lockin(self, entry: LockInEntry, lockin: SRS830) -> None:
-        """Apply common and per-entry settings to one SR830.
+    def _configure_one_lockin(self, entry: LockInEntry, lockin: SupportedLockIn) -> None:
+        """Apply common and per-entry settings to one lock-in.
 
         Args:
             entry (LockInEntry):
@@ -697,27 +859,35 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         """
         lockin.reset()
         lockin.set_reference_source(LockInReferenceSource.EXTERNAL)
+        lockin.set_reference_source(LockInReferenceSource.EXTERNAL, LockinRefenceEdge.FALLING)
         lockin.set_time_constant(self._time_constant)
-        lockin.set_filter_slope(self._filter_slope)
-        lockin.set_input_source(LockInInputSource.A_MINUS_B)
-        lockin.set_input_coupling(self._input_coupling)
-        lockin.set_line_filter(self._line_filter)
+        lockin.set_filter_slope(entry.filter_slope)
+        lockin.set_input_source(entry.input_source)
+        lockin.set_input_coupling(entry.input_coupling)
+        lockin.set_line_filter(entry.line_filter)
         lockin.set_harmonic(entry.harmonic)
         if entry.phase is not None:
             lockin.set_reference_phase(entry.phase)
-        lockin.set_reference_source(LockInReferenceSource.EXTERNAL, LockinRefenceEdge.FALLING)
         if entry.auto_sensitivity:
             lockin.auto_gain()
             selected_sensitivity = lockin.get_sensitivity()
             if isinstance(selected_sensitivity, (int, float)):
-                entry.sensitivity = float(selected_sensitivity)
+                entry.sensitivity = float(selected_sensitivity) * _sensitivity_driver_scale(
+                    entry.model, entry.input_source
+                )
         else:
-            lockin.set_sensitivity(entry.sensitivity)
-        lockin.set_reserve_mode(entry.reserve_mode)
+            lockin.set_sensitivity(
+                entry.sensitivity / _sensitivity_driver_scale(entry.model, entry.input_source)
+            )
+        if entry.model is LockInModel.SR830:
+            cast(SRS830, lockin).set_reserve_mode(entry.reserve_mode)
 
     def _configure_output_offsets(self) -> None:
         """Apply manual offsets or calculate automatic offsets after settling."""
-        has_auto_offset = any(entry.offset_auto for entry in self._lockin_entries)
+        has_auto_offset = any(
+            entry.offset_auto and _lockin_has_output_offsets(entry.model)
+            for entry in self._lockin_entries
+        )
         if has_auto_offset:
             self._wait_for_offset_stability()
 
@@ -737,9 +907,30 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             time.sleep(wait_time)
 
     def _clear_configuration_lia_status(self) -> None:
-        """Clear configuration events and abort when an SR830 remains overloaded."""
+        """Clear configuration status and reject overload or reference errors."""
+        sr830s = [
+            lockin
+            for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
+            if entry.model is LockInModel.SR830
+        ]
+        for lockin in sr830s:
+            lockin.write("*CLS")
+        if sr830s:
+            # Allow a fresh status observation after clearing latched setup events.
+            time.sleep(0.1)
         for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
-            status = lockin.read_lia_status()
+            if entry.model is LockInModel.SR7265:
+                sr7265 = cast(SR7265, lockin)
+                status_7265 = sr7265.read_status()
+                sr7265.check_measurement_status(status_7265)
+                if isinstance(status_7265, SR7265Status) and status_7265:
+                    self._log.debug(
+                        "Cleared 7265 %s configuration status: %s",
+                        entry.resource,
+                        status_7265.name or int(status_7265),
+                    )
+                continue
+            status = cast(SRS830, lockin).read_lia_status()
             if isinstance(status, SRS830LIAStatus) and status.has_overload:
                 message = f"SR830 {entry.resource} is overloaded after configuration: {status.name or int(status)}"
                 self._log.error(message)
@@ -752,18 +943,23 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 )
 
     @staticmethod
-    def _configure_one_lockin_offsets(entry: LockInEntry, lockin: SRS830) -> None:
+    def _configure_one_lockin_offsets(entry: LockInEntry, lockin: SupportedLockIn) -> None:
         """Apply configured offset and expand values to one SR830."""
-        selected_offset_outputs = tuple(
+        if not _lockin_has_output_offsets(entry.model):
+            entry.auto_offsets.clear()
+            return
+        sr830 = cast(SRS830, lockin)
+        selected_offset_outputs: tuple[LockInOutput, ...] = tuple(
             output for output in entry.outputs if output.offset_channel() is not None
         )
+        offset_outputs: tuple[LockInOutput, ...]
         if entry.offset_auto and entry.outputs != (LockInOutput.X,):
             offset_outputs = (LockInOutput.X, LockInOutput.Y)
         else:
             offset_outputs = selected_offset_outputs
         entry.auto_offsets.clear()
         measured_values = (
-            lockin.measure_outputs(offset_outputs) if entry.offset_auto and offset_outputs else {}
+            sr830.measure_outputs(offset_outputs) if entry.offset_auto and offset_outputs else {}
         )
         for output in offset_outputs:
             channel = output.offset_channel()
@@ -774,8 +970,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 offset_pct = float(measured_values[output]) / entry.sensitivity * 100.0
                 offset_pct = max(-105.0, min(105.0, offset_pct))
                 entry.auto_offsets[channel.value] = offset_pct
-            lockin.set_output_offset(channel, offset_pct, entry.expand)
-            lockin.wait_for_ifc()
+            sr830.set_output_offset(channel, offset_pct, entry.expand)
+            sr830.wait_for_ifc()
 
     def auto_offset(self) -> None:
         """Enable the 6221, settle, and run auto-offset on all configured lock-in output channels.
@@ -808,7 +1004,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         finally:
             self._k6221.enable_output(False)
 
-    def _auto_offset_one_lockin(self, entry: LockInEntry, lockin: SRS830) -> None:
+    def _auto_offset_one_lockin(self, entry: LockInEntry, lockin: SupportedLockIn) -> None:
         """Run auto-offset on all offsettable outputs of one lock-in entry.
 
         For each output in *entry* that supports an offset channel (X, Y, R),
@@ -822,12 +1018,15 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lockin (SRS830):
                 SR830 instrument driver to send the auto-offset command to.
         """
+        if not _lockin_has_output_offsets(entry.model):
+            raise ValueError(f"{entry.model.display_name} does not support output auto-offset.")
+        sr830 = cast(SRS830, lockin)
         entry.auto_offsets.clear()
         for output in entry.outputs:
             channel = output.offset_channel()
             if channel is not None:
-                lockin.auto_offset_channel(channel)
-                offset_pct, _expand = lockin.get_output_offset(channel)
+                sr830.auto_offset_channel(channel)
+                offset_pct, _expand = sr830.get_output_offset(channel)
                 entry.auto_offsets[channel.value] = float(offset_pct)
 
     def disconnect(self) -> None:
@@ -865,9 +1064,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 "waveform_frequency": self._waveform_frequency,
                 "phase_marker_tlink": self._phase_marker_tlink,
                 "time_constant": self._time_constant,
-                "filter_slope": self._filter_slope,
-                "input_coupling": self._input_coupling.value,
-                "line_filter": self._line_filter.value,
                 "read_rate_multiple": self._read_rate_multiple,
                 "auto_sensitivity_enabled": self._auto_sensitivity_enabled,
                 "auto_sensitivity_low": self._auto_sensitivity_low,
@@ -1018,37 +1214,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         common_form = QFormLayout(common_group)
 
         time_constant_combo = SIComboBox(unit="s")
-        for value in _SR830_TIME_CONSTANTS:
-            time_constant_combo.addValueItem(value)
-        time_constant_combo.setFloatValue(self._time_constant)
+        self._populate_time_constant_combo(time_constant_combo)
         time_constant_combo.valueChanged.connect(
             lambda value: setattr(self, "_time_constant", float(value))
-        )
-
-        slope_combo = QComboBox()
-        for slope in _SR830_FILTER_SLOPES:
-            slope_combo.addItem(f"{slope} dB/oct", slope)
-        slope_combo.setCurrentIndex(slope_combo.findData(self._filter_slope))
-        slope_combo.currentIndexChanged.connect(
-            lambda index: setattr(self, "_filter_slope", int(slope_combo.itemData(index)))
-        )
-
-        coupling_combo = QComboBox()
-        coupling_combo.addItem("AC", LockInInputCoupling.AC)
-        coupling_combo.addItem("DC", LockInInputCoupling.DC)
-        coupling_combo.setCurrentIndex(coupling_combo.findData(self._input_coupling))
-        coupling_combo.currentIndexChanged.connect(
-            lambda index: setattr(self, "_input_coupling", coupling_combo.itemData(index))
-        )
-
-        line_filter_combo = QComboBox()
-        line_filter_combo.addItem("None", LockInLineFilter.NONE)
-        line_filter_combo.addItem("Line", LockInLineFilter.LINE)
-        line_filter_combo.addItem("2\u00d7 line", LockInLineFilter.LINE_2X)
-        line_filter_combo.addItem("Line + 2\u00d7 line", LockInLineFilter.BOTH)
-        line_filter_combo.setCurrentIndex(line_filter_combo.findData(self._line_filter))
-        line_filter_combo.currentIndexChanged.connect(
-            lambda index: setattr(self, "_line_filter", line_filter_combo.itemData(index))
         )
 
         read_multiple_sb = SISpinBox(value=self._read_rate_multiple, allow_expressions=True)
@@ -1058,7 +1226,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lambda value: setattr(self, "_read_rate_multiple", value)
         )
 
-        auto_enabled = QCheckBox("Enable auto-sensitivity")
+        auto_enabled = QCheckBox("Enable auto-ranging")
         auto_enabled.setChecked(self._auto_sensitivity_enabled)
         auto_enabled.toggled.connect(
             lambda checked: setattr(self, "_auto_sensitivity_enabled", bool(checked))
@@ -1081,13 +1249,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         )
 
         common_form.addRow("Time constant:", time_constant_combo)
-        common_form.addRow("Filter slope:", slope_combo)
-        common_form.addRow("Coupling:", coupling_combo)
-        common_form.addRow("Line filter:", line_filter_combo)
         common_form.addRow("Read cooldown multiple:", read_multiple_sb)
         common_form.addRow(auto_enabled)
-        common_form.addRow("Auto-sensitivity low ratio:", auto_low_sb)
-        common_form.addRow("Auto-sensitivity high ratio:", auto_high_sb)
+        common_form.addRow("Auto-ranging low ratio:", auto_low_sb)
+        common_form.addRow("Auto-ranging high ratio:", auto_high_sb)
         sc_layout.addWidget(common_group)
 
         derived_group = QGroupBox("Resistance conversion")
@@ -1166,6 +1331,20 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 label_edits[col] = label_edit
                 lockins_table.setCellWidget(_ROW_LABEL, col, label_edit)
 
+                model_combo = QComboBox()
+                for model in LockInModel:
+                    model_combo.addItem(model.display_name, model)
+                model_combo.setCurrentIndex(model_combo.findData(entry.model))
+                model_combo.currentIndexChanged.connect(
+                    lambda index, *, idx=col, combo=model_combo: self._set_lockin_model(
+                        idx,
+                        combo.itemData(index),
+                        time_constant_combo,
+                        _refresh_lockin_table,
+                    )
+                )
+                lockins_table.setCellWidget(_ROW_MODEL, col, model_combo)
+
                 resource_widget = VisaResourceComboBox(resource_filter=FILTER_GPIB)
                 resource_widget.setCurrentText(entry.resource)
                 resource_widget.currentTextChanged.connect(
@@ -1175,9 +1354,15 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 )
                 lockins_table.setCellWidget(_ROW_RESOURCE, col, resource_widget)
 
-                sensitivity_combo = SIComboBox(unit="V")
+                self._populate_lockin_input_controls(
+                    lockins_table, col, entry, _refresh_lockin_table
+                )
+
+                sensitivity_combo = SIComboBox(
+                    unit="A" if _is_current_input(entry.input_source) else "V"
+                )
                 sensitivity_combo.addItem("Auto", None)
-                for value in _SR830_SENSITIVITIES:
+                for value in _lockin_sensitivities(entry.model, entry.input_source):
                     sensitivity_combo.addValueItem(value)
                 if entry.auto_sensitivity:
                     sensitivity_combo.setCurrentIndex(0)
@@ -1193,7 +1378,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
                 harmonic_spin = QSpinBox()
                 harmonic_spin.setMinimum(1)
-                harmonic_spin.setMaximum(_SR830_MAX_HARMONIC)
+                harmonic_spin.setMaximum(_lockin_max_harmonic(entry.model))
                 harmonic_spin.setValue(entry.harmonic)
                 harmonic_spin.valueChanged.connect(
                     lambda value, *, idx=col: setattr(
@@ -1240,6 +1425,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 reserve_combo.addItem("Normal", LockInReserveMode.NORMAL)
                 reserve_combo.addItem("Low noise", LockInReserveMode.LOW_NOISE)
                 reserve_combo.setCurrentIndex(reserve_combo.findData(entry.reserve_mode))
+                reserve_combo.setEnabled(entry.model is LockInModel.SR830)
 
                 output_checks: list[tuple[LockInOutput, QCheckBox]] = []
 
@@ -1301,9 +1487,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 offset_sb,
                 frequency_sb,
                 time_constant_combo,
-                slope_combo,
-                coupling_combo,
-                line_filter_combo,
             )
         )
         _refresh_lockin_table()
@@ -1330,7 +1513,60 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         """Store a valid scan mode and update the scan generator units."""
         if isinstance(mode, WaveformScanMode):
             self._scan_mode = mode
-            self._apply_scan_units()
+        self._apply_scan_units()
+
+    def _populate_lockin_input_controls(
+        self, table: QTableWidget, column: int, entry: LockInEntry, refresh: Callable[[], None]
+    ) -> None:
+        """Create the per-instrument input and filter editors."""
+        choices = (
+            (_ROW_INPUT, "input_source", _lockin_input_options(entry.model)),
+            (
+                _ROW_SLOPE,
+                "filter_slope",
+                [(f"{slope} dB/oct", slope) for slope in _lockin_filter_slopes(entry.model)],
+            ),
+            (_ROW_COUPLING, "input_coupling", [(mode.value, mode) for mode in LockInInputCoupling]),
+            (
+                _ROW_LINE_FILTER,
+                "line_filter",
+                [
+                    ("None", LockInLineFilter.NONE),
+                    ("Line", LockInLineFilter.LINE),
+                    ("2× line", LockInLineFilter.LINE_2X),
+                    ("Line + 2× line", LockInLineFilter.BOTH),
+                ],
+            ),
+        )
+        for row, attribute, options in choices:
+            combo = QComboBox()
+            for label, value in options:
+                combo.addItem(label, value)
+            combo.setCurrentIndex(combo.findData(getattr(entry, attribute)))
+            if attribute == "input_source":
+                combo.currentIndexChanged.connect(
+                    lambda index, *, editor=combo: self._set_lockin_input(
+                        column, editor.itemData(index), refresh
+                    )
+                )
+            else:
+                combo.currentIndexChanged.connect(
+                    lambda index, *, editor=combo, field_name=attribute: setattr(
+                        entry, field_name, editor.itemData(index)
+                    )
+                )
+            table.setCellWidget(row, column, combo)
+
+    def _set_lockin_input(
+        self, index: int, source: LockInInputSource, refresh: Callable[[], None]
+    ) -> None:
+        """Switch input mode and keep the displayed sensitivity within its ranges."""
+        entry = self._lockin_entries[index]
+        entry.input_source = source
+        sensitivities = _lockin_sensitivities(entry.model, source)
+        if _sensitivity_index(entry.sensitivity, sensitivities) is None:
+            entry.sensitivity = sensitivities[-1]
+        refresh()
 
     @staticmethod
     def _selected_lockin_indices(table: QTableWidget) -> list[int]:
@@ -1366,6 +1602,58 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         else:
             entry.sensitivity = float(selected)
 
+    def _common_time_constants(self) -> tuple[float, ...]:
+        """Return time constants supported by every configured lock-in model."""
+        models = {entry.model for entry in self._lockin_entries} or {LockInModel.SR830}
+        supported = set(_lockin_time_constants(models.pop()))
+        for model in models:
+            supported.intersection_update(_lockin_time_constants(model))
+        return tuple(sorted(supported))
+
+    def _populate_time_constant_combo(self, combo: SIComboBox) -> None:
+        """Populate *combo* with values valid for the current model mixture."""
+        values = self._common_time_constants()
+        if not values:
+            raise ValueError("The selected lock-in models have no common time constants.")
+        selected = self._time_constant
+        if selected not in values:
+            selected = min(values, key=lambda value: abs(math.log(value / self._time_constant)))
+            self._time_constant = selected
+        combo.blockSignals(True)
+        combo.clear()
+        for value in values:
+            combo.addValueItem(value)
+        combo.setFloatValue(selected)
+        combo.blockSignals(False)
+
+    def _set_lockin_model(
+        self,
+        index: int,
+        model: Any,
+        time_constant_combo: SIComboBox,
+        refresh: Callable[[], None],
+    ) -> None:
+        """Store a model choice and refresh model-dependent controls."""
+        if not isinstance(model, LockInModel):
+            return
+        entry = self._lockin_entries[index]
+        entry.model = model
+        if entry.input_source not in dict(_lockin_input_options(model)).values():
+            entry.input_source = LockInInputSource.A_MINUS_B
+        sensitivities = _lockin_sensitivities(model, entry.input_source)
+        if _sensitivity_index(entry.sensitivity, sensitivities) is None:
+            entry.sensitivity = sensitivities[-1] if _is_current_input(entry.input_source) else 1e-3
+        if entry.filter_slope not in _lockin_filter_slopes(model):
+            entry.filter_slope = 12
+        entry.harmonic = min(entry.harmonic, _lockin_max_harmonic(model))
+        if not _lockin_has_output_offsets(model):
+            entry.offset_auto = False
+            entry.offset_pct = 0.0
+            entry.expand = LockInExpandFactor.X1
+            entry.auto_offsets.clear()
+        self._populate_time_constant_combo(time_constant_combo)
+        refresh()
+
     def _sync_lockin_outputs(
         self,
         checks: list[tuple[LockInOutput, QCheckBox]],
@@ -1382,7 +1670,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             default_check.blockSignals(False)
             outputs = (default_output,)
         self._lockin_entries[index].outputs = outputs
-        supports_offset = any(output.offset_channel() is not None for output in outputs)
+        supports_offset = _lockin_has_output_offsets(self._lockin_entries[index].model) and any(
+            output.offset_channel() is not None for output in outputs
+        )
         offset_widget.setEnabled(supports_offset)
         expand_widget.setEnabled(supports_offset)
 
@@ -1399,8 +1689,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
     def _remove_selected_lockins(self, table: QTableWidget, refresh: Callable[[], None]) -> None:
         """Remove selected entries while retaining at least one lock-in."""
-        selected = reversed(self._selected_lockin_indices(table))
-        selected = list(selected)
+        selected = list(reversed(self._selected_lockin_indices(table)))
         if not selected or len(self._lockin_entries) == 1:
             return
         for column in selected:
@@ -1432,9 +1721,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         offset: SISpinBox,
         frequency: SISpinBox,
         time_constant: SIComboBox,
-        slope: QComboBox,
-        coupling: QComboBox,
-        line_filter: QComboBox,
     ) -> None:
         """Read source and selected lock-ins, then refresh their controls."""
         selected = self._selected_lockin_indices(table)
@@ -1444,9 +1730,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             for index, settings in lockin_settings:
                 self._apply_read_lockin_settings(index, settings)
             time_constant.setFloatValue(self._time_constant)
-            slope.setCurrentIndex(slope.findData(self._filter_slope))
-            coupling.setCurrentIndex(coupling.findData(self._input_coupling))
-            line_filter.setCurrentIndex(line_filter.findData(self._line_filter))
             self._enable_offset_addition_for_nonzero_offsets()
             refresh()
             self._restore_lockin_selection(table, selected)
@@ -1469,18 +1752,24 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         frequency.setValue(self._waveform_frequency)
 
     def _apply_read_lockin_settings(self, index: int, settings: dict[str, Any]) -> None:
-        """Store common and per-lock-in settings read from one SR830."""
+        """Store common and per-lock-in settings read from one instrument."""
         self._time_constant = settings["time_constant"]
-        self._filter_slope = settings["filter_slope"]
-        self._input_coupling = settings["input_coupling"]
-        self._line_filter = settings["line_filter"]
         entry = self._lockin_entries[index]
+        entry.filter_slope = settings["filter_slope"]
+        entry.input_coupling = settings["input_coupling"]
+        entry.line_filter = settings["line_filter"]
+        entry.input_source = settings.get("input_source", entry.input_source)
         entry.sensitivity = settings["sensitivity"]
         entry.auto_sensitivity = False
         entry.harmonic = settings["harmonic"]
         entry.phase = settings["phase"]
-        entry.reserve_mode = settings["reserve_mode"]
+        if "reserve_mode" in settings:
+            entry.reserve_mode = settings["reserve_mode"]
         offsets = settings["offsets"]
+        if not _lockin_has_output_offsets(entry.model):
+            entry.offset_auto = False
+            entry.offset_pct = 0.0
+            entry.expand = LockInExpandFactor.X1
         entry.auto_offsets = {channel: value[0] for channel, value in offsets.items()}
         if offsets:
             entry.offset_pct, entry.expand = next(iter(offsets.values()))
@@ -1495,10 +1784,17 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 output_name = f"{base_name} {output.value}" if append_suffix else base_name
                 specs.append(
                     ChannelSpec(
-                        lockin_index=index, output=output, name=output_name, unit=output.unit
+                        lockin_index=index,
+                        output=output,
+                        name=output_name,
+                        unit=_output_unit(entry, output),
                     )
                 )
-                if self._resistance_enabled and output is not LockInOutput.THETA:
+                if (
+                    self._resistance_enabled
+                    and output is not LockInOutput.THETA
+                    and not _is_current_input(entry.input_source)
+                ):
                     specs.append(
                         ChannelSpec(
                             lockin_index=index,
@@ -1538,7 +1834,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         if not self._6221_resource.strip():
             raise ValueError("A 6221 resource must be configured.")
         if not self._lockin_entries:
-            raise ValueError("At least one SR830 lock-in entry must be configured.")
+            raise ValueError("At least one lock-in entry must be configured.")
         if waveform_amplitude < 0.0:
             raise ValueError("Waveform amplitude must be non-negative.")
         if waveform_frequency <= 0.0:
@@ -1547,10 +1843,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             raise ValueError("Phase-marker trigger-link line must be in the range 1..6.")
         if read_rate_multiple < 0.0:
             raise ValueError("Read cooldown multiple must be non-negative.")
-        if self._filter_slope not in _SR830_FILTER_SLOPES:
-            raise ValueError(f"Filter slope must be one of {_SR830_FILTER_SLOPES!r}.")
-        if self._time_constant not in _SR830_TIME_CONSTANTS:
-            raise ValueError(f"Time constant must be one of {_SR830_TIME_CONSTANTS!r}.")
+        for model in {entry.model for entry in self._lockin_entries}:
+            time_constants = _lockin_time_constants(model)
+            if self._time_constant not in time_constants:
+                raise ValueError(
+                    f"Time constant for {model.display_name} must be one of {time_constants!r}."
+                )
         if self._source_range_mode not in {"AUTO", "BEST", "FIXED"}:
             raise ValueError("Source range mode must be one of 'AUTO', 'BEST', or 'FIXED'.")
 
@@ -1558,16 +1856,14 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _validate_auto_sensitivity_thresholds(low: float, high: float) -> None:
         """Validate the lower and upper automatic-sensitivity thresholds."""
         if not 0.0 <= low <= 1.0:
-            raise ValueError("Auto-sensitivity low threshold must lie between 0 and 1.")
+            raise ValueError("Auto-ranging low threshold must lie between 0 and 1.")
         if not 0.0 <= high <= 1.0:
-            raise ValueError("Auto-sensitivity high threshold must lie between 0 and 1.")
+            raise ValueError("Auto-ranging high threshold must lie between 0 and 1.")
         if low >= high:
-            raise ValueError(
-                "Auto-sensitivity low threshold must be lower than the high threshold."
-            )
+            raise ValueError("Auto-ranging low threshold must be lower than the high threshold.")
 
     def _validate_lockin_entries(self) -> None:
-        """Validate every SR830 entry and cross-entry uniqueness constraints."""
+        """Validate every lock-in entry and cross-entry uniqueness constraints."""
         labels: list[str] = []
         resources: list[str] = []
         for index, entry in enumerate(self._lockin_entries, start=1):
@@ -1578,34 +1874,37 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         if len(set(labels)) != len(labels):
             raise ValueError("Each lock-in label must be unique.")
         if len(set(resources)) != len(resources):
-            raise ValueError("Each SR830 resource must be unique.")
+            raise ValueError("Each lock-in resource must be unique.")
         if self._6221_resource.strip() in resources:
-            raise ValueError("The 6221 resource conflicts with an SR830 resource.")
+            raise ValueError("The 6221 resource conflicts with a lock-in resource.")
         channel_names = [spec.name for spec in self._channel_specs()]
         if len(set(channel_names)) != len(channel_names):
             raise ValueError("Derived channel names must be unique.")
 
     @staticmethod
     def _validate_lockin_entry(index: int, entry: LockInEntry) -> tuple[str, str]:
-        """Validate one SR830 entry and return its normalised identity fields."""
+        """Validate one lock-in entry and return its normalised identity fields."""
         label = entry.label.strip()
         resource = entry.resource.strip()
         if not label:
             raise ValueError(f"Lock-in {index} must have a non-empty label.")
         if not resource:
             raise ValueError(f"Lock-in {label!r} must have a non-empty resource string.")
-        if entry.sensitivity not in _SR830_SENSITIVITIES:
-            raise ValueError(
-                f"Lock-in {label!r} sensitivity must be one of {_SR830_SENSITIVITIES!r}."
-            )
+        filter_slopes = _lockin_filter_slopes(entry.model)
+        if entry.filter_slope not in filter_slopes:
+            raise ValueError(f"Filter slope for {label!r} must be one of {filter_slopes!r}.")
+        if entry.input_source not in dict(_lockin_input_options(entry.model)).values():
+            raise ValueError(f"Unsupported input source for {entry.model.display_name}.")
+        sensitivities = _lockin_sensitivities(entry.model, entry.input_source)
+        if _sensitivity_index(entry.sensitivity, sensitivities) is None:
+            raise ValueError(f"Lock-in {label!r} sensitivity must be one of {sensitivities!r}.")
         if not 1 <= len(entry.outputs) <= 4:
             raise ValueError(f"Lock-in {label!r} must define between 1 and 4 outputs.")
         if len(set(entry.outputs)) != len(entry.outputs):
             raise ValueError(f"Lock-in {label!r} outputs must be unique.")
-        if not 1 <= entry.harmonic <= _SR830_MAX_HARMONIC:
-            raise ValueError(
-                f"Lock-in {label!r} harmonic must be between 1 and {_SR830_MAX_HARMONIC}."
-            )
+        max_harmonic = _lockin_max_harmonic(entry.model)
+        if not 1 <= entry.harmonic <= max_harmonic:
+            raise ValueError(f"Lock-in {label!r} harmonic must be between 1 and {max_harmonic}.")
         return label, resource
 
     def _apply_scan_units(self) -> None:
@@ -1686,7 +1985,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         x_values = np.asarray(self._sweep_values, dtype=float)
         specs = self._channel_specs()
-        channel_values = {spec.name: [] for spec in specs}
+        channel_values: dict[str, list[float]] = {spec.name: [] for spec in specs}
 
         self._k6221.enable_output(True)
         try:
@@ -1701,7 +2000,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     entry = self._lockin_entries[spec.lockin_index]
                     reading = readings[entry.resource]
                     output_value = reading.output_values[spec.output]
-                    if self._offset_enabled:
+                    if self._offset_enabled and _lockin_has_output_offsets(entry.model):
                         output_value = self._apply_offset_correction(
                             entry, spec.output, output_value
                         )
@@ -1751,8 +2050,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             results = [future.result() for future in futures]
         return dict(results)
 
-    def _read_one_lockin(self, entry: LockInEntry, lockin: SRS830) -> tuple[str, LockInReading]:
-        """Read outputs from one SR830 and return ``(resource, reading)``.
+    def _read_one_lockin(
+        self, entry: LockInEntry, lockin: SupportedLockIn
+    ) -> tuple[str, LockInReading]:
+        """Read outputs from one lock-in and return ``(resource, reading)``.
 
         Args:
             entry (LockInEntry):
@@ -1774,10 +2075,13 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         try:
             measured_values = lockin.measure_outputs(requested_outputs)
         except TimeoutError:
-            status_byte = lockin.read_status_byte() or 0
-            if not self._recover_expanded_lockin_read(entry, lockin, status_byte):
+            if entry.model is not LockInModel.SR830:
                 raise
-            measured_values = lockin.measure_outputs(requested_outputs)
+            sr830 = cast(SRS830, lockin)
+            status_byte = sr830.read_status_byte() or 0
+            if not self._recover_expanded_lockin_read(entry, sr830, status_byte):
+                raise
+            measured_values = sr830.measure_outputs(requested_outputs)
         output_values = {output: float(measured_values[output]) for output in entry.outputs}
         ratio_signal = abs(float(measured_values[LockInOutput.R]))
         return entry.resource, LockInReading(output_values, float(ratio_signal))
@@ -1817,7 +2121,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         return True
 
     def _trigger_gpib_lockins(self) -> None:
-        for lockin in self._lockins:
+        for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True):
+            if entry.model is not LockInModel.SR830:
+                continue
             transport = lockin.transport
             if isinstance(transport, GpibTransport):
                 transport.send_group_execute_trigger()
@@ -1825,7 +2131,6 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _apply_auto_sensitivity(self, readings: dict[str, LockInReading]) -> None:
         if not self._auto_sensitivity_enabled:
             return
-        sensitivities = _SR830_SENSITIVITIES
         with ThreadPoolExecutor(max_workers=max(1, len(self._lockins))) as executor:
             futures = [
                 executor.submit(
@@ -1833,7 +2138,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     entry,
                     lockin,
                     readings[entry.resource],
-                    sensitivities,
+                    _lockin_sensitivities(entry.model, entry.input_source),
                 )
                 for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
             ]
@@ -1843,7 +2148,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _apply_auto_sensitivity_one_lockin(
         self,
         entry: LockInEntry,
-        lockin: SRS830,
+        lockin: SupportedLockIn,
         reading: LockInReading,
         sensitivities: tuple[float, ...],
     ) -> None:
@@ -1867,9 +2172,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         if entry.sensitivity <= 0.0:
             return
         ratio = abs(reading.ratio_signal) / entry.sensitivity
-        try:
-            index = sensitivities.index(entry.sensitivity)
-        except ValueError:
+        index = _sensitivity_index(entry.sensitivity, sensitivities)
+        if index is None:
             return
         new_index = index
         if ratio < self.eval_float(self._auto_sensitivity_low) and index > 0:
@@ -1880,7 +2184,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             new_index = index + 1
         if new_index != index:
             new_sensitivity = sensitivities[new_index]
-            lockin.set_sensitivity(new_sensitivity)
+            lockin.set_sensitivity(
+                new_sensitivity / _sensitivity_driver_scale(entry.model, entry.input_source)
+            )
             entry.sensitivity = new_sensitivity
 
     def _apply_offset_correction(
@@ -1904,6 +2210,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             (float):
                 Offset-corrected true signal value.
         """
+        if not _lockin_has_output_offsets(entry.model):
+            return value
         channel = output.offset_channel()
         if channel is None:
             return value
@@ -1916,8 +2224,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _enable_offset_addition_for_nonzero_offsets(self) -> None:
         """Enable adding offsets to readings when any configured offset is nonzero."""
         has_offset = any(
-            abs(entry.offset_pct) > 0.0
-            or any(abs(value) > 0.0 for value in entry.auto_offsets.values())
+            _lockin_has_output_offsets(entry.model)
+            and (
+                abs(entry.offset_pct) > 0.0
+                or any(abs(value) > 0.0 for value in entry.auto_offsets.values())
+            )
             for entry in self._lockin_entries
         )
         if not has_offset or self._offset_enabled:
@@ -1956,7 +2267,32 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         )
         return LockInEntry(
             label=str(data.get("label", default_label)),
+            model=self._parse_enum(
+                LockInModel,
+                data.get("model", LockInModel.SR830.value),
+                LockInModel.SR830,
+                "model",
+            ),
             resource=str(data.get("resource", "GPIB0::8::INSTR")),
+            filter_slope=int(data.get("filter_slope", self._filter_slope)),
+            input_coupling=self._parse_enum(
+                LockInInputCoupling,
+                data.get("input_coupling", self._input_coupling.value),
+                self._input_coupling,
+                "input_coupling",
+            ),
+            line_filter=self._parse_enum(
+                LockInLineFilter,
+                data.get("line_filter", self._line_filter.value),
+                self._line_filter,
+                "line_filter",
+            ),
+            input_source=self._parse_enum(
+                LockInInputSource,
+                data.get("input_source", LockInInputSource.A_MINUS_B.value),
+                LockInInputSource.A_MINUS_B,
+                "input_source",
+            ),
             sensitivity=float(data.get("sensitivity", 1e-3)),
             offset_pct=float(data.get("offset_pct", 0.0)),
             offset_auto=bool(data.get("offset_auto", False)),

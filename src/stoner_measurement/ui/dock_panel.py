@@ -230,6 +230,7 @@ class _PluginTreeWidget(QTreeWidget):
             >>> panel._plugin_list.select_plugin("NoSuchPlugin")
             False
         """
+
         def _walk(item: QTreeWidgetItem) -> QTreeWidgetItem | None:
             if item.data(0, _EP_NAME_ROLE) == ep_name:
                 return item
@@ -306,7 +307,9 @@ class _SequenceTreeWidget(QTreeWidget):
         super().__init__(parent)
         self._plugin_manager = plugin_manager
         self._new_item_factory: Callable[[str], QTreeWidgetItem | None] | None = None
-        self._placement_validator: Callable[[QTreeWidgetItem, QTreeWidgetItem | None], bool] | None = None
+        self._placement_validator: (
+            Callable[[QTreeWidgetItem, QTreeWidgetItem | None], bool] | None
+        ) = None
         self._rejected_item_handler: Callable[[QTreeWidgetItem], None] | None = None
         self.setHeaderHidden(True)
         self.setRootIsDecorated(True)
@@ -417,7 +420,9 @@ class _SequenceTreeWidget(QTreeWidget):
         item = QTreeWidgetItem([text])
         item.setData(0, _EP_NAME_ROLE, ep_name)
         item.setData(0, _PLUGIN_INSTANCE_ROLE, plugin)
-        flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled
+        flags = (
+            Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled
+        )
         if self._is_sequence_plugin_instance(plugin):
             flags |= Qt.ItemFlag.ItemIsDropEnabled
             font = item.font(0)
@@ -542,7 +547,9 @@ class _SequenceTreeWidget(QTreeWidget):
             else:
                 target_index = self.indexOfTopLevelItem(target)
 
-        proposed_parent = target if pos == QAbstractItemView.DropIndicatorPosition.OnItem else target_parent
+        proposed_parent = (
+            target if pos == QAbstractItemView.DropIndicatorPosition.OnItem else target_parent
+        )
         if not self._can_place_item(dragged, proposed_parent):
             event.ignore()
             return
@@ -634,7 +641,9 @@ class _SequenceTreeWidget(QTreeWidget):
         proposed_parent = (
             target
             if target is not None and pos == QAbstractItemView.DropIndicatorPosition.OnItem
-            else target.parent() if target is not None else None
+            else target.parent()
+            if target is not None
+            else None
         )
         if not self._can_place_item(new_item, proposed_parent):
             if self._rejected_item_handler is not None:
@@ -653,14 +662,22 @@ class _SequenceTreeWidget(QTreeWidget):
             target.setExpanded(True)
         elif pos == QAbstractItemView.DropIndicatorPosition.AboveItem:
             target_parent = target.parent()
-            idx = target_parent.indexOfChild(target) if target_parent is not None else self.indexOfTopLevelItem(target)
+            idx = (
+                target_parent.indexOfChild(target)
+                if target_parent is not None
+                else self.indexOfTopLevelItem(target)
+            )
             if target_parent is not None:
                 target_parent.insertChild(idx, new_item)
             else:
                 self.insertTopLevelItem(idx, new_item)
         else:  # BelowItem or OnViewport with non-None target
             target_parent = target.parent()
-            idx = target_parent.indexOfChild(target) if target_parent is not None else self.indexOfTopLevelItem(target)
+            idx = (
+                target_parent.indexOfChild(target)
+                if target_parent is not None
+                else self.indexOfTopLevelItem(target)
+            )
             if target_parent is not None:
                 target_parent.insertChild(idx + 1, new_item)
             else:
@@ -906,7 +923,9 @@ class _SequenceTreeWidget(QTreeWidget):
                 continue
             parent = group[0].parent()
             above_idx = top_idx - 1
-            above_item = parent.child(above_idx) if parent is not None else self.topLevelItem(above_idx)
+            above_item = (
+                parent.child(above_idx) if parent is not None else self.topLevelItem(above_idx)
+            )
             above_plugin = above_item.data(0, _PLUGIN_INSTANCE_ROLE)
             if not self._is_sequence_plugin_instance(above_plugin):
                 continue
@@ -1023,6 +1042,7 @@ class DockPanel(QWidget):
     #: selected, or ``None`` when the selection is cleared or multiple steps
     #: are selected simultaneously.
     plugin_selected = pyqtSignal(object)
+    sequence_structure_changed = pyqtSignal()
 
     def __init__(
         self,
@@ -1039,6 +1059,7 @@ class DockPanel(QWidget):
         # Keeps strong Python references to per-step plugin instances so they
         # are not garbage-collected while stored only via QTreeWidgetItem.setData()..
         self._step_plugins: list[BasePlugin] = []
+        self._setup_plugins: list[BasePlugin] = []
         # Retained fallback for cut/copy/paste when the system clipboard is empty.
         self._clipboard_step_json: str | None = None
 
@@ -1131,7 +1152,17 @@ class DockPanel(QWidget):
         self._remove_step_btn.clicked.connect(self._remove_step)
         self._sequence_tree.delete_requested.connect(self._remove_step)
         self._sequence_tree.itemSelectionChanged.connect(self._on_selection_changed)
-        self._plugin_list.itemDoubleClicked.connect(lambda item, col: self._on_plugin_double_clicked())
+        for signal in (
+            self._sequence_tree.model().rowsInserted,
+            self._sequence_tree.model().rowsRemoved,
+            self._sequence_tree.model().rowsMoved,
+            self._sequence_tree.model().modelReset,
+            self._sequence_tree.model().dataChanged,
+        ):
+            signal.connect(self._rebuild_delayed_setup)
+        self._plugin_list.itemDoubleClicked.connect(
+            lambda item, col: self._on_plugin_double_clicked()
+        )
         self._plugin_filter.textChanged.connect(self._filter_plugins)
 
         # Populate plugin list and monitoring widgets
@@ -1177,9 +1208,7 @@ class DockPanel(QWidget):
         leaf.setData(0, _EP_NAME_ROLE, ep_name)
         leaf.setToolTip(0, plugin.tooltip())
         leaf.setFlags(
-            Qt.ItemFlag.ItemIsEnabled
-            | Qt.ItemFlag.ItemIsSelectable
-            | Qt.ItemFlag.ItemIsDragEnabled
+            Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled
         )
         return leaf
 
@@ -1456,7 +1485,9 @@ class DockPanel(QWidget):
         self._add_default_measure_condition_child(new_plugin, item)
         return item
 
-    def _add_default_measure_condition_child(self, plugin: BasePlugin, item: QTreeWidgetItem) -> None:
+    def _add_default_measure_condition_child(
+        self, plugin: BasePlugin, item: QTreeWidgetItem
+    ) -> None:
         """Insert a default measure-flag ``If`` child for scan/sweep plugins."""
         factory = getattr(plugin, "default_measure_condition_step", None)
         if not callable(factory):
@@ -1472,6 +1503,15 @@ class DockPanel(QWidget):
         child_text = self._step_label(child_plugin)
         item.addChild(self._sequence_tree.make_item(child_plugin, child_text))
         item.setExpanded(True)
+
+    def _rebuild_delayed_setup(self, *_args) -> None:
+        """Keep setup selections current after edits, moves, disabling or removal."""
+        from stoner_measurement.plugins.command.reconfigure import rebuild_delayed_configuration
+
+        self._setup_plugins = rebuild_delayed_configuration(
+            self.sequence_steps, self._setup_plugins, self._rebuild_delayed_setup
+        )
+        self.sequence_structure_changed.emit()
 
     def _remove_step(self) -> None:
         """Remove all currently selected sequence steps (and sub-steps)."""
@@ -1615,6 +1655,7 @@ class DockPanel(QWidget):
 
     def _find_sequence_item_by_instance_name(self, instance_name: str) -> QTreeWidgetItem | None:
         """Return the first sequence-tree item whose plugin has *instance_name*."""
+
         def _walk(item: QTreeWidgetItem) -> QTreeWidgetItem | None:
             plugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
             if plugin is not None and plugin.instance_name == instance_name:
@@ -1712,9 +1753,8 @@ class DockPanel(QWidget):
         if base_name not in existing and not self._is_reserved_instance_name(base_name):
             return base_name
         count = 2
-        while (
-            f"{base_name}_{count}" in existing
-            or self._is_reserved_instance_name(f"{base_name}_{count}")
+        while f"{base_name}_{count}" in existing or self._is_reserved_instance_name(
+            f"{base_name}_{count}"
         ):
             count += 1
         return f"{base_name}_{count}"
@@ -1764,7 +1804,8 @@ class DockPanel(QWidget):
             return (plugin, [_item_to_step(item.child(j)) for j in range(item.childCount())])
 
         return [
-            _item_to_step(self._sequence_tree.topLevelItem(i)) for i in range(self._sequence_tree.topLevelItemCount())
+            _item_to_step(self._sequence_tree.topLevelItem(i))
+            for i in range(self._sequence_tree.topLevelItemCount())
         ]
 
     def load_sequence(self, steps: list[_SequenceStep]) -> None:
@@ -1977,9 +2018,7 @@ class DockPanel(QWidget):
         mime_data = clipboard.mimeData()
         text = mime_data.text()
         if not text and mime_data.hasFormat(_SEQUENCE_JSON_MIME_TYPE):
-            text = bytes(mime_data.data(_SEQUENCE_JSON_MIME_TYPE)).decode(
-                "utf-8", errors="replace"
-            )
+            text = bytes(mime_data.data(_SEQUENCE_JSON_MIME_TYPE)).decode("utf-8", errors="replace")
         if text.strip():
             return text if self._is_sequence_step_json(text) else None
         if mime_data.formats():
@@ -2262,11 +2301,15 @@ class DockPanel(QWidget):
             if parent is None:
                 base_idx = self._sequence_tree.indexOfTopLevelItem(anchor)
                 for i, step in enumerate(steps):
-                    new_items.append(self._load_step(step, parent_item=None, insert_index=base_idx + 1 + i))
+                    new_items.append(
+                        self._load_step(step, parent_item=None, insert_index=base_idx + 1 + i)
+                    )
             else:
                 base_idx = parent.indexOfChild(anchor)
                 for i, step in enumerate(steps):
-                    new_items.append(self._load_step(step, parent_item=parent, insert_index=base_idx + 1 + i))
+                    new_items.append(
+                        self._load_step(step, parent_item=parent, insert_index=base_idx + 1 + i)
+                    )
 
         # Select all newly pasted items so the user can see what was inserted.
         self._sequence_tree.clearSelection()

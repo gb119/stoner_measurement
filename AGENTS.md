@@ -128,6 +128,18 @@ global `codacy` command exists.
 
 ## Boundaries For Agents
 
+- Plugin lifecycle contract: repeated `connect()` calls must release the
+  instance's existing resources before opening replacements. `BasePlugin`
+  tracks connection attempts and calls `disconnect()` before reconnecting,
+  including after a partially failed attempt. Resource-owning plugins must
+  implement idempotent cleanup of complete and partial connections, clear
+  their references, and propagate cleanup failures. Do not close resources
+  owned by other instances or shared controller services.
+- Reconfigure selections derive `delay_configuration`; do not add a direct
+  editor or persist that flag independently. Suppression defaults on per
+  Reconfigure command. Readiness is checked at runtime, including conditional
+  and loop execution; do not replace it with static reachability checks.
+
 - The shell is PowerShell on Windows.
 - Use `rg` for repository searches when available.
 - Do not assume globally installed Python tooling; prefer the conda environment.

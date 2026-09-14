@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 from qtpy.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QPushButton,
     QTableWidget,
     QTableWidgetSelectionRange,
@@ -30,6 +31,7 @@ from stoner_measurement.instruments.transport.gpib_transport import GpibTranspor
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace import (
     Keithley6221_MultiSR830Plugin,
+    LockInModel,
     LockInOutput,
     TraceStatus,
     WaveformScanMode,
@@ -76,6 +78,7 @@ class TestDefaults:
     def test_lockin_entry_defaults(self, qapp):
         entry = LockInEntry()
         assert entry.harmonic == 1
+        assert entry.model is LockInModel.SR830
         assert entry.phase == pytest.approx(0.0)
         assert entry.auto_sensitivity is True
         assert entry.auto_offsets == {}
@@ -131,7 +134,6 @@ class TestJsonRoundTrip:
         plugin._waveform_frequency = 123.0
         plugin._phase_marker_tlink = 5
         plugin._time_constant = 3.0
-        plugin._filter_slope = 24
         plugin._read_rate_multiple = 4.0
         plugin._auto_sensitivity_enabled = True
         plugin._auto_sensitivity_low = 0.2
@@ -156,7 +158,6 @@ class TestJsonRoundTrip:
 
     def test_round_trip_preserves_new_fields(self, qapp):
         plugin = _make_plugin()
-        plugin._line_filter = LockInLineFilter.LINE
         plugin._offset_enabled = True
         plugin._source_range_mode = "FIXED"
         plugin._lockin_entries = [
@@ -164,6 +165,7 @@ class TestJsonRoundTrip:
                 label="LIA 1",
                 resource="GPIB0::8::INSTR",
                 harmonic=3,
+                line_filter=LockInLineFilter.LINE,
                 phase=None,
                 auto_sensitivity=False,
                 offset_auto=True,
@@ -174,7 +176,7 @@ class TestJsonRoundTrip:
         restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
         assert isinstance(restored, Keithley6221_MultiSR830Plugin)
         assert restored._offset_enabled is True
-        assert restored._line_filter is LockInLineFilter.LINE
+        assert restored._lockin_entries[0].line_filter is LockInLineFilter.LINE
         assert restored._source_range_mode == "FIXED"
         entry = restored._lockin_entries[0]
         assert entry.harmonic == 3
@@ -185,6 +187,14 @@ class TestJsonRoundTrip:
         serialised_entry = plugin.to_json()["lockins"][0]
         assert serialised_entry["phase"] == "auto"
         assert "auto_phase" not in serialised_entry
+
+    def test_round_trip_preserves_7265_model(self, qapp):
+        plugin = _make_plugin()
+        plugin._lockin_entries[0].model = LockInModel.SR7265
+
+        restored = BasePlugin.from_json(json.loads(json.dumps(plugin.to_json())))
+
+        assert restored._lockin_entries[0].model is LockInModel.SR7265
 
     def test_restore_legacy_auto_phase_flag(self, qapp):
         plugin = _make_plugin()
@@ -202,6 +212,15 @@ class TestJsonRoundTrip:
         restored = BasePlugin.from_json(payload)
         assert isinstance(restored, Keithley6221_MultiSR830Plugin)
         assert restored._lockin_entries[0].outputs == (LockInOutput.R,)
+
+    def test_restore_without_model_defaults_to_sr830(self, qapp):
+        plugin = _make_plugin()
+        payload = plugin.to_json()
+        payload["lockins"][0].pop("model")
+
+        restored = BasePlugin.from_json(payload)
+
+        assert restored._lockin_entries[0].model is LockInModel.SR830
 
 
 class TestUi:
@@ -227,8 +246,14 @@ class TestUi:
         tables = settings_widget.findChildren(QTableWidget)
         assert tables
         table = tables[0]
-        assert table.rowCount() == 12
+        assert table.rowCount() == 17
         assert table.columnCount() == 1
+        model_combo = table.cellWidget(_row_with_label(table, "Model"), 0)
+        assert isinstance(model_combo, QComboBox)
+        assert model_combo.currentData() is LockInModel.SR830
+        assert [model_combo.itemData(index) for index in range(model_combo.count())] == list(
+            LockInModel
+        )
 
         # Remove button disabled when only one lock-in
         remove_buttons = [
@@ -270,6 +295,23 @@ class TestUi:
         output_checks["R"].click()
 
         assert plugin._lockin_entries[0].outputs == (LockInOutput.X, LockInOutput.Y, LockInOutput.R)
+
+    def test_selecting_7265_updates_model_dependent_controls(self, qapp):
+        plugin = _make_plugin()
+        settings = plugin.config_tabs()[1][1]
+        table = settings.findChildren(QTableWidget)[0]
+        model_combo = table.cellWidget(_row_with_label(table, "Model"), 0)
+
+        model_combo.setCurrentIndex(model_combo.findData(LockInModel.SR7265))
+
+        assert plugin._lockin_entries[0].model is LockInModel.SR7265
+        assert plugin._time_constant == pytest.approx(0.2)
+        offset = table.cellWidget(_row_with_label(table, "Offset (%)"), 0)
+        expand = table.cellWidget(_row_with_label(table, "Expand"), 0)
+        reserve = table.cellWidget(_row_with_label(table, "Reserve"), 0)
+        assert not offset.isEnabled()
+        assert not expand.isEnabled()
+        assert not reserve.isEnabled()
 
     def test_output_checkboxes_keep_at_least_one_output_selected(self, qapp):
         plugin = _make_plugin()
@@ -465,9 +507,9 @@ class TestUi:
         assert plugin._waveform_offset == pytest.approx(1e-4)
         assert plugin._waveform_frequency == pytest.approx(123.0)
         assert plugin._time_constant == pytest.approx(1.0)
-        assert plugin._filter_slope == 24
-        assert plugin._input_coupling is LockInInputCoupling.DC
-        assert plugin._line_filter is LockInLineFilter.BOTH
+        assert plugin._lockin_entries[0].filter_slope == 24
+        assert plugin._lockin_entries[0].input_coupling is LockInInputCoupling.DC
+        assert plugin._lockin_entries[0].line_filter is LockInLineFilter.BOTH
         entry = plugin._lockin_entries[0]
         assert entry.sensitivity == pytest.approx(5e-3)
         assert entry.auto_sensitivity is False
@@ -479,6 +521,26 @@ class TestUi:
 
 
 class TestConfiguration:
+    def test_configure_7265_uses_common_interface_and_skips_sr830_only_controls(self, qapp):
+        plugin = _make_plugin()
+        plugin._time_constant = 0.2
+        entry = LockInEntry(model=LockInModel.SR7265, auto_sensitivity=False)
+        lockin = MagicMock()
+
+        plugin._configure_one_lockin(entry, lockin)
+        plugin._configure_one_lockin_offsets(entry, lockin)
+
+        lockin.set_reference_source.assert_has_calls(
+            [
+                call(LockInReferenceSource.EXTERNAL),
+                call(LockInReferenceSource.EXTERNAL, LockinRefenceEdge.FALLING),
+            ]
+        )
+        lockin.set_time_constant.assert_called_once_with(0.2)
+        lockin.set_sensitivity.assert_called_once_with(entry.sensitivity)
+        lockin.set_reserve_mode.assert_not_called()
+        lockin.set_output_offset.assert_not_called()
+
     def test_configure_auto_sensitivity_waits_for_agan_and_reads_back_range(self, qapp):
         plugin = _make_plugin()
         plugin._time_constant = 1e-5
@@ -541,10 +603,16 @@ class TestConfiguration:
         plugin._waveform_frequency = 73.0
         plugin._phase_marker_tlink = 4
         plugin._time_constant = 3.0
-        plugin._filter_slope = 18
         plugin._lockin_entries = [
-            LockInEntry(label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,)),
-            LockInEntry(label="B", resource="GPIB0::9::INSTR", outputs=(LockInOutput.THETA,)),
+            LockInEntry(
+                label="A", resource="GPIB0::8::INSTR", outputs=(LockInOutput.X,), filter_slope=18
+            ),
+            LockInEntry(
+                label="B",
+                resource="GPIB0::9::INSTR",
+                outputs=(LockInOutput.THETA,),
+                filter_slope=24,
+            ),
         ]
         plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1, 0.2]))
         plugin._k6221 = MagicMock()
@@ -559,7 +627,7 @@ class TestConfiguration:
         plugin._k6221.set_phase_marker_output_line.assert_called_once_with(4)
         plugin._k6221.enable_phase_marker.assert_called_once_with(True)
         plugin._k6221.wave_start.assert_called_once_with()
-        for lockin in plugin._lockins:
+        for entry, lockin in zip(plugin._lockin_entries, plugin._lockins, strict=True):
             lockin.set_reference_source.assert_has_calls(
                 [
                     call(LockInReferenceSource.EXTERNAL),
@@ -567,7 +635,7 @@ class TestConfiguration:
                 ]
             )
             lockin.set_time_constant.assert_called_once_with(3.0)
-            lockin.set_filter_slope.assert_called_once_with(18)
+            lockin.set_filter_slope.assert_called_once_with(entry.filter_slope)
             lockin.set_harmonic.assert_called_once_with(1)
             lockin.set_reference_phase.assert_called_once_with(0.0)
         plugin._lockins[0].set_output_offset.assert_called_once()
@@ -615,11 +683,12 @@ class TestConfiguration:
 
     def test_configure_sets_line_filter(self, qapp):
         plugin = _make_plugin()
-        plugin._line_filter = LockInLineFilter.LINE
         plugin.scan_generator.generate = MagicMock(return_value=np.array([0.1]))
         plugin._k6221 = MagicMock()
         plugin._lockins = [MagicMock()]
-        plugin._lockin_entries = [LockInEntry(label="A", resource="GPIB0::8::INSTR")]
+        plugin._lockin_entries = [
+            LockInEntry(label="A", resource="GPIB0::8::INSTR", line_filter=LockInLineFilter.LINE)
+        ]
 
         plugin.configure()
 
@@ -664,7 +733,7 @@ class TestAutoOffset:
         with patch("stoner_measurement.plugins.trace.k6221_multi_sr830.time.sleep") as sleep:
             plugin.configure()
 
-        sleep.assert_called_once_with(9.0)
+        sleep.assert_has_calls([call(9.0), call(0.1)])
         lockin.measure_outputs.assert_called_once_with((LockInOutput.X, LockInOutput.Y))
         lockin.set_output_offset.assert_has_calls(
             [
@@ -1098,6 +1167,36 @@ class TestGpibTrigger:
         lockin.measure_outputs.assert_called_once_with((LockInOutput.X, LockInOutput.R))
         assert readings["GPIB0::8::INSTR"].output_values[LockInOutput.X] == pytest.approx(1.0)
 
+    def test_7265_read_uses_native_compound_measurement_without_gpib_get(self, qapp):
+        plugin = _make_plugin()
+        transport = GpibTransport(address=8)
+        transport.send_group_execute_trigger = MagicMock()
+        lockin = MagicMock()
+        lockin.transport = transport
+        lockin.measure_outputs.return_value = {
+            LockInOutput.X: 1.0,
+            LockInOutput.R: 2.0,
+        }
+        plugin._lockins = [lockin]
+        plugin._lockin_entries = [LockInEntry(model=LockInModel.SR7265, outputs=(LockInOutput.X,))]
+
+        plugin._read_lockins()
+
+        transport.send_group_execute_trigger.assert_not_called()
+        lockin.measure_outputs.assert_called_once_with((LockInOutput.X, LockInOutput.R))
+
+    def test_7265_timeout_does_not_use_sr830_expansion_recovery(self, qapp):
+        plugin = _make_plugin()
+        lockin = MagicMock()
+        lockin.measure_outputs.side_effect = TimeoutError("7265 timeout")
+        entry = LockInEntry(model=LockInModel.SR7265)
+
+        with pytest.raises(TimeoutError, match="7265 timeout"):
+            plugin._read_one_lockin(entry, lockin)
+
+        lockin.read_status_byte.assert_not_called()
+        lockin.set_output_offset.assert_not_called()
+
     def test_read_lockin_recovers_lia_timeout_by_dropping_expand(self, qapp):
         from stoner_measurement.instruments.lockin_amplifier import LockInOutputChannel
 
@@ -1159,7 +1258,6 @@ class TestValidation:
             ("_read_rate_multiple", -1.0, "cooldown"),
             ("_auto_sensitivity_low", -0.1, "low threshold"),
             ("_auto_sensitivity_high", 1.1, "high threshold"),
-            ("_filter_slope", 1, "Filter slope"),
             ("_time_constant", -1.0, "Time constant"),
             ("_source_range_mode", "INVALID", "range mode"),
         ],
@@ -1178,6 +1276,16 @@ class TestValidation:
 
         with pytest.raises(ValueError, match="lower than"):
             plugin._validate_configuration()
+
+    def test_7265_requires_a_7265_time_constant(self, qapp):
+        plugin = _make_plugin()
+        plugin._lockin_entries[0].model = LockInModel.SR7265
+
+        with pytest.raises(ValueError, match="Time constant for SIGNAL RECOVERY 7265"):
+            plugin._validate_configuration()
+
+        plugin._time_constant = 0.2
+        plugin._validate_configuration()
 
     @pytest.mark.parametrize(
         ("overrides", "message"),
@@ -1255,6 +1363,38 @@ class TestConnect:
         )
         assert transport is mock_transport
         assert lockin is mock_sr830
+
+    def test_7265_uses_its_driver_and_command_complete_status_bit(self, qapp):
+        plugin = _make_plugin()
+        entry = LockInEntry(
+            model=LockInModel.SR7265,
+            label="A",
+            resource="GPIB0::8::INSTR",
+        )
+        mock_transport = MagicMock()
+        mock_7265 = MagicMock()
+        mock_7265.identify.return_value = "SIGNAL RECOVERY 7265"
+
+        with (
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string",
+                return_value=mock_transport,
+            ) as transport_factory,
+            patch(
+                "stoner_measurement.plugins.trace.k6221_multi_sr830.SR7265",
+                return_value=mock_7265,
+            ),
+        ):
+            transport, lockin = plugin._connect_one_lockin(entry)
+
+        transport_factory.assert_called_once_with(
+            entry.resource,
+            timeout=10.0,
+            command_complete_mask=1,
+        )
+        mock_7265.connect.assert_called_once_with()
+        assert transport is mock_transport
+        assert lockin is mock_7265
 
     def test_sr830_identity_mismatch_closes_transports_and_resets_state(self, qapp):
         """Verify connect() cleans up and resets state when an SR830 returns a wrong identity."""

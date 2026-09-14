@@ -82,7 +82,9 @@ _DEFAULT_PLOT_READY_POLL_SECONDS = 0.01
 
 #: Python interpreter internals that are always present in a namespace dict and
 #: should not be overwritten when merging one namespace into another.
-_INTERPRETER_INTERNALS = frozenset({"__builtins__", "__name__", "__doc__", "__package__", "__spec__", "__loader__"})
+_INTERPRETER_INTERNALS = frozenset(
+    {"__builtins__", "__name__", "__doc__", "__package__", "__spec__", "__loader__"}
+)
 
 
 def _format_syntax_error_message(
@@ -377,7 +379,9 @@ class _EngineThread(QThread):
                 self._exec_command(item[1], out_stream, err_stream)
             elif kind == "script":
                 # item is ("script", code_str, customised, line_map)
-                self._exec_script(item[1], out_stream, err_stream, customised=item[2], line_map=item[3])
+                self._exec_script(
+                    item[1], out_stream, err_stream, customised=item[2], line_map=item[3]
+                )
             self._completed += 1
 
     # ------------------------------------------------------------------
@@ -422,7 +426,11 @@ class _EngineThread(QThread):
                 raise KeyboardInterrupt("Sequence stopped by user")
             if event == "line" and frame.f_code.co_filename == "<sequence>" and frame.f_lineno >= 1:
                 line_number = frame.f_lineno
-                source = source_lines[line_number - 1].strip() if line_number <= len(source_lines) else ""
+                source = (
+                    source_lines[line_number - 1].strip()
+                    if line_number <= len(source_lines)
+                    else ""
+                )
                 owner = None if line_map is None else line_map.get(line_number)
                 if owner is None:
                     detail = f"Running — line {line_number}"
@@ -496,7 +504,9 @@ class _EngineThread(QThread):
             self.status_changed.emit("Error")
         except Exception:  # pylint: disable=broad-exception-caught
             exc_type, exc_value, exc_tb = sys.exc_info()
-            self._emit_script_error(exc_type, exc_value, exc_tb, code_str, customised=customised, line_map=line_map)
+            self._emit_script_error(
+                exc_type, exc_value, exc_tb, code_str, customised=customised, line_map=line_map
+            )
             self.status_changed.emit("Error")
         finally:
             self.parent().notify_namespace_updated()  # type: ignore[union-attr]
@@ -983,7 +993,8 @@ class SequenceEngine(QObject):
             current_plugin = self._namespace.get(old_var)
             if existing is not current_plugin:
                 raise ValueError(
-                    f"Cannot rename plugin {ep_name!r}: " f"{new_var_name!r} is already in use in the namespace."
+                    f"Cannot rename plugin {ep_name!r}: "
+                    f"{new_var_name!r} is already in use in the namespace."
                 )
         plugin = self._namespace.pop(old_var, None)
         if plugin is not None:
@@ -1068,8 +1079,22 @@ class SequenceEngine(QObject):
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
+        previous = self._extra_catalog_plugins
         self._extra_catalog_plugins = [p for p in plugins if isinstance(p, BasePlugin)]
+        self.rebuild_delayed_configuration(previous)
         self._rebuild_data_catalogs()
+
+    def rebuild_delayed_configuration(self, previous_plugins=()) -> None:
+        """Refresh derived setup flags and Reconfigure bindings for this sequence."""
+        from stoner_measurement.plugins.command.reconfigure import rebuild_delayed_configuration
+
+        sequence = self._namespace.get("sequence")
+        steps = (
+            sequence.steps
+            if sequence is not None and hasattr(sequence, "steps")
+            else self.step_plugins()
+        )
+        rebuild_delayed_configuration(steps, previous_plugins, self.rebuild_delayed_configuration)
 
     def refresh_data_catalogs(self) -> None:
         """Rebuild trace/value catalogues after a plugin changes reported outputs.
@@ -1649,8 +1674,7 @@ class SequenceEngine(QObject):
         plugins: dict[str, BasePlugin],
         *,
         return_line_map: Literal[False] = ...,
-    ) -> str:
-        ...
+    ) -> str: ...
 
     @overload
     def generate_sequence_code(
@@ -1659,8 +1683,7 @@ class SequenceEngine(QObject):
         plugins: dict[str, BasePlugin],
         *,
         return_line_map: Literal[True],
-    ) -> tuple[str, dict[int, BasePlugin]]:
-        ...
+    ) -> tuple[str, dict[int, BasePlugin]]: ...
 
     def generate_sequence_code(
         self,
@@ -1755,11 +1778,15 @@ class SequenceEngine(QObject):
         ]
 
         if not steps:
+            from stoner_measurement.plugins.command.reconfigure import rebuild_delayed_configuration
+
+            rebuild_delayed_configuration([], self._sequence_plugins)
             self._sequence_plugins = []
             code = "\n".join(header) + "# No sequence steps defined yet.\n"
             return (code, {}) if return_line_map else code
 
         ordered_plugins = self._collect_plugins_from_steps(steps, plugins)
+        previous_plugins = self._sequence_plugins
         self._sequence_plugins = list(ordered_plugins)
 
         from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -1779,6 +1806,9 @@ class SequenceEngine(QObject):
             return plugins.get(str(step), step)
 
         validation_steps = [_resolve_validation_step(step) for step in steps]
+        from stoner_measurement.plugins.command.reconfigure import rebuild_delayed_configuration
+
+        all_step_plugins = rebuild_delayed_configuration(validation_steps, previous_plugins)
         for plugin in ordered_plugins:
             plugin.validate_sequence_position(validation_steps)
 
@@ -1787,7 +1817,7 @@ class SequenceEngine(QObject):
             return (code, {}) if return_line_map else code
 
         lines: list[str] = list(header)
-        lines.extend(self._generate_instantiation_phase(ordered_plugins))
+        lines.extend(self._generate_instantiation_phase(ordered_plugins, all_step_plugins))
         lines.extend(self._generate_connect_phase(ordered_plugins))
         lines.extend(self._generate_configure_phase(ordered_plugins))
 
@@ -1910,7 +1940,9 @@ class SequenceEngine(QObject):
 
         return ordered
 
-    def _generate_instantiation_phase(self, ordered_plugins: list[BasePlugin]) -> list[str]:
+    def _generate_instantiation_phase(
+        self, ordered_plugins: list[BasePlugin], all_step_plugins: list[BasePlugin] | None = None
+    ) -> list[str]:
         """Generate Phase 0 lines — plugin instantiation from saved configuration.
 
         Args:
@@ -1928,6 +1960,21 @@ class SequenceEngine(QObject):
         ]
         for plugin in ordered_plugins:
             lines.extend(plugin.generate_instantiation_code())
+        for plugin in ordered_plugins:
+            lines.append(f"{plugin.instance_name}.begin_sequence()")
+            lines.append(
+                f"{plugin.instance_name}.delay_configuration = {plugin.delay_configuration!r}"
+            )
+        from stoner_measurement.plugins.command.reconfigure import ReconfigureCommand
+
+        variables = ", ".join(plugin.instance_name for plugin in ordered_plugins)
+        known_names = [plugin.instance_name for plugin in (all_step_plugins or ordered_plugins)]
+        for plugin in ordered_plugins:
+            if isinstance(plugin, ReconfigureCommand):
+                lines.append(
+                    f"{plugin.instance_name}.bind_sequence_plugins([{variables}], known_names={known_names!r})"
+                )
+        lines.append("")
         return lines
 
     def _generate_connect_phase(self, ordered_plugins: list[BasePlugin]) -> list[str]:
@@ -1943,7 +1990,7 @@ class SequenceEngine(QObject):
         """
         lines: list[str] = ["# Connect and initialise all plugins."]
         for plugin in ordered_plugins:
-            if plugin.has_lifecycle:
+            if plugin.has_lifecycle and not plugin.delay_configuration:
                 lines.append(f"{plugin.instance_name}.connect()")
         lines.append("")
         return lines
@@ -1961,7 +2008,7 @@ class SequenceEngine(QObject):
         """
         lines: list[str] = ["# Configure all plugins."]
         for plugin in ordered_plugins:
-            if plugin.has_lifecycle:
+            if plugin.has_lifecycle and not plugin.delay_configuration:
                 lines.append(f"{plugin.instance_name}.configure()")
         lines.append("")
         return lines
@@ -2013,7 +2060,10 @@ class SequenceEngine(QObject):
             if getattr(plugin, "disabled", False):
                 return []
 
-            return plugin.generate_action_code(indent, sub_steps, _render_action)
+            lines = plugin.generate_action_code(indent, sub_steps, _render_action)
+            if plugin.has_lifecycle:
+                lines.insert(0, f"{prefix}{plugin.instance_name}.require_ready()")
+            return lines
 
         for step in steps:
             start_idx = len(action_lines)
@@ -2058,7 +2108,9 @@ class SequenceEngine(QObject):
         ruff_formatted = self._format_with_ruff(code_to_format)
         if ruff_formatted is not None:
             return ruff_formatted
-        logging.getLogger(SEQUENCE_LOGGER_NAME).warning("generated code formatting failed; using unformatted code")
+        logging.getLogger(SEQUENCE_LOGGER_NAME).warning(
+            "generated code formatting failed; using unformatted code"
+        )
         return code
 
     def _format_with_ruff(self, code: str) -> str | None:
@@ -2092,7 +2144,9 @@ class SequenceEngine(QObject):
                 timeout=5,
             )
         except (OSError, SubprocessError):
-            logging.getLogger(SEQUENCE_LOGGER_NAME).warning("ruff format fallback failed", exc_info=True)
+            logging.getLogger(SEQUENCE_LOGGER_NAME).warning(
+                "ruff format fallback failed", exc_info=True
+            )
             return None
         if result.returncode != 0:
             logging.getLogger(SEQUENCE_LOGGER_NAME).warning(

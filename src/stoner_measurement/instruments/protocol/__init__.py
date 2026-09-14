@@ -14,6 +14,7 @@ from stoner_measurement.instruments.protocol.mks import MKSPR4000Protocol, MKSPS
 from stoner_measurement.instruments.protocol.modbus import ModbusRtuProtocol
 from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
 from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
+from stoner_measurement.instruments.protocol.signal_recovery import SignalRecoveryProtocol
 
 __all__ = [
     "BaseProtocol",
@@ -25,4 +26,5 @@ __all__ = [
     "ModbusRtuProtocol",
     "OxfordProtocol",
     "ScpiProtocol",
+    "SignalRecoveryProtocol",
 ]

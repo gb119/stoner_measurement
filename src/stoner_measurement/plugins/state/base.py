@@ -32,7 +32,7 @@ from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_Z,
     TraceData,
 )
-from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
+from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta, lifecycle_noop
 from stoner_measurement.plugins.sequence.base import SequencePlugin
 from stoner_measurement.qt_compat import pyqtSignal
 
@@ -255,9 +255,11 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     # Instrument lifecycle NOPs
     # ------------------------------------------------------------------
 
+    @lifecycle_noop
     def connect(self) -> None:
         """Open instrument connections (NOP default)."""
 
+    @lifecycle_noop
     def configure(self) -> None:
         """Configure the instrument (NOP default)."""
 
@@ -432,9 +434,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     def _build_collected_trace(self, frame: pd.DataFrame, explicit_x: str | None) -> TraceData:
         """Build collected trace metadata around the accumulated data frame."""
         output_columns = [
-            column
-            for column in frame.columns
-            if column not in {"x", "iteration", "stage", "state"}
+            column for column in frame.columns if column not in {"x", "iteration", "stage", "state"}
         ]
         roles = {"x": COLUMN_ROLE_X, "iteration": COLUMN_ROLE_Z, "stage": COLUMN_ROLE_Z}
         if "state" in frame.columns:
@@ -477,9 +477,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         """
         values_cat: dict[str, str] = self.engine_namespace.get("_values", {})
         keys = self._resolve_collect_keys(values_cat, self.collect_outputs)
-        explicit_x = next(
-            (key for key in keys if self.collect_output_roles.get(key) == "x"), None
-        )
+        explicit_x = next((key for key in keys if self.collect_output_roles.get(key) == "x"), None)
         columns = ["x", "iteration", "stage"]
         if explicit_x is not None:
             columns.append("state")
@@ -534,7 +532,9 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         data["start_from_current_value"] = self.start_from_current_value
         data["collect_filter"] = self.collect_filter
         data["clear_filter"] = self.clear_filter
-        data["collect_outputs"] = None if self.collect_outputs is None else list(self.collect_outputs)
+        data["collect_outputs"] = (
+            None if self.collect_outputs is None else list(self.collect_outputs)
+        )
         data["collect_output_roles"] = dict(self.collect_output_roles)
         return data
 
@@ -572,9 +572,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         if isinstance(raw_roles, dict):
             valid_roles = {"-", "x", "d", "y", "e"}
             roles = {
-                str(key): str(role)
-                for key, role in raw_roles.items()
-                if str(role) in valid_roles
+                str(key): str(role) for key, role in raw_roles.items() if str(role) in valid_roles
             }
             x_keys = [key for key, role in roles.items() if role == "x"]
             for key in x_keys[1:]:

@@ -28,6 +28,47 @@ classes loaded and made available in the application.  No changes to the
 application's own ``pyproject.toml``, source code, or configuration files
 are required.
 
+Lifecycle and runtime reconfiguration
+------------------------------------
+
+``connect()`` must release an instance's existing resources before opening
+replacements. The shared ``BasePlugin`` lifecycle wrapper calls ``disconnect()``
+before a repeated connection attempt, including retrying a partially failed
+attempt. Implement ``disconnect()`` as an idempotent operation: close all owned
+resources, including any partially opened resources, and clear their references.
+Do not close resources owned by another plugin or shared controller service.
+If cleanup fails, propagate the error so a replacement connection is not opened.
+Calls through ``super().connect()`` are part of the same connection attempt.
+
+Generated sequences track successful connection and configuration phases and
+raise ``RuntimeError`` if a step is reached before its meaningful setup phases
+have succeeded. Failed setup and disconnection invalidate readiness. The checks
+run at execution time; conditional statements and loops are not analysed for
+reachability. The default no-op setup methods do not impose readiness requirements.
+Legacy direct calls outside a generated sequence retain their plugin-specific
+checks unless the instance has deferred setup enabled.
+
+The **Reconfigure** command presents a flat checklist of sequence instances.
+Each execution reconnects the selected instances and applies their configuration,
+in sequence order. **Suppress connect and configure at startup** defaults to on;
+turn it off to retain normal startup setup and apply settings again later.
+Selections in any enabled Reconfigure with suppression on set the targets'
+derived ``delay_configuration`` flag. Changing selections, suppression, enabled
+state, or sequence membership rebuilds those flags. The flag has no direct UI
+editor and is not saved separately from the Reconfigure selections.
+
+For example, with two instances controlling the same instruments, use::
+
+    Reconfigure (select measurement_a)
+    measurement_a
+    Reconfigure (select measurement_b)
+    measurement_b
+
+Leave suppression enabled on both commands. Put another Reconfigure before
+returning to ``measurement_a`` so that its settings are applied again. A
+Reconfigure inside a loop reconnects and configures on every iteration.
+Disabled steps are skipped; selecting a removed target raises a runtime error.
+
 Choosing a plugin base class
 -----------------------------
 

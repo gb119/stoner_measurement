@@ -7,7 +7,7 @@ serial-port connection.  Pyserial is an optional run-time dependency; an
 
 from __future__ import annotations
 
-from time import sleep
+from time import perf_counter, sleep
 from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.transport.base import BaseTransport
@@ -153,7 +153,6 @@ class SerialTransport(BaseTransport):
         self._is_open = False
         self._log_comms_traffic("IEEE", "Connection closed.")
 
-
     def write(self, data: bytes, slow: int | None = None) -> int:
         """Send *data* over the serial port.
 
@@ -211,8 +210,9 @@ class SerialTransport(BaseTransport):
                 break
             buffer.extend(chunk)
             if terminator and buffer.endswith(terminator):
-                self._log_comms_traffic("RX", buffer)
-                return bytes(buffer)
+                data = bytes(buffer)
+                self._log_comms_traffic("RX", data)
+                return data
 
         if not buffer:
             raise TimeoutError(f"No data received from {self.port!r} within {self._timeout}s.")
@@ -278,3 +278,88 @@ class SerialTransport(BaseTransport):
         """Update the pyserial timeout on a live connection."""
         if self._serial is not None and self._serial.is_open:
             self._serial.timeout = value
+
+
+class EchoSerialTransport(SerialTransport):
+    """Serial transport with character-at-a-time return-echo handshaking.
+
+    Some instruments require each transmitted byte to be echoed before the
+    host sends the next byte. Optional response suffixes support protocols
+    where a normal terminator is followed by a fixed-length prompt or status
+    token. All configured suffixes must have the same length.
+    """
+
+    def __init__(  # pylint: disable=too-many-arguments
+        self,
+        port: str,
+        *,
+        response_suffixes: tuple[bytes, ...] = (),
+        baud_rate: int = 9600,
+        data_bits: int = 8,
+        stop_bits: float = 1,
+        parity: str = "N",
+        xonxoff: bool = False,
+        rtscts: bool = False,
+        timeout: float = 2.0,
+    ) -> None:
+        """Initialise an echo-handshaking serial connection."""
+        if response_suffixes:
+            suffix_lengths = {len(suffix) for suffix in response_suffixes}
+            if 0 in suffix_lengths or len(suffix_lengths) != 1:
+                raise ValueError("Response suffixes must be non-empty and have equal lengths.")
+        super().__init__(
+            port,
+            baud_rate=baud_rate,
+            data_bits=data_bits,
+            stop_bits=stop_bits,
+            parity=parity,
+            xonxoff=xonxoff,
+            rtscts=rtscts,
+            timeout=timeout,
+        )
+        self.response_suffixes = response_suffixes
+
+    def write(self, data: bytes, slow: int | None = None) -> int:
+        """Write one byte at a time and verify each returned echo."""
+        if self._serial is None or not self._serial.is_open:
+            raise ConnectionError("Serial port is not open.")
+        self._log_comms_traffic("TX", data)
+        deadline = perf_counter() + max(0.0, self.timeout)
+        for byte in data:
+            expected = bytes((byte,))
+            self._serial.write(expected)
+            while True:
+                echoed = self._serial.read(1)
+                if echoed == expected:
+                    break
+                if not echoed or perf_counter() >= deadline:
+                    raise TimeoutError(
+                        f"Serial device did not echo transmitted byte {expected!r} "
+                        f"within {self.timeout}s; received {echoed!r}."
+                    )
+        if slow is not None:
+            sleep(slow / 1000)
+        return 0
+
+    def read(self, num_bytes: int | None = None) -> bytes:
+        """Read a normal frame plus one configured trailing response suffix."""
+        if not self.response_suffixes:
+            return super().read(num_bytes)
+        if self._serial is None or not self._serial.is_open:
+            raise ConnectionError("Serial port is not open.")
+        terminator = self._read_terminator
+        if not terminator:
+            raise ValueError("Response suffixes require a protocol read terminator.")
+        frame_limit = self._resolve_max_frame_size(num_bytes)
+        suffix_length = len(self.response_suffixes[0])
+        response = self._serial.read_until(terminator, size=max(1, frame_limit - suffix_length))
+        if not response:
+            raise TimeoutError(f"No data received from {self.port!r} within {self.timeout}s.")
+        if not response.endswith(terminator):
+            raise TimeoutError(f"Incomplete response: terminator {terminator!r} was not received.")
+        suffix = self._serial.read(suffix_length)
+        if suffix not in self.response_suffixes:
+            raise TimeoutError(f"Invalid or missing serial response suffix: {suffix!r}.")
+        frame = response + suffix
+        self._log_comms_traffic("RX", frame)
+        return frame
