@@ -38,6 +38,7 @@ from stoner_measurement.app_config import (
     KEY_FONT_SIZE,
     KEY_RIG,
     KEY_THEME,
+    KEY_TOOLBAR_ICON_SIZE,
     console_font_size_setting,
     default_data_directory,
     editor_font_size_setting,
@@ -47,6 +48,7 @@ from stoner_measurement.app_config import (
     save_app_config,
     set_app_config_value,
     theme_setting,
+    toolbar_icon_size_setting,
 )
 from stoner_measurement.resources import (
     install_predefined_sequence,
@@ -103,7 +105,7 @@ class SettingsDialog(QDialog):
         tabs = FontAwareTabWidget(self)
         tabs.addTab(self._build_general_tab(app_config), "General")
         tabs.addTab(self._build_features_tab(app_config), "Features")
-        tabs.addTab(self._build_toolbar_tab(), "Toolbar")
+        tabs.addTab(self._build_toolbar_tab(app_config), "Toolbar")
         tabs.addTab(self._build_plugin_catalogue_tab(), "Plugin List")
 
         button_box = QDialogButtonBox(
@@ -196,10 +198,21 @@ class SettingsDialog(QDialog):
         layout.addStretch(1)
         return tab
 
-    def _build_toolbar_tab(self) -> QWidget:
+    def _build_toolbar_tab(self, app_config: dict) -> QWidget:
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        icon_size_form = QFormLayout()
+        self._toolbar_icon_size_spin = QSpinBox(tab)
+        self._toolbar_icon_size_spin.setRange(16, 128)
+        self._toolbar_icon_size_spin.setSuffix(" px")
+        self._toolbar_icon_size_spin.setValue(toolbar_icon_size_setting(config=app_config))
+        self._toolbar_icon_size_spin.setToolTip(
+            "Toolbar icon size in logical pixels; display scaling is applied automatically."
+        )
+        icon_size_form.addRow("Icon size:", self._toolbar_icon_size_spin)
+        layout.addLayout(icon_size_form)
 
         self._toolbar_table = QTableWidget(0, 4, tab)
         self._toolbar_table.setHorizontalHeaderLabels(["Button name / separator", "Sequence", "Icon", "Tooltip"])
@@ -810,6 +823,7 @@ class SettingsDialog(QDialog):
         set_app_config_value(config, KEY_FONT_SIZE, self._font_size_spin.value())
         set_app_config_value(config, KEY_EDITOR_FONT_SIZE, self._editor_font_size_spin.value())
         set_app_config_value(config, KEY_CONSOLE_FONT_SIZE, self._console_font_size_spin.value())
+        set_app_config_value(config, KEY_TOOLBAR_ICON_SIZE, self._toolbar_icon_size_spin.value())
         for entry in FEATURE_DEFINITIONS:
             set_app_config_value(
                 config,

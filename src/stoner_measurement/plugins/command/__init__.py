@@ -50,6 +50,7 @@ from stoner_measurement.plugins.command.read_diffractometer import (
     ReadDiffractometerCommand,
 )
 from stoner_measurement.plugins.command.reconfigure import ReconfigureCommand
+from stoner_measurement.plugins.command.run_again import RunAgainCommand
 from stoner_measurement.plugins.command.save import SaveCommand
 from stoner_measurement.plugins.command.set_diffractometer import (
     SetDiffractometerCommand,
@@ -79,6 +80,7 @@ __all__ = [
     "PressureSetFlowCommand",
     "ReadDiffractometerCommand",
     "ReconfigureCommand",
+    "RunAgainCommand",
     "RemovePlotMarkersCommand",
     "SaveCommand",
     "SetFieldCommand",

@@ -63,6 +63,7 @@ class TestSettingsDialogBasics:
         )
         assert dialog._editor_font_size_spin.value() == 10
         assert dialog._console_font_size_spin.value() == 9
+        assert dialog._toolbar_icon_size_spin.value() == 32
         assert dialog._feature_checkboxes["temperature"].isChecked() is True
         assert dialog._feature_checkboxes["magnetic_field"].isChecked() is False
 
@@ -101,6 +102,7 @@ class TestSettingsDialogBasics:
         dialog._font_size_spin.setValue(12)
         dialog._editor_font_size_spin.setValue(13)
         dialog._console_font_size_spin.setValue(11)
+        dialog._toolbar_icon_size_spin.setValue(48)
         dialog._feature_checkboxes["pressure"].setChecked(False)
         dialog._on_accept()
 
@@ -114,6 +116,7 @@ class TestSettingsDialogBasics:
                     "font_size": 12,
                     "editor_font_size": 13,
                     "console_font_size": 11,
+                    "toolbar_icon_size": 48,
                 },
                 "features": {
                     "temperature": True,

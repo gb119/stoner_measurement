@@ -494,6 +494,7 @@ def _tracked_lifecycle(method: Callable, phase: str) -> Callable:
             self._lifecycle_connection_attempted = False
         return result
 
+    tracked._lifecycle_tracked = True
     return tracked
 
 
@@ -581,8 +582,12 @@ class BasePlugin(ABC):
         """Track overridden lifecycle operations without changing their public API."""
         super().__init_subclass__(**kwargs)
         for phase in ("connect", "configure", "disconnect"):
-            method = cls.__dict__.get(phase)
-            if callable(method) and not getattr(method, "_lifecycle_noop", False):
+            method = getattr(cls, phase, None)
+            if (
+                callable(method)
+                and not getattr(method, "_lifecycle_noop", False)
+                and not getattr(method, "_lifecycle_tracked", False)
+            ):
                 setattr(cls, phase, _tracked_lifecycle(method, phase))
         for action in ("execute", "measure", "execute_sequence", "scan_points", "read"):
             method = cls.__dict__.get(action)
@@ -611,11 +616,12 @@ class BasePlugin(ABC):
         self._lifecycle_configured = False
         self._lifecycle_connection_attempted = False
 
-    def begin_sequence(self) -> None:
-        """Reset readiness for a fresh generated-script run."""
+    def start(self) -> None:
+        """Reset per-run lifecycle state before a generated sequence starts."""
         self._lifecycle_managed = True
         self._lifecycle_connected = False
         self._lifecycle_configured = False
+        self.delay_configuration = False
 
     def require_ready(self) -> None:
         """Reject execution until every meaningful lifecycle phase has succeeded."""

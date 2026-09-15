@@ -118,6 +118,7 @@ run_sequentially = "stoner_measurement.plugins.sequence.containers:RunSequential
 details = "stoner_measurement.plugins.command.details:DetailsCommand"
 edit_function_scan = "stoner_measurement.plugins.command.edit_function_scan:EditFunctionScanCommand"
 reconfigure = "stoner_measurement.plugins.command.reconfigure:ReconfigureCommand"
+run_again = "stoner_measurement.plugins.command.run_again:RunAgainCommand"
 make_safe = "stoner_measurement.plugins.command.make_safe:MakeSafeCommand"
 magnetic_field_monitor = "stoner_measurement.plugins.monitor.magnet_controller:MagneticFieldMonitorPlugin"
 temperature_monitor = "stoner_measurement.plugins.monitor.temperature_controller:TemperatureMonitorPlugin"

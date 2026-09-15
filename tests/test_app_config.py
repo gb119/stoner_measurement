@@ -27,6 +27,7 @@ def test_load_app_config_merges_defaults_bundled_and_user(monkeypatch, tmp_path)
     assert config["app"]["font_size"] == app_config.DEFAULT_FONT_SIZE
     assert config["app"]["editor_font_size"] == app_config.DEFAULT_EDITOR_FONT_SIZE
     assert config["app"]["console_font_size"] == app_config.DEFAULT_CONSOLE_FONT_SIZE
+    assert config["app"]["toolbar_icon_size"] == app_config.DEFAULT_TOOLBAR_ICON_SIZE
     assert config["features"]["temperature"] is True
     assert config["features"]["magnetic_field"] is False
     assert config["features"]["pressure"] is False
@@ -67,6 +68,12 @@ def test_font_size_settings_are_independent_and_clamped():
     assert app_config.editor_font_size_setting(config=config) == 14
     assert app_config.console_font_size_setting(config=config) == 16
     assert app_config.font_size_setting(config={"app": {"font_size": 100}}) == 48
+
+
+def test_toolbar_icon_size_is_clamped_and_has_a_default():
+    assert app_config.toolbar_icon_size_setting(config={}) == 32
+    assert app_config.toolbar_icon_size_setting(config={"app": {"toolbar_icon_size": 8}}) == 16
+    assert app_config.toolbar_icon_size_setting(config={"app": {"toolbar_icon_size": 256}}) == 128
 
 
 def test_rig_setting_is_trimmed():

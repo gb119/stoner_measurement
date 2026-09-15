@@ -21,6 +21,8 @@ items:
   items:
   - plugin: reconfigure
     label: Reconfigure
+  - plugin: run_again
+    label: Run Again
   - plugin: if_command
     label: If
   - plugin: counter

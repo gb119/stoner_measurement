@@ -510,6 +510,19 @@ class TestMeasurementApp:
         assert len(toolbars) >= 1
         app._engine.shutdown()
 
+    def test_toolbar_icon_size_follows_application_preferences(self, qapp):
+        from qtpy.QtCore import QSize
+
+        app = MeasurementApp()
+        app._app_config.setdefault("app", {})["toolbar_icon_size"] = 48
+
+        app._apply_app_config()
+
+        assert app._toolbar.iconSize() == QSize(48, 48)
+        assert app._act_run.icon().actualSize(QSize(48, 48)) == QSize(48, 48)
+        assert app._act_show_motor_panel.icon().actualSize(QSize(48, 48)) == QSize(48, 48)
+        app._engine.shutdown()
+
     def test_shutdown_closes_main_window(self, qapp, monkeypatch):
         app = MeasurementApp()
         close_calls = []

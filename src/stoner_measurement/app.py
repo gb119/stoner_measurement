@@ -30,6 +30,7 @@ from stoner_measurement.app_config import (
     font_size_setting,
     load_app_config,
     theme_setting,
+    toolbar_icon_size_setting,
 )
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -332,6 +333,10 @@ class MeasurementApp(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             apply_application_font(app, font_size_setting(config=self._app_config))
+        if hasattr(self, "_toolbar"):
+            size = toolbar_icon_size_setting(config=self._app_config)
+            self._toolbar.setIconSize(QSize(size, size))
+            self._refresh_generated_toolbar_icons(size)
         self._plugin_manager.set_plugin_filter(self._plugin_is_visible)
         any_engine_visible = False
         for feature, entry in self._feature_ui.items():
@@ -926,7 +931,8 @@ class MeasurementApp(QMainWindow):
         """Build the main toolbar."""
         toolbar = QToolBar("Main Toolbar", self)
         toolbar.setObjectName("mainToolbar")
-        toolbar.setIconSize(QSize(32, 32))
+        size = toolbar_icon_size_setting(config=self._app_config)
+        toolbar.setIconSize(QSize(size, size))
         toolbar.setMovable(False)
         toolbar.setStyleSheet(
             "QToolBar::separator {"
@@ -958,6 +964,25 @@ class MeasurementApp(QMainWindow):
         self._toolbar = toolbar
         self._configured_toolbar_items = []
         self._add_configured_toolbar_buttons()
+
+    def _refresh_generated_toolbar_icons(self, size: int) -> None:
+        """Regenerate programmatic toolbar icons at their requested pixel size."""
+        factories = (
+            (self._act_run, make_run_icon),
+            (self._act_pause, make_pause_icon),
+            (self._act_stop, make_stop_icon),
+            (self._act_generate, make_generate_icon),
+            (self._act_show_value_watch, make_watch_icon),
+            (self._act_show_log, make_log_icon),
+            (self._act_show_data_manager, make_data_manager_icon),
+            (self._act_show_temp_panel, make_temperature_icon),
+            (self._act_show_magnet_panel, make_magnet_icon),
+            (self._act_show_motor_panel, make_motor_icon),
+            (self._act_show_pressure_panel, make_pressure_icon),
+            (self._act_show_xray_panel, make_xray_icon),
+        )
+        for action, factory in factories:
+            action.setIcon(factory(size))
 
     def _load_toolbar_configuration(self) -> dict:
         return load_toolbar_config()

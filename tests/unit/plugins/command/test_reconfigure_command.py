@@ -196,7 +196,7 @@ def test_lifecycle_noops_do_not_require_setup(qapp):
     from stoner_measurement.plugins.command import WaitCommand
 
     command = WaitCommand()
-    command.begin_sequence()
+    command.start()
     command.require_ready()
 
 

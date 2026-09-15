@@ -30,6 +30,48 @@ class _DocumentedPlugin(BasePlugin):
         return "Documented"
 
 
+class _LifecycleMixin:
+    def connect(self) -> None:
+        self.events.append("connect")
+
+    def configure(self) -> None:
+        self.events.append("configure")
+
+    def disconnect(self) -> None:
+        self.events.append("disconnect")
+
+
+class _MixinLifecyclePlugin(_LifecycleMixin, BasePlugin):
+    def __init__(self) -> None:
+        self.events = []
+
+    @property
+    def name(self) -> str:
+        return "Mixin lifecycle"
+
+
+def test_lifecycle_methods_inherited_from_a_mixin_are_tracked():
+    plugin = _MixinLifecyclePlugin()
+    plugin.delay_configuration = True
+    plugin.start()
+
+    assert plugin.delay_configuration is False
+
+    with pytest.raises(RuntimeError, match=r"connect\(\).*configure\(\)"):
+        plugin.require_ready()
+
+    plugin.connect()
+    with pytest.raises(RuntimeError, match=r"configure\(\)"):
+        plugin.require_ready()
+
+    plugin.configure()
+    plugin.require_ready()
+
+    assert plugin.events == ["connect", "configure"]
+    assert plugin._lifecycle_connected is True  # noqa: SLF001
+    assert plugin._lifecycle_configured is True  # noqa: SLF001
+
+
 # ---------------------------------------------------------------------------
 # Tests for the docstring-to-HTML helper functions
 # ---------------------------------------------------------------------------

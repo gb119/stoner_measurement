@@ -1809,6 +1809,11 @@ class SequenceEngine(QObject):
         from stoner_measurement.plugins.command.reconfigure import rebuild_delayed_configuration
 
         all_step_plugins = rebuild_delayed_configuration(validation_steps, previous_plugins)
+        from stoner_measurement.plugins.command.run_again import RunAgainCommand
+
+        for plugin in all_step_plugins:
+            if isinstance(plugin, RunAgainCommand):
+                plugin.bind_sequence_steps(validation_steps)
         for plugin in ordered_plugins:
             plugin.validate_sequence_position(validation_steps)
 
@@ -1961,10 +1966,9 @@ class SequenceEngine(QObject):
         for plugin in ordered_plugins:
             lines.extend(plugin.generate_instantiation_code())
         for plugin in ordered_plugins:
-            lines.append(f"{plugin.instance_name}.begin_sequence()")
-            lines.append(
-                f"{plugin.instance_name}.delay_configuration = {plugin.delay_configuration!r}"
-            )
+            lines.append(f"{plugin.instance_name}.start()")
+            if plugin.delay_configuration:
+                lines.append(f"{plugin.instance_name}.delay_configuration = True")
         from stoner_measurement.plugins.command.reconfigure import ReconfigureCommand
 
         variables = ", ".join(plugin.instance_name for plugin in ordered_plugins)

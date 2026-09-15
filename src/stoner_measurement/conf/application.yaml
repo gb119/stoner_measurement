@@ -4,6 +4,7 @@ app:
   font_size: 10
   editor_font_size: 10
   console_font_size: 9
+  toolbar_icon_size: 32
 features:
   temperature: true
   magnetic_field: true

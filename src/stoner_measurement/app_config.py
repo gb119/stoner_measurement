@@ -17,9 +17,11 @@ KEY_THEME = "app/theme"
 KEY_FONT_SIZE = "app/font_size"
 KEY_EDITOR_FONT_SIZE = "app/editor_font_size"
 KEY_CONSOLE_FONT_SIZE = "app/console_font_size"
+KEY_TOOLBAR_ICON_SIZE = "app/toolbar_icon_size"
 DEFAULT_FONT_SIZE = 10
 DEFAULT_EDITOR_FONT_SIZE = 10
 DEFAULT_CONSOLE_FONT_SIZE = 9
+DEFAULT_TOOLBAR_ICON_SIZE = 32
 
 FEATURE_DEFINITIONS: tuple[dict[str, str], ...] = (
     {"key": "temperature", "label": "Temperature", "config_key": "features/temperature"},
@@ -41,6 +43,7 @@ DEFAULT_APP_CONFIG: dict[str, Any] = {
         "font_size": DEFAULT_FONT_SIZE,
         "editor_font_size": DEFAULT_EDITOR_FONT_SIZE,
         "console_font_size": DEFAULT_CONSOLE_FONT_SIZE,
+        "toolbar_icon_size": DEFAULT_TOOLBAR_ICON_SIZE,
     },
     "features": {
         entry["key"]: True for entry in FEATURE_DEFINITIONS
@@ -147,6 +150,20 @@ def console_font_size_setting(*, config: dict[str, Any] | None = None) -> int:
     return _font_size_setting(
         KEY_CONSOLE_FONT_SIZE, DEFAULT_CONSOLE_FONT_SIZE, config=config
     )
+
+
+def toolbar_icon_size_setting(*, config: dict[str, Any] | None = None) -> int:
+    """Return the configured toolbar icon size in logical pixels."""
+    value = get_app_config_value(
+        KEY_TOOLBAR_ICON_SIZE,
+        DEFAULT_TOOLBAR_ICON_SIZE,
+        config=config,
+    )
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        size = DEFAULT_TOOLBAR_ICON_SIZE
+    return max(16, min(128, size))
 
 
 def feature_enabled(feature: str, *, config: dict[str, Any] | None = None) -> bool:
