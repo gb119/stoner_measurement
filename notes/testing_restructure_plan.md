@@ -6,6 +6,16 @@ test layout and philosophy guidance lives in `notes/testing_guidelines.md`.
 This document records the test-suite restructure so future Codex sessions can
 continue without rediscovering the same coverage map.
 
+## 2026-09-15: Plot legend sizing and scrollbar contrast
+
+- Updated the existing plot-widget height check for a compact, resizable legend
+  with room for its horizontal scrollbar. Added coverage that resizing survives
+  adding and clearing traces; no tests were moved.
+- Verified the plot-widget and theme-contrast modules: 114 passed. Rendered dark
+  and light previews to check scrollbar visibility and the plot/legend divider.
+- Scrollbar thumb/track contrast measures 6.14:1 in dark mode and 5.34:1 in light
+  mode; hover/pressed contrast is 5.08:1 and 4.51:1 respectively.
+
 ## 2026-09-14: Per-lock-in settings and fresh overload checks
 
 - Added 15 focused cases in

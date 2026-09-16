@@ -284,7 +284,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         sub_steps: list,
         render_sub_step: Callable,
     ) -> list[str]:
-        """Return action code lines that call :meth:`read` and print the result.
+        """Return action code lines that call :meth:`read` and retain the result.
 
         Args:
             indent (int):
@@ -296,7 +296,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
 
         Returns:
             (list[str]):
-                Lines calling ``read()`` and printing the reading dict.
+                Lines calling ``read()`` and assigning the reading dict to ``data``.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -319,7 +319,6 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         var_name = self.instance_name
         return [
             f"{prefix}data = {var_name}.read()",
-            f"{prefix}print(data)",
             "",
         ]
 

@@ -28,6 +28,7 @@ THEMES: dict[str, dict[str, str]] = {
         "border": "#5c6370",
         "placeholder_text": "#9aa4af",
         "border_subtle": "#7b8493",
+        "scrollbar_thumb": "#929dab",
         "status_default": "#4b5563",
         "status_running": "#2e7d32",
         "checkbox_checked_fill": "#3d8bfd",
@@ -94,6 +95,7 @@ THEMES: dict[str, dict[str, str]] = {
         "border": "#babfc4",
         "placeholder_text": "#80868b",
         "border_subtle": "#9aa0a6",
+        "scrollbar_thumb": "#626c78",
         "status_default": "#d6d9de",
         "status_running": "#43a047",
         "checkbox_checked_fill": "#1a73e8",
@@ -424,6 +426,49 @@ QHeaderView::section {{
 
 QSplitter::handle {{
     background-color: {border};
+}}
+
+QSplitter::handle:hover {{
+    background-color: {highlight};
+}}
+
+QScrollBar:vertical {{
+    background: {base};
+    width: 16px;
+    margin: 0;
+}}
+
+QScrollBar:horizontal {{
+    background: {base};
+    height: 16px;
+    margin: 0;
+}}
+
+QScrollBar::handle {{
+    background: {colour("scrollbar_thumb")};
+    border: 2px solid {base};
+    border-radius: 5px;
+}}
+
+QScrollBar::handle:vertical {{
+    min-height: 24px;
+}}
+
+QScrollBar::handle:horizontal {{
+    min-width: 24px;
+}}
+
+QScrollBar::handle:hover, QScrollBar::handle:pressed {{
+    background: {highlight};
+}}
+
+QScrollBar::add-line, QScrollBar::sub-line {{
+    width: 0;
+    height: 0;
+}}
+
+QScrollBar::add-page, QScrollBar::sub-page {{
+    background: {base};
 }}
 
 QTreeWidget::item:selected,

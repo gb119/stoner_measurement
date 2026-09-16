@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QMenu,
     QPushButton,
+    QSplitter,
     QStyle,
     QTableWidget,
     QTableWidgetItem,
@@ -735,10 +736,20 @@ class PlotWidget(QWidget):
         if self._show_axis_controls:
             self._setup_axis_config_controls(layout)
 
+        self._trace_table_resized = False
         if self._show_trace_table:
-            self._setup_trace_table(layout)
-
-        self._setup_pg_widget(layout)
+            self._plot_splitter = QSplitter(Qt.Orientation.Vertical, self)
+            self._plot_splitter.setChildrenCollapsible(False)
+            self._plot_splitter.setHandleWidth(7)
+            self._setup_trace_table(self._plot_splitter)
+            self._setup_pg_widget(self._plot_splitter)
+            self._plot_splitter.setStretchFactor(0, 0)
+            self._plot_splitter.setStretchFactor(1, 1)
+            self._plot_splitter.splitterMoved.connect(self._on_plot_splitter_moved)
+            self._plot_splitter.handle(1).setToolTip("Drag to resize the legend and plot")
+            layout.addWidget(self._plot_splitter)
+        else:
+            self._setup_pg_widget(layout)
         self._refresh_trace_and_axis_controls()
         self.setLayout(layout)
 
@@ -796,7 +807,7 @@ class PlotWidget(QWidget):
         for view_box in self._pair_view_boxes.values():
             view_box.enableAutoRange(enable=False)
 
-    def _setup_trace_table(self, layout: QVBoxLayout) -> None:
+    def _setup_trace_table(self, layout: QVBoxLayout | QSplitter) -> None:
         """Create and configure the trace table widget and add to layout."""
         self._trace_table = QTableWidget(self)
         self._trace_table.setColumnCount(9)
@@ -818,7 +829,7 @@ class PlotWidget(QWidget):
         self._trace_table.setColumnWidth(8, _AXIS_COLUMN_WIDTH)
         layout.addWidget(self._trace_table)
 
-    def _setup_pg_widget(self, layout: QVBoxLayout) -> None:
+    def _setup_pg_widget(self, layout: QVBoxLayout | QSplitter) -> None:
         """Create the pyqtgraph PlotWidget, register default axes, and add to layout."""
         axis_items = {side: MappedAxisItem(side) for side in ("left", "right", "top", "bottom")}
         self._pg_widget = pg.PlotWidget(viewBox=_CoupledViewBox(self), axisItems=axis_items)
@@ -1392,7 +1403,7 @@ class PlotWidget(QWidget):
         self._trace_table.setCellWidget(row, 8, y_axis_selector)
 
     def _update_trace_table_height(self) -> None:
-        """Limit visible trace rows to three before scrolling."""
+        """Start with up to three rows, preserving a manually resized legend."""
         if not hasattr(self, "_trace_table"):
             return
 
@@ -1402,7 +1413,19 @@ class PlotWidget(QWidget):
             + (visible_rows * self._trace_table.verticalHeader().defaultSectionSize())
             + (2 * self._trace_table.frameWidth())
         )
-        self._trace_table.setFixedHeight(height)
+        self._trace_table.setMinimumHeight(
+            self._trace_table.horizontalHeader().height()
+            + self._trace_table.verticalHeader().defaultSectionSize()
+            + 2 * self._trace_table.frameWidth()
+        )
+        if not self._trace_table_resized:
+            height += self._trace_table.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+            available = max(self._plot_splitter.height(), self.height())
+            self._plot_splitter.setSizes([height, max(1, available - height)])
+
+    def _on_plot_splitter_moved(self, _position: int, _index: int) -> None:
+        """Keep the user's legend height when trace controls are refreshed."""
+        self._trace_table_resized = True
 
     def _set_trace_visibility(self, trace_name: str, visible: bool) -> None:
         """Show or hide a specific trace."""

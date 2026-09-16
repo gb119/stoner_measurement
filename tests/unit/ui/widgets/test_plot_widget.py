@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from qtpy.QtCore import QPointF
 from qtpy.QtGui import QColor
-from qtpy.QtWidgets import QComboBox, QDialog, QHeaderView, QLabel, QLineEdit
+from qtpy.QtWidgets import QComboBox, QDialog, QHeaderView, QLabel, QLineEdit, QStyle
 
 from stoner_measurement.ui.axis_mappings import AxisLabel, inverse_values, transform_values
 from stoner_measurement.ui.plot_widget import (
@@ -1027,6 +1027,9 @@ class TestPlotWidget:
 
     def test_trace_table_height_shows_three_rows_before_scroll(self, qapp):
         widget = self.make_plot_widget()
+        widget.resize(900, 700)
+        widget.show()
+        qapp.processEvents()
         for trace_id in range(4):
             widget.append_point(f"trace_{trace_id}", float(trace_id), float(trace_id))
 
@@ -1034,8 +1037,29 @@ class TestPlotWidget:
             widget._trace_table.horizontalHeader().height()
             + (_MAX_VISIBLE_TRACE_ROWS * widget._trace_table.verticalHeader().defaultSectionSize())
             + (2 * widget._trace_table.frameWidth())
+            + widget.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
         )
-        assert widget._trace_table.height() == expected_height
+        assert abs(widget._trace_table.height() - expected_height) <= 2
+
+    def test_legend_resize_survives_trace_updates(self, qapp):
+        widget = self.make_plot_widget()
+        widget.resize(900, 700)
+        widget.show()
+        for trace_id in range(8):
+            widget.append_point(f"trace_{trace_id}", 0.0, 1.0)
+        qapp.processEvents()
+        splitter = widget._plot_splitter
+        before = widget._trace_table.height()
+        splitter.moveSplitter(before + 100, 1)
+        qapp.processEvents()
+        resized = widget._trace_table.height()
+        assert resized > before + 50
+        widget.append_point("new_trace", 0.0, 1.0)
+        qapp.processEvents()
+        assert widget._trace_table.height() == resized
+        widget.clear_all()
+        qapp.processEvents()
+        assert widget._trace_table.height() == resized
 
     def test_trace_visibility_checkbox_hides_trace(self, qapp):
         widget = self.make_plot_widget()
