@@ -38,6 +38,26 @@ continue without rediscovering the same coverage map.
 
 ## Current Baseline
 
+### 2026-09-16: Keithley DC point scan and set commands
+
+- Follow-up: added `tests/unit/plugins/state/test_point_voltmeter.py` covering
+  independent controls and persistence in scan/set, capability changes, legacy
+  182 defaults, unsupported operations and runtime expressions. Updated the
+  point-scan meter doubles to report real driver capabilities. Related point,
+  set and trace tests: 125 passed, exit code 0; Ruff passed. No tests moved.
+
+- Added focused modules `tests/unit/plugins/state/test_k6221_point_scan.py` and
+  `tests/unit/plugins/command/test_keithley_set.py`. No legacy tests moved.
+- Coverage includes independent optional meters, source-only schema, held DC
+  behavior, resource ownership and failure cleanup, JSON/UI, expressions and
+  generated sequence lifecycle. Pulsed-current plugins and standalone 6221
+  trigger output are explicitly deferred.
+- Related regression run: 168 passed with exit code 0, covering both new test
+  modules, existing 2400 point/trace tests, 6221 trace/secondary tests and
+  Reconfigure tests. Ruff passed for the new modules and package exports.
+  New entry points were loaded from installed metadata. No real-instrument
+  validation was performed.
+
 ### 2026-09-14: Reconfigure and shared lifecycle contract
 
 - Added `tests/unit/plugins/command/test_reconfigure_command.py` with 22 cases

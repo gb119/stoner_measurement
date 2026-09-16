@@ -27,6 +27,10 @@ from stoner_measurement.plugins.command.daqmx_set import DaqmxSetCommand
 from stoner_measurement.plugins.command.details import DetailsCommand
 from stoner_measurement.plugins.command.edit_function_scan import EditFunctionScanCommand
 from stoner_measurement.plugins.command.if_command import IfCommand
+from stoner_measurement.plugins.command.keithley_set import (
+    Keithley2400SetCommand,
+    Keithley6221SetCommand,
+)
 from stoner_measurement.plugins.command.loop_control import BreakIfCommand, ContinueIfCommand
 from stoner_measurement.plugins.command.make_safe import MakeSafeCommand
 from stoner_measurement.plugins.command.network_analyser_set import (
@@ -62,6 +66,8 @@ from stoner_measurement.plugins.command.status import StatusCommand
 from stoner_measurement.plugins.command.wait import WaitCommand
 
 __all__ = [
+    "Keithley2400SetCommand",
+    "Keithley6221SetCommand",
     "AddPlotMarkerCommand",
     "AlertCommand",
     "BreakIfCommand",

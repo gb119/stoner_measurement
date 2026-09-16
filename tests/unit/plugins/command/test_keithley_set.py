@@ -1,0 +1,75 @@
+"""Set command persistence, expression, output and sequence lifecycle contracts."""
+
+import json
+from unittest.mock import MagicMock
+
+import pytest
+
+from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.command.keithley_set import (
+    Keithley2400SetCommand,
+    Keithley6221SetCommand,
+)
+
+
+@pytest.mark.parametrize("cls", [Keithley2400SetCommand, Keithley6221SetCommand])
+def test_command_roundtrip_and_settings(qapp, managed_qt_widget, cls):
+    command = cls()
+    command._value = "bias * 2"
+    command._point_plugin._resource = "GPIB0::19::INSTR"
+    restored = BasePlugin.from_json(json.loads(json.dumps(command.to_json())))
+    assert restored.to_json() == command.to_json()
+    assert restored.has_lifecycle and not restored.is_loop_container
+    managed_qt_widget(restored.config_widget())
+
+
+@pytest.mark.parametrize("cls", [Keithley2400SetCommand, Keithley6221SetCommand])
+def test_generated_sequence_keeps_output_until_cleanup(engine, cls):
+    command = cls()
+    command.sequence_engine = engine
+    command._value = "bias * 2"
+    command.engine_namespace["bias"] = 0.001
+    point = command._point_plugin
+    calls = []
+    point.connect = lambda: calls.append("connect")
+    point.configure = lambda: calls.append("configure")
+    point.set_state = lambda value: calls.append(value)
+    point.disconnect = lambda: calls.append("disconnect")
+    code = engine.generate_sequence_code([command, command], {})
+    namespace = dict(engine.namespace)
+    namespace[command.instance_name] = command
+    exec(code, namespace)
+    assert calls == ["connect", "configure", 0.002, 0.002, "disconnect"]
+
+
+def test_6221_command_optional_outputs_follow_renaming():
+    command = Keithley6221SetCommand()
+    command.instance_name = "bias"
+    point = command._point_plugin
+    point._target_value = 0.001
+    assert command.reported_values() == {"bias.source_value": "bias._point_plugin.get_state()"}
+    point._secondary_enabled = True
+    point._readings = {"secondary_voltage": 0.01, "secondary_resistance": 10.0}
+    result = {key: eval(expr, {"bias": command}) for key, expr in command.reported_values().items()}
+    assert result == {"bias.source_value": 0.001, "bias.secondary_voltage": 0.01, "bias.secondary_resistance": 10}
+    assert result.keys() == command.reported_value_units().keys()
+
+
+def test_command_failure_still_gets_sequence_cleanup(engine):
+    command = Keithley6221SetCommand()
+    command.sequence_engine = engine
+    point = command._point_plugin
+    point.connect = MagicMock()
+    point.configure = MagicMock()
+    point.set_state = MagicMock(side_effect=RuntimeError("acquisition failed"))
+    point.disconnect = MagicMock()
+    code = engine.generate_sequence_code([command], {})
+    namespace = dict(engine.namespace)
+    namespace[command.instance_name] = command
+    with pytest.raises(RuntimeError, match="acquisition failed"):
+        exec(code, namespace)
+    point.disconnect.assert_called_once()
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "--pdb"]))

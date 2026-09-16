@@ -9,6 +9,12 @@ items:
     label: 2400 IV Trace
   - plugin: k2400_point_scan
     label: 2400 Point by Point Scan
+  - plugin: k6221_point_scan
+    label: 6221/2182 Point by Point Scan
+  - plugin: k2400_set
+    label: Set 2400
+  - plugin: k6221_set
+    label: Set 6221/2182
 - group: Plot
   items:
   - plugin: plot_clear

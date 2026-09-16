@@ -128,6 +128,13 @@ global `codacy` command exists.
 
 ## Boundaries For Agents
 
+- Keithley DC set commands opt into instrument lifecycle despite being leaf
+  commands: retain source output between executions and disable it during
+  sequence cleanup. The 6221 point scan must hold DC throughout child steps;
+  do not substitute a hardware LIST sweep merely to emit a trigger pulse.
+  Pulsed-current plugins are deferred; see
+  `notes/2026-09-16-keithley-point-commands.md`.
+
 - Plugin lifecycle contract: repeated `connect()` calls must release the
   instance's existing resources before opening replacements. `BasePlugin`
   tracks connection attempts and calls `disconnect()` before reconnecting,

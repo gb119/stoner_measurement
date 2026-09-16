@@ -8,6 +8,7 @@ Stoner Measurement
    installation
    usage
    simulated_instruments
+   keithley_point_commands
    xray_diffractometer
    round_dial_widget
    plugin_tab_ordering
