@@ -22,6 +22,8 @@ measurement actions — such as setting fields, changing temperature, waiting fo
 stability, collecting readings, monitoring values, and plotting data live —
 without needing to write code for every measurement.
 
+![Screenshot](./screenshot.png)
+
 You create a measurement sequence from a set of sequence plugins. Plugins support,
 amongst other things:
 
