@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.resources
 import json
 import logging
 from dataclasses import dataclass
@@ -11,16 +12,20 @@ from typing import Any
 from uuid import uuid4
 
 from qtpy.QtCore import QSettings, QSize, Qt
-from qtpy.QtGui import QAction, QIcon, QKeySequence
+from qtpy.QtGui import QAction, QIcon, QKeySequence, QPixmap
 from qtpy.QtWidgets import (
     QApplication,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
     QStatusBar,
     QStyle,
     QToolBar,
+    QVBoxLayout,
 )
 
 from stoner_measurement.app_config import (
@@ -2038,14 +2043,63 @@ class MeasurementApp(QMainWindow):
 
     def _on_about(self) -> None:
         """Display the About dialogue."""
-        QMessageBox.about(
-            self,
-            "About Stoner Measurement",
-            "<b>Stoner Measurement</b><br/>"
-            "A laboratory measurement application for communicating with "
-            "scientific instruments via USB, Serial, GPIB and Ethernet.<br/><br/>"
-            "© University of Leeds",
-        )
+        image = importlib.resources.files("stoner_measurement.ui").joinpath("about.png")
+        with importlib.resources.as_file(image) as image_path:
+            pixmap = QPixmap(str(image_path))
+
+            dialog = QDialog(self)
+            dialog.setWindowTitle("About Stoner Measurement")
+            layout = QVBoxLayout(dialog)
+
+            screen = dialog.screen()
+            available_geometry = screen.availableGeometry()
+            available_width = round(available_geometry.width() * 0.9)
+            image_aspect_ratio = pixmap.width() / pixmap.height()
+            height_limited_width = round(
+                (available_geometry.height() * 0.9 - 150) * image_aspect_ratio
+            )
+            six_inch_width = round(
+                pixmap.width() * screen.devicePixelRatio() * (6 / 4.75)
+            )
+            image_width = min(
+                six_inch_width,
+                available_width,
+                height_limited_width,
+            )
+
+            image_label = QLabel(dialog)
+            scaled_pixmap = pixmap.scaledToWidth(
+                image_width, Qt.TransformationMode.SmoothTransformation
+            )
+            # The requested dimensions are already device-independent Qt units.
+            # Normalising the DPR prevents an 800-pixel pixmap being presented as
+            # only 400 logical pixels on a display with a scale factor of two.
+            scaled_pixmap.setDevicePixelRatio(1.0)
+            image_label.setPixmap(scaled_pixmap)
+            image_label.setFixedSize(scaled_pixmap.size())
+            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(image_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+            information = QLabel(
+                "<b>Stoner Measurement</b><br/>"
+                "A laboratory measurement application for communicating with "
+                "scientific instruments via USB, Serial, GPIB and Ethernet.<br/><br/>"
+                '<a href="https://github.com/gb119/stoner_measurement">'
+                "View Stoner Measurement on GitHub</a><br/><br/>"
+                "© University of Leeds",
+                dialog,
+            )
+            information.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            information.setOpenExternalLinks(True)
+            information.setWordWrap(True)
+            information.setFixedWidth(image_width)
+            layout.addWidget(information, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok, parent=dialog)
+            buttons.accepted.connect(dialog.accept)
+            layout.addWidget(buttons)
+
+            dialog.exec()
 
     def _on_settings(self) -> None:
         """Open the Preferences dialogue."""
