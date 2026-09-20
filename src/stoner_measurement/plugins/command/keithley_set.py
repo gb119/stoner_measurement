@@ -17,7 +17,7 @@ class _KeithleySetCommand(CommandPlugin):
     expressions. There is no scan generator or child-step loop.
     """
 
-    point_class = None
+    point_class: type[Keithley6221PointScanPlugin | Keithley2400PointScanPlugin]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -49,7 +49,7 @@ class _KeithleySetCommand(CommandPlugin):
         point = self._point_plugin
         prefix = point.instance_name + "."
         return {
-            self.instance_name + "." + key[len(prefix):]: expression.replace(
+            self.instance_name + "." + key[len(prefix) :]: expression.replace(
                 prefix, self.instance_name + "._point_plugin.", 1
             )
             for key, expression in point.reported_values().items()
@@ -59,7 +59,7 @@ class _KeithleySetCommand(CommandPlugin):
     def reported_value_units(self):
         prefix = self._point_plugin.instance_name + "."
         return {
-            self.instance_name + "." + key[len(prefix):]: unit
+            self.instance_name + "." + key[len(prefix) :]: unit
             for key, unit in self._point_plugin.reported_value_units().items()
             if key.startswith(prefix)
         }
@@ -83,7 +83,9 @@ class _KeithleySetCommand(CommandPlugin):
         value.setObjectName("source_value")
         value.setMinimum(-1e12)
         value.setMaximum(1e12)
-        value.setToolTip("Source setpoint or runtime expression, in A for current or V for voltage.")
+        value.setToolTip(
+            "Source setpoint or runtime expression, in A for current or V for voltage."
+        )
         value.valueChanged.connect(lambda number: setattr(self, "_value", number))
         form.addRow("Source value (A or V)", value)
         layout.addLayout(form)

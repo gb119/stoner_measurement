@@ -11,6 +11,7 @@ from stoner_measurement.ui.widgets import (
     DaqmxChannelFamily,
     DaqmxInputTrigger,
     DaqmxInputTriggerMode,
+    DaqmxOutputTrigger,
     DaqmxSelectionMode,
     DaqmxTaskDefinition,
     DaqmxTaskKind,
@@ -28,49 +29,7 @@ def validate_task_definition(
 ) -> None:
     """Validate that *definition* selects exactly one usable task source."""
     if definition.selection_mode is DaqmxSelectionMode.PHYSICAL_CHANNELS:
-        if not definition.device:
-            raise ValueError("Select a DAQmx device.")
-        if not definition.physical_channels:
-            raise ValueError("Select at least one physical channel.")
-        devices = {channel.split("/", 1)[0] for channel in definition.physical_channels}
-        if devices != {definition.device}:
-            raise ValueError("All physical channels must belong to the selected device.")
-        families = {
-            _physical_channel_family(channel, definition.task_kind)
-            for channel in definition.physical_channels
-        }
-        if len(families) != 1:
-            raise ValueError("A DAQmx task cannot mix physical channel types.")
-        family = next(iter(families))
-        expected = {DaqmxTaskKind.ACQUISITION: {"ai", "di"}, DaqmxTaskKind.OUTPUT: {"ao", "do"}}
-        if family not in expected[definition.task_kind]:
-            if family in {"ci", "co"}:
-                raise ValueError(
-                    "Counter channels need measurement-specific settings that are not yet "
-                    "available in the DAQmx trace plugin."
-                )
-            raise ValueError(
-                f"{family.upper()} channels are not valid for a {definition.task_kind.value} task."
-            )
-        actual_family = (
-            DaqmxChannelFamily.ANALOG if family in {"ai", "ao"} else DaqmxChannelFamily.DIGITAL
-        )
-        if channel_family is not None and actual_family is not channel_family:
-            raise ValueError(
-                f"Select {channel_family.value} channels for this DAQmx plugin."
-            )
-        if definition.custom_scale and family not in {"ai", "ao"}:
-            raise ValueError("Custom scales can only be used with analog channels.")
-        if family == "ai":
-            ranges = {item.channel: item for item in definition.input_ranges}
-            for channel in definition.physical_channels:
-                input_range = ranges.get(channel)
-                if input_range is None:
-                    continue
-                if not np.isfinite(input_range.range):
-                    raise ValueError(f"The input range for {channel} must be finite.")
-                if input_range.range <= 0:
-                    raise ValueError(f"The input range for {channel} must be positive.")
+        _validate_physical_channels(definition, channel_family)
         return
     if definition.selection_mode is DaqmxSelectionMode.GLOBAL_CHANNELS:
         if not definition.global_channels:
@@ -78,6 +37,53 @@ def validate_task_definition(
         return
     if definition.selection_mode is DaqmxSelectionMode.SAVED_TASK and not definition.saved_task:
         raise ValueError("Select a MAX saved task.")
+
+
+def _validate_physical_channels(
+    definition: DaqmxTaskDefinition, channel_family: DaqmxChannelFamily | None
+) -> None:
+    """Validate physical channel direction, family, and per-input ranges."""
+    if not definition.device:
+        raise ValueError("Select a DAQmx device.")
+    if not definition.physical_channels:
+        raise ValueError("Select at least one physical channel.")
+    devices = {channel.split("/", 1)[0] for channel in definition.physical_channels}
+    if devices != {definition.device}:
+        raise ValueError("All physical channels must belong to the selected device.")
+    families = {
+        _physical_channel_family(channel, definition.task_kind)
+        for channel in definition.physical_channels
+    }
+    if len(families) != 1:
+        raise ValueError("A DAQmx task cannot mix physical channel types.")
+    family = next(iter(families))
+    expected = {DaqmxTaskKind.ACQUISITION: {"ai", "di"}, DaqmxTaskKind.OUTPUT: {"ao", "do"}}
+    if family not in expected[definition.task_kind]:
+        if family in {"ci", "co"}:
+            raise ValueError(
+                "Counter channels need measurement-specific settings that are not yet "
+                "available in the DAQmx trace plugin."
+            )
+        raise ValueError(
+            f"{family.upper()} channels are not valid for a {definition.task_kind.value} task."
+        )
+    actual_family = (
+        DaqmxChannelFamily.ANALOG if family in {"ai", "ao"} else DaqmxChannelFamily.DIGITAL
+    )
+    if channel_family is not None and actual_family is not channel_family:
+        raise ValueError(f"Select {channel_family.value} channels for this DAQmx plugin.")
+    if definition.custom_scale and family not in {"ai", "ao"}:
+        raise ValueError("Custom scales can only be used with analog channels.")
+    if family == "ai":
+        ranges = {item.channel: item for item in definition.input_ranges}
+        for channel in definition.physical_channels:
+            input_range = ranges.get(channel)
+            if input_range is None:
+                continue
+            if not np.isfinite(input_range.range):
+                raise ValueError(f"The input range for {channel} must be finite.")
+            if input_range.range <= 0:
+                raise ValueError(f"The input range for {channel} must be positive.")
 
 
 def _physical_channel_family(channel: str, task_kind: DaqmxTaskKind | None = None) -> str:
@@ -91,6 +97,38 @@ def _physical_channel_family(channel: str, task_kind: DaqmxTaskKind | None = Non
     if "/port" in channel.lower() or "/line" in channel.lower():
         return "do" if task_kind is DaqmxTaskKind.OUTPUT else "di"
     raise ValueError(f"Cannot determine the type of physical channel {channel!r}.")
+
+
+def validate_input_trigger(trigger: DaqmxInputTrigger) -> None:
+    """Validate the terminal and level of an enabled input trigger."""
+    if trigger.mode is not DaqmxInputTriggerMode.IMMEDIATE:
+        if not trigger.terminal:
+            raise ValueError("Select an input trigger terminal.")
+        if trigger.mode is DaqmxInputTriggerMode.ANALOG and not np.isfinite(trigger.analog_level):
+            raise ValueError("The analogue input trigger level must be finite.")
+
+
+def validate_output_trigger(trigger: DaqmxOutputTrigger) -> None:
+    """Validate the digital output line and finite pulse timing."""
+    if trigger.enabled:
+        if not trigger.line:
+            raise ValueError("Select a digital output trigger line.")
+        if "/line" not in trigger.line.casefold():
+            raise ValueError("The output trigger must select one digital output line.")
+        timing_values = (
+            trigger.phase_angle,
+            trigger.delay,
+            trigger.high_time,
+            trigger.low_time,
+        )
+        if not all(np.isfinite(value) for value in timing_values):
+            raise ValueError("Output trigger timing values must all be finite.")
+        if not 0.0 <= trigger.phase_angle <= 360.0:
+            raise ValueError("Output trigger phase must be between 0 and 360 degrees.")
+        if trigger.delay < 0:
+            raise ValueError("Output trigger delay cannot be negative.")
+        if trigger.high_time <= 0 or trigger.low_time <= 0:
+            raise ValueError("Output trigger high and low times must be positive.")
 
 
 class NidaqmxRuntime:
@@ -336,4 +374,10 @@ class NidaqmxRuntime:
         task.close()
 
 
-__all__ = ["DaqmxRuntimeError", "NidaqmxRuntime", "validate_task_definition"]
+__all__ = [
+    "DaqmxRuntimeError",
+    "NidaqmxRuntime",
+    "validate_task_definition",
+    "validate_input_trigger",
+    "validate_output_trigger",
+]

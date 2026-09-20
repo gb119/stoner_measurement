@@ -1667,6 +1667,8 @@ class SequenceEngine(QObject):
     # Code generation
     # ------------------------------------------------------------------
 
+    # Keep overload bodies on separate lines for pycodestyle E704.
+    # fmt: off
     @overload
     def generate_sequence_code(
         self,
@@ -1674,7 +1676,8 @@ class SequenceEngine(QObject):
         plugins: dict[str, BasePlugin],
         *,
         return_line_map: Literal[False] = ...,
-    ) -> str: ...
+    ) -> str:
+        ...
 
     @overload
     def generate_sequence_code(
@@ -1683,8 +1686,10 @@ class SequenceEngine(QObject):
         plugins: dict[str, BasePlugin],
         *,
         return_line_map: Literal[True],
-    ) -> tuple[str, dict[int, BasePlugin]]: ...
+    ) -> tuple[str, dict[int, BasePlugin]]:
+        ...
 
+    # fmt: on
     def generate_sequence_code(
         self,
         steps: list,

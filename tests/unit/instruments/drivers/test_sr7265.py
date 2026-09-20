@@ -63,7 +63,8 @@ class _FakeEchoTransport(EchoSerialTransport):
     """Echo transport double that exposes complete post-echo response frames."""
 
     def __init__(self, responses: list[bytes]) -> None:
-        BaseTransport.__init__(self, timeout=0.1)
+        # Deliberately bypass serial setup in this hardware-free transport double.
+        BaseTransport.__init__(self, timeout=0.1)  # pylint: disable=non-parent-init-called
         self.port = "COM1"
         self.responses = deque(responses)
         self.write_log: list[bytes] = []

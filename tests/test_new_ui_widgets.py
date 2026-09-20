@@ -312,7 +312,8 @@ class TestConsoleWidget:
                 )
 
         console_new = cast(Any, _IPythonConsoleWidget.__new__)
-        console = console_new(_IPythonConsoleWidget)
+        # Qt's extension __new__ accepts the widget class; Pylint misinfers its binding.
+        console = console_new(_IPythonConsoleWidget)  # pylint: disable=no-value-for-parameter
         console._kernel_active = True
         console._kernel_client = _DeletedClient()
         console._kernel_manager = _DeletedManager()
@@ -505,6 +506,7 @@ class TestMeasurementApp:
 
     def test_has_toolbar(self, qapp):
         from qtpy.QtWidgets import QToolBar
+
         app = MeasurementApp()
         toolbars = app.findChildren(QToolBar)
         assert len(toolbars) >= 1
@@ -635,7 +637,9 @@ class TestMeasurementApp:
         finally:
             app._engine.shutdown()
 
-    def test_engine_indicator_connect_action_calls_connect_preferred_driver(self, qapp, monkeypatch):
+    def test_engine_indicator_connect_action_calls_connect_preferred_driver(
+        self, qapp, monkeypatch
+    ):
         app = MeasurementApp()
         calls: list[str] = []
         try:
@@ -656,7 +660,9 @@ class TestMeasurementApp:
         finally:
             app._engine.shutdown()
 
-    def test_engine_indicator_disconnect_action_calls_disconnect_instrument(self, qapp, monkeypatch):
+    def test_engine_indicator_disconnect_action_calls_disconnect_instrument(
+        self, qapp, monkeypatch
+    ):
         app = MeasurementApp()
         calls: list[str] = []
         try:
@@ -681,6 +687,7 @@ class TestMeasurementApp:
         app = MeasurementApp()
         warnings: list[tuple[str, str]] = []
         try:
+
             def _raise_error() -> None:
                 raise ConnectionError("not responding")
 
@@ -714,7 +721,10 @@ class TestMeasurementApp:
         app = MeasurementApp()
         try:
             assert app.statusBar().currentMessage() == "Ready"
-            assert f"background-color: {_STATUS_BACKGROUND_DEFAULT_COLOR};" in app.statusBar().styleSheet()
+            assert (
+                f"background-color: {_STATUS_BACKGROUND_DEFAULT_COLOR};"
+                in app.statusBar().styleSheet()
+            )
         finally:
             app._engine.shutdown()
 
@@ -740,6 +750,7 @@ class TestMeasurementApp:
     def test_central_widget_has_tabs(self, qapp):
         app = MeasurementApp()
         from qtpy.QtWidgets import QTabWidget
+
         tabs = app._main_window.tabs
         assert isinstance(tabs, QTabWidget)
         assert tabs.count() == 2
@@ -860,7 +871,9 @@ class TestMeasurementApp:
         assert '"amplitude": "x"' in code
         app._engine.shutdown()
 
-    def test_run_from_measurement_shows_dialog_and_skips_invalid_generated_code(self, qapp, monkeypatch):
+    def test_run_from_measurement_shows_dialog_and_skips_invalid_generated_code(
+        self, qapp, monkeypatch
+    ):
         app = MeasurementApp()
         warnings: list[tuple[str, str]] = []
         run_calls: list[tuple[str, bool, object]] = []
@@ -877,7 +890,9 @@ class TestMeasurementApp:
         monkeypatch.setattr(
             app._engine,
             "run_script",
-            lambda code, customised=True, line_map=None: run_calls.append((code, customised, line_map)),
+            lambda code, customised=True, line_map=None: run_calls.append(
+                (code, customised, line_map)
+            ),
         )
 
         app._main_window.tabs.setCurrentIndex(app._TAB_MEASUREMENT)
@@ -961,7 +976,9 @@ class TestMeasurementApp:
 
         cfg_root = tmp_path
         (cfg_root / "sequences").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(Path("tests/data/test-sequence.json"), cfg_root / "sequences" / "test-sequence.json")
+        shutil.copyfile(
+            Path("tests/data/test-sequence.json"), cfg_root / "sequences" / "test-sequence.json"
+        )
 
         monkeypatch.setattr("stoner_measurement.resources.user_config_root", lambda: cfg_root)
         app = MeasurementApp()

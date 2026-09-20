@@ -3,9 +3,14 @@ engines:
   bandit:
     exclude_paths:
       - tests/
+  # Keep test doubles/scenarios out of Prospector, including McCabe complexity.
   prospector:
     exclude_paths:
-      - tests/
+      - "tests/**"
+  # Codacy computes its complexity metric separately from Prospector issues.
+  metric:
+    exclude_paths:
+      - "tests/**"
   pylint:
     exclude_paths:
       - tests/

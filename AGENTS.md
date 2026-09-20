@@ -99,7 +99,7 @@ and render labels, button text, and editor content as square placeholder glyphs.
   `FontAwareTabWidget`; standalone tab bars should be `FontAwareTabBar`. These
   classes reserve enough space for the selected bold label and prevent tab
   text from being clipped when selection changes.
-- Use `SISpinBox` for physical quantities and rates that support SI units or
+- Use `SISpinBox` for physical quantities and rates that support International System of Units (SI) units or
   prefixes rather than a raw `QDoubleSpinBox`.
 - Keep configuration-tab titles concise and role-based, such as `General`,
   `Scan`, `Data`, `Settings`, and `About`. Do not prefix them with the
@@ -126,14 +126,20 @@ conda run -n stoner_measurement codacy
 Use it for repository issue pulls and Codacy checks rather than assuming a
 global `codacy` command exists.
 
+The Codacy configuration uses recursive `tests/**` exclusions for Prospector
+(including its McCabe findings) and the separate `metric` complexity engine.
+Keep production complexity checks active; test-only complexity should not drive
+scenario or fake-driver rewrites. The refreshed inventory and dispositions live
+in `codacy-reports/`; local fixes need remote reanalysis before findings clear.
+
 ## Boundaries For Agents
 
-- Keithley DC set commands opt into instrument lifecycle despite being leaf
+- Keithley direct-current (DC) set commands opt into instrument lifecycle despite being leaf
   commands: retain source output between executions and disable it during
   sequence cleanup. The 6221 point scan must hold DC throughout child steps;
-  do not substitute a hardware LIST sweep merely to emit a trigger pulse.
+  do not substitute a hardware list-mode (`LIST`) sweep merely to emit a trigger pulse.
   Pulsed-current plugins are deferred; see
-  `notes/2026-09-16-keithley-point-commands.md`.
+  [Keithley point-command design](notes/2026-09-16-keithley-point-commands.md).
 
 - Plugin lifecycle contract: repeated `connect()` calls must release the
   instance's existing resources before opening replacements. `BasePlugin`
@@ -153,7 +159,7 @@ global `codacy` command exists.
 - If a command fails outside the environment, retry it through
   `conda run -n stoner_measurement`.
 - If `CONDA_EXE` is set, use it. Otherwise, if `conda` is not available on
-  `PATH`, retry with `C:\ProgramData\anaconda3\Scripts\conda.exe` or
+  the executable search path (`PATH`), retry with `C:\ProgramData\anaconda3\Scripts\conda.exe` or
   `C:\ProgramData\Miniforge3\Scripts\conda.exe`, depending on which exists.
 - Never use `C:\ProgramData\Miniconda3\Scripts\conda.exe` for this repository.
 - Before adding, moving, or rewriting tests, read

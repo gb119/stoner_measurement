@@ -113,8 +113,15 @@ class Keithley6221PointScanPlugin(StateScanPlugin):
     """
 
     _settings = (
-        "resource", "compliance", "source_delay", "primary_enabled", "primary_resource",
-        "primary_passthrough", "secondary_enabled", "secondary_resource", "secondary_driver",
+        "resource",
+        "compliance",
+        "source_delay",
+        "primary_enabled",
+        "primary_resource",
+        "primary_passthrough",
+        "secondary_enabled",
+        "secondary_resource",
+        "secondary_driver",
     ) + tuple(f"{role}_{key}" for role in ("primary", "secondary") for key in METER_DEFAULTS)
 
     def __init__(self, parent=None):
@@ -287,7 +294,11 @@ class Keithley6221PointScanPlugin(StateScanPlugin):
         # Older point-scan files have no digits/filter settings. Use the
         # selected driver's defaults, particularly for the lower-resolution 182.
         for role in ("primary", "secondary"):
-            driver = Keithley2182A if role == "primary" else NANOVOLTMETER_DRIVERS[self._secondary_driver]
+            driver = (
+                Keithley2182A
+                if role == "primary"
+                else NANOVOLTMETER_DRIVERS[self._secondary_driver]
+            )
             for key in ("digits", "filter_type"):
                 if f"{role}_{key}" not in data:
                     setattr(self, f"_{role}_{key}", getattr(driver.CAPABILITIES, f"default_{key}"))
@@ -321,14 +332,18 @@ class Keithley6221PointScanPlugin(StateScanPlugin):
         layout = QVBoxLayout(group)
         form = QFormLayout()
         layout.addLayout(form)
-        driver_class = Keithley2182A if role == "primary" else NANOVOLTMETER_DRIVERS[self._secondary_driver]
+        driver_class = (
+            Keithley2182A if role == "primary" else NANOVOLTMETER_DRIVERS[self._secondary_driver]
+        )
         settings = PointVoltmeterSettings(self, role, driver_class.CAPABILITIES)
         resource = self._resource_control(form, "GPIB resource", f"{role}_resource")
         if role == "primary":
             passthrough = QCheckBox("Connect through 6221 serial port")
             passthrough.setChecked(self._primary_passthrough)
             resource.setEnabled(not self._primary_passthrough)
-            passthrough.toggled.connect(lambda enabled: setattr(self, "_primary_passthrough", enabled))
+            passthrough.toggled.connect(
+                lambda enabled: setattr(self, "_primary_passthrough", enabled)
+            )
             passthrough.toggled.connect(lambda enabled: resource.setEnabled(not enabled))
             form.addRow(passthrough)
         else:
@@ -336,9 +351,12 @@ class Keithley6221PointScanPlugin(StateScanPlugin):
             for key, cls in NANOVOLTMETER_DRIVERS.items():
                 driver.addItem(cls.display_name(), key)
             driver.setCurrentIndex(driver.findData(self._secondary_driver))
+
             def change_driver(index):
                 self._secondary_driver = driver.itemData(index)
-                settings.apply_capabilities(NANOVOLTMETER_DRIVERS[self._secondary_driver].CAPABILITIES)
+                settings.apply_capabilities(
+                    NANOVOLTMETER_DRIVERS[self._secondary_driver].CAPABILITIES
+                )
 
             driver.setObjectName("secondary_driver")
             driver.currentIndexChanged.connect(change_driver)

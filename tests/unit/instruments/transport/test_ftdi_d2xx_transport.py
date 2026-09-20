@@ -70,9 +70,7 @@ class _FakeD2xx:
         return self._status("read")
 
 
-def _transport(
-    library: _FakeD2xx, device: int | str = 0, **kwargs
-) -> FtdiD2xxTransport:
+def _transport(library: _FakeD2xx, device: int | str = 0, **kwargs) -> FtdiD2xxTransport:
     transport = FtdiD2xxTransport(device, **kwargs)
     transport._load_library = lambda: library  # type: ignore[method-assign]  # noqa: SLF001
     return transport
@@ -146,7 +144,7 @@ def test_write_sends_complete_payload_and_honours_slow_delay(monkeypatch):
     sleeps = []
     monkeypatch.setattr(
         "stoner_measurement.instruments.transport.ftdi_d2xx_transport.time.sleep",
-        lambda delay: sleeps.append(delay),
+        sleeps.append,
     )
 
     assert transport.write(b"abc", slow=25) == 0

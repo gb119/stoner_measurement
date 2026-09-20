@@ -755,7 +755,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 for output in entry.outputs:
                     channel = output.offset_channel()
                     if channel is not None:
-                        settings["offsets"][channel.value] = sr830.get_output_offset(channel)
+                        # SR830 overrides the optional base method and returns the offset pair.
+                        settings["offsets"][channel.value] = sr830.get_output_offset(channel)  # pylint: disable=assignment-from-no-return
             return index, settings
         finally:
             try:

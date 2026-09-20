@@ -6,7 +6,9 @@ import argparse
 import ast
 import json
 import re
-import subprocess
+
+# Only invokes Git with an argument list, without a shell.
+import subprocess  # nosec B404
 import sys
 import tomllib
 from pathlib import Path
@@ -77,9 +79,13 @@ def main() -> int:
     """Print review evidence; return 1 for findings and 2 for invocation errors."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[4])
-    parser.add_argument("--plugin", action="append", help="Entry-point key; repeat to select several")
+    parser.add_argument(
+        "--plugin", action="append", help="Entry-point key; repeat to select several"
+    )
     parser.add_argument("--json", action="store_true", help="Emit structured review evidence")
-    parser.add_argument("--compare-ref", help="Compare selected modules' executable AST with a Git ref")
+    parser.add_argument(
+        "--compare-ref", help="Compare selected modules' executable AST with a Git ref"
+    )
     args = parser.parse_args()
     root = args.root.resolve()
     try:
@@ -99,9 +105,13 @@ def main() -> int:
             if args.compare_ref:
                 path = result["path"]
                 if path not in compared:
-                    old = subprocess.run(
-                        ["git", "show", f"{args.compare_ref}:{path}"], cwd=root,
-                        capture_output=True, check=False, encoding="utf-8",
+                    # Developer-selected Git object lookup; no shell or executable from input.
+                    old = subprocess.run(  # nosec B603
+                        ["git", "show", f"{args.compare_ref}:{path}"],
+                        cwd=root,
+                        capture_output=True,
+                        check=False,
+                        encoding="utf-8",
                     )
                     if old.returncode:
                         compared[path] = "Baseline unavailable: new file, invalid ref or Git error"
@@ -109,7 +119,8 @@ def main() -> int:
                         current = (root / path).read_text(encoding="utf-8-sig")
                         compared[path] = (
                             "Executable AST differs from baseline"
-                            if executable_ast(old.stdout) != executable_ast(current) else None
+                            if executable_ast(old.stdout) != executable_ast(current)
+                            else None
                         )
                 if compared[path]:
                     result["findings"].append(compared[path])
@@ -120,7 +131,9 @@ def main() -> int:
         print(json.dumps(results, indent=2))
     else:
         for row in results:
-            status = "; ".join(row["findings"]) or "No structural findings; semantic review required"
+            status = (
+                "; ".join(row["findings"]) or "No structural findings; semantic review required"
+            )
             custom = " [custom About]" if row.get("direct_custom_about") else ""
             print(f"{row['plugin']}{custom}: {status}")
         print(f"Inspected {len(results)} entry points without importing or executing plugin code.")

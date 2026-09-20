@@ -158,6 +158,7 @@ class TestStateSweepPlugin:
         from qtpy.QtWidgets import QCheckBox, QComboBox, QPushButton, QTableWidget
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
+
         engine = SequenceEngine()
         plugin = _TestSweepPlugin()
         counter = CounterPlugin()
@@ -169,9 +170,7 @@ class TestStateSweepPlugin:
         table = data_page.findChild(QTableWidget, "stateOutputSelectionTable")
         assert table is not None
         value_row = next(
-            row
-            for row in range(table.rowCount())
-            if table.item(row, 1).text() == "counter:Value"
+            row for row in range(table.rowCount()) if table.item(row, 1).text() == "counter:Value"
         )
         value_checkbox = table.cellWidget(value_row, 0)
         role_combo = table.cellWidget(value_row, 2)
@@ -469,7 +468,7 @@ class TestStateSweepPlugin:
 
     def test_iteration_pacing_sleeps_only_for_remaining_period(self, qapp, monkeypatch):
         plugin = _TestSweepPlugin()
-        plugin._engine = lambda: type("Engine", (), {"polling_rate_hz": 1.0})()
+        plugin._engine = type("Engine", (), {"polling_rate_hz": 1.0})
         generator = _FiniteSweepGenerator(state_sweep=plugin, parent=plugin)
         sleeps: list[float] = []
         monkeypatch.setattr("stoner_measurement.sweep.base.time.monotonic", lambda: 10.5)
@@ -481,7 +480,7 @@ class TestStateSweepPlugin:
 
     def test_iteration_pacing_does_not_sleep_after_period_elapsed(self, qapp, monkeypatch):
         plugin = _TestSweepPlugin()
-        plugin._engine = lambda: type("Engine", (), {"polling_rate_hz": 1.0})()
+        plugin._engine = type("Engine", (), {"polling_rate_hz": 1.0})
         generator = _FiniteSweepGenerator(state_sweep=plugin, parent=plugin)
         sleeps: list[float] = []
         monkeypatch.setattr("stoner_measurement.sweep.base.time.monotonic", lambda: 11.1)

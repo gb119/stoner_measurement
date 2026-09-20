@@ -16,12 +16,13 @@ from stoner_measurement.plugins.trace.daqmx import (
 )
 from stoner_measurement.plugins.trace.daqmx_runtime import (
     NidaqmxRuntime,
+    validate_input_trigger,
+    validate_output_trigger,
     validate_task_definition,
 )
 from stoner_measurement.ui.widgets import (
     DaqmxChannelFamily,
     DaqmxInputTrigger,
-    DaqmxInputTriggerMode,
     DaqmxOutputTrigger,
     DaqmxSelectionMode,
     DaqmxTaskDefinition,
@@ -202,32 +203,8 @@ class DaqmxPointScanPlugin(StateScanPlugin):
             raise ValueError("The acquisition sample rate must be positive.")
         if self._oversampling < 1:
             raise ValueError("Input oversampling must be at least one.")
-        if self._input_trigger.mode is not DaqmxInputTriggerMode.IMMEDIATE:
-            if not self._input_trigger.terminal:
-                raise ValueError("Select an input trigger terminal.")
-            if self._input_trigger.mode is DaqmxInputTriggerMode.ANALOG and not np.isfinite(
-                self._input_trigger.analog_level
-            ):
-                raise ValueError("The analogue input trigger level must be finite.")
-        if self._output_trigger.enabled:
-            if not self._output_trigger.line:
-                raise ValueError("Select a digital output trigger line.")
-            if "/line" not in self._output_trigger.line.casefold():
-                raise ValueError("The output trigger must select one digital output line.")
-            timing_values = (
-                self._output_trigger.phase_angle,
-                self._output_trigger.delay,
-                self._output_trigger.high_time,
-                self._output_trigger.low_time,
-            )
-            if not all(np.isfinite(value) for value in timing_values):
-                raise ValueError("Output trigger timing values must all be finite.")
-            if not 0.0 <= self._output_trigger.phase_angle <= 360.0:
-                raise ValueError("Output trigger phase must be between 0 and 360 degrees.")
-            if self._output_trigger.delay < 0:
-                raise ValueError("Output trigger delay cannot be negative.")
-            if self._output_trigger.high_time <= 0 or self._output_trigger.low_time <= 0:
-                raise ValueError("Output trigger high and low times must be positive.")
+        validate_input_trigger(self._input_trigger)
+        validate_output_trigger(self._output_trigger)
 
     def connect(self) -> None:
         """Create and verify all selected DAQmx tasks."""
@@ -240,14 +217,10 @@ class DaqmxPointScanPlugin(StateScanPlugin):
             self._validate_configuration()
             runtime = self._runtime_factory()
             input_task = runtime.create_task(self._acquisition_definition)
-            runtime.verify_task(
-                input_task, DaqmxTaskKind.ACQUISITION, DaqmxChannelFamily.ANALOG
-            )
+            runtime.verify_task(input_task, DaqmxTaskKind.ACQUISITION, DaqmxChannelFamily.ANALOG)
             if self._output_enabled:
                 output_task = runtime.create_task(self._output_definition)
-                runtime.verify_task(
-                    output_task, DaqmxTaskKind.OUTPUT, DaqmxChannelFamily.ANALOG
-                )
+                runtime.verify_task(output_task, DaqmxTaskKind.OUTPUT, DaqmxChannelFamily.ANALOG)
             if self._output_trigger.enabled:
                 trigger_output_task = runtime.create_digital_output_task(self._output_trigger.line)
                 runtime.verify_task(

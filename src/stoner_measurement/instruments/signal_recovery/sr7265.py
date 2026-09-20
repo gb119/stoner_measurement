@@ -253,7 +253,7 @@ class SR7265(LockInAmplifier):
         if expected is not None and (len(tokens) != expected or "" in tokens):
             raise ValueError(f"Malformed {expected}-value 7265 response: {response!r}")
         try:
-            return tuple(float(token) for token in tokens if token != "")
+            return tuple(float(token) for token in tokens if token)
         except ValueError as exc:
             raise ValueError(f"Malformed numeric 7265 response: {response!r}") from exc
 

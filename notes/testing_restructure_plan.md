@@ -1043,3 +1043,15 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - FTDI D2XX coverage uses a narrow fake native library to exercise index and
   serial opening, timeout configuration, I/O, short writes, partial reads,
   timeout, purge, cleanup, and status errors without a driver or device.
+
+
+## 2026-09-20 Codacy test policy
+
+- Exclude tests from Prospector and Codacy's separate complexity metric using
+  recursive `tests/**` globs. Production complexity remains checked.
+- No test files, scenarios or fake-driver classes were moved or split in this
+  cleanup. Retained test edits remove redundant lambdas and narrowly document
+  deliberate generated-code execution and analyzer false positives.
+- Final focused verification of the retained changes: 485 tests passed on
+  offscreen PyQt5; Ruff, targeted Pylint and Bandit checks passed.
+- See `notes/2026-09-20-codacy-cleanup.md` for the snapshot and validation scope.

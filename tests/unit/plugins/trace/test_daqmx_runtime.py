@@ -46,9 +46,7 @@ def _runtime() -> NidaqmxRuntime:
         Slope=SimpleNamespace(RISING="slope-rising", FALLING="slope-falling"),
         LineGrouping=SimpleNamespace(CHAN_PER_LINE="channel-per-line"),
         VoltageUnits=SimpleNamespace(FROM_CUSTOM_SCALE="custom-scale"),
-        TerminalConfiguration=SimpleNamespace(
-            RSE="rse", NRSE="nrse", DIFF="differential"
-        ),
+        TerminalConfiguration=SimpleNamespace(RSE="rse", NRSE="nrse", DIFF="differential"),
         TaskMode=SimpleNamespace(
             TASK_VERIFY="verify", TASK_UNRESERVE="unreserve", TASK_COMMIT="commit"
         ),
@@ -173,9 +171,7 @@ def test_task_definition_validation_accepts_supported_sources(definition):
 
 def test_analogue_plugin_validation_rejects_digital_physical_channels():
     with pytest.raises(ValueError, match="Select analog channels"):
-        validate_task_definition(
-            _definition(channels=("Dev1/di0",)), DaqmxChannelFamily.ANALOG
-        )
+        validate_task_definition(_definition(channels=("Dev1/di0",)), DaqmxChannelFamily.ANALOG)
 
 
 @pytest.mark.parametrize(
@@ -307,9 +303,7 @@ def test_create_task_adds_each_supported_physical_channel_family(
         (DaqmxTerminalConfiguration.DIFFERENTIAL, "differential"),
     ],
 )
-def test_analogue_input_terminal_configuration_maps_to_nidaqmx(
-    configuration, expected_constant
-):
+def test_analogue_input_terminal_configuration_maps_to_nidaqmx(configuration, expected_constant):
     runtime = _runtime()
     calls = []
     task = SimpleNamespace(
@@ -375,7 +369,7 @@ def test_verify_task_accepts_matching_channel_direction(kind, actual):
     calls = []
     task = SimpleNamespace(
         channels=SimpleNamespace(chan_type=SimpleNamespace(name=actual)),
-        control=lambda mode: calls.append(mode),
+        control=calls.append,
     )
 
     runtime.verify_task(task, kind)
@@ -415,7 +409,7 @@ def test_prepare_timing_and_commit_use_expected_task_modes():
 
     task = SimpleNamespace(
         stop=stop,
-        control=lambda mode: calls.append(mode),
+        control=calls.append,
         timing=SimpleNamespace(
             cfg_samp_clk_timing=lambda *args, **kwargs: calls.append((args, kwargs))
         ),
@@ -444,9 +438,7 @@ def test_prepare_timing_and_commit_use_expected_task_modes():
     ("channel_type", "subsystem"),
     [("ANALOG_INPUT", "ai"), ("DIGITAL_INPUT", "di")],
 )
-def test_input_clock_and_output_start_routes_follow_acquisition_subsystem(
-    channel_type, subsystem
-):
+def test_input_clock_and_output_start_routes_follow_acquisition_subsystem(channel_type, subsystem):
     runtime = _runtime()
     calls = []
     input_task = SimpleNamespace(
@@ -455,9 +447,7 @@ def test_input_clock_and_output_start_routes_follow_acquisition_subsystem(
     )
     output_task = SimpleNamespace(
         triggers=SimpleNamespace(
-            start_trigger=SimpleNamespace(
-                cfg_dig_edge_start_trig=lambda source: calls.append(source)
-            )
+            start_trigger=SimpleNamespace(cfg_dig_edge_start_trig=calls.append)
         )
     )
 
@@ -468,25 +458,25 @@ def test_input_clock_and_output_start_routes_follow_acquisition_subsystem(
     assert calls == [f"/Dev1/{subsystem}/StartTrigger"]
 
 
-@pytest.mark.parametrize("method", ["input_sample_clock_source", "configure_output_start_from_input"])
+@pytest.mark.parametrize(
+    "method", ["input_sample_clock_source", "configure_output_start_from_input"]
+)
 def test_automatic_routing_rejects_multiple_devices(method):
     runtime = _runtime()
     input_task = SimpleNamespace(
         devices=[SimpleNamespace(name="Dev1"), SimpleNamespace(name="Dev2")]
     )
     args = (
-        (input_task,)
-        if method == "input_sample_clock_source"
-        else (SimpleNamespace(), input_task)
+        (input_task,) if method == "input_sample_clock_source" else (SimpleNamespace(), input_task)
     )
 
-    with pytest.raises(
-        DaqmxRuntimeError, match="requires the acquisition task to use one device"
-    ):
+    with pytest.raises(DaqmxRuntimeError, match="requires the acquisition task to use one device"):
         getattr(runtime, method)(*args)
 
 
-@pytest.mark.parametrize("method", ["input_sample_clock_source", "configure_output_start_from_input"])
+@pytest.mark.parametrize(
+    "method", ["input_sample_clock_source", "configure_output_start_from_input"]
+)
 def test_automatic_routing_rejects_unsupported_channel_type(method):
     runtime = _runtime()
     input_task = SimpleNamespace(
@@ -494,9 +484,7 @@ def test_automatic_routing_rejects_unsupported_channel_type(method):
         channels=SimpleNamespace(chan_type=SimpleNamespace(name="COUNTER_INPUT")),
     )
     args = (
-        (input_task,)
-        if method == "input_sample_clock_source"
-        else (SimpleNamespace(), input_task)
+        (input_task,) if method == "input_sample_clock_source" else (SimpleNamespace(), input_task)
     )
 
     with pytest.raises(DaqmxRuntimeError, match="no supported"):
