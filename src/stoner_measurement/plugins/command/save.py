@@ -368,7 +368,7 @@ def _to_float_or_nan(value: Any) -> float:
 
 
 class SaveCommand(CommandPlugin):
-    """Save traces or collected table data to a text file.
+    """Save traces or collected table data to a TDI or NeXus file.
 
     Use this command when you want to write the current measurement results to
     disk from inside a sequence. It can save either:
@@ -386,8 +386,8 @@ class SaveCommand(CommandPlugin):
     By default, existing files are not overwritten. Instead, if the chosen
     filename already exists, a numeric suffix is added automatically.
 
-    The output is a **TDI Format 2.0** tab-delimited text file structured as
-    follows:
+    The format selector offers TDI text or NeXus/HDF5 (requiring ``h5py``).
+    The default **TDI Format 2.0** text file is structured as follows:
 
     * The top-left cell (row 0, column 0) contains ``"TDI Format 2.0"``.
     * The remaining cells of row 0 are trace column headers with the form
@@ -431,24 +431,27 @@ class SaveCommand(CommandPlugin):
             Registered writer identifier for the output file format. Defaults
             to ``"tdi"``. ``"nexus"`` writes a NeXus/HDF5 file when ``h5py`` is
             available.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.command import SaveCommand
-        >>> cmd = SaveCommand()
-        >>> cmd.name
-        'Save'
-        >>> cmd.plugin_type
-        'command'
-        >>> cmd.has_lifecycle
-        True
-        >>> cmd.no_overwrite
-        True
+        With an instance named ``save`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            save.path_expr = "'sample/run.txt'"
+            save.no_overwrite = True
+            save.save_format = "tdi"
     """
 
     def __init__(self, parent=None) -> None:

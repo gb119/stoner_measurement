@@ -106,6 +106,17 @@ class ExtremumLocatorPlugin(TraceChannelSelectionMixin, TransformPlugin):
             Read-only fitted y coordinate from the latest successful run.
         extremum (tuple[float, float] | None):
             Read-only fitted ``(x, y)`` coordinate pair.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, Any]):
+            Inherited latest output mapping populated by run(), containing
+            scalar and/or TraceData results.
 
     Notes:
         The candidate is the highest or lowest qualifying prominent turning
@@ -113,6 +124,19 @@ class ExtremumLocatorPlugin(TraceChannelSelectionMixin, TransformPlugin):
         local quadratic has the wrong curvature or places its vertex outside
         the fit neighbourhood, the plugin safely falls back to the smoothed
         candidate sample rather than extrapolating.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``extremum_locator`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            extremum_locator.mode = "minimum"
+            extremum_locator.add_marker = True
+            extremum_locator.extremum
     """
 
     add_plot_marker = pyqtSignal(float, float)

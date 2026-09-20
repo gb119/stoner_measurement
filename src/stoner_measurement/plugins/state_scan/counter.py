@@ -32,31 +32,45 @@ class CounterPlugin(StateScanPlugin):
     Help/About tab uses this docstring to explain the role of the plugin as a
     minimal example scan axis.
 
+    The **Data** tab enables collection, selects sequence outputs and their
+    column roles, and controls when accumulated data is cleared or appended.
+
     Attributes:
         _count (float):
             Current stored counter value representing the present scan state.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining successive sequence points.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = CounterPlugin()
-        >>> plugin.name
-        'Counter'
-        >>> plugin.state_name
-        'Value'
-        >>> plugin.units
-        ''
-        >>> plugin.get_state()
-        0.0
-        >>> plugin.set_state(3.0)
-        >>> plugin.get_state()
-        3.0
-        >>> plugin.is_at_target()
-        True
+        With an instance named ``counter`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            counter.collect_data = True
+            counter.value
+            counter.data.df.head()
     """
 
     @property

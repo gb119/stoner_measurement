@@ -101,28 +101,21 @@ class RunSequentiallyPlugin(_FunctionSequencePlugin):
             code. It also provides the template for the helper-function name.
         comment (str):
             Optional note displayed beside this step in the sequence tree.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Group two fitting steps beneath a ``Run Sequentially`` container, then
-        place that container directly beneath ``Run Parallel`` to make the two
-        fits one ordered parallel branch.
+        With an instance named ``run_sequentially`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-        From the QtConsole, inspect the generated-code identifier::
-
+            run_sequentially.comment = "Measure then process"
             run_sequentially.instance_name
-            run_sequentially.comment = "Fit both channels in order"
-
-        The callable execution contract can also be inspected directly::
-
-            completed = []
-            run_sequentially.execute([
-                lambda: completed.append("first"),
-                lambda: completed.append("second"),
-            ])
     """
 
     @property
@@ -190,7 +183,7 @@ class RunParallelPlugin(_FunctionSequencePlugin):
 
     Parallel branches share the sequence engine namespace. Use independent
     instruments or read-only inputs unless the child plugins explicitly
-    provide synchronization. Do not place operations with a data dependency
+    provide synchronisation. Do not place operations with a data dependency
     in separate branches, and do not access the same hardware driver from
     multiple branches unless that driver is documented as thread-safe.
 
@@ -204,25 +197,21 @@ class RunParallelPlugin(_FunctionSequencePlugin):
             generated parallel-branch helper functions.
         comment (str):
             Optional note displayed beside this step in the sequence tree.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Add two independent measurement plugins directly beneath this
-        container to run them concurrently. For two independent fitting
-        pipelines, add two ``Run Sequentially`` children and place each
-        pipeline's fitting steps beneath its corresponding child.
+        With an instance named ``run_parallel`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-        From the QtConsole, inspect or clarify the container identity::
-
+            run_parallel.comment = "Independent measurements"
             run_parallel.instance_name
-            run_parallel.comment = "Fit and save concurrently"
-
-        The blocking execution contract can also be exercised directly::
-
-            run_parallel.execute([first_operation, second_operation])
     """
 
     @property

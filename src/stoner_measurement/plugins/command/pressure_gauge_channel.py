@@ -11,7 +11,45 @@ from stoner_measurement.pressure_control.engine import PressureControllerEngine
 
 
 class PressureGaugeChannelCommand(CommandPlugin):
-    """Enable or disable a pressure gauge channel using runtime expressions."""
+    """Enable or disable a pressure gauge channel using runtime expressions.
+
+    Use this command to switch a controllable gauge channel on or off at a
+    particular step. On **General**, enter **Channel expression** and **Enabled
+    expression**. They are evaluated in the live sequence namespace on each
+    execution and converted to an integer channel and Boolean enable state.
+    Blank fields revert to ``1`` and ``True`` respectively.
+
+    The action uses the shared pressure engine and the connected driver's
+    channel-control capability. Configure the controller in the pressure panel
+    first. This command publishes no readings; use Pressure Monitor to record
+    the resulting gauge state.
+
+    Attributes:
+        channel_expr (str):
+            Integer channel expression; defaults to "1".
+        enabled_expr (str):
+            Boolean enable expression; defaults to "True".
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With a sequence instance named ``pressure_gauge_channel``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            pressure_gauge_channel.channel_expr = "1"
+            pressure_gauge_channel.enabled_expr = "True"
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)

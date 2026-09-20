@@ -27,11 +27,37 @@ class SetDiffractometerCommand(SetEngineStateCommand):
     waits for completion.
 
     Final theta, 2-theta, detector counts, and at-target state are published as
-    scalar outputs. For example::
+    scalar outputs.
 
-        set_diffractometer.axes = XrayMotionMode.COUPLED
-        set_diffractometer.setpoint_expr = "scan_centre + 2.5"
-        set_diffractometer.output_value("2-Theta")
+    Attributes:
+        axes (XrayMotionMode):
+            Motion relationship; defaults to COUPLED.
+        setpoint_expr (str):
+            Target angle expression in degrees; coupled motion uses detector
+            2-theta.
+        wait_expr (str):
+            Whether to wait for the target; defaults to "True".
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``set_diffractometer`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            from stoner_measurement.xray_control import XrayMotionMode
+            set_diffractometer.axes = XrayMotionMode.COUPLED
+            set_diffractometer.setpoint_expr = "scan_centre + 2.5"
     """
 
     setpoint_suffix = "°"

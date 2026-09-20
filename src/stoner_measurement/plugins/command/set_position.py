@@ -48,24 +48,23 @@ class SetPositionCommand(SetEngineStateCommand):
             its published scalar outputs.
         sequence_engine (SequenceEngine | None):
             Inherited reference to the sequence engine and its live namespace.
+        comment (str):
+            Inherited optional note displayed beside this step.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Configure a move from the QtConsole::
+        With an instance named ``set_position`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
             from stoner_measurement.instruments.motor_controller import (
                 MotorMoveDirection,
             )
+            set_position.direction = MotorMoveDirection.SHORTEST
             set_position.setpoint_expr = "sample_angle + 90"
-            set_position.direction = MotorMoveDirection.CLOCKWISE
-            set_position.wait_expr = "True"
-
-        Read the captured position after execution::
-
-            set_position.output_value("Position")
     """
 
     setpoint_suffix = "°"

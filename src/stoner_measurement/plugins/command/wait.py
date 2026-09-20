@@ -39,28 +39,26 @@ class WaitCommand(CommandPlugin):
 
     Attributes:
         delay_expr (str):
-            Python expression string that evaluates to the delay in seconds at
-            (float).  Defaults to ``"1.0"``.
+            Python expression string that evaluates to a delay in seconds.  Defaults to ``"1.0"``.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        The :meth:`execute` and :meth:`__call__` methods accept an optional
-        keyword parameter ``delay`` that, when provided, overrides the
-        evaluated ``delay_expr`` setting.
+        With an instance named ``wait`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.command.wait import WaitCommand
-        >>> cmd = WaitCommand()
-        >>> cmd.name
-        'Wait'
-        >>> cmd.plugin_type
-        'command'
-        >>> cmd.has_lifecycle
-        False
+            wait.delay_expr = "settling_time * 1.5"
     """
 
     def __init__(self, parent=None) -> None:

@@ -787,36 +787,26 @@ class CurveFitPlugin(TransformPlugin):
         sequence_engine (SequenceEngine | None):
             Inherited reference to the sequence engine and its live
             namespace.
+        comment (str):
+            Inherited optional note displayed beside this step.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Inspect and call the compiled default linear model from the
-        QtConsole::
+        With an instance named ``curve_fit`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
             curve_fit.param_names
-            # ['a', 'b']
-            curve_fit.fit(x_values, 2.0, 0.5)
-
-        Read results after the sequence has run the fit::
-
-            curve_fit.a
-            curve_fit.b
-            curve_fit.data["a_err"]
-            curve_fit.data["b_err"]
-
-        Define and use an initial-estimate function::
-
-            curve_fit.fit_code = '''\
-            def fit(x, amplitude, offset):
-                return amplitude * x + offset
-
-            def p0(x, y):
-                return (1.0, y.mean())
-            '''
-            curve_fit.p0(x_values, y_values)
+            curve_fit.fit_code = (
+                "def fit(x, amplitude, offset):\\n"
+                "    return amplitude * x + offset\\n\\n"
+                "def p0(x, y):\\n"
+                "    return (1.0, y.mean())\\n"
+            )
+            curve_fit.data
     """
 
     def __init__(self, parent=None) -> None:

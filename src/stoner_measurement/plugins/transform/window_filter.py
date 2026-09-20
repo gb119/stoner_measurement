@@ -84,19 +84,35 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
             FFT-style periodic window.
         normalise_kernel (bool):
             When ``True``, divide the kernel by its sum to preserve DC level.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, Any]):
+            Inherited latest output mapping populated by run(), containing
+            scalar and/or TraceData results.
 
     Notes:
         Invalid kernel settings (for example, malformed parameters or
         zero-sum normalisation) are logged and produce no transform output.
 
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = WindowFilterPlugin()
-        >>> plugin.name
-        'Window Filter'
-        >>> plugin.output_trace_names
-        ['filtered']
+        With an instance named ``window_filter`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            window_filter.window_name = "hann"
+            window_filter.window_length = 11
+            window_filter.normalise_kernel = True
+            window_filter.data
     """
 
     def __init__(self, parent=None) -> None:

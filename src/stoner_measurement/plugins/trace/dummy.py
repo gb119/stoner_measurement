@@ -30,8 +30,8 @@ class DummyPlugin(TracePlugin):
 
     In the configuration panel, set the scan generator to choose the current
     values, then adjust the model parameters for critical current, normal
-    resistance, and noise level. The result is a trace titled **RSJ I-V** with
-    current on the x-axis and voltage on the y-axis.
+    resistance, and noise level. The result is a trace keyed by the plugin
+    name (normally **Dummy**), with current on x and voltage on y.
 
     The configuration tabs include the standard trace scan-generator controls
     plus settings for the RSJ model, noise, and trace-wide voltage offset. The
@@ -61,17 +61,35 @@ class DummyPlugin(TracePlugin):
         _rounding_level (str):
             Python expression string controlling current rounding behaviour used
             by the implementation.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining acquisition source values.
+        data (dict[str, TraceData]):
+            Inherited latest trace tables, keyed by trace name; inspect each
+            table through its df attribute.
+        status (TraceStatus):
+            Inherited acquisition status, including data availability and
+            errors.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = DummyPlugin()
-        >>> plugin.name
-        'Dummy'
+        With an instance named ``dummy`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            dummy._critical_current = "1e-6"
+            dummy._normal_resistance = "100.0"
+            dummy.data
     """
 
     def __init__(self, parent=None) -> None:

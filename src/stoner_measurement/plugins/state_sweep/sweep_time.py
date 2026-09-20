@@ -33,21 +33,46 @@ class SweepTimePlugin(StateSweepPlugin):
     from a monotonic clock, with :meth:`set_state` adjusting the effective
     start time accordingly.
 
+    The **Data** tab enables collection, selects sequence outputs and their
+    column roles, and controls when accumulated data is cleared or appended.
+
     Attributes:
         _start_time (float):
             Monotonic-clock reference time used to convert between elapsed time
             and the plugin's reported state.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        sweep_generator (BaseSweepGenerator):
+            Inherited generator defining successive sequence points.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = SweepTimePlugin()
-        >>> plugin.units
-        's'
+        With an instance named ``sweep_time`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            sweep_time.collect_data = True
+            sweep_time.value
+            sweep_time.data.df.head()
     """
 
     _sweep_generator_class = MonitorAndFilterSweepGenerator

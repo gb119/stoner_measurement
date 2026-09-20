@@ -76,7 +76,7 @@ class DaqmxPointScanPlugin(StateScanPlugin):
     Immediate, digital-edge, and analogue-edge input triggers are applied to
     the acquisition task. An optional one-line digital-output task generates
     one pulse per scan point. The pulse shares the acquisition sample clock
-    and internal start event. Its phase is the normalized position through the
+    and internal start event. Its phase is the normalised position through the
     current point's acquisition window, while delay, high time, low time, and
     idle polarity define its local shape. The pulse durations must be
     representable at the acquisition rate and must fit within the samples for
@@ -108,18 +108,38 @@ class DaqmxPointScanPlugin(StateScanPlugin):
         _input_trigger (DaqmxInputTrigger):
             Start trigger applied to the acquisition task.
         _output_trigger (DaqmxOutputTrigger):
-            Optional per-point synchronized digital pulse.
+            Optional per-point synchronised digital pulse.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        To interleave a lock-in reading with DAQmx voltage points, configure an
-        ``ao`` output, select the required ``ai`` inputs, and place the lock-in
-        command beneath this scan. Each DAQmx point is generated and reduced
-        first; the nested command can then use or collect that point's mean and
-        standard-deviation outputs.
+        With an instance named ``daqmx_point_scan`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            daqmx_point_scan._oversampling = 10
+            daqmx_point_scan.collect_data = True
+            daqmx_point_scan.data.df.head()
     """
 
     def __init__(

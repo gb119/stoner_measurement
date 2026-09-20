@@ -19,25 +19,17 @@ class MagnetControllerSweepPlugin(MagnetControllerPluginMixin, StateSweepPlugin)
     the ramp matters, or where stopping to stabilise at many discrete points
     would be too slow.
 
-    In the configuration tabs, the **Settings** tab contains the inherited
-    magnet-controller options such as tolerance, stability handling, and
-    timeout factor. The sweep-generator area lets you choose how the field
-    evolves, for example using a multi-segment ramp with different targets,
-    rates, and measurement flags. The **Data Collection** section controls
-    which values are recorded from the plugin during the sweep. The
-    **Help/About** tab uses this docstring as end-user guidance.
+    **Sweep** selects the trajectory, segment targets, rates, measurement
+    flags and timeout factor. **Settings** selects reported magnet readbacks;
+    sweep motion rates come from generator segments. **Data** selects collected
+    values and column roles. Shared-engine status supplies field and stability
+    readbacks; a reported quench stops execution.
 
     Rates for multi-segment ramp sweeps are interpreted in ``T/min`` and the
     default timeout factor for this plugin is ``2.0``. Together, those define
     the default wall-clock timeout used for estimated sweep durations.
 
     Attributes:
-        wait_for_stable (bool):
-            Inherited controller setting controlling whether stability criteria
-            are enforced in addition to target tracking.
-        tolerance (float):
-            Allowed field error, in tesla, used by the inherited controller
-            logic.
         sweep_timeout_factor (float):
             Multiplier applied to the estimated sweep duration when computing
             the allowed wall-clock runtime.
@@ -53,27 +45,39 @@ class MagnetControllerSweepPlugin(MagnetControllerPluginMixin, StateSweepPlugin)
             Most recently sampled control value, in tesla.
         ix (int):
             Index of the most recently yielded sweep point.
+        ramp_rate (float | str):
+            Ramp rate in tesla per minute or runtime expression.
+        use_plugin_ramp_rate (bool):
+            Use the plugin rate for applicable moves.
+        report_outputs (list[str] | None):
+            Selected controller readbacks; None selects all.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Create the plugin and inspect its user-facing metadata:
+        With a sequence instance named ``magnet_controller_sweep``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = MagnetControllerSweepPlugin()
-        >>> plugin.name
-        'Magnet Controller'
-        >>> plugin.state_name
-        'Control Value'
-        >>> plugin.units
-        'T'
-        >>> plugin.sweep_rate_time_scale_seconds
-        60.0
-        >>> plugin.default_sweep_timeout_factor
-        2.0
+            magnet_controller_sweep.sweep_timeout_factor = 3.0
+            magnet_controller_sweep.collect_data = True
+            magnet_controller_sweep.data.df.head()
     """
 
     _default_sweep_timeout_factor = 2.0

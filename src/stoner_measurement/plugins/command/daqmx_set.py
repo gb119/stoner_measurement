@@ -44,7 +44,7 @@ class DaqmxSetSettingsWidget(DaqmxPointScanSettingsWidget):
 
 
 class DaqmxSetCommand(CommandPlugin):
-    """Set one DAQmx value and perform one synchronized point acquisition.
+    """Set one DAQmx value and perform one synchronised point acquisition.
 
     Use this leaf command when a sequence needs one DAQmx set-and-acquire
     operation rather than a DAQmx-controlled scan. The output value may be a
@@ -82,18 +82,18 @@ class DaqmxSetCommand(CommandPlugin):
     execution fails.
 
     The **Advanced** page configures an immediate, digital-edge, or
-    analogue-edge input trigger and an optional synchronized digital output
+    analogue-edge input trigger and an optional synchronised digital output
     pulse. Input triggering is applied to the acquisition task. The pulse is a
     separate one-line hardware-timed output task that shares the acquisition
     clock and internal start event, and it is generated once per command
-    execution. Phase is the normalized position within this single point's
+    execution. Phase is the normalised position within this single point's
     acquisition window. Pulse delay and high/low times must be representable at
     the configured acquisition rate and fit inside the window.
 
     Because this is a command plugin, it connects, configures, measures, and
     disconnects on every execution. That lifecycle is convenient for isolated
     operations but has more overhead than DAQmx Point Scan, which retains its
-    tasks across all points. Automatic synchronization routing also assumes
+    tasks across all points. Automatic synchronisation routing also assumes
     compatible NI hardware and should be verified for cross-device tasks.
 
     Attributes:
@@ -106,17 +106,26 @@ class DaqmxSetCommand(CommandPlugin):
             acquisition, reduction, and cleanup.
         _channel_names (tuple[str, ...]):
             Input channel names discovered during the most recent execution.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Place Set DAQmx beneath a temperature scan and enter an expression such
-        as ``bias_voltage`` for **Output value**. Every outer-loop iteration
-        evaluates the current expression, generates that value for one finite
-        acquisition window, and publishes the new input statistics for later
-        commands.
+        With an instance named ``daqmx_set`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            daqmx_set._value = "bias_voltage"
+            daqmx_set._point_plugin._oversampling = 10
     """
 
     def __init__(

@@ -61,23 +61,33 @@ class MotorControllerSweepPlugin(MotorControllerPluginMixin, StateSweepPlugin):
             Most recently sampled control value, in degrees.
         ix (int):
             Index of the most recently yielded sweep point.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Create the plugin and inspect its defaults from the console:
+        With a sequence instance named ``motor_controller_sweep``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = MotorControllerSweepPlugin()
-        >>> plugin.name
-        'Motor Controller'
-        >>> plugin.state_name
-        'Control Value'
-        >>> plugin.units
-        'deg'
+            motor_controller_sweep.sweep_timeout_factor = 3.0
+            motor_controller_sweep.collect_data = True
+            motor_controller_sweep.data.df.head()
     """
 
     _default_sweep_timeout_factor = 2.0

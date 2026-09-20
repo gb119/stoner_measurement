@@ -44,6 +44,9 @@ class MotorAngleMonitorPlugin(MonitorPlugin):
     :attr:`last_reading` during an active measurement lifecycle. It never sets
     velocity, acceleration, direction, or target position.
 
+    The **General** tab sets the instance name and comment. Measurement
+    selection and polling options are on **Settings**.
+
     Attributes:
         report_angle (bool):
             Publish the measured angle in degrees.
@@ -60,16 +63,30 @@ class MotorAngleMonitorPlugin(MonitorPlugin):
         force_fresh_poll (bool):
             Query the controller during every read instead of using cached
             engine state.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        last_reading (dict[str, float]):
+            Inherited read-only access to the latest cached readings.
+        monitor_interval (int):
+            Inherited timer polling interval in milliseconds; initially 1000.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Add this monitor when a trace or data-collection plugin should record
-        the actual motor angle alongside another measurement. Select only
-        **Angle** and **Angular Rate** if the remaining status flags are not
-        required.
+        With an instance named ``motor_angle_monitor`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            motor_angle_monitor.force_fresh_poll = False
+            motor_angle_monitor.last_reading
     """
 
     def __init__(self, parent=None) -> None:

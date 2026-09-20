@@ -89,8 +89,78 @@ class SymmetryDecompositionPlugin(
     The General tab places the instance name and comment first, followed by
     the input trace, processing mode, channel scope, and output trace names.
     The Advanced tab configures turning-point detection,
-    interpolation, and out-of-range behavior. Advanced settings are omitted
+    interpolation, and out-of-range behaviour. Advanced settings are omitted
     from JSON when they retain their defaults.
+
+    Use this transform to separate even and odd responses, for example the
+    longitudinal and Hall components of a field-dependent signal. Outputs are
+    ``(y(x) + y(-x)) / 2`` and ``(y(x) - y(-x)) / 2``. **General** selects the
+    independent variable, automatic/non-hysteretic/hysteretic processing, all
+    or selected channels, and output names.
+
+    On **Advanced**, smoothing window/order, turning-point prominence and
+    minimum branch length control branch detection. Interpolation is
+    shape-preserving PCHIP or linear. Missing mirror coverage produces NaN by
+    default, or optionally uses the nearest boundary or extrapolation. The
+    latter choices extend beyond measured overlap. Invalid inputs or settings
+    are logged and produce no output. Results are stored in ``data`` under
+    the configured symmetric and antisymmetric names.
+
+    Attributes:
+        trace_key (str):
+            Source trace catalogue key.
+        mode (str):
+            Processing: auto, non_hysteretic or hysteretic.
+        channel_mode (str):
+            Channel scope: all or selected.
+        x_channel_key (str):
+            Independent-variable key; "x" uses the source x role.
+        channel_keys (list[str]):
+            Selected data channels.
+        symmetric_trace_name (str):
+            Even output name; defaults to symmetric.
+        antisymmetric_trace_name (str):
+            Odd output name; defaults to antisymmetric.
+        interpolation (str):
+            Interpolation: pchip or linear.
+        out_of_range (str):
+            Missing coverage: nan, nearest or extrapolate.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, Any]):
+            Inherited latest output mapping populated by run(), containing
+            scalar and/or TraceData results.
+        smoothing_window (int):
+            Inherited Savitzky-Golay window length for branch detection.
+        smoothing_polyorder (int):
+            Inherited order used to smooth the independent variable.
+        turning_point_prominence (float):
+            Inherited minimum prominence as a fraction of the x span.
+        minimum_branch_length (int):
+            Inherited minimum accepted branch length in samples.
+        turning_points (list[int]):
+            Latest detected acquisition turning indices.
+        branch_directions (list[int]):
+            Latest directions: 1 rising and -1 falling.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With a sequence instance named ``symmetry_decomposition``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            symmetry_decomposition.mode = "non_hysteretic"
+            symmetry_decomposition.out_of_range = "nan"
+            symmetry_decomposition.data
     """
 
     def __init__(self, parent=None) -> None:

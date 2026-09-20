@@ -52,22 +52,26 @@ class PlotClearCommand(CommandPlugin):
             Emitted by :meth:`execute`.  Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.clear_all`
             when the plugin is attached to an engine with a plot widget.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.command.plot_clear import PlotClearCommand
-        >>> cmd = PlotClearCommand()
-        >>> cmd.name
-        'Plot Clear'
-        >>> cmd.plugin_type
-        'command'
-        >>> cmd.has_lifecycle
-        False
+        With an instance named ``plot_clear`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            plot_clear.instance_name
+            plot_clear.execute()
     """
 
     #: Signal emitted by execute() — triggers clear_all() on the plot widget.

@@ -80,19 +80,42 @@ class BranchSplitPlugin(BranchSplittingMixin, TraceChannelSelectionMixin, Transf
         branch_directions (list[int]):
             Directions of the most recently detected branches, using ``1``
             for rising and ``-1`` for falling.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, Any]):
+            Inherited latest output mapping populated by run(), containing
+            scalar and/or TraceData results.
+        smoothing_window (int):
+            Inherited Savitzky-Golay window length for branch detection.
+        smoothing_polyorder (int):
+            Inherited order used to smooth the independent variable.
+        turning_point_prominence (float):
+            Inherited minimum prominence as a fraction of the x span.
+        minimum_branch_length (int):
+            Inherited minimum accepted branch length in samples.
 
     Notes:
         Advanced settings are omitted from JSON while they retain their
         defaults, keeping saved sequences compact.
 
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = BranchSplitPlugin()
-        >>> plugin.output_trace_names
-        ['rising', 'falling']
-        >>> plugin.channel_mode
-        'all'
+        With an instance named ``branch_split`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            branch_split.channel_mode = "all"
+            branch_split.minimum_branch_length = 10
+            branch_split.data
     """
 
     def __init__(self, parent=None) -> None:

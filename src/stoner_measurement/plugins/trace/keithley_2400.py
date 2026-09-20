@@ -155,7 +155,34 @@ class Keithley2400SweepPlugin(TracePlugin):
     sweep mode, fixed 10 V compliance, front terminals, 4-wire remote sense,
     and trigger output enabled on trigger-link line 2.
 
+    **Basic** also offers **Differential mode**, **Delta current** and a
+    resistance/conductance choice. In current-source mode, differential
+    acquisition alternates positive and negative delta-current offsets about
+    the nominal scan values. It requires at least three points and a positive
+    delta current. The returned x values remain nominal; voltage is reduced
+    from neighbouring readings, the response is differential resistance or
+    conductance, and power is delta current times the reduced voltage change.
+
+    **Secondary nanovoltmeter** enables a separate 182 or 2182A, selects its
+    GPIB resource and column prefix, and configures supported integration,
+    range and filtering options. It uses a trigger-link handshake with the
+    2400 and adds prefixed voltage, response and power columns to **IV**.
+
     Attributes:
+        _differential_mode (bool):
+            Enable alternating delta-current acquisition; defaults to False.
+        _delta_current (float | str):
+            Positive modulation current in amperes or runtime expression.
+        _differential_conductance (bool):
+            Report differential conductance instead of resistance.
+        _secondary_enabled (bool):
+            Enable the independently connected secondary nanovoltmeter.
+        _secondary_driver (str):
+            Secondary driver identifier: keithley_182 or keithley_2182a.
+        _secondary_resource (str):
+            Secondary meter VISA/GPIB resource.
+        _secondary_prefix (str):
+            Prefix applied to secondary result columns.
         _resource (str):
             VISA/GPIB resource string identifying the Keithley 2400.
         _smu (Keithley2400 | None):
@@ -212,28 +239,35 @@ class Keithley2400SweepPlugin(TracePlugin):
             Whether the median filter is enabled.
         _sweep_values (tuple[float, ...] | None):
             Most recently generated source values programmed into the sweep.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining acquisition source values.
+        data (dict[str, TraceData]):
+            Inherited latest trace tables, keyed by trace name; inspect each
+            table through its df attribute.
+        status (TraceStatus):
+            Inherited acquisition status, including data availability and
+            errors.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Create and inspect a plugin in the console::
+        With an instance named ``k2400_dc_iv`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-            plugin = Keithley2400SweepPlugin()
-            plugin._resource = "GPIB0::24::INSTR"
-            plugin._source_mode
-
-        Adjust common settings from the console::
-
-            plugin._compliance = 5.0
-            plugin._connection_mode = ConnectionMode.FOUR_WIRE
-            plugin._trigger_out_line = 2
-
-        Inspect returned trace data after a measurement::
-
-            data = plugin.measure({})
-            data["IV"].df.head()
+            k2400_dc_iv._compliance = 5.0
+            k2400_dc_iv._source_delay = 0.01
+            k2400_dc_iv.data
     """
 
     def __init__(self, parent=None) -> None:

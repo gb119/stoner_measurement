@@ -135,6 +135,14 @@ class DetailsCommand(CommandPlugin):
             Additional attribute names and value expressions. Each entry has
             ``"name"`` and ``"expression"`` keys; generated code exposes the
             evaluated value as an attribute named by ``"name"``.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     This design allows later sequence steps and data-saving plugins to read
     the metadata directly from the instance, for example
@@ -145,16 +153,13 @@ class DetailsCommand(CommandPlugin):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.command.details import DetailsCommand
-        >>> cmd = DetailsCommand()
-        >>> cmd.name
-        'Details'
-        >>> cmd.plugin_type
-        'command'
-        >>> cmd.has_lifecycle
-        False
+        With an instance named ``details`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            details.sample = "Nb_film_001"
+            details.project = "Transport"
+            details.date
     """
 
     show_validation_error = pyqtSignal(str)

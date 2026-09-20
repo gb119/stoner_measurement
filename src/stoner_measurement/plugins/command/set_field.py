@@ -41,21 +41,20 @@ class SetFieldCommand(SetEngineStateCommand):
             its published scalar outputs.
         sequence_engine (SequenceEngine | None):
             Inherited reference to the sequence engine and its live namespace.
+        comment (str):
+            Inherited optional note displayed beside this step.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Configure a field step from the QtConsole::
+        With an instance named ``set_field`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
             set_field.setpoint_expr = "maximum_field / 2"
-            set_field.wait_expr = "wait_for_magnet"
-
-        After execution, inspect the final readback::
-
-            set_field.output_value("Field")
-            set_field.output_value("At Target")
+            set_field.wait_expr = "True"
     """
 
     setpoint_suffix = "T"

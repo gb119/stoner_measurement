@@ -36,6 +36,10 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
     plugins.
 
     In the configuration panel, choose which quantities should be reported.
+
+    The **General** tab sets the instance name and comment. Measurement
+    selection and polling options are on **Settings**.
+
     You can enable any combination of:
 
     * **Field**
@@ -85,18 +89,30 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
             When ``True``, every call to :meth:`read` requests an immediate
             hardware poll from the engine rather than relying solely on the
             cached engine state.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        last_reading (dict[str, float]):
+            Inherited read-only access to the latest cached readings.
+        monitor_interval (int):
+            Inherited timer polling interval in milliseconds; initially 1000.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.monitor.magnet_controller import MagneticFieldMonitorPlugin
-        >>> m = MagneticFieldMonitorPlugin()
-        >>> m.name
-        'Magnetic Field Monitor'
-        >>> m.plugin_type
-        'monitor'
-        >>> m.report_field
-        True
+        With a sequence instance named ``magnetic_field_monitor``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            magnetic_field_monitor.force_fresh_poll = False
+            magnetic_field_monitor.last_reading
     """
 
     def __init__(self, parent=None) -> None:

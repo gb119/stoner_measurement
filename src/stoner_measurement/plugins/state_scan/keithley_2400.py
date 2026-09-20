@@ -194,10 +194,39 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
             Digital filter mode used by the instrument.
         _median_filter_enabled (bool):
             Whether the median filter is enabled.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining successive sequence points.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
+
+    Examples:
+        With an instance named ``k2400_point_scan`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            k2400_point_scan._compliance = 5.0
+            k2400_point_scan.collect_data = True
+            k2400_point_scan.data.df.head()
     """
 
     def __init__(self, parent=None) -> None:

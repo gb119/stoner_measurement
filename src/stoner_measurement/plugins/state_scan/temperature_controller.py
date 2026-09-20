@@ -21,16 +21,13 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     execution, the plugin ramps to each set-point and waits until the engine
     reports that the selected control loop is stable.
 
-    The temperature-specific tab provides the detailed control-loop and
-    stability settings defined by
-    :class:`~stoner_measurement.plugins.state._temperature_controller_plugin.TemperatureControllerPluginMixin`,
-    while the scan tab defines the list of target temperatures. The Help/About
-    tab uses this docstring to describe how those controls work together
-    during a stepped temperature scan.
+    **Settings** selects **Control loop**, **Stability timeout** in minutes
+    (a number or per-point expression), and **Reported sensors** (blank means
+    all known sensors). **Scan** defines temperatures in kelvin and **Data**
+    selects collected outputs and column roles. On stability timeout the scan
+    continues with its timed-out flag set; it does not assert stability.
 
     Attributes:
-        loop (int):
-            Control loop used by the underlying mixin to apply set-points.
         settle_timeout_minutes (float | str):
             Maximum time to wait for the selected loop to become stable at
             each set-point, as a number or runtime expression in minutes.
@@ -39,18 +36,43 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
         timed_out (bool):
             Whether the most recent set-point wait reached its stability
             timeout.
+        control_loop (int):
+            One-based control loop; defaults to 1.
+        sensor_channels (list[str] | None):
+            Reported sensors; None selects all known sensors.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining successive sequence points.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
+
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = TemperatureControllerScanPlugin()
-        >>> plugin.name
-        'Temperature Controller'
-        >>> plugin.units
-        'K'
+        With a sequence instance named ``temperature_controller_scan``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            temperature_controller_scan.control_loop = 2
+            temperature_controller_scan.settle_timeout_minutes = 30.0
+            temperature_controller_scan.timed_out
     """
 
     def __init__(self, parent=None) -> None:

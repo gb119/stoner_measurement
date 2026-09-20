@@ -19,6 +19,44 @@ class ReconfigureCommand(CommandPlugin):
     retain it. Every execution safely reconnects and reapplies configuration,
     including loop iterations.
     Commands without an instrument lifecycle can be selected but need no setup.
+
+    Use this command after changing settings or before a measurement whose
+    setup must be delayed. On **General**, tick the required sequence instances
+    and choose **Suppress connect and configure at startup** (enabled by
+    default). Checked, active targets are reconnected and configured in
+    sequence order. A target must reach this setup step before an action that
+    requires it to be ready, including inside conditional branches and loops.
+
+    The target's inherited ``delay_configuration`` flag is derived from these
+    selections; do not edit or save it independently. Reconnection releases
+    the target's previous resources first. Missing targets and setup failures
+    stop execution with an error. The command publishes no measurement data.
+
+    Attributes:
+        target_names (list[str]):
+            Selected sequence-instance names.
+        suppress_startup_setup (bool):
+            Skip startup setup for selected targets; defaults to True.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``reconfigure`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            reconfigure.target_names = ["k6221_dc_iv"]
+            reconfigure.suppress_startup_setup = True
     """
 
     def __init__(self, parent=None) -> None:

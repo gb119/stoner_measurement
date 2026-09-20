@@ -75,22 +75,21 @@ class EditFunctionScanCommand(CommandPlugin):
             Inherited sequence-instance name for this command.
         sequence_engine (SequenceEngine | None):
             Inherited reference to the sequence engine and its live namespace.
+        comment (str):
+            Inherited optional note displayed beside this step.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Retarget a scan from the QtConsole before executing this command::
+        With an instance named ``edit_function_scan`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
             edit_function_scan.target_scan = "field_scan"
             edit_function_scan.amplitude_expr = "next_amplitude"
-            edit_function_scan.points_expr = "points_per_period * 2"
-            edit_function_scan.waveform_expr = "Triangle"
-
-        Clear a replacement to preserve the current generator setting::
-
-            edit_function_scan.offset_expr = ""
+            edit_function_scan.points_expr = "100"
     """
 
     def __init__(self, parent=None) -> None:

@@ -31,11 +31,54 @@ class XrayDiffractometerScanPlugin(XrayDiffractometerPluginMixin, StateScanPlugi
 
     In **Theta-2theta** mode, scan-generator values and ``value`` are detector
     ``2-theta`` angles; the corresponding theta target is calculated
-    internally. The instance exposes ``value``, ``index``, ``theta``,
-    ``two_theta``, and ``counts`` in the sequence namespace. For example::
+    internally. The instance exposes ``value``, ``ix``, ``theta``,
+    ``two_theta``, and ``counts`` in the sequence namespace.
 
-        xray_scan.axes = XrayMotionMode.COUPLED
-        print(xray_scan.theta, xray_scan.two_theta, xray_scan.counts)
+    Attributes:
+        axes (XrayMotionMode):
+            Motion relationship selected on Settings.
+        count_time (float | str):
+            Integration time in seconds or per-point expression.
+        theta (float):
+            Latest theta/omega angle in degrees.
+        two_theta (float):
+            Latest detector angle in degrees.
+        counts (float):
+            Latest detector count.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining successive sequence points.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With a sequence instance named ``xray_diffractometer_scan``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            from stoner_measurement.xray_control import XrayMotionMode
+            xray_diffractometer_scan.axes = XrayMotionMode.COUPLED
+            xray_diffractometer_scan.count_time = 1.0
+            xray_diffractometer_scan.data.df.head()
     """
 
     _scan_generator_class = SteppedScanGenerator

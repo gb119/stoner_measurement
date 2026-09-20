@@ -18,10 +18,29 @@ class ReadDiffractometerCommand(CommandPlugin):
     and the returned detector count is available as ``instance.value`` and as
     the command's **Counts** scalar output.
 
-    For example::
+    Attributes:
+        value (float):
+            Detector counts from the latest execution; initially NaN.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
-        read_diffractometer.execute()
-        print(read_diffractometer.value)
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``read_diffractometer`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            read_diffractometer.value
+            read_diffractometer.reported_values()
     """
 
     def __init__(self, parent=None) -> None:

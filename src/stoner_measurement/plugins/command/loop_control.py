@@ -122,6 +122,8 @@ class BreakIfCommand(_ConditionalLoopControlCommand):
         sequence_engine (SequenceEngine | None):
             Inherited reference to the sequence engine and its live
             namespace.
+        comment (str):
+            Inherited optional note displayed beside this step.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -130,14 +132,11 @@ class BreakIfCommand(_ConditionalLoopControlCommand):
             Initial Python condition expression. Defaults to ``"True"``.
 
     Examples:
-        Stop a scan once a measured temperature exceeds a limit::
+        With an instance named ``break_if`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-            break_if.condition = "temperature.actual > maximum_temperature"
-
-        Inspect or change the expression from the QtConsole::
-
-            break_if.condition
-            break_if.condition = "abs(magnet.actual_field) > 1.5"
+            break_if.condition = "counter.value > maximum_value"
     """
 
     _DEFAULT_INSTANCE = "break_if"
@@ -182,6 +181,8 @@ class ContinueIfCommand(_ConditionalLoopControlCommand):
         sequence_engine (SequenceEngine | None):
             Inherited reference to the sequence engine and its live
             namespace.
+        comment (str):
+            Inherited optional note displayed beside this step.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -190,14 +191,11 @@ class ContinueIfCommand(_ConditionalLoopControlCommand):
             Initial Python condition expression. Defaults to ``"True"``.
 
     Examples:
-        Skip later measurement steps while a stability flag is false::
+        With an instance named ``continue_if`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-            continue_if.condition = "not temperature.stable"
-
-        Inspect or change the expression from the QtConsole::
-
-            continue_if.condition
-            continue_if.condition = "voltage < minimum_voltage"
+            continue_if.condition = "counter.value < minimum_value"
     """
 
     _DEFAULT_INSTANCE = "continue_if"

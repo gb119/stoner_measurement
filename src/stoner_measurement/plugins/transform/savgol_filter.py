@@ -52,19 +52,35 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
             Polynomial order used for local fitting.
         derivative_order (int):
             Derivative order produced by the filter output.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, Any]):
+            Inherited latest output mapping populated by run(), containing
+            scalar and/or TraceData results.
 
     Notes:
         The plugin preserves source metadata where possible and derives output
         units for derivative outputs as ``y_unit/x_unit^n``.
 
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = SavitzkyGolayPlugin()
-        >>> plugin.name
-        'Savitzky-Golay'
-        >>> plugin.output_trace_names
-        ['savgol']
+        With an instance named ``savgol_filter`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            savgol_filter.window_length = 11
+            savgol_filter.polyorder = 2
+            savgol_filter.derivative_order = 1
+            savgol_filter.data
     """
 
     def __init__(self, parent=None) -> None:

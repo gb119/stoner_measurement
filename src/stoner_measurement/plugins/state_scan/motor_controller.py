@@ -54,16 +54,37 @@ class MotorControllerScanPlugin(MotorControllerPluginMixin, StateScanPlugin):
         report_outputs (list[str] | None):
             Optional selection of motor readbacks exposed to the sequence
             value catalogue; ``None`` selects all available readbacks.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        For a polar measurement, configure a stepped angular ramp, choose the
-        shortest move direction, and place the detector or lock-in measurement
-        beneath this plugin in the sequence tree. The nested measurement runs
-        only after the stage reaches each requested angle.
+        With a sequence instance named ``motor_controller_scan``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            motor_controller_scan.velocity = 5.0
+            motor_controller_scan.collect_data = True
+            motor_controller_scan.data.df.head()
     """
 
     def __init__(self, parent=None) -> None:

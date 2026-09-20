@@ -244,7 +244,7 @@ class DaqmxTraceSettingsWidget(FontAwareTabWidget):
 
 
 class DaqmxTracePlugin(TracePlugin):
-    """Acquire a hardware-timed DAQmx trace with optional synchronized output.
+    """Acquire a hardware-timed DAQmx trace with optional synchronised output.
 
     Use this plugin when a complete input trace should be acquired as one
     finite NI-DAQmx operation. The scan generator supplies the x values. If
@@ -289,9 +289,9 @@ class DaqmxTracePlugin(TracePlugin):
     **Generate an output trigger pulse** creates a separate one-line,
     hardware-timed digital-output task. It shares the acquisition sample clock
     and is armed from the acquisition task's internal start event. **Phase** is
-    a normalized position through the generated scan: 0 degrees is the start
+    a normalised position through the generated scan: 0 degrees is the start
     and 360 degrees is the end. Delay, high time, low time, and idle polarity
-    define the pulse around that position. All pulse times are quantized to the
+    define the pulse around that position. All pulse times are quantised to the
     hardware sample period and the complete pulse must fit inside the finite
     scan. Optional waveform and trigger-output tasks are armed before the
     acquisition task so that an external input trigger starts them together.
@@ -300,7 +300,7 @@ class DaqmxTracePlugin(TracePlugin):
     compatible DAQmx task types. Automatic sample-clock and start-event routing
     is based on the acquisition device's internal terminals. Some device
     combinations require explicit NI routing that this plugin cannot infer;
-    cross-device synchronization should therefore be verified on the intended
+    cross-device synchronisation should therefore be verified on the intended
     hardware.
 
     Attributes:
@@ -315,18 +315,34 @@ class DaqmxTracePlugin(TracePlugin):
         _input_trigger (DaqmxInputTrigger):
             Start-trigger configuration applied to the acquisition task.
         _output_trigger (DaqmxOutputTrigger):
-            Optional synchronized digital pulse configuration.
+            Optional synchronised digital pulse configuration.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, TraceData]):
+            Inherited latest trace tables, keyed by trace name; inspect each
+            table through its df attribute.
+        status (TraceStatus):
+            Inherited acquisition status, including data availability and
+            errors.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        For a voltage-driven analogue-input trace, select an ``ao`` channel as
-        the output task, one or more ``ai`` channels as the acquisition task,
-        choose a scan generator, and enable output generation. A point rate of
-        100 Hz with oversampling 10 runs the hardware at 1 kHz and returns one
-        averaged reading every 10 ms.
+        With an instance named ``daqmx_trace`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            daqmx_trace._sample_rate_hz = 100.0
+            daqmx_trace._oversampling = 10
+            daqmx_trace.data
     """
 
     def __init__(

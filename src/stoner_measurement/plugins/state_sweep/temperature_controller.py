@@ -17,14 +17,12 @@ class TemperatureControllerSweepPlugin(TemperatureControllerPluginMixin, StateSw
     measurements, thermal drift studies, and overview scans where waiting for
     full equilibration at every point would take too long.
 
-    In the configuration tabs, the **Settings** tab contains the inherited
-    temperature-controller options such as loop selection, tolerance,
-    stability handling, and timeout factor. The sweep-generator area lets you
-    define how the setpoint evolves over time, for example with a
-    multi-segment ramp using different targets, rates, and measurement flags.
-    The **Data Collection** section controls which values are recorded during
-    the sweep. The **Help/About** tab uses this docstring as end-user
-    guidance.
+    **Settings** selects the control loop and reported sensors; a blank sensor
+    list includes all known sensors. **Sweep** selects the generator, segment
+    targets, rates, measurement flags and timeout factor. **Data** selects
+    collected values and column roles. Stability criteria belong to the shared
+    controller. This sweep collects while moving instead of waiting for
+    stability at each point.
 
     Rates for multi-segment ramp sweeps are interpreted in ``K/min`` and the
     default timeout factor for this plugin is ``4.0``. That more generous
@@ -32,11 +30,6 @@ class TemperatureControllerSweepPlugin(TemperatureControllerPluginMixin, StateSw
     a simple ramp-rate estimate would suggest.
 
     Attributes:
-        loop (int):
-            Control loop used by the inherited controller logic.
-        wait_for_stable (bool):
-            Inherited controller setting controlling whether stability criteria
-            are enforced in addition to target tracking.
         sweep_timeout_factor (float):
             Multiplier applied to the estimated sweep duration when computing
             the allowed wall-clock runtime.
@@ -53,27 +46,37 @@ class TemperatureControllerSweepPlugin(TemperatureControllerPluginMixin, StateSw
             Most recently sampled control value, in kelvin.
         ix (int):
             Index of the most recently yielded sweep point.
+        control_loop (int):
+            One-based control loop; defaults to 1.
+        sensor_channels (list[str] | None):
+            Reported sensors; None selects all known sensors.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Create the plugin and inspect its defaults from the console:
+        With a sequence instance named ``temperature_controller_sweep``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = TemperatureControllerSweepPlugin()
-        >>> plugin.name
-        'Temperature Controller'
-        >>> plugin.state_name
-        'Control Value'
-        >>> plugin.units
-        'K'
-        >>> plugin.sweep_rate_time_scale_seconds
-        60.0
-        >>> plugin.default_sweep_timeout_factor
-        4.0
+            temperature_controller_sweep.control_loop = 2
+            temperature_controller_sweep.collect_data = True
+            temperature_controller_sweep.data.df.head()
     """
 
     _default_sweep_timeout_factor = 4.0

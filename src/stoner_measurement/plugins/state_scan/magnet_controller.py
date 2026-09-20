@@ -22,33 +22,52 @@ class MagnetControllerScanPlugin(MagnetControllerPluginMixin, StateScanPlugin):
     the target has been reached according to the underlying magnet-controller
     state logic.
 
-    The magnet-specific tab provides the detailed field-control settings
-    defined by :class:`~stoner_measurement.plugins.state._magnet_controller_plugin.MagnetControllerPluginMixin`,
-    while the scan tab defines the list of target fields. The Help/About tab
-    uses this docstring to describe how those controls work together during a
-    stepped field scan.
+    **Settings** selects the ramp rate in tesla per minute (a number or
+    expression) and reported controller outputs.
+    **Scan** defines targets in tesla; **Data** selects collected values and
+    column roles. Target and stability status comes from the shared magnet
+    engine. A reported quench stops execution.
 
     Attributes:
-        wait_for_stable (bool):
-            When inherited mixin settings request it, wait for the magnet
-            controller to report a stable field rather than merely reaching the
-            nominal target.
-        tolerance (float):
-            Allowed field error when deciding whether the target has been
-            reached.
+        ramp_rate (float | str):
+            Ramp rate in tesla per minute or runtime expression.
+        use_plugin_ramp_rate (bool):
+            Use the plugin rate for applicable moves.
+        report_outputs (list[str] | None):
+            Selected controller readbacks; None selects all.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining successive sequence points.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = MagnetControllerScanPlugin()
-        >>> plugin.name
-        'Magnet Controller'
-        >>> plugin.units
-        'T'
+        With a sequence instance named ``magnet_controller_scan``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            magnet_controller_scan.ramp_rate = 0.1
+            magnet_controller_scan.collect_data = True
+            magnet_controller_scan.data.df.head()
     """
 
     def __init__(self, parent=None) -> None:

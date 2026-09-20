@@ -206,22 +206,26 @@ class PlotTraceCommand(CommandPlugin):
             data is sent to the plot widget.  Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_style_from_dict`
             when the plugin is attached to an engine with a plot widget.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.command.plot_trace import PlotTraceCommand
-        >>> cmd = PlotTraceCommand()
-        >>> cmd.name
-        'Plot Trace'
-        >>> cmd.plugin_type
-        'command'
-        >>> cmd.has_lifecycle
-        False
+        With an instance named ``plot_trace`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            plot_trace.trace_key = "dummy:Dummy"
+            plot_trace.transpose = False
     """
 
     #: Signal emitted by execute() in advanced mode — (title, x_array, y_array).

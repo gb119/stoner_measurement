@@ -67,6 +67,10 @@ class TemperatureMonitorPlugin(MonitorPlugin):
 
     In the configuration panel, choose which control loops and sensor channels
     should be monitored, and then select which quantities to report. You can
+
+    The **General** tab sets the instance name and comment. Measurement
+    selection and polling options are on **Settings**.
+
     enable any combination of:
 
     * **Setpoint**
@@ -88,13 +92,6 @@ class TemperatureMonitorPlugin(MonitorPlugin):
     sequence scripts.
 
     Attributes:
-        driver_name (str):
-            Registered instrument driver name.
-        transport_name (str):
-            Transport type: ``"Serial"``, ``"GPIB"``, ``"Ethernet"``, or
-            ``"Null (test)"``.
-        address (str):
-            Transport address string.
         control_loops (list[int]):
             Control loop numbers whose setpoint, heater output, and stability are
             reported.  Defaults to ``[1]``.
@@ -111,20 +108,34 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             When ``True``, rates of change are included in every reading.
         report_stability (bool):
             When ``True``, stability flags (0.0 / 1.0) are included in every reading.
+        force_fresh_poll (bool):
+            Refresh controller state on each read rather than using cached
+            state.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        last_reading (dict[str, float]):
+            Inherited read-only access to the latest cached readings.
+        monitor_interval (int):
+            Inherited timer polling interval in milliseconds; initially 1000.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
-        >>> m = TemperatureMonitorPlugin()
-        >>> m.name
-        'Temperature Monitor'
-        >>> m.plugin_type
-        'monitor'
-        >>> m.report_setpoints
-        True
-        >>> m.report_temperatures
-        True
+        With an instance named ``temperature_monitor`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            temperature_monitor.control_loops = [1]
+            temperature_monitor.sensor_channels = None
+            temperature_monitor.last_reading
     """
 
     def __init__(self, parent=None) -> None:

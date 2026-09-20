@@ -50,10 +50,36 @@ class FunctionTracePlugin(TracePlugin):
             Standard configurable generator that supplies ``x``.
         data (dict[str, TraceData]):
             Latest successful trace, keyed by ``"Function Trace"``.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        status (TraceStatus):
+            Inherited acquisition status, including data availability and
+            errors.
 
     Warning:
         The source is executed as normal Python and is not sandboxed. Only run
         code from trusted sequence files.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``function_trace`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            function_trace.function_code = (
+                "def calculate_data(x):\\n"
+                "    return pd.DataFrame({'signal': 2 * x})\\n"
+            )
+            function_trace.data
     """
 
     def __init__(self, parent=None) -> None:

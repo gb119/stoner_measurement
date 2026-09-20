@@ -373,15 +373,17 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     The second tab contains the lock-in configuration table. Each column
     represents one instrument. For each lock-in you choose its model and set a
     human-readable label, resource string, selected output channels,
-    sensitivity, whether it participates in auto-sensitivity, harmonic, and
-    numeric or automatic reference phase. SR830 entries also provide output
+    sensitivity, whether it participates in auto-sensitivity, harmonic,
+    input source, coupling, filter slope, line rejection, and numeric or
+    automatic reference phase. Choices depend on the selected model.
+    SR830 entries also provide output
     offset, expand factor, and reserve mode. Multiple outputs may be selected
     for each lock-in using separate check boxes for X, Y, R, and THETA.
 
-    The scan generator defines the swept values. The plugin returns one trace
-    per configured output channel, using the lock-in labels to build readable
-    channel names. When resistance conversion is enabled, additional derived
-    channels are produced for non-angular outputs.
+    The scan generator defines the swept values. The plugin returns one
+    shared-x trace named **Signals**, with columns named from lock-in labels
+    and selected outputs. Resistance conversion adds derived columns for
+    non-angular outputs.
 
     The runtime lifecycle follows a persistent-output model: :meth:`configure`
     leaves the 6221 output enabled, each :meth:`measure` reuses that configured
@@ -433,19 +435,35 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         _lockin_entries (list[LockInEntry]):
             Per-lock-in configuration entries defining labels, resources,
             outputs, sensitivity, harmonic, phase, and related settings.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining acquisition source values.
+        data (dict[str, TraceData]):
+            Inherited latest trace tables, keyed by trace name; inspect each
+            table through its df attribute.
+        status (TraceStatus):
+            Inherited acquisition status, including data availability and
+            errors.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = Keithley6221_MultiSR830Plugin()
-        >>> plugin.name
-        'k6221_multi_sr830'
-        >>> plugin.trace_names
-        ['Signals']
+        With an instance named ``k6221_multi_sr830`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            k6221_multi_sr830._time_constant = 0.1
+            k6221_multi_sr830._lockin_entries
+            k6221_multi_sr830.data
     """
 
     offset_addition_changed = pyqtSignal(bool)

@@ -59,7 +59,6 @@ class StatusCommand(CommandPlugin):
     Attributes:
         status_expr (str):
             Python expression string that evaluates to the status text.
-            Python expression string that evaluates to the status string.
             Defaults to ``"'Ready'"``.
         status_message (pyqtSignal[str]):
             Emitted by :meth:`execute` with the resolved status string.
@@ -69,22 +68,25 @@ class StatusCommand(CommandPlugin):
             The :meth:`execute` and :meth:`__call__` methods also accept an
             optional keyword parameter ``status`` that overrides the evaluated
             ``status_expr`` for that call.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.command.status import StatusCommand
-        >>> cmd = StatusCommand()
-        >>> cmd.name
-        'Status'
-        >>> cmd.plugin_type
-        'command'
-        >>> cmd.has_lifecycle
-        False
+        With an instance named ``status`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            status.status_expr = "f'Point {counter.ix} complete'"
     """
 
     #: Signal emitted by execute() — the resolved status string.

@@ -18,6 +18,38 @@ class IfCommand(CommandPlugin, SequencePlugin):
     actions should run for a point, segment, or step. The expression is
     evaluated against the live sequence namespace, so conditions can reference
     any plugin instance or variable already available to the generated script.
+
+    On **General**, enter **Condition**, a Python expression such as
+    ``counter.value > 0``. A blank condition is treated as ``True``. Place the
+    steps to run beneath this command in the sequence tree. The expression is
+    evaluated each time execution reaches the branch; an empty branch does
+    nothing. Calling ``execute()`` directly does nothing: the generated
+    sequence supplies the conditional block. This command has no outputs.
+
+    Attributes:
+        condition (str):
+            Runtime condition; defaults to "True".
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+        condition (str):
+            Initial condition; defaults to "True".
+
+    Examples:
+        With an instance named ``if_command`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            if_command.condition = "counter.value > 0"
     """
 
     def __init__(self, parent=None, condition: str = "True") -> None:

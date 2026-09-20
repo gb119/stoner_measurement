@@ -37,6 +37,58 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
     to the trace x axis but includes every stored column. Advanced mode may
     obtain the x/y arrays used to calculate that offset from unrelated
     expressions, while retaining the selected trace and target context.
+
+    Use this transform to centre a trace before plotting or further analysis.
+    **Data** selects the source, target column and optional advanced x/y
+    expressions. On **Offset**, choose **Mean x**, **Range midpoint**, or
+    **Near y=0**. The first subtracts mean x; the second uses half the sum of
+    its minimum and maximum. Near y=0 averages x only where
+    ``abs(y) < factor * max(y)``. **Factor** is a non-negative number or runtime
+    expression used only by that method.
+
+    Outputs are the corrected ``offset_removed`` trace and scalar ``dx``.
+    Invalid settings or no qualifying near-zero samples are logged and produce
+    no output.
+
+    Attributes:
+        trace_key (str):
+            Source trace catalogue key.
+        column_key (str):
+            Column to correct; "x" selects the x axis.
+        advanced_mode (bool):
+            Estimate the offset using expression-supplied arrays.
+        x_expr (str):
+            Advanced x expression.
+        y_expr (str):
+            Advanced y expression.
+        method (str):
+            Estimator: mean, range_midpoint or near_zero_y.
+        factor (float | str):
+            Near-zero threshold multiplier; defaults to 0.05.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, Any]):
+            Inherited latest output mapping populated by run(), containing
+            scalar and/or TraceData results.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``x_offset_removal`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            x_offset_removal.method = "range_midpoint"
+            x_offset_removal.column_key = "x"
+            x_offset_removal.data
     """
 
     def __init__(self, parent=None) -> None:

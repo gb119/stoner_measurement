@@ -240,7 +240,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     channel named ``"IV"`` is returned, backed by a
     :class:`~pandas.DataFrame` with:
 
-    * **x** (index) — programmed source current in amps.
+    * **x** (data column) — programmed source current in amps.
     * **V** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Y`) —
       measured voltage in volts.
     * **R** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Z`) —
@@ -248,7 +248,37 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     * **P** (:data:`~stoner_measurement.plugins.trace.base.COLUMN_ROLE_Z`) —
       power I×V in watts.
 
+    These columns describe ordinary I-V mode. The **Primary 6221 / 2182A**
+    settings page also offers **Differential mode**, **Delta current** and
+    a resistance/conductance choice. Differential acquisition alternates
+    positive and negative delta-current offsets about nominal scan currents.
+    It requires at least three points and a positive delta current. The x
+    column retains nominal current; V is reduced from neighbouring readings,
+    R becomes differential resistance (or G for conductance), and P is delta
+    current times the reduced voltage change. Secondary results use the same
+    reduction when enabled.
+
+    **Secondary nanovoltmeter** selects its driver, GPIB resource, result
+    prefix, parallel/daisy-chain triggering and driver-supported integration,
+    range, filtering and relative-mode settings.
+
     Attributes:
+        _differential_mode (bool):
+            Enable alternating delta-current acquisition; defaults to False.
+        _delta_current (float | str):
+            Positive modulation current in amperes or runtime expression.
+        _differential_conductance (bool):
+            Report differential conductance instead of resistance.
+        _secondary_enabled (bool):
+            Enable the independently connected secondary nanovoltmeter.
+        _secondary_driver (str):
+            Secondary driver identifier: keithley_182 or keithley_2182a.
+        _secondary_resource (str):
+            Secondary meter VISA/GPIB resource.
+        _secondary_prefix (str):
+            Prefix applied to secondary result columns.
+        _secondary_trigger_mode (SecondaryTriggerMode):
+            PARALLEL or DAISY_CHAIN trigger wiring and timing policy.
         _6221_resource (str):
             VISA resource string for the Keithley 6221 (e.g.
             ``"GPIB0::22::INSTR"``).
@@ -288,7 +318,7 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         _trigger_delay (float):
             Delay between the external trigger and the 2182A conversion.
         _line_sync (bool):
-            Synchronize 2182A A/D conversions to the power line.
+            Synchronise 2182A A/D conversions to the power line.
         _autozero (bool):
             Enable automatic zero-reference measurements on the 2182A.
         _analog_filter (bool):
@@ -305,21 +335,35 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         _input_tlink (int):
             Trigger-link line number (1–6) on which the 6221 accepts the
             "meter complete" trigger pulse from the 2182A.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining acquisition source values.
+        data (dict[str, TraceData]):
+            Inherited latest trace tables, keyed by trace name; inspect each
+            table through its df attribute.
+        status (TraceStatus):
+            Inherited acquisition status, including data availability and
+            errors.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> plugin = Keithley6221_2182APlugin()
-        >>> plugin.name
-        'k6221_dc_iv'
-        >>> plugin.x_units
-        'A'
-        >>> plugin.y_units
-        'V'
+        With an instance named ``k6221_dc_iv`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            k6221_dc_iv._compliance = 5.0
+            k6221_dc_iv._source_delay = 0.01
+            k6221_dc_iv.data
     """
 
     _scan_generator_class = FunctionScanGenerator

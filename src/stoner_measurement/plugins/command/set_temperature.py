@@ -53,23 +53,21 @@ class SetTemperatureCommand(SetEngineStateCommand):
             its published scalar outputs.
         sequence_engine (SequenceEngine | None):
             Inherited reference to the sequence engine and its live namespace.
+        comment (str):
+            Inherited optional note displayed beside this step.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Configure an instance from the QtConsole before running its sequence
-        step::
+        With an instance named ``set_temperature`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
             set_temperature.control_loop = 2
             set_temperature.setpoint_expr = "base_temperature + 5"
-            set_temperature.wait_expr = "settle_before_measurement"
-
-        After execution, inspect the captured state::
-
-            set_temperature.output_value("Temperature")
-            set_temperature.output_value("Stable")
+            set_temperature.settle_timeout_minutes = 30.0
     """
 
     setpoint_suffix = "K"

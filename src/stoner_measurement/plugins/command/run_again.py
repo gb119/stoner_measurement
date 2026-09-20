@@ -17,6 +17,43 @@ class RunAgainCommand(CommandPlugin):
     The selected step keeps its original configuration and instance identity.
     Its normal action code is emitted again, so plugin-type-specific behaviour
     such as scans, measurements, transforms, and commands is preserved.
+
+    Use this command to repeat a measurement without duplicating its settings.
+    On **General**, select the target step and optionally enable reconnection
+    and configuration to repeat its instrument setup first. Otherwise an
+    instrument target must already be ready. A container repeats its original
+    nested steps too. Results belong to the target instance; this command
+    creates no separate dataset.
+
+    Disabled or missing targets and recursive selections are rejected. Direct
+    ``execute()`` calls raise an error: the generated sequence inserts the
+    target's action at the current position.
+
+    Attributes:
+        target_step (str):
+            Instance name of the step to repeat.
+        reconnect_and_configure (bool):
+            Repeat setup before the target action; defaults to False.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``run_again`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            run_again.target_step = "dummy"
+            run_again.reconnect_and_configure = False
     """
 
     def __init__(self, parent=None) -> None:

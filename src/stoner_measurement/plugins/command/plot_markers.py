@@ -40,11 +40,36 @@ class AddPlotMarkerCommand(CommandPlugin):
     Remove Plot Markers command, or a plot clear.
 
     Attributes:
-        x_expr (str): Runtime expression producing the x coordinate.
-        y_expr (str): Runtime expression producing the y coordinate.
-        label_expr (str): Runtime expression producing the optional label.
-        add_plot_marker (pyqtSignal[float, float, object]): Signal connected to
+        x_expr (str):
+            Runtime expression producing the x coordinate.
+        y_expr (str):
+            Runtime expression producing the y coordinate.
+        label_expr (str):
+            Runtime expression producing the optional label.
+        add_plot_marker (pyqtSignal[float, float, object]):
+            Signal connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.add_data_marker`.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``add_plot_marker`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            add_plot_marker.x_expr = "1.0"
+            add_plot_marker.y_expr = "2.0"
+            add_plot_marker.label_expr = "'Reference'"
     """
 
     add_plot_marker = pyqtSignal(float, float, object)
@@ -136,8 +161,29 @@ class RemovePlotMarkersCommand(CommandPlugin):
     API. Plot traces and axis configuration are left unchanged.
 
     Attributes:
-        clear_plot_markers (pyqtSignal): Signal connected to the main plot's
+        clear_plot_markers (pyqtSignal):
+            Signal connected to the main plot's
             marker-clearing API while attached to a sequence engine.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``remove_plot_markers`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            remove_plot_markers.instance_name
+            remove_plot_markers.execute()
     """
 
     clear_plot_markers = pyqtSignal()

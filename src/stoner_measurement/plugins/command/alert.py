@@ -51,22 +51,25 @@ class AlertCommand(CommandPlugin):
             :attr:`~PyQt6.QtCore.Qt.ConnectionType.BlockingQueuedConnection`
             to :meth:`_display_alert` so that the sequence thread waits for
             the user to dismiss the dialog.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.command.alert import AlertCommand
-        >>> cmd = AlertCommand()
-        >>> cmd.name
-        'Alert'
-        >>> cmd.plugin_type
-        'command'
-        >>> cmd.has_lifecycle
-        False
+        With an instance named ``alert`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            alert.message_expr = "'Check the sample wiring before continuing'"
     """
 
     #: Signal emitted by execute() — the resolved alert message string.

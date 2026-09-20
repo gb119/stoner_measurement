@@ -195,8 +195,6 @@ class PlotPointsCommand(CommandPlugin):
             Key in the ``_values`` catalogue for the x data. The current
             value is read each time the command executes.
         y_entries (list[dict[str, str]]):
-            Key in the ``_values`` catalogue for the x data.  Format is
-            ``"{instance_name}:{quantity_name}"``.
             Ordered list of y-series definitions.  Each entry is a dict with
             keys ``"key"`` (catalogue key), ``"label"`` (trace name shown
             in the legend), ``"y_axis"`` (y-axis name; defaults to
@@ -218,22 +216,26 @@ class PlotPointsCommand(CommandPlugin):
             that series.  Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_style_from_dict`
             when the plugin is attached to an engine with a plot widget.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.command.plot_points import PlotPointsCommand
-        >>> cmd = PlotPointsCommand()
-        >>> cmd.name
-        'Plot Points'
-        >>> cmd.plugin_type
-        'command'
-        >>> cmd.has_lifecycle
-        False
+        With an instance named ``plot_points`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            plot_points.x_key = "counter:Value"
+            plot_points.y_entries = [{"key": "set_temperature:Temperature"}]
     """
 
     #: Signal emitted by execute() — (trace_label, x_value, y_value).

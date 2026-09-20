@@ -48,23 +48,20 @@ class PressureSetFlowCommand(SetEngineStateCommand):
             its published scalar outputs.
         sequence_engine (SequenceEngine | None):
             Inherited reference to the sequence engine and its live namespace.
+        comment (str):
+            Inherited optional note displayed beside this step.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Configure a channel from the QtConsole::
+        With an instance named ``pressure_set_flow`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
 
-            set_flow.channel_expr = "gas_channel"
-            set_flow.setpoint_expr = "requested_flow"
-            set_flow.tolerance_expr = "0.02"
-            set_flow.wait_expr = "wait_for_flow"
-
-        After execution, inspect the measured flow::
-
-            set_flow.output_value("Flow")
-            set_flow.output_value("At Target")
+            pressure_set_flow.channel_expr = "1"
+            pressure_set_flow.setpoint_expr = "requested_flow"
     """
 
     def __init__(self, parent=None) -> None:

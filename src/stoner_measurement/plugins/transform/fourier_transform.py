@@ -62,6 +62,17 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
             When ``False``, compute a forward Fourier transform. When ``True``,
             treat the input as shifted frequency-domain data and compute an
             inverse transform. Defaults to ``False``.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, Any]):
+            Inherited latest output mapping populated by run(), containing
+            scalar and/or TraceData results.
 
     Keyword Parameters:
         parent (QObject | None):
@@ -75,14 +86,12 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         practical.
 
     Examples:
-        >>> from qtpy.QtWidgets import QApplication
-        >>> _ = QApplication.instance() or QApplication([])
-        >>> from stoner_measurement.plugins.transform.fourier_transform import FourierTransformPlugin
-        >>> plugin = FourierTransformPlugin()
-        >>> plugin.name
-        'Fourier Transform'
-        >>> plugin.output_trace_names
-        ['fft']
+        With an instance named ``fourier_transform`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            fourier_transform.inverse = False
+            fourier_transform.data
     """
 
     def __init__(self, parent=None) -> None:

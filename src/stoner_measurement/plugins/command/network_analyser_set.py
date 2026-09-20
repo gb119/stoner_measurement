@@ -63,16 +63,26 @@ class NetworkAnalyserSetCommand(CommandPlugin):
             IF bandwidth or sequence expression in hertz.
         _selected_parameters (tuple[str, ...]):
             S-parameters published by the most recent execution.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        Place this command inside a temperature scan and enter expressions
-        such as ``measurement_frequency`` and ``rf_power`` for its frequency
-        and power. Every outer-loop iteration then performs one CW acquisition
-        using the current values of those sequence variables.
+        With a sequence instance named ``network_analyser_set``, use
+        the QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            network_analyser_set._frequency_hz = "measurement_frequency"
+            network_analyser_set._power_dbm = -20.0
     """
 
     def __init__(self, parent=None) -> None:

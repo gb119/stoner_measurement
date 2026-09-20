@@ -85,17 +85,32 @@ class NetworkAnalyserTracePlugin(TracePlugin):
             Whether frequency or source power supplies the trace x axis.
         _selected_parameters (tuple[str, ...]):
             S-parameters returned as trace columns.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        data (dict[str, TraceData]):
+            Inherited latest trace tables, keyed by trace name; inspect each
+            table through its df attribute.
+        status (TraceStatus):
+            Inherited acquisition status, including data availability and
+            errors.
 
     Keyword Parameters:
         parent (QObject | None):
             Optional Qt parent object.
 
     Examples:
-        For a conventional transmission measurement, select **Frequency**,
-        choose ``S21``, set the fixed source power, and configure a linear or
-        exponential frequency range on the **Scan** tab. The completed trace
-        can then be consumed by plot, fit, save, and transform plugins as
-        ``S parameters``.
+        With an instance named ``network_analyser`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            network_analyser.scan_generator
+            network_analyser.data
     """
 
     _scan_generator_class = NetworkAnalyserScanGenerator

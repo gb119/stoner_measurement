@@ -39,6 +39,77 @@ class Keithley6221PointScanPlugin(StateScanPlugin):
     no Trigger Link wiring is required. Resistance uses programmed current
     and is NaN at zero current. With both meters disabled only source_value
     is published. Output remains on between points and is disabled on cleanup.
+
+    Use this scan to hold each programmed DC current while nested measurements
+    run. **Scan** defines currents in amperes and **Data** selects collected
+    outputs. On **Settings**, the nested **General** page selects the 6221 GPIB
+    resource, compliance voltage (0.1 to 10.5 V) and settling delay in seconds.
+    Current must lie between -105 and +105 mA.
+
+    **Primary** and **Secondary** independently enable meters, select their
+    connections and configure integration, range, filtering and other options
+    supported by the selected driver. Both meters are disabled by default.
+    Compliance is evaluated during configuration and settling delay per point.
+    After settling, enabled meters are read before child steps run.
+
+    Published values are ``source_value``, primary ``voltage``/``resistance``
+    and optional ``secondary_voltage``/``secondary_resistance``. Current stays
+    at that level through child steps. No LIST sweep or trigger pulse is used.
+
+    Attributes:
+        _resource (str):
+            6221 VISA/GPIB resource.
+        _compliance (float | str):
+            Configuration-time compliance voltage in volts.
+        _source_delay (float | str):
+            Settling time or per-point expression in seconds.
+        _primary_enabled (bool):
+            Read the primary 2182A.
+        _primary_resource (str):
+            Primary meter GPIB resource when not using serial pass-through.
+        _primary_passthrough (bool):
+            Connect the primary meter through the 6221 serial port.
+        _secondary_enabled (bool):
+            Read the independent secondary meter.
+        _secondary_resource (str):
+            Secondary meter GPIB resource.
+        _secondary_driver (str):
+            Secondary driver: keithley_182 or keithley_2182a.
+        _readings (dict[str, float]):
+            Latest enabled voltage and resistance readings.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        scan_generator (BaseScanGenerator):
+            Inherited generator defining successive sequence points.
+        value (float):
+            Inherited current sequence control value.
+        ix (int):
+            Inherited zero-based iteration index.
+        meas_flag (bool):
+            Inherited flag indicating a measurement point.
+        collect_data (bool):
+            Inherited switch enabling collection of selected sequence outputs.
+        data (TraceData):
+            Inherited accumulated table; inspect data.df after collection.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``k6221_point_scan`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            k6221_point_scan._source_delay = 0.05
+            k6221_point_scan._primary_enabled = True
+            k6221_point_scan.collect_data = True
     """
 
     _settings = (

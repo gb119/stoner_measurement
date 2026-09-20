@@ -35,7 +35,67 @@ def _parse_int_list(text: str) -> list[int] | None:
 
 
 class PressureMonitorPlugin(MonitorPlugin):
-    """Publish live pressure-controller and MFC values into the sequence namespace."""
+    """Publish live pressure-controller and MFC values into the sequence namespace.
+
+    Use this passive monitor to record vacuum pressure and mass-flow-controller
+    (MFC) readings alongside measurements. On **Settings**, select pressure and
+    MFC channel lists; blank lists mean all channels known to the shared engine.
+    Enable pressure, gauge-enabled state, requested flow, actual flow and/or
+    target-pressure outputs. **Force fresh controller poll** requests a hardware
+    update on each read instead of using cached state.
+
+    Connection opens the preferred pressure controller and/or MFC if needed
+    and starts monitoring. Disconnect stops this monitor while leaving shared
+    controllers connected. Outputs use names such as ``pressure_1`` and
+    ``flow_actual_1`` in ``last_reading``. Pressure and flow units come from the
+    controller; enabled flags are 1 or 0 and unavailable readings are NaN.
+
+    The **General** tab sets the instance name and comment. Measurement
+    selection and polling options are on **Settings**.
+
+    Attributes:
+        pressure_channels (list[int] | None):
+            Gauge channels; None selects known channels.
+        mfc_channels (list[int] | None):
+            MFC channels; None selects known channels.
+        report_pressures (bool):
+            Publish measured pressures.
+        report_gauge_enabled (bool):
+            Publish gauge enable states.
+        report_flow_setpoints (bool):
+            Publish requested flows.
+        report_flow_actual (bool):
+            Publish measured flows.
+        report_target_pressures (bool):
+            Publish MFC pressure targets.
+        force_fresh_poll (bool):
+            Request new controller state on every read; defaults to False.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+        last_reading (dict[str, float]):
+            Inherited read-only access to the latest cached readings.
+        monitor_interval (int):
+            Inherited timer polling interval in milliseconds; initially 1000.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``pressure_monitor`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            pressure_monitor.pressure_channels = [1, 2]
+            pressure_monitor.mfc_channels = [1]
+            pressure_monitor.last_reading
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)

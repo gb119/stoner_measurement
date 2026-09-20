@@ -16,7 +16,57 @@ from stoner_measurement.temperature_control.engine import TemperatureControllerE
 
 
 class MakeSafeCommand(CommandPlugin):
-    """Make the selected temperature, magnet, and motor systems safe."""
+    """Make the selected temperature, magnet, and motor systems safe.
+
+    Use this command to perform the application's defined shutdown actions
+    at a chosen sequence position. On **General**, select **Temperature**,
+    **Magnet**, and/or **Motor**; all three are selected initially. Enable
+    **Always make safe** to also execute these actions at the start of the
+    generated script's finally block, including when the sequence fails.
+
+    For a connected temperature controller, heater outputs and ranges are set
+    to zero and control loops switched off. Supported gas-auto and needle-valve
+    controls are disabled or closed. A connected magnet is ramped to zero,
+    with a five-minute wait for the target, before its heater is switched off.
+    The motor is sent home using the shortest route. Temperature and magnet
+    actions are skipped if their controllers are disconnected.
+
+    Actions run in temperature, magnet, then motor order. A failure propagates
+    and prevents later actions in this call; this is not a guarantee that every
+    system has reached a safe state. The command publishes no scalar outputs.
+
+    Attributes:
+        temperature (bool):
+            Switch off temperature control; defaults to True.
+        magnet (bool):
+            Ramp to zero and switch off the magnet heater; defaults to True.
+        motor (bool):
+            Send the motor home; defaults to True.
+        always_make_safe (bool):
+            Also run during generated sequence cleanup; defaults to False.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``make_safe`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            make_safe.temperature = True
+            make_safe.magnet = True
+            make_safe.motor = False
+            make_safe.always_make_safe = True
+    """
 
     _MAGNET_POLL_INTERVAL_SECONDS = 0.5
     _MAGNET_TIMEOUT_SECONDS = 300.0

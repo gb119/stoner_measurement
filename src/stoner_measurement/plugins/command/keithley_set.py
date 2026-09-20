@@ -98,6 +98,49 @@ class Keithley2400SetCommand(_KeithleySetCommand):
     Settings match the 2400 point scan, including compliance, wiring, ranges
     and triggering. Output remains active for later steps until sequence
     cleanup. Source value accepts expressions evaluated on every execution.
+
+    Use this leaf command to apply one bias within an outer loop. **Source
+    value (A or V)** accepts a number or expression evaluated on every execution,
+    in the units selected by source mode. The nested **Basic** page selects
+    the GPIB resource, current/voltage mode, compliance, integration, source and
+    trigger delays, output enable and source/sense ranges. **Advanced** selects
+    terminals, two/four-wire wiring, trigger routing and digital/median filters.
+    There is no scan generator or child-step loop.
+
+    Startup connects and configures the instrument. Execution applies one value
+    and publishes source value, voltage, current, resistance, power and timestamp
+    readings. Cleanup disables output and closes the connection. Reconfigure
+    can defer setup. Script settings are available through ``_point_plugin``;
+    its attributes are documented on ``Keithley2400PointScanPlugin``.
+
+    Attributes:
+        _value (float | str):
+            Source setpoint or expression evaluated on each execution.
+        _point_plugin (Keithley2400PointScanPlugin):
+            Owned point-acquisition instance with instrument settings and
+            readings.
+        has_lifecycle (bool):
+            True: startup connects/configures; cleanup disconnects.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``k2400_set`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            k2400_set._value = "bias_current"
+            k2400_set._point_plugin._compliance = 5.0
     """
 
     point_class = Keithley2400PointScanPlugin
@@ -114,6 +157,52 @@ class Keithley6221SetCommand(_KeithleySetCommand):
     With neither enabled only source_value is published. Measurements and
     resistance calculation match the 6221 point scan. Output remains active
     for later steps and is disabled during sequence cleanup.
+
+    Use this leaf command to hold a DC bias for later measurements. **Source
+    value (A or V)** is a current in amperes for this command, optionally an
+    expression evaluated per execution. The nested **General** page selects
+    6221 GPIB resource, compliance voltage and settling delay. **Primary** and
+    **Secondary** independently enable meters and configure connections,
+    integration, ranges and supported filters. Primary uses an 2182A directly
+    or through the 6221 serial port; secondary uses a separate GPIB 182 or
+    2182A. Both meters are disabled by default.
+
+    Startup connects and configures the instruments. Execution sets current,
+    waits for settling, then reads enabled meters sequentially. Published values
+    are ``source_value``, primary ``voltage``/``resistance`` and optional
+    ``secondary_voltage``/``secondary_resistance``. Resistance is NaN at zero
+    current. There is no scan generator, child loop or trigger-link requirement.
+    Reconfigure can defer setup. Script settings are available through
+    ``_point_plugin``, documented on ``Keithley6221PointScanPlugin``.
+
+    Attributes:
+        _value (float | str):
+            Source setpoint or expression evaluated on each execution.
+        _point_plugin (Keithley6221PointScanPlugin):
+            Owned point-acquisition instance with instrument settings and
+            readings.
+        has_lifecycle (bool):
+            True: startup connects/configures; cleanup disconnects.
+        instance_name (str):
+            Inherited Python identifier for this instance in the Script tab and
+            QtConsole.
+        comment (str):
+            Inherited optional note displayed beside this step.
+        sequence_engine (SequenceEngine | None):
+            Inherited owning engine and its live namespace; None while
+            detached.
+
+    Keyword Parameters:
+        parent (QObject | None):
+            Optional Qt parent object.
+
+    Examples:
+        With an instance named ``k6221_set`` in the sequence, use the
+        QtConsole to inspect or edit it before running. Substitute your
+        instance name if different; result data reflects completed steps::
+
+            k6221_set._value = "bias_current"
+            k6221_set._point_plugin._primary_enabled = True
     """
 
     point_class = Keithley6221PointScanPlugin
