@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from qtpy.QtWidgets import QComboBox, QLineEdit, QSpinBox
+from qtpy.QtWidgets import QComboBox, QLineEdit
 
 from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -233,7 +233,10 @@ def test_common_and_specific_configuration_widgets(qapp):
     temperature_widget = temperature.config_widget()
     assert temperature_widget.findChild(SISpinBox, "setpoint_expression") is not None
     assert temperature_widget.findChild(QLineEdit, "wait_expression").text() == "True"
-    assert temperature_widget.findChild(QSpinBox, "control_loop").value() == 1
+    from stoner_measurement.ui.temperature_selectors import TemperatureLoopSelector
+    selector = temperature_widget.findChild(TemperatureLoopSelector, "control_loop")
+    assert selector.currentData().controller_id == "primary"
+    assert selector.currentData().loop == 1
     timeout = temperature_widget.findChild(
         SISpinBox, "temperature_settle_timeout_minutes"
     )

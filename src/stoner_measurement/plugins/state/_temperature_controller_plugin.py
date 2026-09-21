@@ -9,12 +9,24 @@ from typing import TYPE_CHECKING
 from qtpy.QtWidgets import (
     QFormLayout,
     QLineEdit,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+from stoner_measurement.temperature_control.references import (
+    ChannelRef,
+    channel_ref,
+    controller_id,
+    reference_json,
+)
+from stoner_measurement.ui.temperature_selectors import (
+    TemperatureLoopSelector,
+    add_catalogue_picker,
+    compact_reference,
+    parse_selection,
+    selection_text,
+)
 from stoner_measurement.ui.widgets import SISpinBox
 
 if TYPE_CHECKING:
@@ -26,7 +38,7 @@ def _normalise_channels(values: Iterable[str] | None) -> list[str] | None:
     channels: list[str] = []
     seen: set[str] = set()
     for value in values:
-        channel = str(value).strip()
+        channel = compact_reference(channel_ref(value)) if isinstance(value, (dict, ChannelRef)) else str(value).strip()
         if channel and channel not in seen:
             channels.append(channel)
             seen.add(channel)
@@ -41,30 +53,30 @@ class TemperatureControllerPluginMixin:
         return frozenset({"temperature"})
 
     def _init_temperature_controller_plugin(self) -> None:
+        self.controller_id = "primary"
         self.control_loop: int = 1
         self.ramp_rate: float = 1.0
         self.sensor_channels: list[str] | None = None
+        publisher = getattr(TemperatureControllerEngine.instance(), "publisher", None)
+        if publisher is not None:
+            publisher.connection_changed.connect(self._refresh_catalogs)
 
     def _state_control_loop(self, state: TemperatureEngineState | None = None) -> int:
-        """Return a control loop usable for reading state from *state*.
-
-        Prefer the configured :attr:`control_loop`, but fall back to any loop
-        reported by the engine state so read-only helpers can still function
-        with partial/mock state snapshots.
-        """
-        state = self._engine_state() if state is None else state
-        if self.control_loop in state.input_channels or self.control_loop in state.setpoints:
-            return self.control_loop
-        return next(iter(state.input_channels or state.setpoints), self.control_loop)
+        """Return the configured loop without substituting a different target."""
+        return self.control_loop
 
     def _refresh_catalogs(self) -> None:
         if self.sequence_engine is not None:
             self.sequence_engine._rebuild_data_catalogs()  # noqa: SLF001
 
     def _engine(self) -> TemperatureControllerEngine:
-        return TemperatureControllerEngine.instance()
+        engine = TemperatureControllerEngine.instance()
+        return engine if self.controller_id == "primary" else engine.controller(self.controller_id)
 
     def _ensure_connected(self) -> TemperatureControllerEngine:
+        service = TemperatureControllerEngine.instance()
+        if hasattr(service, "ensure_controller"):
+            service.ensure_controller(self.controller_id)
         engine = self._engine()
         if engine.connected_driver is None:
             engine.connect_preferred_driver()
@@ -80,20 +92,14 @@ class TemperatureControllerPluginMixin:
         state = engine.get_engine_state()
         stale = max_age_seconds is not None and engine.state_cache_age_seconds > max_age_seconds
         if (refresh or stale) and engine.connected_driver is not None:
-            state = engine.read_controller_state() or state
+            state = engine.read_controller_state() or engine.get_engine_state()
         return state
 
-    def _available_sensor_channels(self) -> list[str]:
-        state = self._engine_state()
-        if state.readings:
-            return sorted(state.readings)
-        driver = self._engine().connected_driver
-        if driver is None:
-            return []
-        try:
-            return list(driver.get_capabilities().input_channels)
-        except Exception:
-            return []
+    def _available_sensor_channels(self):
+        service = TemperatureControllerEngine.instance()
+        if hasattr(service, "channel_catalogue"):
+            return [compact_reference(item.reference) for item in service.channel_catalogue()]
+        return sorted(self._engine_state().readings)
 
     @property
     def limits(self) -> tuple[float, float]:
@@ -172,7 +178,10 @@ class TemperatureControllerPluginMixin:
 
     def sensor_value(self, channel: str) -> float:
         state = self._engine_state()
-        reading = state.readings.get(channel)
+        ref = channel_ref(channel)
+        state = TemperatureControllerEngine.instance().get_engine_state()
+        local = state if ref.controller_id == "primary" else state.for_controller(ref.controller_id)
+        reading = local.readings.get(ref.channel)
         return math.nan if reading is None else float(reading.value)
 
     def reported_values(self) -> dict[str, str]:
@@ -183,7 +192,7 @@ class TemperatureControllerPluginMixin:
         if hasattr(self, "settle_timeout_minutes"):
             values[f"{var}:Timed Out"] = f"{var}.timed_out"
         for channel in selected:
-            values[f"{var}:Sensor {channel}"] = f"{var}.sensor_value({channel!r})"
+            values[f"{var}:Sensor {channel}"] = f"{var}.sensor_value({reference_json(channel)!r})"
         return values
 
     def reported_value_units(self) -> dict[str, str]:
@@ -199,12 +208,14 @@ class TemperatureControllerPluginMixin:
 
     def _temperature_settings_to_json(self) -> dict[str, object]:
         return {
+            "controller_id": self.controller_id,
             "control_loop": self.control_loop,
             "ramp_rate": self.ramp_rate,
-            "sensor_channels": None if self.sensor_channels is None else list(self.sensor_channels),
+            "sensor_channels": None if self.sensor_channels is None else [reference_json(ch) for ch in self.sensor_channels],
         }
 
     def _restore_temperature_settings(self, data: dict[str, object]) -> None:
+        self.controller_id = controller_id(data.get("controller_id", "primary"))
         if "control_loop" in data:
             self.control_loop = max(1, int(data["control_loop"]))
         if "ramp_rate" in data:
@@ -229,12 +240,8 @@ class _TemperatureControllerSettingsWidget(QWidget):
         root = QVBoxLayout(self)
         form = QFormLayout()
 
-        self._loop_spin = QSpinBox(self)
-        self._loop_spin.setMinimum(1)
-        self._loop_spin.setMaximum(99)
-        self._loop_spin.setValue(self._plugin.control_loop)
-        self._loop_spin.valueChanged.connect(self._on_loop_changed)
-        form.addRow("Control loop:", self._loop_spin)
+        self._loop_selector = TemperatureLoopSelector(self._plugin, self)
+        form.addRow("Control loop:", self._loop_selector)
 
         if hasattr(self._plugin, "settle_timeout_minutes"):
             self._settle_timeout_spin = SISpinBox(self, allow_expressions=True)
@@ -257,11 +264,12 @@ class _TemperatureControllerSettingsWidget(QWidget):
             form.addRow("Stability timeout:", self._settle_timeout_spin)
 
         self._sensor_edit = QLineEdit(
-            "" if self._plugin.sensor_channels is None else ", ".join(self._plugin.sensor_channels), self
+            "" if self._plugin.sensor_channels is None else ", ".join(selection_text(ch) for ch in self._plugin.sensor_channels), self
         )
         self._sensor_edit.setPlaceholderText("Comma-separated sensor channels; blank = all available")
         self._sensor_edit.editingFinished.connect(self._on_sensors_changed)
         form.addRow("Reported sensors:", self._sensor_edit)
+        add_catalogue_picker(form, self._sensor_edit)
 
         root.addLayout(form)
         root.addStretch(1)
@@ -272,6 +280,6 @@ class _TemperatureControllerSettingsWidget(QWidget):
 
     def _on_sensors_changed(self) -> None:
         text = self._sensor_edit.text().strip()
-        values = None if not text else [part for part in text.split(",")]
+        values = None if not text else parse_selection(text)
         self._plugin.sensor_channels = _normalise_channels(values)
         self._plugin._refresh_catalogs()

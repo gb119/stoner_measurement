@@ -27,6 +27,7 @@ from stoner_measurement.temperature_control.types import (
     TemperatureChannelReading,
     TemperatureEngineState,
 )
+from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceStatus
 
 # ---------------------------------------------------------------------------
@@ -788,30 +789,6 @@ class TestEngineStabilityEvaluation:
         assert stable2[1] is False, "Should lose stability when outside tolerance"
         engine.shutdown()
 
-    def test_set_setpoint_invalidates_cached_loop_target_state(self, qapp):
-        class _Driver:
-            def set_setpoint(self, loop, value):
-                self.last_setpoint = (loop, value)
-
-        engine = TemperatureControllerEngine()
-        engine._driver = _Driver()
-        engine._at_setpoint_since[1] = datetime.now(tz=UTC)
-        engine._stable[1] = True
-        engine._latest_state = TemperatureEngineState(
-            setpoints={1: 300.0},
-            at_setpoint={1: True},
-            stable={1: True},
-            engine_status=EngineStatus.POLLING,
-        )
-
-        engine.set_setpoint(1, 325.0)
-        state = engine.get_engine_state()
-
-        assert engine._driver.last_setpoint == (1, 325.0)
-        assert state.at_setpoint[1] is False
-        assert state.stable[1] is False
-        assert engine._at_setpoint_since[1] is None
-        engine.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -908,34 +885,26 @@ class TestEnginePublisher:
 
 
 class TestTemperatureControlPanel:
-    def test_creates_widget(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_creates_widget(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         assert panel is not None
         assert panel.windowTitle() == "Temperature Control"
 
-    def test_show_and_raise(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_show_and_raise(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel.show_and_raise()
         assert panel.isVisible()
         panel.hide()
 
-    def test_close_hides_not_destroys(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_close_hides_not_destroys(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel.show()
         assert panel.isVisible()
         panel.close()
         assert not panel.isVisible()
 
-    def test_hide_button_hides_panel(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_hide_button_hides_panel(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel.show()
         assert panel._btn_hide.text() == "Hide"
         assert panel.isVisible()
@@ -943,10 +912,8 @@ class TestTemperatureControlPanel:
         qapp.processEvents()
         assert not panel.isVisible()
 
-    def test_has_all_tabs(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_has_all_tabs(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         tabs = panel._tabs
         tab_titles = [tabs.tabText(i) for i in range(tabs.count())]
         assert "Connection" in tab_titles
@@ -955,12 +922,10 @@ class TestTemperatureControlPanel:
         assert "Zone Table" in tab_titles
         assert "Chart" in tab_titles
 
-    def test_save_button_is_on_connection_tab(self, qapp):
+    def test_save_button_is_on_connection_tab(self, qapp, managed_temperature_panel):
         from qtpy.QtWidgets import QPushButton
 
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
         connection_tab = panel._tabs.widget(0)
         stability_tab = panel._tabs.widget(2)
 
@@ -970,10 +935,8 @@ class TestTemperatureControlPanel:
         assert "Save Settings to YAML" in connection_labels
         assert "Save Settings to YAML" not in stability_labels
 
-    def test_stability_apply(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_stability_apply(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel._stab_table.item(0, 2).setText("0.5")
         panel._stab_table.item(0, 5).setText("30.0")
         panel._on_apply_stability()
@@ -981,30 +944,8 @@ class TestTemperatureControlPanel:
         assert engine._stability_config.tolerance_k == pytest.approx(0.5)
         assert engine._stability_config.window_s == pytest.approx(30.0)
 
-    def test_stability_table_channel_selectors_populated_after_connection(self, qapp):
-        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
-        panel = TemperatureControlPanel()
-        panel._capabilities = ControllerCapabilities(
-            num_inputs=2,
-            num_loops=1,
-            input_channels=("A", "B"),
-            loop_numbers=(1,),
-        )
-
-        panel._refresh_stability_channel_selectors()
-
-        tolerance_combo = panel._stab_table.cellWidget(0, 1)
-        rate_combo = panel._stab_table.cellWidget(0, 3)
-        assert tolerance_combo.itemData(0) == "A"
-        assert tolerance_combo.itemData(1) == "B"
-        assert rate_combo.itemData(0) == "A"
-        assert rate_combo.itemData(1) == "B"
-
-    def test_yaml_sensor_selections_survive_panel_build_before_connection(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
+    def test_yaml_sensor_selections_survive_panel_build_before_connection(self, qapp, managed_temperature_panel):
         engine = TemperatureControllerEngine.instance()
         engine.set_stability_config(
             StabilityConfig(
@@ -1017,15 +958,13 @@ class TestTemperatureControlPanel:
             )
         )
 
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
 
         assert panel._stab_table.cellWidget(0, 1).currentData() == "A"
         assert panel._stab_table.cellWidget(0, 3).currentData() == "B"
 
-    def test_driver_combo_contains_temperature_controllers(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_driver_combo_contains_temperature_controllers(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         count = panel._driver_combo.count()
         # At least one concrete TC driver should be discovered.
         assert count >= 1
@@ -1038,17 +977,15 @@ class TestTemperatureControlPanel:
                 assert not inspect.isabstract(cls)
 
     def test_driver_combo_filters_out_underscore_prefixed_temperature_drivers(
-        self, qapp, monkeypatch
+        self, qapp, monkeypatch, managed_temperature_panel
     ):
         from stoner_measurement.instruments.temperature_controller import TemperatureController
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
         class _VisibleTemperatureDriver:
             @classmethod
             def display_name(cls):
                 return "Visible Temperature Driver"
 
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
         monkeypatch.setattr(
             panel._driver_manager,
             "drivers_by_type",
@@ -1064,81 +1001,37 @@ class TestTemperatureControlPanel:
         assert "Visible Temperature Driver" in items
         assert "_HiddenTemperatureDriver" not in items
 
-    def test_null_transport_connect_sets_address_status_connected(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_null_transport_connect_sets_address_status_connected(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel._transport_combo.setCurrentText("Null (test)")
         panel._on_connect()
 
         assert "background-color" in panel._null_form_widget.styleSheet()
 
-    def test_disconnect_clears_null_transport_address_status(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_disconnect_clears_null_transport_address_status(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel._set_address_widget_status(3, VisaResourceStatus.CONNECTED)
         panel._on_disconnect()
         assert panel._null_form_widget.styleSheet() == ""
 
-    def test_has_input_settings_tab(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_has_input_settings_tab(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         tabs = panel._tabs
         tab_titles = [tabs.tabText(i) for i in range(tabs.count())]
         assert "Input Settings" in tab_titles
 
-    def test_input_settings_tab_disabled_on_startup(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_input_settings_tab_disabled_on_startup(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         assert not panel._tabs.isTabEnabled(panel._input_settings_tab_index)
 
-    def test_control_loops_are_arranged_side_by_side(self, qapp):
-        from qtpy.QtWidgets import QHBoxLayout
 
-        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
-        panel = TemperatureControlPanel()
-        caps = ControllerCapabilities(
-            num_inputs=2,
-            num_loops=2,
-            input_channels=("A", "B"),
-            loop_numbers=(1, 2),
-        )
-
-        panel._rebuild_loop_groups(caps)
-
-        assert isinstance(panel._loop_layout, QHBoxLayout)
-        assert panel._loop_layout.count() == 2
-        assert panel._loop_layout.itemAt(0).widget() is panel._loop_groups[1]
-        assert panel._loop_layout.itemAt(1).widget() is panel._loop_groups[2]
-
-    def test_input_settings_table_receives_tab_expanding_space(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
-        tab = panel._tabs.widget(panel._input_settings_tab_index)
-        tab_layout = tab.layout()
-        input_layout = panel._input_settings_widget.layout()
-
-        assert tab_layout.count() == 1
-        assert tab_layout.stretch(0) == 1
-        assert input_layout.stretch(0) == 1
-        assert input_layout.stretch(1) == 0
-
-    def test_needle_read_btn_exists(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_needle_read_btn_exists(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         assert hasattr(panel, "_needle_read_btn")
 
-    def test_needle_read_btn_remains_enabled_when_gas_auto_active(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_needle_read_btn_remains_enabled_when_gas_auto_active(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel._needle_group.show()
         # Simulate enabling gas-auto mode.
         panel._on_gas_auto_changed(2)  # Qt.CheckState.Checked == 2
@@ -1148,11 +1041,9 @@ class TestTemperatureControlPanel:
         # Reset.
         panel._on_gas_auto_changed(0)
 
-    def test_input_settings_curve_selector_uses_curve_names(self, qapp, monkeypatch):
+    def test_input_settings_curve_selector_uses_curve_names(self, qapp, monkeypatch, managed_temperature_panel):
         from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
         monkeypatch.setattr(panel._engine, "get_calibration_curve_names", lambda: {5: "Standard Diode"})
 
         panel._configure_input_settings_tab(
@@ -1171,27 +1062,21 @@ class TestTemperatureControlPanel:
         assert curve_combo.itemText(named_curve_index) == "Standard Diode (5)"
         assert curve_combo.itemText(curve_combo.findData(2)) == "2"
 
-    def test_chart_widgets_exist(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_chart_widgets_exist(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         assert hasattr(panel, "_chart_widget")
         assert hasattr(panel, "_legend_tree")
 
-    def test_chart_duration_sets_fixed_real_time_window(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_chart_duration_sets_fixed_real_time_window(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         index = panel._duration_combo.findData(60)
 
         panel._duration_combo.setCurrentIndex(index)
 
         assert panel._chart_widget._axis_range("bottom") == pytest.approx((-3600.0, 0.0))
 
-    def test_chart_elapsed_time_is_independent_of_poll_density(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_chart_elapsed_time_is_independent_of_poll_density(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         start = datetime.now(tz=UTC)
 
         def plotted_xs(offsets):
@@ -1211,11 +1096,9 @@ class TestTemperatureControlPanel:
         assert plotted_xs([0, 60]) == pytest.approx([-60.0, 0.0])
         assert plotted_xs([0, 20, 40, 60]) == pytest.approx([-60.0, -40.0, -20.0, 0.0])
 
-    def test_input_settings_table_has_one_column_per_channel(self, qapp):
+    def test_input_settings_table_has_one_column_per_channel(self, qapp, managed_temperature_panel):
         from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
         panel._configure_input_settings_tab(
             ControllerCapabilities(
                 num_inputs=2,
@@ -1230,13 +1113,11 @@ class TestTemperatureControlPanel:
         assert table.columnCount() == 2
         assert [table.horizontalHeaderItem(i).text() for i in range(2)] == ["A", "B"]
 
-    def test_input_settings_read_and_write_all_channels(self, qapp, monkeypatch):
+    def test_input_settings_read_and_write_all_channels(self, qapp, monkeypatch, managed_temperature_panel):
         from unittest.mock import MagicMock
 
         from stoner_measurement.instruments.temperature_controller import InputChannelSettings
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
         table = panel._input_settings_widget
         table.set_channels(("A", "B"))
         read = MagicMock(
@@ -1256,11 +1137,9 @@ class TestTemperatureControlPanel:
         assert table._editors["B"]["filter_points"].value() == 20
         assert [call.args[0] for call in write.call_args_list] == ["A", "B"]
 
-    def test_zone_table_uses_row_headers_and_heater_range_labels(self, qapp):
+    def test_zone_table_uses_row_headers_and_heater_range_labels(self, qapp, managed_temperature_panel):
         from stoner_measurement.instruments.temperature_controller import ZoneEntry
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
         zone_widget = panel._zone_table_widget
         zone_widget.set_loop(1, ("Off", "Low", "Medium", "High"))
         zone_widget._populate_table(
@@ -1273,14 +1152,12 @@ class TestTemperatureControlPanel:
         assert range_combo.currentText() == "Medium"
         assert zone_widget._collect_entries()[0].ramp_rate == pytest.approx(2.5)
 
-    def test_connected_panel_runs_all_hardware_reads(self, qapp, monkeypatch):
+    def test_connected_panel_runs_all_hardware_reads(self, qapp, monkeypatch, managed_temperature_panel):
         from types import SimpleNamespace
         from unittest.mock import MagicMock
 
         from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
         caps = ControllerCapabilities(
             num_inputs=1,
             num_loops=1,
@@ -1309,10 +1186,8 @@ class TestTemperatureControlPanel:
         panel._input_settings_widget.read_all.assert_called_once_with(show_warning=False)
         panel._on_read_needle.assert_called_once_with()
 
-    def test_chart_uses_stability_rate_channel(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_chart_uses_stability_rate_channel(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         now = datetime.now(tz=UTC)
         state = TemperatureEngineState(
             readings={
@@ -1325,10 +1200,8 @@ class TestTemperatureControlPanel:
         panel._update_chart(state, now.timestamp())
         assert panel._rate_source_channel == "B"
 
-    def test_legend_updates_existing_item(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_legend_updates_existing_item(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
 
         panel._update_legend_value("T_A", "300 K")
         panel._update_legend_value("T_A", "301 K")
@@ -1338,20 +1211,16 @@ class TestTemperatureControlPanel:
         assert item.text(0) == "T_A"
         assert item.text(1) == "301 K"
 
-    def test_legend_value_column_sizes_to_contents(self, qapp):
+    def test_legend_value_column_sizes_to_contents(self, qapp, managed_temperature_panel):
         from qtpy.QtWidgets import QHeaderView
 
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+        panel = managed_temperature_panel()
         header = panel._legend_tree.header()
         assert header.sectionResizeMode(0) == QHeaderView.ResizeMode.Stretch
         assert header.sectionResizeMode(1) == QHeaderView.ResizeMode.ResizeToContents
 
-    def test_clear_chart_clears_legend(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_clear_chart_clears_legend(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
 
         panel._update_legend_value("T_A", "300 K")
         assert panel._legend_tree.topLevelItemCount() == 1
@@ -1361,9 +1230,7 @@ class TestTemperatureControlPanel:
         assert panel._legend_tree.topLevelItemCount() == 0
         assert panel._legend_items == {}
 
-    def test_calculate_rate_linear_ramp(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
+    def test_calculate_rate_linear_ramp(self, qapp, managed_temperature_panel):
         times = [0.0, 10.0, 20.0, 30.0, 40.0]
         temps = [100.0, 101.0, 102.0, 103.0, 104.0]
 
@@ -1372,9 +1239,7 @@ class TestTemperatureControlPanel:
         assert rates
         assert rates[-1] == pytest.approx(6.0, abs=0.05)
 
-    def test_calculate_rate_flat_temperature(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
+    def test_calculate_rate_flat_temperature(self, qapp, managed_temperature_panel):
         times = [0.0, 10.0, 20.0, 30.0, 40.0]
         temps = [100.0, 100.0, 100.0, 100.0, 100.0]
 
@@ -1383,9 +1248,7 @@ class TestTemperatureControlPanel:
         assert rates
         assert rates[-1] == pytest.approx(0.0, abs=1e-6)
 
-    def test_calculate_rate_short_series(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
+    def test_calculate_rate_short_series(self, qapp, managed_temperature_panel):
         xs, ys = TemperatureControlPanel._calculate_rate(
             [0.0, 10.0, 20.0],
             [100.0, 101.0, 102.0],
@@ -1394,27 +1257,23 @@ class TestTemperatureControlPanel:
         assert xs == []
         assert ys == []
 
-    def test_chart_rate_source_is_not_a_persisted_manual_setting(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_chart_rate_source_is_not_a_persisted_manual_setting(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel._rate_source_channel = "B"
         panel._save_chart_settings()
 
-        panel2 = TemperatureControlPanel()
+        panel2 = managed_temperature_panel()
 
         assert panel2._rate_source_channel is None
 
-    def test_legend_item_has_icon(self, qapp):
-        from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-
-        panel = TemperatureControlPanel()
+    def test_legend_item_has_icon(self, qapp, managed_temperature_panel):
+        panel = managed_temperature_panel()
         panel._update_legend_value("T_A", "300 K")
 
         item = panel._legend_tree.topLevelItem(0)
         assert not item.icon(0).isNull()
 
-    def test_plotwidget_compact_mode(self, qapp):
+    def test_plotwidget_compact_mode(self, qapp, managed_temperature_panel):
         from stoner_measurement.ui.plot_widget import PlotWidget
 
         widget = PlotWidget(
@@ -1524,13 +1383,13 @@ def _make_fake_tc():
 
 
 class TestEngineZoneTable:
-    def test_get_zone_table_disconnected(self, qapp):
+    def test_get_zone_table_disconnected(self, qapp, managed_temperature_panel):
         engine = TemperatureControllerEngine()
         result = engine.get_zone_table(1)
         assert result is None
         engine.shutdown()
 
-    def test_get_zone_table_reads_all_entries(self, qapp):
+    def test_get_zone_table_reads_all_entries(self, qapp, managed_temperature_panel):
         from stoner_measurement.instruments.temperature_controller import ZoneEntry
 
         engine = TemperatureControllerEngine()
@@ -1547,7 +1406,7 @@ class TestEngineZoneTable:
         assert entries[2].upper_bound == pytest.approx(150.0)
         engine.shutdown()
 
-    def test_set_zone_table_calls_driver(self, qapp):
+    def test_set_zone_table_calls_driver(self, qapp, managed_temperature_panel):
         from unittest.mock import MagicMock
 
         from stoner_measurement.instruments.temperature_controller import ZoneEntry
@@ -1568,7 +1427,7 @@ class TestEngineZoneTable:
         assert call_args[1][0][1] == 2  # zone_index=2
         engine.shutdown()
 
-    def test_get_zone_table_handles_partial_failure(self, qapp):
+    def test_get_zone_table_handles_partial_failure(self, qapp, managed_temperature_panel):
         engine = TemperatureControllerEngine()
         driver = _make_fake_tc()
 
@@ -1592,25 +1451,15 @@ class TestEngineZoneTable:
         assert entries[1].upper_bound == pytest.approx(150.0)
         engine.shutdown()
 
-    def test_set_zone_table_disconnected(self, qapp):
-        engine = TemperatureControllerEngine()
-        # Should silently do nothing when disconnected.
-        from stoner_measurement.instruments.temperature_controller import ZoneEntry
-
-        entries = [
-            ZoneEntry(upper_bound=50.0, p=10.0, i=1.0, d=0.0, ramp_rate=5.0, heater_range=1, heater_output=0.0)
-        ]
-        engine.set_zone_table(1, entries)  # no exception expected
-        engine.shutdown()
 
 
 class TestEngineCalibrationCurveNames:
-    def test_returns_empty_mapping_when_disconnected(self, qapp):
+    def test_returns_empty_mapping_when_disconnected(self, qapp, managed_temperature_panel):
         engine = TemperatureControllerEngine()
         assert engine.get_calibration_curve_names() == {}
         engine.shutdown()
 
-    def test_returns_driver_curve_names(self, qapp):
+    def test_returns_driver_curve_names(self, qapp, managed_temperature_panel):
         from unittest.mock import MagicMock
 
         engine = TemperatureControllerEngine()
@@ -1622,7 +1471,7 @@ class TestEngineCalibrationCurveNames:
 
 
 class TestSimulatedTemperatureControllerIntegration:
-    def test_engine_reads_simulated_temperature_controller(self, qapp):
+    def test_engine_reads_simulated_temperature_controller(self, qapp, managed_temperature_panel):
         from stoner_measurement.instruments.simulated import (
             SimulatedTemperatureController,
         )
@@ -1641,7 +1490,7 @@ class TestSimulatedTemperatureControllerIntegration:
 
         engine.shutdown()
 
-    def test_engine_observes_simulated_temperature_change(self, qapp):
+    def test_engine_observes_simulated_temperature_change(self, qapp, managed_temperature_panel):
         from stoner_measurement.instruments.simulated import (
             SimulatedTemperatureController,
         )

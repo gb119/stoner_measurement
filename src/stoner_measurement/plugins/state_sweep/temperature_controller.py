@@ -29,7 +29,16 @@ class TemperatureControllerSweepPlugin(TemperatureControllerPluginMixin, StateSw
     default reflects that real cryostats often take substantially longer than
     a simple ramp-rate estimate would suggest.
 
+    The loop selector labels Primary and Secondary explicitly. Secondary is
+    optional and disabled by default in the controller panel. A saved unavailable
+    loop remains selected and cannot silently fall back to the other instrument.
+    Unqualified sensor names refer to primary; use ``secondary:A`` in sensor
+    lists to select channel A on secondary. Available-sensor pickers avoid typing
+    channel names. Blank sensor lists include both connected controllers.
+
     Attributes:
+        controller_id (str):
+            Persistent controller slot, ``"primary"`` (default) or ``"secondary"``.
         sweep_timeout_factor (float):
             Multiplier applied to the estimated sweep duration when computing
             the allowed wall-clock runtime.

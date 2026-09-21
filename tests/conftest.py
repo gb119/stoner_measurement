@@ -64,6 +64,24 @@ def managed_qt_widget(qapp):
 
 
 @pytest.fixture
+def managed_temperature_panel(managed_qt_widget):
+    """Keep hidden temperature panels alive and close their charts at teardown."""
+    from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
+
+    panels = []
+
+    def create():
+        panel = managed_qt_widget(TemperatureControlPanel())
+        panels.append(panel)
+        return panel
+
+    yield create
+
+    for panel in panels:
+        panel._allow_exit_close = True
+
+
+@pytest.fixture
 def managed_measurement_app(managed_qt_widget):
     """Create application windows and shut down all owned resources first.
 

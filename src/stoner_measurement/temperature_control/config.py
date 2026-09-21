@@ -14,6 +14,23 @@ from stoner_measurement.resources import bundled_resource_path, user_config_file
 _MAX_CONFIG_BACKUPS = 20
 
 
+def normalise_configuration(config: dict[str, Any]) -> dict[str, Any]:
+    """Migrate legacy settings before merging machine overrides."""
+    result = dict(config)
+    controllers = dict(result.get("controllers", {}))
+    primary = {key: result[key] for key in ("connection", "stability") if key in result}
+    primary = deep_merge(primary, controllers.get("primary", {}))
+    if result.get("schema_version", 0) >= 3 and "stability" in result:
+        primary["stability"] = result["stability"]
+    if primary:
+        controllers["primary"] = primary
+    result["controllers"] = controllers
+    for key in ("connection", "stability"):
+        if key in primary:
+            result[key] = primary[key]
+    return result
+
+
 def machine_config_path() -> Path:
     """Return the per-machine temperature-controller config path."""
     return user_config_file("temperature_controller.yaml")
@@ -25,7 +42,9 @@ def load_temperature_controller_config() -> dict[str, Any]:
         bundled_resource_path("", "temperature_controller.yaml") or Path("__missing__")
     )
     machine = load_yaml_mapping(machine_config_path())
-    return deep_merge(bundled, machine)
+    return normalise_configuration(
+        deep_merge(normalise_configuration(bundled), normalise_configuration(machine))
+    )
 
 
 def save_temperature_controller_config(config: dict[str, Any]) -> Path:

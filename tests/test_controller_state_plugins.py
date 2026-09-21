@@ -724,6 +724,7 @@ def test_temperature_controller_sweep_advances_targets_from_multisegment_generat
     )
 
     plugin = TemperatureControllerSweepPlugin()
+    plugin.control_loop = 2
     plugin.sweep_generator = MultiSegmentRampSweepGenerator(
         start=0.0,
         segments=[(10.0, 2.0, True), (20.0, 3.0, True)],
@@ -736,8 +737,8 @@ def test_temperature_controller_sweep_advances_targets_from_multisegment_generat
     plugin._begin_sweep()
 
     assert next(plugin) is True
-    assert engine.setpoint_calls[-1] == (1, 10.0)
-    assert engine.ramp_calls[-1] == (1, 2.0, True)
+    assert engine.setpoint_calls[-1] == (2, 10.0)
+    assert engine.ramp_calls[-1] == (2, 2.0, True)
 
 
 def test_magnet_controller_sweep_defaults_to_per_minute_rate_timing(monkeypatch, qapp):

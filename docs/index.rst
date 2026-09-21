@@ -8,6 +8,7 @@ Stoner Measurement
    installation
    usage
    simulated_instruments
+   temperature_controllers
    keithley_point_commands
    xray_diffractometer
    round_dial_widget

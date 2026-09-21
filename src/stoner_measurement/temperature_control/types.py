@@ -82,6 +82,7 @@ class TemperatureChannelReading:
     status: SensorStatus
     units: str = "K"
     rate_of_change: float = 0.0
+    controller_id: str = "primary"
 
 
 @dataclass
@@ -150,6 +151,37 @@ class TemperatureEngineState:
     stability_rate_channels: dict[int, str] = field(default_factory=dict)
     stability_diagnostics: dict[int, StabilityDiagnostics] = field(default_factory=dict)
     engine_status: EngineStatus = EngineStatus.DISCONNECTED
+    stability_rate_channel: str | None = None
+    secondary: TemperatureEngineState | None = None
+    controller_statuses: dict[str, EngineStatus] = field(default_factory=dict)
+    cache_ages: dict[str, float] = field(default_factory=dict)
+
+    def for_controller(self, controller_id):
+        """Return a local snapshot without substituting a different controller."""
+        if controller_id == "primary":
+            return self
+        if controller_id == "secondary":
+            return self.secondary or TemperatureEngineState()
+        raise ValueError(f"Unknown controller {controller_id!r}")
+
+    def loop_values(self, name):
+        """Return a combined mapping of LoopRef to the requested loop quantity."""
+        from stoner_measurement.temperature_control.references import LoopRef
+
+        result = {LoopRef("primary", key): value for key, value in getattr(self, name).items()}
+        if self.secondary is not None:
+            result.update({LoopRef("secondary", key): value for key, value in getattr(self.secondary, name).items()})
+        return result
+
+    @property
+    def all_readings(self):
+        """Return qualified sensors without duplicating native primary entries."""
+        from stoner_measurement.temperature_control.references import ChannelRef
+
+        result = {ChannelRef("primary", key): value for key, value in self.readings.items()}
+        if self.secondary is not None:
+            result.update({ChannelRef("secondary", key): value for key, value in self.secondary.readings.items()})
+        return result
 
 
 @dataclass(frozen=True)
@@ -235,7 +267,7 @@ class StabilityConfig:
                     window_s=self.window_s,
                 )
             ]
-        self.bands = sorted(self.bands, key=lambda band: band.max_temperature_k)
+        # Table order is explicit priority when upper bounds overlap.
         first = self.bands[0]
         self.tolerance_k = first.tolerance_k
         self.min_rate = first.min_rate

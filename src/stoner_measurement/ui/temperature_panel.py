@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from functools import wraps
 
 import numpy as np
 import pyqtgraph as pg
@@ -47,6 +48,7 @@ from qtpy.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
@@ -55,20 +57,16 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.instruments.addressing import (
-    DEFAULT_ETHERNET_HOST,
-    DEFAULT_ETHERNET_PORT,
-)
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.temperature_controller import (
     ControllerCapabilities,
     ControlMode,
     InputChannelSettings,
-    TemperatureController,
     ZoneEntry,
 )
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+from stoner_measurement.temperature_control.references import LoopRef
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     StabilityBand,
@@ -78,24 +76,20 @@ from stoner_measurement.temperature_control.types import (
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.icons import make_temperature_icon
 from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
+from stoner_measurement.ui.temperature_connection import (
+    TemperatureConnectionGroup,
+    TemperatureConnectionMixin,
+)
 from stoner_measurement.ui.theme import (
     colour,
     disabled_tab_stylesheet,
 )
 from stoner_measurement.ui.time_utils import format_local_time
 from stoner_measurement.ui.widgets import (
-    FILTER_GPIB,
-    FILTER_SERIAL,
     PercentSliderWidget,
     SISpinBox,
-    VisaResourceComboBox,
     VisaResourceStatus,
-    load_connection_preferences,
     restore_connection_address,
-    restore_preferred_address,
-    selected_transport,
-    set_address_widget_status,
-    show_transport_widget,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,7 +159,20 @@ def _panel_settings() -> QSettings:
     return QSettings(_SETTINGS_ORGANISATION, _SETTINGS_APPLICATION)
 
 
-class TemperatureControlPanel(QWidget):
+def _report_hardware_error(action):
+    """Present hardware failures at the Qt action boundary without swallowing engine errors."""
+    @wraps(action)
+    def invoke(self, *args, **kwargs):
+        try:
+            return action(self, *args, **kwargs)
+        except Exception as error:
+            logger.exception("Temperature panel operation failed")
+            QMessageBox.warning(self, "Temperature controller", str(error))
+            return None
+    return invoke
+
+
+class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
     """Non-blocking window for temperature controller configuration and monitoring.
 
     Opens from the *Temperature* menu or toolbar button.  Communicates
@@ -198,6 +205,9 @@ class TemperatureControlPanel(QWidget):
         self.setWindowFlags(Qt.WindowType.Window)
 
         self._engine = TemperatureControllerEngine.instance()
+        self._service = self._engine
+        self._slot = "primary"
+        self._stability_engine = self._engine
         self._driver_manager = InstrumentDriverManager()
         self._driver_manager.discover()
 
@@ -212,11 +222,15 @@ class TemperatureControlPanel(QWidget):
 
         # Current capabilities (populated after connection).
         self._capabilities = None
+        self._secondary_cryogen = None
         self._allow_exit_close = False
 
         self._build_ui()
         self._load_connection_preferences()
         self._connect_engine_signals()
+
+        initial_height = max(self.minimumHeight(), self.sizeHint().height())
+        self.resize(round(initial_height * 1.618), initial_height)
 
     # ------------------------------------------------------------------
     # Public interface
@@ -249,6 +263,7 @@ class TemperatureControlPanel(QWidget):
         """
         if self._allow_exit_close:
             logger.info("Closing temperature control panel during application shutdown.")
+            self._chart_widget.close()
             super().closeEvent(event)
             return
         event.ignore()
@@ -301,144 +316,55 @@ class TemperatureControlPanel(QWidget):
 
     # --- Connection tab ---
 
-    def _build_connection_tab(self) -> QWidget:
-        """Build the Connection tab widget.
 
-        Returns:
-            (QWidget):
-                The assembled connection tab.
-        """
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(8)
 
-        # Driver selection
-        driver_group = QGroupBox("Instrument Driver")
-        driver_form = QFormLayout(driver_group)
 
-        self._driver_combo = QComboBox()
-        self._driver_combo.setToolTip("Select the temperature controller driver")
-        self._populate_driver_combo()
-        driver_form.addRow("Driver:", self._driver_combo)
 
-        # Transport type
-        self._transport_combo = QComboBox()
-        for label in ("Serial", "GPIB", "Ethernet", "Null (test)"):
-            self._transport_combo.addItem(label)
-        self._transport_combo.currentIndexChanged.connect(self._on_transport_changed)
-        driver_form.addRow("Transport:", self._transport_combo)
-
-        self._polling_rate_spin = QDoubleSpinBox()
-        self._polling_rate_spin.setRange(0.0, 10.0)
-        self._polling_rate_spin.setDecimals(1)
-        self._polling_rate_spin.setSingleStep(0.1)
-        self._polling_rate_spin.setSuffix(" Hz")
-        self._polling_rate_spin.setSpecialValueText("Disabled")
+    def _build_connection_tab(self):
+        """Show independent connection forms and one service settings action."""
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        primary = QGroupBox("Primary")
+        primary_layout = QVBoxLayout(primary)
+        primary_layout.addWidget(self._build_connection_form())
+        self._primary_connection_status = QLabel()
+        primary_layout.addWidget(self._primary_connection_status)
+        layout.addWidget(primary)
+        self._secondary_enabled = QCheckBox("Enable secondary controller")
+        self._secondary_enabled.setChecked(self._engine.controller_enabled("secondary"))
+        layout.addWidget(self._secondary_enabled)
+        self._secondary_connection = TemperatureConnectionGroup(
+            self._engine, "secondary", self._driver_manager
+        )
+        self._secondary_connection.setEnabled(self._secondary_enabled.isChecked())
+        self._secondary_enabled.toggled.connect(self._set_secondary_enabled)
+        layout.addWidget(self._secondary_connection)
+        self._polling_rate_spin = SISpinBox()
+        self._polling_rate_spin.setOpts(bounds=(0, 10), suffix="Hz", decimals=1)
         self._polling_rate_spin.setValue(self._engine.polling_rate_hz)
-        self._polling_rate_spin.setToolTip("Set to 0 to disable automatic polling.")
-        self._polling_rate_spin.valueChanged.connect(self._engine.set_polling_rate)
-        driver_form.addRow("Polling rate:", self._polling_rate_spin)
-
-        layout.addWidget(driver_group)
-
-        # Transport-specific address fields
-        self._address_group = QGroupBox("Connection Address")
-        self._address_stack_layout = QVBoxLayout(self._address_group)
-
-        self._serial_form_widget = self._build_serial_address_form()
-        self._gpib_form_widget = self._build_gpib_address_form()
-        self._ethernet_form_widget = self._build_ethernet_address_form()
-        self._null_form_widget = QLabel("No address required for Null transport.")
-
-        for w in (
-            self._serial_form_widget,
-            self._gpib_form_widget,
-            self._ethernet_form_widget,
-            self._null_form_widget,
-        ):
-            self._address_stack_layout.addWidget(w)
-            w.hide()
-
-        self._serial_form_widget.show()
-        layout.addWidget(self._address_group)
-
-        # Connect / Disconnect buttons
-        btn_row = QHBoxLayout()
-        self._btn_connect = QPushButton("Connect")
-        self._btn_connect.clicked.connect(self._on_connect)
-        self._btn_disconnect = QPushButton("Disconnect")
-        self._btn_disconnect.setEnabled(False)
-        self._btn_disconnect.clicked.connect(self._on_disconnect)
+        self._polling_rate_spin.sigValueChanged.connect(lambda spin: self._engine.set_polling_rate(spin.value()))
+        polling = QFormLayout()
+        polling.addRow("Polling rate (0 disables):", self._polling_rate_spin)
+        layout.addLayout(polling)
         self._btn_save_configuration = QPushButton("Save Settings to YAML")
         self._btn_save_configuration.clicked.connect(self._on_save_configuration)
-        btn_row.addWidget(self._btn_connect)
-        btn_row.addWidget(self._btn_disconnect)
-        btn_row.addWidget(self._btn_save_configuration)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
+        layout.addWidget(self._btn_save_configuration)
         layout.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+        return scroll
 
-        return widget
-
-    def _build_serial_address_form(self) -> QWidget:
-        """Build the serial-port address fields.
-
-        Returns:
-            (QWidget):
-                Serial address form widget.
-        """
-        w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(0, 0, 0, 0)
-        self._serial_port_combo = VisaResourceComboBox(
-            resource_filter=FILTER_SERIAL,
-            placeholder="/dev/ttyUSB0",
-            extra_resources=["/dev/ttyUSB0"],
-            auto_refresh=False,
-        )
-        self._serial_baud_combo = QComboBox()
-        for baud in (9600, 19200, 38400, 57600, 115200):
-            self._serial_baud_combo.addItem(str(baud), baud)
-        form.addRow("Port:", self._serial_port_combo)
-        form.addRow("Baud rate:", self._serial_baud_combo)
-        return w
-
-    def _build_gpib_address_form(self) -> QWidget:
-        """Build the GPIB address fields.
-
-        Returns:
-            (QWidget):
-                GPIB address form widget.
-        """
-        w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(0, 0, 0, 0)
-        self._gpib_resource_combo = VisaResourceComboBox(
-            resource_filter=FILTER_GPIB,
-            placeholder="GPIB0::2::INSTR",
-            extra_resources=["GPIB0::2::INSTR"],
-            auto_refresh=False,
-        )
-        form.addRow("VISA resource:", self._gpib_resource_combo)
-        return w
-
-    def _build_ethernet_address_form(self) -> QWidget:
-        """Build the Ethernet address fields.
-
-        Returns:
-            (QWidget):
-                Ethernet address form widget.
-        """
-        w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(0, 0, 0, 0)
-        self._eth_host_edit = _line_edit(DEFAULT_ETHERNET_HOST)
-        self._eth_port_spin = QSpinBox()
-        self._eth_port_spin.setRange(1, 65535)
-        self._eth_port_spin.setValue(DEFAULT_ETHERNET_PORT)
-        form.addRow("Host:", self._eth_host_edit)
-        form.addRow("Port:", self._eth_port_spin)
-        return w
+    def _set_secondary_enabled(self, enabled):
+        try:
+            self._engine.set_controller_enabled("secondary", enabled)
+        except Exception as error:
+            self._secondary_enabled.blockSignals(True)
+            self._secondary_enabled.setChecked(not enabled)
+            self._secondary_enabled.blockSignals(False)
+            QMessageBox.warning(self, "Secondary controller", str(error))
+            return
+        self._secondary_connection.setEnabled(enabled)
 
     # --- Control tab ---
 
@@ -493,7 +419,22 @@ class TemperatureControlPanel(QWidget):
         self._control_layout.addWidget(self._needle_group)
         self._needle_group.hide()
         self._control_layout.addStretch()
-        return wrapper
+        self._secondary_control_widget = QWidget()
+        self._secondary_control_layout = QVBoxLayout(self._secondary_control_widget)
+        self._secondary_loop_container = QWidget()
+        self._secondary_loop_layout = QHBoxLayout(self._secondary_loop_container)
+        self._secondary_loop_layout.setContentsMargins(0, 0, 0, 0)
+        self._secondary_loop_layout.setSpacing(6)
+        self._secondary_control_layout.addWidget(self._secondary_loop_container)
+        self._secondary_control_layout.addStretch()
+        secondary_scroll = QScrollArea()
+        secondary_scroll.setWidgetResizable(True)
+        secondary_scroll.setWidget(self._secondary_control_widget)
+        self._control_tabs = FontAwareTabWidget()
+        self._control_tabs.addTab(wrapper, "Primary")
+        self._control_tabs.addTab(secondary_scroll, "Secondary")
+        self._control_tabs.setTabVisible(1, self._engine.controller_enabled("secondary"))
+        return self._control_tabs
 
     # --- Stability tab ---
 
@@ -507,6 +448,12 @@ class TemperatureControlPanel(QWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(6)
+        priority_label = QLabel(
+            "Shared rig criteria: first matching row wins (target at or below upper limit). "
+            "The last row covers higher targets. Secondary sensors use .2."
+        )
+        priority_label.setWordWrap(True)
+        layout.addWidget(priority_label)
 
         self._stab_table = QTableWidget(0, 6)
         self._stab_table.setHorizontalHeaderLabels(
@@ -538,6 +485,10 @@ class TemperatureControlPanel(QWidget):
         apply_btn.clicked.connect(self._on_apply_stability)
         table_row.addWidget(add_btn)
         table_row.addWidget(remove_btn)
+        for title, offset in (("Move Up", -1), ("Move Down", 1)):
+            button = QPushButton(title)
+            button.clicked.connect(lambda _checked=False, step=offset: self._move_stability_band(step))
+            table_row.addWidget(button)
         table_row.addStretch()
         table_row.addWidget(apply_btn)
         layout.addLayout(table_row)
@@ -551,12 +502,14 @@ class TemperatureControlPanel(QWidget):
         self._stab_diagnostics_label.hide()
         self._stab_diagnostics_check.toggled.connect(self._stab_diagnostics_label.setVisible)
         layout.addWidget(self._stab_diagnostics_label)
+        layout.addStretch()
 
         self._populate_stability_table(self._engine.stability_config)
 
         return widget
 
     # --- Zone table tab ---
+
 
     def _build_zone_tab(self) -> QWidget:
         """Build the Zone Table tab widget.
@@ -602,8 +555,13 @@ class TemperatureControlPanel(QWidget):
 
         # Settings table
         self._input_settings_widget = _InputSettingsTableWidget(self._engine)
-        layout.addWidget(self._input_settings_widget, stretch=1)
+        layout.addWidget(QLabel("Primary"))
+        layout.addWidget(self._input_settings_widget)
 
+        layout.addWidget(QLabel("Secondary"))
+        self._secondary_input_settings = _InputSettingsTableWidget(self._engine.controller("secondary"))
+        layout.addWidget(self._secondary_input_settings)
+        layout.addStretch()
         return widget
 
     # --- Chart tab ---
@@ -633,7 +591,10 @@ class TemperatureControlPanel(QWidget):
         controls.addWidget(clear_btn)
         layout.addLayout(controls)
 
-        content = QHBoxLayout()
+        self._chart_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._chart_splitter.setChildrenCollapsible(False)
+        self._chart_splitter.setHandleWidth(7)
+        content = self._chart_splitter
 
         self._chart_widget = PlotWidget(
             show_axis_controls=False,
@@ -643,7 +604,8 @@ class TemperatureControlPanel(QWidget):
         self._chart_widget.add_y_axis("output", "Output (%)")
         self._chart_widget.add_y_axis("rate", "Rate (K/min)")
         self._chart_widget.set_rolling_time_window(self._chart_duration_min * 60.0)
-        content.addWidget(self._chart_widget, stretch=4)
+        content.addWidget(self._chart_widget)
+        content.setStretchFactor(0, 4)
 
         self._legend_tree = QTreeWidget()
         configure_chart_legend(self._legend_tree)
@@ -651,9 +613,12 @@ class TemperatureControlPanel(QWidget):
         self._legend_tree.itemChanged.connect(self._on_legend_item_changed)
         self._legend_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._legend_tree.customContextMenuRequested.connect(self._on_legend_context_menu)
-        content.addWidget(self._legend_tree, stretch=1)
+        content.addWidget(self._legend_tree)
+        content.setStretchFactor(1, 1)
+        content.setSizes([800, 240])
+        content.handle(1).setToolTip("Drag to resize the chart and legend")
 
-        layout.addLayout(content)
+        layout.addWidget(content)
         return widget
 
     # --- Status bar ---
@@ -715,7 +680,9 @@ class TemperatureControlPanel(QWidget):
         colour = _STATUS_COLOURS.get(status, "#888888")
         dot = _colour_dot(colour)
         self._status_label.setText(f"{dot} Engine: {status.value}")
-        connected = status in (EngineStatus.CONNECTED, EngineStatus.POLLING)
+        primary_status = self._engine.get_engine_state().controller_statuses.get("primary", status)
+        self._primary_connection_status.setText(primary_status.value)
+        connected = self._engine.connected_driver is not None
         self._btn_connect.setEnabled(not connected)
         self._btn_disconnect.setEnabled(connected)
 
@@ -731,12 +698,16 @@ class TemperatureControlPanel(QWidget):
 
         # Update control-loop groups with live readings.
         for loop, group in self._loop_groups.items():
+            local_state = state
+            if isinstance(loop, LoopRef):
+                local_state = state.for_controller(loop.controller_id)
+                loop = loop.loop
             group.update_live(
-                setpoint=state.setpoints.get(loop, 0.0),
-                heater_output=state.heater_outputs.get(loop, 0.0),
-                mode=state.loop_modes.get(loop),
-                heater_range=state.heater_ranges.get(loop),
-                input_channel=state.input_channels.get(loop),
+                setpoint=local_state.setpoints.get(loop, 0.0),
+                heater_output=local_state.heater_outputs.get(loop, 0.0),
+                mode=local_state.loop_modes.get(loop),
+                heater_range=local_state.heater_ranges.get(loop),
+                input_channel=local_state.input_channels.get(loop),
             )
 
         # Needle valve
@@ -752,17 +723,22 @@ class TemperatureControlPanel(QWidget):
             self._needle_apply_btn.setEnabled(not state.gas_auto_mode)
 
         # Update chart buffers and curves.
-        self._update_chart(state, now_ts)
+        self._update_chart(state, now_ts, update_rate=False)
+        if state.secondary is not None:
+            self._update_chart(state.secondary, now_ts, "secondary:", update_rate=False)
+        self._update_rate_chart(state, now_ts)
+        if self._secondary_cryogen is not None:
+            self._secondary_cryogen.update_state(state.secondary)
 
         if self._stab_diagnostics_check.isChecked():
             lines = []
-            for loop, values in sorted(state.stability_diagnostics.items()):
+            for loop, values in sorted(state.loop_values("stability_diagnostics").items()):
                 lines.append(
-                    f"Loop {loop}: ΔT [{values.tolerance_channel}] "
+                    f"Loop {loop}: ΔT [{self._sensor_label(values.tolerance_channel)}] "
                     f"{values.current_difference_k:+.4f} K "
                     f"(min {values.min_difference_k:+.4f}, max {values.max_difference_k:+.4f}; "
                     f"limit ±{values.tolerance_k:g})    "
-                    f"rate [{values.rate_channel}] {values.current_rate_k_per_min:+.4f} K/min "
+                    f"rate [{self._sensor_label(values.rate_channel)}] {values.current_rate_k_per_min:+.4f} K/min "
                     f"(min {values.min_rate_k_per_min:+.4f}, max {values.max_rate_k_per_min:+.4f}; "
                     f"limit ±{values.rate_limit_k_per_min:g}; {values.window_s:g} s window)"
                 )
@@ -773,10 +749,10 @@ class TemperatureControlPanel(QWidget):
             f"Last updated: {format_local_time(datetime.fromtimestamp(now_ts).astimezone())}"
         )
         active_loops = {
-            loop for loop, mode in state.loop_modes.items() if mode is not ControlMode.OFF
+            loop for loop, mode in state.loop_values("loop_modes").items() if mode is not ControlMode.OFF
         }
-        at_values = [value for loop, value in state.at_setpoint.items() if loop in active_loops]
-        stable_values = [value for loop, value in state.stable.items() if loop in active_loops]
+        at_values = [value for loop, value in state.loop_values("at_setpoint").items() if loop in active_loops]
+        stable_values = [value for loop, value in state.loop_values("stable").items() if loop in active_loops]
         all_at = all(at_values) if at_values else None
         all_stable = all(stable_values) if stable_values else None
         at_colour = "#44aa44" if all_at else ("#cc4444" if all_at is False else "#888888")
@@ -861,7 +837,7 @@ class TemperatureControlPanel(QWidget):
             buf.pop(0)
         return times, buf
 
-    def _update_chart(self, state: TemperatureEngineState, now_ts: float) -> None:
+    def _update_chart(self, state: TemperatureEngineState, now_ts: float, prefix="", *, update_rate=True) -> None:
         """Append the latest readings to chart buffers and redraw curves.
 
         Args:
@@ -872,14 +848,9 @@ class TemperatureControlPanel(QWidget):
         """
         duration_s = self._chart_duration_min * 60.0
 
-        self._rate_source_channel = next(
-            (state.stability_rate_channels[loop] for loop in sorted(state.stability_rate_channels)),
-            next(iter(state.readings), None),
-        )
-
         for i, (ch, reading) in enumerate(state.readings.items()):
             ts = reading.timestamp.timestamp()
-            trace_name = f"T_{ch}"
+            trace_name = f"{prefix}T_{ch}"
             buf_t, buf_v = self._append_chart_sample(
                 trace_name, ts, reading.value, now_ts, duration_s
             )
@@ -892,22 +863,12 @@ class TemperatureControlPanel(QWidget):
             )
             self._update_legend_value(trace_name, f"{reading.value:.2f} K")
 
-            if len(buf_t) >= 3 and ch == self._rate_source_channel:
-                rate_times, rate_ys = self._calculate_rate(buf_t, buf_v)
-                rate_xs = [t - now_ts for t in rate_times]
-
-                self._chart_widget.set_trace("dT/dt", rate_xs, rate_ys)
-                self._chart_widget.assign_trace_axes("dT/dt", y_axis="rate")
-                self._chart_widget.set_trace_style("dT/dt", colour=colour("muted_text"))
-                if rate_ys:
-                    self._update_legend_value("dT/dt", f"{rate_ys[-1]:.3f} K/min")
-
         # Setpoint traces
         reference_reading = next(iter(state.readings.values()), None)
         if reference_reading is not None:
             sample_ts = reference_reading.timestamp.timestamp()
             for loop, sp in state.setpoints.items():
-                trace_name = f"SP_{loop}"
+                trace_name = f"{prefix}SP_{loop}"
                 sp_times, sp_buf = self._append_chart_sample(
                     trace_name, sample_ts, sp, now_ts, duration_s
                 )
@@ -922,7 +883,7 @@ class TemperatureControlPanel(QWidget):
                 self._update_legend_value(trace_name, f"{sp:.2f} K")
 
             for loop, ho in state.heater_outputs.items():
-                trace_name = f"H_{loop}"
+                trace_name = f"{prefix}H_{loop}"
                 heater_times, h_buf = self._append_chart_sample(
                     trace_name, sample_ts, ho, now_ts, duration_s
                 )
@@ -934,124 +895,39 @@ class TemperatureControlPanel(QWidget):
 
             if state.needle_valve is not None:
                 needle_times, nv_buf = self._append_chart_sample(
-                    "NV", sample_ts, state.needle_valve, now_ts, duration_s
+                    f"{prefix}NV", sample_ts, state.needle_valve, now_ts, duration_s
                 )
                 xs = [t - now_ts for t in needle_times]
-                self._chart_widget.set_trace("NV", xs, nv_buf)
-                self._chart_widget.assign_trace_axes("NV", y_axis="output")
+                self._chart_widget.set_trace(f"{prefix}NV", xs, nv_buf)
+                self._chart_widget.assign_trace_axes(f"{prefix}NV", y_axis="output")
                 self._chart_widget.set_trace_style(
-                    "NV",
+                    f"{prefix}NV",
                     line_style="dot",
                     colour=_NEEDLE_COLOUR.name(),
                 )
-                self._update_legend_value("NV", f"{state.needle_valve:.1f} %")
+                self._update_legend_value(f"{prefix}NV", f"{state.needle_valve:.1f} %")
 
         self._chart_widget.set_rolling_time_window(duration_s)
+        if update_rate:
+            self._update_rate_chart(state, now_ts)
 
     # ------------------------------------------------------------------
     # Connection tab slots
     # ------------------------------------------------------------------
 
-    def _populate_driver_combo(self) -> None:
-        """Populate the driver combo with discovered TemperatureController drivers."""
-        self._driver_combo.clear()
-        tc_drivers = self._driver_manager.drivers_by_type(TemperatureController)
-        added = 0
-        for name in sorted(tc_drivers):
-            if not name.startswith("_"):
-                driver_cls = tc_drivers[name]
-                display_name = name
-                if hasattr(driver_cls, "display_name"):
-                    try:
-                        display_name = str(driver_cls.display_name())
-                    except Exception:
-                        display_name = name
-                self._driver_combo.addItem(display_name, driver_cls)
-                self._driver_combo.setItemData(
-                    self._driver_combo.count() - 1,
-                    name,
-                    Qt.ItemDataRole.UserRole + 1,
-                )
-                added += 1
-        if added == 0:
-            self._driver_combo.addItem("(no drivers found)", None)
 
-    def _load_connection_preferences(self) -> None:
-        load_connection_preferences(self)
 
-    def _restore_preferred_address(self) -> None:
-        restore_preferred_address(self)
 
-    @pyqtSlot(int)
-    def _on_transport_changed(self, index: int) -> None:
-        """Show the address fields appropriate to the selected transport type.
 
-        Args:
-            index (int):
-                Index of the selected transport in the transport combo box.
-        """
-        show_transport_widget(self, index)
+
+
 
     @pyqtSlot()
-    def _on_connect(self) -> None:
-        """Send selected connection settings to the engine and connect."""
-        driver_cls = self._driver_combo.currentData()
-        if driver_cls is None:
-            return
-        transport_index = self._transport_combo.currentIndex()
-        self._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTING)
-
-        try:
-            transport_name, address = selected_transport(self, transport_index)
-            driver_name = self._driver_combo.currentData(Qt.ItemDataRole.UserRole + 1)
-            resolved_driver_name = str(driver_name or self._driver_combo.currentText())
-            self._engine.preferred_driver_name = resolved_driver_name
-            self._engine.preferred_transport_name = transport_name
-            self._engine.preferred_address = address
-            self._engine.connect_driver(
-                driver_name=resolved_driver_name,
-                transport_name=transport_name,
-                address=address,
-            )
-        except Exception:
-            logger.exception("Failed to connect temperature controller")
-            self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
-            return
-
-        self._sync_existing_connection_state()
-
-    def _set_address_widget_status(self, transport_index: int, status: VisaResourceStatus) -> None:
-        """Update the connection-status colour on the active address widget.
-
-        Only :class:`VisaResourceComboBox` instances (serial and GPIB) support
-        status colouring; other transport address widgets are left unchanged.
-
-        Args:
-            transport_index (int):
-                Index of the currently selected transport.
-            status (VisaResourceStatus):
-                Status to apply.
-        """
-        set_address_widget_status(self, transport_index, status)
-
-    def _selected_transport(self, index: int) -> tuple[str, str]:
-        """Return selected transport type and address string.
-
-        Args:
-            index (int):
-                Index of the selected transport in the transport combo box.
-
-        Returns:
-            (tuple[str, str]):
-                Selected transport name and address.
-        """
-        return selected_transport(self, index)
-
-    @pyqtSlot()
+    @_report_hardware_error
     def _on_disconnect(self) -> None:
         """Tell the engine to disconnect."""
         self._engine.disconnect_instrument()
-        self._apply_disconnected_ui_state()
+        self._sync_existing_connection_state()
 
     def _apply_disconnected_ui_state(self) -> None:
         """Clear connected-only UI state without issuing engine commands."""
@@ -1080,18 +956,73 @@ class TemperatureControlPanel(QWidget):
 
     def _sync_existing_connection_state(self) -> None:
         """Mirror an already-open engine connection into the panel widgets."""
+        self._sync_driver_choice()
         transport_name = self._engine.connected_transport_name
         address = self._engine.connected_address
         if self._engine.connected_driver is None:
             self._apply_disconnected_ui_state()
+            self._sync_secondary_ui()
             self._on_engine_status_changed(self._engine.status)
             return
         if transport_name:
             self._sync_live_connection_widgets(transport_name, address or "")
         try:
             self._sync_connected_driver_ui()
+            self._sync_secondary_ui()
         except Exception:
             logger.exception("Failed to refresh temperature panel from existing connection")
+
+    def _sync_secondary_ui(self):
+        """Refresh combined controls with capabilities from each owning session."""
+        self._secondary_enabled.blockSignals(True)
+        self._secondary_enabled.setChecked(self._engine.controller_enabled("secondary"))
+        self._secondary_enabled.blockSignals(False)
+        self._secondary_connection.setEnabled(self._secondary_enabled.isChecked())
+        self._control_tabs.setTabVisible(1, self._secondary_enabled.isChecked())
+        if self._engine.connected_driver is None and self._engine.controller("secondary").connected_driver is not None:
+            self._control_tabs.setCurrentIndex(1)
+        self._rebuild_loop_groups()
+        for group in self._loop_groups.values():
+            group.read_from_hardware()
+        session = self._engine.controller("secondary")
+        driver = session.connected_driver
+        caps = driver.get_capabilities() if driver is not None else None
+        has_inputs = caps is not None and caps.has_input_settings
+        self._secondary_input_settings.setVisible(has_inputs)
+        if has_inputs:
+            self._secondary_input_settings.set_curve_names(session.get_calibration_curve_names())
+            self._secondary_input_settings.set_channels(caps.input_channels)
+            self._secondary_input_settings.read_all(show_warning=False)
+            self._tabs.setTabEnabled(self._input_settings_tab_index, True)
+        else:
+            self._secondary_input_settings.clear()
+        if self._secondary_cryogen is not None:
+            self._secondary_control_layout.removeWidget(self._secondary_cryogen)
+            self._secondary_cryogen.deleteLater()
+            self._secondary_cryogen = None
+        if caps is not None and caps.has_cryogen_control:
+            self._secondary_cryogen = _CryogenGroup(session, caps)
+            self._secondary_control_layout.insertWidget(
+                self._secondary_control_layout.count() - 1, self._secondary_cryogen
+            )
+        self._zone_loop_combo.blockSignals(True)
+        selected = self._zone_loop_combo.currentData()
+        self._zone_loop_combo.clear()
+        for descriptor in self._engine.loop_catalogue():
+            if descriptor.capabilities.has_zone:
+                ref = descriptor.reference
+                key = ref.loop if ref.controller_id == "primary" else ref
+                self._zone_loop_combo.addItem(descriptor.label, key)
+        index = next((i for i in range(self._zone_loop_combo.count())
+                      if self._zone_loop_combo.itemData(i) == selected), -1)
+        self._zone_loop_combo.setCurrentIndex(max(0, index))
+        self._zone_loop_combo.blockSignals(False)
+        has_zones = self._zone_loop_combo.count() > 0
+        self._tabs.setTabEnabled(self._zone_tab_index, has_zones)
+        self._zone_loop_selector_widget.setVisible(has_zones)
+        if has_zones:
+            self._on_zone_loop_changed(self._zone_loop_combo.currentIndex())
+        self._refresh_stability_channel_selectors()
 
     def _sync_live_connection_widgets(self, transport_name: str, address: str) -> None:
         """Select and colour the widgets for the active engine connection."""
@@ -1171,7 +1102,10 @@ class TemperatureControlPanel(QWidget):
         """
         loop = self._zone_loop_combo.itemData(index)
         if loop is not None:
-            labels = self._capabilities.heater_range_labels.get(loop, ()) if self._capabilities else ()
+            slot = loop.controller_id if isinstance(loop, LoopRef) else "primary"
+            local = loop.loop if isinstance(loop, LoopRef) else loop
+            driver = self._engine.controller(slot).connected_driver
+            labels = driver.get_capabilities().heater_range_labels.get(local, ()) if driver else ()
             self._zone_table_widget.set_loop(loop, labels)
             self._zone_table_widget.read_from_hardware(show_warning=False)
 
@@ -1248,7 +1182,7 @@ class TemperatureControlPanel(QWidget):
             selected = QColorDialog.getColor(
                 QColor(current),
                 self,
-                f"Select colour for {trace}",
+                f"Select colour for {item.text(0)}",
                 QColorDialog.ColorDialogOption.DontUseNativeDialog,
             )
             if selected.isValid():
@@ -1277,7 +1211,8 @@ class TemperatureControlPanel(QWidget):
         """Create or update a live-value legend entry."""
         item = self._legend_items.get(trace)
         if item is None:
-            item = QTreeWidgetItem([trace, value])
+            label = trace.removeprefix("secondary:") + ".2" if trace.startswith("secondary:") else trace
+            item = QTreeWidgetItem([label, value])
             item.setData(0, Qt.ItemDataRole.UserRole, trace)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Checked)
@@ -1393,27 +1328,29 @@ class TemperatureControlPanel(QWidget):
 
         return xs_out, ys_out
 
-    def _rebuild_loop_groups(self, caps) -> None:
-        """Rebuild per-loop control groups from the driver capabilities.
-
-        Args:
-            caps (ControllerCapabilities):
-                The driver's capability descriptor.
-        """
+    def _rebuild_loop_groups(self, caps=None):
+        """Combine all advertised loops while preserving native session ownership."""
         self._clear_loop_groups()
-        for lp in caps.loop_numbers:
-            group = _LoopControlGroup(lp, self._engine, caps)
-            self._loop_groups[lp] = group
-            self._loop_layout.addWidget(group, stretch=1)
+        for descriptor in self._engine.loop_catalogue():
+            ref = descriptor.reference
+            session = self._engine.controller(ref.controller_id)
+            group = _LoopControlGroup(ref.loop, session, descriptor.capabilities)
+            group.setTitle(descriptor.label)
+            key = ref.loop if ref.controller_id == "primary" else ref
+            self._loop_groups[key] = group
+            layout = self._loop_layout if ref.controller_id == "primary" else self._secondary_loop_layout
+            layout.addWidget(group)
 
     def _clear_loop_groups(self) -> None:
         """Remove all existing per-loop control group widgets."""
-        for group in self._loop_groups.values():
-            self._loop_layout.removeWidget(group)
+        for key, group in self._loop_groups.items():
+            layout = self._secondary_loop_layout if isinstance(key, LoopRef) else self._loop_layout
+            layout.removeWidget(group)
             group.deleteLater()
         self._loop_groups.clear()
 
     @pyqtSlot()
+    @_report_hardware_error
     def _on_apply_needle(self) -> None:
         """Send the needle valve position to the engine."""
         self._engine.set_needle_valve(self._needle_spin.value())
@@ -1429,6 +1366,7 @@ class TemperatureControlPanel(QWidget):
         self._needle_spin.blockSignals(False)
 
     @pyqtSlot(int)
+    @_report_hardware_error
     def _on_gas_auto_changed(self, state: int) -> None:
         """Send the gas auto mode toggle to the engine and update UI.
 
@@ -1437,7 +1375,8 @@ class TemperatureControlPanel(QWidget):
                 Qt check state integer (non-zero means checked).
         """
         auto = bool(state)
-        self._engine.set_gas_auto(auto)
+        if self._engine.connected_driver is not None:
+            self._engine.set_gas_auto(auto)
         # Disable manual position when in auto mode; Read is always available
         # so the operator can check (and update) the current valve state.
         self._needle_spin.setEnabled(not auto)
@@ -1447,25 +1386,55 @@ class TemperatureControlPanel(QWidget):
     # Stability tab slot
     # ------------------------------------------------------------------
 
-    def _stability_channels(self) -> tuple[str, ...]:
-        """Return known input channels for stability sensor selectors."""
-        if self._capabilities is None:
-            return ()
-        return tuple(self._capabilities.input_channels)
+    def _update_rate_chart(self, state, now_ts):
+        """Plot one engine-derived rate, resetting history when its sensor changes."""
+        from stoner_measurement.instruments.temperature_controller import SensorStatus
+
+        source = state.stability_rate_channel
+        if not state.controller_statuses and source is None:
+            source = next(iter(state.stability_rate_channels.values()), next(iter(state.readings), None))
+        readings = dict(state.readings)
+        if state.secondary is not None:
+            readings.update({f"secondary:{key}": value for key, value in state.secondary.readings.items()})
+        reading = readings.get(source)
+        valid = reading is not None and reading.status is SensorStatus.OK and np.isfinite(reading.value) and np.isfinite(reading.rate_of_change)
+        if source != self._rate_source_channel or not valid:
+            self._chart_times.pop("dT/dt", None)
+            self._chart_values.pop("dT/dt", None)
+        self._rate_source_channel = source
+        xs, rates = [], []
+        if valid:
+            times, rates = self._append_chart_sample(
+                "dT/dt", reading.timestamp.timestamp(), reading.rate_of_change,
+                now_ts, self._chart_duration_min * 60.0,
+            )
+            xs = [time - now_ts for time in times]
+        self._chart_widget.set_trace("dT/dt", xs, rates)
+        self._chart_widget.assign_trace_axes("dT/dt", y_axis="rate")
+        self._chart_widget.set_trace_style("dT/dt", colour=colour("muted_text"))
+        self._update_legend_value("dT/dt", f"{rates[-1]:.3f} K/min" if rates else "Unavailable")
+        self._legend_items["dT/dt"].setToolTip(0, f"Stability rate sensor: {self._sensor_label(source)}" if source else "No active stability sensor")
+
+    def _stability_channels(self):
+        return tuple(
+            f"secondary:{item.reference.channel}" if item.reference.controller_id == "secondary"
+            else item.reference.channel for item in self._engine.channel_catalogue()
+        )
+
+    @staticmethod
+    def _sensor_label(channel):
+        return channel.removeprefix("secondary:") + ".2" if channel.startswith("secondary:") else channel
 
     def _make_stability_channel_combo(self, selected: str) -> QComboBox:
-        """Build a sensor selector for a stability-table cell."""
+        """Select sensors from either controller while retaining offline choices."""
         combo = QComboBox()
         channels = self._stability_channels()
-        if not channels:
-            combo.addItem("First available", "")
-            if selected:
-                combo.addItem(selected, selected)
-        else:
-            for channel in channels:
-                combo.addItem(channel, channel)
-            if selected and selected not in channels:
-                combo.addItem(selected, selected)
+        combo.addItem("First available", "")
+        combo.setToolTip("Choose either controller; First available uses primary sensors before secondary.")
+        for channel in channels:
+            combo.addItem(self._sensor_label(channel), channel)
+        if selected and selected not in channels:
+            combo.addItem(f"{self._sensor_label(selected)} (unavailable)", selected)
         index = combo.findData(selected)
         combo.setCurrentIndex(index if index >= 0 else 0)
         return combo
@@ -1479,6 +1448,12 @@ class TemperatureControlPanel(QWidget):
         self._stab_table.setItem(row, 4, QTableWidgetItem(f"{band.min_rate:g}"))
         self._stab_table.setItem(row, 5, QTableWidgetItem(f"{band.window_s:g}"))
 
+    def _resize_stability_table(self):
+        """Keep criteria and actions together; scroll tables with many rows."""
+        height = self._stab_table.horizontalHeader().height() + 2 * self._stab_table.frameWidth()
+        height += sum(self._stab_table.rowHeight(row) for row in range(min(self._stab_table.rowCount(), 8)))
+        self._stab_table.setFixedHeight(height + 2)
+
     def _populate_stability_table(self, config: StabilityConfig) -> None:
         """Replace the table contents with *config*."""
         self._stab_table.setRowCount(0)
@@ -1487,6 +1462,7 @@ class TemperatureControlPanel(QWidget):
             self._stab_table.insertRow(row)
             self._set_stability_row(row, band)
         self._stab_holdoff_spin.setValue(config.unstable_holdoff_s)
+        self._resize_stability_table()
 
     def _stability_cell_float(self, row: int, column: int, fallback: float) -> float:
         """Return a float from a stability-table cell."""
@@ -1531,6 +1507,17 @@ class TemperatureControlPanel(QWidget):
         config = self._collect_stability_config()
         self._populate_stability_table(config)
 
+    def _move_stability_band(self, offset):
+        """Move a selected criterion to change its overlap priority."""
+        row = self._stab_table.currentRow()
+        target = row + offset
+        if row < 0 or not 0 <= target < self._stab_table.rowCount():
+            return
+        config = self._collect_stability_config()
+        config.bands[row], config.bands[target] = config.bands[target], config.bands[row]
+        self._populate_stability_table(config)
+        self._stab_table.setCurrentCell(target, 0)
+
     @pyqtSlot()
     def _on_add_stability_band(self) -> None:
         """Append a new stability-table band."""
@@ -1547,6 +1534,7 @@ class TemperatureControlPanel(QWidget):
         row = self._stab_table.rowCount()
         self._stab_table.insertRow(row)
         self._set_stability_row(row, band)
+        self._resize_stability_table()
 
     @pyqtSlot()
     def _on_remove_stability_band(self) -> None:
@@ -1555,6 +1543,7 @@ class TemperatureControlPanel(QWidget):
             return
         row = self._stab_table.currentRow()
         self._stab_table.removeRow(row if row >= 0 else self._stab_table.rowCount() - 1)
+        self._resize_stability_table()
 
     @pyqtSlot()
     def _on_apply_stability(self) -> None:
@@ -1564,14 +1553,16 @@ class TemperatureControlPanel(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "Stability Table", f"Invalid stability table value:\n{exc}")
             return
-        self._engine.set_stability_config(cfg)
+        self._stability_engine.set_stability_config(cfg)
         self._populate_stability_table(cfg)
 
     @pyqtSlot()
     def _on_save_configuration(self) -> None:
         """Save the current engine configuration to the machine YAML file."""
         try:
-            self._engine.set_stability_config(self._collect_stability_config())
+            self._stability_engine.set_stability_config(self._collect_stability_config())
+            self.store_preferences()
+            self._secondary_connection.store_preferences()
             path = self._engine.save_configuration()
         except (Exception, ValueError) as exc:
             QMessageBox.critical(
@@ -1636,6 +1627,59 @@ _ZONE_COLUMNS = [
     "Heater Range",
     "Heater Output (%)",
 ]
+
+
+class _CryogenGroup(QGroupBox):
+    """Controller-owned auxiliary outputs for the secondary instrument."""
+
+    def __init__(self, session, caps):
+        super().__init__("Secondary / Needle Valve / Gas Flow")
+        self._session = session
+        form = QFormLayout(self)
+        self._position = PercentSliderWidget()
+        form.addRow("Position:", self._position)
+        self._auto = QCheckBox("Automatic gas flow")
+        self._auto.setVisible(caps.has_gas_auto_mode)
+        form.addRow(self._auto)
+        self._apply = QPushButton("Apply")
+        read = QPushButton("Read")
+        row = QHBoxLayout()
+        row.addWidget(read)
+        row.addWidget(self._apply)
+        form.addRow(row)
+        self._apply.clicked.connect(self._write)
+        self._auto.toggled.connect(self._set_auto)
+        read.clicked.connect(self._read)
+        self._read()
+
+    def _write(self):
+        try:
+            self._session.set_needle_valve(self._position.value())
+        except Exception as error:
+            QMessageBox.warning(self, "Secondary gas flow", str(error))
+
+    def _set_auto(self, enabled):
+        try:
+            self._session.set_gas_auto(enabled)
+        except Exception as error:
+            QMessageBox.warning(self, "Secondary gas flow", str(error))
+        self._read()
+
+    def _read(self):
+        state = self._session.read_controller_state()
+        self.update_state(state)
+
+    def update_state(self, state):
+        if state is None:
+            return
+        if state.needle_valve is not None:
+            self._position.setValue(state.needle_valve)
+        if state.gas_auto_mode is not None:
+            self._auto.blockSignals(True)
+            self._auto.setChecked(state.gas_auto_mode)
+            self._auto.blockSignals(False)
+            self._position.setEnabled(not state.gas_auto_mode)
+            self._apply.setEnabled(not state.gas_auto_mode)
 
 
 class _ZoneTableWidget(QWidget):
@@ -1851,6 +1895,7 @@ class _ZoneTableWidget(QWidget):
         return True
 
     @pyqtSlot()
+    @_report_hardware_error
     def _on_apply(self) -> None:
         """Write the current table contents to the instrument via the engine."""
         entries = self._collect_entries()
@@ -2120,6 +2165,7 @@ class _InputSettingsWidget(QWidget):
         self._populate_from_settings(settings)
 
     @pyqtSlot()
+    @_report_hardware_error
     def _on_apply(self) -> None:
         """Write current input channel settings to the instrument via the engine."""
         settings = self._collect_settings()
@@ -2240,6 +2286,8 @@ class _InputSettingsTableWidget(QWidget):
         self._table.setVerticalHeaderLabels([label for _, label in _INPUT_SETTING_ROWS])
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._table.setAlternatingRowColors(True)
+        self._table.setFixedHeight(self._table.horizontalHeader().height() +
+                                   sum(self._table.rowHeight(i) for i in range(self._table.rowCount())) + 8)
         self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         layout.addWidget(self._table, stretch=1)
 
@@ -2310,6 +2358,7 @@ class _InputSettingsTableWidget(QWidget):
         self.read_all()
 
     @pyqtSlot()
+    @_report_hardware_error
     def _on_write(self) -> None:
         self.write_all()
 
@@ -2446,19 +2495,29 @@ class _LoopControlGroup(QGroupBox):
         form.addRow("Mode (live):", self._mode_label)
 
         self._channel_combo = QComboBox()
-        for ch in self._caps.input_channels:
+        driver = self._engine.connected_driver
+        method = getattr(driver, "get_loop_input_channels", None)
+        channels = method(self._loop) if method else self._caps.input_channels
+        for ch in channels:
             self._channel_combo.addItem(ch, ch)
         form.addRow("Control sensor:", self._channel_combo)
 
     def _build_control_rows(self, form: QFormLayout) -> None:
         """Add setpoint, mode, ramp, heater-range and manual-output rows to *form*."""
         self._sp_spin = SISpinBox()
-        self._sp_spin.setOpts(bounds=(0.0, 1000.0), decimals=3, suffix="K", siPrefix=True)
+        self._sp_spin.setOpts(
+            bounds=(self._caps.min_temperature if self._caps.min_temperature is not None else 0.0,
+                    self._caps.max_temperature if self._caps.max_temperature is not None else 1000.0),
+            decimals=3, suffix="K", siPrefix=True)
         self._sp_row_label = QLabel("New setpoint:")
         form.addRow(self._sp_row_label, self._sp_spin)
 
         self._mode_combo = QComboBox()
         for mode in ControlMode:
+            if mode is ControlMode.ZONE and not self._caps.has_zone:
+                continue
+            if mode is ControlMode.OPEN_LOOP and not self._caps.has_manual_heater_output:
+                continue
             self._mode_combo.addItem(mode.value.replace("_", " ").title(), mode)
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         form.addRow("Control mode:", self._mode_combo)
@@ -2466,6 +2525,7 @@ class _LoopControlGroup(QGroupBox):
         self._ramp_enable = QCheckBox("Enable")
         self._ramp_rate_spin = SISpinBox()
         self._ramp_rate_spin.setOpts(bounds=(0.0, 100.0), decimals=3, suffix="K/min", siPrefix=True)
+        self._ramp_rate_spin.setMinimumWidth(self.fontMetrics().horizontalAdvance("100.000 K/min") + 32)
         ramp_row = QHBoxLayout()
         ramp_row.addWidget(self._ramp_enable)
         ramp_row.addWidget(self._ramp_rate_spin)
@@ -2504,13 +2564,11 @@ class _LoopControlGroup(QGroupBox):
         self._pid_i_spin.setOpts(bounds=(0.0, 1000.0), decimals=3)
         self._pid_d_spin = SISpinBox()
         self._pid_d_spin.setOpts(bounds=(0.0, 1000.0), decimals=3)
-        pid_row = QHBoxLayout()
-        pid_row.addWidget(QLabel("P:"))
-        pid_row.addWidget(self._pid_p_spin)
-        pid_row.addWidget(QLabel("I:"))
-        pid_row.addWidget(self._pid_i_spin)
-        pid_row.addWidget(QLabel("D:"))
-        pid_row.addWidget(self._pid_d_spin)
+        pid_row = QFormLayout()
+        pid_row.setContentsMargins(0, 0, 0, 0)
+        for label, spin in (("P:", self._pid_p_spin), ("I:", self._pid_i_spin), ("D:", self._pid_d_spin)):
+            spin.setMinimumWidth(self.fontMetrics().horizontalAdvance("1000.000") + 32)
+            pid_row.addRow(label, spin)
         self._pid_widget = QWidget()
         self._pid_widget.setLayout(pid_row)
         self._pid_row_label = QLabel("PID:")
@@ -2571,7 +2629,7 @@ class _LoopControlGroup(QGroupBox):
         self._sp_row_label.setVisible(sp_visible)
         self._sp_spin.setVisible(sp_visible)
 
-        ramp_visible = not off_like and not open_loop
+        ramp_visible = self._caps.has_ramp and not off_like and not open_loop
         self._ramp_row_label.setVisible(ramp_visible)
         self._ramp_widget.setVisible(ramp_visible)
 
@@ -2585,7 +2643,7 @@ class _LoopControlGroup(QGroupBox):
         if heater_range_widget is not None:
             heater_range_widget.setVisible(heater_range_visible)
 
-        pid_visible = not off_like and not open_loop
+        pid_visible = self._caps.has_pid and not off_like and not open_loop
         self._pid_row_label.setVisible(pid_visible)
         self._pid_widget.setVisible(pid_visible)
         pid_editable = pid_visible and not zone
@@ -2641,6 +2699,7 @@ class _LoopControlGroup(QGroupBox):
     # --- Apply / Read slots ---
 
     @pyqtSlot()
+    @_report_hardware_error
     def _on_apply_all(self) -> None:
         """Send all loop settings to the engine in a single call."""
         mode = self._mode_combo.currentData()

@@ -1,10 +1,7 @@
+schema_version: 3
 polling_rate_hz: 1.0
 
-connection:
-  driver: ""
-  transport: "Null (test)"
-  address: ""
-
+# Shared rig criteria, in priority order. Secondary sensors use secondary:A etc.
 stability:
   unstable_holdoff_s: 5.0
   bands:
@@ -14,3 +11,19 @@ stability:
       rate_channel: ""
       min_rate: 0.005
       window_s: 60.0
+
+controllers:
+  primary:
+    enabled: true
+    label: Primary
+    connection:
+      driver: ""
+      transport: "Null (test)"
+      address: ""
+  secondary:
+    enabled: false
+    label: Secondary
+    connection:
+      driver: ""
+      transport: "Null (test)"
+      address: ""

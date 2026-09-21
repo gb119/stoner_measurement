@@ -8,6 +8,7 @@ types used to carry state between the engine and its subscribers.
 
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.temperature_control.pubsub import TemperaturePublisher
+from stoner_measurement.temperature_control.references import ChannelRef, LoopRef
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     LoopSettings,
@@ -17,6 +18,8 @@ from stoner_measurement.temperature_control.types import (
 )
 
 __all__ = [
+    "ChannelRef",
+    "LoopRef",
     "EngineStatus",
     "LoopSettings",
     "StabilityConfig",

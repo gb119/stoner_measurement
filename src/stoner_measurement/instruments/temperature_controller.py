@@ -1527,6 +1527,23 @@ class TemperatureController(BaseInstrument):
             "Check get_capabilities().has_user_curves before calling this method."
         )
 
+    def get_loop_input_channels(self, loop: int) -> tuple[str, ...]:
+        """Return native inputs assignable to a loop; override for restricted hardware.
+
+        Args:
+            loop (int): Advertised local loop number.
+
+        Returns:
+            (tuple[str, ...]): Supported native channel identifiers.
+
+        Raises:
+            ValueError: If the loop is not advertised by this instrument.
+        """
+        caps = self.get_capabilities()
+        if loop not in caps.loop_numbers:
+            raise ValueError(f"Unknown temperature loop {loop!r}.")
+        return caps.input_channels
+
     def get_calibration_curve_names(self) -> dict[int, str]:
         """Return available calibration-curve names keyed by curve number.
 

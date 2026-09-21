@@ -14,6 +14,7 @@ command API; they never talk to instrument drivers directly.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from collections import deque
@@ -39,9 +40,11 @@ from stoner_measurement.instruments.transport import (
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.temperature_control.config import (
     load_temperature_controller_config,
+    normalise_configuration,
     save_temperature_controller_config,
 )
 from stoner_measurement.temperature_control.pubsub import TemperaturePublisher
+from stoner_measurement.temperature_control.service import TemperatureServiceMixin
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     LoopSettings,
@@ -69,7 +72,7 @@ _HISTORY_SIZE = 60
 _DEFAULT_POLL_INTERVAL_MS = 1000
 
 
-class TemperatureControllerEngine(QObject):
+class _ControllerSession(QObject):
     """Singleton engine that mediates all communication with a temperature controller.
 
     The engine owns the hardware driver reference and a polling :class:`~PyQt6.QtCore.QTimer`
@@ -102,7 +105,7 @@ class TemperatureControllerEngine(QObject):
 
     _singleton: TemperatureControllerEngine | None = None
 
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self, parent: QObject | None = None, *, config=None, managed=False) -> None:
         """Initialise the engine.
 
         Args:
@@ -111,6 +114,7 @@ class TemperatureControllerEngine(QObject):
         """
         super().__init__(parent)
 
+        self._managed = managed
         self.publisher: TemperaturePublisher = TemperaturePublisher(self)
 
         self._driver = None  # TemperatureController | None
@@ -140,6 +144,7 @@ class TemperatureControllerEngine(QObject):
         self._target_setpoints: dict[int, float] = {}
         self._stability_value_history: dict[int, deque[tuple[datetime, float, float]]] = {}
         self._stability_diagnostics: dict[int, StabilityDiagnostics] = {}
+        self._stability_sources = {}
         self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
         self._latest_state_time: float | None = None
 
@@ -148,7 +153,7 @@ class TemperatureControllerEngine(QObject):
         self._polling_rate_hz = 1.0
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
-        self._apply_configuration(load_temperature_controller_config())
+        self._apply_configuration(load_temperature_controller_config() if config is None else config)
 
     def _apply_configuration(self, config: dict) -> None:
         """Apply engine configuration values from a mapping."""
@@ -231,12 +236,20 @@ class TemperatureControllerEngine(QObject):
             RuntimeError:
                 If the engine has been shut down.
         """
+        guard = getattr(self, "_driver_guard", None)
+        if guard is not None:
+            guard(driver)
         with self._engine_lock:
             if self._status == EngineStatus.STOPPED:
                 raise RuntimeError("Engine has been shut down and cannot accept new connections.")
             self._timer.stop()
             if self._driver is not None:
                 self._disconnect_driver(self._driver, log_context="before replacing temperature controller")
+            self._driver = None
+            self._connected_driver_name = None
+            self._connected_transport_name = None
+            self._connected_address = None
+            self._invalidate_state()
             try:
                 if not driver.is_connected:
                     driver.connect()
@@ -244,8 +257,16 @@ class TemperatureControllerEngine(QObject):
                     driver.confirm_identity()
             except Exception as exc:
                 self._driver = None
-                self._set_status(EngineStatus.DISCONNECTED)
+                self._set_status(EngineStatus.ERROR)
                 logger.error("Exception %s\n%s", exc, format_exc())
+                try:
+                    driver.disconnect()
+                except Exception as cleanup_error:
+                    self._driver = driver
+                    self._set_status(EngineStatus.ERROR)
+                    self.publisher.connection_changed.emit()
+                    raise cleanup_error from exc
+                self.publisher.connection_changed.emit()
                 raise
             self._driver = driver
             self._connected_driver_name = type(driver).__name__
@@ -256,8 +277,11 @@ class TemperatureControllerEngine(QObject):
             self._target_setpoints.clear()
             self._stability_value_history.clear()
             self._stability_diagnostics.clear()
+            self._stability_sources.clear()
             self._set_status(EngineStatus.CONNECTED)
-            self._timer.start()
+            if not self._managed and self._polling_rate_hz > 0:
+                self._timer.start()
+        self.publisher.connection_changed.emit()
         logger.info("TemperatureControllerEngine: connected to %s", type(driver).__name__)
 
     def connect_driver(self, driver_name: str, transport_name: str, address: str) -> None:
@@ -286,6 +310,9 @@ class TemperatureControllerEngine(QObject):
             >>> engine.connect_driver("Lakeshore335", "Null", "")  # doctest: +SKIP
             >>> engine.shutdown()
         """
+        guard = getattr(self, "_connection_guard", None)
+        if guard is not None:
+            guard(transport_name, address)
         driver_cls = self._resolve_driver_class(driver_name)
         transport = self._build_transport(transport_name, address)
         protocol = self._build_protocol(driver_name)
@@ -449,7 +476,7 @@ class TemperatureControllerEngine(QObject):
             self._stable.clear()
             self._target_setpoints.clear()
             self._set_status(EngineStatus.DISCONNECTED)
-            self._latest_state = TemperatureEngineState(engine_status=self._status)
+            self._invalidate_state()
         self.publisher.connection_changed.emit()
         logger.info("TemperatureControllerEngine: disconnected.")
 
@@ -554,12 +581,15 @@ class TemperatureControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
+            if loop not in self._driver.get_capabilities().loop_numbers:
+                raise ValueError(f"Unavailable temperature loop {loop!r}.")
             try:
                 self._driver.set_setpoint(loop, value)
                 self._mark_setpoint_pending(loop, value)
             except Exception:
                 logger.exception("Failed to set setpoint for loop %d", loop)
+                raise
 
     def set_heater_range(self, loop: int, range_: int) -> None:
         """Set the heater range index for *loop*.
@@ -572,11 +602,14 @@ class TemperatureControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
+            if loop not in self._driver.get_capabilities().loop_numbers:
+                raise ValueError(f"Unavailable temperature loop {loop!r}.")
             try:
                 self._driver.set_heater_range(loop, range_)
             except Exception:
                 logger.exception("Failed to set heater range for loop %d", loop)
+                raise
 
     def set_pid(self, loop: int, p: float, i: float, d: float) -> None:
         """Set the PID parameters for *loop*.
@@ -593,11 +626,14 @@ class TemperatureControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
+            if loop not in self._driver.get_capabilities().loop_numbers:
+                raise ValueError(f"Unavailable temperature loop {loop!r}.")
             try:
                 self._driver.set_pid(loop, p, i, d)
             except Exception:
                 logger.exception("Failed to set PID for loop %d", loop)
+                raise
 
     def set_ramp(self, loop: int, rate: float, enabled: bool) -> None:
         """Configure setpoint ramping for *loop*.
@@ -612,12 +648,15 @@ class TemperatureControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
+            if loop not in self._driver.get_capabilities().loop_numbers:
+                raise ValueError(f"Unavailable temperature loop {loop!r}.")
             try:
                 self._driver.set_ramp_rate(loop, rate)
                 self._driver.set_ramp_enabled(loop, enabled)
             except Exception:
                 logger.exception("Failed to set ramp for loop %d", loop)
+                raise
 
     def set_loop_mode(self, loop: int, mode) -> None:
         """Set the control mode for *loop*.
@@ -630,11 +669,14 @@ class TemperatureControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
+            if loop not in self._driver.get_capabilities().loop_numbers:
+                raise ValueError(f"Unavailable temperature loop {loop!r}.")
             try:
                 self._driver.set_loop_mode(loop, mode)
             except Exception:
                 logger.exception("Failed to set loop mode for loop %d", loop)
+                raise
 
     def get_needle_valve(self) -> float | None:
         """Return the current cryogen gas-flow (needle valve) position.
@@ -680,13 +722,14 @@ class TemperatureControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
             try:
                 caps = self._driver.get_capabilities()
                 if caps.has_cryogen_control:
                     self._driver.set_gas_flow(position)
             except Exception:
                 logger.exception("Failed to set needle valve position")
+                raise
 
     def set_gas_auto(self, auto: bool) -> None:
         """Enable or disable automatic gas-flow control on the connected instrument.
@@ -701,13 +744,23 @@ class TemperatureControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
             try:
                 caps = self._driver.get_capabilities()
                 if caps.has_gas_auto_mode:
                     self._driver.set_gas_auto(auto)
             except Exception:
                 logger.exception("Failed to set gas auto mode")
+                raise
+
+    def _validate_loop_input(self, loop, channel):
+        """Validate native channel assignment before changing any loop settings."""
+        if self._driver is None:
+            raise RuntimeError("No temperature controller is connected.")
+        method = getattr(self._driver, "get_loop_input_channels", None)
+        allowed = method(loop) if method else self._driver.get_capabilities().input_channels
+        if channel not in allowed:
+            raise ValueError(f"Channel {channel!r} is not available to loop {loop}.")
 
     def set_input_channel(self, loop: int, channel: str) -> None:
         """Assign a sensor channel as the input for control *loop*.
@@ -718,13 +771,15 @@ class TemperatureControllerEngine(QObject):
             channel (str):
                 Sensor channel identifier to assign.
         """
+        self._validate_loop_input(loop, channel)
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
             try:
                 self._driver.set_input_channel(loop, channel)
             except Exception:
                 logger.exception("Failed to set input channel for loop %d", loop)
+                raise
 
     def set_all_loop_settings(  # pylint: disable=too-many-arguments
         self,
@@ -769,35 +824,45 @@ class TemperatureControllerEngine(QObject):
             heater_range (int):
                 Heater range index.
         """
+        self._validate_loop_input(loop, input_channel)
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
             try:
                 self._driver.set_setpoint(loop, setpoint)
                 self._mark_setpoint_pending(loop, setpoint)
             except Exception:
                 logger.exception("Failed to set setpoint for loop %d", loop)
+                raise
             try:
                 self._driver.set_loop_mode(loop, mode)
             except Exception:
                 logger.exception("Failed to set loop mode for loop %d", loop)
+                raise
             try:
                 self._driver.set_input_channel(loop, input_channel)
             except Exception:
                 logger.exception("Failed to set input channel for loop %d", loop)
+                raise
+            caps = self._driver.get_capabilities()
             try:
-                self._driver.set_ramp_rate(loop, ramp_rate)
-                self._driver.set_ramp_enabled(loop, ramp_enabled)
+                if caps.has_ramp:
+                    self._driver.set_ramp_rate(loop, ramp_rate)
+                    self._driver.set_ramp_enabled(loop, ramp_enabled)
             except Exception:
                 logger.exception("Failed to set ramp for loop %d", loop)
+                raise
             try:
-                self._driver.set_pid(loop, pid_p, pid_i, pid_d)
+                if caps.has_pid:
+                    self._driver.set_pid(loop, pid_p, pid_i, pid_d)
             except Exception:
                 logger.exception("Failed to set PID for loop %d", loop)
+                raise
             try:
                 self._driver.set_heater_range(loop, heater_range)
             except Exception:
                 logger.exception("Failed to set heater range for loop %d", loop)
+                raise
 
     def set_manual_heater_output(self, loop: int, output: float) -> None:
         """Set the manual heater output for open-loop control of *loop*.
@@ -819,18 +884,21 @@ class TemperatureControllerEngine(QObject):
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> engine = TemperatureControllerEngine.instance()
-            >>> engine.set_manual_heater_output(1, 25.0)  # no driver connected — silently ignored
+            >>> engine.set_manual_heater_output(1, 25.0)  # doctest: +SKIP
             >>> engine.shutdown()
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
+            if loop not in self._driver.get_capabilities().loop_numbers:
+                raise ValueError(f"Unavailable temperature loop {loop!r}.")
             try:
                 self._driver.set_manual_heater_output(loop, output)
             except NotImplementedError:
                 logger.warning("Driver does not support setting manual heater output for loop %d", loop)
             except Exception:
                 logger.exception("Failed to set manual heater output for loop %d", loop)
+                raise
 
     def get_zone_table(self, loop: int) -> list[ZoneEntry] | None:
         """Query the hardware for the complete zone table of control *loop*.
@@ -881,8 +949,8 @@ class TemperatureControllerEngine(QObject):
 
         Iterates over *entries* (first entry → zone index 1) and calls
         :meth:`~stoner_measurement.instruments.temperature_controller.TemperatureController.set_zone`
-        for each one.  Individual write failures are logged without aborting
-        the remaining writes.  Silently returns if no instrument is connected.
+        for each one.  Write failures are logged and propagated. A disconnected instrument
+        raises RuntimeError before any writes.
 
         Args:
             loop (int):
@@ -896,17 +964,20 @@ class TemperatureControllerEngine(QObject):
             >>> _ = QApplication.instance() or QApplication([])
             >>> from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
             >>> engine = TemperatureControllerEngine.instance()
-            >>> engine.set_zone_table(1, [])  # no-op when no driver
+            >>> engine.set_zone_table(1, [])  # doctest: +SKIP
             >>> engine.shutdown()
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
+            if loop not in self._driver.get_capabilities().loop_numbers:
+                raise ValueError(f"Unavailable temperature loop {loop!r}.")
             for i, entry in enumerate(entries, start=1):
                 try:
                     self._driver.set_zone(loop, i, entry)
                 except Exception:
                     logger.exception("Failed to write zone %d for loop %d", i, loop)
+                    raise
 
     def get_input_channel_settings(self, channel: str) -> InputChannelSettings | None:
         """Query the hardware for the input configuration of sensor *channel*.
@@ -966,11 +1037,12 @@ class TemperatureControllerEngine(QObject):
         """
         with self._engine_lock:
             if self._driver is None:
-                return
+                raise RuntimeError("No temperature controller is connected.")
             try:
                 self._driver.set_input_channel_settings(channel, settings)
             except Exception:
                 logger.exception("Failed to set input channel settings for channel %s", channel)
+                raise
 
     def get_calibration_curve_names(self) -> dict[int, str]:
         """Return calibration-curve names reported by the connected driver.
@@ -1086,6 +1158,10 @@ class TemperatureControllerEngine(QObject):
             config (StabilityConfig):
                 New stability configuration to apply immediately.
         """
+        service = getattr(self, "_service", None)
+        if service is not None:
+            service.set_stability_config(config)
+            return
         self._stability_config = config
         # Reset stability tracking so the new parameters take effect cleanly.
         self._at_setpoint_since.clear()
@@ -1093,6 +1169,13 @@ class TemperatureControllerEngine(QObject):
         self._stable.clear()
         self._stability_value_history.clear()
         self._stability_diagnostics.clear()
+        self._stability_sources.clear()
+        self._latest_state = replace(
+            self._latest_state,
+            stable={loop: False for loop in self._latest_state.stable},
+            at_setpoint={loop: False for loop in self._latest_state.at_setpoint},
+            stability_diagnostics={},
+        )
 
     @property
     def stability_config(self) -> StabilityConfig:
@@ -1127,9 +1210,10 @@ class TemperatureControllerEngine(QObject):
         self._timer.setInterval(round(1000.0 / rate_hz))
         if self._driver is not None and self._status is not EngineStatus.STOPPED:
             if self._polling_rate_hz > 0.0:
-                self._timer.start()
+                if not self._managed and self._polling_rate_hz > 0:
+                    self._timer.start()
 
-    def read_controller_state(self) -> TemperatureEngineState | None:
+    def read_controller_state(self, *, publish=True, evaluate_stability=True) -> TemperatureEngineState | None:
         """Read the current controller state immediately and publish it.
 
         Returns:
@@ -1137,28 +1221,59 @@ class TemperatureControllerEngine(QObject):
                 Freshly read engine state, or ``None`` when no controller is
                 connected or the read fails.
         """
+        service = getattr(self, "_service", None)
+        if service is not None and publish:
+            state = service.read_controller_state()
+            return state.for_controller(self._controller_id) if state is not None else None
         with self._engine_lock:
             if self._driver is None:
                 return None
+            if self._latest_state_time is not None and self.state_cache_age_seconds > self._freshness_limit:
+                self._invalidate_state()
             try:
-                state = self._build_state()
+                state = self._build_state(evaluate_stability=evaluate_stability)
             except Exception:
                 logger.exception("TemperatureControllerEngine: read-state error")
                 self._set_status(EngineStatus.ERROR)
+                self._invalidate_state()
                 return None
 
             self._set_status(EngineStatus.POLLING)
             self._latest_state = state
             self._latest_state_time = time.monotonic()
-            for reading in state.readings.values():
-                self.publisher.channel_reading.emit(reading)
-            self.publisher.state_updated.emit(state)
-            self.publisher.poll_activity.emit()
+            if publish:
+                for reading in state.readings.values():
+                    self.publisher.channel_reading.emit(reading)
+                self.publisher.state_updated.emit(state)
+                self.publisher.poll_activity.emit()
         return state
 
-    def get_engine_state(self) -> TemperatureEngineState:
+    def _invalidate_state(self):
+        """Discard cached measurements and continuity after a failed or closed session."""
+        self._latest_state_time = None
+        self._latest_state = TemperatureEngineState(engine_status=self._status)
+        self._history.clear()
+        self._at_setpoint_since.clear()
+        self._unstable_since.clear()
+        self._stable.clear()
+        self._stability_value_history.clear()
+        self._stability_diagnostics.clear()
+        self._stability_sources.clear()
+
+    def get_engine_state(self, *, _local=False) -> TemperatureEngineState:
         """Return a snapshot of the current engine state without polling."""
-        return replace(self._latest_state, engine_status=self._status)
+        service = getattr(self, "_service", None)
+        if service is not None and not _local:
+            return service.get_engine_state().for_controller(self._controller_id)
+        state = replace(self._latest_state, engine_status=self._status)
+        if self._latest_state_time is not None and self.state_cache_age_seconds > self._freshness_limit:
+            return replace(state, stable={loop: False for loop in state.stable},
+                           at_setpoint={loop: False for loop in state.at_setpoint})
+        return state
+
+    @property
+    def _freshness_limit(self):
+        return max(5.0, 2.0 / self._polling_rate_hz) if self._polling_rate_hz else 5.0
 
     @property
     def state_cache_age_seconds(self) -> float:
@@ -1194,7 +1309,7 @@ class TemperatureControllerEngine(QObject):
             self._connected_address = None
             self._target_setpoints.clear()
             self._set_status(EngineStatus.STOPPED)
-            self._latest_state = TemperatureEngineState(engine_status=self._status)
+            self._invalidate_state()
         if TemperatureControllerEngine._singleton is self:
             TemperatureControllerEngine._singleton = None
         logger.info("TemperatureControllerEngine: shut down.")
@@ -1215,6 +1330,9 @@ class TemperatureControllerEngine(QObject):
                 driver.disconnect()
         except Exception:
             logger.exception("Error while disconnecting temperature controller %s", log_context)
+            self._set_status(EngineStatus.ERROR)
+            self._invalidate_state()
+            raise
 
     # ------------------------------------------------------------------
     # Polling
@@ -1225,7 +1343,7 @@ class TemperatureControllerEngine(QObject):
         """Query the instrument, compute derived quantities, and publish results."""
         self.read_controller_state()
 
-    def _build_state(self) -> TemperatureEngineState:
+    def _build_state(self, *, evaluate_stability=True) -> TemperatureEngineState:
         """Query the driver and return a full :class:`TemperatureEngineState`.
 
         Returns:
@@ -1248,10 +1366,12 @@ class TemperatureControllerEngine(QObject):
             self._target_setpoints.setdefault(loop, setpoint)
         needle_valve = self._read_needle_valve(driver, caps)
         gas_auto_mode = self._read_gas_auto(driver, caps)
-        at_setpoint, stable = self._evaluate_stability(readings, setpoints, caps.loop_numbers, now)
-        stability_rate_channels = self._select_stability_rate_channels(
-            readings, self._target_setpoints, caps.loop_numbers
-        )
+        at_setpoint, stable, stability_rate_channels = {}, {}, {}
+        if evaluate_stability:
+            at_setpoint, stable = self._evaluate_stability(readings, setpoints, caps.loop_numbers, now)
+            stability_rate_channels = self._select_stability_rate_channels(
+                readings, self._target_setpoints, caps.loop_numbers
+            )
 
         return TemperatureEngineState(
             readings=readings,
@@ -1284,7 +1404,7 @@ class TemperatureControllerEngine(QObject):
             band = _select_stability_band(self._stability_config, setpoint)
             reading = _reading_for_channel(readings, band.rate_channel)
             if reading is not None:
-                selected[loop] = reading.channel
+                selected[loop] = _stability_channel_key(reading)
         return selected
 
     def _collect_readings(self, driver, caps, now) -> dict[str, TemperatureChannelReading]:
@@ -1297,6 +1417,7 @@ class TemperatureControllerEngine(QObject):
             rate = _compute_rate(history)
             readings[ch] = TemperatureChannelReading(
                 channel=ch,
+                controller_id=getattr(self, "_controller_id", "primary"),
                 value=raw.value,
                 timestamp=now,
                 status=raw.status,
@@ -1384,7 +1505,28 @@ class TemperatureControllerEngine(QObject):
             cfg = _select_stability_band(self._stability_config, target_setpoint)
             tolerance_reading = _reading_for_channel(readings, cfg.tolerance_channel)
             rate_reading = _reading_for_channel(readings, cfg.rate_channel)
-            pv = tolerance_reading.value if tolerance_reading is not None else reported_setpoint
+            sources = (id(cfg), _stability_channel_key(tolerance_reading), _stability_channel_key(rate_reading))
+            if self._stability_sources.get(lp) != sources:
+                self._at_setpoint_since.pop(lp, None)
+                self._unstable_since.pop(lp, None)
+                self._stable[lp] = False
+                self._stability_value_history.pop(lp, None)
+                self._stability_sources[lp] = sources
+            from stoner_measurement.instruments.temperature_controller import SensorStatus
+
+            valid = all(
+                reading is not None and reading.status is SensorStatus.OK
+                and math.isfinite(reading.value) and math.isfinite(reading.rate_of_change)
+                for reading in (tolerance_reading, rate_reading)
+            )
+            if not valid:
+                self._at_setpoint_since[lp] = None
+                self._stable[lp] = False
+                self._stability_value_history.pop(lp, None)
+                self._stability_diagnostics.pop(lp, None)
+                at_setpoint[lp] = stable[lp] = False
+                continue
+            pv = tolerance_reading.value
             rate = rate_reading.rate_of_change if rate_reading is not None else 0.0
             difference = pv - target_setpoint
 
@@ -1397,8 +1539,8 @@ class TemperatureControllerEngine(QObject):
             differences = [sample[1] for sample in diagnostic_history]
             rates = [sample[2] for sample in diagnostic_history]
             self._stability_diagnostics[lp] = StabilityDiagnostics(
-                tolerance_channel=tolerance_reading.channel if tolerance_reading else "",
-                rate_channel=rate_reading.channel if rate_reading else "",
+                tolerance_channel=_stability_channel_key(tolerance_reading),
+                rate_channel=_stability_channel_key(rate_reading),
                 tolerance_k=cfg.tolerance_k,
                 rate_limit_k_per_min=cfg.min_rate,
                 window_s=cfg.window_s,
@@ -1491,6 +1633,59 @@ class TemperatureControllerEngine(QObject):
 # ---------------------------------------------------------------------------
 
 
+class TemperatureControllerEngine(TemperatureServiceMixin, _ControllerSession):
+    """Shared service owning primary and optional secondary temperature controllers.
+
+    Unqualified loop numbers and channel names retain their primary meaning.
+    Use LoopRef/ChannelRef for aggregate operations, or controller("secondary")
+    for settings and operations scoped to that instrument. Plugins borrow these
+    sessions; only the service owns their lifecycle.
+    """
+
+    def __init__(self, parent=None):
+        config = normalise_configuration(load_temperature_controller_config())
+        slots = config.get("controllers", {})
+        self._enabled = {"primary": slots.get("primary", {}).get("enabled", True),
+                         "secondary": slots.get("secondary", {}).get("enabled", False)}
+        super().__init__(parent, config=config)
+        secondary_config = dict(slots.get("secondary", {}))
+        secondary_config["polling_rate_hz"] = self.polling_rate_hz
+        self._secondary = _ControllerSession(self, config=secondary_config, managed=True)
+        self._driver_guard = lambda driver: self._check_driver("primary", driver)
+        self._secondary._driver_guard = lambda driver: self._check_driver("secondary", driver)
+        self._secondary._controller_id = "secondary"
+        self._secondary._service = self
+        self._secondary._stability_config = self._stability_config
+        self._connection_guard = lambda transport, address: self._check_connection("primary", transport, address)
+        self._secondary._connection_guard = lambda transport, address: self._check_connection("secondary", transport, address)
+        self._secondary.publisher.connection_changed.connect(self._session_changed)
+        self._secondary.publisher.engine_status_changed.connect(
+            lambda _status: self.publisher.engine_status_changed.emit(self.status)
+        )
+
+    def connect_instrument(self, driver, *, controller_id="primary"):
+        """Connect a driver to a stable slot without replacing its peer."""
+        if controller_id != "primary":
+            session = self.controller(controller_id)
+            if driver is self.connected_driver:
+                raise ValueError("Both controller slots cannot own the same driver.")
+            self._enabled[controller_id] = True
+            return session.connect_instrument(driver)
+        if driver is self._secondary.connected_driver:
+            raise ValueError("Both controller slots cannot own the same driver.")
+        try:
+            return super().connect_instrument(driver)
+        finally:
+            self._refresh_timer()
+
+    def disconnect_instrument(self):
+        """Disconnect primary while retaining secondary polling and history."""
+        try:
+            super().disconnect_instrument()
+        finally:
+            self._refresh_timer()
+
+
 def _qapp():
     """Return the running QApplication instance, or None."""
     try:
@@ -1539,13 +1734,20 @@ def _select_stability_band(config: StabilityConfig, setpoint: float) -> Stabilit
     return config.bands[-1]
 
 
+def _stability_channel_key(reading):
+    """Keep shared stability sensors distinct without changing native names."""
+    if reading is None:
+        return ""
+    return f"secondary:{reading.channel}" if reading.controller_id == "secondary" else reading.channel
+
+
 def _reading_for_channel(
     readings: dict[str, TemperatureChannelReading],
     channel: str,
 ) -> TemperatureChannelReading | None:
     """Return the requested reading, falling back to the first available channel."""
-    if channel and channel in readings:
-        return readings[channel]
+    if channel:
+        return readings.get(channel)
     return next(iter(readings.values()), None)
 
 

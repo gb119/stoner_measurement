@@ -104,19 +104,34 @@ class MakeSafeCommand(CommandPlugin):
     @staticmethod
     def _make_temperature_safe() -> None:
         engine = TemperatureControllerEngine.instance()
-        driver = engine.connected_driver
-        if driver is None:
-            return
-        capabilities = driver.get_capabilities()
-        for loop in range(1, capabilities.num_loops + 1):
-            engine.set_manual_heater_output(loop, 0.0)
-            engine.set_heater_range(loop, 0)
-        if capabilities.has_gas_auto_mode:
-            engine.set_gas_auto(False)
-        if capabilities.has_cryogen_control:
-            engine.set_needle_valve(0.0)
-        for loop in range(1, capabilities.num_loops + 1):
-            engine.set_loop_mode(loop, ControlMode.OFF)
+        sessions = getattr(engine, "controllers", {"primary": engine})
+        failures = []
+        for slot, session in sessions.items():
+            if session.connected_driver is None:
+                continue
+            try:
+                caps = session.connected_driver.get_capabilities()
+                loops = getattr(caps, "loop_numbers", tuple(range(1, caps.num_loops + 1)))
+                actions = []
+                for loop in loops:
+                    if getattr(caps, "has_manual_heater_output", True):
+                        actions.append((session.set_manual_heater_output, (loop, 0.0)))
+                    actions.append((session.set_heater_range, (loop, 0)))
+                if caps.has_gas_auto_mode:
+                    actions.append((session.set_gas_auto, (False,)))
+                if caps.has_cryogen_control:
+                    actions.append((session.set_needle_valve, (0.0,)))
+                actions.extend((session.set_loop_mode, (loop, ControlMode.OFF)) for loop in loops)
+                for action, args in actions:
+                    try:
+                        action(*args)
+                    except Exception as error:
+                        error.add_note(f"Temperature controller: {slot}; operation: {action.__name__}")
+                        failures.append(error)
+            except Exception as error:
+                failures.append(error)
+        if failures:
+            raise ExceptionGroup("Could not make every temperature controller safe", failures)
 
     def _make_magnet_safe(self) -> None:
         engine = MagnetControllerEngine.instance()

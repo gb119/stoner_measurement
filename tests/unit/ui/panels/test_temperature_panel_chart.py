@@ -8,12 +8,11 @@ from stoner_measurement.temperature_control.types import (
     TemperatureChannelReading,
     TemperatureEngineState,
 )
-from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
 
-def test_heater_samples_scroll_with_temperature_and_setpoint(managed_qt_widget):
+def test_heater_samples_scroll_with_temperature_and_setpoint(managed_temperature_panel):
     """Heater values stay paired with their poll times as old samples expire."""
-    panel = managed_qt_widget(TemperatureControlPanel())
+    panel = managed_temperature_panel()
     panel._chart_duration_min = 1  # noqa: SLF001
     start = datetime(2026, 1, 1, tzinfo=UTC)
 

@@ -1055,3 +1055,32 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - Final focused verification of the retained changes: 485 tests passed on
   offscreen PyQt5; Ruff, targeted Pylint and Bandit checks passed.
 - See `notes/2026-09-20-codacy-cleanup.md` for the snapshot and validation scope.
+
+
+## 2026-09-21: Optional secondary temperature controller
+
+- Moved five affected behaviours from tests/test_temperature_control.py into
+  tests/unit/control/test_secondary_temperature_controller.py and
+  tests/unit/ui/panels/test_secondary_temperature_panel.py. Preserved setpoint
+  invalidation, side-by-side loop layout and sensor-list coverage using real
+  service sessions with simulated drivers. Updated disconnected-write expectations
+  to explicit errors and the input-settings layout to owner-specific tables.
+- Added tests/integration/plugin_workflows/test_secondary_temperature_sequence.py
+  for secondary commands, scan/sweep routing, saved sequence/output expressions,
+  optional-primary operation and Make Safe after a peer failure.
+- Updated the sweep-generator test to select the loop its fake actually publishes;
+  there is no longer an implicit fallback to a different loop. Updated command UI
+  assertions for the advertised-loop selector replacing the free integer spin box.
+- Initial migrated/source regression run: 205 passed. Full collection and broader
+  checks are recorded in the secondary-controller implementation plan.
+
+- Final affected regressions: 834 passed, 1 skipped; full collection: 3700 tests.
+  The remaining legacy panel tests and chart chronology test now use the shared
+  managed_temperature_panel fixture for deterministic PyQtGraph teardown. No
+  further legacy test cases were removed during this lifecycle correction.
+
+- Shared-stability follow-up: extended the existing secondary controller modules
+  with cross-controller completed-poll checks, dependency freshness, row-priority
+  migration, real splitter dragging and single-rate/source-switch regressions.
+  Replaced the obsolete owner-local stability selector case with shared selection
+  and offline-choice retention. No unrelated test migration was performed.

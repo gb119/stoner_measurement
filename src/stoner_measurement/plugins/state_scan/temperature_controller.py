@@ -27,7 +27,16 @@ class TemperatureControllerScanPlugin(TemperatureControllerPluginMixin, StateSca
     selects collected outputs and column roles. On stability timeout the scan
     continues with its timed-out flag set; it does not assert stability.
 
+    The loop selector labels Primary and Secondary explicitly. Secondary is
+    optional and disabled by default in the controller panel. A saved unavailable
+    loop remains selected and cannot silently fall back to the other instrument.
+    Unqualified sensor names refer to primary; use ``secondary:A`` in sensor
+    lists to select channel A on secondary. Available-sensor pickers avoid typing
+    channel names. Blank sensor lists include both connected controllers.
+
     Attributes:
+        controller_id (str):
+            Persistent controller slot, ``"primary"`` (default) or ``"secondary"``.
         settle_timeout_minutes (float | str):
             Maximum time to wait for the selected loop to become stable at
             each set-point, as a number or runtime expression in minutes.

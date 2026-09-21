@@ -134,6 +134,15 @@ in `codacy-reports/`; local fixes need remote reanalysis before findings clear.
 
 ## Boundaries For Agents
 
+- Temperature control has a primary and optional secondary session. Legacy loop
+  integers, sensor strings and connected_driver refer to primary; use LoopRef,
+  ChannelRef and the service catalogues for combined selections. Restrict each
+  loop's input choices to its owning driver's get_loop_input_channels result.
+  Plugins borrow this shared service and must not close its sessions on cleanup.
+  Stability uses one shared ordered table: first matching upper bound wins.
+  Criteria may reference either controller; hardware input assignment remains local.
+  See [secondary controller implementation](notes/2026-09-21-secondary-temperature-controller-plan.md).
+
 - Keithley direct-current (DC) set commands opt into instrument lifecycle despite being leaf
   commands: retain source output between executions and disable it during
   sequence cleanup. The 6221 point scan must hold DC throughout child steps;

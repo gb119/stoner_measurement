@@ -5,10 +5,12 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from qtpy.QtWidgets import QFormLayout, QSpinBox, QWidget
+from qtpy.QtWidgets import QFormLayout, QWidget
 
 from stoner_measurement.plugins.command.set_engine_state import SetEngineStateCommand
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+from stoner_measurement.temperature_control.references import controller_id
+from stoner_measurement.ui.temperature_selectors import TemperatureLoopSelector
 from stoner_measurement.ui.widgets import SISpinBox
 
 
@@ -34,7 +36,13 @@ class SetTemperatureCommand(SetEngineStateCommand):
     outputs are represented as ``1.0`` or ``0.0``. They can be selected by
     later sequence steps or read with :meth:`output_value` in the console.
 
+    The loop selector labels Primary and Secondary explicitly. Secondary is
+    optional and disabled by default in the controller panel. A saved unavailable
+    loop remains selected and cannot silently fall back to the other instrument.
+
     Attributes:
+        controller_id (str):
+            Persistent controller slot, ``"primary"`` (default) or ``"secondary"``.
         control_loop (int):
             One-based controller loop to update. Defaults to ``1``.
         setpoint_expr (str):
@@ -75,6 +83,7 @@ class SetTemperatureCommand(SetEngineStateCommand):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setpoint_expr = "300.0"
+        self.controller_id = "primary"
         self.control_loop = 1
         self.settle_timeout_minutes: float | str = 20.0
 
@@ -104,7 +113,9 @@ class SetTemperatureCommand(SetEngineStateCommand):
 
     def _ensure_engine(self):
         engine = TemperatureControllerEngine.instance()
-        if engine.connected_driver is None:
+        if hasattr(engine, "ensure_controller"):
+            engine = engine.ensure_controller(self.controller_id)
+        elif engine.connected_driver is None:
             engine.connect_preferred_driver()
         if engine.connected_driver is None:
             raise RuntimeError("No temperature controller is connected.")
@@ -132,11 +143,7 @@ class SetTemperatureCommand(SetEngineStateCommand):
         }
 
     def _add_specific_config(self, layout: QFormLayout, widget: QWidget) -> None:
-        loop = QSpinBox(widget)
-        loop.setObjectName("control_loop")
-        loop.setRange(1, 99)
-        loop.setValue(self.control_loop)
-        loop.valueChanged.connect(lambda value: setattr(self, "control_loop", int(value)))
+        loop = TemperatureLoopSelector(self, widget)
         layout.addRow("Control loop:", loop)
 
         timeout = SISpinBox(widget, allow_expressions=True)
@@ -155,10 +162,12 @@ class SetTemperatureCommand(SetEngineStateCommand):
 
     def _specific_to_json(self) -> dict[str, Any]:
         return {
+            "controller_id": self.controller_id,
             "control_loop": self.control_loop,
             "settle_timeout_minutes": self.settle_timeout_minutes,
         }
 
     def _restore_specific_json(self, data: dict[str, Any]) -> None:
+        self.controller_id = controller_id(data.get("controller_id", "primary"))
         self.control_loop = max(1, int(data.get("control_loop", 1)))
         self.settle_timeout_minutes = data.get("settle_timeout_minutes", 20.0)
