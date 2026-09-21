@@ -1084,3 +1084,16 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   migration, real splitter dragging and single-rate/source-switch regressions.
   Replaced the obsolete owner-local stability selector case with shared selection
   and offline-choice retention. No unrelated test migration was performed.
+
+
+## 2026-09-21: Plot mouse-axis selection
+
+- Added tests/unit/ui/widgets/test_plot_mouse_axes.py for real Qt clicks, pan,
+  wheel/right-drag zoom, independent ranges, shared trace pairs, inactive
+  autorange, and active-axis marker anchoring/labels. No legacy tests moved.
+- Focused plot widget and marker-command regressions: 121 passed, using
+  `conda run -n stoner_measurement pytest tests/unit/ui/widgets/test_plot_widget.py
+  tests/unit/ui/widgets/test_plot_mouse_axes.py
+  tests/unit/plugins/command/test_plot_markers_command.py -q -p no:cacheprovider`.
+- Ruff check and format passed for both changed Python files.
+- Visual check: rendered the dark-theme plot with bottom/right active and a marker. PyQt5 checks passed; PyQt6 validation was unavailable because that binding could not be imported in this environment.

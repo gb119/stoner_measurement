@@ -150,6 +150,7 @@ class _DataMarker:
     x_axis: str
     y_axis: str
     item: pg.TargetItem
+    automatic_label: bool = True
 
 
 def _safe_remove_graphics_item(parent: object, item: object) -> None:
@@ -222,37 +223,87 @@ class _AxisRowState(TypedDict):
     visible: bool
 
 
+class _SelectableAxisItem(MappedAxisItem):
+    """Mapped axis with an independently selectable mouse-control state."""
+
+    def __init__(self, owner, name, orientation):
+        self.mouse_active = name in {"bottom", "left"}
+        self._owner = owner
+        self._name = name
+        super().__init__(orientation)
+        self.set_mouse_active(self.mouse_active)
+
+    def setPen(self, *args, **kwargs):  # noqa: N802
+        """Keep selection visible when the plot theme is reapplied."""
+        pen = pg.mkPen(*args, **kwargs)
+        if self.mouse_active:
+            pen.setColor(QColor(colour("link")))
+            pen.setWidthF(2.0)
+        super().setPen(pen)
+
+    def set_mouse_active(self, active):
+        """Refresh the spine and discoverable toggle hint."""
+        self.mouse_active = bool(active)
+        self.setPen(colour("plot_foreground"))
+        state = "active" if active else "inactive"
+        self.setToolTip(f"Mouse pan/zoom: {state}. Click to toggle this axis.")
+
+    def _over_axis(self, event):
+        # AxisItem's bounding rect can include grid lines across the whole plot.
+        pos = event.pos()
+        return 0 <= pos.x() <= self.size().width() and 0 <= pos.y() <= self.size().height()
+
+    def hoverEvent(self, event):  # noqa: N802
+        """Reserve axis clicks without intercepting plot-area gestures."""
+        if not event.isExit() and self._over_axis(event):
+            event.acceptClicks(Qt.MouseButton.LeftButton)
+
+    def mouseClickEvent(self, event):  # noqa: N802
+        """Toggle selection on a left click."""
+        if event.button() == Qt.MouseButton.LeftButton and self._over_axis(event):
+            self._owner.set_axis_mouse_active(self._name, not self.mouse_active)
+            event.accept()
+        else:
+            super().mouseClickEvent(event)
+
+
+class _ViewMouseEvent:
+    """Map a shared scene gesture into each destination view's coordinates."""
+
+    def __init__(self, event, view):
+        self._event = event
+        self._view = view
+
+    def __getattr__(self, name):
+        return getattr(self._event, name)
+
+    def pos(self):
+        """Return the current point in destination-view coordinates."""
+        return pg.Point(self._view.mapFromScene(self._event.scenePos()))
+
+    def lastPos(self):  # noqa: N802
+        """Return the previous point in destination-view coordinates."""
+        return pg.Point(self._view.mapFromScene(self._event.lastScenePos()))
+
+    def buttonDownPos(self, button=None):  # noqa: N802
+        """Return the gesture anchor in destination-view coordinates."""
+        return pg.Point(self._view.mapFromScene(self._event.buttonDownScenePos(button)))
+
+
 class _CoupledViewBox(pg.ViewBox):
-    """ViewBox that notifies its owning PlotWidget about drag lifecycle."""
+    """Route plot gestures to the selected named axes."""
 
     def __init__(self, owner: PlotWidget, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._owner = owner
 
     def mouseDragEvent(self, ev, axis=None):  # type: ignore[override]
-        """Track drag start/finish so axis coupling is only active while dragging."""
-        if hasattr(ev, "isStart") and ev.isStart():
-            self._owner._begin_mouse_axis_coupling(self)
-        try:
-            super().mouseDragEvent(ev, axis=axis)
-        finally:
-            if hasattr(ev, "isFinish") and ev.isFinish():
-                self._owner._end_mouse_axis_coupling(self)
+        """Pan or zoom selected axes using each axis's own coordinate range."""
+        self._owner._route_axis_mouse_event(ev, pg.ViewBox.mouseDragEvent, axis)
 
     def wheelEvent(self, ev, axis=None):  # type: ignore[override]
-        """Treat wheel zoom as a short manual interaction on this view box."""
-        self._owner._begin_mouse_axis_coupling(self)
-        try:
-            super().wheelEvent(ev, axis=axis)
-        finally:
-            self._owner._end_mouse_axis_coupling(self)
-
-    def mouseClickEvent(self, ev):  # type: ignore[override]
-        """Ensure transient coupling is cancelled on click release paths."""
-        try:
-            super().mouseClickEvent(ev)
-        finally:
-            self._owner._end_mouse_axis_coupling(self)
+        """Zoom selected axes about the pointer."""
+        self._owner._route_axis_mouse_event(ev, pg.ViewBox.wheelEvent, axis)
 
 
 class AxesConfigDialog(QDialog):
@@ -695,9 +746,6 @@ class PlotWidget(QWidget):
         self._pending_data_updates_lock = threading.Lock()
         self._updating_trace_controls = False
         self._trace_controls_state: tuple | None = None
-        self._mouse_axis_coupling_active = False
-        self._active_mouse_view_box: pg.ViewBox | None = None
-        self._updating_mouse_axis_coupling = False
         self._autoscale_new_data = True
         self._data_markers: list[_DataMarker] = []
         self._next_data_marker_id = 1
@@ -709,7 +757,7 @@ class PlotWidget(QWidget):
         # Pair registry: (x_axis, y_axis) → ViewBox.
         self._pair_view_boxes: dict[tuple[str, str], pg.ViewBox] = {}
         # AxisItem registry: axis_name → AxisItem
-        self._axis_items: dict[str, pg.AxisItem] = {}
+        self._axis_items: dict[str, _SelectableAxisItem] = {}
         # Distinct quantity labels received for each plot axis.
         self._axis_labels: dict[str, set[AxisLabel]] = {
             "bottom": set(),
@@ -794,7 +842,7 @@ class PlotWidget(QWidget):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         self._coordinate_label.setMinimumWidth(150)
-        self._coordinate_label.setToolTip("Pointer coordinates for the visible plot axes")
+        self._coordinate_label.setToolTip("Pointer coordinates for the active plot axes")
         controls.addWidget(self._coordinate_label)
         layout.addLayout(controls)
 
@@ -831,7 +879,10 @@ class PlotWidget(QWidget):
 
     def _setup_pg_widget(self, layout: QVBoxLayout | QSplitter) -> None:
         """Create the pyqtgraph PlotWidget, register default axes, and add to layout."""
-        axis_items = {side: MappedAxisItem(side) for side in ("left", "right", "top", "bottom")}
+        axis_items = {
+            side: _SelectableAxisItem(self, side, side)
+            for side in ("left", "right", "top", "bottom")
+        }
         self._pg_widget = pg.PlotWidget(viewBox=_CoupledViewBox(self), axisItems=axis_items)
         self._pg_widget.setObjectName("pgPlotWidget")
         self._pg_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -993,30 +1044,49 @@ class PlotWidget(QWidget):
         minimum, maximum = self._axis_manual_range.get(name, self._axis_range(name))
         return (None if min_auto else minimum, None if max_auto else maximum)
 
-    def _on_axis_view_range_changed(self, _view_box=None, changed=None) -> None:
-        """Mark affected axes as manual when the user pans/zooms."""
-        if not changed:
-            return
-        source_view_box = (
-            _view_box if isinstance(_view_box, pg.ViewBox) else self._active_mouse_view_box
-        )
-        x_changed = bool(changed[0])
-        y_changed = bool(changed[1])
-        if self._mouse_axis_coupling_active and not self._updating_mouse_axis_coupling:
-            self._updating_mouse_axis_coupling = True
+    def set_axis_mouse_active(self, name: str, active: bool) -> None:
+        """Select an axis for mouse pan/zoom independently of the other axes."""
+        self._axis_items[name].set_mouse_active(active)
+        self._refresh_marker_labels()
+
+    def _active_axis_names(self, orientation):
+        """Return selected axes in registration order (defaults first)."""
+        return [
+            name
+            for name, item in self._axis_items.items()
+            if self._axis_orientations[name] == orientation and item.mouse_active
+        ]
+
+    def _route_axis_mouse_event(self, event, handler, axis=None) -> None:
+        """Apply a gesture once per selected named axis, preserving its scale."""
+        for name, item in self._axis_items.items():
+            index = 0 if self._axis_orientations[name] == "x" else 1
+            if not item.mouse_active or (axis is not None and axis != index):
+                continue
+            view_box = self._view_boxes[name]
+            previous = view_box.state["mouseEnabled"][:]
             try:
-                if x_changed and source_view_box is not None:
-                    self._synchronise_mouse_managed_axes("x", source_view_box)
-                if y_changed and source_view_box is not None:
-                    self._synchronise_mouse_managed_axes("y", source_view_box)
+                view_box.setMouseEnabled(x=index == 0, y=index == 1)
+                handler(view_box, _ViewMouseEvent(event, view_box), axis=index)
             finally:
-                self._updating_mouse_axis_coupling = False
-        if x_changed:
-            for axis_name in self._x_axis_names():
-                self._capture_manual_axis_range(axis_name)
-        if y_changed:
-            for axis_name in self._y_axis_names():
-                self._capture_manual_axis_range(axis_name)
+                view_box.setMouseEnabled(x=previous[0], y=previous[1])
+            self._capture_manual_axis_range(name)
+            limits = view_box.viewRange()[index]
+            for pair, target in self._pair_view_boxes.items():
+                if pair[index] == name and target is not view_box:
+                    target.setRange(**{"xRange" if index == 0 else "yRange": limits}, padding=0)
+        self._refresh_marker_labels()
+        # Consume all-inactive gestures so underlying views cannot move.
+        event.accept()
+
+    def _on_axis_view_range_changed(self, view_box, changed) -> None:
+        """Record only the named axes affected by a view's manual change."""
+        for pair, candidate in self._pair_view_boxes.items():
+            if candidate is view_box:
+                for index, name in enumerate(pair):
+                    if changed[index]:
+                        self._capture_manual_axis_range(name)
+                break
 
     def _mouse_event_in_plot(self, ev) -> bool:
         """Return whether a scene mouse event occurred inside the plot view box."""
@@ -1027,45 +1097,12 @@ class PlotWidget(QWidget):
             return False
         return self._plot_item.vb.sceneBoundingRect().contains(scene_pos)
 
-    def _begin_mouse_axis_coupling(self, view_box: pg.ViewBox) -> None:
-        """Enable temporary multi-axis coupling for a specific active view box."""
-        self._active_mouse_view_box = view_box
-        self._mouse_axis_coupling_active = True
-
-    def _end_mouse_axis_coupling(self, view_box: pg.ViewBox | None = None) -> None:
-        """Disable temporary coupling when the active mouse interaction ends."""
-        if (
-            view_box is not None
-            and self._active_mouse_view_box is not None
-            and view_box is not self._active_mouse_view_box
-        ):
-            return
-        self._mouse_axis_coupling_active = False
-        self._active_mouse_view_box = None
-
-    def _synchronise_mouse_managed_axes(
-        self,
-        orientation: Literal["x", "y"],
-        source_view_box: pg.ViewBox,
-    ) -> None:
-        """Copy the active mouse-driven range across axes of one orientation."""
-        source_range = source_view_box.viewRange()[0 if orientation == "x" else 1]
-        source_minimum = float(source_range[0])
-        source_maximum = float(source_range[1])
-        axis_constant = pg.ViewBox.XAxis if orientation == "x" else pg.ViewBox.YAxis
-        for view_box in self._pair_view_boxes.values():
-            if view_box is source_view_box:
-                continue
-            view_box.enableAutoRange(axis=axis_constant, enable=False)
-            if orientation == "x":
-                view_box.setRange(xRange=(source_minimum, source_maximum), padding=0.0)
-            else:
-                view_box.setRange(yRange=(source_minimum, source_maximum), padding=0.0)
-
     def _register_view_box_signals(self, view_box: pg.ViewBox) -> None:
-        """Connect range-change tracking for a view box."""
-        if hasattr(view_box, "sigRangeChangedManually"):
-            view_box.sigRangeChangedManually.connect(self._on_axis_view_range_changed)
+        """Keep the sender when PyQtGraph emits only an orientation mask."""
+        view_box.sigRangeChanged.connect(self._refresh_marker_labels)
+        view_box.sigRangeChangedManually.connect(
+            lambda changed: self._on_axis_view_range_changed(view_box, changed)
+        )
 
     def _register_axis_side(self, name: str, orientation: Literal["x", "y"], side: str) -> None:
         """Register axis side and ordering metadata."""
@@ -1096,7 +1133,6 @@ class PlotWidget(QWidget):
 
     def _on_scene_mouse_clicked(self, ev) -> None:
         """Open the plot context menu for a plain right-click release."""
-        self._end_mouse_axis_coupling()
         if ev.button() == Qt.MouseButton.RightButton:
             if getattr(self, "_right_dragged", False):
                 self._right_dragged = False
@@ -1122,12 +1158,14 @@ class PlotWidget(QWidget):
         self._coordinate_label.setText(self._format_pointer_coordinates(x_values, y_values))
 
     def _axis_values_at_scene_position(self, scene_pos: QPointF) -> tuple[list[float], list[float]]:
-        """Return raw pointer values for every registered x and y axis."""
+        """Return raw pointer values for the active x and y axes."""
         x_values = [
-            self._axis_value_at_scene_position(name, scene_pos) for name in self._x_axis_names()
+            self._axis_value_at_scene_position(name, scene_pos)
+            for name in self._active_axis_names("x")
         ]
         y_values = [
-            self._axis_value_at_scene_position(name, scene_pos) for name in self._y_axis_names()
+            self._axis_value_at_scene_position(name, scene_pos)
+            for name in self._active_axis_names("y")
         ]
         return x_values, y_values
 
@@ -1161,6 +1199,7 @@ class PlotWidget(QWidget):
         nearby = self._nearest_data_marker(scene_pos)
         if nearby is None:
             add = menu.addAction("Add Data Marker")
+            add.setEnabled(bool(self._active_axis_names("x") and self._active_axis_names("y")))
             add.triggered.connect(lambda: self._add_data_marker_at_scene_position(scene_pos))
         else:
             remove = menu.addAction("Remove Data Marker")
@@ -1171,11 +1210,17 @@ class PlotWidget(QWidget):
         return menu
 
     def _add_data_marker_at_scene_position(self, scene_pos: QPointF) -> None:
-        """Add a labelled marker at the primary axes' raw data coordinates."""
-        point = self._plot_item.vb.mapSceneToView(scene_pos)
-        x = float(self._inverse_axis_values("bottom", [point.x()])[0])
-        y = float(self._inverse_axis_values("left", [point.y()])[0])
-        self.add_data_marker(x, y)
+        """Pin a marker to the first selected x and y axes."""
+        x_axes, y_axes = self._active_axis_names("x"), self._active_axis_names("y")
+        if not x_axes or not y_axes:
+            return
+        x_axis, y_axis = x_axes[0], y_axes[0]
+        self.add_data_marker(
+            self._axis_value_at_scene_position(x_axis, scene_pos),
+            self._axis_value_at_scene_position(y_axis, scene_pos),
+            x_axis=x_axis,
+            y_axis=y_axis,
+        )
 
     @pyqtSlot(float, float)
     @pyqtSlot(float, float, object)
@@ -1192,7 +1237,8 @@ class PlotWidget(QWidget):
 
         The optional axis names allow callers to anchor a marker to any
         registered x/y pair. The marker follows zooming, panning, and scale
-        mapping changes. When *label* is omitted its raw coordinates are used.
+        mapping changes. When *label* is omitted, coordinates on the active
+        axes are shown; selecting other axes changes the label, not the anchor.
         """
         if self._axis_orientations.get(x_axis) != "x":
             raise KeyError(f"Unknown x-axis: {x_axis!r}")
@@ -1221,9 +1267,11 @@ class PlotWidget(QWidget):
             x_axis=x_axis,
             y_axis=y_axis,
             item=item,
+            automatic_label=not label,
         )
         self._data_markers.append(marker)
         view_box.addItem(item)
+        self._refresh_marker_labels()
         return marker_id
 
     def _nearest_data_marker(self, scene_pos: QPointF) -> _DataMarker | None:
@@ -1258,13 +1306,24 @@ class PlotWidget(QWidget):
         for marker_id in [marker.marker_id for marker in self._data_markers]:
             self.remove_data_marker(marker_id)
 
+    def _refresh_marker_labels(self, *_args) -> None:
+        """Show selected-axis coordinates while retaining each marker's anchor."""
+        for marker in self._data_markers:
+            if marker.automatic_label:
+                view = self._pair_view_boxes[(marker.x_axis, marker.y_axis)]
+                scene_pos = view.mapViewToScene(marker.item.pos())
+                values = self._axis_values_at_scene_position(scene_pos)
+                marker.item.label().setFormat(self._format_pointer_coordinates(*values))
+
     def _refresh_data_markers(self) -> None:
-        """Reposition markers after changing the primary axis mapping."""
+        """Reposition markers after changing their anchor axis mappings."""
         for marker in self._data_markers:
             marker.item.setPos(
                 float(self._mapped_axis_values(marker.x_axis, [marker.x])[0]),
                 float(self._mapped_axis_values(marker.y_axis, [marker.y])[0]),
             )
+
+        self._refresh_marker_labels()
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         """Track right-button press state."""
@@ -1750,6 +1809,14 @@ class PlotWidget(QWidget):
         if not self._autoscale_new_data:
             view_box.enableAutoRange(enable=False)
 
+        for index, name in enumerate((x_axis, y_axis)):
+            if name in self._view_boxes:
+                limits = self._view_boxes[name].viewRange()[index]
+                view_box.setRange(
+                    **{"xRange" if index == 0 else "yRange": limits},
+                    padding=0,
+                    disableAutoRange=False,
+                )
         self._pair_view_boxes[(x_axis, y_axis)] = view_box
         self._sync_view_box_geometry()
         if x_axis != "bottom":
@@ -2648,6 +2715,9 @@ class PlotWidget(QWidget):
         if name in {"bottom", "left"}:
             raise ValueError(f"Cannot remove default axis: {name!r}")
 
+        for marker in list(self._data_markers):
+            if name in (marker.x_axis, marker.y_axis):
+                self.remove_data_marker(marker.marker_id)
         orientation = self._axis_orientations[name]
         default_axis = "bottom" if orientation == "x" else "left"
         for trace_name, (x_axis, y_axis) in list(self._trace_axes.items()):
@@ -2713,7 +2783,7 @@ class PlotWidget(QWidget):
         """
         if name in self._axis_items:
             return
-        axis = MappedAxisItem(side)
+        axis = _SelectableAxisItem(self, name, side)
         axis.set_axis_label(label)
         axis.setGrid(False)
         self._axis_items[name] = axis
@@ -2804,7 +2874,7 @@ class PlotWidget(QWidget):
         """
         if name in self._axis_items:
             return
-        axis = MappedAxisItem(position)
+        axis = _SelectableAxisItem(self, name, position)
         axis.set_axis_label(label)
         axis.setGrid(False)
         self._axis_items[name] = axis

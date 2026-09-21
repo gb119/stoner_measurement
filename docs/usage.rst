@@ -29,6 +29,24 @@ The main window is split into three panels:
 * **Right panel (25 %)** — Tabbed configuration area.  Each loaded plugin
   contributes a tab with its own configuration controls.
 
+Mouse control and data markers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Click an axis to toggle whether mouse panning and zooming affect it. Active
+axes have a highlighted, slightly thicker spine; left and bottom start active.
+Each axis can be selected independently, including multiple axes on the same
+side. Selected axes retain their own scales and ranges while moving together.
+With all axes inactive, mouse gestures leave the plot ranges unchanged.
+
+The pointer readout and automatic data-marker labels show only active axes.
+Right-click the plot and choose **Add Data Marker** to pin a marker to the
+first active x axis and first active y axis (default axes first, followed by
+additional axes in creation order). Marker placement requires at least one
+active axis in each direction. Existing markers retain their original data
+coordinates and axis pair when selection changes; their automatic labels
+update to show the currently active coordinates. Explicit marker labels are
+preserved. Removing an axis also removes markers anchored to it.
+
 Building and running a sequence
 --------------------------------
 
