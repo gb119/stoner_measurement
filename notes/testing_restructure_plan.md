@@ -1097,3 +1097,26 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   tests/unit/plugins/command/test_plot_markers_command.py -q -p no:cacheprovider`.
 - Ruff check and format passed for both changed Python files.
 - Visual check: rendered the dark-theme plot with bottom/right active and a marker. PyQt5 checks passed; PyQt6 validation was unavailable because that binding could not be imported in this environment.
+
+## 2026-09-22: Secondary-controller regression follow-up
+
+- Retained the ramp-stability scenario and updated its fake driver to advertise
+  its input and loop through the controller capability contract.
+- Replaced the DAQmx command's font-dependent window-height assertion with a
+  check of the bottom stretch that keeps its controls top-packed.
+- Added SI spin-box range coverage for default unbounded limits, one-sided
+  limits, changed bounds and value clamping. The Qt-compatible range accessors
+  report negative/positive infinity for missing bounds.
+- No tests were moved or removed. The focused widget, stability, polling,
+  DAQmx command, panel connection and secondary-controller modules passed
+  together: 75 tests on offscreen PyQt5 in the project Conda environment.
+- Complete-suite coverage in two processes: `pytest --ignore=tests/integration`
+  passed 3,690 tests with one skip; `pytest tests/integration` passed 27 tests.
+  Both used `-q --tb=short -p no:cacheprovider` and separate fresh workspace
+  `--basetemp` directories to avoid the default temporary-directory permission
+  failure. Ruff and `git diff --check` passed for the changes.
+- A single-process default-order run aborted in Qt event processing during
+  `test_dummy_plugin.py`, also on a retry without capture. The initial 318 tests
+  through that module passed when selected together separately. The Qt abort
+  remains unisolated; the split runs are not a claim of a clean single-process
+  full-suite run.

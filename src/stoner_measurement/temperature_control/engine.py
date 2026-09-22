@@ -1326,8 +1326,9 @@ class _ControllerSession(QObject):
                 Context string included in disconnect failure logs.
         """
         try:
-            if driver.is_connected:
-                driver.disconnect()
+            disconnect = getattr(driver, "disconnect", None)
+            if getattr(driver, "is_connected", False) and disconnect is not None:
+                disconnect()
         except Exception:
             logger.exception("Error while disconnecting temperature controller %s", log_context)
             self._set_status(EngineStatus.ERROR)

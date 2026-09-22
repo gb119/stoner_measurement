@@ -103,6 +103,16 @@ class SISpinBox(pg.SpinBox):
             return self._expression
         return super().value()
 
+    def minimum(self) -> float:
+        """Return the lower bound, or negative infinity when unbounded."""
+        bound = self.opts["bounds"][0]
+        return float(bound) if bound is not None else float("-inf")
+
+    def maximum(self) -> float:
+        """Return the upper bound, or positive infinity when unbounded."""
+        bound = self.opts["bounds"][1]
+        return float(bound) if bound is not None else float("inf")
+
     def setValue(self, value=None, update=True, delaySignal=False):  # noqa: N802
         """Set a numeric value or retain a string for runtime evaluation."""
         if self._allow_expressions and isinstance(value, str):

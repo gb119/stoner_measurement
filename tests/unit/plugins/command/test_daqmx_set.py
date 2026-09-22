@@ -159,7 +159,7 @@ def test_settings_have_one_command_tab_and_no_scan_or_data_pages(qapp, managed_q
     assert settings.general_layout.itemAt(0).widget().title() == "Output point"
     assert settings.general_layout.itemAt(3).widget() is settings.output_enabled_check
     assert settings.general_layout.itemAt(4).widget() is settings.output_group
-    assert settings.height() > settings.sizeHint().height()
+    assert settings.general_layout.stretch(settings.general_layout.count() - 1) == 1
 
     value.setValue("outer.output")
     assert command._value == "outer.output"  # noqa: SLF001

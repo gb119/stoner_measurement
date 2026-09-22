@@ -4,7 +4,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from stoner_measurement.instruments.temperature_controller import ControlMode, SensorStatus
+from stoner_measurement.instruments.temperature_controller import (
+    ControllerCapabilities,
+    ControlMode,
+    SensorStatus,
+)
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.temperature_control.types import (
     StabilityConfig,
@@ -44,6 +48,15 @@ def test_stability_uses_final_target_during_setpoint_ramp(qapp):
     """A tracking sensor is not stable merely because it follows a ramping setpoint."""
     class _Driver:
         is_connected = False
+
+        @staticmethod
+        def get_capabilities():
+            return ControllerCapabilities(
+                num_inputs=1,
+                num_loops=1,
+                input_channels=("A",),
+                loop_numbers=(1,),
+            )
 
         def set_setpoint(self, loop, value):
             self.last_setpoint = (loop, value)

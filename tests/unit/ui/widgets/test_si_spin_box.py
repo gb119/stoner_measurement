@@ -20,6 +20,27 @@ class TestSISpinBox:
         spin = SISpinBox()
         assert spin is not None
 
+    def test_range_accessors_follow_bounded_and_unbounded_options(self, managed_qt_widget):
+        """Range queries support defaults, one-sided limits and later changes."""
+        spin = managed_qt_widget(SISpinBox())
+        assert spin.minimum() == float("-inf")
+        assert spin.maximum() == float("inf")
+
+        spin.setMinimum(0.0)
+        assert spin.minimum() == 0.0
+        assert spin.maximum() == float("inf")
+
+        spin.setMaximum(10.0)
+        assert spin.minimum() == 0.0
+        assert spin.maximum() == 10.0
+        spin.setValue(20.0)
+        assert spin.value() == spin.maximum()
+
+        spin.setOpts(bounds=(None, 5.0))
+        assert spin.minimum() == float("-inf")
+        assert spin.maximum() == 5.0
+        assert spin.value() == spin.maximum()
+
     def test_applies_minimum_height_for_readability(self, qapp):
         """Spin box and editor should use a taller default height."""
         spin = SISpinBox()
