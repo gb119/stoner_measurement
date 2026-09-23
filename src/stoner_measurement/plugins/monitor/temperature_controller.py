@@ -69,6 +69,28 @@ def _parse_channel_list(text: str) -> list[str] | None:
     return channels if channels else None
 
 
+def _control_loops_from_json(raw: object) -> list[int]:
+    """Restore ordered loop selections, retaining the legacy default."""
+    if not isinstance(raw, list):
+        return [1]
+    loops: list[int] = []
+    seen: set[int] = set()
+    for value in raw:
+        if isinstance(value, dict):
+            ref = compact_reference(loop_ref(value))
+            if ref not in loops:
+                loops.append(ref)
+            continue
+        try:
+            iv = int(value)
+        except (TypeError, ValueError):
+            continue
+        if iv >= 1 and iv not in seen:
+            loops.append(iv)
+            seen.add(iv)
+    return loops if loops else [1]
+
+
 class TemperatureMonitorPlugin(MonitorPlugin):
     """Publish live temperature-controller readings into the sequence value catalogue.
 
@@ -691,26 +713,7 @@ class TemperatureMonitorPlugin(MonitorPlugin):
                 Serialised configuration as produced by :meth:`to_json`.
         """
         if "control_loops" in data:
-            raw = data["control_loops"]
-            if isinstance(raw, list):
-                loops: list[int] = []
-                seen: set[int] = set()
-                for value in raw:
-                    if isinstance(value, dict):
-                        ref = compact_reference(loop_ref(value))
-                        if ref not in loops:
-                            loops.append(ref)
-                        continue
-                    try:
-                        iv = int(value)
-                    except (TypeError, ValueError):
-                        continue
-                    if iv >= 1 and iv not in seen:
-                        loops.append(iv)
-                        seen.add(iv)
-                self.control_loops = loops if loops else [1]
-            else:
-                self.control_loops = [1]
+            self.control_loops = _control_loops_from_json(data["control_loops"])
         if "sensor_channels" in data:
             raw = data["sensor_channels"]
             self.sensor_channels = (

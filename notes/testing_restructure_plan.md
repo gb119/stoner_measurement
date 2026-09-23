@@ -1044,7 +1044,6 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   serial opening, timeout configuration, I/O, short writes, partial reads,
   timeout, purge, cleanup, and status errors without a driver or device.
 
-
 ## 2026-09-20 Codacy test policy
 
 - Exclude tests from Prospector and Codacy's separate complexity metric using
@@ -1055,7 +1054,6 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - Final focused verification of the retained changes: 485 tests passed on
   offscreen PyQt5; Ruff, targeted Pylint and Bandit checks passed.
 - See `notes/2026-09-20-codacy-cleanup.md` for the snapshot and validation scope.
-
 
 ## 2026-09-21: Optional secondary temperature controller
 
@@ -1085,7 +1083,6 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   Replaced the obsolete owner-local stability selector case with shared selection
   and offline-choice retention. No unrelated test migration was performed.
 
-
 ## 2026-09-21: Plot mouse-axis selection
 
 - Added tests/unit/ui/widgets/test_plot_mouse_axes.py for real Qt clicks, pan,
@@ -1096,7 +1093,9 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   tests/unit/ui/widgets/test_plot_mouse_axes.py
   tests/unit/plugins/command/test_plot_markers_command.py -q -p no:cacheprovider`.
 - Ruff check and format passed for both changed Python files.
-- Visual check: rendered the dark-theme plot with bottom/right active and a marker. PyQt5 checks passed; PyQt6 validation was unavailable because that binding could not be imported in this environment.
+- Visual check: rendered the dark-theme plot with bottom/right active and a
+  marker. PyQt5 checks passed; PyQt6 validation was unavailable because that
+  binding could not be imported in this environment.
 
 ## 2026-09-22: Secondary-controller regression follow-up
 
@@ -1120,3 +1119,32 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   through that module passed when selected together separately. The Qt abort
   remains unisolated; the split runs are not a claim of a clean single-process
   full-suite run.
+
+## 2026-09-22: CI configuration-page lifetime failure
+
+- GitHub run `35713068841`, commit `124beb3f`, aborted in the Python 3.14 /
+  PyQt6 job; the other three matrix jobs passed. The exception was
+  `QGraphicsTextItem has been deleted` in PyQtGraph `LabelItem.resizeEvent`
+  during pytest-qt event processing at the Keithley 2400 configuration test.
+- That test registered only Settings with `qtbot`; its scan-preview page and
+  the configuration pages in the preceding Multi-SR830 module lacked scoped
+  ownership. This matches the previously diagnosed deferred-event lifetime
+  failure, although the precise originating page cannot be proved from the
+  CI stack alone.
+- Added `managed_plugin_config_tabs`, which registers every returned page with
+  `managed_qt_widget`. Applied it to the Keithley 2400 configuration test and
+  all 14 Multi-SR830 configuration tests. No assertions or tests were removed;
+  the existing modules remain in place for this bounded lifecycle repair.
+- Baseline: the two affected modules passed locally (119 tests), so the CI
+  crash was not reproduced in the available PyQt5 environment.
+- Validation: affected modules plus `tests/unit/plugins/trace/test_trace_plugin.py`
+  passed 156 tests. A single-process full run passed 3,717 tests with one skip:
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/ci-lifecycle-full` (72.52 seconds).
+  Commands used the project Conda environment, offscreen Qt and Windows fonts.
+- Ruff check/format and `git diff --check` passed. Local Python is 3.14.7 with
+  PyQt5 5.15.11; PyQt6 cannot be imported. The patch still needs hosted PyQt6
+  validation before the CI failure can be considered resolved.
+- The exact Keithley configuration node also passed in ten separate fresh
+  pytest processes. An earlier repeated-node invocation collected 20 entries
+  but executed only one, so it is not counted as repeated validation.

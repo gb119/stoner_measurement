@@ -1,7 +1,8 @@
 # Secondary temperature controller implementation plan
 
 Date: 2026-09-21
-Status: implementation and software validation complete; physical bench acceptance outstanding. Secondary remains optional and disabled by default.
+Status: implementation and software validation complete; physical bench
+acceptance outstanding. Secondary remains optional and disabled by default.
 Baseline: main at 052bde7519b16f8a2738c0f5e86bb0d3cc7f4181.
 
 ## Objective
@@ -17,10 +18,10 @@ rigs and saved sequences.
 Paths below are relative to src/stoner_measurement unless otherwise stated.
 
 - temperature_control/engine.py: TemperatureControllerEngine is a singleton with
-  one _driver, one preferred/live connection triple, one timer and RLock. All
+  one `_driver`, one preferred/live connection triple, one timer and RLock. All
   control and input-settings methods route directly to that driver.
   connect_instrument replaces the existing connection and clears every history;
-  disconnect_instrument and shutdown clear the whole service. _disconnect_driver
+  disconnect_instrument and shutdown clear the whole service. `_disconnect_driver`
   logs and suppresses cleanup exceptions; failed connection handling does not
   explicitly clean up the candidate driver.
 - engine.py:_build_state, _collect_readings and _collect_loop_data obtain one
@@ -42,7 +43,7 @@ Paths below are relative to src/stoner_measurement unless otherwise stated.
   continue receiving native local identifiers.
 - ui/temperature_panel.py: one connection form, one status, and one capabilities
   object drive the control groups, zone editor, input settings, curve names,
-  stability selectors and cryogen controls. _LoopControlGroup currently offers
+  stability selectors and cryogen controls. `_LoopControlGroup` currently offers
   all inputs from that descriptor. Charts and saved trace preferences use loop/
   channel-derived keys; the needle-valve trace has the single key NV.
   Connection forms use ui/widgets/controller_connection.py helpers, which expect
@@ -284,7 +285,6 @@ tests were changed or executed for this planning task. Existing unrelated untrac
 files were left untouched. The proposed hardware capability extensions still need
 manual verification during implementation. Local tool sandbox setup failed;
 repository inspection and writing this note used approved elevated shell access.
-
 
 ## Implementation record
 

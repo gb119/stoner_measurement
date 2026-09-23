@@ -845,13 +845,7 @@ class _ControllerSession(QObject):
                 logger.exception("Failed to set input channel for loop %d", loop)
                 raise
             caps = self._driver.get_capabilities()
-            try:
-                if caps.has_ramp:
-                    self._driver.set_ramp_rate(loop, ramp_rate)
-                    self._driver.set_ramp_enabled(loop, ramp_enabled)
-            except Exception:
-                logger.exception("Failed to set ramp for loop %d", loop)
-                raise
+            self._set_supported_ramp(loop, ramp_rate, ramp_enabled, caps.has_ramp)
             try:
                 if caps.has_pid:
                     self._driver.set_pid(loop, pid_p, pid_i, pid_d)
@@ -863,6 +857,20 @@ class _ControllerSession(QObject):
             except Exception:
                 logger.exception("Failed to set heater range for loop %d", loop)
                 raise
+
+    def _set_supported_ramp(
+        self, loop: int, ramp_rate: float, ramp_enabled: bool, supported: bool
+    ) -> None:
+        """Apply ramp settings when the connected driver supports them."""
+        if not supported:
+            return
+        assert self._driver is not None
+        try:
+            self._driver.set_ramp_rate(loop, ramp_rate)
+            self._driver.set_ramp_enabled(loop, ramp_enabled)
+        except Exception:
+            logger.exception("Failed to set ramp for loop %d", loop)
+            raise
 
     def set_manual_heater_output(self, loop: int, output: float) -> None:
         """Set the manual heater output for open-loop control of *loop*.

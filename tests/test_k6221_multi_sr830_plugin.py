@@ -224,10 +224,10 @@ class TestJsonRoundTrip:
 
 
 class TestUi:
-    def test_settings_widget(self, qapp):
-        """Single test for all UI checks (avoids pyqtgraph segfault on multiple widget creation cycles)."""
+    def test_settings_widget(self, managed_plugin_config_tabs):
+        """Settings expose the common controls and per-lock-in table."""
         plugin = _make_plugin()
-        tabs = plugin.config_tabs()
+        tabs = managed_plugin_config_tabs(plugin)
 
         # Top-level structure
         assert len(tabs) == 3
@@ -283,9 +283,9 @@ class TestUi:
         assert "Use RMS current" not in all_texts
         assert "Use peak current" not in all_texts
 
-    def test_output_checkboxes_allow_multiple_outputs(self, qapp):
+    def test_output_checkboxes_allow_multiple_outputs(self, managed_plugin_config_tabs):
         plugin = _make_plugin()
-        tabs = plugin.config_tabs()
+        tabs = managed_plugin_config_tabs(plugin)
         settings_widget = tabs[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
 
@@ -296,9 +296,9 @@ class TestUi:
 
         assert plugin._lockin_entries[0].outputs == (LockInOutput.X, LockInOutput.Y, LockInOutput.R)
 
-    def test_selecting_7265_updates_model_dependent_controls(self, qapp):
+    def test_selecting_7265_updates_model_dependent_controls(self, managed_plugin_config_tabs):
         plugin = _make_plugin()
-        settings = plugin.config_tabs()[1][1]
+        settings = managed_plugin_config_tabs(plugin)[1][1]
         table = settings.findChildren(QTableWidget)[0]
         model_combo = table.cellWidget(_row_with_label(table, "Model"), 0)
 
@@ -313,9 +313,9 @@ class TestUi:
         assert not expand.isEnabled()
         assert not reserve.isEnabled()
 
-    def test_output_checkboxes_keep_at_least_one_output_selected(self, qapp):
+    def test_output_checkboxes_keep_at_least_one_output_selected(self, managed_plugin_config_tabs):
         plugin = _make_plugin()
-        tabs = plugin.config_tabs()
+        tabs = managed_plugin_config_tabs(plugin)
         settings_widget = tabs[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
 
@@ -326,9 +326,9 @@ class TestUi:
         assert plugin._lockin_entries[0].outputs == (LockInOutput.X,)
         assert plugin.scan_generator.stages == [(0.0, True)]
 
-    def test_boolean_cells_stay_neutral_when_column_is_selected(self, qapp):
+    def test_boolean_cells_stay_neutral_when_column_is_selected(self, managed_plugin_config_tabs):
         plugin = _make_plugin()
-        tabs = plugin.config_tabs()
+        tabs = managed_plugin_config_tabs(plugin)
         settings_widget = tabs[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
 
@@ -347,17 +347,19 @@ class TestUi:
         assert "background-color" in label_edit.styleSheet()
         assert all("background-color" not in cb.styleSheet() for cb in output_checks.values())
 
-    def test_auto_sensitivity_has_no_redundant_boolean_row(self, qapp):
+    def test_auto_sensitivity_has_no_redundant_boolean_row(self, managed_plugin_config_tabs):
         plugin = _make_plugin()
-        table = plugin.config_tabs()[1][1].findChildren(QTableWidget)[0]
+        table = managed_plugin_config_tabs(plugin)[1][1].findChildren(QTableWidget)[0]
         labels = [table.verticalHeaderItem(row).text() for row in range(table.rowCount())]
 
         assert "Sensitivity" in labels
         assert "Auto-sensitivity" not in labels
 
-    def test_lockin_table_uses_only_its_row_height_and_tab_stretches_below_controls(self, qapp):
+    def test_lockin_table_uses_only_its_row_height_and_tab_stretches_below_controls(
+        self, managed_plugin_config_tabs
+    ):
         plugin = _make_plugin()
-        settings = plugin.config_tabs()[1][1]
+        settings = managed_plugin_config_tabs(plugin)[1][1]
         table = settings.findChildren(QTableWidget)[0]
         lockins_page = table.parentWidget()
         while lockins_page is not None and lockins_page.layout() is None:
@@ -375,9 +377,11 @@ class TestUi:
             lockins_page.layout().itemAt(lockins_page.layout().count() - 1).spacerItem() is not None
         )
 
-    def test_offset_compensation_control_explains_software_only_correction(self, qapp):
+    def test_offset_compensation_control_explains_software_only_correction(
+        self, managed_plugin_config_tabs
+    ):
         plugin = _make_plugin()
-        settings = plugin.config_tabs()[1][1]
+        settings = managed_plugin_config_tabs(plugin)[1][1]
         checkbox = next(
             control
             for control in settings.findChildren(QCheckBox)
@@ -386,9 +390,11 @@ class TestUi:
 
         assert "does not change the lock-in settings" in checkbox.toolTip()
 
-    def test_nonzero_manual_offset_enables_adding_offset_to_readings(self, qapp):
+    def test_nonzero_manual_offset_enables_adding_offset_to_readings(
+        self, managed_plugin_config_tabs
+    ):
         plugin = _make_plugin()
-        settings = plugin.config_tabs()[1][1]
+        settings = managed_plugin_config_tabs(plugin)[1][1]
         table = settings.findChildren(QTableWidget)[0]
         checkbox = next(
             control
@@ -413,9 +419,11 @@ class TestUi:
 
         assert restored._offset_enabled is True
 
-    def test_sensitivity_combo_starts_with_auto_and_numeric_selection_disables_it(self, qapp):
+    def test_sensitivity_combo_starts_with_auto_and_numeric_selection_disables_it(
+        self, managed_plugin_config_tabs
+    ):
         plugin = _make_plugin()
-        settings_widget = plugin.config_tabs()[1][1]
+        settings_widget = managed_plugin_config_tabs(plugin)[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
         combo = table.cellWidget(_row_with_label(table, "Sensitivity"), 0)
 
@@ -428,9 +436,9 @@ class TestUi:
         assert plugin._lockin_entries[0].auto_sensitivity is False
         assert plugin._lockin_entries[0].sensitivity == pytest.approx(1e-3)
 
-    def test_offset_spinbox_auto_state_updates_entry(self, qapp):
+    def test_offset_spinbox_auto_state_updates_entry(self, managed_plugin_config_tabs):
         plugin = _make_plugin()
-        settings_widget = plugin.config_tabs()[1][1]
+        settings_widget = managed_plugin_config_tabs(plugin)[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
         offset_spin = table.cellWidget(_row_with_label(table, "Offset (%)"), 0)
 
@@ -439,9 +447,9 @@ class TestUi:
         assert plugin._lockin_entries[0].offset_auto is True
         assert offset_spin.lineEdit().text() == "Auto"
 
-    def test_phase_spinbox_auto_state_updates_entry(self, qapp):
+    def test_phase_spinbox_auto_state_updates_entry(self, managed_plugin_config_tabs):
         plugin = _make_plugin()
-        settings_widget = plugin.config_tabs()[1][1]
+        settings_widget = managed_plugin_config_tabs(plugin)[1][1]
         table = settings_widget.findChildren(QTableWidget)[0]
         phase_spin = table.cellWidget(_row_with_label(table, "Phase (\u00b0)"), 0)
 
@@ -450,10 +458,12 @@ class TestUi:
         assert plugin._lockin_entries[0].phase is None
         assert phase_spin.lineEdit().text() == "Auto"
 
-    def test_read_and_auto_offset_buttons_require_selection_and_accept_multiple_columns(self, qapp):
+    def test_read_and_auto_offset_buttons_require_selection_and_accept_multiple_columns(
+        self, managed_plugin_config_tabs
+    ):
         plugin = _make_plugin()
         plugin._lockin_entries.append(LockInEntry(label="LIA 2", resource="GPIB0::9::INSTR"))
-        settings = plugin.config_tabs()[1][1]
+        settings = managed_plugin_config_tabs(plugin)[1][1]
         table = settings.findChildren(QTableWidget)[0]
         buttons = {button.text(): button for button in settings.findChildren(QPushButton)}
 
@@ -468,9 +478,11 @@ class TestUi:
         buttons["Run auto-offset"].click()
         plugin.auto_offset_temporary_lockins.assert_called_once_with([0, 1])
 
-    def test_read_lockin_updates_source_common_and_selected_entry_controls(self, qapp):
+    def test_read_lockin_updates_source_common_and_selected_entry_controls(
+        self, managed_plugin_config_tabs
+    ):
         plugin = _make_plugin()
-        settings = plugin.config_tabs()[1][1]
+        settings = managed_plugin_config_tabs(plugin)[1][1]
         table = settings.findChildren(QTableWidget)[0]
         read_button = next(
             button

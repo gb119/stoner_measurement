@@ -2,82 +2,54 @@
 
 Repository: `gh/gb119/stoner_measurement`
 Branch: `main`
-Analyzed commit: `2ccb56bd42d4857f99065d9fbe33dde3534085ce`
-Downloaded: 2026-09-20
-Codacy analysis completed: 2026-09-20T20:08:45.243Z
+Analyzed commit: `124beb3fdae5aeb50ae88b1c36073887568b1eb2`
+Codacy analysis completed: 2026-09-22T09:56:05.656Z
+Downloaded: 2026-09-23 22:13 UTC
 
-## Refreshed baseline
+## Current remote snapshot
 
-The complete `--branch main --limit 1000` pull contains **45 issues**:
-2 Error, 5 High, 22 Warning, and 16 Info. Codacy's repository overview also
-reports 45 issues. The previous August snapshot contained 43 issues.
-
-`issues.json` remains the authoritative remote snapshot. `issues.csv` contains
-all 45 rows and a separate local disposition; its locations refer to the
-analyzed commit, before the local edits.
+The complete `--branch main --limit 1000` pull contains **19 issues**:
+12 Warning and 7 Info. The prior snapshot from
+20 September contained 45 issues. `issues.json` is the raw remote inventory;
+`issues.csv` records each issue and its local disposition. Issue locations
+refer to the analyzed commit, before the local edits below.
 
 ## Local disposition
 
-| Disposition                                    | Issues |
-| ---------------------------------------------- | ------ |
-| Code fixes or reviewed narrow suppressions     | 26     |
-| Test-only complexity excluded by configuration | 8      |
-| Guidance terminology and reference clarified   | 5      |
-| Intentional guidance advisories retained       | 6      |
+| Disposition | Issues |
+| --- | ---: |
+| Production complexity refactored | 2 |
+| Exact-integer contract with narrow Pylint suppression | 1 |
+| Generated-expression tests with narrow Bandit suppressions | 2 |
+| Markdown formatting corrected | 6 |
+| Keithley LIST term defined | 1 |
+| Intentional maintainer and hardware guidance retained | 7 |
 
-The expected remote remainder is **6 guidance advisories**, subject to Codacy
-accepting the configuration, formatting and scoped suppressions on reanalysis.
-No remote findings have been marked ignored, and these edits have not been
-committed or pushed.
+The expected remote remainder is **7 Agentlinter advisories**, subject to
+Codacy reanalysis. The six escape-hatch suggestions conflict with explicit
+Conda, resource-ownership and held-DC contracts. The modular-file suggestion
+conflicts with the deliberate single maintainer entry point. No issues were
+marked ignored in Codacy.
 
-## Changes
+## Fixes and verification
 
-- Shared DAQmx input/output trigger validation between trace and point-scan
-  plugins; separated physical-channel checks from task-source selection.
-  Validation order and error messages are preserved.
-- Corrected the existing Prospector test exclusion from `tests/` to `tests/**`
-  and added the same exclusion to the separate Codacy `metric` engine.
-  Prospector's exclusion covers all its test checks, including McCabe; it is
-  not a per-rule exclusion. Other analyzer settings were preserved.
-- Kept test scenarios and fake-driver structures intact; no test complexity
-  refactoring is retained.
-- Replaced redundant lambdas, clarified the required concrete Keithley point
-  class, renamed ambiguous fit-function current arguments, fixed nested-function
-  spacing, and kept overload bodies compatible with pycodestyle E704.
-- Replaced the SR7265 empty-string comparison with equivalent string truthiness
-  to avoid a false hardcoded-password report.
-- Added narrow documented suppressions for trusted generated-code test execution
-  and expression evaluation, deliberate fake-transport initialization, Qt's
-  extension constructor, the SR830 concrete return value, and the documentation
-  audit's shell-free Git invocation.
-- Expanded guidance terminology and converted the existing, tracked Keithley
-  design-note reference into a Markdown link.
+- Extracted supported ramp application and monitor loop restoration into
+  cohesive helpers. Both flagged methods are below the local McCabe threshold
+  of 15. The existing controller and sequence tests passed: **34 passed**
+  offscreen under PyQt5, with one pytest cache warning.
+- Preserved exact `int` validation for loop references, which deliberately
+  rejects `bool` and subclasses; the scoped Pylint C0123 suppression passes.
+- Kept expression execution in integration tests because those generated
+  expressions are the runtime contract; scoped Bandit B307 suppressions pass.
+- Fixed the six reported Markdown errors and three additional errors found by
+  local Markdownlint in the touched notes. Markdownlint reports zero issues
+  across the three touched Markdown files.
+- Defined the Keithley 6221 `LIST` mode at first use while preserving
+  the held-DC instruction.
+- Ruff lint passed on changed Python files and `git diff --check` passed.
+  Full-file Ruff formatting remains pre-existing work in the engine and monitor
+  modules; formatting those whole files would add unrelated changes.
 
-## Retained advisories
-
-Five Agentlinter escape-hatch suggestions conflict with intentional lifecycle,
-held-DC and supported-Conda requirements. Those requirements remain unchanged.
-The modular-file advisory is retained because `AGENTS.md` is deliberately the
-single maintainer entry point. Do not relax these contracts to satisfy a heuristic.
-
-## Verification
-
-- Final retained-change regression run: **485 passed**, one warning, using
-  Python 3.14.7 and PyQt5 5.15.11 offscreen with Windows fonts.
-- Ruff lint and formatting checks on changed Python files.
-- Targeted Pylint and Bandit checks for the reported rules.
-- pycodestyle E704, E741 and E306 checks on the affected production files.
-- McCabe: all functions in the three changed DAQmx modules are at or below 15.
-- Codacy YAML parsed and recursive Prospector/metric exclusions checked.
-- `git diff --check`.
-
-An earlier broader run passed 587 tests with one dependency-path skip, plus a
-228-test plugin run. The initial broad attempt hit an existing Windows pytest
-temporary-directory permission error; a fresh `--basetemp` resolved it.
-Remote Codacy reanalysis, other Qt bindings, and physical hardware validation
-remain unverified. Full-suite testing was not performed.
-
-## Configuration reference
-
-Codacy documents recursive `test/**` globs and the separate `metric` engine in
-[its configuration reference](https://docs.codacy.com/repositories-configure/codacy-configuration-file/).
+The checkout's HEAD matches the analyzed Codacy commit. The new local fixes
+have not been committed or pushed, so their remote clearance is unverified.
+Live hardware and other Qt bindings were not validated.

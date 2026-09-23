@@ -64,6 +64,19 @@ def managed_qt_widget(qapp):
 
 
 @pytest.fixture
+def managed_plugin_config_tabs(managed_qt_widget):
+    """Retain every configuration page, including hidden scan previews."""
+
+    def create(plugin):
+        tabs = plugin.config_tabs()
+        for _title, page in tabs:
+            managed_qt_widget(page)
+        return tabs
+
+    return create
+
+
+@pytest.fixture
 def managed_temperature_panel(managed_qt_widget):
     """Keep hidden temperature panels alive and close their charts at teardown."""
     from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
