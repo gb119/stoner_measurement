@@ -40,7 +40,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.qt_compat import pyqtSignal, pyqtSlot
 from stoner_measurement.ui.axis_mappings import (
     AXIS_SCALES,
     AxisLabel,
@@ -151,6 +151,7 @@ class _DataMarker:
     y_axis: str
     item: pg.TargetItem
     automatic_label: bool = True
+    label: str | None = None
 
 
 def _safe_remove_graphics_item(parent: object, item: object) -> None:
@@ -715,6 +716,8 @@ class PlotWidget(QWidget):
         [1.0]
     """
 
+    plot_state_changed = pyqtSignal()
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -729,6 +732,7 @@ class PlotWidget(QWidget):
 
         # Per-trace data storage: name → (x_list, y_list)
         self._trace_data: dict[str, tuple[list[float], list[float]]] = {}
+        self._trace_titles: dict[str, str] = {}
         # Per-trace plot item
         self._traces: dict[str, pg.PlotDataItem] = {}
         # Per-trace error-bar item (optional)
@@ -1047,6 +1051,7 @@ class PlotWidget(QWidget):
     def set_axis_mouse_active(self, name: str, active: bool) -> None:
         """Select an axis for mouse pan/zoom independently of the other axes."""
         self._axis_items[name].set_mouse_active(active)
+        self.plot_state_changed.emit()
         self._refresh_marker_labels()
 
     def _active_axis_names(self, orientation):
@@ -1087,6 +1092,8 @@ class PlotWidget(QWidget):
                     if changed[index]:
                         self._capture_manual_axis_range(name)
                 break
+
+        self.plot_state_changed.emit()
 
     def _mouse_event_in_plot(self, ev) -> bool:
         """Return whether a scene mouse event occurred inside the plot view box."""
@@ -1268,10 +1275,12 @@ class PlotWidget(QWidget):
             y_axis=y_axis,
             item=item,
             automatic_label=not label,
+            label=label or None,
         )
         self._data_markers.append(marker)
         view_box.addItem(item)
         self._refresh_marker_labels()
+        self.plot_state_changed.emit()
         return marker_id
 
     def _nearest_data_marker(self, scene_pos: QPointF) -> _DataMarker | None:
@@ -1299,6 +1308,7 @@ class PlotWidget(QWidget):
         view_box = self._pair_view_boxes[(marker.x_axis, marker.y_axis)]
         view_box.removeItem(marker.item)
         self._data_markers.remove(marker)
+        self.plot_state_changed.emit()
         return True
 
     def clear_data_markers(self) -> None:
@@ -1345,6 +1355,7 @@ class PlotWidget(QWidget):
 
     def _refresh_trace_and_axis_controls(self) -> None:
         """Refresh table rows after trace or axis changes."""
+        self.plot_state_changed.emit()
         if not hasattr(self, "_trace_table"):
             return
 
@@ -1400,7 +1411,7 @@ class PlotWidget(QWidget):
         visible_checkbox.toggled.connect(self._on_trace_visibility_toggled)
         self._trace_table.setCellWidget(row, 0, visible_checkbox)
 
-        trace_item = QTableWidgetItem(trace_name)
+        trace_item = QTableWidgetItem(self._trace_titles.get(trace_name, trace_name))
         trace_item.setFlags(trace_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         trace_item.setToolTip(trace_name)
         self._trace_table.setItem(row, 1, trace_item)
@@ -1485,6 +1496,7 @@ class PlotWidget(QWidget):
     def _on_plot_splitter_moved(self, _position: int, _index: int) -> None:
         """Keep the user's legend height when trace controls are refreshed."""
         self._trace_table_resized = True
+        self.plot_state_changed.emit()
 
     def _set_trace_visibility(self, trace_name: str, visible: bool) -> None:
         """Show or hide a specific trace."""
@@ -1494,6 +1506,7 @@ class PlotWidget(QWidget):
             return
         self._trace_visible[trace_name] = visible
         self._traces[trace_name].setVisible(visible)
+        self.plot_state_changed.emit()
 
     def set_trace_visible(self, trace_name: str, visible: bool) -> None:
         """Public wrapper for changing trace visibility."""
@@ -1502,6 +1515,221 @@ class PlotWidget(QWidget):
     def trace_style(self, trace_name: str) -> dict[str, str]:
         """Return the current style dictionary for a trace."""
         return dict(self._trace_style.get(trace_name, {}))
+
+    def trace_uncertainties(self, trace_name: str) -> tuple:
+        """Return owned uncertainty arrays for an existing series."""
+        return tuple(
+            None if values is None else values.copy()
+            for values in self._trace_error_data.get(trace_name, (None, None))
+        )
+
+    def trace_axis_names(self, trace_name: str) -> tuple[str, str]:
+        """Return the named coordinate axes assigned to a series."""
+        return self._trace_axes.get(trace_name, ("bottom", "left"))
+
+    def set_trace_title(self, trace_name: str, title: str) -> None:
+        """Change a displayed title without changing the series identity."""
+        if trace_name not in self._traces:
+            raise KeyError(trace_name)
+        self._trace_titles[trace_name] = title
+        self._traces[trace_name].opts["name"] = title
+        self._trace_controls_state = None
+        self._refresh_trace_and_axis_controls()
+
+    def export_plot_settings(self) -> dict:
+        """Capture version-one renderer preferences, excluding measurement arrays."""
+        from dataclasses import asdict
+        from itertools import islice
+
+        return {
+            "version": 1,
+            "axes": [asdict(axis) for axis in self.plot_axis_descriptions()],
+            "manual_ranges": {
+                name: list(bounds) for name, bounds in self._axis_manual_range.items()
+            },
+            "axis_order": {":".join(key): list(names) for key, names in self._axis_order.items()},
+            "axis_labels": {
+                name: [
+                    {"label": label.label, "unit": label.unit} for label in sorted(labels, key=str)
+                ]
+                for name, labels in self._axis_labels.items()
+            },
+            "legend_sizes": self._plot_splitter.sizes() if hasattr(self, "_plot_splitter") else [],
+            "legend_resized": self._trace_table_resized,
+            # Reading a full period retains the next automatic colour.
+            "colour_cycle": list(islice(self._colour_cycle, len(_TRACE_COLOURS))),
+            "next_marker_id": self._next_data_marker_id,
+        }
+
+    def import_plot_settings(self, settings) -> None:
+        """Restore versioned renderer preferences through this widget's public API."""
+        from stoner_measurement.core.plotting.contracts import (
+            AxisDescription,
+            ChannelMetadata,
+            ConfigureAxes,
+        )
+        from stoner_measurement.core.plotting.state import settings_dict
+        from stoner_measurement.ui.plotting_bridge import CartesianPlotBridge
+
+        settings = settings_dict(settings)
+        if not settings:
+            return
+        if settings.get("version") != 1:
+            raise ValueError("Unsupported Cartesian settings version.")
+        axes = tuple(
+            AxisDescription(**{**axis, "label": ChannelMetadata(**axis["label"])})
+            for axis in settings.get("axes", [])
+        )
+        bridge = CartesianPlotBridge(self)
+        bridge.validate(ConfigureAxes(axes))
+        bridge.apply(ConfigureAxes(axes))
+        for name, bounds in settings.get("manual_ranges", {}).items():
+            if name in self._axis_items:
+                self._axis_manual_range[name] = tuple(bounds)
+        for key, names in settings.get("axis_order", {}).items():
+            slot, side = key.split(":")
+            self._axis_order[(slot, side)] = [name for name in names if name in self._axis_items]
+        for name, labels in settings.get("axis_labels", {}).items():
+            if name in self._axis_labels:
+                self._axis_labels[name] = {AxisLabel(**label) for label in labels}
+        sizes = settings.get("legend_sizes", [])
+        if hasattr(self, "_plot_splitter") and len(sizes) == 2 and sum(sizes) > 0:
+            self._plot_splitter.setSizes(sizes)
+        self._trace_table_resized = bool(settings.get("legend_resized", False))
+        colours = settings.get("colour_cycle", [])
+        if colours:
+            if len(colours) != len(_TRACE_COLOURS) or any(
+                not QColor(value).isValid() for value in colours
+            ):
+                raise ValueError("Invalid saved colour cycle.")
+            self._colour_cycle = cycle(colours)
+        self._next_data_marker_id = max(
+            self._next_data_marker_id, int(settings.get("next_marker_id", 1))
+        )
+        self._layout_additional_axes()
+        self._refresh_trace_and_axis_controls()
+
+    def export_plot_state(self):
+        """Export explicit data and UI state without leaking graphics objects."""
+        from dataclasses import replace
+
+        from stoner_measurement.core.plotting.contracts import AddMarker
+        from stoner_measurement.core.plotting.producers import xy_update
+        from stoner_measurement.core.plotting.state import DisplayState, MarkerState, SeriesState
+
+        series = []
+        for name in self._traces:
+            x_axis, y_axis = self.trace_axis_names(name)
+            xerr, yerr = self.trace_uncertainties(name)
+            style = self.trace_style(name)
+            update = xy_update(
+                name,
+                self.x_data(name),
+                self.y_data(name),
+                x_error=xerr,
+                y_error=yerr,
+                x_axis=x_axis,
+                y_axis=y_axis,
+                style={
+                    "colour": style["colour"],
+                    "line_style": style["line"],
+                    "point_style": style["point"],
+                    "line_width": self._trace_line_width.get(name, _DEFAULT_LINE_WIDTH),
+                    "point_size": self._trace_point_size.get(name, _DEFAULT_POINT_SIZE),
+                },
+            )
+            series.append(
+                SeriesState(
+                    replace(update, title=self._trace_titles.get(name, name)),
+                    self._trace_visible.get(name, True),
+                )
+            )
+        markers = tuple(
+            MarkerState(
+                marker.marker_id,
+                AddMarker(
+                    {"x": marker.x, "y": marker.y},
+                    axes={"x": marker.x_axis, "y": marker.y_axis},
+                    label=marker.label,
+                ),
+            )
+            for marker in self._data_markers
+        )
+        return DisplayState(
+            self.plot_axis_descriptions(), tuple(series), markers, self.export_plot_settings()
+        )
+
+    def import_plot_state(self, state) -> None:
+        """Hydrate a candidate with axes, data/errors, styles, markers and preferences."""
+        from stoner_measurement.core.plotting.contracts import ConfigureAxes
+        from stoner_measurement.ui.plotting_bridge import CartesianPlotBridge
+
+        bridge = CartesianPlotBridge(self)
+        self.clear_all()
+        bridge.validate(ConfigureAxes(state.axes))
+        bridge.apply(ConfigureAxes(state.axes))
+        for entry in state.series:
+            bridge.validate(entry.update)
+            bridge.apply(entry.update)
+            self.set_trace_visible(entry.update.series_id, entry.visible)
+        # Series creation accumulates labels and ranges; restore the exact user state last.
+        self.import_plot_settings(state.renderer_settings)
+        for axis in state.axes:
+            self.set_axis_label(axis.name, AxisLabel(axis.label.name, axis.label.unit))
+            self.set_axis_range(axis.name, *axis.limits)
+        for entry in state.markers:
+            bridge.validate(entry.marker)
+            new_id = bridge.apply(entry.marker)
+            next(
+                marker for marker in self._data_markers if marker.marker_id == new_id
+            ).marker_id = entry.marker_id
+        self._next_data_marker_id = max(
+            self._next_data_marker_id,
+            max((entry.marker_id + 1 for entry in state.markers), default=1),
+        )
+        self.plot_state_changed.emit()
+
+    def plot_axis_descriptions(self) -> tuple:
+        """Return portable axis descriptions for selectors and queued clients."""
+        from stoner_measurement.core.plotting.contracts import AxisDescription, ChannelMetadata
+
+        descriptions = []
+        for name, orientation in self._axis_orientations.items():
+            item = self._axis_items[name]
+            descriptions.append(
+                AxisDescription(
+                    name,
+                    orientation,
+                    ChannelMetadata(item.labelText, item.labelUnits),
+                    scale=self._axis_scale.get(name, "linear"),
+                    parameter=self._axis_scale_parameter.get(name, 1.0),
+                    limits=tuple(
+                        None if auto else value
+                        for auto, value in zip(
+                            self._axis_auto_range.get(name, (True, True)), self._axis_range(name)
+                        )
+                    ),
+                    visible=self._axis_visible.get(name, True),
+                    mouse_active=item.mouse_active,
+                    grid=self._axis_grid.get(name, False),
+                    side=self._axis_sides.get(name),
+                )
+            )
+        return tuple(descriptions)
+
+    def plot_series_descriptions(self) -> tuple:
+        """Return series identities, titles and visibility without graphics objects."""
+        from stoner_measurement.core.plotting.contracts import CoordinateBinding, SeriesDescription
+
+        return tuple(
+            SeriesDescription(
+                name,
+                self._trace_titles.get(name, name),
+                CoordinateBinding("x", "y"),
+                visible=self._trace_visible.get(name, True),
+            )
+            for name in self._traces
+        )
 
     def _on_trace_visibility_toggled(self, visible: bool) -> None:
         """Handle trace visibility checkbox changes."""
@@ -2335,6 +2563,7 @@ class PlotWidget(QWidget):
             >>> widget.trace_names
             []
         """
+        self._trace_titles.pop(trace_name, None)
         if trace_name not in self._traces:
             return
         curve = self._traces.pop(trace_name)
@@ -2390,11 +2619,12 @@ class PlotWidget(QWidget):
             self._trace_line_width,
             self._trace_point_size,
             self._trace_visible,
+            self._trace_titles,
         ):
             if old_name in mapping:
                 mapping[new_name] = mapping.pop(old_name)
 
-        self._traces[new_name].opts["name"] = new_name
+        self._traces[new_name].opts["name"] = self._trace_titles.get(new_name, new_name)
         self._trace_controls_state = None
         self._refresh_trace_and_axis_controls()
 
@@ -2496,6 +2726,8 @@ class PlotWidget(QWidget):
             raise KeyError(f"Unknown axis: {name!r}")
         self._axis_items[name].set_axis_label(label)
         apply_pyqtgraph_dark_theme(self._plot_item, self._axis_items)
+
+        self.plot_state_changed.emit()
 
     def set_axis_log_scale(self, name: str, log_scale: bool) -> None:
         """Set logarithmic scaling mode for an axis.

@@ -374,6 +374,7 @@ class _EngineThread(QThread):
 
             kind = item[0]
             if kind == "quit":
+                self._queue.task_done()
                 break
             if kind == "command":
                 self._exec_command(item[1], out_stream, err_stream)
@@ -383,6 +384,7 @@ class _EngineThread(QThread):
                     item[1], out_stream, err_stream, customised=item[2], line_map=item[3]
                 )
             self._completed += 1
+            self._queue.task_done()
 
     # ------------------------------------------------------------------
     # Execution helpers
@@ -744,6 +746,7 @@ class SequenceEngine(QObject):
         # Reference to the main plot widget; set by the application after startup.
         # Used by PlotTraceCommand to deliver data directly without manual signal wiring.
         self._plot_widget: Any = None
+        self._plot_client: Any = None
 
         self._thread = _EngineThread(namespace=self._namespace, parent=self)
         self._thread.output.connect(self.output)
@@ -756,6 +759,23 @@ class SequenceEngine(QObject):
     # ------------------------------------------------------------------
     # Plot widget reference
     # ------------------------------------------------------------------
+
+    @property
+    def plot_client(self) -> Any:
+        """Stable plotting endpoint, with legacy signal connections suspended."""
+        return self._plot_client
+
+    @plot_client.setter
+    def plot_client(self, client: Any) -> None:
+        """Rebind existing producers once when service routing changes."""
+        if client is self._plot_client:
+            return
+        plugins = [plugin for plugin in self.all_plugins() if plugin.sequence_engine is self]
+        for plugin in plugins:
+            plugin.sequence_engine = None
+        self._plot_client = client
+        for plugin in plugins:
+            plugin.sequence_engine = self
 
     @property
     def plot_widget(self) -> Any:
@@ -815,12 +835,15 @@ class SequenceEngine(QObject):
                 ``True`` when the plot is ready (or no plot widget is attached);
                 ``False`` if the timeout expires first.
         """
-        plot_widget = self._plot_widget
+        plot_widget = self.plot_client or self._plot_widget
         if plot_widget is None:
             return True
 
         if not hasattr(plot_widget, "is_busy_for_data"):
             return True
+
+        if self.plot_client is not None and self.plot_client.is_gui_thread():
+            return not bool(plot_widget.is_busy_for_data())
 
         if timeout is not None and timeout <= 0:
             return not bool(plot_widget.is_busy_for_data())
@@ -839,6 +862,34 @@ class SequenceEngine(QObject):
                 return False
             time.sleep(sleep_for)
         return True
+
+    def wait_for_plot_ticket(self, ticket, timeout: float = 10.0):
+        """Await one request in a worker, honouring pause, stop and timeout.
+
+        GUI producers use apply_now and only inspect an already completed ticket.
+        A wait timeout leaves the request pending; stop cancels queued requests.
+        """
+        if self.plot_client is not None and self.plot_client.is_gui_thread():
+            result = ticket.wait(0)
+            if result is None:
+                raise RuntimeError("GUI callers cannot wait for queued plot work.")
+            return result
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            if self._thread._stop_event.is_set():
+                if self.plot_client is not None:
+                    self.plot_client.cancel(ticket, "Sequence stopped.")
+                return None
+            if not self._thread._pause_event.is_set():
+                self._thread._pause_event.wait(timeout=0.01)
+                continue
+            result = ticket.wait(0)
+            if result is not None:
+                return result
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Timed out waiting for plot request completion.")
+            ticket.wait(min(0.01, remaining))
 
     # ------------------------------------------------------------------
     # Namespace management
@@ -1587,6 +1638,8 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         self._thread.request_stop()
+        if self.plot_client is not None:
+            self.plot_client.cancel_pending("Sequence stopped.")
 
     def shutdown(self) -> None:
         """Cleanly stop the background thread and wait for it to finish.
@@ -1603,6 +1656,8 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         self._thread.request_stop()
+        if self.plot_client is not None:
+            self.plot_client.cancel_pending("Sequence engine shut down.")
         self._thread._queue.put(("quit", None))
         self._thread.wait(2000)
         if self._thread.isRunning():
@@ -1641,6 +1696,12 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         return self._log_handler
+
+    @property
+    def is_plot_idle(self) -> bool:
+        """True only when no queued or executing script/console command exists."""
+        with self._thread._queue.mutex:
+            return self._thread._queue.unfinished_tasks == 0
 
     @property
     def is_running(self) -> bool:

@@ -176,7 +176,11 @@ class ExtremumLocatorPlugin(TraceChannelSelectionMixin, TransformPlugin):
                 pass
         self._sequence_engine_ref = engine
         new_plot = getattr(engine, "plot_widget", None)
-        if new_plot is not None and hasattr(new_plot, "add_data_marker"):
+        if (
+            new_plot is not None
+            and hasattr(new_plot, "add_data_marker")
+            and getattr(engine, "plot_client", None) is None
+        ):
             self.add_plot_marker.connect(new_plot.add_data_marker)
 
     @property
@@ -258,6 +262,14 @@ class ExtremumLocatorPlugin(TraceChannelSelectionMixin, TransformPlugin):
             x_unit = units.get(x_columns[0], "") if x_columns else ""
             self._result_units = {_X_OUTPUT: x_unit, _Y_OUTPUT: units.get(column, "")}
             if self.add_marker:
+                from stoner_measurement.core.plotting.contracts import AddMarker
+                from stoner_measurement.core.plotting.service import submit_from_plugin
+
+                submit_from_plugin(
+                    self,
+                    AddMarker({"x": result[0], "y": result[1]}, axes={"x": "bottom", "y": "left"}),
+                    required=False,
+                )
                 self.add_plot_marker.emit(*result)
             return {_X_OUTPUT: result[0], _Y_OUTPUT: result[1]}
         except Exception as exc:

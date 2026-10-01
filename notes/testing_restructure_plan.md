@@ -1,10 +1,148 @@
 ﻿# Testing Restructure Plan
 
+## 2026-10-01: Plot display author guide and final handover Stage 5
+
+- Added two cases in `tests/integration/app/test_plot_display_example.py`.
+  They load the exact downloadable factory example, simulate installed discovery,
+  run existing trace/point commands on the engine worker inside MainWindow,
+  append data, replay through Cartesian and reject an incompatible marker
+  snapshot. No existing tests moved or removed; windows use managed Qt ownership.
+- Focused example/host/registry/replacement/menu checks: **36 passed**.
+- Full suite: **3,836 passed, one skipped**, 3,837 collected, 71.44 seconds:
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-stage5-full`. Output:
+  `.pytest-runtime/plot-stage5-full.log`.
+- Ruff check/format, focused mypy (11 source files) and `git diff --check` passed.
+  All 15 contract doctests and the command plan's XYZ trace-slice example passed.
+  Sphinx built the guide/downloadable example with the existing 497-warning
+  baseline. Used project Conda, Python 3.14.7, offscreen PyQt5 5.15.11 and fonts.
+  No hosted cross-binding CI or GPU validation is claimed.
+- All five foundation stages are complete; handover:
+  `notes/2026-10-01-plot-display-stage5.md`. The command-extension plan records
+  single-loop trace slices, nested-loop points and which plotting APIs to reuse;
+  optional surface controls, grouping/topology and renderers remain future work.
+
 This is the historical migration log for the test-suite restructure. Durable
 test layout and philosophy guidance lives in `notes/testing_guidelines.md`.
 
 This document records the test-suite restructure so future Codex sessions can
 continue without rediscovering the same coverage map.
+
+## 2026-10-01: Plot replacement, settings and UI Stage 4
+
+- Added 12 cases in `tests/unit/ui/test_plot_display_replacement.py` and two
+  menu workflows in `tests/integration/app/test_plot_display_menu.py`. No
+  existing tests moved or rewritten; old and failed candidate teardown stays
+  scoped to host-owned adapters/widget containers.
+- Verified explicit Cartesian state round trips through a non-PyQtGraph test
+  adapter: data/errors, source bindings/metadata and auxiliary channels, user
+  styles/titles, hidden traces, named axes, scales/ranges, active axes, exact
+  legend height and marker IDs/anchors. Covered idle engine/queue refusal,
+  hydration/capability failure rollback, generation advancement, unsupported
+  style retention, restart settings without arrays, corrupt settings fallback
+  and View-menu selection/refusal feedback.
+- Focused legacy plotting, engine and application regression: 294 passed.
+  Final replacement/menu selection: 14 passed.
+- Final full suite: **3,834 passed, one skipped**, 3,835 collected, 69.37 seconds;
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-stage4-full`. Output is retained locally in
+  `.pytest-runtime/plot-stage4-full.log`.
+- Changed-file Ruff check/format, focused mypy (11 source files) and
+  `git diff --check` passed. The plotting page's 15 doctest examples passed;
+  Sphinx built successfully with the existing 497-warning baseline.
+- Used project Conda, Python 3.14.7, offscreen PyQt5 5.15.11 and Windows fonts.
+  No other Qt binding, hardware or GPU renderer validation is claimed.
+- Handover: `notes/2026-10-01-plot-replacement-stage4.md`. The replaceable
+  Cartesian foundation is complete; further production displays remain separate.
+
+## 2026-10-01: Plot display host and factories Stage 3
+
+- Added ten registry cases and ten host cases under
+  `tests/unit/ui/test_plot_display_registry.py` and
+  `tests/unit/ui/test_plot_display_host.py`; no existing tests moved or rewritten.
+  Host-owned services shut down before scoped adapter/widget teardown.
+- Covered lazy factory discovery, bundled fallback without installed metadata,
+  import/version/ID failures, startup selection fallback, interface validation,
+  partial widget cleanup, worker ownership, close/cancellation and a minimal
+  portable display receiving real engine trace/point commands inside MainWindow.
+  Cartesian compatibility checks cover eager named axes and point-label edits
+  retaining their observable rename signal while using the service queue.
+- Initial focused gate: 47 passed. The portable axis refinement passed 144
+  producer/service/host tests; the final host selection passed all ten cases.
+  Initial full suite: 3,819 passed, one skipped (70.12 seconds).
+- Final full suite including the label-edit repair: **3,820 passed, one skipped**,
+  3,821 collected (82.40 seconds), using
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-stage3-final`. Local output is retained at
+  `.pytest-runtime/plot-stage3-final.log`.
+- Mypy passed for ten source files covering display interfaces, host, registry,
+  factory, service and bridge. Changed-file Ruff check/format and
+  `git diff --check` passed. All 15 plotting doctest examples passed; Sphinx
+  built successfully with the existing 497-warning baseline.
+- Source entry-point registration was verified; installed editable metadata
+  currently has no entries in the new group. No install refresh was performed.
+  The bundled source fallback and isolated third-party discovery are tested.
+- Used the project Conda environment, Python 3.14.7, offscreen PyQt5 5.15.11
+  and Windows fonts. These results do not claim hosted cross-binding CI.
+- Handover: `notes/2026-10-01-plot-host-stage3.md`. Live replacement/replay and
+  versioned display settings remain Stage 4 work.
+
+## 2026-10-01: Plot service routing Stage 2
+
+- Added 15 service cases in `tests/unit/core/test_plotting_service.py` and eight
+  real engine/compatibility workflows in
+  `tests/integration/sequence/test_plot_service_commands.py`. Existing tests
+  were not moved or rewritten. The tests use managed widget ownership and
+  release the borrowed plot service before Qt teardown.
+- Coverage includes GUI-only rendering from workers, request ordering and
+  exactly-once completion, immutable data, metadata/style acknowledgement,
+  invalid/unsupported requests, renderer failures, bounded pending work,
+  headless execution, pause/stop/timeout/shutdown, repeated endpoint attachment,
+  legacy keyword/return-value semantics and saved/generated command execution.
+- Complete-suite validation: **3,800 passed, one skipped**, 3,801 collected;
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-stage2-full` (69.89 seconds). Used the project
+  Conda environment, Python 3.14.7, offscreen PyQt5 5.15.11 and Windows fonts.
+  This does not establish the other Qt bindings' CI results.
+- Focused mypy for `core/plotting` and `ui/plotting_bridge.py` passed (five files).
+  Changed-file Ruff check/format and `git diff --check` passed; all 15 plotting
+  documentation doctest examples passed. Sphinx retains unrelated existing
+  API documentation warnings, as recorded in Stage 1.
+- The implementation and next-stage boundaries are in
+  `notes/2026-10-01-plot-service-stage2.md`. Host/factory discovery and display
+  replacement are not implemented by this stage.
+
+## 2026-10-01: Plot display contract Stage 1
+
+- Added `tests/unit/core/test_plotting_contracts.py` with 41 cases for owned
+  immutable array/metadata snapshots, malformed shapes, generalised coordinate
+  bindings and units, spherical conventions, independent intensity, capability
+  rejection, markers, axis ranges and terminal results. No existing tests moved
+  or changed; application plotting remains on the original implementation.
+- Pre-change baseline: 262 passed across the Cartesian plot widget, mouse axes,
+  plot trace/point/clear/marker commands, extremum transform and main window.
+- New contracts plus the same baseline: 303 passed. After refining snapshot
+  output typing, the 41 contract cases passed again. Commands used the project
+  Conda environment with offscreen PyQt5 5.15.11 and Windows fonts, Python 3.14.7.
+- `python -m doctest -v docs/plotting_contracts.rst`: 15 examples passed.
+  `mypy src/stoner_measurement/core/plotting --follow-imports=silent` passed;
+  Ruff check and format apply to the new package and test module.
+- Full collection: 3,778 tests with `pytest --collect-only -q -p no:cacheprovider`.
+  The focused combined run used `-q --tb=short -p no:cacheprovider` and
+  `--basetemp=.pytest-runtime/plot-stage1-final`; collection output is retained
+  locally at `.pytest-runtime/plot-stage1-collection.txt`.
+- Fresh-process contract import loaded neither PyQtGraph nor OpenGL. Records
+  contain no widgets; existing package-level Qt imports are unchanged.
+- Sphinx HTML build completed with exit code 0. The new page's title warning
+  was corrected. Existing API documentation still warns about obsolete
+  `core.sequence`/`core.runner` imports and other existing source/stub formatting;
+  this is not a warning-free documentation baseline. Markdownlint was unavailable
+  in the installed tools; Markdown spacing, links and line lengths were checked
+  locally. Generated autosummary sources were removed after the build.
+- The API examples are in `docs/plotting_contracts.rst`; compatibility, consumer
+  inventory and state ownership are in `notes/2026-10-01-plot-contract-stage1.md`.
+  Stage 2 dispatcher, tickets, pause/stop delivery and renderer lifecycle are not
+  implemented or claimed as tested by these record tests.
 
 ## 2026-10-01: SR830 auto-function completion deadlines
 

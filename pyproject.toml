@@ -135,6 +135,9 @@ set_position = "stoner_measurement.plugins.command.set_position:SetPositionComma
 set_diffractometer = "stoner_measurement.plugins.command.set_diffractometer:SetDiffractometerCommand"
 read_diffractometer = "stoner_measurement.plugins.command.read_diffractometer:ReadDiffractometerCommand"
 
+[project.entry-points."stoner_measurement.plot_displays"]
+cartesian = "stoner_measurement.ui.plotting.cartesian:CartesianDisplayFactory"
+
 [project.entry-points."stoner_measurement.instruments"]
 mks_pr4000b_s = "stoner_measurement.instruments.mks:MKSPR4000BS"
 mks_psr1a = "stoner_measurement.instruments.mks:MKSPSR1A"

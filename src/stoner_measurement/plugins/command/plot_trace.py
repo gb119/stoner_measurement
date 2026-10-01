@@ -39,6 +39,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plotting.producers import ensure_plugin_axes, xy_update
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
     COLUMN_ROLE_E,
@@ -320,7 +321,8 @@ class PlotTraceCommand(CommandPlugin):
 
         new_plot_widget = getattr(engine, "plot_widget", None)
         if new_plot_widget is not None:
-            self._set_plot_widget_connections(new_plot_widget, connect=True)
+            if getattr(engine, "plot_client", None) is None:
+                self._set_plot_widget_connections(new_plot_widget, connect=True)
             self._ensure_configured_axes_exist(new_plot_widget)
 
     def _set_plot_widget_connections(self, plot_widget: Any, *, connect: bool) -> None:
@@ -425,14 +427,32 @@ class PlotTraceCommand(CommandPlugin):
             y_label = self._channel_label_for_expression(self.y_expr)
             self.plot_ensure_x_axis.emit(x_axis, x_label if str(x_label) else x_axis)
             self.plot_ensure_y_axis.emit(y_axis, y_label if str(y_label) else y_axis)
-            self._queue_plot_update_request(self.plot_update_queued)
+            handled = (
+                self._submit_plot_operation(
+                    xy_update(
+                        title,
+                        x_data,
+                        y_data,
+                        x_label=x_label,
+                        y_label=y_label,
+                        x_axis=x_axis,
+                        y_axis=y_axis,
+                        style=self._build_style_dict(),
+                    )
+                )
+                if getattr(self.sequence_engine, "plot_client", None) is not None
+                else False
+            )
+            if not handled:
+                self._queue_plot_update_request(self.plot_update_queued)
             self.plot_trace.emit(
                 title,
                 np.asarray(x_data, dtype=float),
                 np.asarray(y_data, dtype=float),
             )
             self.plot_trace_axes.emit(title, x_axis, y_axis)
-            self._wait_for_plot_response_or_raise(title)
+            if not handled:
+                self._wait_for_plot_response_or_raise(title)
             style = self._build_style_dict()
             if style:
                 self.plot_trace_style.emit(title, style)
@@ -485,7 +505,17 @@ class PlotTraceCommand(CommandPlugin):
                 y_err = trace_data.df[e_cols[0]].to_numpy(dtype=float)
             else:
                 y_err = None
-            self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
+            self._emit_single_trace(
+                self.trace_key,
+                x_arr,
+                y_arr,
+                x_err,
+                y_err,
+                x_axis,
+                y_axis,
+                source=trace_data,
+                y_key=col,
+            )
         else:
             y_cols = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
             if not y_cols:
@@ -493,20 +523,52 @@ class PlotTraceCommand(CommandPlugin):
                 y_arr = np.asarray(trace_data.y, dtype=float)
                 y_err = trace_data.df[e_cols[0]].to_numpy(dtype=float) if e_cols else None
                 label_y_key = "y"
-                self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
+                self._emit_single_trace(
+                    self.trace_key,
+                    x_arr,
+                    y_arr,
+                    x_err,
+                    y_err,
+                    x_axis,
+                    y_axis,
+                    source=trace_data,
+                    y_key="y",
+                )
             elif len(y_cols) == 1:
                 y_arr = trace_data.df[y_cols[0]].to_numpy(dtype=float)
                 y_err = trace_data.df[e_cols[0]].to_numpy(dtype=float) if e_cols else None
                 label_y_key = y_cols[0]
-                self._emit_single_trace(self.trace_key, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
+                self._emit_single_trace(
+                    self.trace_key,
+                    x_arr,
+                    y_arr,
+                    x_err,
+                    y_err,
+                    x_axis,
+                    y_axis,
+                    source=trace_data,
+                    y_key=y_cols[0],
+                )
             else:
                 label_y_key = y_cols[0]
                 # Multicolumn: emit one trace per COLUMN_ROLE_Y column
                 for i, y_col in enumerate(y_cols):
                     title = f"{self.trace_key}:{y_col}"
                     y_arr = trace_data.df[y_col].to_numpy(dtype=float)
-                    y_err = trace_data.df[e_cols[i]].to_numpy(dtype=float) if i < len(e_cols) else None
-                    self._emit_single_trace(title, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
+                    y_err = (
+                        trace_data.df[e_cols[i]].to_numpy(dtype=float) if i < len(e_cols) else None
+                    )
+                    self._emit_single_trace(
+                        title,
+                        x_arr,
+                        y_arr,
+                        x_err,
+                        y_err,
+                        x_axis,
+                        y_axis,
+                        source=trace_data,
+                        y_key=y_col,
+                    )
 
         x_label, y_label = self._emit_trace_axis_labels(trace_data, label_y_key)
         self.plot_ensure_x_axis.emit(x_axis, x_label if str(x_label) else x_axis)
@@ -547,6 +609,9 @@ class PlotTraceCommand(CommandPlugin):
         y_err: np.ndarray | None,
         x_axis: str,
         y_axis: str,
+        *,
+        source=None,
+        y_key=None,
     ) -> None:
         """Emit :attr:`plot_trace_with_errors` and :attr:`plot_trace_axes` for one column.
 
@@ -575,10 +640,35 @@ class PlotTraceCommand(CommandPlugin):
         if self.transpose:
             x_arr, y_arr = y_arr, x_arr
             x_err, y_err = y_err, x_err
-        self._queue_plot_update_request(self.plot_update_queued)
+        labels = (
+            self._emit_trace_axis_labels(source, y_key, emit=False)
+            if source is not None
+            else ("", "")
+        )
+        handled = (
+            self._submit_plot_operation(
+                xy_update(
+                    title,
+                    x_arr,
+                    y_arr,
+                    x_error=x_err,
+                    y_error=y_err,
+                    x_label=labels[0],
+                    y_label=labels[1],
+                    x_axis=x_axis,
+                    y_axis=y_axis,
+                    style=self._build_style_dict(),
+                )
+            )
+            if getattr(self.sequence_engine, "plot_client", None) is not None
+            else False
+        )
+        if not handled:
+            self._queue_plot_update_request(self.plot_update_queued)
         self.plot_trace_with_errors.emit(title, x_arr, y_arr, x_err, y_err)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
-        self._wait_for_plot_response_or_raise(title)
+        if not handled:
+            self._wait_for_plot_response_or_raise(title)
         style = self._build_style_dict()
         if style:
             self.plot_trace_style.emit(title, style)
@@ -668,8 +758,12 @@ class PlotTraceCommand(CommandPlugin):
             "Python expression evaluated at runtime in the engine namespace. "
             "Must produce a string.  Example: f'Run {run_index}'"
         )
-        x_axis_combo = self._build_plot_axis_combo(widget, axes_pair[0], self.x_axis_name, "x_axis_name")
-        y_axis_combo = self._build_plot_axis_combo(widget, axes_pair[1], self.y_axis_name, "y_axis_name")
+        x_axis_combo = self._build_plot_axis_combo(
+            widget, axes_pair[0], self.x_axis_name, "x_axis_name"
+        )
+        y_axis_combo = self._build_plot_axis_combo(
+            widget, axes_pair[1], self.y_axis_name, "y_axis_name"
+        )
         colour_button = self._build_colour_button(widget, self.colour)
         line_style_combo = self._build_options_combo(
             widget, ("",) + _LINE_STYLE_OPTIONS, self.line_style, "line_style"
@@ -763,7 +857,9 @@ class PlotTraceCommand(CommandPlugin):
             return
         hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
         button.setText(hex_colour)
-        button.setStyleSheet(button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour)))
+        button.setStyleSheet(
+            button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour))
+        )
 
     def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
         """Open a colour picker and return the selected hex colour or current value.
@@ -776,7 +872,9 @@ class PlotTraceCommand(CommandPlugin):
             parent (QWidget | None):
                 Parent widget for the dialog, ensuring correct modality.
         """
-        base_colour = QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
+        base_colour = (
+            QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
+        )
         selected = QColorDialog.getColor(
             base_colour,
             parent,
@@ -802,7 +900,7 @@ class PlotTraceCommand(CommandPlugin):
         return AxisLabel.coerce(channel_name)
 
     def _emit_trace_axis_labels(
-        self, trace_data: Any, y_key: str | None = None
+        self, trace_data: Any, y_key: str | None = None, *, emit: bool = True
     ) -> tuple[AxisLabel, AxisLabel]:
         """Emit default axis labels resolved from trace metadata.
 
@@ -825,9 +923,7 @@ class PlotTraceCommand(CommandPlugin):
         names = getattr(trace_data, "names", {})
         units = getattr(trace_data, "units", {})
         get_columns_by_role = getattr(trace_data, "get_columns_by_role", None)
-        x_columns = (
-            get_columns_by_role(COLUMN_ROLE_X) if callable(get_columns_by_role) else []
-        )
+        x_columns = get_columns_by_role(COLUMN_ROLE_X) if callable(get_columns_by_role) else []
         x_key = x_columns[0] if x_columns else "x"
         x_name = names.get(x_key, "")
         if y_key:
@@ -847,7 +943,7 @@ class PlotTraceCommand(CommandPlugin):
         y_label = AxisLabel(y_name, y_unit)
         if self.transpose:
             x_label, y_label = y_label, x_label
-        if str(x_label) or str(y_label):
+        if emit and (str(x_label) or str(y_label)):
             self.plot_axis_labels.emit(x_label, y_label)
         return x_label, y_label
 
@@ -909,7 +1005,9 @@ class PlotTraceCommand(CommandPlugin):
             if isinstance(cols, list):
                 return cols
         except Exception:
-            self.log.debug("PlotTrace: failed to inspect columns for trace %r.", trace_key, exc_info=True)
+            self.log.debug(
+                "PlotTrace: failed to inspect columns for trace %r.", trace_key, exc_info=True
+            )
         return []
 
     def _build_options_combo(
@@ -1170,6 +1268,14 @@ class PlotTraceCommand(CommandPlugin):
 
     def _ensure_configured_axes_exist(self, plot_widget: Any | None = None) -> None:
         """Ensure configured x/y axes exist on the attached plot widget."""
+        if ensure_plugin_axes(
+            self,
+            (
+                ("x", self.x_axis_name or _DEFAULT_X_AXIS),
+                ("y", self.y_axis_name or _DEFAULT_Y_AXIS),
+            ),
+        ):
+            return
         pw = plot_widget
         if pw is None and self.sequence_engine is not None:
             pw = getattr(self.sequence_engine, "plot_widget", None)
@@ -1205,10 +1311,10 @@ def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list
         return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     plot_widget = getattr(engine, "plot_widget", None)
-    orientations = getattr(plot_widget, "_axis_orientations", None)
-    if not isinstance(orientations, dict):
+    describe = getattr(plot_widget, "plot_axis_descriptions", None)
+    if not callable(describe):
         return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
-
-    x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
-    y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
+    axes = describe()
+    x_axes = sorted(axis.name for axis in axes if axis.slot == "x")
+    y_axes = sorted(axis.name for axis in axes if axis.slot == "y")
     return x_axes or [_DEFAULT_X_AXIS], y_axes or [_DEFAULT_Y_AXIS]

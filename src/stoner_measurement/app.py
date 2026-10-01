@@ -181,12 +181,18 @@ class MeasurementApp(QMainWindow):
         self._sequence_switching = False
 
         # Central widget -------------------------------------------------------
-        self._main_window = MainWindow(plugin_manager=self._plugin_manager)
+        self._main_window = MainWindow(
+            plugin_manager=self._plugin_manager, display_settings=QSettings()
+        )
         self.setCentralWidget(self._main_window)
 
-        # Wire the engine to the plot widget so that PlotTraceCommand instances
-        # can deliver data regardless of how they were added to the sequence.
-        self._engine.plot_widget = self._main_window.plot_widget
+        # Borrow the host's stable service so producers share one GUI dispatcher.
+        from stoner_measurement.ui.plotting_bridge import LegacyPlotFacade
+
+        self._plot_service = self._main_window.plot_display_host.service
+        self._main_window.plot_display_host.idle_check = lambda: self._engine.is_plot_idle
+        self._engine.plot_client = self._plot_service
+        self._engine.plot_widget = LegacyPlotFacade(self._plot_service)
 
         # Log viewer (created before actions so actions can reference it) ------
         self._log_viewer = LogViewerWindow(parent=None)
@@ -892,6 +898,18 @@ class MeasurementApp(QMainWindow):
         view_menu = menu_bar.addMenu("&View")
         view_menu.addAction(self._act_view_measurement)
         view_menu.addAction(self._act_view_editor)
+        display_menu = view_menu.addMenu("Plot display")
+        host = self._main_window.plot_display_host
+        self._plot_display_actions = {}
+        for factory_id, factory in host.registry.factories.items():
+            action = display_menu.addAction(factory.name)
+            self._plot_display_actions[factory_id] = action
+            action.setCheckable(True)
+            action.setChecked(factory_id == host.factory_id)
+            action.triggered.connect(
+                lambda _checked=False, name=factory_id: self._switch_plot_display(name)
+            )
+        display_menu.aboutToShow.connect(self._refresh_plot_display_menu)
         view_menu.addSeparator()
         view_menu.addAction(self._act_show_log)
         view_menu.addAction(self._act_show_value_watch)
@@ -931,6 +949,24 @@ class MeasurementApp(QMainWindow):
     # ------------------------------------------------------------------
     # Toolbar
     # ------------------------------------------------------------------
+
+    def _switch_plot_display(self, factory_id: str) -> None:
+        """Select a display while idle and explain capability/hydration refusal."""
+        host = self._main_window.plot_display_host
+        previous_diagnostics = len(host.diagnostics)
+        if not host.switch_display(factory_id):
+            QMessageBox.warning(self, "Plot display", host.diagnostics[-1])
+        else:
+            messages = host.diagnostics[previous_diagnostics:]
+            if messages:
+                self.statusBar().showMessage(" ".join(messages), 10000)
+        self._refresh_plot_display_menu()
+
+    def _refresh_plot_display_menu(self) -> None:
+        """Keep the current selection checked, including after a refused switch."""
+        selected = self._main_window.plot_display_host.factory_id
+        for factory_id, action in self._plot_display_actions.items():
+            action.setChecked(factory_id == selected)
 
     def _build_toolbar(self) -> None:
         """Build the main toolbar."""
@@ -2058,9 +2094,7 @@ class MeasurementApp(QMainWindow):
             height_limited_width = round(
                 (available_geometry.height() * 0.9 - 150) * image_aspect_ratio
             )
-            six_inch_width = round(
-                pixmap.width() * screen.devicePixelRatio() * (6 / 4.75)
-            )
+            six_inch_width = round(pixmap.width() * screen.devicePixelRatio() * (6 / 4.75))
             image_width = min(
                 six_inch_width,
                 available_width,
@@ -2178,6 +2212,7 @@ class MeasurementApp(QMainWindow):
             logger.debug("Application shutdown already in progress; skipping duplicate request.")
             return
         self._shutdown_in_progress = True
+        self._plot_service.shutdown()
         logger.info("Application shutdown starting.")
 
         settings = QSettings()

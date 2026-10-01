@@ -40,6 +40,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plotting.producers import ensure_plugin_axes, xy_update
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.trace_catalog_ui import bind_value_catalog_updates
 from stoner_measurement.qt_compat import pyqtSignal
@@ -310,7 +311,8 @@ class PlotPointsCommand(CommandPlugin):
 
         new_plot_widget = getattr(engine, "plot_widget", None)
         if new_plot_widget is not None:
-            self._set_plot_widget_connections(new_plot_widget, connect=True)
+            if getattr(engine, "plot_client", None) is None:
+                self._set_plot_widget_connections(new_plot_widget, connect=True)
             self._ensure_configured_axes_exist(new_plot_widget)
 
     def _set_plot_widget_connections(self, plot_widget: Any, *, connect: bool) -> None:
@@ -442,10 +444,29 @@ class PlotPointsCommand(CommandPlugin):
                 return
             self.plot_ensure_x_axis.emit(x_axis, _axis_label(self.x_key, x_expr))
             self.plot_ensure_y_axis.emit(y_axis, _axis_label(y_key, y_expr))
-            self._queue_plot_update_request(self.plot_update_queued)
+            handled = (
+                self._submit_plot_operation(
+                    xy_update(
+                        label,
+                        [x_val],
+                        [y_val],
+                        x_label=_axis_label(self.x_key, x_expr),
+                        y_label=_axis_label(y_key, y_expr),
+                        x_axis=x_axis,
+                        y_axis=y_axis,
+                        style=_entry_style_dict(entry),
+                        append=True,
+                    )
+                )
+                if getattr(self.sequence_engine, "plot_client", None) is not None
+                else False
+            )
+            if not handled:
+                self._queue_plot_update_request(self.plot_update_queued)
             self.plot_point.emit(label, x_val, y_val)
             self.plot_trace_axes.emit(label, x_axis, y_axis)
-            self._wait_for_plot_response_or_raise(label)
+            if not handled:
+                self._wait_for_plot_response_or_raise(label)
             style = _entry_style_dict(entry)
             if style:
                 self.plot_trace_style.emit(label, style)
@@ -798,7 +819,7 @@ class PlotPointsCommand(CommandPlugin):
             entry["label"] = automatic_label
             widgets.label.lineEdit().setText(automatic_label)
             if old_label and old_label != automatic_label:
-                self.plot_rename_trace.emit(old_label, automatic_label)
+                self._rename_plotted_trace(old_label, automatic_label)
 
     def _apply_y_label(self, index: int, widgets: _YSeriesWidgets) -> None:
         """Store the edited legend label for one y-series."""
@@ -807,7 +828,31 @@ class PlotPointsCommand(CommandPlugin):
         old_label = self.y_entries[index].get("label", "")
         self.y_entries[index]["label"] = new_label
         if old_label and new_label and old_label != new_label:
-            self.plot_rename_trace.emit(old_label, new_label)
+            self._rename_plotted_trace(old_label, new_label)
+
+    def _rename_plotted_trace(self, old_label: str, new_label: str) -> None:
+        """Retain legacy identity changes through the optional Cartesian facade."""
+        client = getattr(self.sequence_engine, "plot_client", None)
+        if client is not None:
+            from stoner_measurement.core.plotting.contracts import ResultStatus
+            from stoner_measurement.core.plotting.service import LegacyCall
+
+            try:
+                ticket = client.invoke_legacy(
+                    LegacyCall("rename_trace", (old_label, new_label), {})
+                )
+                result = self.sequence_engine.wait_for_plot_ticket(ticket)
+                if result is not None and result.status not in (
+                    ResultStatus.APPLIED,
+                    ResultStatus.NO_DISPLAY,
+                    ResultStatus.CANCELLED,
+                ):
+                    self.log.warning(
+                        "PlotPoints: could not rename plotted series: %s", result.message
+                    )
+            except Exception as exc:
+                self.log.warning("PlotPoints: could not rename plotted series: %s", exc)
+        self.plot_rename_trace.emit(old_label, new_label)
 
     def _apply_y_axis(self, index: int, text: str) -> None:
         """Store an edited y-axis name, falling back to the default axis."""
@@ -969,6 +1014,12 @@ class PlotPointsCommand(CommandPlugin):
 
     def _ensure_configured_axes_exist(self, plot_widget: Any | None = None) -> None:
         """Ensure configured x/y axes exist on the attached plot widget."""
+        axes = [("x", self.x_axis_name or _DEFAULT_X_AXIS)] + [
+            ("y", entry.get("y_axis", _DEFAULT_Y_AXIS) or _DEFAULT_Y_AXIS)
+            for entry in self.y_entries
+        ]
+        if ensure_plugin_axes(self, axes):
+            return
         pw = plot_widget
         if pw is None and self.sequence_engine is not None:
             pw = getattr(self.sequence_engine, "plot_widget", None)
@@ -1035,10 +1086,10 @@ def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list
         return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
 
     plot_widget = getattr(engine, "plot_widget", None)
-    orientations = getattr(plot_widget, "_axis_orientations", None)
-    if not isinstance(orientations, dict):
+    describe = getattr(plot_widget, "plot_axis_descriptions", None)
+    if not callable(describe):
         return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
-
-    x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
-    y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
+    axes = describe()
+    x_axes = sorted(axis.name for axis in axes if axis.slot == "x")
+    y_axes = sorted(axis.name for axis in axes if axis.slot == "y")
     return x_axes or [_DEFAULT_X_AXIS], y_axes or [_DEFAULT_Y_AXIS]
