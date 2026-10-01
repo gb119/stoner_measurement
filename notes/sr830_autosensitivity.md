@@ -51,3 +51,34 @@ Before either its configuration-time offset calculation or the user-triggered
 multiple and three filter time constants. This delay occurs after the 6221
 output is enabled and after signal-affecting SR830 configuration, ensuring the
 filter output has settled before an offset is sampled.
+
+## Auto-function completion timeouts (2026-10-01)
+
+`SRS830.auto_gain()`, `auto_phase()` and `auto_reserve()` use a completion
+deadline separate from the transport's normal I/O timeout. The default is the
+longest of 120 seconds, 30 times the active output-filter time constant and
+the transport timeout. The driver queries `OFLT?` before each auto command so
+front-panel changes and settings inherited from an earlier session are included.
+The query, command and completion poll share the instrument resource lock.
+
+The driver still returns immediately when the Serial Poll Status Byte IFC bit
+(bit 1) reports completion; this allowance is a maximum wait, not a fixed delay.
+Callers can override it in seconds, for example `lia.auto_gain(timeout=300.0)`.
+An override skips the time-constant query. Normal communication failures still
+propagate, and the transport timeout is left unchanged. Generic `wait_for_ifc()`
+and auto-offset waits retain their existing deadlines.
+
+The [manufacturer's SR830 manual](https://www.thinksrs.com/downloads/PDFs/Manuals/SR830m.pdf),
+sections 4-7, 4-19, 5-11 and 5-21, documents potentially slow auto gain/reserve,
+the IFC completion bit, and output settling after auto phase. It does not give
+a worst-case execution deadline: the 120-second minimum and 30-time-constant
+multiple are conservative driver policy, not manufacturer guarantees.
+`AGAN` does nothing when the time constant exceeds one second. Auto phase can
+also do nothing with unstable phase; command completion does not establish
+successful adjustment or settled outputs.
+
+Fake-transport tests cover delayed completion, current-setting readback,
+bounded expiry, explicit deadlines and propagation of communication failures.
+Bench validation remains outstanding: run gain/reserve at supported gain time
+constants up to one second, then phase/reserve with longer constants, and
+confirm IFC polling returns at completion without a premature timeout.

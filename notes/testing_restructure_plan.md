@@ -6,6 +6,20 @@ test layout and philosophy guidance lives in `notes/testing_guidelines.md`.
 This document records the test-suite restructure so future Codex sessions can
 continue without rediscovering the same coverage map.
 
+## 2026-10-01: SR830 auto-function completion deadlines
+
+- Extended `tests/unit/instruments/drivers/test_srs830.py` with simulated slow
+  completion, active time-constant readback, bounded timeout, transport-timeout
+  preservation, explicit-deadline and connection-failure cases. No tests moved.
+- Focused driver run: 34 passed using `conda run -n stoner_measurement pytest
+  tests/unit/instruments/drivers/test_srs830.py -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/sr830-auto`. Ruff passed for the driver and tests.
+- Related driver, lock-in contract and multi-lock-in plugin regressions: 163
+  passed in the project Conda environment with offscreen PyQt5. The run covered
+  the SR830/SR7265 driver modules, lock-in exports, per-lock-in settings and
+  `tests/test_k6221_multi_sr830_plugin.py`. `git diff --check` passed.
+- Timing policy and remaining bench checks are in `notes/sr830_autosensitivity.md`.
+
 ## 2026-09-15: Plot legend sizing and scrollbar contrast
 
 - Updated the existing plot-widget height check for a compact, resizable legend
