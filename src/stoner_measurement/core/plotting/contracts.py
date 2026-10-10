@@ -209,6 +209,8 @@ class PlotData:
         array = np.asarray(values, dtype=np.float64)
         if array.ndim != 1:
             raise ValueError("Plot channels must be one-dimensional.")
+        if isinstance(array.base, bytes) and not array.flags.writeable and array.flags.c_contiguous:
+            return array
         return np.frombuffer(array.tobytes(), dtype=np.float64)
 
 

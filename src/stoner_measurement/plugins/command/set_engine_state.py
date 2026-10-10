@@ -79,6 +79,8 @@ class SetEngineStateCommand(CommandPlugin):
         engine = self._ensure_engine()
         self.timed_out = False
         self._set_target(engine, setpoint)
+        updates = getattr(getattr(engine, "_service", None) or engine, "_state_updates", None)
+        revision = updates.revision if updates is not None else None
         state = self._read_state(engine)
         timeout = self.wait_timeout_seconds
         deadline = None if timeout is None else time.monotonic() + timeout
@@ -88,8 +90,24 @@ class SetEngineStateCommand(CommandPlugin):
             if deadline is not None and time.monotonic() >= deadline:
                 self.timed_out = True
                 break
-            time.sleep(self.poll_interval)
-            state = self._read_state(engine)
+            remaining = self.poll_interval
+            if deadline is not None:
+                remaining = min(remaining, max(0.0, deadline - time.monotonic()))
+            thread = getattr(self.sequence_engine, "_thread", None)
+            stop_event = getattr(thread, "_stop_event", None)
+            if updates is not None and updates.wait(revision, remaining, stop_event):
+                revision = updates.revision
+                state = engine.get_engine_state()
+            else:
+                if updates is None:
+                    if stop_event is None:
+                        time.sleep(remaining)
+                    else:
+                        stop_event.wait(remaining)
+                if self._stop_requested():
+                    break
+                revision = updates.revision if updates is not None else None
+                state = self._read_state(engine)
         self._final_values = self._state_values(state)
 
     def output_value(self, name: str) -> float:
@@ -99,10 +117,7 @@ class SetEngineStateCommand(CommandPlugin):
     def reported_values(self) -> dict[str, str]:
         """Expose the final engine-state snapshot through the scalar catalogue."""
         var = self.instance_name
-        return {
-            f"{var}:{name}": f"{var}.output_value({name!r})"
-            for name in self.output_names
-        }
+        return {f"{var}:{name}": f"{var}.output_value({name!r})" for name in self.output_names}
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Build the common expression controls plus engine-specific settings."""

@@ -675,13 +675,34 @@ class StateScanPlugin(StatePlugin):
         self.set_state(value)
         timeout = self.settle_timeout
         deadline = time.monotonic() + timeout
+        engine_factory = getattr(self, "_engine", None)
+        controller = engine_factory() if callable(engine_factory) else None
+        owner = getattr(controller, "_service", None) or controller
+        updates = getattr(owner, "_state_updates", None)
+        if updates is not None:
+            controller.read_controller_state()
+        revision = updates.revision if updates is not None else None
         while not self.is_at_target():
             self.state_changed.emit(self.get_state())
             if time.monotonic() > deadline:
                 self.timed_out = True
-                self.state_error.emit(f"Timeout after {timeout}s waiting for state to reach {value}")
+                self.state_error.emit(
+                    f"Timeout after {timeout}s waiting for state to reach {value}"
+                )
                 return
-            time.sleep(poll_interval)
+            interval = min(poll_interval, max(0.0, deadline - time.monotonic()))
+            thread = getattr(self.sequence_engine, "_thread", None)
+            stop_event = getattr(thread, "_stop_event", None)
+            if stop_event is not None and stop_event.is_set():
+                return
+            if updates is not None:
+                if not updates.wait(revision, interval, stop_event):
+                    if stop_event is not None and stop_event.is_set():
+                        return
+                    controller.read_controller_state()
+                revision = updates.revision
+            else:
+                time.sleep(interval)
         self.state_reached.emit(self.get_state())
 
     # ------------------------------------------------------------------

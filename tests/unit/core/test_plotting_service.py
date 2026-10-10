@@ -1,7 +1,8 @@
 """Plot service ordering, completion and GUI ownership contracts."""
 
 from dataclasses import replace
-from threading import Thread
+from threading import Event, Thread
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -20,6 +21,7 @@ from stoner_measurement.core.plotting.contracts import (
 )
 from stoner_measurement.core.plotting.producers import xy_update
 from stoner_measurement.core.plotting.service import CompletionTicket, PlotService
+from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.ui.axis_mappings import AxisLabel
 from stoner_measurement.ui.plot_widget import PlotWidget
 from stoner_measurement.ui.plotting_bridge import CartesianPlotBridge, LegacyPlotFacade
@@ -77,6 +79,120 @@ def test_ordered_clear_and_update_acknowledge_once(display, qtbot):
     with pytest.raises(ValueError, match="reused"):
         service.submit(requests[0])
     assert len(results) == 3
+
+
+def test_group_failure_cancels_only_later_members(display, qtbot):
+    service, widget = display
+    requests = (
+        PlotRequest(xy_update("first", [1], [2])),
+        PlotRequest(ClearPlot(), target="unknown"),
+        PlotRequest(xy_update("later", [3], [4])),
+    )
+    tickets = service.submit_many(requests)
+    unrelated = service.submit(PlotRequest(xy_update("other", [5], [6])))
+    qtbot.waitUntil(lambda: unrelated.wait(0) is not None)
+    assert [ticket.wait(0).status for ticket in tickets] == [
+        ResultStatus.APPLIED,
+        ResultStatus.UNSUPPORTED,
+        ResultStatus.CANCELLED,
+    ]
+    assert widget.trace_names == ["first", "other"]
+    assert not service._groups
+    with pytest.raises(ValueError, match="reused"):
+        service.submit_many(requests)
+
+
+def test_dispatch_yields_and_worker_readiness_wakes_without_polling(qtbot):
+    service = PlotService()
+    wakes, observed, ready = [], [], []
+    service._wake.connect(lambda: wakes.append(True))
+    requests = tuple(PlotRequest(ClearPlot()) for _ in range(40))
+    tickets = service.submit_many(requests)
+    assert len(wakes) == 1
+    worker = Thread(target=lambda: ready.append(service.wait_until_idle(timeout=2)))
+    worker.start()
+    service._drain()
+    completed = sum(ticket.wait(0) is not None for ticket in tickets)
+    assert 0 < completed <= 16
+    assert service.is_busy_for_data()
+    assert service.wait_until_idle(timeout=0) is False
+    with pytest.raises(RuntimeError, match="GUI callers"):
+        service.wait_until_idle(timeout=1)
+    observed.append(completed)
+    qtbot.waitUntil(lambda: not service.is_busy_for_data())
+    worker.join(timeout=2)
+    assert ready == [True]
+    assert all(ticket.wait(0).status == ResultStatus.NO_DISPLAY for ticket in tickets)
+    assert len(wakes) >= 3
+    service.shutdown()
+
+
+def test_engine_readiness_uses_idle_condition(qapp, monkeypatch):
+    service = PlotService()
+    ticket = service.submit(PlotRequest(ClearPlot()))
+    entered, pause = Event(), Event()
+    pause.set()
+    engine = SimpleNamespace(
+        plot_client=service,
+        _thread=SimpleNamespace(_stop_event=Event(), _pause_event=pause),
+    )
+    original = service.wait_until_idle
+
+    def wait(timeout):
+        entered.set()
+        return original(timeout)
+
+    monkeypatch.setattr(service, "wait_until_idle", wait)
+    ready = []
+    worker = Thread(
+        target=lambda: ready.append(
+            SequenceEngine.wait_for_plot_ready(engine, timeout=2, poll_interval=1)
+        )
+    )
+    worker.start()
+    assert entered.wait(timeout=1)
+    service._drain(immediate=True)
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert ready == [True]
+    assert ticket.wait(0).status == ResultStatus.NO_DISPLAY
+    service.shutdown()
+
+
+def test_group_capacity_rejection_does_not_reserve_ids(qapp):
+    service = PlotService(max_pending=2)
+    requests = tuple(PlotRequest(ClearPlot()) for _ in range(3))
+    with pytest.raises(RuntimeError, match="queue is full"):
+        service.submit_many(requests)
+    assert not service.is_busy_for_data()
+    assert not service._seen
+    ticket = service.apply_now(requests[0])
+    assert ticket.wait(0).status == ResultStatus.NO_DISPLAY
+    service.shutdown()
+
+
+def test_bulk_append_redraws_once_and_unchanged_style_does_not_notify(display, monkeypatch):
+    service, widget = display
+    initial = xy_update("s", [0], [1], append=True, style={"line_width": 3})
+    assert service.apply_now(PlotRequest(initial)).wait(0).status == ResultStatus.APPLIED
+    redraws, notifications = [], []
+    original = widget._update_trace_display
+
+    def redraw(name, **kwargs):
+        redraws.append(name)
+        return original(name, **kwargs)
+
+    monkeypatch.setattr(widget, "_update_trace_display", redraw)
+    service.descriptions_changed.connect(lambda: notifications.append(service.series()))
+    payload = xy_update("s", [2, 3, 4], [5, 6, 7], append=True, style={"line_width": 3})
+    result = service.apply_now(PlotRequest(payload)).wait(0)
+    assert result.status == ResultStatus.APPLIED
+    assert widget.x_data("s") == [0, 2, 3, 4]
+    assert redraws == ["s"]
+    assert notifications == []
+    service.apply_now(PlotRequest(ModifySeries("s", title="Renamed", visible=False)))
+    assert notifications[-1][0].title == "Renamed"
+    assert not notifications[-1][0].visible
 
 
 def test_ack_includes_axis_labels_errors_style_and_title(display):

@@ -217,6 +217,20 @@ blocking on a pending ticket from the GUI raises an error.
 Completion acknowledges application of the whole logical operation, including
 axes and styles; it does not mean a repaint or graphics-buffer swap has occurred.
 
+``PlotService.submit_many(requests)`` accepts an ordered group and returns one
+ticket per request. Capacity and duplicate IDs are checked before accepting the
+group. A failed, unsupported or cancelled member cancels its remaining queued
+members; requests already applied retain their results and unrelated producers
+continue. A group does not roll back earlier members. Bundled surface commands
+use bounded worker groups for already captured Z entries; GUI calls and ordinary
+XY expression evaluation retain sequential submission.
+
+Workers can use ``wait_until_idle(timeout)`` to wake when outstanding requests
+complete. ``SequenceEngine.wait_for_plot_ready`` uses this condition when available
+and retains pause, stop and timeout checks. GUI callers must not block on pending
+work. Asynchronous dispatch coalesces wake events and yields between bounded
+turns; ``apply_now`` retains immediate logical completion on the GUI thread.
+
 Public ``axes()``, ``series()`` and ``capabilities()`` queries return descriptions
 without exposing renderer objects. Ownership, compatibility and migration gates
 are recorded in ``notes/2026-10-01-plot-contract-stage1.md`` and
@@ -237,6 +251,8 @@ execution. Completion covers data, labels, axis assignment and styles, rather
 than repaint timing. ``data_snapshot(series_id)`` assembles an immutable copy of
 the plotted data; point append retains chunks without copying the whole series
 on each submission. Acquisition data remains owned by the measurement plugins.
+An append containing several ordinary XY samples redraws and autoscales once
+for that request. Separate single-point requests retain separate redraws.
 
 Display factories and host
 --------------------------

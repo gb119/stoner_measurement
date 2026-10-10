@@ -139,13 +139,21 @@ class MakeSafeCommand(CommandPlugin):
             return
         engine.go_to_zero()
         deadline = time.monotonic() + self._MAGNET_TIMEOUT_SECONDS
+        updates = getattr(engine, "_state_updates", None)
+        state = engine.read_controller_state()
         while True:
-            state = engine.read_controller_state()
             if state is not None and state.at_target:
                 break
             if time.monotonic() >= deadline:
                 raise TimeoutError("Timed out waiting for the magnet to ramp to zero.")
-            time.sleep(self._MAGNET_POLL_INTERVAL_SECONDS)
+            interval = min(self._MAGNET_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic()))
+            revision = updates.revision if updates is not None else None
+            if updates is not None and updates.wait(revision, interval):
+                state = engine.get_engine_state()
+            else:
+                if updates is None:
+                    time.sleep(interval)
+                state = engine.read_controller_state()
         engine.heater_off()
 
     def generate_finally_code(self, indent: int) -> list[str]:

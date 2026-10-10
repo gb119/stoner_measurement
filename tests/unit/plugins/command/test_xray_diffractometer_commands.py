@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
 from qtpy.QtWidgets import QComboBox
 
+from stoner_measurement.instruments.xray import SimulatedXrayDiffractometer, XrayOperationCancelled
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command import (
     ReadDiffractometerCommand,
     SetDiffractometerCommand,
 )
 from stoner_measurement.ui.widgets import SISpinBox
-from stoner_measurement.xray_control import XrayMotionMode
+from stoner_measurement.xray_control import XrayControllerEngine, XrayMotionMode
 
 
 class _FakeXrayEngine:
@@ -105,6 +108,93 @@ def test_read_command_reconnects_counts_and_exposes_instance_value(monkeypatch, 
     assert fake.read_calls == 0
     assert command.value == pytest.approx(456.0)
     assert command.reported_values() == {"read_xray:Counts": "read_xray.value"}
+
+
+def test_false_wait_returns_pending_ticket_without_waiting_for_motion(qapp, engine, monkeypatch):
+    controller = XrayControllerEngine()
+    driver = SimulatedXrayDiffractometer()
+    controller.connect_instrument(driver)
+    controller.set_polling_rate(0)
+    entered = threading.Event()
+    release = threading.Event()
+    original_move = driver.move_theta
+
+    def move(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return original_move(*args, **kwargs)
+
+    monkeypatch.setattr(driver, "move_theta", move)
+    command = SetDiffractometerCommand()
+    command.axes = XrayMotionMode.THETA
+    command.setpoint_expr = "5"
+    command.wait_expr = "False"
+    engine.add_plugin("async_xray", command)
+    monkeypatch.setattr(command, "_ensure_engine", lambda: controller)
+    try:
+        started = time.monotonic()
+        command.execute()
+        assert time.monotonic() - started < 0.4
+        assert entered.wait(1)
+        assert not command.operation.done.is_set()
+        assert command.output_value("At Target") == 0
+    finally:
+        release.set()
+        assert command.operation.done.wait(2)
+        controller.shutdown()
+    assert command.operation.result().at_target
+
+
+def test_waiting_xray_command_propagates_background_failure(qapp, engine, monkeypatch):
+    controller = XrayControllerEngine()
+    driver = SimulatedXrayDiffractometer()
+    controller.connect_instrument(driver)
+    controller.set_polling_rate(0)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("motion failed")
+
+    monkeypatch.setattr(driver, "move_theta", fail)
+    command = SetDiffractometerCommand()
+    command.axes = XrayMotionMode.THETA
+    engine.add_plugin("failed_xray", command)
+    monkeypatch.setattr(command, "_ensure_engine", lambda: controller)
+    try:
+        with pytest.raises(RuntimeError, match="motion failed"):
+            command.execute()
+    finally:
+        controller.shutdown()
+
+
+def test_stopping_waiting_command_cancels_its_pending_move(qapp, engine, monkeypatch):
+    controller = XrayControllerEngine()
+    driver = SimulatedXrayDiffractometer()
+    controller.connect_instrument(driver)
+    controller.set_polling_rate(0)
+
+    def cancellable(*args, **kwargs):
+        assert kwargs["cancel"].wait(2)
+        raise XrayOperationCancelled("cancelled")
+
+    monkeypatch.setattr(driver, "move_theta", cancellable)
+    command = SetDiffractometerCommand()
+    command.axes = XrayMotionMode.THETA
+    engine.add_plugin("cancel_xray", command)
+    monkeypatch.setattr(command, "_ensure_engine", lambda: controller)
+    stop = engine._thread._stop_event  # noqa: SLF001
+    timer = threading.Timer(0.05, stop.set)
+    timer.start()
+    try:
+        command.execute()
+        assert command.operation.done.wait(1)
+        with pytest.raises(XrayOperationCancelled):
+            command.operation.result()
+        assert not controller.get_engine_state().at_target
+    finally:
+        controller.cancel_operation()
+        timer.join()
+        stop.clear()
+        controller.shutdown()
 
 
 if __name__ == "__main__":

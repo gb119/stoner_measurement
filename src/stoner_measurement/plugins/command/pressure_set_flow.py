@@ -114,6 +114,10 @@ class PressureSetFlowCommand(SetEngineStateCommand):
         engine.set_flow_rate(self._execution_channel, setpoint)
 
     def _read_state(self, engine):
+        """Capture fresh flow outputs without repolling unrelated gauge telemetry."""
+        read_flow = getattr(engine, "read_flow_state", None)
+        if read_flow is not None:
+            return read_flow()
         return engine.read_controller_state() or engine.get_engine_state()
 
     def _target_reached(self, state, setpoint: float) -> bool:

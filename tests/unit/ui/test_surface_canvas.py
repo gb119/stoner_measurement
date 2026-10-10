@@ -104,6 +104,52 @@ def test_duplicate_and_wrong_grid_are_atomic_and_explicit_reset_works(display):
     assert len(display.export_state().series[0].update.data.channels["z"]) == 2
 
 
+def test_graphics_and_snapshots_are_reused_and_invalidated_on_updates(display):
+    display.apply(update(display))
+    display.apply(update(display, ys=(3, 3)))
+    display.refresh()
+    grid = display._surfaces["sample"]
+    first = grid.snapshot()
+    assert grid.snapshot() is first
+    if display.three_dimensional:
+        items = dict(display.canvas._geometry)
+        faces = display.canvas._topology["sample"][-1]
+    else:
+        item = display.canvas._items["sample"]
+        bar = display.canvas.bars[0]
+    display.apply(update(display, zs=(50, 60), duplicates="replace"))
+    display.refresh()
+    assert grid.snapshot() is not first
+    np.testing.assert_array_equal(first.data.channels["z"], [10, 20, 10, 20])
+    if display.three_dimensional:
+        assert display.canvas._geometry == items
+        assert display.canvas._topology["sample"][-1] is faces
+        display.apply(update(display, zs=(np.nan, 60), duplicates="replace"))
+        display.refresh()
+        assert len(display.canvas._topology["sample"][-1]) == 0
+    else:
+        assert display.canvas._items["sample"] is item
+        assert display.canvas.bars[0] is bar
+        assert item.values[(0.0, 1.0)] == 50
+    display.apply(ModifySeries("sample", title="Updated title"))
+    assert grid.snapshot().title == "Updated title"
+
+
+def test_prepared_validation_is_invalidated_after_a_state_change(display):
+    first = update(display)
+    display.validate(first)
+    with pytest.raises(ValueError, match="Unknown axis"):
+        display.validate(replace(first, axes={"x": "unavailable"}))
+    display.apply(first)
+    with pytest.raises(ValueError, match="Duplicate"):
+        display.apply(first)
+    next_row = update(display, ys=(3, 3))
+    display.validate(next_row)
+    display.apply(ModifySeries("sample", title="Changed between prepare and apply"))
+    display.apply(next_row)
+    assert len(display.export_state().series[0].update.data.channels["z"]) == 4
+
+
 def test_visibility_title_remove_clear_and_pending_close(display, qtbot):
     display.apply(update(display))
     with qtbot.waitSignal(display.changed):
@@ -237,6 +283,22 @@ def test_fixed_colour_limits_are_saved_without_changing_source_values(display):
     assert display.export_settings()["colour_limits"] is None
     with pytest.raises(ValueError, match="colour limits"):
         display.import_settings({"colour_limits": [10, 5]})
+
+
+def test_retained_colour_bars_follow_visibility_and_series_order(display):
+    if not display.three_dimensional:
+        return
+    first = update(display)
+    second = replace(first, series_id="second", surface=SurfaceBinding("second"))
+    display.apply(first)
+    display.apply(second)
+    display.refresh()
+    retained = display.canvas._bars["second"]
+    display.apply(RemoveSeries(first.series_id))
+    display.refresh()
+    assert display.canvas._bars["second"] is retained
+    assert display.canvas._bar_order == ["second"]
+    assert display.canvas.scales.ci.getItem(0, 0) is retained
 
 
 def test_intensity_paint_and_readout_preserve_gaps_and_nan(display, qtbot):

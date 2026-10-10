@@ -1452,3 +1452,50 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - Commands and scope are recorded in
   [the maintenance note](2026-10-10-codacy-cleanup.md). No new Qt page ownership
   or test migration work was required; other bindings were not validated.
+
+## 2026-10-10: plotting performance batches
+
+- Extended existing core service/regrid and native canvas test modules; no
+  tests were moved or removed. Added deterministic checks for bulk redraws,
+  notification deduplication, immutable buffer isolation, snapshot/graphics
+  reuse, topology invalidation, prepared validation, colour-bar ordering,
+  ordered group failures/capacity rejection, dispatch yielding and engine use
+  of condition-based readiness. Timing probes remain outside CI assertions.
+- Existing scoped `managed_qt_widget` ownership is retained. The native GPU
+  test now updates an existing mesh before painting its hidden framebuffer.
+- Each of the five batches passed its focused selection and ran the standalone
+  probe. Final verbose combined plotting/sequence selection: 560 passed;
+  native Windows OpenGL: 1 passed. Python 3.14.7 / PyQt5 5.15.11 were validated.
+- A quiet combined run reproduced the previously documented Windows Qt access
+  violation during a surface worker wait. Scoped fixture ownership was checked;
+  the failure remains unresolved. No global teardown or suppression was added.
+- Detailed scope, measurements and limits are recorded in
+  [the performance review](2026-10-10-plotting-performance-review.md).
+
+## 2026-10-10: Cartesian bottom-axis layout
+
+- Added four parameterized viewport-containment cases to the existing
+  `tests/unit/ui/widgets/test_plot_widget.py`; no tests were moved or removed.
+  They cover larger labels, additional bottom/top/right axes, legend resizing
+  and repeated window resizing, with scoped managed widget ownership.
+- Focused plotting/axis/display/service regression selection: 171 passed.
+  The new cases also passed at 150% Qt scaling (4 passed). Ruff, formatting,
+  error-level Pylint for the changed production module and diff checks passed.
+- Reproduction details and validation limits are recorded in
+  [the axis-layout note](2026-10-10-cartesian-axis-layout.md).
+
+## 2026-10-10: Engine and command performance
+
+- Added focused concurrency coverage in `tests/unit/core/test_controller_polling.py`
+  and extended existing controller/command modules for worker timer ownership,
+  slow-poll GUI responsiveness, completion invalidation, focused flow snapshots,
+  state notifications, pending X-ray motion and propagated failures. Added a
+  Make Safe failure case retaining the zero-field heater gate.
+- The legacy magnet publisher poll case now waits for asynchronous publication
+  before shutdown. No tests were moved or removed, and scoped Qt ownership is
+  retained. Production hardware protocols and passive monitor defaults remain.
+- Final expanded controller/command/state/scan/monitor/panel/sequence selection:
+  1509 passed, 1 skipped. Ruff, error-level Pylint and diff checks passed.
+  Follow-up deadline/cancellation/controller/sequence selection: 209 passed.
+  Batch counts, simulated timing results and bench-validation limits are in
+  [the implementation note](2026-10-10-engine-command-performance-implementation.md).

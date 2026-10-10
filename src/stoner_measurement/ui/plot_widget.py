@@ -77,7 +77,7 @@ _PLOT_GRID_ALPHA = 0.15
 # PlotItem reserves row 0 for its title and row 1 for top axes.  Placing an
 # axis in row 0 overlays its labels on the ViewBox instead of reducing the
 # data area to the axis spine.
-_AXIS_LAYOUT_ROW = {"top": 1, "bottom": 4}
+_AXIS_LAYOUT_ROW = {"top": 1, "bottom": 3}
 _LEFT_AXIS_BASE_COLUMN = 0
 _RIGHT_AXIS_BASE_COLUMN = 3
 
@@ -248,6 +248,26 @@ class _SelectableAxisItem(MappedAxisItem):
         self.setPen(colour("plot_foreground"))
         state = "active" if active else "inactive"
         self.setToolTip(f"Mouse pan/zoom: {state}. Click to toggle this axis.")
+
+    def _updateHeight(self):  # noqa: N802
+        """Reserve the whole bottom label rather than PyQtGraph's 80% estimate."""
+        super()._updateHeight()
+        if (
+            self.orientation == "bottom"
+            and self.isVisible()
+            and self.fixedHeight is None
+            and self.label is not None
+            and self.label.isVisible()
+        ):
+            height = self.minimumHeight() + 0.2 * self.label.boundingRect().height()
+            self.setMinimumHeight(height)
+            self.setMaximumHeight(height)
+
+    def resizeEvent(self, event=None):  # noqa: N802
+        """Keep the bottom label inside its axis instead of nudging it below it."""
+        super().resizeEvent(event)
+        if self.orientation == "bottom" and self.label is not None:
+            self.label.setY(max(0.0, self.size().height() - self.label.boundingRect().height()))
 
     def _over_axis(self, event):
         # AxisItem's bounding rect can include grid lines across the whole plot.
@@ -2231,6 +2251,27 @@ class PlotWidget(QWidget):
             self._mark_data_update_processed()
 
     @pyqtSlot(str, object, object)
+    def append_points(self, trace_name: str, x_data, y_data) -> None:
+        """Append captured samples with one redraw and automatic-range update.
+
+        Values are converted before mutation. Empty updates still create the
+        named series, matching the portable append contract.
+        """
+        try:
+            new_x = list(map(float, x_data))
+            new_y = list(map(float, y_data))
+            if len(new_x) != len(new_y):
+                raise ValueError("Appended X/Y columns must have equal lengths.")
+            self._get_or_create_trace(trace_name)
+            xs, ys = self._trace_data[trace_name]
+            xs.extend(new_x)
+            ys.extend(new_y)
+            self._update_trace_display(trace_name)
+            self._refresh_auto_ranges_for_trace(trace_name)
+        finally:
+            self._mark_data_update_processed()
+
+    @pyqtSlot(str, object, object)
     def set_trace(
         self,
         trace_name: str,
@@ -2486,6 +2527,14 @@ class PlotWidget(QWidget):
             raise ValueError(f"Point size must be greater than zero, got {point_size}.")
 
         style = self._trace_style[trace_name]
+        if (
+            (colour is None or colour == style["colour"])
+            and (line_style is None or line_style == style["line"])
+            and (point_style is None or point_style == style["point"])
+            and (line_width is None or line_width == self._trace_line_width[trace_name])
+            and (point_size is None or point_size == self._trace_point_size[trace_name])
+        ):
+            return
         if colour is not None:
             if not QColor(colour).isValid():
                 raise ValueError(f"Invalid colour value: {colour!r}")

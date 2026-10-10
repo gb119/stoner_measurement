@@ -3,6 +3,7 @@
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
+from stoner_measurement.core.controller_polling import coordinated_read
 from stoner_measurement.temperature_control.references import (
     ChannelRef,
     LoopRef,
@@ -203,6 +204,7 @@ class TemperatureServiceMixin:
             self._secondary.set_polling_rate(rate_hz)
             self._refresh_timer()
 
+    @coordinated_read
     def read_controller_state(self):
         """Poll both sessions independently and publish one consolidated snapshot."""
         if self.connected_driver is None and self._secondary.connected_driver is None:
@@ -354,6 +356,8 @@ class TemperatureServiceMixin:
 
     def shutdown(self):
         """Attempt both cleanups, preserving failures for the caller."""
+        self._controller_poller.close()
+        self._controller_poller.join()
         was_singleton = type(self)._singleton is self
         errors = []
         for close in (self._secondary.shutdown, super().shutdown):

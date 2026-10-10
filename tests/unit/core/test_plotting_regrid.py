@@ -87,5 +87,44 @@ def test_strict_mode_preserves_samples_and_unknown_policies_fail():
         regrid_trace(data, bounds="unsupported")
 
 
+def test_ordered_grid_reuses_immutable_capture_and_still_normalizes_infinities():
+    data = PlotData({"x": [0, 1, 2], "z": [2, 4, 6]})
+    assert regrid_trace(data, [0, 1, 2]) is data
+    assert not data.channels["z"].flags.writeable
+    invalid = PlotData({"x": [0, 1, 2], "z": [2, np.inf, -np.inf]})
+    np.testing.assert_allclose(regrid_trace(invalid).channels["z"], [2, np.nan, np.nan])
+
+
+def test_recapturing_owned_bytes_reuses_storage_but_readonly_views_are_copied():
+    captured = PlotData({"x": [0, 1], "z": [2, 3]})
+    repeated = PlotData(captured.channels, captured.metadata)
+    assert repeated.channels["z"] is captured.channels["z"]
+    source = np.array([4.0, 5.0])
+    view = source.view()
+    view.setflags(write=False)
+    isolated = PlotData({"z": view})
+    source[:] = 9
+    np.testing.assert_array_equal(isolated.channels["z"], [4, 5])
+    with pytest.raises(ValueError):
+        repeated.channels["z"].setflags(write=True)
+
+
+@pytest.mark.parametrize("policy", ["mean", "first", "last"])
+def test_vectorized_groups_preserve_nan_and_error_selection(policy):
+    data = PlotData(
+        {"x": [1, 0, 1, 0], "z": [np.nan, 2, 6, np.inf]},
+        uncertainties={"z": [9, 3, 4, 8]},
+    )
+    result = regrid_trace(data, policy=policy)
+    expected = {
+        "mean": ([2, 6], [3, 4]),
+        "first": ([2, np.nan], [3, 9]),
+        "last": ([np.inf, 6], [8, 4]),
+    }
+    signals, errors = expected[policy]
+    np.testing.assert_allclose(result.channels["z"], signals)
+    np.testing.assert_allclose(result.uncertainties["z"], errors)
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

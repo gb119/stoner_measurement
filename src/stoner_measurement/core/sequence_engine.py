@@ -420,9 +420,9 @@ class _EngineThread(QThread):
             events).  Returning the tracer itself re-installs it for subsequent
             events; returning ``None`` would stop tracing.
             """
-            if stop_event.is_set():
-                raise KeyboardInterrupt("Sequence stopped by user")
             if not pause_event.is_set():
+                if stop_event.is_set():
+                    raise KeyboardInterrupt("Sequence stopped by user")
                 pause_event.wait()
             if stop_event.is_set():
                 raise KeyboardInterrupt("Sequence stopped by user")
@@ -860,7 +860,17 @@ class SequenceEngine(QObject):
                 continue
             if deadline is not None and time.monotonic() >= deadline:
                 return False
-            time.sleep(sleep_for)
+            client = getattr(self, "plot_client", None)
+            wait_until_idle = getattr(client, "wait_until_idle", time.sleep)
+            remaining = (
+                sleep_for
+                if deadline is None
+                else min(sleep_for, max(0.0, deadline - time.monotonic()))
+            )
+            if callable(wait_until_idle):
+                wait_until_idle(remaining)
+            else:
+                time.sleep(remaining)
         return True
 
     def wait_for_plot_ticket(self, ticket, timeout: float = 10.0):

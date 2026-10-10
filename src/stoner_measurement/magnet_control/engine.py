@@ -22,8 +22,14 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QObject, QTimer
+from qtpy.QtCore import QObject
 
+from stoner_measurement.core.controller_polling import (
+    ControllerPoller,
+    ControllerTimer,
+    ControllerUpdates,
+    coordinated_read,
+)
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
     parse_serial_address,
@@ -146,7 +152,9 @@ class MagnetControllerEngine(QObject):
         self._latest_state: MagnetEngineState = MagnetEngineState(engine_status=self._status)
         self._latest_state_time: float | None = None
 
-        self._timer = QTimer(self)
+        self._controller_poller = ControllerPoller()
+        self._state_updates = ControllerUpdates(self.publisher)
+        self._timer = ControllerTimer(self)
         self._engine_lock = threading.RLock()
         self._polling_rate_hz = 1.0
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
@@ -247,6 +255,8 @@ class MagnetControllerEngine(QObject):
             cls._singleton = cls()
             app = _qapp()
             if app is not None:
+                if cls._singleton.thread() != app.thread():
+                    cls._singleton.moveToThread(app.thread())
                 app.aboutToQuit.connect(cls._singleton.shutdown)
         return cls._singleton
 
@@ -898,6 +908,7 @@ class MagnetControllerEngine(QObject):
         if self._driver is not None and self._status is not MagnetEngineStatus.STOPPED:
             self._timer.start()
 
+    @coordinated_read
     def read_controller_state(self) -> MagnetEngineState | None:
         """Read the current controller state immediately and publish it.
 
@@ -913,7 +924,13 @@ class MagnetControllerEngine(QObject):
                 state = self._build_state()
             except Exception:
                 logger.exception("MagnetControllerEngine: read-state error")
+                self._is_at_target = False
+                self._stable = False
+                self._at_target_since = None
+                self._latest_state_time = None
+                self._latest_state = replace(self._latest_state, at_target=False, stable=False)
                 self._set_status(MagnetEngineStatus.ERROR)
+                self.publisher.state_updated.emit(self.get_engine_state())
                 return None
 
             self._set_status(MagnetEngineStatus.POLLING)
@@ -1011,6 +1028,7 @@ class MagnetControllerEngine(QObject):
             >>> e.status
             <MagnetEngineStatus.STOPPED: 'stopped'>
         """
+        self._controller_poller.close()
         self._timer.stop()
         with self._engine_lock:
             if self._driver is not None:
@@ -1029,6 +1047,7 @@ class MagnetControllerEngine(QObject):
             )
         if MagnetControllerEngine._singleton is self:
             MagnetControllerEngine._singleton = None
+        self._controller_poller.join()
         logger.info("MagnetControllerEngine: shut down.")
 
     def _disconnect_driver(self, driver: MagnetController, *, log_context: str) -> None:
@@ -1064,7 +1083,7 @@ class MagnetControllerEngine(QObject):
     @pyqtSlot()
     def _poll(self) -> None:
         """Query the instrument, compute derived quantities, and publish results."""
-        self.read_controller_state()
+        self._controller_poller.request(self.read_controller_state)
 
     def _build_state(self) -> MagnetEngineState:
         """Query the driver and return a full :class:`MagnetEngineState`.

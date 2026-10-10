@@ -251,10 +251,7 @@ class CartesianPlotBridge:
         ys = update.data.channels[update.binding.y]
         # Point append uses the widget's existing list buffers: no whole-series copy.
         if update.mode == UpdateMode.APPEND and not update.data.uncertainties:
-            for x, y in zip(xs, ys):
-                widget.append_point(name, float(x), float(y))
-            if name not in widget.trace_names:  # Empty append creates an empty series.
-                widget.set_trace(name, [], [])
+            widget.append_points(name, xs, ys)
         else:
             errors = update.data.uncertainties
             xerr, yerr = errors.get(update.binding.x), errors.get(update.binding.y)

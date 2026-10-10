@@ -149,11 +149,10 @@ def _submit_updates(plugin, updates) -> None:
         raise RuntimeError("Additional plot forms require the portable plotting service.")
     if len({update.series_id for update in updates}) != len(updates):
         raise ValueError("Measured Z entries must have distinct surface identities.")
-    for update in updates:
-        if not plugin._wait_for_plot_ready(timeout=None):
-            return
-        if client is not None:
-            plugin._submit_plot_operation(update)
+    if client is not None:
+        from stoner_measurement.core.plotting.service import submit_many_from_plugin
+
+        submit_many_from_plugin(plugin, updates)
 
 
 def execute_trace_form(plugin) -> None:

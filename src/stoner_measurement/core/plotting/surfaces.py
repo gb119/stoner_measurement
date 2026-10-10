@@ -25,6 +25,8 @@ class SurfaceGrid:
         self.cells: dict[tuple[float, float], tuple[tuple, tuple]] = {}
         self.slices: dict[str, float] = {}
         self.x_grid: frozenset[float] | None = None
+        self._snapshot = None
+        self._snapshot_template = None
 
     def validate(self, update: SeriesUpdate) -> tuple[tuple[float, float], ...]:
         """Validate schema, grid and duplicates without changing stored cells."""
@@ -114,10 +116,13 @@ class SurfaceGrid:
                 tuple(column[index] for column in errors),
             )
         self.template = update
+        self._snapshot = None
 
     def snapshot(self) -> SeriesUpdate:
         """Capture ordered cells and slice identities only on explicit export."""
         assert self.template.surface is not None
+        if self._snapshot is not None and self._snapshot_template is self.template:
+            return self._snapshot
         rows = [self.cells[key] for key in sorted(self.cells, key=lambda key: (key[1], key[0]))]
         channels = {
             name: [row[0][index] for row in rows]
@@ -127,7 +132,7 @@ class SurfaceGrid:
             name: [row[1][index] for row in rows]
             for index, name in enumerate(self.template.data.uncertainties)
         }
-        return replace(
+        self._snapshot = replace(
             self.template,
             data=PlotData(channels, self.template.data.metadata, errors),
             mode=UpdateMode.REPLACE,
@@ -138,6 +143,8 @@ class SurfaceGrid:
                 slices=tuple(self.slices.items()),
             ),
         )
+        self._snapshot_template = self.template
+        return self._snapshot
 
 
 def prepare_surface(

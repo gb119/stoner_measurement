@@ -5,7 +5,7 @@ from math import isfinite
 import numpy as np
 import pyqtgraph as pg  # type: ignore[import-untyped]
 from qtpy.QtCore import QRectF  # type: ignore[attr-defined]
-from qtpy.QtGui import QColor, QPainter, QPicture, QVector3D
+from qtpy.QtGui import QColor, QImage, QPainter, QPicture, QVector3D
 from qtpy.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from stoner_measurement.qt_compat import pyqtSlot
@@ -94,6 +94,11 @@ class IntensityCellsItem(pg.GraphicsObject):
 
     def __init__(self, update, colours):
         super().__init__()
+        self.set_data(update, colours)
+
+    def set_data(self, update, colours):
+        """Reuse the scene item; rasterize regular grids without Python cell loops."""
+        self.prepareGeometryChange()
         xs = update.data.channels[update.binding.x]
         ys = update.data.channels[update.binding.y]
         values, _metadata = colour_values(update)
@@ -108,6 +113,27 @@ class IntensityCellsItem(pg.GraphicsObject):
         self.values = {
             (float(x), float(y)): float(value) for x, y, value in zip(xs, ys, values, strict=True)
         }
+        self._bounds = QRectF(
+            x_edges[0], y_edges[0], x_edges[-1] - x_edges[0], y_edges[-1] - y_edges[0]
+        )
+        self.image = None
+        uniform = all(np.all(np.diff(edges) == np.diff(edges)[0]) for edges in (x_edges, y_edges))
+        if uniform and len(x_grid) * len(y_grid) <= 4 * len(xs):
+            pixels = np.zeros((len(y_grid), len(x_grid), 4), dtype=np.uint8)
+            finite = np.isfinite(values)
+            pixels[y_indices[finite], x_indices[finite]] = np.rint(colours[finite] * 255).astype(
+                np.uint8
+            )
+            self._image_bytes = pixels.tobytes()
+            self.image = QImage(
+                self._image_bytes,
+                len(x_grid),
+                len(y_grid),
+                len(x_grid) * 4,
+                QImage.Format.Format_RGBA8888,
+            )
+            self.update()
+            return
         painter = QPainter(self.picture)
         painter.setPen(pg.mkPen(None))
         for index, (column, row) in enumerate(zip(x_indices, y_indices, strict=True)):
@@ -123,13 +149,14 @@ class IntensityCellsItem(pg.GraphicsObject):
                 )
             )
         painter.end()
-        self._bounds = QRectF(
-            x_edges[0], y_edges[0], x_edges[-1] - x_edges[0], y_edges[-1] - y_edges[0]
-        )
+        self.update()
 
     def paint(self, painter, option, widget=None):
         """Replay the cache in source coordinates."""
-        painter.drawPicture(0, 0, self.picture)
+        if self.image is not None:
+            painter.drawImage(self._bounds, self.image)
+        else:
+            painter.drawPicture(0, 0, self.picture)
 
     def boundingRect(self):
         """Expose source-coordinate extent for pan, zoom and automatic limits."""
@@ -146,6 +173,10 @@ class IntensityCanvas(QWidget):
         self.plot = self.graphics.addPlot(row=0, col=0)
         self.plot.setMenuEnabled(True)
         self.bars = []
+        self._items = {}
+        self._bars_by_id = {}
+        self._render_keys = {}
+        self._render_limits = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.graphics)
@@ -185,25 +216,55 @@ class IntensityCanvas(QWidget):
 
     def render(self, updates, axes, palette_name, colour_limits=None):
         """Paint exact sparse cells without changing a manually zoomed view."""
-        self.plot.clear()
-        for bar in self.bars:
-            self.graphics.removeItem(bar)
-        self.bars.clear()
+        visible = {
+            update.series_id for update in updates if len(update.data.channels[update.binding.x])
+        }
+        for name in tuple(self._items):
+            if name not in visible:
+                self.plot.removeItem(self._items.pop(name))
+                self.graphics.removeItem(self._bars_by_id.pop(name))
+                self._render_keys.pop(name, None)
+                self._render_limits.pop(name, None)
         palette = colour_map(palette_name)
         for update in updates:
             if not len(update.data.channels[update.binding.x]):
                 continue
             values, metadata = colour_values(update)
-            colours, limits = colour_scale(values, palette, colour_limits)
-            self.plot.addItem(IntensityCellsItem(update, colours))
-            bar = pg.ColorBarItem(
-                values=limits,
-                colorMap=palette,
-                interactive=False,
-                label=f"{update.title or update.series_id}: {label_text(metadata)}",
-            )
-            self.graphics.addItem(bar, row=0, col=len(self.bars) + 1)
-            self.bars.append(bar)
+            name = update.series_id
+            key = (id(update.data), update.binding, palette_name, colour_limits)
+            changed = self._render_keys.get(name) != key
+            if changed:
+                colours, limits = colour_scale(values, palette, colour_limits)
+                self._render_limits[name] = limits
+                if name not in self._items:
+                    item = IntensityCellsItem(update, colours)
+                    self._items[name] = item
+                    self.plot.addItem(item)
+                    self._bars_by_id[name] = pg.ColorBarItem(
+                        values=limits, colorMap=palette, interactive=False
+                    )
+                else:
+                    self._items[name].set_data(update, colours)
+            self._items[name].source = update
+            limits = self._render_limits[name]
+            self._render_keys[name] = key
+            bar = self._bars_by_id[name]
+            if changed:
+                bar.setColorMap(palette)
+                bar.setLevels(limits)
+            label = f"{update.title or name}: {label_text(metadata)}"
+            if bar.axis.labelText != label:
+                bar.axis.setLabel(label)
+        bars = [
+            self._bars_by_id[update.series_id] for update in updates if update.series_id in visible
+        ]
+        if bars != self.bars:
+            for bar in self.bars:
+                if bar in self._bars_by_id.values():
+                    self.graphics.removeItem(bar)
+            for index, bar in enumerate(bars, 1):
+                self.graphics.addItem(bar, row=0, col=index)
+            self.bars = bars
         for axis in axes:
             side = "bottom" if axis.slot == "x" else "left"
             self.plot.setLabel(side, text=axis.label.name, units=axis.label.unit or None)
@@ -269,6 +330,14 @@ class Cartesian3DCanvas(QWidget):
         self.scales = pg.GraphicsLayoutWidget(self)
         self.scales.setFixedWidth(160)
         self._bounds = np.array([[-0.5, 0.5]] * 3)
+        self._geometry = {}
+        self._render_keys = {}
+        self._sources = {}
+        self._axis_items = []
+        self._axes_key = None
+        self._bars = {}
+        self._bar_order = []
+        self._topology = {}
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.view, 1)
@@ -281,15 +350,45 @@ class Cartesian3DCanvas(QWidget):
         return (points - self._bounds[:, 0]) / np.diff(self._bounds, axis=1).ravel() * 2 - 1
 
     def render(self, updates, axes, palette_name, colour_limits=None):
-        """Build native mesh/point items without interpolating missing cells."""
-        self.view.clear()
-        self.scales.clear()
+        """Update retained geometry after resolving shared physical axis bounds."""
+        self._discard_missing(updates)
         points = [
             np.column_stack(
                 [update.data.channels[getattr(update.binding, slot)] for slot in ("x", "y", "z")]
             )
             for update in updates
         ]
+        self._update_bounds(points, axes)
+        axes_key = (axes, tuple(self._bounds.ravel()))
+        if axes_key != self._axes_key:
+            for item in self._axis_items:
+                self.view.removeItem(item)
+            before = set(self.view.items)
+            self._draw_axes(axes)
+            self._axis_items = [item for item in self.view.items if item not in before]
+            self._axes_key = axes_key
+        palette = colour_map(palette_name)
+        for index, (update, source) in enumerate(zip(updates, points, strict=True)):
+            self._render_series(update, source, index, palette, palette_name, colour_limits)
+        self._reflow_colour_bars(updates)
+
+    def _discard_missing(self, updates):
+        """Release graphics and cached data belonging to hidden or removed series."""
+        visible = {update.series_id for update in updates}
+        for key in tuple(self._geometry):
+            if key[0] not in visible:
+                self.view.removeItem(self._geometry.pop(key))
+        for name in tuple(self._sources):
+            if name not in visible:
+                self._sources.pop(name)
+                self._render_keys.pop(name, None)
+                self._topology.pop(name, None)
+        for name in tuple(self._bars):
+            if name not in visible:
+                self.scales.removeItem(self._bars.pop(name))
+
+    def _update_bounds(self, points, axes):
+        """Resolve automatic and explicit bounds shared by every XYZ series."""
         for index in range(3):
             finite = (
                 np.concatenate([p[:, index][np.isfinite(p[:, index])] for p in points])
@@ -311,62 +410,128 @@ class Cartesian3DCanvas(QWidget):
             if lower >= upper:
                 upper = lower + max(abs(lower) * 0.01, 1)
             self._bounds[index] = lower, upper
-        self._draw_axes(axes)
-        palette = colour_map(palette_name)
-        for index, (update, source) in enumerate(zip(updates, points, strict=True)):
-            positions = self._positions(source)
-            values, metadata = colour_values(update)
-            colours, limits = colour_scale(values, palette, colour_limits)
-            finite = np.all(np.isfinite(positions), axis=1) & np.isfinite(values)
-            if "colour" in update.style:
-                colours[:] = pg.mkColor(update.style["colour"]).getRgbF()
-            if update.presentation.value == "surface":
-                faces = surface_triangles(update)
-                if len(faces):
-                    mesh = self.gl.GLMeshItem(
-                        vertexes=positions.astype(np.float32),
-                        faces=faces,
-                        vertexColors=colours.astype(np.float32),
-                        smooth=False,
-                        shader="balloon",
-                        drawEdges=False,
-                    )
-                    self.view.addItem(mesh)
-            if update.presentation.value == "line":
-                # Independent segments prevent bridging NaN breaks.
-                valid = finite[:-1] & finite[1:]
-                segments = np.stack((positions[:-1][valid], positions[1:][valid]), axis=1).reshape(
-                    -1, 3
+
+    def _render_series(self, update, source, index, palette, palette_name, colour_limits):
+        """Refresh one dirty series while retaining mesh, line and point objects."""
+        name = update.series_id
+        key = (
+            id(update.data),
+            update.binding,
+            update.presentation,
+            tuple(update.style.items()),
+            tuple(self._bounds.ravel()),
+            palette_name,
+            colour_limits,
+        )
+        if self._render_keys.get(name) == key and self._sources[name].title == update.title:
+            return
+        self._sources[name] = update
+        self._render_keys[name] = key
+        used = set()
+        positions = self._positions(source)
+        values, metadata = colour_values(update)
+        colours, limits = colour_scale(values, palette, colour_limits)
+        finite = np.all(np.isfinite(positions), axis=1) & np.isfinite(values)
+        if "colour" in update.style:
+            colours[:] = pg.mkColor(update.style["colour"]).getRgbF()
+        if update.presentation.value == "surface":
+            faces = self._surface_faces(update)
+            if len(faces):
+                self._set_geometry(
+                    name,
+                    "mesh",
+                    used,
+                    vertexes=positions.astype(np.float32),
+                    faces=faces,
+                    vertexColors=colours.astype(np.float32),
                 )
-                if len(segments):
-                    self.view.addItem(
-                        self.gl.GLLinePlotItem(
-                            pos=segments,
-                            mode="lines",
-                            color=tuple(colours[finite][0]),
-                            width=float(update.style.get("line_width", 1)),
-                        )
-                    )
-            elif np.any(finite):
-                self.view.addItem(
-                    self.gl.GLScatterPlotItem(
-                        pos=positions[finite],
-                        color=colours[finite],
-                        size=float(update.style.get("point_size", 5)),
-                        pxMode=True,
-                    )
+        if update.presentation.value == "line":
+            # Independent segments prevent bridging NaN breaks.
+            valid = finite[:-1] & finite[1:]
+            segments = np.stack((positions[:-1][valid], positions[1:][valid]), axis=1).reshape(
+                -1, 3
+            )
+            if len(segments):
+                self._set_geometry(
+                    name,
+                    "line",
+                    used,
+                    pos=segments,
+                    mode="lines",
+                    color=tuple(colours[finite][0]),
+                    width=float(update.style.get("line_width", 1)),
                 )
-            if "colour" not in update.style:
-                self.scales.addItem(
-                    pg.ColorBarItem(
-                        values=limits,
-                        colorMap=palette,
-                        interactive=False,
-                        label=f"{update.title or update.series_id}: {label_text(metadata)}",
-                    ),
-                    row=index,
-                    col=0,
+        elif np.any(finite):
+            self._set_geometry(
+                name,
+                "points",
+                used,
+                pos=positions[finite],
+                color=colours[finite],
+                size=float(update.style.get("point_size", 5)),
+                pxMode=True,
+            )
+        for geometry_key in tuple(self._geometry):
+            if geometry_key[0] == name and geometry_key[1] not in used:
+                self.view.removeItem(self._geometry.pop(geometry_key))
+        if "colour" not in update.style:
+            if name not in self._bars:
+                self._bars[name] = pg.ColorBarItem(
+                    values=limits, colorMap=palette, interactive=False
                 )
+                self.scales.addItem(self._bars[name], row=index, col=0)
+            bar = self._bars[name]
+            bar.setLevels(limits)
+            bar.setColorMap(palette)
+            bar.axis.setLabel(f"{update.title or name}: {label_text(metadata)}")
+        elif name in self._bars:
+            self.scales.removeItem(self._bars.pop(name))
+
+    def _reflow_colour_bars(self, updates):
+        """Keep retained colour scales in current visible-series order."""
+        bar_order = [update.series_id for update in updates if update.series_id in self._bars]
+        if bar_order != self._bar_order:
+            for name in bar_order:
+                self.scales.removeItem(self._bars[name])
+            for row, name in enumerate(bar_order):
+                self.scales.addItem(self._bars[name], row=row, col=0)
+            self._bar_order = bar_order
+
+    def _set_geometry(self, name, kind, used, **data):
+        """Update native buffers without recreating scene items."""
+        used.add(kind)
+        key = (name, kind)
+        if key not in self._geometry:
+            if kind == "mesh":
+                item = self.gl.GLMeshItem(smooth=False, shader="balloon", drawEdges=False, **data)
+            else:
+                factory = self.gl.GLLinePlotItem if kind == "line" else self.gl.GLScatterPlotItem
+                item = factory(**data)
+            self._geometry[key] = item
+            self.view.addItem(item)
+        elif kind == "mesh":
+            self._geometry[key].setMeshData(**data)
+        else:
+            self._geometry[key].setData(**data)
+
+    def _surface_faces(self, update):
+        """Reuse connectivity when coordinates and finite-cell occupancy agree."""
+        xs = update.data.channels[update.binding.x]
+        ys = update.data.channels[update.binding.y]
+        values, _metadata = colour_values(update)
+        finite = np.isfinite(update.data.channels[update.binding.z]) & np.isfinite(values)
+        previous = self._topology.get(update.series_id)
+        if previous is not None:
+            old_x, old_y, old_finite, faces = previous
+            if (
+                np.array_equal(xs, old_x)
+                and np.array_equal(ys, old_y)
+                and np.array_equal(finite, old_finite)
+            ):
+                return faces
+        faces = surface_triangles(update)
+        self._topology[update.series_id] = (xs, ys, finite, faces)
+        return faces
 
     def _draw_axes(self, axes):
         for index, slot in enumerate(("x", "y", "z")):

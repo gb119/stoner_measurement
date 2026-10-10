@@ -57,6 +57,10 @@ class SurfaceCanvasDisplay(QWidget):
         self._axes = {}
         self._closed = False
         self._dirty = False
+        self._revision = 0
+        self._prepared_payload = None
+        self._prepared_revision = -1
+        self._prepared_surface = None
         self._palette = "viridis"
         self._colour_limits = None
         self._timer = QTimer(self)
@@ -132,6 +136,10 @@ class SurfaceCanvasDisplay(QWidget):
         """Reject unsupported operations, styles and topology before mutation."""
         if self._closed:
             raise ValueError("The display is closed.")
+        if self._prepared_payload is payload and self._prepared_revision == self._revision:
+            return
+        self._prepared_payload = None
+        self._prepared_surface = None
         reasons = self.capabilities.unsupported_reasons(PlotRequest(payload))
         if reasons:
             raise ValueError(" ".join(reasons))
@@ -156,6 +164,8 @@ class SurfaceCanvasDisplay(QWidget):
                     raise UnsupportedDisplayOperation(
                         "Surface displays currently support linear axes only."
                     )
+        self._prepared_payload = payload
+        self._prepared_revision = self._revision
 
     def _validate_series_update(self, payload: SeriesUpdate) -> None:
         """Check surface topology, append schema and assigned axes."""
@@ -163,7 +173,7 @@ class SurfaceCanvasDisplay(QWidget):
         if payload.surface is not None:
             if existing and payload.series_id not in self._surfaces:
                 raise ValueError("Clear the existing non-surface series first.")
-            prepare_surface(payload, self._surfaces.get(payload.series_id))
+            self._prepared_surface = prepare_surface(payload, self._surfaces.get(payload.series_id))
         elif payload.presentation in (Presentation.SURFACE, Presentation.INTENSITY):
             raise ValueError("Grid presentations require an explicit surface binding.")
         elif existing:
@@ -222,7 +232,7 @@ class SurfaceCanvasDisplay(QWidget):
                     style={**old.update.style, **payload.style},
                 )
             if payload.surface is not None:
-                grid, keys = prepare_surface(payload, self._surfaces.get(payload.series_id))
+                grid, keys = self._prepared_surface
                 grid.commit(payload, keys)
                 self._surfaces[payload.series_id] = grid
             elif old and payload.mode == UpdateMode.APPEND:
@@ -262,6 +272,9 @@ class SurfaceCanvasDisplay(QWidget):
         elif isinstance(payload, ClearPlot):
             self._series.clear()
             self._surfaces.clear()
+        self._revision += 1
+        self._prepared_payload = None
+        self._prepared_surface = None
         self._schedule()
         self.changed.emit()
         return None

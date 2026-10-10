@@ -49,10 +49,22 @@ def test_xyz_mesh_paints_into_native_opengl_framebuffer(qapp, managed_qt_widget,
                 PlotData({"x": [0, 1, 0, 1], "y": [0, 0, 1, 1], "z": [0, 1, 1, 2]}),
                 CoordinateBinding("x", "y", "z"),
                 presentation=Presentation.SURFACE,
-                surface=SurfaceBinding("mesh"),
+                surface=SurfaceBinding("mesh", duplicates="replace"),
             )
         )
         display.refresh()
+        mesh = display.canvas._geometry[("mesh", "mesh")]
+        display.apply(
+            SeriesUpdate(
+                "mesh",
+                PlotData({"x": [0, 1, 0, 1], "y": [0, 0, 1, 1], "z": [0, 2, 2, 3]}),
+                CoordinateBinding("x", "y", "z"),
+                presentation=Presentation.SURFACE,
+                surface=SurfaceBinding("mesh", duplicates="replace"),
+            )
+        )
+        display.refresh()
+        assert display.canvas._geometry[("mesh", "mesh")] is mesh
         # GLTextItem paints through QPainter on its widget, outside this hidden
         # framebuffer path. This test proves GPU mesh/point/axis-line painting.
         for item in display.canvas.view.items:

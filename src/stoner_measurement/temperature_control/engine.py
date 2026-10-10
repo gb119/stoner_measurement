@@ -23,8 +23,13 @@ from datetime import UTC, datetime
 from traceback import format_exc
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QObject, QTimer
+from qtpy.QtCore import QObject
 
+from stoner_measurement.core.controller_polling import (
+    ControllerPoller,
+    ControllerTimer,
+    ControllerUpdates,
+)
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
     parse_serial_address,
@@ -148,7 +153,9 @@ class _ControllerSession(QObject):
         self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
         self._latest_state_time: float | None = None
 
-        self._timer = QTimer(self)
+        self._controller_poller = ControllerPoller()
+        self._state_updates = ControllerUpdates(self.publisher)
+        self._timer = ControllerTimer(self)
         self._engine_lock = threading.RLock()
         self._polling_rate_hz = 1.0
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
@@ -201,6 +208,8 @@ class _ControllerSession(QObject):
             cls._singleton = cls()
             app = _qapp()
             if app is not None:
+                if cls._singleton.thread() != app.thread():
+                    cls._singleton.moveToThread(app.thread())
                 app.aboutToQuit.connect(cls._singleton.shutdown)
         return cls._singleton
 
@@ -1307,6 +1316,7 @@ class _ControllerSession(QObject):
             >>> e.status
             <EngineStatus.STOPPED: 'stopped'>
         """
+        self._controller_poller.close()
         self._timer.stop()
         with self._engine_lock:
             if self._driver is not None:
@@ -1320,6 +1330,7 @@ class _ControllerSession(QObject):
             self._invalidate_state()
         if TemperatureControllerEngine._singleton is self:
             TemperatureControllerEngine._singleton = None
+        self._controller_poller.join()
         logger.info("TemperatureControllerEngine: shut down.")
 
     def _disconnect_driver(self, driver: TemperatureController, *, log_context: str) -> None:
@@ -1350,7 +1361,7 @@ class _ControllerSession(QObject):
     @pyqtSlot()
     def _poll(self) -> None:
         """Query the instrument, compute derived quantities, and publish results."""
-        self.read_controller_state()
+        self._controller_poller.request(self.read_controller_state)
 
     def _build_state(self, *, evaluate_stability=True) -> TemperatureEngineState:
         """Query the driver and return a full :class:`TemperatureEngineState`.

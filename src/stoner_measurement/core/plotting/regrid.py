@@ -69,34 +69,44 @@ def regrid_trace(data: PlotData, target=None, *, policy="mean", bounds="nearest"
     xs = data.channels["x"]
     if not len(xs) or not np.all(np.isfinite(xs)):
         raise ValueError("Surface re-gridding requires nonempty, finite X coordinates.")
+    if (
+        np.all(np.diff(xs) > _tolerance(xs))
+        and (target is None or np.array_equal(np.asarray(target, dtype=float), xs))
+        and not data.uncertainties
+        and all(np.all(np.isfinite(source)) for source in data.channels.values())
+    ):
+        return data
     order = np.argsort(xs, kind="stable")
     sorted_x = xs[order]
     starts = np.r_[0, np.flatnonzero(np.diff(sorted_x) > _tolerance(xs)) + 1]
-    groups = np.split(order, starts[1:])
     grid = sorted_x[starts]
     channels = {"x": grid}
     errors = {}
+    selected = (
+        np.minimum.reduceat(order, starts)
+        if policy == "first"
+        else np.maximum.reduceat(order, starts)
+    )
     for name, source in data.channels.items():
-        reduced, reduced_errors = [], []
-        for group in groups:
-            if policy == "mean":
-                valid = group[np.isfinite(source[group])]
-                reduced.append(np.mean(source[valid]) if len(valid) else np.nan)
-                if name in data.uncertainties:
-                    reduced_errors.append(
-                        np.linalg.norm(data.uncertainties[name][valid]) / len(valid)
-                        if len(valid)
-                        else np.nan
-                    )
-            else:
-                index = np.min(group) if policy == "first" else np.max(group)
-                reduced.append(source[index])
-                if name in data.uncertainties:
-                    reduced_errors.append(data.uncertainties[name][index])
+        if name == "x" and name not in data.uncertainties:
+            continue
+        if policy == "mean":
+            sorted_source = source[order]
+            valid = np.isfinite(sorted_source)
+            counts = np.add.reduceat(valid.astype(int), starts)
+            totals = np.add.reduceat(np.where(valid, sorted_source, 0.0), starts)
+            reduced = np.full(grid.shape, np.nan)
+            np.divide(totals, counts, out=reduced, where=counts > 0)
+            if name in data.uncertainties:
+                errors[name] = _reduce_errors(
+                    data.uncertainties[name][order], valid, starts, counts
+                )
+        else:
+            reduced = source[selected]
+            if name in data.uncertainties:
+                errors[name] = data.uncertainties[name][selected]
         if name != "x":
             channels[name] = np.asarray(reduced)
-        if name in data.uncertainties:
-            errors[name] = np.asarray(reduced_errors)
     if target is not None:
         target = np.asarray(target, dtype=float)
         if (
@@ -122,3 +132,11 @@ def regrid_trace(data: PlotData, target=None, *, policy="mean", bounds="nearest"
             for name, source in channels.items()
         }
     return PlotData(channels, data.metadata, errors)
+
+
+def _reduce_errors(values, valid, starts, counts):
+    """Propagate independent errors using the same finite signal mask as means."""
+    totals = np.add.reduceat(np.where(valid, values, 0.0) ** 2, starts)
+    result = np.full(counts.shape, np.nan)
+    np.divide(np.sqrt(totals), counts, out=result, where=counts > 0)
+    return result

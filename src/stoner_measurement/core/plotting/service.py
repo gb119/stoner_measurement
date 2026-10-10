@@ -6,6 +6,7 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from threading import Condition, RLock
+from time import monotonic
 from typing import Any
 
 from qtpy.QtCore import QObject, Qt, QThread  # type: ignore[attr-defined]
@@ -101,6 +102,9 @@ class PlotService(QObject):
             raise ValueError("max_pending must be positive.")
         self._bridge = bridge
         self._lock = RLock()
+        self._idle = Condition(self._lock)
+        self._wake_scheduled = False
+        self._groups: dict[str, tuple[str, ...]] = {}
         self._queue: deque[tuple[PlotRequest, LegacyCall | None]] = deque()
         self._pending: dict[str, CompletionTicket] = {}
         self._seen: set[str] = set()
@@ -127,7 +131,34 @@ class PlotService(QObject):
         """Accept an immutable request and return its asynchronous ticket."""
         return self._enqueue(request)
 
-    def _enqueue(self, request: PlotRequest, legacy: LegacyCall | None = None) -> CompletionTicket:
+    def submit_many(self, requests) -> tuple[CompletionTicket, ...]:
+        """Accept an ordered group, cancelling its remainder after a failed member."""
+        requests = tuple(requests)
+        identities = tuple(request.request_id for request in requests)
+        with self._lock:
+            if self._switching:
+                raise RuntimeError("Display replacement is in progress; retry after it finishes.")
+            if len(set(identities)) != len(identities) or self._seen.intersection(identities):
+                raise ValueError("A plotting request ID cannot be reused.")
+            if len(self._pending) + len(requests) > self._max_pending:
+                raise RuntimeError("Plot request queue is full.")
+            if not self._closed:
+                self._groups.update({identity: identities for identity in identities})
+            return tuple(self._enqueue(request) for request in requests)
+
+    @property
+    def max_group_size(self) -> int:
+        """Return the queue capacity available to bounded producer groups."""
+        return self._max_pending
+
+    def _schedule_wake(self) -> None:
+        if not self._wake_scheduled:
+            self._wake_scheduled = True
+            self._wake.emit()
+
+    def _enqueue(
+        self, request: PlotRequest, legacy: LegacyCall | None = None, *, wake=True
+    ) -> CompletionTicket:
         with self._lock:
             if self._switching:
                 raise RuntimeError("Display replacement is in progress; retry after it finishes.")
@@ -143,7 +174,8 @@ class PlotService(QObject):
                 self._finish(request, ResultStatus.CANCELLED, "Plot service has shut down.")
             else:
                 self._queue.append((request, legacy))
-                self._wake.emit()
+                if wake and self._active is None:
+                    self._schedule_wake()
             return ticket
 
     def apply_now(self, request: PlotRequest) -> CompletionTicket:
@@ -152,8 +184,8 @@ class PlotService(QObject):
             raise RuntimeError("apply_now is reserved for GUI callers.")
         if self._active is not None:
             raise RuntimeError("Synchronous plotting cannot re-enter an active request.")
-        ticket = self.submit(request)
-        self._drain()
+        ticket = self._enqueue(request, wake=False)
+        self._drain(immediate=True)
         return ticket
 
     def invoke_legacy(self, call: LegacyCall) -> CompletionTicket:
@@ -161,9 +193,9 @@ class PlotService(QObject):
         if self.is_gui_thread() and self._active is not None:
             raise RuntimeError("Synchronous plotting cannot re-enter an active request.")
         request = PlotRequest(ClearPlot())  # Internal identity envelope only.
-        ticket = self._enqueue(request, call)
+        ticket = self._enqueue(request, call, wake=not self.is_gui_thread())
         if self.is_gui_thread():
-            self._drain()
+            self._drain(immediate=True)
         return ticket
 
     def _finish(self, request, status, message="", value=None) -> None:
@@ -184,15 +216,37 @@ class PlotService(QObject):
             )
             if ticket.finish(result, value):
                 self._pending.pop(request.request_id, None)
+                self._idle.notify_all()
                 self.result_ready.emit(result)
+                group = self._groups.pop(request.request_id, ())
+                if status in (
+                    ResultStatus.FAILED,
+                    ResultStatus.UNSUPPORTED,
+                    ResultStatus.CANCELLED,
+                ):
+                    for identity in group:
+                        self._groups.pop(identity, None)
+                    for queued, _legacy in tuple(self._queue):
+                        if queued.request_id in group:
+                            self._finish(
+                                queued,
+                                ResultStatus.CANCELLED,
+                                "An earlier group member did not apply.",
+                            )
 
     @pyqtSlot()
-    def _drain(self) -> None:
+    def _drain(self, *, immediate=False) -> None:
         if not self.is_gui_thread():
             raise RuntimeError("Plot dispatch must run on the GUI thread.")
+        with self._lock:
+            self._wake_scheduled = False
+        started, applied = monotonic(), 0
         while True:
             with self._lock:
                 if self._active is not None or not self._queue:
+                    return
+                if not immediate and (applied >= 16 or monotonic() - started >= 0.005):
+                    self._schedule_wake()
                     return
                 request, legacy = self._queue.popleft()
                 if request.request_id not in self._pending:
@@ -212,6 +266,7 @@ class PlotService(QObject):
             finally:
                 with self._lock:
                     self._active = None
+                applied += 1
 
     def _apply(self, request: PlotRequest, legacy: LegacyCall | None) -> None:
         if legacy is not None:
@@ -305,8 +360,7 @@ class PlotService(QObject):
             return
         axes, descriptions = self._bridge.descriptions()
         with self._lock:
-            self._axes = axes
-            self._descriptions = tuple(
+            descriptions = tuple(
                 replace(
                     description,
                     binding=self._series[description.series_id].binding,
@@ -316,6 +370,10 @@ class PlotService(QObject):
                 else description
                 for description in descriptions
             )
+            if axes == self._axes and descriptions == self._descriptions:
+                return
+            self._axes = axes
+            self._descriptions = descriptions
         self.descriptions_changed.emit()
 
     def axes(self, target="main") -> tuple:
@@ -336,6 +394,13 @@ class PlotService(QObject):
         """Report whether accepted requests remain outstanding."""
         with self._lock:
             return bool(self._pending)
+
+    def wait_until_idle(self, timeout: float | None = None) -> bool:
+        """Wake a worker immediately when outstanding work completes."""
+        with self._idle:
+            if self.is_gui_thread() and self._pending and timeout != 0:
+                raise RuntimeError("GUI callers must not wait for queued plotting work.")
+            return self._idle.wait_for(lambda: not self._pending, timeout=timeout)
 
     def cancel_pending(self, message="Plot request cancelled.") -> None:
         """Cancel queued work once; an operation already applying may finish."""
@@ -476,6 +541,44 @@ class PlotService(QObject):
                 for entry in rendered
             )
         self.descriptions_changed.emit()
+
+
+def submit_many_from_plugin(plugin, payloads) -> None:
+    """Submit captured surface operations in bounded worker groups.
+
+    GUI callers and compatibility clients preserve synchronous per-operation
+    submission. Each worker group retains ordering and individual results.
+    """
+    engine = plugin.sequence_engine
+    client = engine.plot_client
+    submit_many = getattr(client, "submit_many", None)
+    if not callable(submit_many) or client.is_gui_thread():
+        for payload in payloads:
+            if not plugin._wait_for_plot_ready(timeout=None):
+                return
+            plugin._submit_plot_operation(payload)
+        return
+    payloads = tuple(payloads)
+    group_size = min(16, getattr(client, "max_group_size", 16))
+    for start in range(0, len(payloads), group_size):
+        if not plugin._wait_for_plot_ready(timeout=None):
+            return
+        tickets = submit_many(
+            tuple(PlotRequest(payload) for payload in payloads[start : start + group_size])
+        )
+        barrier = engine.wait_for_plot_ticket(tickets[-1])
+        if barrier is None:
+            return
+        for ticket in tickets:
+            result = ticket.wait(0)
+            if result is not None and result.status not in (
+                ResultStatus.APPLIED,
+                ResultStatus.NO_DISPLAY,
+                ResultStatus.CANCELLED,
+            ):
+                raise RuntimeError(f"Plot request {result.request_id}: {result.message}")
+        if barrier.status == ResultStatus.CANCELLED:
+            return
 
 
 def submit_from_plugin(plugin, payload, *, required=True) -> bool:
