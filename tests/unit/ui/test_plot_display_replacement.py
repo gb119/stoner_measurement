@@ -217,11 +217,58 @@ def test_failed_candidate_keeps_current_display_and_generation(hosted, failure):
     assert result.generation == 1 and result.status == ResultStatus.APPLIED
 
 
+def test_reset_switch_discards_incompatible_state_only_after_success(hosted):
+    host, factory = hosted
+    populate(host)
+    original = host.display_widget
+
+    class Incompatible(MemoryDisplay):
+        capabilities = PlotCapabilities(
+            frozenset({(CoordinateSystem.POLAR, 2)}),
+            MemoryDisplay.capabilities.presentations,
+            MemoryDisplay.capabilities.operations,
+        )
+
+    factory.display_class = Incompatible
+    factory.capabilities = Incompatible.capabilities
+    assert not host.switch_display("memory")
+    assert host.switch_requires_reset
+    assert host.display_widget is original
+    assert host.switch_display("memory", reset=True)
+    state = host.export_state()
+    assert not state.series and not state.markers and not state.axes
+    assert host.factory_id == "memory" and host.display_widget is not original
+    assert not host.switch_requires_reset
+    with pytest.raises(KeyError):
+        host.service.data_snapshot("s")
+
+
+def test_reset_failure_retains_existing_data_and_display(hosted):
+    host, factory = hosted
+    populate(host)
+    original = host.display_widget
+    before = host.export_state()
+
+    class Broken(MemoryDisplay):
+        def import_state(self, state):
+            raise RuntimeError("Cannot initialise display")
+
+    factory.display_class = Broken
+    assert not host.switch_display("memory", reset=True)
+    assert host.display_widget is original and host.factory_id == "cartesian"
+    assert host.export_state().axes == before.axes
+    assert host.export_state().markers == before.markers
+    np.testing.assert_array_equal(host.service.data_snapshot("s").channels["y"], [3, 4])
+    assert factory.created.closed == 1
+
+
 def test_busy_requests_and_execution_refuse_switch_before_creation(hosted, engine, qtbot):
     host, factory = hosted
     host.idle_check = lambda: engine.is_plot_idle
     pending = host.service.submit(PlotRequest(ClearPlot()))
     assert host.switch_display("memory") is False
+    assert host.switch_display("memory", reset=True) is False
+    assert not host.switch_requires_reset
     assert not hasattr(factory, "created")
     host.service.cancel(pending)
     release = Event()

@@ -1,10 +1,133 @@
 # Plot command extensions for surfaces and generalised coordinates
 
-Status: documented follow-on design; implementation is not yet authorised by
-this plan. The five-stage display-plugin foundation supplies the stable client,
-capability discovery, immutable data records, factory discovery and idle replay.
-This plan extends command data binding and defines the additional surface model
-before introducing production heatmap or 3D renderers.
+Status: command implementation authorised by the user on 2026-10-02. Stages 1
+and 2 are complete: optional surface contract, command bindings/persistence and
+live configuration refresh. Stages 3/4 now provide native PyQtGraph Cartesian
+XYZ and XY intensity factories; angular coordinate renderers remain future work.
+The five-stage display foundation supplies the stable client, immutable data,
+factory discovery and idle replay. The original design below records the intended
+workflows; the decisions in the implementation section resolve its open choices.
+
+## 2026-10-02 implementation decisions
+
+### 2026-10-06: blank Plot Trace surface identities
+
+- Saved empty/missing/whitespace surface-ID expressions now receive a unique
+  persistent literal on restoration. Clearing the editor after loading generates
+  one on execution, reused by every later slice. Explicit expressions retain
+  validation: their results must be nonblank strings. Titles remain independent
+  of grouping. The editor explains the automatic default.
+- Triangle I-V traces revisit current coordinates and cannot represent a
+  single-valued rectilinear row in full. No samples are silently discarded or
+  averaged. For the reported 501-point, phase-zero, one-period triangle, X/Z
+  expressions sliced with `[125:376]` select the descending monotonic branch.
+  Sample-index X is another option when preserving the whole acquisition matters.
+  The repeated-slice replacement policy does not resolve repeated X within a row.
+- Regression coverage and local validation are recorded in
+  `notes/testing_restructure_plan.md`.
+
+### 2026-10-06: automatic trace re-gridding
+
+- Follow-up user instruction supersedes the manual triangle-branch workaround
+  and the original no-interpolation producer policy. The canonical accumulator
+  still validates exact finite, unique grid cells. Plot Trace now prepares rows
+  before immutable submission; XY plots and instrument-produced tables are intact.
+- Default `regrid_policy="mean"` sorts X and combines repeated coordinates,
+  including round-off equivalents within 64 machine eps times the source scale.
+  `first`/`last` select acquisition-order samples; `strict` preserves the exact
+  original requirements. Mean ignores missing signals, leaving all-missing
+  groups missing. The UI explicitly explains that averaging merges branches.
+- The first accepted row establishes a sorted X grid. The standard service's
+  optional thread-safe `surface_x_grid(series_id, acquisition_id)` accessor reads
+  it without assembling a full sample snapshot. Later rows interpolate onto it.
+  Replayed grids remain authoritative; clear/removal/new acquisition removes or
+  replaces the grid. Clients lacking the optional accessor can still prepare
+  duplicate coordinates, but require matching grids between rows.
+- Default `regrid_bounds="nearest"` holds the nearest valid boundary sample
+  outside a row's measured range, as requested by the user. `missing` leaves NaN
+  gaps instead. Internal NaN samples are not bridged. Z and independent value
+  channels use the same coordinates; uncertainties propagate as independent
+  errors through mean/interpolation. Branch spread does not create error bars.
+- Settings round-trip with older JSON receiving the automatic defaults. Managed
+  configuration pages expose both controls. Developer validation is recorded in
+  `notes/testing_restructure_plan.md`.
+
+### Original implementation
+
+- Bundled `cartesian_3d` and `intensity` factories use native PyQtGraph. XYZ uses
+  `GLViewWidget`, `GLMeshItem`, lines and points; the only additional dependency
+  is PyOpenGL, explicitly selected by the user. Intensity uses sparse Qt picture
+  cells in a PyQtGraph scene, including nonuniform coordinate spacing. Neither
+  builds a dense Cartesian product or fills unacquired cells. 3D triangles
+  require all four finite corners of a neighbouring rectangle.
+- GUI adapters retain incremental `SurfaceGrid` cells. A single-shot 40 ms
+  timer coalesces painting; logical application/acknowledgement is immediate.
+  Snapshots and graphics are assembled only on repaint or explicit export.
+  Camera and manually zoomed XY bounds survive data updates. Palettes and
+  automatic/fixed colour limits use bundled maps without Matplotlib.
+- Both factories implement replay/settings, descriptions and owned cleanup.
+  Linear axes, titles, visibility, remove-series and clear are supported;
+  uncertainty, marker and nonlinear-axis requests are explicitly unsupported.
+  Angular coordinates and per-slice visibility remain outside these factories.
+  Switching display refreshes existing command pages through the service's
+  public descriptions/capabilities signal.
+
+- Optional `SeriesUpdate.surface: SurfaceBinding` uses extension version one,
+  negotiated by `PlotCapabilities.surface_versions` (empty for existing factories).
+  The base factory/message version remains one: ordinary requests are unchanged,
+  and factories must explicitly opt into surface semantics. XYZ acceptance alone
+  does not imply assembly support. Independent value uncertainty has its own
+  `value_uncertainties` flag.
+- One surface is one series: its ID is independent of its displayed title. Slice
+  updates insert/replace a whole fixed-Y row under an explicit slice ID (default
+  exact fixed-Y representation). Cell updates address exact finite X/Y pairs.
+  Duplicate rejection is the default; an explicit replace policy permits
+  reacquisition. Slice IDs retain their Y; complete trace slices retain the first
+  X grid. Acquisition IDs change only with explicit reset, or after clearing.
+- Service-owned `SurfaceGrid` retains incremental cells and slice catalogues.
+  Only snapshots assemble sorted Y/X samples. Missing cells remain absent, signal
+  NaNs remain missing values, and source schema/units/errors remain consistent.
+  Snapshot descriptors carry slice ID/Y pairs through transactional idle replay.
+  Existing visibility/removal address the entire surface; independent slice
+  visibility/removal and interpolation are outside this extension.
+- Both commands default to XY for old JSON. Additional forms have independent
+  X/Z/value and fixed-Y/point-Y expressions; point Z entries have distinct surface
+  identities. Expressions resolve once at execution before immutable capture.
+  Metadata comes from catalogues where possible; trace fixed Y has label/unit
+  controls. Existing XY fields, transpose and multi-Y behaviour retain their meaning.
+- Configuration pages use widget-owned subscriptions to the stable service's
+  `descriptions_changed`, rebinding when their engine changes. They compare axes
+  and capabilities, avoiding refresh on data-only updates. Current supported
+  forms are offered; saved unsupported forms/axes retain their bindings. New
+  controls occupy a bounded scroll area; XY controls are hidden for other forms.
+- A non-graphics test adapter validates real worker-loop submissions and replay.
+  No production intensity/3D renderer or graphics dependency is introduced.
+
+### Verification and handover
+
+- Added 44 cases: `tests/unit/core/test_plotting_surfaces.py` (19) and
+  `tests/integration/sequence/test_plot_surface_commands.py` (25). Existing
+  tests remain in place. Coverage includes real worker loops and generated saved
+  actions, multiple measured channels, exact/serpentine cells, metadata/schema,
+  fixed-Y/shape validation, duplicate policy changes, run resets, partial/missing
+  values, immutable inputs, replay/refusal, failure rollback, headless execution,
+  capability-gated cached controls and catalogue refresh. A 1,001-cell case
+  verifies that incremental acquisition does not assemble/copy the complete grid.
+- Full suite: **3,880 passed, one skipped**, 3,881 collected, 95.11 seconds.
+  Command: `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-command-extensions-full`; log:
+  `.pytest-runtime/plot-command-extensions-full.log`.
+- Final focused regression after documentation/import cleanup: **212 passed**.
+  Changed-source/test Ruff check and formatting, mypy for seven source files,
+  `git diff --check`, and all 15 plotting-contract doctests passed. Sphinx HTML
+  built with the existing 497-warning baseline. Both XYZ configuration pages
+  were rendered and inspected offscreen; bounded/scrolling controls retain
+  readable editors at 540px width.
+- Used project Conda, Python 3.14.7, offscreen PyQt5 5.15.11 and Windows fonts.
+  No hosted cross-binding CI, physical instrument or GPU validation is claimed.
+  Additional forms require a factory explicitly advertising surface extension
+  version one and the matching layouts/presentations; the bundled Cartesian
+  factory and diagnostic example remain XY-compatible displays.
 
 ## Intended acquisition workflows
 
@@ -278,5 +401,5 @@ GPU or alternative Qt-binding validation from the current offscreen PyQt5 tests.
 
 See [display-plugin foundation plan](2026-10-01-plot-display-plugin-plan.md) and
 [author guide](../docs/plot_display_plugins.rst). This follow-on plan records the
-requested loop/surface workflows; it does not imply that surface assembly or
-three-coordinate command controls already exist.
+requested loop/surface workflows; the implementation decisions above describe
+the delivered Cartesian features and the remaining angular-coordinate scope.

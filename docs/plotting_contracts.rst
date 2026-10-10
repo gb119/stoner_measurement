@@ -127,7 +127,8 @@ Snapshots and capability checks
 immutable backing storage, including when producers supplied writable NumPy
 views. Empty tables and NaN samples are supported. Columns must be one-dimensional
 and equally sized; uncertainties must reference an existing channel, have matching
-length and be nonnegative. Map topology and interpolation are deferred.
+length and be nonnegative. Rectilinear assembly is an optional negotiated
+extension; interpolation and extrapolation remain outside the contract.
 
 ``PlotCapabilities.unsupported_reasons(request)`` checks operations, coordinate
 system/dimension pairs, rendering intent, named axes, uncertainties and independent
@@ -135,6 +136,68 @@ value channels. An empty tuple indicates structural support. The Cartesian bridg
 must also validate style values, axis domains and existing state before applying
 the request. The current bridge supports Cartesian two-coordinate line and point
 plots with uncertainties and named axes. Other layouts terminate as unsupported.
+
+Rectilinear surface assembly
+----------------------------
+
+``SeriesUpdate.surface`` optionally carries an immutable ``SurfaceBinding``.
+Its extension version is negotiated through
+``PlotCapabilities.surface_versions`` (empty by default). Supporting three
+coordinates or a value channel alone does not imply surface assembly support.
+Existing factories and the bundled Cartesian display reject this extension.
+Factories opting into version one must support all the following semantics:
+
+* ``surface_id`` equals ``series_id`` and identifies the whole surface.
+  Displayed titles do not identify or group data.
+  Plot Trace generates a unique persistent ID when its surface-ID expression
+  is empty, including when loading saved sequences. Explicit expressions must
+  evaluate to nonblank strings.
+* ``kind="slice"`` inserts/replaces a whole fixed-Y trace atomically, with an
+  explicit ``slice_id`` and the same exact X grid as earlier slices.
+  Each submitted X occurs once within a slice. Plot Trace prepares these rows
+  automatically using its **Surface X grid** control: it sorts X and averages
+  repeated coordinates by default, including floating-point round-off repeats.
+  First/last-sample modes select repeated samples in acquisition order; strict
+  mode retains the original unique, exactly matching X requirement.
+  Later rows are linearly interpolated onto the first row's X grid.
+  **Outside X range** defaults to holding the nearest valid boundary value;
+  **Leave gaps** uses NaN instead. Internal missing samples remain gaps.
+  This preparation changes plotted samples only; acquired trace tables remain
+  intact. Averaging merges sweep branches, including any hysteresis. Supplied
+  uncertainties use independent-error propagation, without inferring errors
+  from branch differences. The repeated-slice policy controls reacquisition
+  separately from preparation of repeated X within a row.
+* ``kind="cells"`` inserts individual X/Y cells independently of traversal
+  order. Missing cells stay absent; measured NaNs remain missing data.
+* ``duplicates="reject"`` rejects repeats before mutation. Explicit
+  ``"replace"`` replaces a repeated cell or a complete identified slice.
+  A slice ID retains its Y coordinate; different IDs cannot own the same Y.
+* ``acquisition_id`` identifies a run. A changed ID requires
+  ``reset_on_change=True`` or an explicit clear before reacquisition. Reset
+  discards the entire previous grid. A matching ID does not implicitly reset.
+* ``kind="snapshot"`` replaces the surface during replay. Its ``slices``
+  catalogue preserves slice ID/Y pairs for later reacquisition. The service
+  exports all cells sorted by Y then X and preserves source metadata/errors.
+* Grid keys are exact finite X/Y values, without tolerance merging or
+  interpolation in the accumulator. Optional Plot Trace re-gridding happens
+  before immutable submission. Within a run, preserve channel schema, metadata,
+  bindings and coordinate conventions. Updates remain incremental; assemble complete
+  tables only for explicit snapshots or export.
+* Existing remove, clear, title, style and visibility operations address the
+  whole surface series. Version one has no independent slice visibility or
+  targeted slice-removal operation. Camera and palette remain renderer settings.
+
+``CoordinateBinding.z`` denotes geometric height; ``value`` denotes independent
+intensity or colour. XYZ + value binds both explicitly. Coordinate uncertainties
+require ``uncertainties=True``; independent intensity/colour uncertainties
+require ``value_uncertainties=True``. A renderer must validate their domain and
+presentation before accepting them. No acquisition column role implies Z.
+
+``generalised_update`` in ``core.plotting.producers`` captures a complete slice
+or cell request. The original ``xy_update`` remains Cartesian XY. Commands
+subscribe to the concrete service's ``descriptions_changed`` signal and read
+``axes()``/``capabilities()`` to refresh cached controls, including after idle
+replacement. Saved unsupported forms and axis assignments are retained.
 
 Submission and completion
 -------------------------

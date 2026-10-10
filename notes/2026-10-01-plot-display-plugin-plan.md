@@ -2,9 +2,26 @@
 
 Status: approved architecture; Stages 1–5 implemented and validated.
 The replaceable Cartesian display foundation, author guide and independent
-factory example are complete. New production displays are subsequent work.
+factory example are complete. Native Cartesian XYZ and XY intensity displays
+were added on 2026-10-02; see the plot-command extension plan for their contracts.
 
 ## Objective and scope
+
+### 2026-10-06: recoverable display-switch incompatibility
+
+- The View menu now offers Clear and switch or Cancel for replay compatibility
+  refusals. Cancel is the default/Escape action. Busy-engine and candidate-creation
+  failures retain ordinary error feedback; clearing does not bypass idle checks.
+- `PlotDisplayHost.switch_display(..., reset=True)` hydrates a fresh candidate
+  with its default axes/settings and empty plotted data/markers. Canonical data
+  and the old display are discarded only at successful replacement commit. A
+  failed reset keeps the old display, plots and service generation intact.
+- The host reports whether a failure occurred during incompatible replay via
+  `switch_requires_reset`; the menu does not infer compatibility from error text.
+  Acquisition tables are outside this reset. Regression evidence is recorded in
+  `notes/testing_restructure_plan.md`.
+
+### Original scope
 
 Make the main measurement plot replaceable through a documented communications
 contract, delivering the existing Cartesian display as the first display plugin.
@@ -302,8 +319,10 @@ preferences. The UI is **View → Plot display**. See the
 Stage 5 publishes the [display author guide](../docs/plot_display_plugins.rst)
 and a tested independent Qt example factory. See the
 [Stage 5 handover](2026-10-01-plot-display-stage5.md).
-All five stages are complete. Cartesian is the only bundled production renderer.
+All five stages are complete. Bundled renderers now include Cartesian traces,
+Cartesian XYZ and XY intensity.
 The [command extension plan](2026-10-01-plot-command-extension-plan.md) details
 optional `Z(X, Y=fixed)` trace slices in a loop, `(X, Y, Z)` points in nested
 loops, surface grouping/topology and capability-aware controls while retaining
-current XY behaviour. New intensity, polar and 3D displays remain subsequent work.
+current XY behaviour. Polar and other angular-coordinate displays remain
+subsequent work; XYZ and intensity were delivered in the follow-on extension.

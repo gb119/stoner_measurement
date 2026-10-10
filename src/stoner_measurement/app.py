@@ -955,7 +955,28 @@ class MeasurementApp(QMainWindow):
         host = self._main_window.plot_display_host
         previous_diagnostics = len(host.diagnostics)
         if not host.switch_display(factory_id):
-            QMessageBox.warning(self, "Plot display", host.diagnostics[-1])
+            if host.switch_requires_reset:
+                dialog = QMessageBox(self)
+                dialog.setWindowTitle("Plot display")
+                dialog.setIcon(QMessageBox.Icon.Warning)
+                dialog.setText("The selected display cannot show the current plot state.")
+                dialog.setInformativeText(
+                    "Clear the plotted data, markers and axis configuration and switch "
+                    "to a fresh display, or cancel to keep the current display. "
+                    "Acquired measurement data is retained."
+                )
+                dialog.setDetailedText(host.diagnostics[-1])
+                clear = dialog.addButton("Clear and switch", QMessageBox.ButtonRole.DestructiveRole)
+                cancel = dialog.addButton(QMessageBox.StandardButton.Cancel)
+                dialog.setDefaultButton(cancel)
+                dialog.setEscapeButton(cancel)
+                dialog.exec()
+                if dialog.clickedButton() is clear and not host.switch_display(
+                    factory_id, reset=True
+                ):
+                    QMessageBox.warning(self, "Plot display", host.diagnostics[-1])
+            else:
+                QMessageBox.warning(self, "Plot display", host.diagnostics[-1])
         else:
             messages = host.diagnostics[previous_diagnostics:]
             if messages:

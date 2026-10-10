@@ -351,6 +351,8 @@ class AxesConfigDialog(QDialog):
             "Grid lines are enabled per axis but displayed once per orientation. "
             "Use Min/Max to set a manual visible range for an axis, or leave "
             "either field blank to keep that axis on auto-range."
+            " Remove deletes an extra axis when you press OK and moves its traces "
+            "to the built-in bottom/left axes."
         )
         help_label = QLabel(self)
         help_label.setWordWrap(True)
@@ -1203,6 +1205,20 @@ class PlotWidget(QWidget):
         menu = QMenu(self)
         configure = menu.addAction("Configure Axes…")
         configure.triggered.connect(self._open_axes_dialog)
+        remove_axes = menu.addMenu("Remove Axis")
+        extra_axes = [name for name in self._axis_items if name not in {"bottom", "left"}]
+        remove_axes.setEnabled(bool(extra_axes))
+        for name in extra_axes:
+            action = remove_axes.addAction(name)
+            action.setData(name)
+            action.triggered.connect(self._remove_context_axis)
+        if extra_axes:
+            remove_axes.addSeparator()
+            remove_extra = remove_axes.addAction("Remove All Extra Axes")
+            remove_extra.triggered.connect(self._remove_extra_axes)
+        remove_axes.setToolTip(
+            "Move traces to bottom/left and remove markers anchored to removed axes."
+        )
         nearby = self._nearest_data_marker(scene_pos)
         if nearby is None:
             add = menu.addAction("Add Data Marker")
@@ -1215,6 +1231,20 @@ class PlotWidget(QWidget):
         remove_all.setEnabled(bool(self._data_markers))
         remove_all.triggered.connect(self.clear_data_markers)
         return menu
+
+    @pyqtSlot()
+    def _remove_context_axis(self) -> None:
+        """Remove the extra axis selected in the plot context menu."""
+        name = self.sender().data()
+        if name in self._axis_items and name not in {"bottom", "left"}:
+            self.remove_axis(name)
+
+    @pyqtSlot()
+    def _remove_extra_axes(self) -> None:
+        """Return to one Cartesian X/Y axis pair, retaining plotted traces."""
+        for name in tuple(self._axis_items):
+            if name not in {"bottom", "left"}:
+                self.remove_axis(name)
 
     def _add_data_marker_at_scene_position(self, scene_pos: QPointF) -> None:
         """Pin a marker to the first selected x and y axes."""

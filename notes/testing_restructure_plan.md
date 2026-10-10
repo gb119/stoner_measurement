@@ -1,5 +1,144 @@
 ﻿# Testing Restructure Plan
 
+## 2026-10-06: Plot Trace automatic surface identity regression
+
+### Follow-up: clear-and-switch compatibility recovery
+
+- Added real-menu cases in `tests/integration/app/test_plot_display_menu.py`
+  exercising both Cancel and Clear and switch, button defaults, diagnostic
+  details, checkmarks, retained plots and discarded canonical samples.
+- Added atomic reset success/failure cases to
+  `tests/unit/ui/test_plot_display_replacement.py`; extended busy-engine coverage
+  to reset requests. No tests moved or removed. All widgets use managed ownership.
+- Focused menu/replacement/host/surface/command/axis-removal validation passed
+  **76 tests** with offscreen PyQt5 and Windows fonts, using
+  `--basetemp=.pytest-runtime/display-reset-final`. Ruff check/format and normal
+  `git diff --check` pass; mypy passes for the display host. Alternative Qt bindings
+  and live instrument acquisition are outside this local validation.
+
+### Follow-up: automatic re-gridding of surface rows
+
+- Added `tests/unit/core/test_plotting_regrid.py` for duplicate mean/first/last
+  reduction, round-off repeats, interpolation of Z/value, bounds policies,
+  nearest valid boundary/error pairing, NaN gaps, independent-error propagation,
+  single-coordinate rows, invalid coordinates and strict-mode behaviour.
+- Extended surface-command integration coverage for full 501-point triangle
+  traces in all three surface forms, exact reuse of mismatched grids after
+  renderer replay, clear/new-run resets, strict validation and settings persistence.
+  The original manual branch-selection case is replaced by automatic preparation
+  coverage and an explicit strict-mode rejection case.
+- Final helper/command/core/native-adapter/canvas plus legacy XY and service
+  verification: **266 passed** on offscreen PyQt5 with Windows fonts, using
+  `--basetemp=.pytest-runtime/regrid-final`. Ruff check/format and normal
+  `git diff --check` pass; mypy passes on helper/service. No physical magnet,
+  interactive GPU or alternative Qt-binding validation is claimed.
+
+- Added five regression cases to
+  `tests/integration/sequence/test_plot_surface_commands.py`: empty, missing and
+  whitespace saved IDs produce unique persistent identities shared across worker
+  loop slices; clearing a loaded ID stays stable across executions; the reported
+  501-point triangle rejects repeated current cells and its descending branch
+  retains two complete rows. Extended invalid-request coverage to an explicit
+  expression returning whitespace. No tests moved or removed.
+- Validation uses the project Conda environment, offscreen Qt and Windows fonts.
+  Final command/core/native-adapter checks passed 60 cases on Python 3.14.7 /
+  PyQt5 5.15.11 / Qt 5.15.15. Ruff check and format checks passed for the three
+  changed Python files; normal repository `git diff --check` passed.
+  This does not validate physical magnet hardware or the hosted Qt matrix.
+
+## 2026-10-02: Native Cartesian XYZ and XY intensity displays
+
+### Follow-up: discoverable Cartesian axis removal
+
+- Added a plot context-menu `Remove Axis` submenu with individual extra-axis
+  actions and `Remove All Extra Axes`. Reuses existing removal semantics:
+  default bottom/left axes stay, trace samples are retained/reassigned and
+  anchored markers are removed. Existing Configure Axes removal remains.
+- Added two managed-widget cases in
+  `tests/unit/ui/widgets/test_plot_axis_removal.py` covering reassignment,
+  marker cleanup, public/exported axis descriptions and removal enabling an
+  empty Cartesian-to-intensity-to-XYZ switch. Updated the existing context-menu
+  assertion; no tests moved or removed. XY data must still be cleared before
+  changing to a renderer that cannot accept its binding.
+- Validation: axis-removal, plot-widget, mouse-axis and display-replacement
+  modules passed **127 tests** in the project Conda environment with offscreen
+  PyQt5 and Windows fonts. Ruff check/format and `git diff --check` passed.
+
+- Added 19 adapter/geometry cases in `tests/unit/ui/test_surface_canvas.py`,
+  10 real command/replacement/configuration cases in
+  `tests/integration/app/test_surface_displays.py` and one optional native GPU
+  case in `tests/integration/app/test_surface_display_opengl.py`. Added one
+  registry duplicate-entry regression and extended bundled-factory discovery
+  expectations. No existing tests were moved or removed. Owned widgets and all
+  configuration pages use the shared managed fixtures.
+- Renderers negotiate surface version one and retain exact cells incrementally.
+  A 1001-cell test proves no snapshot/repaint occurs per incoming point. Native
+  geometry tests prove missing/NaN rectangles do not acquire triangles; an
+  intensity pixel test distinguishes measured zero, missing cells and NaNs.
+  Real worker trace/serpentine point loops, compatible replay, rejected switches,
+  cached configuration refresh, colour limits and saved camera/zoom are covered.
+- Full offscreen verbose runs: **3910 passed, two skipped** (72.43 and 72.86 s):
+  `pytest -vv --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/surface-displays-final`. Final log:
+  `.pytest-runtime/surface-displays-final.log`. One skip is the existing suite
+  skip; the native GPU test deliberately skips on Qt's offscreen platform.
+- Native Windows GPU framebuffer test passed twice, including after scene
+  cleanup changes: `QT_QPA_PLATFORM=windows pytest -q
+  tests/integration/app/test_surface_display_opengl.py`. A hidden native context
+  reported NVIDIA OpenGL 4.6.0; mesh, point and axis-line pixels were verified
+  without GL errors. GLTextItem's widget/QPainter path and interactive mouse
+  gestures are outside this hidden-framebuffer proof. Local binding is PyQt5
+  5.15.11 / Qt 5.15.15, Python 3.14.7, PyQtGraph 0.14.0 and PyOpenGL 3.1.10;
+  hosted PyQt6 validation remains outstanding.
+- Quiet full-suite invocations intermittently abort with a Qt access violation
+  while a plotting worker waits for completion. The affected integration prefix
+  passes separately (74 passed/one skip before the final settings cases), and
+  the crash also reproduces with all three new renderer test modules excluded
+  (`.pytest-runtime/surface-lifecycle-baseline.log`). The precise native cause
+  is unresolved; successful verbose runs do not establish a fix for quiet mode.
+  Adapter shutdown was made idempotent, callbacks use owned Qt slots, and the
+  widget property avoids a self-reference cycle. No global teardown or exception
+  suppression was added.
+- Focused adapter/native workflow/registry checks passed 38 cases before adding
+  two saved-factory preference cases. Ruff check/format, mypy on four display
+  modules and `git diff --check` pass. Fresh-interpreter discovery confirms no
+  eager renderer/OpenGL import. Editable metadata includes three display entry
+  points and PyOpenGL; project and all three Conda files plus the recipe agree.
+- User documentation and both design plans now describe delivered features,
+  linear-axis/uncertainty/marker limits and validation boundaries. Incremental
+  Sphinx rebuild passes with five existing import warnings; a clean build retains
+  the established 497-warning baseline. A wheel build succeeds; its three new
+  renderer modules, display entry points and PyOpenGL requirement were verified.
+  The only added runtime dependency is
+  PyOpenGL, chosen by the user; temporary Matplotlib packages were removed.
+
+## 2026-10-02: Plot command XYZ/intensity bindings and live display controls
+
+- Added 19 surface-contract cases in `tests/unit/core/test_plotting_surfaces.py`
+  and 25 worker/configuration/replay workflows in
+  `tests/integration/sequence/test_plot_surface_commands.py`. No existing tests
+  moved or removed. Cached plugin tabs use `managed_plugin_config_tabs`, and
+  test displays/services use scoped managed Qt ownership.
+- Verified explicit fixed-Y trace slices, multiple XYZ/intensity point sources,
+  serpentine cell mapping, duplicate/reacquisition policy, run reset, metadata,
+  immutable source capture, missing values, incremental storage, saved generated
+  actions, headless execution, transactional replay/refusal and failure rollback.
+  Configuration checks cover capability/axis changes, preserving unsupported
+  saved forms, source-catalogue refresh and ignoring data-only notifications.
+- Full suite: **3,880 passed, one skipped**, 3,881 collected, 95.11 seconds:
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-command-extensions-full`. Log:
+  `.pytest-runtime/plot-command-extensions-full.log`. Final focused regression
+  after documentation/import cleanup: **212 passed**.
+- Ruff check/format, focused mypy (seven source files), `git diff --check` and
+  15 contract doctests passed. Sphinx built with its existing 497 warnings.
+  Rendered/inspected both XYZ pages at 540px width and corrected narrow nested
+  editors before delivery. Used project Conda, Python 3.14.7 and offscreen
+  PyQt5 5.15.11 with Windows fonts. No cross-binding CI/GPU claims.
+- Stages 1/2 handover and extension semantics:
+  `notes/2026-10-01-plot-command-extension-plan.md`. Production intensity/3D
+  factories remain stages 3/4 and must explicitly negotiate surface support.
+
 ## 2026-10-01: Plot display author guide and final handover Stage 5
 
 - Added two cases in `tests/integration/app/test_plot_display_example.py`.

@@ -51,6 +51,7 @@ class PlotDisplayHost(QWidget):
             self.registry.discover()
         self._diagnostics = list(self.registry.diagnostics)
         self._closed = False
+        self.switch_requires_reset = False
         self._settings = settings
         self._settings_cache: dict[str, dict] = {}
         self._hidden_styles: dict[str, dict] = {}
@@ -253,13 +254,19 @@ class PlotDisplayHost(QWidget):
             container.hide()
             container.deleteLater()
 
-    def switch_display(self, factory_id: str, *, force=False) -> bool:
-        """Validate and hydrate an idle candidate before committing; retain old on failure."""
+    def switch_display(self, factory_id: str, *, force=False, reset=False) -> bool:
+        """Switch while idle, optionally discarding plotted state at successful commit.
+
+        A reset uses the candidate's default axes and settings. Failures retain
+        the current display/data; switch_requires_reset identifies replay refusals.
+        """
+        self.switch_requires_reset = False
         if not self.service.is_gui_thread():
             raise RuntimeError("Display replacement must run on the GUI thread.")
         if factory_id == self.factory_id and not force:
             return True
         candidate = container = None
+        replaying = False
         try:
             with self.service.replacement_guard():
                 if not self.idle_check():
@@ -270,13 +277,22 @@ class PlotDisplayHost(QWidget):
                 container.resize(self._container.size())
                 container.layout().activate()
                 candidate.widget.resize(self._display.widget.size())
-                state, hidden = self._prepare_state(state, candidate, factory_id)
+                replaying = True
+                if reset:
+                    state = candidate.export_state()
+                    if not isinstance(state, DisplayState):
+                        raise TypeError("Invalid display state export.")
+                    state = replace(state, series=(), markers=())
+                    hidden = {}
+                else:
+                    state, hidden = self._prepare_state(state, candidate, factory_id)
                 importer = getattr(candidate, "import_state", None)
                 if not callable(importer) or not callable(getattr(candidate, "export_state", None)):
                     raise UnsupportedDisplayOperation(
                         "The selected display cannot import replay state."
                     )
                 importer(state)
+                replaying = False
                 # Re-read descriptions before commit: malformed hydrated state is a failure.
                 axes, series = candidate.descriptions()
                 from stoner_measurement.core.plotting.contracts import (
@@ -321,6 +337,9 @@ class PlotDisplayHost(QWidget):
                 self.display_changed.emit(factory_id)
             return True
         except Exception as exc:
+            self.switch_requires_reset = replaying and isinstance(
+                exc, (UnsupportedDisplayOperation, ValueError)
+            )
             self._diagnostics.append(f"Could not switch to {factory_id!r}: {exc}")
             logger.warning(self._diagnostics[-1])
             return False

@@ -202,6 +202,7 @@ class TestPlotWidget:
         actions = {action.text(): action for action in menu.actions()}
         assert set(actions) == {
             "Configure Axes…",
+            "Remove Axis",
             "Add Data Marker",
             "Remove All Data Markers",
         }

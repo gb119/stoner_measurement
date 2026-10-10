@@ -137,7 +137,7 @@ class ChannelMetadata:
                 _nonempty(reference, "Source reference")
 
 
-def _nonempty(value: str, name: str) -> None:
+def _nonempty(value: object, name: str) -> None:
     """Require a nonblank identifier without silently rewriting it."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a nonblank string.")
@@ -303,6 +303,60 @@ class PlotOperation(StrEnum):
 
 
 @dataclass(frozen=True)
+class SurfaceBinding:
+    """Versioned, explicitly negotiated rectilinear surface assembly.
+
+    Args:
+        surface_id (str): Stable surface identity, equal to the series ID.
+        acquisition_id (str): Run identity; clear or explicitly change to reset.
+        kind (str): Fixed-Y slice, individual cells, or replay snapshot.
+        slice_id (str | None): Stable identity of a complete trace slice.
+        duplicates (str): Reject repeats, or explicitly replace slices/cells.
+        reset_on_change (bool): Discard the old grid on acquisition-ID change.
+        slices (tuple): Snapshot-only slice ID/Y pairs for later reacquisition.
+        version (int): Extension version, negotiated through surface_versions.
+
+    Notes:
+        X/Y keys are exact and finite. Missing cells stay absent; measured NaNs
+        remain missing values. Visibility and removal address the whole surface.
+        Titles never determine grouping. Slice visibility is outside version one.
+    """
+
+    surface_id: str
+    acquisition_id: str = "default"
+    kind: Literal["slice", "cells", "snapshot"] = "cells"
+    slice_id: str | None = None
+    duplicates: Literal["reject", "replace"] = "reject"
+    reset_on_change: bool = False
+    slices: tuple[tuple[str, float], ...] = ()
+    version: int = 1
+
+    def __post_init__(self) -> None:
+        _nonempty(self.surface_id, "Surface ID")
+        _nonempty(self.acquisition_id, "Acquisition ID")
+        if self.version != 1 or self.kind not in ("slice", "cells", "snapshot"):
+            raise ValueError("Unsupported surface binding version or kind.")
+        if self.duplicates not in ("reject", "replace"):
+            raise ValueError("Unknown surface duplicate policy.")
+        if self.kind == "slice":
+            _nonempty(self.slice_id, "Slice ID")
+        elif self.slice_id is not None:
+            raise ValueError("Only trace slices have a slice ID.")
+        slices = tuple((name, float(y)) for name, y in self.slices)
+        if slices and self.kind != "snapshot":
+            raise ValueError("Slice catalogue belongs only to replay snapshots.")
+        if len({name for name, _ in slices}) != len(slices) or len({y for _, y in slices}) != len(
+            slices
+        ):
+            raise ValueError("Duplicate replay slice identities or coordinates.")
+        for name, y in slices:
+            _nonempty(name, "Slice ID")
+            if not isfinite(y):
+                raise ValueError("Slice coordinates must be finite.")
+        object.__setattr__(self, "slices", slices)
+
+
+@dataclass(frozen=True)
 class SeriesUpdate:
     """Submit data and presentation settings as one acknowledged operation.
 
@@ -318,6 +372,7 @@ class SeriesUpdate:
         style (Mapping[str, str | float]): Portable Cartesian style keys:
             colour, line_style, point_style, line_width and point_size. Values
             are validated by the supporting adapter, not a rendering library.
+        surface (SurfaceBinding | None): Optional negotiated rectilinear assembly.
 
     Notes:
         An append must preserve channel schema, binding and coordinate semantics;
@@ -334,11 +389,19 @@ class SeriesUpdate:
     title: str | None = None
     axes: Mapping[CoordinateSlot, str] = field(default_factory=dict)
     style: Mapping[str, str | float] = field(default_factory=dict)
+    surface: SurfaceBinding | None = None
     operation: ClassVar[PlotOperation] = PlotOperation.UPDATE_SERIES
 
     def __post_init__(self) -> None:
         _nonempty(self.series_id, "Series ID")
         self.binding.validate(self.data, self.coordinates)
+        if self.surface is not None:
+            if self.surface.surface_id != self.series_id:
+                raise ValueError("Surface and series identities must match.")
+            if self.binding.z is None and self.binding.value is None:
+                raise ValueError("Surfaces require an explicit height or value channel.")
+            if self.mode != UpdateMode.REPLACE and self.surface.kind == "snapshot":
+                raise ValueError("A surface replay snapshot must replace its series.")
         object.__setattr__(self, "mode", UpdateMode(self.mode))
         object.__setattr__(self, "presentation", Presentation(self.presentation))
         if self.presentation == Presentation.INTENSITY and self.binding.value is None:
@@ -626,6 +689,9 @@ class PlotCapabilities:
         uncertainties (bool): Whether bound-coordinate error bars are supported.
         named_axes (bool): Whether requests may name axes beyond bottom/left.
         value_channel (bool): Whether independent intensity/colour is supported.
+        surface_versions (frozenset[int]): Opt-in rectilinear assembly versions.
+            Empty by default; accepting XYZ alone does not imply grid assembly.
+        value_uncertainties (bool): Support independent intensity/colour errors.
 
     Notes:
         Acceptance here establishes structural support, not adapter-specific
@@ -638,8 +704,14 @@ class PlotCapabilities:
     uncertainties: bool = False
     named_axes: bool = False
     value_channel: bool = False
+    surface_versions: frozenset[int] = frozenset()
+    value_uncertainties: bool = False
 
     def __post_init__(self) -> None:
+        versions = frozenset(self.surface_versions)
+        if versions.difference({1}):
+            raise ValueError("Unknown surface assembly version.")
+        object.__setattr__(self, "surface_versions", versions)
         layouts = frozenset(
             (CoordinateSystem(system), dimensions) for system, dimensions in self.layouts
         )
@@ -689,6 +761,8 @@ class PlotCapabilities:
             ):
                 reasons.append("Named axes are unsupported.")
         if isinstance(payload, SeriesUpdate):
+            if payload.surface is not None and payload.surface.version not in self.surface_versions:
+                reasons.append("Rectilinear surface assembly is unsupported.")
             if payload.binding.value is not None and not self.value_channel:
                 reasons.append("Independent value channels are unsupported.")
             if payload.presentation not in self.presentations:
@@ -696,6 +770,8 @@ class PlotCapabilities:
             bound = (payload.binding.x, payload.binding.y, payload.binding.z)
             if not self.uncertainties and any(key in payload.data.uncertainties for key in bound):
                 reasons.append("Coordinate uncertainties are unsupported.")
+            if payload.binding.value in payload.data.uncertainties and not self.value_uncertainties:
+                reasons.append("Independent value uncertainties are unsupported.")
         if isinstance(payload, (ConfigureAxes, RemoveAxes)) and not self.named_axes:
             reasons.append("Axis configuration is unsupported.")
         return tuple(reasons)

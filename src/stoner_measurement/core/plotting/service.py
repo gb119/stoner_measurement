@@ -21,6 +21,7 @@ from stoner_measurement.core.plotting.contracts import (
     SeriesUpdate,
     UpdateMode,
 )
+from stoner_measurement.core.plotting.surfaces import SurfaceGrid, prepare_surface
 from stoner_measurement.qt_compat import pyqtSignal, pyqtSlot
 
 
@@ -110,6 +111,7 @@ class PlotService(QObject):
         self._generation = 1 if bridge is not None else 0
         self._series: dict[str, SeriesUpdate] = {}
         self._chunks: dict[str, list[PlotData]] = {}
+        self._surfaces: dict[str, SurfaceGrid] = {}
         self._axes = ()
         self._descriptions = ()
         self._wake.connect(self._drain, Qt.ConnectionType.QueuedConnection)
@@ -227,6 +229,7 @@ class PlotService(QObject):
                 if legacy.name == "clear_all":
                     self._series.clear()
                     self._chunks.clear()
+                    self._surfaces.clear()
                 elif legacy.name == "remove_trace":
                     self._series.pop(legacy.args[0], None)
                     self._chunks.pop(legacy.args[0], None)
@@ -244,8 +247,17 @@ class PlotService(QObject):
         payload = request.payload
         with self._lock:
             existing = self._series.get(getattr(payload, "series_id", ""))
+        surface_transaction = None
+        if isinstance(payload, SeriesUpdate):
+            if existing is not None and (payload.surface is None) != (existing.surface is None):
+                raise ValueError("Series ID already belongs to a different surface/XY binding.")
+            if payload.surface is not None:
+                surface_transaction = prepare_surface(
+                    payload, self._surfaces.get(payload.series_id)
+                )
         if (
             isinstance(payload, SeriesUpdate)
+            and payload.surface is None
             and payload.mode == UpdateMode.APPEND
             and existing is not None
         ):
@@ -264,16 +276,22 @@ class PlotService(QObject):
         with self._lock:
             if isinstance(payload, SeriesUpdate):
                 self._series[payload.series_id] = payload
-                if payload.mode == UpdateMode.APPEND and existing is not None:
+                if surface_transaction is not None:
+                    grid, keys = surface_transaction
+                    grid.commit(payload, keys)
+                    self._surfaces[payload.series_id] = grid
+                elif payload.mode == UpdateMode.APPEND and existing is not None:
                     self._chunks[payload.series_id].append(payload.data)
                 else:
                     self._chunks[payload.series_id] = [payload.data]
             elif isinstance(payload, RemoveSeries):
                 self._series.pop(payload.series_id, None)
                 self._chunks.pop(payload.series_id, None)
+                self._surfaces.pop(payload.series_id, None)
             elif isinstance(payload, ClearPlot):
                 self._series.clear()
                 self._chunks.clear()
+                self._surfaces.clear()
         self._refresh_descriptions()
         self._finish(request, ResultStatus.APPLIED, value=value)
 
@@ -343,11 +361,34 @@ class PlotService(QObject):
             self._bridge.changed.disconnect(self._refresh_descriptions)
             self._bridge = None
 
+    def surface_x_grid(self, series_id: str, acquisition_id: str) -> tuple[float, ...] | None:
+        """Read the current run's trace X grid without assembling surface samples.
+
+        Args:
+            series_id (str): Surface identity.
+            acquisition_id (str): Run whose grid should be reused.
+
+        Returns:
+            (tuple[float, ...] | None): Sorted coordinates, or None for a new run.
+        """
+        with self._lock:
+            grid = self._surfaces.get(series_id)
+            if (
+                grid is None
+                or grid.x_grid is None
+                or grid.template.surface is None
+                or grid.template.surface.acquisition_id != acquisition_id
+            ):
+                return None
+            return tuple(sorted(grid.x_grid))
+
     def data_snapshot(self, series_id: str) -> PlotData:
         """Assemble plotted chunks only when explicitly requested, not on append."""
         import numpy as np
 
         with self._lock:
+            if series_id in self._surfaces:
+                return self._surfaces[series_id].snapshot().data
             chunks = tuple(self._chunks[series_id])
         channels = {
             key: np.concatenate([chunk.channels[key] for chunk in chunks])
@@ -388,12 +429,18 @@ class PlotService(QObject):
             update = entry.update
             source = self._series.get(update.series_id)
             if source is not None:
+                surface = self._surfaces.get(update.series_id)
+                snapshot = surface.snapshot() if surface is not None else None
                 update = replace(
                     update,
-                    data=self.data_snapshot(update.series_id),
+                    data=snapshot.data
+                    if snapshot is not None
+                    else self.data_snapshot(update.series_id),
                     binding=source.binding,
                     coordinates=source.coordinates,
                     presentation=source.presentation,
+                    surface=snapshot.surface if snapshot is not None else None,
+                    mode=UpdateMode.REPLACE,
                 )
             series.append(SeriesState(update, entry.visible))
         return replace(renderer_state, series=tuple(series))
@@ -403,6 +450,13 @@ class PlotService(QObject):
         if not self.is_gui_thread() or not self._switching:
             raise RuntimeError("Replacement must hold the GUI dispatcher reservation.")
         with self._lock:
+            surfaces = {}
+            for entry in state.series:
+                if entry.update.surface is not None:
+                    grid, keys = prepare_surface(entry.update, None)
+                    grid.commit(entry.update, keys)
+                    surfaces[entry.update.series_id] = grid
+            self._surfaces = surfaces
             self._series = {entry.update.series_id: entry.update for entry in state.series}
             self._chunks = {key: [update.data] for key, update in self._series.items()}
             self._generation += 1

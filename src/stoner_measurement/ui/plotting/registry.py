@@ -6,6 +6,10 @@ import logging
 from stoner_measurement.core.plotting.contracts import PlotCapabilities
 from stoner_measurement.ui.plotting.cartesian import CartesianDisplayFactory
 from stoner_measurement.ui.plotting.interfaces import DISPLAY_CONTRACT_VERSION, PlotDisplayFactory
+from stoner_measurement.ui.plotting.surface_displays import (
+    Cartesian3DDisplayFactory,
+    IntensityDisplayFactory,
+)
 
 logger = logging.getLogger(__name__)
 DISPLAY_ENTRY_POINT_GROUP = "stoner_measurement.plot_displays"
@@ -24,7 +28,14 @@ class PlotDisplayRegistry:
         self._install_bundled()
 
     def _install_bundled(self) -> None:
-        self._factories = {"cartesian": CartesianDisplayFactory()}
+        self._factories = {
+            factory.factory_id: factory
+            for factory in (
+                CartesianDisplayFactory(),
+                Cartesian3DDisplayFactory(),
+                IntensityDisplayFactory(),
+            )
+        }
 
     @property
     def factories(self) -> dict[str, PlotDisplayFactory]:
@@ -66,7 +77,11 @@ class PlotDisplayRegistry:
         for entry in sorted(entries, key=lambda ep: (ep.name, ep.value)):
             try:
                 factory_class = entry.load()
-                if factory_class is CartesianDisplayFactory and entry.name == "cartesian":
+                if (
+                    factory_class
+                    in (CartesianDisplayFactory, Cartesian3DDisplayFactory, IntensityDisplayFactory)
+                    and entry.name == factory_class.factory_id
+                ):
                     continue  # Source fallback and installed metadata identify one factory.
                 factory = factory_class()
                 if factory.factory_id != entry.name:

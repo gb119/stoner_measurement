@@ -26,10 +26,63 @@ can be imported there; unavailable dependencies then produce an isolated
 creation failure instead of breaking other displays.
 
 Install your package into the application's Python environment and restart the
-application to discover it. Select it through **View → Plot display**. Cartesian
-traces remain the only bundled production renderer. A missing or broken saved
+application to discover it. Select it through **View → Plot display**. Bundled
+choices are Cartesian traces, Cartesian XYZ and XY intensity. A missing or broken saved
 selection falls back to Cartesian. Installation adds the menu choice without
 editing ``MainWindow``, ``SequenceEngine`` or plotting commands.
+
+Bundled XYZ and intensity displays
+----------------------------------
+
+**Cartesian XYZ** uses PyQtGraph's native OpenGL view. It accepts Cartesian
+three-coordinate lines, points and rectilinear surfaces. Drag to rotate,
+Ctrl-drag to pan, and use the wheel to zoom. **Reset view** restores the default
+camera. Coordinates are normalized for rendering so different physical units
+remain legible; tick labels and exported data retain the original quantities.
+OpenGL 2.1 or newer and PyOpenGL are required. PyOpenGL is declared in the
+project dependencies, development/CI environments and Conda recipe.
+
+**XY intensity** displays exact acquired X/Y cells with Z bound explicitly as
+the value channel. Cell edges lie halfway between neighbouring coordinates,
+including nonuniform grids. A single coordinate initially occupies a unit-width
+cell until neighbours arrive. Missing cells and non-finite measurements remain
+blank. Hover over an acquired cell to read its original coordinates and value.
+The standard PyQtGraph menu supplies pan, zoom and image export.
+
+Both displays accept version-one ``SurfaceBinding`` slices/cells and replay
+snapshots. The 3D renderer joins only complete neighbouring rectangles; missing
+corners leave holes, and acquired points remain visible during partial scans.
+No interpolation or implicit conversion between XYZ and intensity bindings is
+performed. If a display switch encounters incompatible plot state, choose
+**Clear and switch** to open a fresh display, or **Cancel** to keep the current
+display and plots. Cancel is the default and Escape action. Clearing resets
+plotted series, markers, axes and display settings; acquired measurement data is
+retained. The old plots are discarded only after the replacement initialises
+successfully. Busy measurements still prevent switching. Compatible idle replay
+preserves cells, slice identities, visibility and titles.
+
+To reduce the standard Cartesian display to one X/Y axis pair before switching,
+right-click the plot and choose **Remove Axis → Remove All Extra Axes**. The
+submenu also lets you remove a single extra axis. Traces move to the built-in
+bottom/left axes and keep their samples; markers anchored to removed axes are
+removed. Alternatively use the **Remove** buttons in **Configure Axes…** and
+press **OK**. The built-in bottom/left pair is retained. Removing axes prepares
+the axis layout; an XYZ switch also requires clearing any existing XY traces.
+
+Use **Colour scale** to select a bundled palette. Automatic colour limits are
+calculated independently for each visible series, with labelled colour bars.
+Turn off **Auto colour range** to set shared finite minimum/maximum limits.
+Palette, colour limits and camera or XY zoom settings are saved per factory.
+Axes support one linear axis per coordinate slot, physical labels, limits and
+grids. Coordinate/value uncertainties, markers and nonlinear axes are rejected
+explicitly. Intensity does not accept portable curve styles; the host retains
+them during compatible idle replay.
+
+Plot Trace and Plot Points configuration pages query the active factory's
+capabilities. Selecting XYZ enables XYZ and XYZ + value forms; selecting intensity
+enables XY intensity. Existing cached pages update immediately on replacement.
+Saved forms which the new display cannot accept remain visibly unsupported
+until another form is selected; their expressions are preserved.
 
 A complete independent example
 ------------------------------
@@ -106,33 +159,40 @@ complete proposed request; dimensions alone do not establish support. The GUI
 host's ``factory_id`` identifies the selected renderer, but producer behaviour
 should depend on capabilities rather than particular renderer names.
 
-The current Plot Points and Plot Trace commands still construct two-coordinate
-Cartesian requests. They already use public axis descriptions and capabilities
-for axis setup. Future three-coordinate or non-Cartesian command controls must
-explicitly select source channels for ``x``, ``y``, ``z`` and optional ``value``,
-plus the coordinate descriptor. A three-dimensional display need not accept
-two-dimensional data; declare both layouts when it does. Do not infer Z from an
-auxiliary acquisition column or reinterpret XY as radius/angle automatically.
+Plot Points and Plot Trace default to Cartesian XY, preserving old sequences.
+Their **Plot form** controls additionally offer **XYZ**, **XY intensity**, and
+**XYZ + value** when the complete layout, presentation and optional assembly
+extension are supported. They explicitly select ``x``, ``y``, ``z`` and optional
+``value`` sources and coordinate conventions. No auxiliary acquisition role
+implies Z, and display selection never converts XY into angular coordinates.
 
-For an additional three-coordinate command form, Plot Trace should describe
-``Z(X, Y=fixed)``: an X array, a fixed Y value repeated for each row, and a Z
-array. Plot Points should append ``(X, Y, Z)`` samples. Keep existing Cartesian
-XY forms unchanged: ``Y(X)`` traces and ``(X, Y)`` points. Select the additional
-form explicitly for a capable display and retain it in command configuration;
-do not change a saved sequence's meaning when switching renderers. These command
-extensions and their binding controls are subsequent work, not part of the
-current Cartesian extraction.
+Plot Trace captures ``Z(X, Y=fixed)`` slices: X/Z arrays and a scalar Y evaluated
+once on each execution. Plot Points captures scalar X/Y and multiple measured
+Z entries inside nested loops. Each measured channel has its own stable surface
+identity, independent of its label. Both commands persist the additional fields
+and evaluate expressions when the generated action executes.
 
-An intended surface acquisition uses one loop to acquire complete traces at
-successive Y values: evaluate the loop-variable expression at each execution
-and repeat that value alongside the X and Z arrays. Each trace needs a distinct
-slice identity within a shared surface identity so that acquiring the next row
-does not replace the preceding row. Plot Points can instead run inside two
-nested loops and append X, Y and measured Z samples to the same surface.
-The future surface binding UI and data model must define those identities and
-the grid/topology policy, including repeated coordinates, missing cells and
-whether reacquiring a slice replaces it. The current contract can carry the
-coordinate samples, but does not yet define surface assembly or interpolation.
+To accept these forms, advertise ``surface_versions=frozenset({1})`` alongside
+the layouts, operations and presentations you support. Trace XYZ uses
+``Presentation.SURFACE``; point XYZ uses ``Presentation.POINTS``. XY intensity
+requires a two-coordinate layout, ``value_channel=True`` and
+``Presentation.INTENSITY``. XYZ + value requires both three coordinates and an
+independent value channel. A three-dimensional display need not accept XY;
+declare both layouts if it does. The bundled Cartesian and diagnostic example
+factories do not opt into surface assembly.
+
+Version-one ``SurfaceBinding`` defines exact rectilinear keys, whole-slice
+identity/replacement, duplicate rejection or explicit replacement, acquisition
+identity/reset and replay snapshots with slice catalogues. Missing cells stay
+absent, and non-finite grid coordinates are rejected before renderer mutation.
+Adapters must implement these policies and hydrate complete snapshots before
+committing replacement. See :doc:`plotting_contracts` for the full extension.
+Production intensity/3D rendering and interpolation remain separate work.
+
+Cached command pages listen to ``PlotService.descriptions_changed`` and refresh
+forms and axis selectors after replacement or axis edits. A saved unsupported
+form stays selected and visibly marked; bindings survive the switch and execution
+revalidates the complete request. Data-only updates do not rebuild selectors.
 
 Replay and preferences
 ----------------------
@@ -150,8 +210,8 @@ generation once and closes the old adapter before deferred widget deletion.
 Do not project or relabel canonical data implicitly. Keep generalised ``x``,
 ``y`` and ``z`` bindings and explicit coordinate descriptors; polar, cylindrical
 and spherical meanings and angular conventions are specified in the contract.
-An intensity channel binds to ``value`` independently. Future map and surface
-plugins must define topology and missing/repeated-sample policies explicitly.
+An intensity channel binds to ``value`` independently. Surface adapters must
+implement the explicitly negotiated topology and missing/repeated-cell policies.
 
 Adapters may declare ``supported_styles`` as a set of keys; the example declares
 an empty set. During replacement the host retains unsupported style keys for

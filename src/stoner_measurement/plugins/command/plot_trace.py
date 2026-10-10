@@ -24,7 +24,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt  # type: ignore[attr-defined]
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -47,6 +47,20 @@ from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_Y,
 )
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.plugins.command.plot_forms import (
+    PlotContextBinding as _PlotContextBinding,
+)
+from stoner_measurement.plugins.command.plot_forms import (
+    PlotFormPanel as _PlotFormPanel,
+)
+from stoner_measurement.plugins.command.plot_forms import (
+    axis_names,
+    execute_trace_form,
+    initialise_forms,
+    refresh_axis_combo,
+    restore_forms,
+    serialise_forms,
+)
 from stoner_measurement.plugins.trace_catalog_ui import (
     TraceChannelComboBox,
     bind_trace_catalog_updates,
@@ -106,6 +120,23 @@ class PlotTraceCommand(CommandPlugin):
     has finished collecting a sweep, but it can also be used to plot derived
     or transformed traces.
 
+    **Plot form** defaults to **XY**, preserving existing saved sequences.
+    A capable display also offers **XYZ**, **XY intensity**, and **XYZ + value**.
+    These forms use separate X and measured-Z channel selectors or expressions,
+    plus a **Fixed Y** expression evaluated once for each execution. Successive
+    traces form slices of one rectilinear surface. The optional independent
+    value controls colour without changing the meaning of geometric Z.
+
+    Surface and acquisition identities are string expressions, independent of
+    the displayed title. The slice identity defaults to the exact fixed-Y value.
+    Repeated cells/slices are rejected unless **replace** is selected. Clear
+    the plot for a new run, or change the acquisition identity and explicitly
+    enable reset. Slices retain the initial X grid; unacquired cells remain gaps.
+    Additional controls specify fixed-Y metadata, uncertainties and explicit
+    angular coordinate conventions. Existing XY transpose/axis controls apply
+    only to XY. Available forms and axes refresh when the display changes;
+    an unsupported saved form remains visible with its bindings preserved.
+
     In the configuration panel you can use two modes:
 
     * **Simple mode**: select a trace from the trace catalogue. Optionally
@@ -114,6 +145,13 @@ class PlotTraceCommand(CommandPlugin):
     * **Advanced mode**: provide separate expressions for x data, y data, and
       the plot title. This is useful when you want to combine data from
       different traces or channels.
+
+    In surface forms, **Surface X grid** defaults to averaging repeated X and
+    interpolating later rows onto the first row's grid. First/last-sample modes
+    select repeated samples in acquisition order; strict mode requires unique,
+    matching X. **Outside X range** defaults to the nearest valid boundary
+    value, with a leave-gaps option. These controls prepare plotting samples;
+    the original acquired trace remains intact. Averaging combines sweep branches.
 
     If the selected trace includes metadata for axis names, units, or error
     bars, this information is used automatically in simple mode. Optional
@@ -131,6 +169,41 @@ class PlotTraceCommand(CommandPlugin):
     management in the application code.
 
     Attributes:
+        plot_form (str):
+            xy, xyz, xy_intensity or xyz_value; defaults to xy.
+        new_x_expr, z_expr (str):
+            Separate runtime array expressions for additional forms. Catalogue
+            selections store their expressions; auxiliary roles do not imply Z.
+        fixed_y_expr (str):
+            Runtime scalar second coordinate, broadcast to the X/Z row count.
+        fixed_y_label, fixed_y_unit (str):
+            Physical label/unit for the second coordinate when not derivable.
+        value_expr (str):
+            Independent array expression used only by xyz_value.
+        regrid_policy (str):
+            Surface rows sort/merge X and interpolate onto the first row's grid.
+            mean (default) averages repeated X; first/last selects samples in
+            acquisition order. strict requires unique, exactly matching X.
+            Round-off-equivalent X values are grouped. Acquired data is unchanged.
+        regrid_bounds (str):
+            nearest (default) holds the closest valid boundary value outside the
+            measured X range; missing leaves gaps. Internal NaN gaps remain.
+        surface_id_expr, acquisition_id_expr (str):
+            Runtime string identities. New instances have a unique surface ID;
+            an empty surface expression generates and saves a unique ID on load
+            or execution, shared by subsequent slices from this command.
+            Acquisition defaults to 'default'. Titles never determine grouping.
+        slice_id_expr (str):
+            Optional runtime string identity; empty uses the exact fixed Y.
+        duplicate_policy (str):
+            reject (default) or replace complete repeated slices.
+        reset_on_change (bool):
+            Permit changed acquisition identities to reset a surface; default False.
+        coordinate_settings (dict):
+            CoordinateDescriptor fields: system, angular_unit, wrapping,
+            angular_origin, clockwise and explicit spherical_convention.
+        new_x_error_expr, z_error_expr (str):
+            Optional uncertainty-array expressions for the selected source slots.
         trace_key (str):
             Key in the ``_traces`` catalogue for simple mode.  Format is
             ``"{instance_name}:{channel_name}"``.  Defaults to ``""``.
@@ -227,9 +300,19 @@ class PlotTraceCommand(CommandPlugin):
 
             plot_trace.trace_key = "dummy:Dummy"
             plot_trace.transpose = False
+
+        For an installed display advertising surface assembly::
+
+            plot_trace.plot_form = "xyz"
+            plot_trace.new_x_expr = "field_trace.x"
+            plot_trace.z_expr = "field_trace.y"
+            plot_trace.fixed_y_expr = "temperature.current_value"
+            plot_trace.surface_id_expr = "'field-temperature'"
     """
 
-    #: Signal emitted by execute() in advanced mode — (title, x_array, y_array).
+    #: Signal emitted when the owning engine/client endpoint changes.
+    plot_context_changed = pyqtSignal()
+    #: XY data signal; additional forms submit complete portable requests.
     plot_trace = pyqtSignal(str, object, object)
     #: Signal emitted by execute() in simple mode — (title, x_array, y_array, x_err, y_err).
     plot_trace_with_errors = pyqtSignal(str, object, object, object, object)
@@ -252,6 +335,7 @@ class PlotTraceCommand(CommandPlugin):
         # Backing store for the sequence_engine property that overrides the
         # class-level attribute from BasePlugin.
         self._sequence_engine_ref: SequenceEngine | None = None
+        initialise_forms(self)
         self.trace_key: str = ""
         self.column_key: str = ""
         self.transpose: bool = False
@@ -324,6 +408,7 @@ class PlotTraceCommand(CommandPlugin):
             if getattr(engine, "plot_client", None) is None:
                 self._set_plot_widget_connections(new_plot_widget, connect=True)
             self._ensure_configured_axes_exist(new_plot_widget)
+        self.plot_context_changed.emit()
 
     def _set_plot_widget_connections(self, plot_widget: Any, *, connect: bool) -> None:
         """Connect or disconnect every plot signal supported by *plot_widget*."""
@@ -411,6 +496,9 @@ class PlotTraceCommand(CommandPlugin):
             'My Plot'
             >>> engine.shutdown()
         """
+        if self.plot_form != "xy":
+            execute_trace_form(self)
+            return
         if self.advanced_mode:
             if not self.x_expr or not self.y_expr:
                 self.log.warning("PlotTrace: x_expr or y_expr is empty — skipping plot.")
@@ -758,12 +846,10 @@ class PlotTraceCommand(CommandPlugin):
             "Python expression evaluated at runtime in the engine namespace. "
             "Must produce a string.  Example: f'Run {run_index}'"
         )
-        x_axis_combo = self._build_plot_axis_combo(
-            widget, axes_pair[0], self.x_axis_name, "x_axis_name"
-        )
-        y_axis_combo = self._build_plot_axis_combo(
-            widget, axes_pair[1], self.y_axis_name, "y_axis_name"
-        )
+        x_axis_combo = self._build_plot_axis_combo(widget, axes_pair[0], self.x_axis_name)
+        y_axis_combo = self._build_plot_axis_combo(widget, axes_pair[1], self.y_axis_name)
+        x_axis_combo.setObjectName("plot_x_axis")
+        y_axis_combo.setObjectName("plot_y_axis")
         colour_button = self._build_colour_button(widget, self.colour)
         line_style_combo = self._build_options_combo(
             widget, ("",) + _LINE_STYLE_OPTIONS, self.line_style, "line_style"
@@ -827,6 +913,21 @@ class PlotTraceCommand(CommandPlugin):
                 updated_traces,
             ),
         )
+
+        def update_form():
+            advanced_check.toggled.emit(self.advanced_mode)
+            advanced_help.setVisible(self.plot_form == "xy")
+
+        panel = _PlotFormPanel(self, widget, update_form)
+        layout.insertRow(0, panel)
+
+        def refresh_axes():
+            names = axis_names(self.sequence_engine)
+            refresh_axis_combo(x_axis_combo, names[0], self.x_axis_name)
+            refresh_axis_combo(y_axis_combo, names[1], self.y_axis_name)
+
+        widget._plot_context_binding = _PlotContextBinding(self, widget, refresh_axes)
+        update_form()
         return widget
 
     def _build_colour_button(self, widget: QWidget, colour: str) -> QPushButton:
@@ -1111,15 +1212,9 @@ class PlotTraceCommand(CommandPlugin):
         widget: QWidget,
         axis_names: list[str],
         current_val: str,
-        fallback_attr: str,
     ) -> QComboBox:
         combo = QComboBox(widget)
-        combo.addItems(axis_names)
-        if current_val in axis_names:
-            combo.setCurrentText(current_val)
-        else:
-            setattr(self, fallback_attr, axis_names[0])
-            combo.setCurrentText(axis_names[0])
+        refresh_axis_combo(combo, axis_names, current_val)
         return combo
 
     def _wire_config_signals(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -1137,12 +1232,30 @@ class PlotTraceCommand(CommandPlugin):
         colour_button: QPushButton,
     ) -> None:
         def _update_enabled(advanced: bool) -> None:
-            trace_combo.setEnabled(not advanced)
-            column_combo.setEnabled(not advanced)
-            transpose_check.setEnabled(not advanced)
-            x_combo.setEnabled(advanced)
-            y_combo.setEnabled(advanced)
-            title_edit.setEnabled(advanced)
+            xy = self.plot_form == "xy"
+            for control in (
+                trace_combo,
+                column_combo,
+                transpose_check,
+                advanced_check,
+                x_combo,
+                y_combo,
+                x_axis_combo,
+                y_axis_combo,
+            ):
+                control.setVisible(xy)
+                label = control.parentWidget().layout().labelForField(control)
+                if label is not None:
+                    label.setVisible(xy)
+            trace_combo.setEnabled(xy and not advanced)
+            column_combo.setEnabled(xy and not advanced)
+            transpose_check.setEnabled(xy and not advanced)
+            advanced_check.setEnabled(xy)
+            x_combo.setEnabled(xy and advanced)
+            y_combo.setEnabled(xy and advanced)
+            x_axis_combo.setEnabled(xy)
+            y_axis_combo.setEnabled(xy)
+            title_edit.setEnabled(advanced or not xy)
 
         _update_enabled(self.advanced_mode)
         advanced_check.toggled.connect(_update_enabled)
@@ -1227,6 +1340,7 @@ class PlotTraceCommand(CommandPlugin):
             True
         """
         d = super().to_json()
+        d.update(serialise_forms(self))
         d["trace_key"] = self.trace_key
         d["column_key"] = self.column_key
         d["transpose"] = self.transpose
@@ -1250,6 +1364,7 @@ class PlotTraceCommand(CommandPlugin):
             data (dict[str, Any]):
                 Serialised dict as produced by :meth:`to_json`.
         """
+        restore_forms(self, data)
         self.trace_key = data.get("trace_key", "")
         self.column_key = data.get("column_key", "")
         self.transpose = data.get("transpose", False)
@@ -1268,6 +1383,8 @@ class PlotTraceCommand(CommandPlugin):
 
     def _ensure_configured_axes_exist(self, plot_widget: Any | None = None) -> None:
         """Ensure configured x/y axes exist on the attached plot widget."""
+        if self.plot_form != "xy":
+            return
         if ensure_plugin_axes(
             self,
             (
@@ -1307,14 +1424,4 @@ def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list
             available axis names. Defaults to ``(["bottom"], ["left"])`` when
             no plot widget (or axis orientation map) is available.
     """
-    if engine is None:
-        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
-
-    plot_widget = getattr(engine, "plot_widget", None)
-    describe = getattr(plot_widget, "plot_axis_descriptions", None)
-    if not callable(describe):
-        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
-    axes = describe()
-    x_axes = sorted(axis.name for axis in axes if axis.slot == "x")
-    y_axes = sorted(axis.name for axis in axes if axis.slot == "y")
-    return x_axes or [_DEFAULT_X_AXIS], y_axes or [_DEFAULT_Y_AXIS]
+    return axis_names(engine)

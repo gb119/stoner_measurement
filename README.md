@@ -203,6 +203,8 @@ procedure manually.
 
 - Python 3.12 or newer
 - A working Qt environment via one of the supported bindings
+- An OpenGL 2.1 or newer graphics driver for Cartesian XYZ plots (PyOpenGL is
+  included in the project dependencies and supplied Conda environments)
 - Instrument-specific dependencies if you want to use hardware drivers beyond
   the basic application install
 
