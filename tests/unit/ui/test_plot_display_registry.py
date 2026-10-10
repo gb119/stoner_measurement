@@ -29,9 +29,10 @@ class Entry:
     value: str = "test:Factory"
 
     def load(self):
-        if isinstance(self.factory, Exception):
-            raise self.factory
-        return self.factory
+        factory = self.factory
+        if isinstance(factory, Exception):
+            raise factory
+        return factory
 
 
 def test_discovery_loads_factory_metadata_only(monkeypatch):

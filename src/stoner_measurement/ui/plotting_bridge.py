@@ -118,23 +118,7 @@ class CartesianPlotBridge:
             if payload.series_id not in self.widget.trace_names:
                 raise KeyError(f"Unknown series: {payload.series_id}.")
         elif isinstance(payload, ConfigureAxes):
-            axes = {axis.name: axis for axis in self.widget.plot_axis_descriptions()}
-            for axis in payload.axes:
-                if axis.slot == "z":
-                    raise ValueError("Cartesian trace display has no third axis.")
-                if axis.name in axes and axes[axis.name].slot != axis.slot:
-                    raise ValueError("An existing axis cannot change orientation.")
-                if axis.side is not None and axis.side not in (
-                    ("top", "bottom") if axis.slot == "x" else ("left", "right")
-                ):
-                    raise ValueError("Invalid axis side.")
-                bounds = [value for value in axis.limits if value is not None]
-                if bounds and not np.all(
-                    np.isfinite(
-                        transform_values(bounds, cast(AxisScale, axis.scale), axis.parameter)
-                    )
-                ):
-                    raise ValueError("Axis limits are outside the scale domain.")
+            self._validate_axes(payload)
         elif isinstance(payload, AddMarker):
             axes = {axis.name: axis for axis in self.widget.plot_axis_descriptions()}
             for slot, name in self._marker_axes(payload).items():
@@ -146,6 +130,24 @@ class CartesianPlotBridge:
                     )[0]
                 ):
                     raise ValueError("Marker is outside the axis scale domain.")
+
+    def _validate_axes(self, payload: ConfigureAxes) -> None:
+        """Check axis orientation, sides and transformed limits."""
+        axes = {axis.name: axis for axis in self.widget.plot_axis_descriptions()}
+        for axis in payload.axes:
+            if axis.slot == "z":
+                raise ValueError("Cartesian trace display has no third axis.")
+            if axis.name in axes and axes[axis.name].slot != axis.slot:
+                raise ValueError("An existing axis cannot change orientation.")
+            if axis.side is not None and axis.side not in (
+                ("top", "bottom") if axis.slot == "x" else ("left", "right")
+            ):
+                raise ValueError("Invalid axis side.")
+            bounds = [value for value in axis.limits if value is not None]
+            if bounds and not np.all(
+                np.isfinite(transform_values(bounds, cast(AxisScale, axis.scale), axis.parameter))
+            ):
+                raise ValueError("Axis limits are outside the scale domain.")
 
     @staticmethod
     def _validate_style(style) -> None:
@@ -185,16 +187,7 @@ class CartesianPlotBridge:
         elif isinstance(payload, ClearPlot):
             widget.clear_all()
         elif isinstance(payload, ConfigureAxes):
-            for axis in payload.axes:
-                ensure = widget.ensure_x_axis if axis.slot == "x" else widget.ensure_y_axis
-                ensure(axis.name, AxisLabel(axis.label.name, axis.label.unit))
-                widget.set_axis_scale(axis.name, axis.scale, axis.parameter)
-                widget.set_axis_range(axis.name, *axis.limits)
-                widget.set_axis_visible(axis.name, axis.visible)
-                widget.set_axis_mouse_active(axis.name, axis.mouse_active)
-                widget.set_axis_grid(axis.name, axis.grid)
-                if axis.side is not None:
-                    widget.set_axis_side(axis.name, axis.side)
+            self._apply_axes(payload)
         elif isinstance(payload, RemoveAxes):
             for name in payload.names:
                 widget.remove_axis(name)
@@ -214,6 +207,20 @@ class CartesianPlotBridge:
                 for marker_id in payload.marker_ids:
                     widget.remove_data_marker(marker_id)
         return None
+
+    def _apply_axes(self, payload: ConfigureAxes) -> None:
+        """Apply axis labels and presentation in their established order."""
+        widget = self.widget
+        for axis in payload.axes:
+            ensure = widget.ensure_x_axis if axis.slot == "x" else widget.ensure_y_axis
+            ensure(axis.name, AxisLabel(axis.label.name, axis.label.unit))
+            widget.set_axis_scale(axis.name, axis.scale, axis.parameter)
+            widget.set_axis_range(axis.name, *axis.limits)
+            widget.set_axis_visible(axis.name, axis.visible)
+            widget.set_axis_mouse_active(axis.name, axis.mouse_active)
+            widget.set_axis_grid(axis.name, axis.grid)
+            if axis.side is not None:
+                widget.set_axis_side(axis.name, axis.side)
 
     def _marker_axes(self, payload) -> dict:
         """Resolve omitted anchors once, using the first active axes."""

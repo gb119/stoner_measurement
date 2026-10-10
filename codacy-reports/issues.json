@@ -2,28 +2,28 @@
   "issues": [
     {
       "patternInfo": {
-        "id": "Agentlinter_clarity_undefined-term",
-        "severityLevel": "Info",
-        "category": "Comprehensibility"
+        "id": "Agentlinter_clarity_escape-hatch-missing",
+        "severityLevel": "Warning",
+        "category": "BestPractice"
       },
-      "message": "Undefined acronym \"LIST\" — define on first use or add to glossary.",
+      "message": "Absolute rule without escape hatch: \"- Never use `C:\\ProgramData\\Miniconda3\\Scripts\\conda.exe` for this rep\"",
       "filePath": "AGENTS.md",
-      "lineNumber": 149,
-      "lineText": "  do not substitute a hardware list-mode (`LIST`) sweep merely to emit a trigger pulse.",
-      "resultDataId": 131540881370,
+      "lineNumber": 179,
+      "lineText": "- Never use `C:\\ProgramData\\Miniconda3\\Scripts\\conda.exe` for this repository.",
+      "resultDataId": 131534874076,
       "falsePositiveThreshold": 80
     },
     {
       "patternInfo": {
-        "id": "markdownlint_MD013",
-        "severityLevel": "Info",
-        "category": "CodeStyle"
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
       },
-      "message": "Expected: 119; Actual: 201",
-      "filePath": "notes/testing_restructure_plan.md",
-      "lineNumber": 1099,
-      "lineText": "- Visual check: rendered the dark-theme plot with bottom/right active and a marker. PyQt5 checks passed; PyQt6 validation was unavailable because that binding could not be imported in this environment.",
-      "resultDataId": 131541352638,
+      "message": "CartesianPlotBridge.validate is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/ui/plotting_bridge.py",
+      "lineNumber": 108,
+      "lineText": "    def validate(self, payload) -> None:",
+      "resultDataId": 131545788799,
       "falsePositiveThreshold": 80
     },
     {
@@ -41,13 +41,143 @@
     },
     {
       "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotTraceCommand._wire_config_signals is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/command/plot_trace.py",
+      "lineNumber": 1220,
+      "lineText": "    def _wire_config_signals(  # pylint: disable=too-many-arguments,too-many-positional-arguments",
+      "resultDataId": 131548930563,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "SurfaceGrid.validate is too complex (20) (MC0001)",
+      "filePath": "src/stoner_measurement/core/plotting/surfaces.py",
+      "lineNumber": 29,
+      "lineText": "    def validate(self, update: SeriesUpdate) -> tuple[tuple[float, float], ...]:",
+      "resultDataId": 131548930560,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotDisplayHost._create is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/ui/plotting/host.py",
+      "lineNumber": 86,
+      "lineText": "    def _create(self, factory_id: str):",
+      "resultDataId": 131545788802,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotDisplayHost.switch_display is too complex (16) (MC0001)",
+      "filePath": "src/stoner_measurement/ui/plotting/host.py",
+      "lineNumber": 257,
+      "lineText": "    def switch_display(self, factory_id: str, *, force=False, reset=False) -> bool:",
+      "resultDataId": 131548930561,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotService._apply is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/core/plotting/service.py",
+      "lineNumber": 216,
+      "lineText": "    def _apply(self, request: PlotRequest, legacy: LegacyCall | None) -> None:",
+      "resultDataId": 131548930562,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_E1102",
+        "severityLevel": "Error",
+        "category": "ErrorProne"
+      },
+      "message": "importer is not callable",
+      "filePath": "src/stoner_measurement/ui/plotting/host.py",
+      "lineNumber": 294,
+      "lineText": "                importer(state)",
+      "resultDataId": 131545788804,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotPointsCommand.execute is too complex (16) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/command/plot_points.py",
+      "lineNumber": 417,
+      "lineText": "    def execute(self) -> None:",
+      "resultDataId": 131473671183,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_E0710",
+        "severityLevel": "High",
+        "category": "ErrorProne"
+      },
+      "message": "Raising a class which doesn't inherit from BaseException",
+      "filePath": "tests/unit/ui/test_plot_display_registry.py",
+      "lineNumber": 33,
+      "lineText": "            raise self.factory",
+      "resultDataId": 131545788803,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "PlotTraceCommand.execute is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/plugins/command/plot_trace.py",
+      "lineNumber": 446,
+      "lineText": "    def execute(self) -> None:",
+      "resultDataId": 131545788801,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "SurfaceCanvasDisplay.validate is too complex (27) (MC0001)",
+      "filePath": "src/stoner_measurement/ui/plotting/surface_canvas.py",
+      "lineNumber": 131,
+      "lineText": "    def validate(self, payload):",
+      "resultDataId": 131548930559,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
         "id": "Agentlinter_clarity_escape-hatch-missing",
         "severityLevel": "Warning",
         "category": "BestPractice"
       },
       "message": "Absolute rule without escape hatch: \"including after a partially failed attempt. Resource-owning plugins mu\"",
       "filePath": "AGENTS.md",
-      "lineNumber": 156,
+      "lineNumber": 162,
       "lineText": "  including after a partially failed attempt. Resource-owning plugins must",
       "resultDataId": 131538906077,
       "falsePositiveThreshold": 80
@@ -58,37 +188,11 @@
         "severityLevel": "Warning",
         "category": "BestPractice"
       },
-      "message": "Absolute rule without escape hatch: \"sequence cleanup. The 6221 point scan must hold DC throughout child st\"",
+      "message": "Absolute rule without escape hatch: \"Plugins borrow this shared service and must not close its sessions on \"",
       "filePath": "AGENTS.md",
-      "lineNumber": 148,
-      "lineText": "  sequence cleanup. The 6221 point scan must hold DC throughout child steps;",
-      "resultDataId": 131539754446,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "markdownlint_MD012",
-        "severityLevel": "Info",
-        "category": "CodeStyle"
-      },
-      "message": "Expected: 1; Actual: 2",
-      "filePath": "notes/testing_restructure_plan.md",
-      "lineNumber": 1047,
-      "lineText": "",
-      "resultDataId": 131540881366,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "markdownlint_MD037",
-        "severityLevel": "Info",
-        "category": "CodeStyle"
-      },
-      "message": "Spaces inside emphasis markers",
-      "filePath": "notes/2026-09-21-secondary-temperature-controller-plan.md",
-      "lineNumber": 45,
-      "lineText": "  stability selectors and cryogen controls. _LoopControlGroup currently offers",
-      "resultDataId": 131541346813,
+      "lineNumber": 146,
+      "lineText": "  Plugins borrow this shared service and must not close its sessions on cleanup.",
+      "resultDataId": 131541346807,
       "falsePositiveThreshold": 80
     },
     {
@@ -97,116 +201,11 @@
         "severityLevel": "Warning",
         "category": "BestPractice"
       },
-      "message": "Absolute rule without escape hatch: \"- Never use `C:\\ProgramData\\Miniconda3\\Scripts\\conda.exe` for this rep\"",
+      "message": "Absolute rule without escape hatch: \"list mode. The point scan must hold DC throughout child steps; do not\"",
       "filePath": "AGENTS.md",
-      "lineNumber": 173,
-      "lineText": "- Never use `C:\\ProgramData\\Miniconda3\\Scripts\\conda.exe` for this repository.",
-      "resultDataId": 131534874076,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Bandit_B307",
-        "severityLevel": "Warning",
-        "category": "Security",
-        "subCategory": "InsecureModulesLibraries"
-      },
-      "message": "Use of possibly insecure function - consider using safer ast.literal_eval.",
-      "filePath": "tests/integration/plugin_workflows/test_secondary_temperature_sequence.py",
-      "lineNumber": 86,
-      "lineText": "        eval(expression, {\"__builtins__\": {}}, {restored.instance_name: restored})",
-      "resultDataId": 131541346808,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "markdownlint_MD012",
-        "severityLevel": "Info",
-        "category": "CodeStyle"
-      },
-      "message": "Expected: 1; Actual: 2",
-      "filePath": "notes/2026-09-21-secondary-temperature-controller-plan.md",
-      "lineNumber": 288,
-      "lineText": "",
-      "resultDataId": 131541346810,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "markdownlint_MD013",
-        "severityLevel": "Info",
-        "category": "CodeStyle"
-      },
-      "message": "Expected: 119; Actual: 147",
-      "filePath": "notes/2026-09-21-secondary-temperature-controller-plan.md",
-      "lineNumber": 4,
-      "lineText": "Status: implementation and software validation complete; physical bench acceptance outstanding. Secondary remains optional and disabled by default.",
-      "resultDataId": 131541346811,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "_ControllerSession.set_all_loop_settings is too complex (16) (MC0001)",
-      "filePath": "src/stoner_measurement/temperature_control/engine.py",
-      "lineNumber": 784,
-      "lineText": "    def set_all_loop_settings(  # pylint: disable=too-many-arguments",
-      "resultDataId": 131541346814,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "PyLintPython3_C0123",
-        "severityLevel": "Warning",
-        "category": "BestPractice"
-      },
-      "message": "Use isinstance() rather than type() for a typecheck.",
-      "filePath": "src/stoner_measurement/temperature_control/references.py",
-      "lineNumber": 24,
-      "lineText": "        if type(self.loop) is not int or self.loop < 1:",
-      "resultDataId": 131541346824,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "markdownlint_MD037",
-        "severityLevel": "Info",
-        "category": "CodeStyle"
-      },
-      "message": "Spaces inside emphasis markers",
-      "filePath": "notes/2026-09-21-secondary-temperature-controller-plan.md",
-      "lineNumber": 20,
-      "lineText": "  one _driver, one preferred/live connection triple, one timer and RLock. All",
-      "resultDataId": 131541346812,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Agentlinter_clarity_escape-hatch-missing",
-        "severityLevel": "Warning",
-        "category": "BestPractice"
-      },
-      "message": "Absolute rule without escape hatch: \"- Plugin lifecycle contract: repeated `connect()` calls must release t\"",
-      "filePath": "AGENTS.md",
-      "lineNumber": 153,
-      "lineText": "- Plugin lifecycle contract: repeated `connect()` calls must release the",
-      "resultDataId": 131538906078,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "TemperatureMonitorPlugin._restore_from_json is too complex (16) (MC0001)",
-      "filePath": "src/stoner_measurement/plugins/monitor/temperature_controller.py",
-      "lineNumber": 686,
-      "lineText": "    def _restore_from_json(self, data: dict[str, object]) -> None:",
-      "resultDataId": 131496766051,
+      "lineNumber": 154,
+      "lineText": "  list mode. The point scan must hold DC throughout child steps; do not",
+      "resultDataId": 131541971887,
       "falsePositiveThreshold": 80
     },
     {
@@ -224,16 +223,28 @@
     },
     {
       "patternInfo": {
-        "id": "Bandit_B307",
-        "severityLevel": "Warning",
-        "category": "Security",
-        "subCategory": "InsecureModulesLibraries"
+        "id": "Agentlinter_clarity_undefined-term",
+        "severityLevel": "Info",
+        "category": "Comprehensibility"
       },
-      "message": "Use of possibly insecure function - consider using safer ast.literal_eval.",
-      "filePath": "tests/integration/plugin_workflows/test_secondary_temperature_sequence.py",
-      "lineNumber": 59,
-      "lineText": "        assert isinstance(eval(expression, {\"__builtins__\": {}}, namespace), float)",
-      "resultDataId": 131541346809,
+      "message": "Undefined acronym \"LIST\" — define on first use or add to glossary.",
+      "filePath": "AGENTS.md",
+      "lineNumber": 153,
+      "lineText": "  sequence cleanup. On the Keithley 6221, `LIST` means its programmed-current",
+      "resultDataId": 131541971886,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Prospector_mccabe",
+        "severityLevel": "Warning",
+        "category": "Complexity"
+      },
+      "message": "CartesianPlotBridge.apply is too complex (17) (MC0001)",
+      "filePath": "src/stoner_measurement/ui/plotting_bridge.py",
+      "lineNumber": 171,
+      "lineText": "    def apply(self, payload):",
+      "resultDataId": 131545788800,
       "falsePositiveThreshold": 80
     },
     {
@@ -242,11 +253,11 @@
         "severityLevel": "Warning",
         "category": "BestPractice"
       },
-      "message": "Absolute rule without escape hatch: \"Plugins borrow this shared service and must not close its sessions on \"",
+      "message": "Absolute rule without escape hatch: \"- Plugin lifecycle contract: repeated `connect()` calls must release t\"",
       "filePath": "AGENTS.md",
-      "lineNumber": 141,
-      "lineText": "  Plugins borrow this shared service and must not close its sessions on cleanup.",
-      "resultDataId": 131541346807,
+      "lineNumber": 159,
+      "lineText": "- Plugin lifecycle contract: repeated `connect()` calls must release the",
+      "resultDataId": 131538906078,
       "falsePositiveThreshold": 80
     }
   ]

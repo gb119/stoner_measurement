@@ -483,6 +483,10 @@ class PlotPointsCommand(CommandPlugin):
             )
             return
 
+        self._execute_xy_entries(values, x_expr, x_val)
+
+    def _execute_xy_entries(self, values: dict[str, str], x_expr: str, x_val: float) -> None:
+        """Evaluate each Y entry and submit points in configured order."""
         for entry in self.y_entries:
             y_key = entry.get("key", "")
             label = entry.get("label", y_key)

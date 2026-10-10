@@ -53,35 +53,42 @@ class SurfaceGrid:
         if not keys or len(set(keys)) != len(keys):
             raise ValueError("A surface update requires distinct, nonempty grid cells.")
         if surface.kind == "slice":
-            if len(set(map(float, ys))) != 1:
-                raise ValueError("A trace slice requires one fixed Y coordinate.")
-            grid = frozenset(map(float, xs))
-            if self.x_grid is None and any(x not in grid for x, _ in self.cells):
-                raise ValueError("Trace X grid does not include existing surface cells.")
-            if self.x_grid is not None and grid != self.x_grid:
-                raise ValueError("Trace slices must retain the established X grid.")
-            assert surface.slice_id is not None
-            old_y = self.slices.get(surface.slice_id)
-            if old_y is not None and old_y != keys[0][1]:
-                raise ValueError("A slice ID must retain its fixed Y coordinate.")
-            if any(y == keys[0][1] and name != surface.slice_id for name, y in self.slices.items()):
-                raise ValueError("A fixed Y coordinate already belongs to another slice ID.")
+            self._validate_slice(surface, keys)
         elif surface.kind == "cells" and self.x_grid is not None:
             if any(x not in self.x_grid for x, _ in keys):
                 raise ValueError("Surface cells must use the established trace X grid.")
         elif surface.kind == "snapshot":
-            for _name, y in surface.slices:
-                grid = frozenset(x for x, row_y in keys if row_y == y)
-                if not grid or (self.x_grid is not None and grid != self.x_grid):
-                    raise ValueError("Replay slices must share a nonempty X grid.")
-                # Compare replay rows without mutating the live accumulator.
-                first_grid = frozenset(x for x, row_y in keys if row_y == surface.slices[0][1])
-                if grid != first_grid:
-                    raise ValueError("Replay slices must share the same X grid.")
+            self._validate_snapshot(surface, keys)
         if surface.kind != "snapshot" and surface.duplicates == "reject":
             if any(key in self.cells for key in keys):
                 raise ValueError("Duplicate surface cells; select Replace or clear the surface.")
         return keys
+
+    def _validate_slice(self, surface, keys) -> None:
+        """Check fixed row identity and the shared trace grid without mutation."""
+        if len({y for _, y in keys}) != 1:
+            raise ValueError("A trace slice requires one fixed Y coordinate.")
+        grid = frozenset(x for x, _ in keys)
+        if self.x_grid is None and any(x not in grid for x, _ in self.cells):
+            raise ValueError("Trace X grid does not include existing surface cells.")
+        if self.x_grid is not None and grid != self.x_grid:
+            raise ValueError("Trace slices must retain the established X grid.")
+        assert surface.slice_id is not None
+        old_y = self.slices.get(surface.slice_id)
+        if old_y is not None and old_y != keys[0][1]:
+            raise ValueError("A slice ID must retain its fixed Y coordinate.")
+        if any(y == keys[0][1] and name != surface.slice_id for name, y in self.slices.items()):
+            raise ValueError("A fixed Y coordinate already belongs to another slice ID.")
+
+    def _validate_snapshot(self, surface, keys) -> None:
+        """Check replay row grids without mutating the live accumulator."""
+        for _name, y in surface.slices:
+            grid = frozenset(x for x, row_y in keys if row_y == y)
+            if not grid or (self.x_grid is not None and grid != self.x_grid):
+                raise ValueError("Replay slices must share a nonempty X grid.")
+            first_grid = frozenset(x for x, row_y in keys if row_y == surface.slices[0][1])
+            if grid != first_grid:
+                raise ValueError("Replay slices must share the same X grid.")
 
     def commit(self, update: SeriesUpdate, keys: tuple) -> None:
         """Apply previously validated cells after renderer acceptance."""

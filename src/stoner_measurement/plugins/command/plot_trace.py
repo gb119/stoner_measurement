@@ -500,53 +500,8 @@ class PlotTraceCommand(CommandPlugin):
             execute_trace_form(self)
             return
         if self.advanced_mode:
-            if not self.x_expr or not self.y_expr:
-                self.log.warning("PlotTrace: x_expr or y_expr is empty — skipping plot.")
-                return
-            x_data = self.eval(self.x_expr)
-            y_data = self.eval(self.y_expr)
-            title = str(self.eval(self.title_expr)) if self.title_expr else "plot"
-            if not self._wait_for_plot_ready(timeout=None):
-                self.log.debug("PlotTrace: wait for plot readiness interrupted for %r.", title)
-                return
-            x_axis = self.x_axis_name or _DEFAULT_X_AXIS
-            y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
-            x_label = self._channel_label_for_expression(self.x_expr)
-            y_label = self._channel_label_for_expression(self.y_expr)
-            self.plot_ensure_x_axis.emit(x_axis, x_label if str(x_label) else x_axis)
-            self.plot_ensure_y_axis.emit(y_axis, y_label if str(y_label) else y_axis)
-            handled = (
-                self._submit_plot_operation(
-                    xy_update(
-                        title,
-                        x_data,
-                        y_data,
-                        x_label=x_label,
-                        y_label=y_label,
-                        x_axis=x_axis,
-                        y_axis=y_axis,
-                        style=self._build_style_dict(),
-                    )
-                )
-                if getattr(self.sequence_engine, "plot_client", None) is not None
-                else False
-            )
-            if not handled:
-                self._queue_plot_update_request(self.plot_update_queued)
-            self.plot_trace.emit(
-                title,
-                np.asarray(x_data, dtype=float),
-                np.asarray(y_data, dtype=float),
-            )
-            self.plot_trace_axes.emit(title, x_axis, y_axis)
-            if not handled:
-                self._wait_for_plot_response_or_raise(title)
-            style = self._build_style_dict()
-            if style:
-                self.plot_trace_style.emit(title, style)
-            self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
+            self._execute_advanced_xy()
             return
-
         # Simple mode
         traces = self.engine_namespace.get("_traces", {})
         if not self.trace_key or self.trace_key not in traces:
@@ -661,6 +616,54 @@ class PlotTraceCommand(CommandPlugin):
         x_label, y_label = self._emit_trace_axis_labels(trace_data, label_y_key)
         self.plot_ensure_x_axis.emit(x_axis, x_label if str(x_label) else x_axis)
         self.plot_ensure_y_axis.emit(y_axis, y_label if str(y_label) else y_axis)
+
+    def _execute_advanced_xy(self) -> None:
+        """Evaluate advanced XY expressions and preserve plot acknowledgement ordering."""
+        if not self.x_expr or not self.y_expr:
+            self.log.warning("PlotTrace: x_expr or y_expr is empty — skipping plot.")
+            return
+        x_data = self.eval(self.x_expr)
+        y_data = self.eval(self.y_expr)
+        title = str(self.eval(self.title_expr)) if self.title_expr else "plot"
+        if not self._wait_for_plot_ready(timeout=None):
+            self.log.debug("PlotTrace: wait for plot readiness interrupted for %r.", title)
+            return
+        x_axis = self.x_axis_name or _DEFAULT_X_AXIS
+        y_axis = self.y_axis_name or _DEFAULT_Y_AXIS
+        x_label = self._channel_label_for_expression(self.x_expr)
+        y_label = self._channel_label_for_expression(self.y_expr)
+        self.plot_ensure_x_axis.emit(x_axis, x_label if str(x_label) else x_axis)
+        self.plot_ensure_y_axis.emit(y_axis, y_label if str(y_label) else y_axis)
+        handled = (
+            self._submit_plot_operation(
+                xy_update(
+                    title,
+                    x_data,
+                    y_data,
+                    x_label=x_label,
+                    y_label=y_label,
+                    x_axis=x_axis,
+                    y_axis=y_axis,
+                    style=self._build_style_dict(),
+                )
+            )
+            if getattr(self.sequence_engine, "plot_client", None) is not None
+            else False
+        )
+        if not handled:
+            self._queue_plot_update_request(self.plot_update_queued)
+        self.plot_trace.emit(
+            title,
+            np.asarray(x_data, dtype=float),
+            np.asarray(y_data, dtype=float),
+        )
+        self.plot_trace_axes.emit(title, x_axis, y_axis)
+        if not handled:
+            self._wait_for_plot_response_or_raise(title)
+        style = self._build_style_dict()
+        if style:
+            self.plot_trace_style.emit(title, style)
+        self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
 
     def _build_style_dict(self) -> dict:
         """Build a style dictionary from the current format attributes.
@@ -1231,34 +1234,17 @@ class PlotTraceCommand(CommandPlugin):
         channel_items: dict[str, str],
         colour_button: QPushButton,
     ) -> None:
-        def _update_enabled(advanced: bool) -> None:
-            xy = self.plot_form == "xy"
-            for control in (
-                trace_combo,
-                column_combo,
-                transpose_check,
-                advanced_check,
-                x_combo,
-                y_combo,
-                x_axis_combo,
-                y_axis_combo,
-            ):
-                control.setVisible(xy)
-                label = control.parentWidget().layout().labelForField(control)
-                if label is not None:
-                    label.setVisible(xy)
-            trace_combo.setEnabled(xy and not advanced)
-            column_combo.setEnabled(xy and not advanced)
-            transpose_check.setEnabled(xy and not advanced)
-            advanced_check.setEnabled(xy)
-            x_combo.setEnabled(xy and advanced)
-            y_combo.setEnabled(xy and advanced)
-            x_axis_combo.setEnabled(xy)
-            y_axis_combo.setEnabled(xy)
-            title_edit.setEnabled(advanced or not xy)
-
-        _update_enabled(self.advanced_mode)
-        advanced_check.toggled.connect(_update_enabled)
+        self._wire_mode_controls(
+            trace_combo,
+            column_combo,
+            transpose_check,
+            advanced_check,
+            x_combo,
+            y_combo,
+            title_edit,
+            x_axis_combo,
+            y_axis_combo,
+        )
 
         def _apply_trace(text: str) -> None:
             if text != "(no traces available)":
@@ -1311,6 +1297,49 @@ class PlotTraceCommand(CommandPlugin):
         x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
         y_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "y_axis_name", text))
         colour_button.clicked.connect(_apply_colour)
+
+    def _wire_mode_controls(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        trace_combo,
+        column_combo,
+        transpose_check,
+        advanced_check,
+        x_combo,
+        y_combo,
+        title_edit,
+        x_axis_combo,
+        y_axis_combo,
+    ) -> None:
+        """Keep XY control visibility and advanced-mode enablement together."""
+
+        def _update_enabled(advanced: bool) -> None:
+            xy = self.plot_form == "xy"
+            for control in (
+                trace_combo,
+                column_combo,
+                transpose_check,
+                advanced_check,
+                x_combo,
+                y_combo,
+                x_axis_combo,
+                y_axis_combo,
+            ):
+                control.setVisible(xy)
+                label = control.parentWidget().layout().labelForField(control)
+                if label is not None:
+                    label.setVisible(xy)
+            trace_combo.setEnabled(xy and not advanced)
+            column_combo.setEnabled(xy and not advanced)
+            transpose_check.setEnabled(xy and not advanced)
+            advanced_check.setEnabled(xy)
+            x_combo.setEnabled(xy and advanced)
+            y_combo.setEnabled(xy and advanced)
+            x_axis_combo.setEnabled(xy)
+            y_axis_combo.setEnabled(xy)
+            title_edit.setEnabled(advanced or not xy)
+
+        _update_enabled(self.advanced_mode)
+        advanced_check.toggled.connect(_update_enabled)
 
     # ------------------------------------------------------------------
     # Serialisation

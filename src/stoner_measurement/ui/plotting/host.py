@@ -7,7 +7,12 @@ from dataclasses import replace
 from qtpy.QtCore import QThread  # type: ignore[attr-defined]
 from qtpy.QtWidgets import QApplication, QVBoxLayout, QWidget
 
-from stoner_measurement.core.plotting.contracts import ConfigureAxes, PlotRequest
+from stoner_measurement.core.plotting.contracts import (
+    AxisDescription,
+    ConfigureAxes,
+    PlotRequest,
+    SeriesDescription,
+)
 from stoner_measurement.core.plotting.service import PlotService, UnsupportedDisplayOperation
 from stoner_measurement.core.plotting.state import (
     DisplayState,
@@ -93,36 +98,7 @@ class PlotDisplayHost(QWidget):
         display = None
         try:
             display = factory.create(container)
-            if not isinstance(display.widget, QWidget) or display.widget.thread() != self.thread():
-                raise TypeError("A display must supply a GUI-thread QWidget.")
-            if display.widget.parent() is not container:
-                raise ValueError("A display widget must belong to its supplied parent.")
-            if display.capabilities != factory.capabilities:
-                raise ValueError("Display capabilities must match factory metadata.")
-            for name in ("validate", "apply", "descriptions", "close"):
-                if not callable(getattr(display, name, None)):
-                    raise TypeError(f"Missing display method: {name}.")
-            if not callable(getattr(getattr(display, "changed", None), "connect", None)):
-                raise TypeError("A display must supply a changed signal.")
-            if not callable(getattr(display.changed, "disconnect", None)):
-                raise TypeError("A display signal must support disconnection.")
-            axes, series = display.descriptions()
-            # Validate portable descriptions before connecting the stable service.
-            from stoner_measurement.core.plotting.contracts import (
-                AxisDescription,
-                SeriesDescription,
-            )
-
-            if (
-                not isinstance(axes, tuple)
-                or not isinstance(series, tuple)
-                or any(
-                    not isinstance(item, kind)
-                    for values, kind in ((axes, AxisDescription), (series, SeriesDescription))
-                    for item in values
-                )
-            ):
-                raise TypeError("Invalid portable display descriptions.")
+            self._validate_display(display, container, factory)
             layout.addWidget(display.widget)
         except Exception:
             closed_widget = None
@@ -139,6 +115,38 @@ class PlotDisplayHost(QWidget):
             container.deleteLater()
             raise
         return display, container
+
+    def _validate_display(self, display, container, factory) -> None:
+        """Check widget ownership and the adapter contract before connecting it."""
+        if not isinstance(display.widget, QWidget) or display.widget.thread() != self.thread():
+            raise TypeError("A display must supply a GUI-thread QWidget.")
+        if display.widget.parent() is not container:
+            raise ValueError("A display widget must belong to its supplied parent.")
+        if display.capabilities != factory.capabilities:
+            raise ValueError("Display capabilities must match factory metadata.")
+        for name in ("validate", "apply", "descriptions", "close"):
+            if not callable(getattr(display, name, None)):
+                raise TypeError(f"Missing display method: {name}.")
+        if not callable(getattr(getattr(display, "changed", None), "connect", None)):
+            raise TypeError("A display must supply a changed signal.")
+        if not callable(getattr(display.changed, "disconnect", None)):
+            raise TypeError("A display signal must support disconnection.")
+        axes, series = display.descriptions()
+        self._validate_descriptions(axes, series, "Invalid portable display descriptions.")
+
+    @staticmethod
+    def _validate_descriptions(axes, series, message) -> None:
+        """Require immutable tuples of portable axis and series descriptions."""
+        if (
+            not isinstance(axes, tuple)
+            or not isinstance(series, tuple)
+            or any(
+                not isinstance(item, kind)
+                for items, kind in ((axes, AxisDescription), (series, SeriesDescription))
+                for item in items
+            )
+        ):
+            raise TypeError(message)
 
     def _load_preferences(self):
         if self._settings is None:
@@ -278,38 +286,11 @@ class PlotDisplayHost(QWidget):
                 container.layout().activate()
                 candidate.widget.resize(self._display.widget.size())
                 replaying = True
-                if reset:
-                    state = candidate.export_state()
-                    if not isinstance(state, DisplayState):
-                        raise TypeError("Invalid display state export.")
-                    state = replace(state, series=(), markers=())
-                    hidden = {}
-                else:
-                    state, hidden = self._prepare_state(state, candidate, factory_id)
-                importer = getattr(candidate, "import_state", None)
-                if not callable(importer) or not callable(getattr(candidate, "export_state", None)):
-                    raise UnsupportedDisplayOperation(
-                        "The selected display cannot import replay state."
-                    )
-                importer(state)
+                state, hidden = self._replay_state(state, candidate, factory_id, reset=reset)
                 replaying = False
                 # Re-read descriptions before commit: malformed hydrated state is a failure.
                 axes, series = candidate.descriptions()
-                from stoner_measurement.core.plotting.contracts import (
-                    AxisDescription,
-                    SeriesDescription,
-                )
-
-                if (
-                    not isinstance(axes, tuple)
-                    or not isinstance(series, tuple)
-                    or any(
-                        not isinstance(item, kind)
-                        for items, kind in ((axes, AxisDescription), (series, SeriesDescription))
-                        for item in items
-                    )
-                ):
-                    raise TypeError("Invalid hydrated display descriptions.")
+                self._validate_descriptions(axes, series, "Invalid hydrated display descriptions.")
                 if {entry.series_id for entry in series} != {
                     entry.update.series_id for entry in state.series
                 }:
@@ -349,6 +330,24 @@ class PlotDisplayHost(QWidget):
                     self._dispose(candidate, container)
                 except Exception as exc:
                     self._diagnostics.append(f"Candidate cleanup failed: {exc}")
+
+    def _replay_state(self, state, candidate, factory_id, *, reset):
+        """Prepare and import replay state before committing a display replacement."""
+        if reset:
+            state = candidate.export_state()
+            if not isinstance(state, DisplayState):
+                raise TypeError("Invalid display state export.")
+            state = replace(state, series=(), markers=())
+            hidden = {}
+        else:
+            state, hidden = self._prepare_state(state, candidate, factory_id)
+        importer = getattr(candidate, "import_state", None)
+        if not callable(importer):
+            raise UnsupportedDisplayOperation("The selected display cannot import replay state.")
+        if not callable(getattr(candidate, "export_state", None)):
+            raise UnsupportedDisplayOperation("The selected display cannot import replay state.")
+        importer(state)
+        return state, hidden
 
     @property
     def display(self) -> PlotDisplay:

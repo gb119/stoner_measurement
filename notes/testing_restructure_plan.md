@@ -1439,3 +1439,16 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - The exact Keithley configuration node also passed in ten separate fresh
   pytest processes. An earlier repeated-node invocation collected 20 entries
   but executed only one, so it is not counted as repeated validation.
+
+## 2026-10-10: Codacy plotting maintenance
+
+- No tests were added, moved or removed. The registry discovery fake now uses
+  a local exception reference for Pylint narrowing; its failure contract and
+  existing assertions are unchanged.
+- The focused plotting selection passed 381 tests under Python 3.14.7 / PyQt5
+  5.15.11, offscreen with Windows fonts and pytest caching disabled. It covers
+  surface/service transactions, display discovery/replacement, plot and axis
+  widgets, command signals and sequence integration.
+- Commands and scope are recorded in
+  [the maintenance note](2026-10-10-codacy-cleanup.md). No new Qt page ownership
+  or test migration work was required; other bindings were not validated.

@@ -2,54 +2,80 @@
 
 Repository: `gh/gb119/stoner_measurement`
 Branch: `main`
-Analyzed commit: `124beb3fdae5aeb50ae88b1c36073887568b1eb2`
-Codacy analysis completed: 2026-09-22T09:56:05.656Z
-Downloaded: 2026-09-23 22:13 UTC
+Analyzed commit: `12d943b269e830bf8292178e0ea0e6969ec72c17`
+Codacy analysis completed: 2026-10-10T12:42:24.117Z
+Downloaded: 2026-10-10 (UTC)
 
 ## Current remote snapshot
 
-The complete `--branch main --limit 1000` pull contains **19 issues**:
-12 Warning and 7 Info. The prior snapshot from
-20 September contained 45 issues. `issues.json` is the raw remote inventory;
-`issues.csv` records each issue and its local disposition. Issue locations
-refer to the analyzed commit, before the local edits below.
+The complete `--branch main --limit 1000` pull contains **20 issues**:
+1 Error, 1 High, 17 Warning and 1 Info. Repository metadata independently
+reports the same count and analyzed commit, which matches local HEAD.
+The prior snapshot contained 19 issues. `issues.json` is the raw remote inventory;
+`issues.csv` records every issue and its local disposition. Locations refer to
+the analyzed commit, before the local edits.
 
 ## Local disposition
 
 | Disposition | Issues |
 | --- | ---: |
-| Production complexity refactored | 2 |
-| Exact-integer contract with narrow Pylint suppression | 1 |
-| Generated-expression tests with narrow Bandit suppressions | 2 |
-| Markdown formatting corrected | 6 |
-| Keithley LIST term defined | 1 |
-| Intentional maintainer and hardware guidance retained | 7 |
+| Production complexity refactored | 10 |
+| Callable guard clarified for Pylint | 1 |
+| Exception reference narrowed in test double | 1 |
+| Intentional maintainer guidance retained | 7 |
+| Already defined Keithley LIST term retained | 1 |
 
-The expected remote remainder is **7 Agentlinter advisories**, subject to
-Codacy reanalysis. The six escape-hatch suggestions conflict with explicit
-Conda, resource-ownership and held-DC contracts. The modular-file suggestion
-conflicts with the deliberate single maintainer entry point. No issues were
-marked ignored in Codacy.
+All **12 Python findings** are addressed locally. The expected remainder is
+**8 Agentlinter advisories**, subject to Codacy reanalysis. Six escape-hatch
+suggestions conflict with explicit Conda, resource-ownership, reconnect and
+held-DC contracts. The modular-file suggestion conflicts with the deliberate
+single maintainer entry point, which already links detailed guidance. `LIST`
+is defined at first use as the Keithley programmed-current list mode; this
+advisory is a false positive. No issues were marked ignored in Codacy, no
+downloaded findings were suppressed, and no analysis exclusions were added.
 
 ## Fixes and verification
 
-- Extracted supported ramp application and monitor loop restoration into
-  cohesive helpers. Both flagged methods are below the local McCabe threshold
-  of 15. The existing controller and sequence tests passed: **34 passed**
-  offscreen under PyQt5, with one pytest cache warning.
-- Preserved exact `int` validation for loop references, which deliberately
-  rejects `bool` and subclasses; the scoped Pylint C0123 suppression passes.
-- Kept expression execution in integration tests because those generated
-  expressions are the runtime contract; scoped Bandit B307 suppressions pass.
-- Fixed the six reported Markdown errors and three additional errors found by
-  local Markdownlint in the touched notes. Markdownlint reports zero issues
-  across the three touched Markdown files.
-- Defined the Keithley 6221 `LIST` mode at first use while preserving
-  the held-DC instruction.
-- Ruff lint passed on changed Python files and `git diff --check` passed.
-  Full-file Ruff formatting remains pre-existing work in the engine and monitor
-  modules; formatting those whole files would add unrelated changes.
+Extracted cohesive helpers for surface row/replay validation, display contract
+validation and state replay, legacy request bookkeeping, Cartesian axes, and
+plugin execution and control wiring. Validation order, failure cleanup, plot
+acknowledgements, signals and saved settings retain their existing contracts.
 
-The checkout's HEAD matches the analyzed Codacy commit. The new local fixes
-have not been committed or pushed, so their remote clearance is unverified.
-Live hardware and other Qt bindings were not validated.
+| Flagged method | Before | After |
+| --- | ---: | ---: |
+| `CartesianPlotBridge.validate` | 17 | 12 |
+| `CartesianPlotBridge.apply` | 17 | 15 |
+| `PlotTraceCommand.execute` | 17 | 12 |
+| `PlotTraceCommand._wire_config_signals` | 17 | 14 |
+| `PlotPointsCommand.execute` | 16 | 7 |
+| `SurfaceGrid.validate` | 20 | 12 |
+| `SurfaceCanvasDisplay.validate` | 27 | 13 |
+| `PlotDisplayHost._create` | 17 | 9 |
+| `PlotDisplayHost.switch_display` | 16 | 12 |
+| `PlotService._apply` | 17 | 13 |
+
+Local McCabe inspection found no graph above 15 across the seven changed
+production modules, including new helpers. The two Pylint findings were
+analyzer-narrowing problems: split the replay importer's callable guard from
+the exporter check, and use a local reference for the exception-valued test
+factory. Runtime rejection and discovery behaviour remain covered by tests.
+
+- **381 tests passed**, covering core surface/service transactions, registry,
+  host and replacement failures, surface canvases, Cartesian plot/axis widgets,
+  Plot Points/Trace/Markers, sequence plotting and display switching.
+- Ruff lint and formatting checks passed on all eight changed Python files.
+- Targeted Pylint `E0710,E1102,E1120` passed on all eight changed Python files.
+- `git diff --check` passed.
+- Tests used Python 3.14.7, PyQt5 5.15.11 and Qt 5.15.15, offscreen with Windows
+  fonts, a fresh `--basetemp`, and `-p no:cacheprovider`.
+
+The environment lacks a Codacy launcher. The cached official
+`@codacy/codacy-cloud-cli` 1.12.1 entry point was run via
+`CONDA_EXE run -n stoner_measurement node` to fetch issues and repository
+metadata. JSON was parsed before replacing the raw inventory.
+
+The changes are local and uncommitted. Remote Codacy clearance requires push
+and reanalysis. Other Qt bindings, native OpenGL rendering and live hardware
+were not validated in this maintenance batch; the full suite was not run.
+
+See [the maintenance note](../notes/2026-10-10-codacy-cleanup.md) for reproduction.

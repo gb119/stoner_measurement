@@ -136,42 +136,9 @@ class SurfaceCanvasDisplay(QWidget):
         if reasons:
             raise ValueError(" ".join(reasons))
         if isinstance(payload, (SeriesUpdate, ModifySeries)):
-            if set(payload.style).difference(self.supported_styles):
-                raise ValueError("Unsupported display style.")
-            for key in ("line_width", "point_size"):
-                if key in payload.style:
-                    value = float(payload.style[key])
-                    if not isfinite(value) or value <= 0:
-                        raise ValueError("Style sizes must be finite and positive.")
-            if "colour" in payload.style:
-                import pyqtgraph as pg  # type: ignore[import-untyped]
-
-                if not pg.mkColor(payload.style["colour"]).isValid():
-                    raise ValueError("Invalid series colour.")
+            self._validate_style(payload.style)
         if isinstance(payload, SeriesUpdate):
-            existing = self._series.get(payload.series_id)
-            if payload.surface is not None:
-                if existing and payload.series_id not in self._surfaces:
-                    raise ValueError("Clear the existing non-surface series first.")
-                prepare_surface(payload, self._surfaces.get(payload.series_id))
-            elif payload.presentation in (Presentation.SURFACE, Presentation.INTENSITY):
-                raise ValueError("Grid presentations require an explicit surface binding.")
-            elif existing:
-                if payload.series_id in self._surfaces:
-                    raise ValueError("Clear the existing surface series first.")
-                old = existing.update
-                if payload.mode == UpdateMode.APPEND and (
-                    old.binding != payload.binding
-                    or old.coordinates != payload.coordinates
-                    or old.data.metadata != payload.data.metadata
-                    or tuple(old.data.channels) != tuple(payload.data.channels)
-                    or tuple(old.data.uncertainties) != tuple(payload.data.uncertainties)
-                    or old.presentation != payload.presentation
-                ):
-                    raise ValueError("Appended points must preserve their series schema.")
-            for slot, name in payload.axes.items():
-                if name not in self._axes or self._axes[name].slot != slot:
-                    raise ValueError("Unknown axis assignment.")
+            self._validate_series_update(payload)
         elif isinstance(payload, (ModifySeries, RemoveSeries)):
             if payload.series_id not in self._series:
                 raise ValueError("Unknown series ID.")
@@ -189,6 +156,47 @@ class SurfaceCanvasDisplay(QWidget):
                     raise UnsupportedDisplayOperation(
                         "Surface displays currently support linear axes only."
                     )
+
+    def _validate_series_update(self, payload: SeriesUpdate) -> None:
+        """Check surface topology, append schema and assigned axes."""
+        existing = self._series.get(payload.series_id)
+        if payload.surface is not None:
+            if existing and payload.series_id not in self._surfaces:
+                raise ValueError("Clear the existing non-surface series first.")
+            prepare_surface(payload, self._surfaces.get(payload.series_id))
+        elif payload.presentation in (Presentation.SURFACE, Presentation.INTENSITY):
+            raise ValueError("Grid presentations require an explicit surface binding.")
+        elif existing:
+            if payload.series_id in self._surfaces:
+                raise ValueError("Clear the existing surface series first.")
+            old = existing.update
+            if payload.mode == UpdateMode.APPEND and (
+                old.binding != payload.binding
+                or old.coordinates != payload.coordinates
+                or old.data.metadata != payload.data.metadata
+                or tuple(old.data.channels) != tuple(payload.data.channels)
+                or tuple(old.data.uncertainties) != tuple(payload.data.uncertainties)
+                or old.presentation != payload.presentation
+            ):
+                raise ValueError("Appended points must preserve their series schema.")
+        for slot, name in payload.axes.items():
+            if name not in self._axes or self._axes[name].slot != slot:
+                raise ValueError("Unknown axis assignment.")
+
+    def _validate_style(self, style) -> None:
+        """Check supported style keys, finite sizes and colours."""
+        if set(style).difference(self.supported_styles):
+            raise ValueError("Unsupported display style.")
+        for key in ("line_width", "point_size"):
+            if key in style:
+                value = float(style[key])
+                if not isfinite(value) or value <= 0:
+                    raise ValueError("Style sizes must be finite and positive.")
+        if "colour" in style:
+            import pyqtgraph as pg  # type: ignore[import-untyped]
+
+            if not pg.mkColor(style["colour"]).isValid():
+                raise ValueError("Invalid series colour.")
 
     def _configured_axes(self, payload):
         axes = dict(self._axes)

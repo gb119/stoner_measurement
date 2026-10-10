@@ -215,30 +215,7 @@ class PlotService(QObject):
 
     def _apply(self, request: PlotRequest, legacy: LegacyCall | None) -> None:
         if legacy is not None:
-            legacy = self._bridge.normalize_legacy(legacy)
-            if legacy.name in {"append_point", "set_trace", "set_trace_with_errors"}:
-                with self._lock:
-                    existing = self._series.get(legacy.args[0])
-                update = self._bridge.legacy_update(legacy, existing)
-                self._apply(
-                    PlotRequest(update, target=request.target, request_id=request.request_id), None
-                )
-                return
-            value = self._bridge.call_legacy(legacy)
-            with self._lock:
-                if legacy.name == "clear_all":
-                    self._series.clear()
-                    self._chunks.clear()
-                    self._surfaces.clear()
-                elif legacy.name == "remove_trace":
-                    self._series.pop(legacy.args[0], None)
-                    self._chunks.pop(legacy.args[0], None)
-                elif legacy.name == "rename_trace" and legacy.args[0] in self._series:
-                    old, new = legacy.args[:2]
-                    self._series[new] = replace(self._series.pop(old), series_id=new)
-                    self._chunks[new] = self._chunks.pop(old)
-            self._refresh_descriptions()
-            self._finish(request, ResultStatus.APPLIED, value=value)
+            self._apply_legacy(request, legacy)
             return
         reasons = self._bridge.capabilities.unsupported_reasons(request)
         if reasons:
@@ -292,6 +269,33 @@ class PlotService(QObject):
                 self._series.clear()
                 self._chunks.clear()
                 self._surfaces.clear()
+        self._refresh_descriptions()
+        self._finish(request, ResultStatus.APPLIED, value=value)
+
+    def _apply_legacy(self, request: PlotRequest, legacy: LegacyCall) -> None:
+        """Normalize legacy operations and update canonical bookkeeping."""
+        legacy = self._bridge.normalize_legacy(legacy)
+        if legacy.name in {"append_point", "set_trace", "set_trace_with_errors"}:
+            with self._lock:
+                existing = self._series.get(legacy.args[0])
+            update = self._bridge.legacy_update(legacy, existing)
+            self._apply(
+                PlotRequest(update, target=request.target, request_id=request.request_id), None
+            )
+            return
+        value = self._bridge.call_legacy(legacy)
+        with self._lock:
+            if legacy.name == "clear_all":
+                self._series.clear()
+                self._chunks.clear()
+                self._surfaces.clear()
+            elif legacy.name == "remove_trace":
+                self._series.pop(legacy.args[0], None)
+                self._chunks.pop(legacy.args[0], None)
+            elif legacy.name == "rename_trace" and legacy.args[0] in self._series:
+                old, new = legacy.args[:2]
+                self._series[new] = replace(self._series.pop(old), series_id=new)
+                self._chunks[new] = self._chunks.pop(old)
         self._refresh_descriptions()
         self._finish(request, ResultStatus.APPLIED, value=value)
 
