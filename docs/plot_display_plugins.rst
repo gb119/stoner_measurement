@@ -27,9 +27,76 @@ creation failure instead of breaking other displays.
 
 Install your package into the application's Python environment and restart the
 application to discover it. Select it through **View → Plot display**. Bundled
-choices are Cartesian traces, Cartesian XYZ and XY intensity. A missing or broken saved
+choices are Cartesian traces, Polar traces, Cartesian XYZ and XY intensity. A missing or broken saved
 selection falls back to Cartesian. Installation adds the menu choice without
 editing ``MainWindow``, ``SequenceEngine`` or plotting commands.
+
+Bundled polar display
+---------------------
+
+Choose **View → Plot display → Polar traces**, then select
+**Polar (angle, radius)** in Plot Trace or Plot Points. **Angle data** is the
+first, independent input; **Radius data** is the second, dependent input.
+For angular measurements select motor position as angle and the measured
+response as radius. Catalogue selections store their runtime expressions.
+Plot Trace replaces a complete pair of arrays; Plot Points appends one pair
+of scalars per execution. Use separate plotting steps for multiple responses.
+Each step starts with its own persistent series ID: use the same angle source
+and a different radius source in each step to overlay datasets. Give each a
+distinct title and colour to identify them. Reusing a series ID appends to the
+same series for Plot Points or replaces it for Plot Trace.
+
+The polar input scroll area expands with the configuration panel. Controls
+remain packed at the top; colour, line/point styles and sizes are below the
+angle conventions and become visible as more height is available.
+
+Source angles default to **degrees**, with **radians** selectable. Zero is at
+the **top** and positive angles run **clockwise**: 90 degrees is right, 180 is
+bottom and 270 is left. These conventions remain adjustable. Origin is
+the zero direction measured anticlockwise from the right in the selected source
+units (90 degrees by default); the clockwise option reverses increasing angle.
+Changing source units converts the origin to preserve its direction. Series sharing one plot
+must use the same zero direction and handedness. Signed wrapping labels the
+negative half-circle; source values remain unchanged. The display's **Angle
+labels** preference changes grid labels independently of source units and is
+saved with the selected factory.
+
+**Auto range** follows incoming data. Panning or zooming disables it so that
+new samples preserve the chosen view; **Reset view** restores it. Manual ranges
+are saved as renderer preferences.
+
+The native circular grid keeps a square aspect ratio. Supported styles are
+colour, line style/width and point style/size. Radius uncertainties appear as
+radial segments; angle uncertainties appear as arcs. NaNs leave gaps. Lines
+follow acquisition order and close only when the first sample is repeated.
+Negative radii are reflected through the origin, with their original sign
+retained in exported source data and the nearest-sample pointer readout.
+Polar does not provide Cartesian extra axes, markers, logarithmic scales or
+surface/intensity rendering. Incompatible plotted state uses the existing
+**Clear and switch** or **Cancel** dialogue; acquired measurement data remains
+available. Saved unsupported command forms retain their bindings visibly.
+
+In scripts, polar bindings use ``x=angle`` and ``y=radius``. This is distinct
+from cylindrical and spherical bindings, which remain radius first::
+
+    from stoner_measurement.core.plotting.contracts import (
+        AngularUnit, CoordinateBinding, CoordinateDescriptor,
+        CoordinateSystem, PlotData, PlotRequest, SeriesUpdate,
+    )
+    update = SeriesUpdate(
+        "angular-response",
+        PlotData({"angle": [0, 90, 180], "radius": [2, 3, 4]}),
+        CoordinateBinding("angle", "radius"),
+        CoordinateDescriptor(
+            CoordinateSystem.POLAR, AngularUnit.DEGREES,
+            angular_origin=90, clockwise=True,
+        ),
+    )
+    ticket = engine.plot_client.submit(PlotRequest(update))
+
+The submission example assumes an existing ``engine`` with Polar traces
+selected. Worker callers wait using ``engine.wait_for_plot_ticket(ticket)``;
+GUI callers submit without blocking or use ``apply_now``.
 
 Bundled XYZ and intensity displays
 ----------------------------------
@@ -160,7 +227,8 @@ host's ``factory_id`` identifies the selected renderer, but producer behaviour
 should depend on capabilities rather than particular renderer names.
 
 Plot Points and Plot Trace default to Cartesian XY, preserving old sequences.
-Their **Plot form** controls additionally offer **XYZ**, **XY intensity**, and
+Their **Plot form** controls additionally offer **Polar (angle, radius)**,
+**XYZ**, **XY intensity**, and
 **XYZ + value** when the complete layout, presentation and optional assembly
 extension are supported. They explicitly select ``x``, ``y``, ``z`` and optional
 ``value`` sources and coordinate conventions. No auxiliary acquisition role

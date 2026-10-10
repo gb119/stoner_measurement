@@ -1,5 +1,28 @@
 ﻿# Testing Restructure Plan
 
+## 2026-10-10: Polar display and angle-first plotting forms
+
+- Startup follow-up: added two attachment regressions for saved XY commands
+  with the polar display and legacy plot facade active. Both commands retain
+  bindings and can select polar without creating incompatible axes. Focused
+  command/polar/surface/menu regressions: **166 passed**. No tests moved.
+
+- Follow-up: two parameterised configuration-page checks verify that polar
+  controls use available height in both commands, retain compact spacing, and
+  return to XY. No test modules moved or removed.
+  Focused command/surface/polar regressions: **177 passed**.
+
+- Added `tests/unit/ui/test_polar_canvas.py` and
+  `tests/integration/sequence/test_polar_plot_commands.py` with scoped widget
+  and complete configuration-page ownership. No tests moved or removed.
+- Covered angle-first projection, clockwise/top-zero command defaults, source
+  unit conversion, raw-state persistence, uncertainties, worker execution,
+  capability-aware switching, invalid inputs, manual view replay and teardown.
+- Updated prospective polar contract and registry expectations; Cartesian and
+  cylindrical/spherical ordering remains unchanged. The 27 dedicated cases
+  pass. Full suite with coverage: **4,002 passed, 2 skipped**. Full validation is
+  recorded in `notes/2026-10-10-polar-display.md`.
+
 ## 2026-10-10: GUI-thread collection after managed widget teardown
 
 - `managed_qt_widget` releases its final loop variable and collects Python

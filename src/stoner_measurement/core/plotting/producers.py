@@ -6,6 +6,7 @@ from stoner_measurement.core.plotting.contracts import (
     ConfigureAxes,
     CoordinateBinding,
     CoordinateDescriptor,
+    CoordinateSystem,
     PlotData,
     PlotOperation,
     Presentation,
@@ -105,13 +106,19 @@ def ensure_plugin_axes(plugin, axes) -> bool:
     """Ensure missing configured axes through a capable portable endpoint.
 
     Return False for the standalone legacy path. Displays without explicit axis
-    configuration defer axis handling to their complete series updates.
+    configuration defer axis handling to their complete series updates. Skip
+    Cartesian XY setup when the selected display cannot render that layout;
+    saved XY commands must remain attachable before a compatible form is chosen.
     """
     client = getattr(plugin.sequence_engine, "plot_client", None)
     if client is None:
         return False
     capabilities = client.capabilities()
-    if capabilities is None or PlotOperation.CONFIGURE_AXES not in capabilities.operations:
+    if (
+        capabilities is None
+        or (CoordinateSystem.CARTESIAN, 2) not in capabilities.layouts
+        or PlotOperation.CONFIGURE_AXES not in capabilities.operations
+    ):
         return True
     existing = {axis.name for axis in client.axes()}
     missing = tuple(

@@ -137,6 +137,14 @@ class PlotTraceCommand(CommandPlugin):
     only to XY. Available forms and axes refresh when the display changes;
     an unsupported saved form remains visible with its bindings preserved.
 
+    Selecting **Polar (angle, radius)** uses an independent **Angle data** array
+    followed by a dependent **Radius data** array, for example motor position
+    and resistance. Source angles default to degrees, with radians selectable.
+    Polar controls include uncertainties, title/series-ID expressions, zero
+    direction, clockwise orientation, wrapping and line/point styles. Samples
+    retain acquisition order; repeat the initial sample to close a full circle.
+    Polar settings are independent of the saved XY and surface bindings.
+
     In the configuration panel you can use two modes:
 
     * **Simple mode**: select a trace from the trace catalogue. Optionally
@@ -170,7 +178,19 @@ class PlotTraceCommand(CommandPlugin):
 
     Attributes:
         plot_form (str):
-            xy, xyz, xy_intensity or xyz_value; defaults to xy.
+            xy, polar, xyz, xy_intensity or xyz_value; defaults to xy.
+        polar_angle_expr, polar_radius_expr (str):
+            Runtime arrays for the independent angle and dependent radius.
+        polar_angle_error_expr, polar_radius_error_expr (str):
+            Optional matching uncertainty arrays in the source units.
+        polar_settings (dict):
+            Angular units (degrees by default), origin, clockwise and wrapping.
+            Zero defaults to the top and increasing angles run clockwise.
+        polar_id_expr, polar_title_expr (str):
+            Runtime series identity and title. The default ID is unique and
+            persistent; repeated execution replaces the same angular trace.
+        polar_style (dict):
+            Independent colour, line/point style and size overrides.
         new_x_expr, z_expr (str):
             Separate runtime array expressions for additional forms. Catalogue
             selections store their expressions; auxiliary roles do not imply Z.
@@ -300,6 +320,18 @@ class PlotTraceCommand(CommandPlugin):
 
             plot_trace.trace_key = "dummy:Dummy"
             plot_trace.transpose = False
+
+        With Polar traces selected in the View menu and ``angle_trace`` already
+        available in the live namespace::
+
+            plot_trace.plot_form = "polar"
+            plot_trace.polar_angle_expr = "angle_trace.x"
+            plot_trace.polar_radius_expr = "angle_trace.y"
+            plot_trace.polar_settings = {
+                "angular_unit": "degrees",
+                "angular_origin": 90,
+                "clockwise": True,
+            }
 
         For an installed display advertising surface assembly::
 

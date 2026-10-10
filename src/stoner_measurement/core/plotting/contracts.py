@@ -219,8 +219,9 @@ class CoordinateBinding:
     """Bind named source channels to generalised coordinates and optional value.
 
     Args:
-        x (str): First coordinate channel (r for polar/cylindrical/spherical).
-        y (str): Second coordinate channel (theta for angular systems).
+        x (str): First coordinate channel (angle for polar; r for cylindrical/spherical).
+        y (str): Second coordinate channel (radius for polar; theta for
+            cylindrical/spherical).
         z (str | None): Optional third coordinate (axial z or spherical phi).
         value (str | None): Independent intensity/colour channel, never inferred
             from the third coordinate or TraceData's auxiliary z role.
@@ -259,7 +260,7 @@ class CoordinateBinding:
         coordinates.validate_dimensions(self.dimensions)
         angular_slots = {
             CoordinateSystem.CARTESIAN: (),
-            CoordinateSystem.POLAR: (self.y,),
+            CoordinateSystem.POLAR: (self.x,),
             CoordinateSystem.CYLINDRICAL: (self.y,),
             CoordinateSystem.SPHERICAL: (self.y, self.z),
         }

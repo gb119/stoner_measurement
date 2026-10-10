@@ -18,7 +18,8 @@ Keep ``x``, ``y`` and ``z`` as coordinate slots. Their physical meaning is
 specified separately:
 
 * Cartesian: X, Y and optional Z.
-* Polar: radius and angle, with no third coordinate.
+* Polar: angle (independent ``x``) and radius (dependent ``y``), with no third
+  coordinate. Cylindrical and spherical coordinates retain radius-first order.
 * Cylindrical: radius, azimuth and axial position.
 * Spherical: radius, theta and phi. The theta/phi convention is mandatory.
 
@@ -313,7 +314,8 @@ Switching display
 -----------------
 
 Choose **View → Plot display** to select an installed display factory. The current
-selection is checked. Cartesian traces are the only bundled rendering option;
+selection is checked. Bundled displays include Cartesian traces, Polar traces,
+Cartesian XYZ and XY intensity;
 installed third-party factories add choices to this menu. A refused replacement
 shows its diagnostic and retains the previous selection.
 

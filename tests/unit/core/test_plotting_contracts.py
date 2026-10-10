@@ -120,7 +120,7 @@ def test_point_append_uses_same_complete_sample_contract():
 @pytest.mark.parametrize(
     "system,binding,convention",
     [
-        (CoordinateSystem.POLAR, CoordinateBinding("radius", "theta"), None),
+        (CoordinateSystem.POLAR, CoordinateBinding("theta", "radius"), None),
         (CoordinateSystem.CYLINDRICAL, CoordinateBinding("radius", "theta", "height"), None),
         (
             CoordinateSystem.SPHERICAL,
@@ -145,7 +145,7 @@ def test_generalised_coordinates_preserve_source_values(system, binding, convent
         binding,
         CoordinateDescriptor(system, AngularUnit.DEGREES, spherical_convention=convention),
     )
-    assert update.binding.x == "radius"
+    assert update.binding.x == ("theta" if system == CoordinateSystem.POLAR else "radius")
     assert update.data.channels["theta"][0] == 90
     assert update.coordinates.spherical_convention == convention
 
@@ -163,7 +163,7 @@ def test_generalised_coordinates_preserve_source_values(system, binding, convent
     ],
 )
 def test_invalid_bindings_and_angular_units_fail_before_dispatch(descriptor, binding):
-    data = PlotData({"x": [1], "y": [2], "z": [3]}, {"y": ChannelMetadata("phase", "rad")})
+    data = PlotData({"x": [1], "y": [2], "z": [3]}, {"x": ChannelMetadata("phase", "rad")})
     with pytest.raises(ValueError):
         SeriesUpdate("bad", data, binding, descriptor)
 

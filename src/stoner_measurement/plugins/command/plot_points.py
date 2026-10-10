@@ -197,7 +197,15 @@ class PlotPointsCommand(CommandPlugin):
     an explicit independent scalar for colour. The coordinate controls specify
     source meanings and angular conventions without projecting acquisition data.
 
-    Additional forms map exact X/Y pairs to rectilinear cells, so reverse or
+    **Polar (angle, radius)** appends one angular sample per execution. Its
+    first input is independent **Angle data**, typically motor position; its
+    second is dependent **Radius data**, such as resistance. Choose catalogue
+    sources or runtime scalar expressions. Angle source units default to degrees
+    with radians selectable. Separate controls set uncertainties, title/series
+    ID, origin, clockwise orientation, wrapping and colour/line/point styles.
+    Use separate Plot Points steps to show multiple radial responses.
+
+    Surface forms map exact X/Y pairs to rectilinear cells, so reverse or
     serpentine nested loops retain the correct grid. Repeated cells are rejected
     unless **replace** is selected; missing cells remain absent. Clear the plot
     for a new run, or change the acquisition identity with reset explicitly
@@ -226,7 +234,19 @@ class PlotPointsCommand(CommandPlugin):
 
     Attributes:
         plot_form (str):
-            xy, xyz, xy_intensity or xyz_value; defaults to xy.
+            xy, polar, xyz, xy_intensity or xyz_value; defaults to xy.
+        polar_angle_expr, polar_radius_expr (str):
+            Runtime scalars for independent angle and dependent radius.
+        polar_angle_error_expr, polar_radius_error_expr (str):
+            Optional scalar uncertainties in the source units.
+        polar_settings (dict):
+            Angular units (degrees by default), origin, clockwise and wrapping.
+            Zero defaults to the top and increasing angles run clockwise.
+        polar_id_expr, polar_title_expr (str):
+            Runtime series identity and displayed title. The automatic ID is
+            unique and persistent; clear the plot before starting a new run.
+        polar_style (dict):
+            Independent colour, line/point style and size overrides.
         new_x_expr, coordinate_y_expr (str):
             Separate runtime scalar coordinate expressions for additional forms.
         z_entries (list[dict]):
@@ -289,6 +309,18 @@ class PlotPointsCommand(CommandPlugin):
 
             plot_points.x_key = "counter:Value"
             plot_points.y_entries = [{"key": "set_temperature:Temperature"}]
+
+        With Polar traces selected and existing ``motor`` and ``voltmeter``
+        instances in the live namespace (use their actual instance names)::
+
+            plot_points.plot_form = "polar"
+            plot_points.polar_angle_expr = "motor.position"
+            plot_points.polar_radius_expr = "voltmeter.value"
+            plot_points.polar_settings = {
+                "angular_unit": "degrees",
+                "angular_origin": 90,
+                "clockwise": True,
+            }
 
         For an installed display advertising surface assembly::
 

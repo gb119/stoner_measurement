@@ -6,6 +6,7 @@ import logging
 from stoner_measurement.core.plotting.contracts import PlotCapabilities
 from stoner_measurement.ui.plotting.cartesian import CartesianDisplayFactory
 from stoner_measurement.ui.plotting.interfaces import DISPLAY_CONTRACT_VERSION, PlotDisplayFactory
+from stoner_measurement.ui.plotting.polar import PolarDisplayFactory
 from stoner_measurement.ui.plotting.surface_displays import (
     Cartesian3DDisplayFactory,
     IntensityDisplayFactory,
@@ -32,6 +33,7 @@ class PlotDisplayRegistry:
             factory.factory_id: factory
             for factory in (
                 CartesianDisplayFactory(),
+                PolarDisplayFactory(),
                 Cartesian3DDisplayFactory(),
                 IntensityDisplayFactory(),
             )
@@ -79,7 +81,12 @@ class PlotDisplayRegistry:
                 factory_class = entry.load()
                 if (
                     factory_class
-                    in (CartesianDisplayFactory, Cartesian3DDisplayFactory, IntensityDisplayFactory)
+                    in (
+                        CartesianDisplayFactory,
+                        PolarDisplayFactory,
+                        Cartesian3DDisplayFactory,
+                        IntensityDisplayFactory,
+                    )
                     and entry.name == factory_class.factory_id
                 ):
                     continue  # Source fallback and installed metadata identify one factory.

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pytest
 
 from stoner_measurement.ui.plotting.cartesian import CartesianDisplayFactory
+from stoner_measurement.ui.plotting.polar import PolarDisplayFactory
 from stoner_measurement.ui.plotting.registry import DISPLAY_ENTRY_POINT_GROUP, PlotDisplayRegistry
 from stoner_measurement.ui.plotting.surface_displays import (
     Cartesian3DDisplayFactory,
@@ -43,6 +44,7 @@ def test_discovery_loads_factory_metadata_only(monkeypatch):
         return [
             Entry("minimal", MetadataFactory),
             Entry("cartesian", CartesianDisplayFactory),
+            Entry("polar", PolarDisplayFactory),
             Entry("cartesian_3d", Cartesian3DDisplayFactory),
             Entry("intensity", IntensityDisplayFactory),
         ]
@@ -51,7 +53,7 @@ def test_discovery_loads_factory_metadata_only(monkeypatch):
     registry = PlotDisplayRegistry()
     registry.discover()
     assert groups == [DISPLAY_ENTRY_POINT_GROUP]
-    assert set(registry.factories) == {"cartesian", "cartesian_3d", "intensity", "minimal"}
+    assert set(registry.factories) == {"cartesian", "polar", "cartesian_3d", "intensity", "minimal"}
     assert registry.diagnostics == ()
     snapshot = registry.factories
     snapshot.clear()
@@ -68,7 +70,7 @@ def test_broken_import_does_not_hide_valid_factory(monkeypatch):
     )
     registry = PlotDisplayRegistry()
     registry.discover()
-    assert set(registry.factories) == {"cartesian", "cartesian_3d", "intensity", "minimal"}
+    assert set(registry.factories) == {"cartesian", "polar", "cartesian_3d", "intensity", "minimal"}
     assert "missing renderer" in registry.diagnostics[0]
 
 
@@ -79,7 +81,7 @@ def test_missing_metadata_retains_bundled_factory(monkeypatch):
     monkeypatch.setattr("importlib.metadata.entry_points", unavailable)
     registry = PlotDisplayRegistry()
     registry.discover()
-    assert list(registry.factories) == ["cartesian", "cartesian_3d", "intensity"]
+    assert list(registry.factories) == ["cartesian", "polar", "cartesian_3d", "intensity"]
     assert "metadata unavailable" in registry.diagnostics[0]
 
 
@@ -99,7 +101,7 @@ def test_register_rejects_invalid_metadata(attribute, value):
     registry = PlotDisplayRegistry()
     with pytest.raises((TypeError, ValueError)):
         registry.register(factory)
-    assert list(registry.factories) == ["cartesian", "cartesian_3d", "intensity"]
+    assert list(registry.factories) == ["cartesian", "polar", "cartesian_3d", "intensity"]
 
 
 def test_duplicate_ids_and_bundled_override_are_rejected():
@@ -121,7 +123,7 @@ def test_discovery_rejects_mismatched_entry_name_and_rebuilds(monkeypatch):
     registry = PlotDisplayRegistry()
     registry.register(MetadataFactory())
     registry.discover()
-    assert list(registry.factories) == ["cartesian", "cartesian_3d", "intensity"]
+    assert list(registry.factories) == ["cartesian", "polar", "cartesian_3d", "intensity"]
     assert "must match" in registry.diagnostics[0]
 
 

@@ -378,6 +378,7 @@ def test_cached_config_changes_forms_axes_and_retains_unsupported_selection(
     combo = page.findChild(QComboBox, "plot_form")
     assert {combo.itemData(i) for i in range(combo.count())} == {
         "xy",
+        "polar",
         "xyz",
         "xy_intensity",
         "xyz_value",

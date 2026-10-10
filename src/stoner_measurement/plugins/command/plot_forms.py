@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -36,7 +37,13 @@ from stoner_measurement.plugins.trace_catalog_ui import trace_channel_items
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.ui.widgets import SISpinBox
 
-FORM_NAMES = {"xy": "XY", "xy_intensity": "XY intensity", "xyz": "XYZ", "xyz_value": "XYZ + value"}
+FORM_NAMES = {
+    "xy": "XY",
+    "polar": "Polar (angle, radius)",
+    "xy_intensity": "XY intensity",
+    "xyz": "XYZ",
+    "xyz_value": "XYZ + value",
+}
 FORM_DEFAULTS = {
     "plot_form": "xy",
     "new_x_expr": "",
@@ -57,6 +64,14 @@ FORM_DEFAULTS = {
     "z_error_expr": "",
     "regrid_policy": "mean",
     "regrid_bounds": "nearest",
+    "polar_angle_expr": "",
+    "polar_radius_expr": "",
+    "polar_angle_error_expr": "",
+    "polar_radius_error_expr": "",
+    "polar_id_expr": "",
+    "polar_title_expr": "'Angular signal'",
+    "polar_settings": {"angular_unit": "degrees", "angular_origin": 90.0, "clockwise": True},
+    "polar_style": {},
 }
 
 
@@ -70,6 +85,8 @@ def restore_forms(plugin, data) -> None:
     for name, default in FORM_DEFAULTS.items():
         setattr(plugin, name, deepcopy(data.get(name, default)))
     _ensure_surface_identity(plugin)
+    if not plugin.polar_id_expr.strip():
+        plugin.polar_id_expr = repr(uuid4().hex)
 
 
 def _ensure_surface_identity(plugin) -> None:
@@ -100,6 +117,9 @@ def supported_forms(plugin) -> set[str]:
         return forms
     if (CoordinateSystem.CARTESIAN, 2) in caps.layouts and Presentation.LINE in caps.presentations:
         forms.add("xy")
+    presentation = Presentation.LINE if hasattr(plugin, "trace_key") else Presentation.POINTS
+    if (CoordinateSystem.POLAR, 2) in caps.layouts and presentation in caps.presentations:
+        forms.add("polar")
     try:
         coordinates = descriptor(plugin)
     except ValueError:
@@ -157,6 +177,11 @@ def _submit_updates(plugin, updates) -> None:
 
 def execute_trace_form(plugin) -> None:
     """Capture live arrays and fixed Y once, then submit an atomic slice."""
+    if plugin.plot_form == "polar":
+        from stoner_measurement.plugins.command.polar_forms import execute_polar_form
+
+        execute_polar_form(plugin, trace=True)
+        return
     xs = np.asarray(plugin.eval(plugin.new_x_expr), dtype=float)
     zs = np.asarray(plugin.eval(plugin.z_expr), dtype=float)
     if xs.ndim != 1 or zs.ndim != 1 or xs.shape != zs.shape:
@@ -233,6 +258,11 @@ def _scalar_metadata(plugin, expression) -> ChannelMetadata:
 
 def execute_points_form(plugin, axis_label) -> None:
     """Resolve shared scalar coordinates once and append explicit measured Z cells."""
+    if plugin.plot_form == "polar":
+        from stoner_measurement.plugins.command.polar_forms import execute_polar_form
+
+        execute_polar_form(plugin, trace=False)
+        return
     catalog = plugin.engine_namespace.get("_values", {})
 
     def label_for(expression, key=""):
@@ -452,6 +482,14 @@ class PlotFormPanel(QWidget):
         reset.toggled.connect(lambda checked: setattr(plugin, "reset_on_change", checked))
         self.fields.addRow(reset)
         self._coordinate_fields()
+        from stoner_measurement.plugins.command.polar_forms import PolarFormPanel
+
+        self.polar_options = QScrollArea(self)
+        self.polar_options.setObjectName("polar_options")
+        self.polar_options.setWidgetResizable(True)
+        self.polar_options.setMinimumHeight(290)
+        self.polar_options.setWidget(PolarFormPanel(self))
+        layout.addWidget(self.polar_options, 1)
         self.forms.currentIndexChanged.connect(self._select_form)
         self.binding = PlotContextBinding(plugin, self, self.refresh)
         plugin.plot_context_changed.connect(self._bind_catalog)
@@ -644,7 +682,17 @@ class PlotFormPanel(QWidget):
             self.forms.addItem(f"{selected} (unsupported)", selected)
         self.forms.setCurrentIndex(self.forms.findData(selected))
         self.forms.blockSignals(False)
-        self.options_area.setVisible(selected != "xy")
+        self.options_area.setVisible(selected not in ("xy", "polar"))
+        self.polar_options.setVisible(selected == "polar")
+        for widget in (self, self.parentWidget()):
+            policy = widget.sizePolicy()
+            policy.setVerticalPolicy(
+                QSizePolicy.Policy.Expanding
+                if selected == "polar"
+                else QSizePolicy.Policy.Preferred
+            )
+            policy.setVerticalStretch(1 if selected == "polar" else 0)
+            widget.setSizePolicy(policy)
         self.value_combo.setEnabled(selected == "xyz_value")
         self.status.setText(
             ""
