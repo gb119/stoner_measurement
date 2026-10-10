@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import shutil
 from pathlib import Path
 from typing import TypeVar
@@ -60,7 +61,13 @@ def managed_qt_widget(qapp):
     event_types = getattr(QEvent, "Type", QEvent)
     QCoreApplication.sendPostedEvents(None, event_types.DeferredDelete)
     qapp.processEvents()
+    if widgets:
+        del widget
     widgets.clear()
+    # PyQtGraph signal/parent cycles can outlive the native widgets. Reclaim
+    # them here on the GUI thread, before the next sequence worker's Python
+    # allocations trigger cyclic collection from a background thread.
+    gc.collect()
 
 
 @pytest.fixture

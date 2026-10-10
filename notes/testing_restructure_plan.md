@@ -1,5 +1,18 @@
 ﻿# Testing Restructure Plan
 
+## 2026-10-10: GUI-thread collection after managed widget teardown
+
+- `managed_qt_widget` releases its final loop variable and collects Python
+  cycles on the GUI thread after scoped widget deletion and deferred events.
+- Added `tests/unit/ui/test_qt_widget_lifecycle.py` to verify cyclic wrappers
+  are reclaimed and finalized on the GUI thread without changing automatic GC
+  settings. No tests moved or removed.
+- Regression and original plot-service module: **9 passed**. Three fresh
+  integration runs with coverage: **87 passed, 1 skipped** each. Initial full
+  suite: **3,974 passed, 2 skipped**. Final full suite including the new test
+  and last-reference fix: **3,975 passed, 2 skipped** with coverage. Hosted-CI
+  boundary is recorded in `notes/2026-10-10-ci-qt-cycle-collection.md`.
+
 ## 2026-10-06: Plot Trace automatic surface identity regression
 
 ### Follow-up: clear-and-switch compatibility recovery

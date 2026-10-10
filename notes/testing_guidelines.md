@@ -62,6 +62,10 @@ contract at a time.
   drains deferred-delete events. This is especially important for PyQtGraph,
   whose scene items can still receive deferred geometry events after a test
   function returns.
+- After deleting managed widgets and draining deferred events, release Python
+  references and collect cycles on the GUI thread. PyQtGraph signal/parent
+  cycles can otherwise survive into the next sequence worker, whose allocations
+  may trigger collection of Qt wrappers from a background thread.
 - Composite production widgets must close lifecycle-sensitive child widgets
   explicitly in their own ``closeEvent``; parent ownership alone does not
   guarantee orderly PyQtGraph scene teardown.
