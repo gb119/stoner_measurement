@@ -732,6 +732,9 @@ class SequenceEngine(QObject):
 
         self._namespace = self._make_namespace()
         self._namespace["wait_for_plot_ready"] = self.wait_for_plot_ready
+        self._namespace["select_display_plugin"] = self.select_display_plugin
+        self.preferred_display_plugin = "cartesian"
+        self.plot_display_host: Any = None
         self._plugin_var_names: dict[str, str] = {}  # ep_name → var_name in namespace
         # Step-plugin instances provided by the application layer (e.g. from the
         # sequence editor).  These are the sole source for the _traces/_values
@@ -776,6 +779,25 @@ class SequenceEngine(QObject):
         self._plot_client = client
         for plugin in plugins:
             plugin.sequence_engine = self
+
+    def select_display_plugin(self, factory_id: str) -> None:
+        """Select a sequence's required display before configuring its plugins.
+
+        Available in the script namespace as ``select_display_plugin``. An
+        already selected factory is a no-op. Otherwise the host dispatches
+        replacement to the GUI thread and clears plotted state. Missing or
+        broken displays raise rather than falling back.
+        """
+        if self.plot_display_host is None:
+            raise RuntimeError("No plot display host is attached to the sequence engine.")
+        if self.plot_display_host.factory_id == factory_id:
+            self.preferred_display_plugin = factory_id
+            return
+        if not self.wait_for_plot_ready(timeout=None):
+            raise RuntimeError("Sequence stopped before selecting its display.")
+        stop_event = None if QThread.currentThread() == self.thread() else self._thread._stop_event
+        self.plot_display_host.select_display(factory_id, stop_event=stop_event)
+        self.preferred_display_plugin = factory_id
 
     @property
     def plot_widget(self) -> Any:
@@ -1850,6 +1872,8 @@ class SequenceEngine(QObject):
         header = [
             "# Sequence script — auto-generated from sequence tree.",
             "# Edit as needed, then click Run.",
+            "",
+            f"select_display_plugin({self.preferred_display_plugin!r})",
             "",
         ]
 

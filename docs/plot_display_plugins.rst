@@ -128,6 +128,27 @@ retained. The old plots are discarded only after the replacement initialises
 successfully. Busy measurements still prevent switching. Compatible idle replay
 preserves cells, slice identities, visibility and titles.
 
+Each measurement sequence has its own preferred display. Selecting a display
+from **View → Plot display** updates the active sequence and marks it as
+changed. When a selected sequence tab requests a different display, a dialog
+offers **Use current display for sequence** (updates its saved preference),
+**Switch to sequence display**, or **Ignore** (retains both choices). Matching
+displays need no dialog. Ignoring the difference applies while editing;
+the generated script still selects the sequence's preferred display. Sequence
+JSON and copied steps carry the factory ID in ``display_plugin``; older
+sequence files without this field use ``cartesian``. Saved measurement data
+also carries this choice when importing its sequence.
+
+Generated scripts call ``select_display_plugin('factory_id')`` before plugin
+instantiation, connection or configuration. This helper is also available in
+the console and through ``SequenceEngine.select_display_plugin``. It selects
+the required display on the GUI thread, clearing plotted state when replacing
+the display, while retaining acquired data. Selecting the current plugin is a
+no-op and preserves plots, axes and display settings. An unavailable or broken display
+raises an error and retains the previous display; it does not silently choose
+another renderer. ``SequenceEngine.preferred_display_plugin`` holds the active
+sequence's choice; inactive sequence tabs retain theirs in their documents.
+
 To reduce the standard Cartesian display to one X/Y axis pair before switching,
 right-click the plot and choose **Remove Axis → Remove All Extra Axes**. The
 submenu also lets you remove a single extra axis. Traces move to the built-in

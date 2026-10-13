@@ -2,7 +2,8 @@
 
 import json
 import logging
-from dataclasses import replace
+import threading
+from dataclasses import dataclass, field, replace
 
 from qtpy.QtCore import QThread  # type: ignore[attr-defined]
 from qtpy.QtWidgets import QApplication, QVBoxLayout, QWidget
@@ -27,6 +28,16 @@ from stoner_measurement.ui.plotting.registry import PlotDisplayRegistry
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class _DisplaySelection:
+    """One worker-to-GUI handover with completion and cancellation state."""
+
+    factory_id: str
+    done: threading.Event = field(default_factory=threading.Event)
+    cancelled: threading.Event = field(default_factory=threading.Event)
+    error: Exception | None = None
+
+
 class PlotDisplayHost(QWidget):
     """Own a startup-selected display and its stable producer service.
 
@@ -43,6 +54,7 @@ class PlotDisplayHost(QWidget):
 
     changed = pyqtSignal()
     display_changed = pyqtSignal(str)
+    _selection_requested = pyqtSignal(object)
 
     def __init__(
         self, parent=None, *, registry=None, factory_id=None, settings=None, idle_check=None
@@ -51,6 +63,7 @@ class PlotDisplayHost(QWidget):
         if app is None or QThread.currentThread() != app.thread():
             raise RuntimeError("Plot displays must be constructed on the GUI thread.")
         super().__init__(parent)
+        self._selection_requested.connect(self._complete_selection)
         self.registry = registry if registry is not None else PlotDisplayRegistry()
         if registry is None:
             self.registry.discover()
@@ -262,12 +275,47 @@ class PlotDisplayHost(QWidget):
             container.hide()
             container.deleteLater()
 
+    def select_display(self, factory_id: str, *, stop_event=None) -> None:
+        """Select a sequence-required display, including from its script worker.
+
+        Replacement uses fresh plot state and may run while the sequence worker
+        is waiting here. The plot dispatcher must still be idle. A failed
+        candidate retains the existing display and raises a diagnostic error.
+        """
+        request = _DisplaySelection(factory_id)
+        if self.service.is_gui_thread():
+            self._complete_selection(request)
+        else:
+            self._selection_requested.emit(request)
+            while not request.done.wait(0.01):
+                if stop_event is not None and stop_event.is_set():
+                    request.cancelled.set()
+                    raise RuntimeError("Sequence stopped before selecting its display.")
+        if request.error is not None:
+            raise request.error
+
+    def _complete_selection(self, request: _DisplaySelection) -> None:
+        """Complete a synchronous required-selection request on the GUI thread."""
+        try:
+            if request.cancelled.is_set():
+                return
+            if not self._switch_display(request.factory_id, reset=True, require_idle=False):
+                raise RuntimeError(self.diagnostics[-1])
+        except Exception as exc:
+            request.error = exc
+        finally:
+            request.done.set()
+
     def switch_display(self, factory_id: str, *, force=False, reset=False) -> bool:
         """Switch while idle, optionally discarding plotted state at successful commit.
 
         A reset uses the candidate's default axes and settings. Failures retain
         the current display/data; switch_requires_reset identifies replay refusals.
         """
+        return self._switch_display(factory_id, force=force, reset=reset)
+
+    def _switch_display(self, factory_id, *, force=False, reset=False, require_idle=True):
+        """Replace transactionally with the caller's engine-readiness policy."""
         self.switch_requires_reset = False
         if not self.service.is_gui_thread():
             raise RuntimeError("Display replacement must run on the GUI thread.")
@@ -277,7 +325,7 @@ class PlotDisplayHost(QWidget):
         replaying = False
         try:
             with self.service.replacement_guard():
-                if not self.idle_check():
+                if require_idle and not self.idle_check():
                     raise RuntimeError("Display replacement requires an idle measurement engine.")
                 state = self.export_state()
                 self._settings_cache[self.factory_id] = settings_dict(state.renderer_settings)
@@ -295,7 +343,7 @@ class PlotDisplayHost(QWidget):
                     entry.update.series_id for entry in state.series
                 }:
                     raise ValueError("The candidate did not hydrate every series.")
-                if not self.idle_check():
+                if require_idle and not self.idle_check():
                     raise RuntimeError("The measurement engine became busy during replacement.")
                 candidate.changed.connect(self.changed)
                 old_display, old_container = self._display, self._container

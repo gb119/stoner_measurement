@@ -696,6 +696,7 @@ class SaveCommand(CommandPlugin):
         if steps is None:
             steps = engine.step_plugins()
         metadata = sequence_metadata(steps)
+        metadata["display_plugin"] = engine.preferred_display_plugin
         outputs: dict[str, Any] = {}
         values_catalog: dict[str, str] = ns.get("_values", {})
         for key, expr in values_catalog.items():

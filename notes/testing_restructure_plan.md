@@ -1535,3 +1535,16 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   Follow-up deadline/cancellation/controller/sequence selection: 209 passed.
   Batch counts, simulated timing results and bench-validation limits are in
   [the implementation note](2026-10-10-engine-command-performance-implementation.md).
+
+## 2026-10-13: per-sequence display preferences
+
+- Added `tests/integration/app/test_sequence_display_preference.py` with scoped
+  managed application/widget ownership and explicit GUI handover coverage.
+- Extended the existing display-menu fake to model active-document updates;
+  isolated display selection in the legacy exception-attribution test. No tests
+  were moved or removed. The legacy serializer and engine monoliths remain.
+- Affected app, plotting-sequence, serializer, engine, SaveCommand, display-host,
+  and clipboard selection: 353 passed, 2 skipped on offscreen PyQt5. Ruff and
+  diff checks passed. Targeted mypy matches the 23-error untouched-HEAD baseline.
+- Commands, contracts and validation limits are recorded in
+  [the preference note](2026-10-13-sequence-display-preference.md).

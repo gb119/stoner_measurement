@@ -552,8 +552,10 @@ class TestExceptionReporting:
         combined = "\n".join(errors)
         assert "sequence_engine.py" not in combined
 
-    def test_non_customised_script_reports_plugin_name(self, engine, qapp):
+    def test_non_customised_script_reports_plugin_name(self, engine, qapp, monkeypatch):
         """Auto-generated script exceptions should name the responsible plugin."""
+        # Display selection is covered with a live GUI host in integration tests.
+        monkeypatch.setitem(engine._namespace, "select_display_plugin", lambda _factory: None)
         plugin = DummyPlugin()
         engine.add_plugin("dummy", plugin)
         plugins = {"dummy": plugin}

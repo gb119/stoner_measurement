@@ -65,8 +65,10 @@ _APPLICATION_RESERVED_INSTANCE_NAMES = frozenset(
         "np",
         "numpy",
         "outputs",
+        "display_plugin",
         "sequence",
         "wait_for_plot_ready",
+        "select_display_plugin",
     }
 )
 RESERVED_INSTANCE_NAMES = (

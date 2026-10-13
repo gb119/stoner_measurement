@@ -20,6 +20,17 @@ class MenuWindow(QMainWindow):
     _switch_plot_display = MeasurementApp._switch_plot_display
     _refresh_plot_display_menu = MeasurementApp._refresh_plot_display_menu
 
+    def __init__(self):
+        super().__init__()
+        self._engine = SimpleNamespace(preferred_display_plugin="cartesian")
+        self.stored = 0
+
+    def _store_active_sequence(self):
+        self.stored += 1
+
+    def _update_window_title(self):
+        """The full application owns document title updates."""
+
     def __getattr__(self, name):
         if name.startswith("_act_"):
             action = QAction(name, self)
@@ -67,6 +78,8 @@ def test_view_menu_selects_discovered_factories_and_restores_checkmark(
     assert window._plot_display_actions["other"].isChecked() is allowed
     assert window._plot_display_actions["cartesian"].isChecked() is not allowed
     assert bool(warnings) is not allowed
+    assert window.stored == int(allowed)
+    assert window._engine.preferred_display_plugin == ("other" if allowed else "cartesian")
 
 
 @pytest.mark.parametrize("clear", [False, True])
