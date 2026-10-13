@@ -1052,6 +1052,7 @@ class DockPanel(QWidget):
         super().__init__(parent)
         self._plugin_manager = plugin_manager
         # Maps plugin name → monitor widget currently shown in the panel.
+        self.sequence_display_plugin: Callable[[], str] = lambda: "cartesian"
         self._monitor_widgets: dict[str, QWidget] = {}
         # Counts how many step instances have been created per ep_name,
         # used to generate unique instance names for additional copies.
@@ -2192,7 +2193,9 @@ class DockPanel(QWidget):
 
         root_items = [item for item in items if not _has_selected_ancestor(item)]
         steps = [self._item_to_step(item) for item in root_items]
-        self._clipboard_step_json = json.dumps(sequence_to_json(steps))
+        self._clipboard_step_json = json.dumps(
+            sequence_to_json(steps, display_plugin=self.sequence_display_plugin())
+        )
         mime_data = QMimeData()
         mime_data.setText(self._clipboard_step_json)
         mime_data.setData(

@@ -374,6 +374,7 @@ class _EngineThread(QThread):
 
             kind = item[0]
             if kind == "quit":
+                self._queue.task_done()
                 break
             if kind == "command":
                 self._exec_command(item[1], out_stream, err_stream)
@@ -383,6 +384,7 @@ class _EngineThread(QThread):
                     item[1], out_stream, err_stream, customised=item[2], line_map=item[3]
                 )
             self._completed += 1
+            self._queue.task_done()
 
     # ------------------------------------------------------------------
     # Execution helpers
@@ -418,9 +420,9 @@ class _EngineThread(QThread):
             events).  Returning the tracer itself re-installs it for subsequent
             events; returning ``None`` would stop tracing.
             """
-            if stop_event.is_set():
-                raise KeyboardInterrupt("Sequence stopped by user")
             if not pause_event.is_set():
+                if stop_event.is_set():
+                    raise KeyboardInterrupt("Sequence stopped by user")
                 pause_event.wait()
             if stop_event.is_set():
                 raise KeyboardInterrupt("Sequence stopped by user")
@@ -730,6 +732,9 @@ class SequenceEngine(QObject):
 
         self._namespace = self._make_namespace()
         self._namespace["wait_for_plot_ready"] = self.wait_for_plot_ready
+        self._namespace["select_display_plugin"] = self.select_display_plugin
+        self.preferred_display_plugin = "cartesian"
+        self.plot_display_host: Any = None
         self._plugin_var_names: dict[str, str] = {}  # ep_name → var_name in namespace
         # Step-plugin instances provided by the application layer (e.g. from the
         # sequence editor).  These are the sole source for the _traces/_values
@@ -744,6 +749,7 @@ class SequenceEngine(QObject):
         # Reference to the main plot widget; set by the application after startup.
         # Used by PlotTraceCommand to deliver data directly without manual signal wiring.
         self._plot_widget: Any = None
+        self._plot_client: Any = None
 
         self._thread = _EngineThread(namespace=self._namespace, parent=self)
         self._thread.output.connect(self.output)
@@ -756,6 +762,42 @@ class SequenceEngine(QObject):
     # ------------------------------------------------------------------
     # Plot widget reference
     # ------------------------------------------------------------------
+
+    @property
+    def plot_client(self) -> Any:
+        """Stable plotting endpoint, with legacy signal connections suspended."""
+        return self._plot_client
+
+    @plot_client.setter
+    def plot_client(self, client: Any) -> None:
+        """Rebind existing producers once when service routing changes."""
+        if client is self._plot_client:
+            return
+        plugins = [plugin for plugin in self.all_plugins() if plugin.sequence_engine is self]
+        for plugin in plugins:
+            plugin.sequence_engine = None
+        self._plot_client = client
+        for plugin in plugins:
+            plugin.sequence_engine = self
+
+    def select_display_plugin(self, factory_id: str) -> None:
+        """Select a sequence's required display before configuring its plugins.
+
+        Available in the script namespace as ``select_display_plugin``. An
+        already selected factory is a no-op. Otherwise the host dispatches
+        replacement to the GUI thread and clears plotted state. Missing or
+        broken displays raise rather than falling back.
+        """
+        if self.plot_display_host is None:
+            raise RuntimeError("No plot display host is attached to the sequence engine.")
+        if self.plot_display_host.factory_id == factory_id:
+            self.preferred_display_plugin = factory_id
+            return
+        if not self.wait_for_plot_ready(timeout=None):
+            raise RuntimeError("Sequence stopped before selecting its display.")
+        stop_event = None if QThread.currentThread() == self.thread() else self._thread._stop_event
+        self.plot_display_host.select_display(factory_id, stop_event=stop_event)
+        self.preferred_display_plugin = factory_id
 
     @property
     def plot_widget(self) -> Any:
@@ -815,12 +857,15 @@ class SequenceEngine(QObject):
                 ``True`` when the plot is ready (or no plot widget is attached);
                 ``False`` if the timeout expires first.
         """
-        plot_widget = self._plot_widget
+        plot_widget = self.plot_client or self._plot_widget
         if plot_widget is None:
             return True
 
         if not hasattr(plot_widget, "is_busy_for_data"):
             return True
+
+        if self.plot_client is not None and self.plot_client.is_gui_thread():
+            return not bool(plot_widget.is_busy_for_data())
 
         if timeout is not None and timeout <= 0:
             return not bool(plot_widget.is_busy_for_data())
@@ -837,8 +882,46 @@ class SequenceEngine(QObject):
                 continue
             if deadline is not None and time.monotonic() >= deadline:
                 return False
-            time.sleep(sleep_for)
+            client = getattr(self, "plot_client", None)
+            wait_until_idle = getattr(client, "wait_until_idle", time.sleep)
+            remaining = (
+                sleep_for
+                if deadline is None
+                else min(sleep_for, max(0.0, deadline - time.monotonic()))
+            )
+            if callable(wait_until_idle):
+                wait_until_idle(remaining)
+            else:
+                time.sleep(remaining)
         return True
+
+    def wait_for_plot_ticket(self, ticket, timeout: float = 10.0):
+        """Await one request in a worker, honouring pause, stop and timeout.
+
+        GUI producers use apply_now and only inspect an already completed ticket.
+        A wait timeout leaves the request pending; stop cancels queued requests.
+        """
+        if self.plot_client is not None and self.plot_client.is_gui_thread():
+            result = ticket.wait(0)
+            if result is None:
+                raise RuntimeError("GUI callers cannot wait for queued plot work.")
+            return result
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            if self._thread._stop_event.is_set():
+                if self.plot_client is not None:
+                    self.plot_client.cancel(ticket, "Sequence stopped.")
+                return None
+            if not self._thread._pause_event.is_set():
+                self._thread._pause_event.wait(timeout=0.01)
+                continue
+            result = ticket.wait(0)
+            if result is not None:
+                return result
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Timed out waiting for plot request completion.")
+            ticket.wait(min(0.01, remaining))
 
     # ------------------------------------------------------------------
     # Namespace management
@@ -1587,6 +1670,8 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         self._thread.request_stop()
+        if self.plot_client is not None:
+            self.plot_client.cancel_pending("Sequence stopped.")
 
     def shutdown(self) -> None:
         """Cleanly stop the background thread and wait for it to finish.
@@ -1603,6 +1688,8 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         self._thread.request_stop()
+        if self.plot_client is not None:
+            self.plot_client.cancel_pending("Sequence engine shut down.")
         self._thread._queue.put(("quit", None))
         self._thread.wait(2000)
         if self._thread.isRunning():
@@ -1641,6 +1728,12 @@ class SequenceEngine(QObject):
             >>> engine.shutdown()
         """
         return self._log_handler
+
+    @property
+    def is_plot_idle(self) -> bool:
+        """True only when no queued or executing script/console command exists."""
+        with self._thread._queue.mutex:
+            return self._thread._queue.unfinished_tasks == 0
 
     @property
     def is_running(self) -> bool:
@@ -1779,6 +1872,8 @@ class SequenceEngine(QObject):
         header = [
             "# Sequence script — auto-generated from sequence tree.",
             "# Edit as needed, then click Run.",
+            "",
+            f"select_display_plugin({self.preferred_display_plugin!r})",
             "",
         ]
 

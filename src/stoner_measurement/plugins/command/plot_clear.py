@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from qtpy.QtWidgets import QLabel, QWidget
 
+from stoner_measurement.core.plotting.contracts import ClearPlot
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.qt_compat import pyqtSignal
 
@@ -132,7 +133,7 @@ class PlotClearCommand(CommandPlugin):
 
         if engine is not None:
             new_pw = getattr(engine, "plot_widget", None)
-            if new_pw is not None:
+            if new_pw is not None and getattr(engine, "plot_client", None) is None:
                 self.plot_clear.connect(new_pw.clear_all)
 
     @property
@@ -178,6 +179,7 @@ class PlotClearCommand(CommandPlugin):
             [True]
             >>> engine.shutdown()
         """
+        self._submit_plot_operation(ClearPlot())
         self.plot_clear.emit()
         self.log.debug("PlotClear: cleared all plot traces.")
 

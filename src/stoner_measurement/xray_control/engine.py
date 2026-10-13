@@ -10,8 +10,15 @@ from datetime import UTC, datetime
 from hmac import compare_digest
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QObject, QTimer
+from qtpy.QtCore import QObject
 
+from stoner_measurement.core.controller_polling import (
+    ControllerPoller,
+    ControllerTimer,
+    ControllerUpdates,
+    controller_action,
+    coordinated_read,
+)
 from stoner_measurement.instruments.transport import FtdiD2xxTransport
 from stoner_measurement.instruments.xray import (
     AxisMechanics,
@@ -41,6 +48,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class XrayOperation:
+    """Completion ticket retaining the result or error of a background operation."""
+
+    def __init__(self):
+        self.done = threading.Event()
+        self.error = None
+        self.state = None
+
+    def result(self):
+        """Return completed state or propagate the original operation failure."""
+        if not self.done.is_set():
+            raise RuntimeError("X-ray operation has not completed.")
+        if self.error is not None:
+            raise self.error
+        return self.state
+
+
 class XrayControllerEngine(QObject):
     """Own the driver, polling timer and cancellable background operations."""
 
@@ -55,6 +79,7 @@ class XrayControllerEngine(QObject):
         self._engine_lock = threading.RLock()
         self._cancel_event = threading.Event()
         self._operation_thread: threading.Thread | None = None
+        self._operation_ticket = None
         self._polling_rate_hz = 1.0
         self._preferred_instrument_name = "Wharfedale"
         self._preferred_address = "index:0"
@@ -66,7 +91,9 @@ class XrayControllerEngine(QObject):
         self._count_duration_s = 1.0
         self._mechanics = DiffractometerMechanics.recovered_site_defaults()
         self._latest_state = XrayEngineState()
-        self._timer = QTimer(self)
+        self._controller_poller = ControllerPoller()
+        self._state_updates = ControllerUpdates(self.publisher)
+        self._timer = ControllerTimer(self)
         self._timer.timeout.connect(self._poll)
         self._apply_configuration(load_xray_controller_config())
 
@@ -76,6 +103,8 @@ class XrayControllerEngine(QObject):
             cls._singleton = cls()
             app = _qapp()
             if app is not None:
+                if cls._singleton.thread() != app.thread():
+                    cls._singleton.moveToThread(app.thread())
                 app.aboutToQuit.connect(cls._singleton.shutdown)
         return cls._singleton
 
@@ -242,6 +271,7 @@ class XrayControllerEngine(QObject):
             self._latest_state = replace(self._latest_state, engine_status=self._status)
         self.publisher.connection_changed.emit()
 
+    @coordinated_read
     def read_controller_state(self) -> XrayEngineState | None:
         driver = self._driver
         if driver is None or self._operation_active():
@@ -262,18 +292,21 @@ class XrayControllerEngine(QObject):
     def get_engine_state(self) -> XrayEngineState:
         return self._latest_state
 
+    @controller_action
     def move_to(
         self,
         target_deg: float,
         mode: XrayMotionMode | None = None,
         *,
         speed_deg_per_min: float | None = None,
+        _reset_cancel: bool = True,
     ) -> XrayEngineState:
         """Synchronously execute one of the three supported motion modes."""
         driver = self._require_driver()
         selected = mode or self._motion_mode
         speed = speed_deg_per_min or self._speed_deg_per_min
-        self._cancel_event.clear()
+        if _reset_cancel:
+            self._cancel_event.clear()
         self._set_status(XrayEngineStatus.MOVING)
         self._latest_state = replace(
             self._latest_state,
@@ -331,10 +364,12 @@ class XrayControllerEngine(QObject):
         self.publisher.state_updated.emit(self._latest_state)
         return self._latest_state
 
-    def count(self, duration_s: float | None = None) -> XrayEngineState:
+    @controller_action
+    def count(self, duration_s: float | None = None, *, _reset_cancel=True) -> XrayEngineState:
         """Synchronously acquire detector counts for a host-timed interval."""
         driver = self._require_driver()
-        self._cancel_event.clear()
+        if _reset_cancel:
+            self._cancel_event.clear()
         self._set_status(XrayEngineStatus.COUNTING)
         try:
             result = driver.count(
@@ -362,14 +397,18 @@ class XrayControllerEngine(QObject):
         mode: XrayMotionMode | None = None,
         *,
         speed_deg_per_min: float | None = None,
-    ) -> None:
-        self._start_operation(
-            lambda: self.move_to(target_deg, mode, speed_deg_per_min=speed_deg_per_min),
+    ) -> XrayOperation:
+        return self._start_operation(
+            lambda: self.move_to(
+                target_deg, mode, speed_deg_per_min=speed_deg_per_min, _reset_cancel=False
+            ),
             "X-ray motion",
         )
 
-    def start_count(self, duration_s: float | None = None) -> None:
-        self._start_operation(lambda: self.count(duration_s), "X-ray count")
+    def start_count(self, duration_s: float | None = None) -> XrayOperation:
+        return self._start_operation(
+            lambda: self.count(duration_s, _reset_cancel=False), "X-ray count"
+        )
 
     def cancel_operation(self) -> None:
         self._cancel_event.set()
@@ -487,38 +526,56 @@ class XrayControllerEngine(QObject):
     def shutdown(self) -> None:
         if self._status is XrayEngineStatus.STOPPED:
             return
+        self._controller_poller.close()
         self.cancel_operation()
         thread = self._operation_thread
         if thread is not None and thread.is_alive():
             thread.join(timeout=2.0)
         self.disconnect_instrument()
+        self._controller_poller.join()
         self._set_status(XrayEngineStatus.STOPPED)
 
     @pyqtSlot()
     def _poll(self) -> None:
-        self.read_controller_state()
+        self._controller_poller.request(self.read_controller_state)
 
-    def _start_operation(self, operation, label: str) -> None:
+    def _start_operation(self, operation, label: str) -> XrayOperation:
+        with self._engine_lock:
+            return self._launch_operation(operation, label)
+
+    def _launch_operation(self, operation, label):
         if self._operation_active():
             raise RuntimeError("An X-ray operation is already running.")
+        if self._status is XrayEngineStatus.STOPPED:
+            raise RuntimeError("X-ray engine has been shut down.")
+        ticket = XrayOperation()
+        if label == "X-ray motion":
+            self._latest_state = replace(self._latest_state, moving=True, at_target=False)
 
         def run() -> None:
             try:
-                operation()
-            except XrayOperationCancelled:
+                ticket.state = operation()
+            except XrayOperationCancelled as exc:
+                ticket.error = exc
                 logger.info("%s cancelled.", label)
             except Exception as exc:  # noqa: BLE001 - delivered to the Qt UI
+                ticket.error = exc
                 logger.exception("%s failed", label)
                 self.publisher.operation_failed.emit(str(exc))
             finally:
-                self.publisher.operation_finished.emit()
+                with self._engine_lock:
+                    ticket.done.set()
+                    self.publisher.state_updated.emit(self._latest_state)
+                    self.publisher.operation_finished.emit()
 
         self._cancel_event.clear()
+        self._operation_ticket = ticket
         self._operation_thread = threading.Thread(target=run, name=label, daemon=True)
         self._operation_thread.start()
+        return ticket
 
     def _operation_active(self) -> bool:
-        return self._operation_thread is not None and self._operation_thread.is_alive()
+        return self._operation_ticket is not None and not self._operation_ticket.done.is_set()
 
     def _require_driver(self) -> XrayDiffractometer:
         if self._driver is None:

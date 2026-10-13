@@ -83,5 +83,21 @@ def test_always_make_safe_precedes_lifecycle_disconnect(qapp, engine):
     assert finally_body.index("make_safe()") < finally_body.index("dummy.disconnect()")
 
 
+def test_magnet_failure_cannot_switch_heater_off(monkeypatch, qapp):
+    calls = []
+    fake = SimpleNamespace(connected_driver=object(), go_to_zero=lambda: calls.append("zero"),
+                           read_controller_state=lambda: None,
+                           heater_off=lambda: calls.append("heater_off"))
+    monkeypatch.setattr(
+        "stoner_measurement.plugins.command.make_safe.MagnetControllerEngine.instance",
+        lambda: fake,
+    )
+    command = MakeSafeCommand()
+    command._MAGNET_TIMEOUT_SECONDS = 0  # noqa: SLF001
+    with pytest.raises(TimeoutError):
+        command._make_magnet_safe()  # noqa: SLF001
+    assert calls == ["zero"]
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

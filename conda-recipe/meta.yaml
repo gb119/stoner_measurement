@@ -30,6 +30,7 @@ requirements:
     - pyqt >=5.15
     - qtpy >=2.4
     - pyqtgraph >=0.13
+    - pyopengl >=3.1.7
     - numpy >=2.0
     -  qtconsole >=5.5
     - pathspec >=1.1.1

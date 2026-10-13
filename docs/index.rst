@@ -14,6 +14,8 @@ Stoner Measurement
    round_dial_widget
    plugin_tab_ordering
    console_api
+   plotting_contracts
+   plot_display_plugins
    third_party_plugins
    api/index
    contributing

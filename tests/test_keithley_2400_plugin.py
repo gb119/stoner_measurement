@@ -383,12 +383,13 @@ class TestDisconnectLifecycle:
 class TestConfigUi:
     """UI structure for the Keithley 2400 trace-plugin configuration."""
 
-    def test_settings_tab_contains_basic_advanced_and_secondary_tabs(self, qtbot):
+    def test_settings_tab_contains_basic_advanced_and_secondary_tabs(
+        self, managed_plugin_config_tabs
+    ):
         """Settings should expose the three nested configuration pages."""
         plugin = _make_plugin()
-        tabs = plugin.config_tabs()
+        tabs = managed_plugin_config_tabs(plugin)
         settings_widget = tabs[1][1]
-        qtbot.addWidget(settings_widget)
 
         nested_tabs = settings_widget.findChildren(QTabWidget)
         inner_tabs = next(

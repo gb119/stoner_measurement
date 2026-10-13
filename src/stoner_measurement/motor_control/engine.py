@@ -10,8 +10,14 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QObject, QTimer
+from qtpy.QtCore import QObject
 
+from stoner_measurement.core.controller_polling import (
+    ControllerPoller,
+    ControllerTimer,
+    ControllerUpdates,
+    coordinated_read,
+)
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
     parse_serial_address,
@@ -91,7 +97,9 @@ class MotorControllerEngine(QObject):
         self._latest_state: MotorEngineState = MotorEngineState(engine_status=self._status)
         self._latest_state_time: float | None = None
 
-        self._timer = QTimer(self)
+        self._controller_poller = ControllerPoller()
+        self._state_updates = ControllerUpdates(self.publisher)
+        self._timer = ControllerTimer(self)
         self._engine_lock = threading.RLock()
         self._polling_rate_hz = 1.0
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
@@ -163,6 +171,8 @@ class MotorControllerEngine(QObject):
             cls._singleton = cls()
             app = _qapp()
             if app is not None:
+                if cls._singleton.thread() != app.thread():
+                    cls._singleton.moveToThread(app.thread())
                 app.aboutToQuit.connect(cls._singleton.shutdown)
         return cls._singleton
 
@@ -534,6 +544,7 @@ class MotorControllerEngine(QObject):
         if self._driver is not None and self._status is not MotorEngineStatus.STOPPED:
             self._timer.start()
 
+    @coordinated_read
     def read_controller_state(self) -> MotorEngineState | None:
         """Poll the controller once and publish the resulting engine state."""
         with self._engine_lock:
@@ -543,7 +554,13 @@ class MotorControllerEngine(QObject):
                 state = self._build_state()
             except Exception as exc:
                 logger.exception(f"MotorControllerEngine: read-state error {exc}")
+                self._is_at_target = False
+                self._stable = False
+                self._at_target_since = None
+                self._latest_state_time = None
+                self._latest_state = replace(self._latest_state, at_target=False, stable=False)
                 self._set_status(MotorEngineStatus.ERROR)
+                self.publisher.state_updated.emit(self.get_engine_state())
                 return None
 
             self._set_status(MotorEngineStatus.POLLING)
@@ -579,6 +596,7 @@ class MotorControllerEngine(QObject):
     @pyqtSlot()
     def shutdown(self) -> None:
         """Stop polling, disconnect the controller, and release the singleton."""
+        self._controller_poller.close()
         self._timer.stop()
         with self._engine_lock:
             if self._driver is not None:
@@ -599,6 +617,7 @@ class MotorControllerEngine(QObject):
             )
         if MotorControllerEngine._singleton is self:
             MotorControllerEngine._singleton = None
+        self._controller_poller.join()
         logger.info("MotorControllerEngine: shut down.")
 
     def _disconnect_driver(self, driver: MotorController, *, log_context: str) -> None:
@@ -615,7 +634,7 @@ class MotorControllerEngine(QObject):
 
     @pyqtSlot()
     def _poll(self) -> None:
-        self.read_controller_state()
+        self._controller_poller.request(self.read_controller_state)
 
     def _build_state(self) -> MotorEngineState:
         driver = self._driver

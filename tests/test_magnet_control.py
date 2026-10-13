@@ -1142,8 +1142,8 @@ class TestEnginePublisher:
         assert MagnetEngineStatus.DISCONNECTED in received
         assert MagnetEngineStatus.STOPPED in received
 
-    def test_poll_emits_state_updated(self, qapp):
-        """A manual _poll() call should emit state_updated with the reading."""
+    def test_poll_emits_state_updated(self, qapp, qtbot):
+        """A scheduled poll publishes its reading on completion."""
         states: list[MagnetEngineState] = []
         engine = MagnetControllerEngine()
         engine.publisher.state_updated.connect(states.append)
@@ -1151,6 +1151,7 @@ class TestEnginePublisher:
         driver = _make_fake_driver(field=2.0, current=20.0)
         engine.connect_instrument(driver)
         engine._poll()  # manually trigger one poll cycle
+        qtbot.waitUntil(lambda: bool(states), timeout=1000)
         engine.shutdown()
 
         assert len(states) == 1

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt  # type: ignore[attr-defined]
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QColorDialog,
@@ -40,7 +40,22 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plotting.producers import ensure_plugin_axes, xy_update
 from stoner_measurement.plugins.command.base import CommandPlugin
+from stoner_measurement.plugins.command.plot_forms import (
+    PlotContextBinding as _PlotContextBinding,
+)
+from stoner_measurement.plugins.command.plot_forms import (
+    PlotFormPanel as _PlotFormPanel,
+)
+from stoner_measurement.plugins.command.plot_forms import (
+    axis_names,
+    execute_points_form,
+    initialise_forms,
+    refresh_axis_combo,
+    restore_forms,
+    serialise_forms,
+)
 from stoner_measurement.plugins.trace_catalog_ui import bind_value_catalog_updates
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.aspect_ratio_widget import ContentHeightScrollArea
@@ -172,6 +187,30 @@ class PlotPointsCommand(CommandPlugin):
     voltage vs field, or any other scalar value against another scalar value
     already available in the sequence value catalogue.
 
+    **Plot form** defaults to **XY**. A display with the appropriate capabilities
+    also offers **XYZ**, **XY intensity**, or **XYZ + value**. These forms have
+    independent X/Y scalar sources or expressions and a scrollable list of
+    measured Z entries. Each entry has its own source, displayed label, surface
+    identity expression and optional uncertainty expression. XYZ + value adds
+    an explicit independent scalar for colour. The coordinate controls specify
+    source meanings and angular conventions without projecting acquisition data.
+
+    **Polar (angle, radius)** appends one angular sample per execution. Its
+    first input is independent **Angle data**, typically motor position; its
+    second is dependent **Radius data**, such as resistance. Choose catalogue
+    sources or runtime scalar expressions. Angle source units default to degrees
+    with radians selectable. Separate controls set uncertainties, title/series
+    ID, origin, clockwise orientation, wrapping and colour/line/point styles.
+    Use separate Plot Points steps to show multiple radial responses.
+
+    Surface forms map exact X/Y pairs to rectilinear cells, so reverse or
+    serpentine nested loops retain the correct grid. Repeated cells are rejected
+    unless **replace** is selected; missing cells remain absent. Clear the plot
+    for a new run, or change the acquisition identity with reset explicitly
+    enabled. Display changes refresh available forms and axes immediately.
+    Unsupported saved forms stay visible and retain all bindings. Legacy Y
+    entries and axis/style controls continue to apply to XY only.
+
     In the configuration panel you choose:
 
     * one **X value**
@@ -192,6 +231,37 @@ class PlotPointsCommand(CommandPlugin):
     series to an axis name that does not already exist.
 
     Attributes:
+        plot_form (str):
+            xy, polar, xyz, xy_intensity or xyz_value; defaults to xy.
+        polar_angle_expr, polar_radius_expr (str):
+            Runtime scalars for independent angle and dependent radius.
+        polar_angle_error_expr, polar_radius_error_expr (str):
+            Optional scalar uncertainties in the source units.
+        polar_settings (dict):
+            Angular units (degrees by default), origin, clockwise and wrapping.
+            Zero defaults to the top and increasing angles run clockwise.
+        polar_id_expr, polar_title_expr (str):
+            Runtime series identity and displayed title. The automatic ID is
+            unique and persistent; clear the plot before starting a new run.
+        polar_style (dict):
+            Independent colour, line/point style and size overrides.
+        new_x_expr, coordinate_y_expr (str):
+            Separate runtime scalar coordinate expressions for additional forms.
+        z_entries (list[dict]):
+            Explicit measured channels with expr (or key in _values), label,
+            surface_id_expr and optional error_expr. Each identity expression
+            must return a distinct nonblank string, independent of the label.
+        value_expr (str):
+            Independent scalar colour expression, used only by xyz_value.
+        acquisition_id_expr (str):
+            Runtime string run identity, defaulting to 'default'.
+        duplicate_policy (str):
+            reject (default) or replace repeated coordinate cells.
+        reset_on_change (bool):
+            Permit a new acquisition identity to reset the grid; default False.
+        coordinate_settings (dict):
+            Explicit CoordinateDescriptor fields, including angular units,
+            wrapping, origin, orientation and spherical angle convention.
         x_key (str):
             Key in the ``_values`` catalogue for the x data. The current
             value is read each time the command executes.
@@ -237,9 +307,33 @@ class PlotPointsCommand(CommandPlugin):
 
             plot_points.x_key = "counter:Value"
             plot_points.y_entries = [{"key": "set_temperature:Temperature"}]
+
+        With Polar traces selected and existing ``motor`` and ``voltmeter``
+        instances in the live namespace (use their actual instance names)::
+
+            plot_points.plot_form = "polar"
+            plot_points.polar_angle_expr = "motor.position"
+            plot_points.polar_radius_expr = "voltmeter.value"
+            plot_points.polar_settings = {
+                "angular_unit": "degrees",
+                "angular_origin": 90,
+                "clockwise": True,
+            }
+
+        For an installed display advertising surface assembly::
+
+            plot_points.plot_form = "xyz"
+            plot_points.new_x_expr = "field.current_value"
+            plot_points.coordinate_y_expr = "temperature.current_value"
+            plot_points.z_entries = [{
+                "expr": "voltmeter.value", "label": "Voltage",
+                "surface_id_expr": "'field-temperature'",
+            }]
     """
 
-    #: Signal emitted by execute() — (trace_label, x_value, y_value).
+    #: Signal emitted when the owning engine/client endpoint changes.
+    plot_context_changed = pyqtSignal()
+    #: XY data signal; additional forms submit complete portable requests.
     plot_point = pyqtSignal(str, float, float)
     #: Signal emitted by execute() before each queued point update.
     plot_update_queued = pyqtSignal()
@@ -258,8 +352,9 @@ class PlotPointsCommand(CommandPlugin):
         """Initialise with default configuration."""
         super().__init__(parent)
         self._sequence_engine_ref: SequenceEngine | None = None
+        initialise_forms(self)
         self.x_key: str = ""
-        self.y_entries: list[dict[str, str]] = []
+        self.y_entries: list[dict[str, Any]] = []
         self.x_axis_name: str = _DEFAULT_X_AXIS
 
     # ------------------------------------------------------------------
@@ -311,8 +406,10 @@ class PlotPointsCommand(CommandPlugin):
 
         new_plot_widget = getattr(engine, "plot_widget", None)
         if new_plot_widget is not None:
-            self._set_plot_widget_connections(new_plot_widget, connect=True)
+            if getattr(engine, "plot_client", None) is None:
+                self._set_plot_widget_connections(new_plot_widget, connect=True)
             self._ensure_configured_axes_exist(new_plot_widget)
+        self.plot_context_changed.emit()
 
     def _set_plot_widget_connections(self, plot_widget: Any, *, connect: bool) -> None:
         """Connect or disconnect all plot signals supported by *plot_widget*."""
@@ -386,6 +483,9 @@ class PlotPointsCommand(CommandPlugin):
             [('My Y', 1.0, 2.0)]
             >>> engine.shutdown()
         """
+        if self.plot_form != "xy":
+            execute_points_form(self, _axis_label)
+            return
         if not self.x_key:
             self.log.warning("PlotPoints: x_key is not set — skipping.")
             return
@@ -413,6 +513,10 @@ class PlotPointsCommand(CommandPlugin):
             )
             return
 
+        self._execute_xy_entries(values, x_expr, x_val)
+
+    def _execute_xy_entries(self, values: dict[str, str], x_expr: str, x_val: float) -> None:
+        """Evaluate each Y entry and submit points in configured order."""
         for entry in self.y_entries:
             y_key = entry.get("key", "")
             label = entry.get("label", y_key)
@@ -443,10 +547,29 @@ class PlotPointsCommand(CommandPlugin):
                 return
             self.plot_ensure_x_axis.emit(x_axis, _axis_label(self.x_key, x_expr))
             self.plot_ensure_y_axis.emit(y_axis, _axis_label(y_key, y_expr))
-            self._queue_plot_update_request(self.plot_update_queued)
+            handled = (
+                self._submit_plot_operation(
+                    xy_update(
+                        label,
+                        [x_val],
+                        [y_val],
+                        x_label=_axis_label(self.x_key, x_expr),
+                        y_label=_axis_label(y_key, y_expr),
+                        x_axis=x_axis,
+                        y_axis=y_axis,
+                        style=_entry_style_dict(entry),
+                        append=True,
+                    )
+                )
+                if getattr(self.sequence_engine, "plot_client", None) is not None
+                else False
+            )
+            if not handled:
+                self._queue_plot_update_request(self.plot_update_queued)
             self.plot_point.emit(label, x_val, y_val)
             self.plot_trace_axes.emit(label, x_axis, y_axis)
-            self._wait_for_plot_response_or_raise(label)
+            if not handled:
+                self._wait_for_plot_response_or_raise(label)
             style = _entry_style_dict(entry)
             if style:
                 self.plot_trace_style.emit(label, style)
@@ -491,10 +614,9 @@ class PlotPointsCommand(CommandPlugin):
         x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
 
         outer = QWidget(parent)
-        page_layout = QVBoxLayout(outer)
-        outer_layout = QFormLayout()
-        page_layout.addLayout(outer_layout)
-        page_layout.addStretch()
+        root_layout = QVBoxLayout(outer)
+        legacy = QWidget(outer)
+        outer_layout = QFormLayout(legacy)
 
         x_combo = self._build_x_combos_section(outer, outer_layout, value_keys, x_axis_names)
 
@@ -510,6 +632,21 @@ class PlotPointsCommand(CommandPlugin):
 
         bind_value_catalog_updates(self, outer, _refresh_values)
 
+        panel = _PlotFormPanel(self, outer, lambda: legacy.setVisible(self.plot_form == "xy"))
+        root_layout.addWidget(panel)
+        root_layout.addWidget(legacy)
+        root_layout.addStretch()
+        legacy.setVisible(self.plot_form == "xy")
+        x_axis_combo = outer.findChild(QComboBox, "plot_x_axis")
+
+        def refresh_axes():
+            x_names, y_names = axis_names(self.sequence_engine)
+            refresh_axis_combo(x_axis_combo, x_names, self.x_axis_name)
+            if y_axis_names != y_names:
+                y_axis_names[:] = y_names
+                rebuild_y_series()
+
+        outer._plot_context_binding = _PlotContextBinding(self, outer, refresh_axes)
         return outer
 
     def _build_x_combos_section(
@@ -539,12 +676,8 @@ class PlotPointsCommand(CommandPlugin):
         outer_layout.addRow("X value:", x_combo)
 
         x_axis_combo = QComboBox(outer)
-        x_axis_combo.addItems(x_axis_names)
-        if self.x_axis_name in x_axis_names:
-            x_axis_combo.setCurrentText(self.x_axis_name)
-        else:
-            self.x_axis_name = x_axis_names[0]
-            x_axis_combo.setCurrentText(self.x_axis_name)
+        x_axis_combo.setObjectName("plot_x_axis")
+        refresh_axis_combo(x_axis_combo, x_axis_names, self.x_axis_name)
         x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
         outer_layout.addRow("X axis:", x_axis_combo)
         return x_combo
@@ -697,6 +830,7 @@ class PlotPointsCommand(CommandPlugin):
         """Create the editable y-axis selector for a series."""
         combo = QComboBox(container)
         combo.setEditable(True)
+        combo.setObjectName("plot_y_axis")
         combo.addItems(y_axis_names)
         entry_y_axis = entry.get("y_axis", _DEFAULT_Y_AXIS)
         if entry_y_axis in y_axis_names:
@@ -800,7 +934,7 @@ class PlotPointsCommand(CommandPlugin):
             entry["label"] = automatic_label
             widgets.label.lineEdit().setText(automatic_label)
             if old_label and old_label != automatic_label:
-                self.plot_rename_trace.emit(old_label, automatic_label)
+                self._rename_plotted_trace(old_label, automatic_label)
 
     def _apply_y_label(self, index: int, widgets: _YSeriesWidgets) -> None:
         """Store the edited legend label for one y-series."""
@@ -809,7 +943,32 @@ class PlotPointsCommand(CommandPlugin):
         old_label = self.y_entries[index].get("label", "")
         self.y_entries[index]["label"] = new_label
         if old_label and new_label and old_label != new_label:
-            self.plot_rename_trace.emit(old_label, new_label)
+            self._rename_plotted_trace(old_label, new_label)
+
+    def _rename_plotted_trace(self, old_label: str, new_label: str) -> None:
+        """Retain legacy identity changes through the optional Cartesian facade."""
+        engine = self.sequence_engine
+        client = getattr(engine, "plot_client", None)
+        if client is not None and engine is not None:
+            from stoner_measurement.core.plotting.contracts import ResultStatus
+            from stoner_measurement.core.plotting.service import LegacyCall
+
+            try:
+                ticket = client.invoke_legacy(
+                    LegacyCall("rename_trace", (old_label, new_label), {})
+                )
+                result = engine.wait_for_plot_ticket(ticket)
+                if result is not None and result.status not in (
+                    ResultStatus.APPLIED,
+                    ResultStatus.NO_DISPLAY,
+                    ResultStatus.CANCELLED,
+                ):
+                    self.log.warning(
+                        "PlotPoints: could not rename plotted series: %s", result.message
+                    )
+            except Exception as exc:
+                self.log.warning("PlotPoints: could not rename plotted series: %s", exc)
+        self.plot_rename_trace.emit(old_label, new_label)
 
     def _apply_y_axis(self, index: int, text: str) -> None:
         """Store an edited y-axis name, falling back to the default axis."""
@@ -889,6 +1048,7 @@ class PlotPointsCommand(CommandPlugin):
             True
         """
         d = super().to_json()
+        d.update(serialise_forms(self))
         d["x_key"] = self.x_key
         d["x_axis_name"] = self.x_axis_name
         d["y_entries"] = [dict(e) for e in self.y_entries]
@@ -905,6 +1065,7 @@ class PlotPointsCommand(CommandPlugin):
             data (dict[str, Any]):
                 Serialised dict as produced by :meth:`to_json`.
         """
+        restore_forms(self, data)
         self.x_key = data.get("x_key", "")
         self.x_axis_name = data.get("x_axis_name", _DEFAULT_X_AXIS)
         # Backward-compat: old format stored a global y_axis_name.
@@ -971,6 +1132,14 @@ class PlotPointsCommand(CommandPlugin):
 
     def _ensure_configured_axes_exist(self, plot_widget: Any | None = None) -> None:
         """Ensure configured x/y axes exist on the attached plot widget."""
+        if self.plot_form != "xy":
+            return
+        axes = [("x", self.x_axis_name or _DEFAULT_X_AXIS)] + [
+            ("y", entry.get("y_axis", _DEFAULT_Y_AXIS) or _DEFAULT_Y_AXIS)
+            for entry in self.y_entries
+        ]
+        if ensure_plugin_axes(self, axes):
+            return
         pw = plot_widget
         if pw is None and self.sequence_engine is not None:
             pw = getattr(self.sequence_engine, "plot_widget", None)
@@ -1033,14 +1202,4 @@ def _available_plot_axes(engine: SequenceEngine | None) -> tuple[list[str], list
             available axis names. Defaults to ``(["bottom"], ["left"])`` when
             no plot widget (or axis orientation map) is available.
     """
-    if engine is None:
-        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
-
-    plot_widget = getattr(engine, "plot_widget", None)
-    orientations = getattr(plot_widget, "_axis_orientations", None)
-    if not isinstance(orientations, dict):
-        return [_DEFAULT_X_AXIS], [_DEFAULT_Y_AXIS]
-
-    x_axes = sorted(name for name, orientation in orientations.items() if orientation == "x")
-    y_axes = sorted(name for name, orientation in orientations.items() if orientation == "y")
-    return x_axes or [_DEFAULT_X_AXIS], y_axes or [_DEFAULT_Y_AXIS]
+    return axis_names(engine)

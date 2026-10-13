@@ -13,11 +13,10 @@ channels:
 dependencies:
   - python>=3.13
   - pip
-  - pip:
-      - build
-      - twine
-      - check-manifest
-      - pyft232>=0.12
+  - python-build
+  - twine
+  - check-manifest
+  - pyft232>=0.12
   - setuptools>=61
   # Runtime dependencies
   - asteval>=1.0
@@ -30,6 +29,7 @@ dependencies:
   - pyqt>=5.15
   - qtpy>=2.4
   - pyqtgraph>=0.13
+  - pyopengl>=3.1.7
   - qtconsole>=5.5
   - numpy>=2.0
   - click>=8.3.3

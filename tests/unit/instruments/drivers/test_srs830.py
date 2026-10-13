@@ -64,10 +64,7 @@ class TestSRS830:
 
         status = k.read_lia_status()
 
-        assert status == (
-            SRS830LIAStatus.OUTPUT_OVERLOAD
-            | SRS830LIAStatus.TIME_CONSTANT_CHANGED
-        )
+        assert status == (SRS830LIAStatus.OUTPUT_OVERLOAD | SRS830LIAStatus.TIME_CONSTANT_CHANGED)
         assert status.has_overload is True
         assert k.last_lia_status == status
         assert t.write_log == [b"LIAS?\n"]
@@ -125,7 +122,10 @@ class TestSRS830:
         k.set_input_coupling(LockInInputCoupling.AC)
         k.set_reserve_mode(LockInReserveMode.NORMAL)
         with pytest.MonkeyPatch.context() as monkeypatch:
-            monkeypatch.setattr(k, "wait_for_ifc", lambda: None)
+            monkeypatch.setattr(k, "wait_for_ifc", lambda **kwargs: None)
+            t.queue_response(b"10\n")
+            t.queue_response(b"10\n")
+            t.queue_response(b"10\n")
             k.auto_gain()
             k.auto_phase()
             k.auto_reserve()
@@ -140,8 +140,11 @@ class TestSRS830:
             b"OFSL 1\n",
             b"ICPL 0\n",
             b"RMOD 1\n",
+            b"OFLT?\n",
             b"AGAN\n",
+            b"OFLT?\n",
             b"APHS\n",
+            b"OFLT?\n",
             b"ARSV\n",
         ]
 
@@ -173,6 +176,84 @@ class TestSRS830:
         monkeypatch.setattr(k, "read_status_byte", lambda: 2)
 
         k.wait_for_ifc(timeout=0.0)
+
+    @pytest.mark.parametrize(
+        "method,command",
+        [("auto_gain", b"AGAN\n"), ("auto_phase", b"APHS\n"), ("auto_reserve", b"ARSV\n")],
+    )
+    @pytest.mark.parametrize("tc_code,completion_time", [(10, 90.0), (13, 600.0)])
+    def test_auto_functions_allow_slow_completion(
+        self, monkeypatch, method, command, tc_code, completion_time
+    ):
+        import stoner_measurement.instruments.srs.sr830 as sr830_module
+
+        t = _null(responses=[f"{tc_code}\n".encode()])
+        k = SRS830(transport=t)
+        k.auto_check_errors = False
+        # An old requested value must not override the instrument's current setting.
+        k.set_time_constant(1e-3)
+        t.write_log.clear()
+        statuses = iter((0, 0, 2))
+        monkeypatch.setattr(k, "read_status_byte", lambda: next(statuses))
+        times = iter((0.0, 1.0, completion_time))
+        monkeypatch.setattr(sr830_module, "perf_counter", lambda: next(times))
+        monkeypatch.setattr(sr830_module, "sleep", lambda _: None)
+
+        getattr(k, method)()
+
+        assert t.write_log == [b"OFLT?\n", command]
+        assert t.timeout == 2.0
+
+    @pytest.mark.parametrize("method", ["auto_gain", "auto_phase", "auto_reserve"])
+    @pytest.mark.parametrize(
+        "tc_code,io_timeout,deadline", [(10, 2.0, 120.0), (13, 2.0, 900.0), (10, 180.0, 180.0)]
+    )
+    def test_auto_functions_still_time_out(
+        self, monkeypatch, method, tc_code, io_timeout, deadline
+    ):
+        import stoner_measurement.instruments.srs.sr830 as sr830_module
+
+        t = _null(responses=[f"{tc_code}\n".encode()])
+        t.timeout = io_timeout
+        k = SRS830(transport=t)
+        k.auto_check_errors = False
+        monkeypatch.setattr(k, "read_status_byte", lambda: 0)
+        times = iter((0.0, deadline - 1.0, deadline))
+        monkeypatch.setattr(sr830_module, "perf_counter", lambda: next(times))
+        monkeypatch.setattr(sr830_module, "sleep", lambda _: None)
+
+        with pytest.raises(TimeoutError, match="STB=0"):
+            getattr(k, method)()
+
+        assert t.timeout == io_timeout
+
+    @pytest.mark.parametrize(
+        "method,command",
+        [("auto_gain", b"AGAN\n"), ("auto_phase", b"APHS\n"), ("auto_reserve", b"ARSV\n")],
+    )
+    def test_auto_functions_explicit_timeout_skips_time_constant_query(
+        self, monkeypatch, method, command
+    ):
+        t = _null()
+        k = SRS830(transport=t)
+        k.auto_check_errors = False
+        monkeypatch.setattr(k, "read_status_byte", lambda: 0)
+
+        with pytest.raises(TimeoutError, match="STB=0"):
+            getattr(k, method)(timeout=0.0)
+
+        assert t.write_log == [command]
+
+    def test_auto_function_propagates_status_transport_failure(self, monkeypatch):
+        k = SRS830(transport=_null())
+        k.auto_check_errors = False
+
+        def failed_poll():
+            raise ConnectionError("Disconnected")
+
+        monkeypatch.setattr(k, "read_status_byte", failed_poll)
+        with pytest.raises(ConnectionError, match="Disconnected"):
+            k.auto_gain(timeout=120.0)
 
     def test_wait_for_ifc_times_out_with_last_status(self, monkeypatch):
         import stoner_measurement.instruments.srs.sr830 as sr830_module

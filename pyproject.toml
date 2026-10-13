@@ -33,6 +33,7 @@ dependencies = [
     "PyYAML>=6.0",
     "qtpy>=2.4",
     "pyqtgraph>=0.13",
+    "PyOpenGL>=3.1.7",
     "qtconsole>=5.5",
     "numpy>=2.0",
     "scipy>=1.10",
@@ -134,6 +135,12 @@ set_field = "stoner_measurement.plugins.command.set_field:SetFieldCommand"
 set_position = "stoner_measurement.plugins.command.set_position:SetPositionCommand"
 set_diffractometer = "stoner_measurement.plugins.command.set_diffractometer:SetDiffractometerCommand"
 read_diffractometer = "stoner_measurement.plugins.command.read_diffractometer:ReadDiffractometerCommand"
+
+[project.entry-points."stoner_measurement.plot_displays"]
+cartesian = "stoner_measurement.ui.plotting.cartesian:CartesianDisplayFactory"
+polar = "stoner_measurement.ui.plotting.polar:PolarDisplayFactory"
+cartesian_3d = "stoner_measurement.ui.plotting.surface_displays:Cartesian3DDisplayFactory"
+intensity = "stoner_measurement.ui.plotting.surface_displays:IntensityDisplayFactory"
 
 [project.entry-points."stoner_measurement.instruments"]
 mks_pr4000b_s = "stoner_measurement.instruments.mks:MKSPR4000BS"

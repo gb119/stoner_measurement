@@ -1,6 +1,6 @@
 """X-ray diffractometer engine, pub/sub bus and state types."""
 
-from stoner_measurement.xray_control.engine import XrayControllerEngine
+from stoner_measurement.xray_control.engine import XrayControllerEngine, XrayOperation
 from stoner_measurement.xray_control.pubsub import XrayPublisher
 from stoner_measurement.xray_control.types import (
     XrayConnectionInfo,
@@ -15,5 +15,6 @@ __all__ = [
     "XrayEngineState",
     "XrayEngineStatus",
     "XrayMotionMode",
+    "XrayOperation",
     "XrayPublisher",
 ]

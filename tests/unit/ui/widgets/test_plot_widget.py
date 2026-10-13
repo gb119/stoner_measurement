@@ -28,6 +28,48 @@ class TestPlotWidget:
         widget = self.make_plot_widget()
         assert widget is not None
 
+    @pytest.mark.parametrize("label_points", [11, 18])
+    @pytest.mark.parametrize("extra_bottom", [False, True])
+    def test_bottom_axes_and_labels_fit_viewport_after_resize(
+        self, qapp, label_points, extra_bottom
+    ):
+        widget = self.make_plot_widget()
+        widget.add_x_axis("field", AxisLabel("Field", "T"), position="top")
+        widget.add_y_axis("signal", "Ic, Rn", side="right")
+        bottom_axes = ["bottom"]
+        if extra_bottom:
+            widget.add_x_axis("voltage", AxisLabel("Voltage", "V"), position="bottom")
+            bottom_axes.append("voltage")
+        for name in bottom_axes:
+            widget._axis_items[name].setLabel(
+                "Current" if name == "bottom" else "Voltage",
+                units="A" if name == "bottom" else "V",
+                **{"font-size": f"{label_points}pt"},
+            )
+        for index in range(6):
+            widget.set_trace(f"trace-{index}", [0, 1], [-1, 1])
+        widget.resize(900, 700)
+        widget.show()
+        qapp.processEvents()
+        widget._plot_splitter.moveSplitter(180, 1)
+        for height in (700, 400, 900):
+            widget.resize(900, height)
+            qapp.processEvents()
+            qapp.processEvents()
+            viewport = widget._pg_widget.viewport().rect()
+            for name in bottom_axes:
+                axis = widget._axis_items[name]
+                assert axis.isVisible()
+                label_rect = widget._pg_widget.mapFromScene(
+                    axis.label.sceneBoundingRect()
+                ).boundingRect()
+                axis_rect = widget._pg_widget.mapFromScene(
+                    axis.mapRectToScene(axis.rect())
+                ).boundingRect()
+                assert viewport.contains(label_rect)
+                assert viewport.contains(axis_rect)
+            assert widget._plot_item.vb.height() > 0
+
     def test_initial_data_empty(self, qapp):
         widget = self.make_plot_widget()
         assert widget.x_data() == []
@@ -202,6 +244,7 @@ class TestPlotWidget:
         actions = {action.text(): action for action in menu.actions()}
         assert set(actions) == {
             "Configure Axes…",
+            "Remove Axis",
             "Add Data Marker",
             "Remove All Data Markers",
         }

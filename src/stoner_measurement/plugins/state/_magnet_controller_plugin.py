@@ -70,7 +70,7 @@ class MagnetControllerPluginMixin:
         state = engine.get_engine_state()
         stale = max_age_seconds is not None and engine.state_cache_age_seconds > max_age_seconds
         if (refresh or stale) and engine.connected_driver is not None:
-            state = engine.read_controller_state() or state
+            state = engine.read_controller_state() or engine.get_engine_state()
         return state
 
     def _magnet_limits(self) -> tuple[float, float]:
@@ -134,7 +134,7 @@ class MagnetControllerPluginMixin:
         return float(getattr(self, "value", 0.0))
 
     def is_at_target(self) -> bool:
-        state = self._engine_state(max_age_seconds=self.engine_cache_max_age_seconds)
+        state = self._engine_state(max_age_seconds=min(self.engine_cache_max_age_seconds, 0.5))
         self._raise_if_quenched(state)
         return bool(state.at_target)
 

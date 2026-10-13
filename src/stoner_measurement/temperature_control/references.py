@@ -21,7 +21,8 @@ class LoopRef:
 
     def __post_init__(self):
         controller_id(self.controller_id)
-        if type(self.loop) is not int or self.loop < 1:
+        # Exact int excludes bool and subclasses from stable persisted references.
+        if type(self.loop) is not int or self.loop < 1:  # pylint: disable=unidiomatic-typecheck
             raise ValueError("A temperature loop must be a positive integer.")
 
     def __str__(self):

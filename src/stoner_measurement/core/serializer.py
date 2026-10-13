@@ -25,17 +25,20 @@ if TYPE_CHECKING:
 # Recursive type alias matching dock_panel._SequenceStep.
 type _SequenceStep = BasePlugin | tuple[BasePlugin, list[_SequenceStep]]
 
-_RENAME_SKIP_KEYS = frozenset({"class", "type", "version"})
+_RENAME_SKIP_KEYS = frozenset({"class", "type", "version", "display_plugin"})
 logger = logging.getLogger(__name__)
 
 
-def sequence_to_json(steps: list[_SequenceStep]) -> dict[str, Any]:
+def sequence_to_json(
+    steps: list[_SequenceStep], *, display_plugin: str = "cartesian"
+) -> dict[str, Any]:
     """Serialise a sequence tree to a JSON-compatible dict.
 
     The returned dict has the following structure::
 
         {
             "version": "<app version>",
+            "display_plugin": "<display factory ID>",
             "steps": [
                 {"plugin": {...}},
                 {"plugin": {...}, "sub_steps": [{"plugin": {...}}, ...]},
@@ -47,6 +50,7 @@ def sequence_to_json(steps: list[_SequenceStep]) -> dict[str, Any]:
     :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`.
 
     Args:
+        display_plugin (str): Preferred display factory ID for this sequence.
         steps (list[_SequenceStep]):
             The sequence steps as returned by
             :attr:`~stoner_measurement.ui.dock_panel.DockPanel.sequence_steps`.
@@ -75,6 +79,7 @@ def sequence_to_json(steps: list[_SequenceStep]) -> dict[str, Any]:
 
     return {
         "version": __version__,
+        "display_plugin": display_plugin,
         "steps": [_step_to_json(step) for step in steps],
     }
 
@@ -214,9 +219,7 @@ def rename_identifier_references(
             rewritten = {}
             for child_key, child_value in value.items():
                 rewritten_key = (
-                    pattern.sub(new_name, child_key)
-                    if key == "trace_selection"
-                    else child_key
+                    pattern.sub(new_name, child_key) if key == "trace_selection" else child_key
                 )
                 rewritten[rewritten_key] = _rewrite(child_value, key=child_key)
             return rewritten

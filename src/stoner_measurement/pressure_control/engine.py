@@ -8,8 +8,15 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QObject, QTimer
+from qtpy.QtCore import QObject
 
+from stoner_measurement.core.controller_polling import (
+    ControllerPoller,
+    ControllerTimer,
+    ControllerUpdates,
+    controller_action,
+    coordinated_read,
+)
 from stoner_measurement.instruments.addressing import parse_ethernet_address, parse_serial_address
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.mass_flow_controller import MassFlowController
@@ -77,7 +84,9 @@ class PressureControllerEngine(QObject):
         self._status: PressureEngineStatus = PressureEngineStatus.DISCONNECTED
         self._latest_state: PressureEngineState = PressureEngineState(engine_status=self._status)
         self._engine_lock = threading.RLock()
-        self._timer = QTimer(self)
+        self._controller_poller = ControllerPoller()
+        self._state_updates = ControllerUpdates(self.publisher)
+        self._timer = ControllerTimer(self)
         self._polling_rate_hz = 1.0
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._poll)
@@ -96,6 +105,8 @@ class PressureControllerEngine(QObject):
             cls._singleton = cls()
             app = _qapp()
             if app is not None:
+                if cls._singleton.thread() != app.thread():
+                    cls._singleton.moveToThread(app.thread())
                 app.aboutToQuit.connect(cls._singleton.shutdown)
         return cls._singleton
 
@@ -435,17 +446,37 @@ class PressureControllerEngine(QObject):
             return
         self._timer.setInterval(round(1000.0 / rate_hz))
         if (
-            (self._driver is not None or self._mfc_driver is not None)
-            and self._status is not PressureEngineStatus.STOPPED
-        ):
+            self._driver is not None or self._mfc_driver is not None
+        ) and self._status is not PressureEngineStatus.STOPPED:
             self._timer.start()
 
     def set_flow_rate(self, channel: int, value: float) -> None:
         """Program a flow setpoint on the connected MFC."""
-        driver = self._require_mfc_driver()
-        driver.set_setpoint(float(value), channel=channel)
-        self._last_flow_setpoints[channel] = float(value)
+        with self._engine_lock:
+            driver = self._require_mfc_driver()
+            driver.set_setpoint(float(value), channel=channel)
+            self._last_flow_setpoints[channel] = float(value)
 
+    def read_flow_state(self) -> PressureEngineState:
+        """Read fresh MFC completion data without repolling an unrelated gauge.
+
+        This command-local snapshot is not published as a fresh pressure or
+        interlock reading. Normal full polling continues to read both devices.
+        """
+        with self._engine_lock:
+            setpoints = dict(self._last_flow_setpoints)
+            targets = dict(self._last_target_pressures)
+            actual, unit = self._read_mfc_values(setpoints, targets, self._last_flow_unit)
+            return PressureEngineState(
+                flow_actual=actual,
+                flow_setpoints=setpoints,
+                target_pressures=targets,
+                flow_unit=unit,
+                engine_status=self._derive_status(polling=True),
+                mfc_driver_name=self._connected_mfc_driver_name,
+            )
+
+    @controller_action
     def set_target_pressure(self, channel: int, value: float) -> None:
         """Program a pressure target on the connected pressure-capable MFC."""
         driver = self._require_mfc_driver()
@@ -457,12 +488,14 @@ class PressureControllerEngine(QObject):
         driver.set_setpoint(float(value), channel=channel)
         self._last_target_pressures[channel] = float(value)
 
+    @controller_action
     def set_gauge_channel_enabled(self, channel: int, enabled: bool) -> None:
         """Enable or disable one pressure-gauge channel."""
         driver = self._require_pressure_driver()
         driver.set_gauge_on(channel, enabled)
         self._gauge_channel_enabled[channel] = bool(enabled)
 
+    @coordinated_read
     def read_controller_state(self) -> PressureEngineState | None:
         """Poll connected controllers once and publish the resulting state."""
         with self._engine_lock:
@@ -495,6 +528,7 @@ class PressureControllerEngine(QObject):
     @pyqtSlot()
     def shutdown(self) -> None:
         """Stop polling, disconnect controllers, and release the singleton."""
+        self._controller_poller.close()
         self._timer.stop()
         with self._engine_lock:
             if self._driver is not None:
@@ -519,6 +553,7 @@ class PressureControllerEngine(QObject):
             self._latest_state = PressureEngineState(engine_status=self._status)
         if PressureControllerEngine._singleton is self:
             PressureControllerEngine._singleton = None
+        self._controller_poller.join()
         logger.info("PressureControllerEngine: shut down.")
 
     def _apply_configuration(self, config: dict) -> None:
@@ -599,7 +634,7 @@ class PressureControllerEngine(QObject):
 
     @pyqtSlot()
     def _poll(self) -> None:
-        self.read_controller_state()
+        self._controller_poller.request(self.read_controller_state)
 
     def _build_state(self) -> PressureEngineState:
         now = datetime.now(tz=UTC)

@@ -181,12 +181,23 @@ class MeasurementApp(QMainWindow):
         self._sequence_switching = False
 
         # Central widget -------------------------------------------------------
-        self._main_window = MainWindow(plugin_manager=self._plugin_manager)
+        self._main_window = MainWindow(
+            plugin_manager=self._plugin_manager, display_settings=QSettings()
+        )
         self.setCentralWidget(self._main_window)
 
-        # Wire the engine to the plot widget so that PlotTraceCommand instances
-        # can deliver data regardless of how they were added to the sequence.
-        self._engine.plot_widget = self._main_window.plot_widget
+        # Borrow the host's stable service so producers share one GUI dispatcher.
+        from stoner_measurement.ui.plotting_bridge import LegacyPlotFacade
+
+        self._plot_service = self._main_window.plot_display_host.service
+        self._main_window.plot_display_host.idle_check = lambda: self._engine.is_plot_idle
+        self._engine.plot_client = self._plot_service
+        self._engine.plot_widget = LegacyPlotFacade(self._plot_service)
+        self._engine.plot_display_host = self._main_window.plot_display_host
+        self._engine.preferred_display_plugin = self._main_window.plot_display_host.factory_id
+        self._main_window.dock_panel.sequence_display_plugin = (
+            lambda: self._engine.preferred_display_plugin
+        )
 
         # Log viewer (created before actions so actions can reference it) ------
         self._log_viewer = LogViewerWindow(parent=None)
@@ -892,6 +903,18 @@ class MeasurementApp(QMainWindow):
         view_menu = menu_bar.addMenu("&View")
         view_menu.addAction(self._act_view_measurement)
         view_menu.addAction(self._act_view_editor)
+        display_menu = view_menu.addMenu("Plot display")
+        host = self._main_window.plot_display_host
+        self._plot_display_actions = {}
+        for factory_id, factory in host.registry.factories.items():
+            action = display_menu.addAction(factory.name)
+            self._plot_display_actions[factory_id] = action
+            action.setCheckable(True)
+            action.setChecked(factory_id == host.factory_id)
+            action.triggered.connect(
+                lambda _checked=False, name=factory_id: self._switch_plot_display(name)
+            )
+        display_menu.aboutToShow.connect(self._refresh_plot_display_menu)
         view_menu.addSeparator()
         view_menu.addAction(self._act_show_log)
         view_menu.addAction(self._act_show_value_watch)
@@ -931,6 +954,50 @@ class MeasurementApp(QMainWindow):
     # ------------------------------------------------------------------
     # Toolbar
     # ------------------------------------------------------------------
+
+    def _switch_plot_display(self, factory_id: str) -> None:
+        """Select a display while idle and explain capability/hydration refusal."""
+        host = self._main_window.plot_display_host
+        previous_diagnostics = len(host.diagnostics)
+        if not host.switch_display(factory_id):
+            if host.switch_requires_reset:
+                dialog = QMessageBox(self)
+                dialog.setWindowTitle("Plot display")
+                dialog.setIcon(QMessageBox.Icon.Warning)
+                dialog.setText("The selected display cannot show the current plot state.")
+                dialog.setInformativeText(
+                    "Clear the plotted data, markers and axis configuration and switch "
+                    "to a fresh display, or cancel to keep the current display. "
+                    "Acquired measurement data is retained."
+                )
+                dialog.setDetailedText(host.diagnostics[-1])
+                clear = dialog.addButton("Clear and switch", QMessageBox.ButtonRole.DestructiveRole)
+                cancel = dialog.addButton(QMessageBox.StandardButton.Cancel)
+                dialog.setDefaultButton(cancel)
+                dialog.setEscapeButton(cancel)
+                dialog.exec()
+                if dialog.clickedButton() is clear and not host.switch_display(
+                    factory_id, reset=True
+                ):
+                    QMessageBox.warning(self, "Plot display", host.diagnostics[-1])
+            else:
+                QMessageBox.warning(self, "Plot display", host.diagnostics[-1])
+        else:
+            messages = host.diagnostics[previous_diagnostics:]
+            if messages:
+                self.statusBar().showMessage(" ".join(messages), 10000)
+        self._refresh_plot_display_menu()
+
+        if host.factory_id == factory_id:
+            self._engine.preferred_display_plugin = factory_id
+            self._store_active_sequence()
+            self._update_window_title()
+
+    def _refresh_plot_display_menu(self) -> None:
+        """Keep the current selection checked, including after a refused switch."""
+        selected = self._main_window.plot_display_host.factory_id
+        for factory_id, action in self._plot_display_actions.items():
+            action.setChecked(factory_id == selected)
 
     def _build_toolbar(self) -> None:
         """Build the main toolbar."""
@@ -1252,7 +1319,10 @@ class MeasurementApp(QMainWindow):
         """Serialize the sequence currently displayed in the shared editor."""
         from stoner_measurement.core.serializer import sequence_to_json
 
-        return sequence_to_json(self._main_window.dock_panel.sequence_steps)
+        return sequence_to_json(
+            self._main_window.dock_panel.sequence_steps,
+            display_plugin=self._engine.preferred_display_plugin,
+        )
 
     def _new_sequence_document(
         self,
@@ -1263,6 +1333,8 @@ class MeasurementApp(QMainWindow):
         dirty: bool = False,
     ) -> SequenceDocument:
         """Create a sequence document with a stable identity and tab name."""
+        data = dict(data)
+        data.setdefault("display_plugin", "cartesian")
         if path is None:
             self._untitled_sequence_counter += 1
             display_name = f"Untitled {self._untitled_sequence_counter}"
@@ -1295,7 +1367,16 @@ class MeasurementApp(QMainWindow):
         finally:
             self._sequence_switching = False
         if activate:
-            self._activate_sequence_document(document.document_id)
+            if not self._activate_sequence_document(document.document_id):
+                previous_index = (
+                    self._sequence_tab_index(self._active_sequence_id)
+                    if self._active_sequence_id is not None else -1
+                )
+                self._sequence_switching = True
+                try:
+                    tabs.setCurrentIndex(previous_index)
+                finally:
+                    self._sequence_switching = False
         else:
             self._refresh_sequence_tab_titles()
         return index
@@ -1334,7 +1415,8 @@ class MeasurementApp(QMainWindow):
             return True
         try:
             steps, migrated = self._sequence_steps_from_json(document.data)
-        except (KeyError, ImportError, AttributeError, ValueError, TypeError) as exc:
+            self._resolve_sequence_display(document)
+        except (KeyError, ImportError, AttributeError, ValueError, TypeError, RuntimeError) as exc:
             QMessageBox.critical(
                 self,
                 "Switch Sequence",
@@ -1351,6 +1433,44 @@ class MeasurementApp(QMainWindow):
         self._refresh_sequence_tab_titles()
         self._update_window_title()
         return True
+
+    def _resolve_sequence_display(self, document: SequenceDocument) -> None:
+        """Let the user reconcile an incoming sequence's display preference."""
+        requested = document.data["display_plugin"]
+        host = self._main_window.plot_display_host
+        current = host.factory_id
+        if requested == current:
+            self._engine.preferred_display_plugin = requested
+            return
+        factories = host.registry.factories
+        requested_name = getattr(factories.get(requested), "name", requested)
+        current_name = getattr(factories.get(current), "name", current)
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Sequence display")
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setText(
+            f"Sequence {document.display_name!r} requests {requested_name!r}, "
+            f"but the current display is {current_name!r}."
+        )
+        dialog.setInformativeText(
+            "Use the current display for this sequence, switch to its requested "
+            "display, or ignore the difference. Switching displays clears plotted "
+            "state and retains acquired data. If you ignore the difference, the "
+            "generated script will still select the sequence's requested display."
+        )
+        use_current = dialog.addButton("Use current display for sequence", QMessageBox.ButtonRole.AcceptRole)
+        switch = dialog.addButton("Switch to sequence display", QMessageBox.ButtonRole.ActionRole)
+        ignore = dialog.addButton("Ignore", QMessageBox.ButtonRole.RejectRole)
+        dialog.setDefaultButton(switch)
+        dialog.setEscapeButton(ignore)
+        dialog.exec()
+        if dialog.clickedButton() is use_current:
+            document.data["display_plugin"] = current
+            self._engine.preferred_display_plugin = current
+        elif dialog.clickedButton() is switch:
+            self._engine.select_display_plugin(requested)
+        else:
+            self._engine.preferred_display_plugin = requested
 
     def _on_sequence_tab_changed(self, index: int) -> None:
         """Snapshot the outgoing sequence and restore the selected document."""
@@ -1483,9 +1603,10 @@ class MeasurementApp(QMainWindow):
             try:
                 data = json.loads(template_path.read_text(encoding="utf-8"))
                 steps, migrated = self._sequence_steps_from_json(data)
+                self._engine.select_display_plugin(data.get("display_plugin", "cartesian"))
                 self._main_window.dock_panel.load_sequence(steps)
                 return migrated
-            except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError):
+            except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError, RuntimeError):
                 pass
         self._main_window.dock_panel.load_sequence([])
         return False
@@ -2058,9 +2179,7 @@ class MeasurementApp(QMainWindow):
             height_limited_width = round(
                 (available_geometry.height() * 0.9 - 150) * image_aspect_ratio
             )
-            six_inch_width = round(
-                pixmap.width() * screen.devicePixelRatio() * (6 / 4.75)
-            )
+            six_inch_width = round(pixmap.width() * screen.devicePixelRatio() * (6 / 4.75))
             image_width = min(
                 six_inch_width,
                 available_width,
@@ -2178,6 +2297,7 @@ class MeasurementApp(QMainWindow):
             logger.debug("Application shutdown already in progress; skipping duplicate request.")
             return
         self._shutdown_in_progress = True
+        self._plot_service.shutdown()
         logger.info("Application shutdown starting.")
 
         settings = QSettings()

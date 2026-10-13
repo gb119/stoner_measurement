@@ -15,7 +15,7 @@ from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.ui.config_panel import ConfigPanel
 from stoner_measurement.ui.dock_panel import DockPanel
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
-from stoner_measurement.ui.plot_widget import PlotWidget
+from stoner_measurement.ui.plotting.host import PlotDisplayHost
 from stoner_measurement.ui.script_tab import ScriptTab
 
 
@@ -24,13 +24,13 @@ class MainWindow(QWidget):
 
     Contains two tabs:
 
-    * **Measurement** — the three-panel layout (DockPanel | PlotWidget | ConfigPanel).
+    * **Measurement** — the three-panel layout (DockPanel | PlotDisplayHost | ConfigPanel).
     * **Script Editor** — a Python editor and interactive console.
 
     Layout of the *Measurement* tab (left → right):
 
     * **DockPanel** — 25 % of width, instrument / sequence control.
-    * **PlotWidget** — 50 % of width, PyQtGraph plotting area.
+    * **PlotDisplayHost** — 50 % of width, selected measurement display.
     * **ConfigPanel** — 25 % of width, tabbed configuration.
 
     Args:
@@ -40,10 +40,17 @@ class MainWindow(QWidget):
     Keyword Parameters:
         parent (QWidget | None):
             Optional parent widget.
+        display_registry (PlotDisplayRegistry | None):
+            Startup display factories; discover installed factories when omitted.
+        display_factory_id (str):
+            Startup factory ID, with Cartesian fallback on selection failure.
+        display_settings (QSettings | None):
+            Optional versioned display preferences, excluding measurement arrays.
 
     Attributes:
         dock_panel (DockPanel): Left panel of the Measurement tab.
-        plot_widget (PlotWidget): Central plot in the Measurement tab.
+        plot_display_host (PlotDisplayHost): Stable main display host and service.
+        plot_widget (QWidget): Concrete display for GUI inspection and legacy access.
         config_panel (ConfigPanel): Right configuration panel.
         script_tab (ScriptTab): The Script Editor tab widget.
     """
@@ -52,6 +59,10 @@ class MainWindow(QWidget):
         self,
         plugin_manager: PluginManager,
         parent: QWidget | None = None,
+        *,
+        display_registry=None,
+        display_factory_id: str | None = None,
+        display_settings=None,
     ) -> None:
         super().__init__(parent)
 
@@ -59,12 +70,17 @@ class MainWindow(QWidget):
 
         # ---- Measurement tab: three-panel splitter ----------------------
         self._dock_panel = DockPanel(plugin_manager=plugin_manager, parent=self)
-        self._plot_widget = PlotWidget(parent=self)
+        self._plot_display_host = PlotDisplayHost(
+            self,
+            registry=display_registry,
+            factory_id=display_factory_id,
+            settings=display_settings,
+        )
         self._config_panel = ConfigPanel(plugin_manager=plugin_manager, parent=self)
 
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._splitter.addWidget(self._dock_panel)
-        self._splitter.addWidget(self._plot_widget)
+        self._splitter.addWidget(self._plot_display_host)
         self._splitter.addWidget(self._config_panel)
         self._splitter.setCollapsible(2, False)
         self._config_panel.collapsed_changed.connect(self._config_panel_collapsed)
@@ -107,9 +123,7 @@ class MainWindow(QWidget):
             self._expanded_config_width = sizes[2]
             compact_width = self._config_panel.sizeHint().width()
             released_width = max(0, sizes[2] - compact_width)
-            self._splitter.setSizes(
-                [sizes[0], sizes[1] + released_width, compact_width]
-            )
+            self._splitter.setSizes([sizes[0], sizes[1] + released_width, compact_width])
             return
 
         target_width = max(
@@ -117,14 +131,14 @@ class MainWindow(QWidget):
             self._config_panel.minimumSizeHint().width(),
         )
         gained_width = max(0, target_width - sizes[2])
-        minimum_plot_width = self._plot_widget.minimumSizeHint().width()
+        minimum_plot_width = self._plot_display_host.minimumSizeHint().width()
         plot_width = max(minimum_plot_width, sizes[1] - gained_width)
         self._splitter.setSizes([sizes[0], plot_width, target_width])
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Close lifecycle-sensitive children before destroying the window."""
         self._script_tab.close()
-        self._plot_widget.close()
+        self._plot_display_host.close()
         super().closeEvent(event)
 
     # ------------------------------------------------------------------
@@ -157,14 +171,19 @@ class MainWindow(QWidget):
         return self._dock_panel.sequence_tabs
 
     @property
-    def plot_widget(self) -> PlotWidget:
-        """Central plot widget (Measurement tab).
+    def plot_widget(self) -> QWidget:
+        """Concrete display widget; Cartesian compatibility and GUI inspection.
 
         Returns:
-            (PlotWidget):
-                The plot widget.
+            (QWidget):
+                The selected display's widget (PlotWidget for Cartesian).
         """
-        return self._plot_widget
+        return self._plot_display_host.display_widget
+
+    @property
+    def plot_display_host(self) -> PlotDisplayHost:
+        """Stable host and producer service for the main measurement display."""
+        return self._plot_display_host
 
     @property
     def config_panel(self) -> ConfigPanel:

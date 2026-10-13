@@ -27,6 +27,7 @@ from typing import Protocol
 from qtpy.QtCore import QObject
 from qtpy.QtWidgets import QFrame, QVBoxLayout, QWidget
 
+from stoner_measurement.core.plotting.service import submit_from_plugin
 from stoner_measurement.core.sequence_engine import _DEFAULT_PLOT_READY_TIMEOUT_SECONDS
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.qt_compat import pyqtSignal
@@ -198,9 +199,16 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         engine = self.sequence_engine
         if engine is None:
             return True
+        client = getattr(engine, "plot_client", None)
+        if client is not None and client.is_gui_thread():
+            return True
         if not hasattr(engine, "wait_for_plot_ready"):
             return True
         return bool(engine.wait_for_plot_ready(timeout=timeout))
+
+    def _submit_plot_operation(self, payload) -> bool:
+        """Submit a complete operation when the owning engine has a plot service."""
+        return submit_from_plugin(self, payload)
 
     def _queue_plot_update_request(self, fallback_signal: _SignalEmitter | None = None) -> None:
         """Register one pending plot update before emitting data signals.
@@ -291,6 +299,7 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> tabs[0][0]
             'General'
         """
+
         def _build_tabs() -> list[tuple[str, QWidget]]:
             combined = QWidget(parent)
             layout = QVBoxLayout(combined)

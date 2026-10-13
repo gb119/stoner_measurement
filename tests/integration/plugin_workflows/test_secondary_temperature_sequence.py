@@ -56,7 +56,11 @@ def test_sequence_round_trip_controls_secondary_and_reports_both(rig, engine):
     assert len(restored_monitor._active_channels()) == 2
     namespace = {restored_monitor.instance_name: restored_monitor}
     for expression in restored_monitor.reported_values().values():
-        assert isinstance(eval(expression, {"__builtins__": {}}, namespace), float)
+        # Generated expressions are the runtime contract under test.
+        result = eval(  # nosec B307
+            expression, {"__builtins__": {}}, namespace
+        )
+        assert isinstance(result, float)
     restored_monitor.disconnect()
     assert rig.connected_driver.is_connected
     assert rig.controller("secondary").connected_driver.is_connected
@@ -83,7 +87,10 @@ def test_scan_and_sweep_secondary_limits_settings_and_reported_values(
     assert rig.connected_driver.get_setpoint(2) == 300
     rig.read_controller_state()
     for expression in restored.reported_values().values():
-        eval(expression, {"__builtins__": {}}, {restored.instance_name: restored})
+        # Generated expressions are the runtime contract under test.
+        eval(  # nosec B307
+            expression, {"__builtins__": {}}, {restored.instance_name: restored}
+        )
     restored.disconnect()
     assert secondary.is_connected
 

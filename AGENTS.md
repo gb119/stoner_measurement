@@ -87,6 +87,11 @@ $env:QT_QPA_FONTDIR = "C:\Windows\Fonts"
 Without `QT_QPA_FONTDIR`, Qt's offscreen platform may discover no system fonts
 and render labels, button text, and editor content as square placeholder glyphs.
 
+For tests calling a plugin's `config_tabs()`, use the
+`managed_plugin_config_tabs` fixture so every returned page, including hidden
+scan previews, stays alive until deterministic Qt teardown. Managing only the
+Settings page leaves PyQtGraph previews exposed to deferred-event crashes.
+
 ## Shared Qt Widgets
 
 - Before constructing or subclassing a raw Qt widget, check
@@ -145,8 +150,9 @@ in `codacy-reports/`; local fixes need remote reanalysis before findings clear.
 
 - Keithley direct-current (DC) set commands opt into instrument lifecycle despite being leaf
   commands: retain source output between executions and disable it during
-  sequence cleanup. The 6221 point scan must hold DC throughout child steps;
-  do not substitute a hardware list-mode (`LIST`) sweep merely to emit a trigger pulse.
+  sequence cleanup. On the Keithley 6221, `LIST` means its programmed-current
+  list mode. The point scan must hold DC throughout child steps; do not
+  substitute a `LIST` sweep merely to emit a trigger pulse.
   Pulsed-current plugins are deferred; see
   [Keithley point-command design](notes/2026-09-16-keithley-point-commands.md).
 

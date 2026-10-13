@@ -1,10 +1,337 @@
-﻿# Testing Restructure Plan
+# Testing Restructure Plan
+
+## 2026-10-10: Polar display and angle-first plotting forms
+
+- Startup follow-up: added two attachment regressions for saved XY commands
+  with the polar display and legacy plot facade active. Both commands retain
+  bindings and can select polar without creating incompatible axes. Focused
+  command/polar/surface/menu regressions: **166 passed**. No tests moved.
+
+- Follow-up: two parameterised configuration-page checks verify that polar
+  controls use available height in both commands, retain compact spacing, and
+  return to XY. No test modules moved or removed.
+  Focused command/surface/polar regressions: **177 passed**.
+
+- Added `tests/unit/ui/test_polar_canvas.py` and
+  `tests/integration/sequence/test_polar_plot_commands.py` with scoped widget
+  and complete configuration-page ownership. No tests moved or removed.
+- Covered angle-first projection, clockwise/top-zero command defaults, source
+  unit conversion, raw-state persistence, uncertainties, worker execution,
+  capability-aware switching, invalid inputs, manual view replay and teardown.
+- Updated prospective polar contract and registry expectations; Cartesian and
+  cylindrical/spherical ordering remains unchanged. The 27 dedicated cases
+  pass. Full suite with coverage: **4,002 passed, 2 skipped**. Full validation is
+  recorded in `notes/2026-10-10-polar-display.md`.
+
+## 2026-10-10: GUI-thread collection after managed widget teardown
+
+- `managed_qt_widget` releases its final loop variable and collects Python
+  cycles on the GUI thread after scoped widget deletion and deferred events.
+- Added `tests/unit/ui/test_qt_widget_lifecycle.py` to verify cyclic wrappers
+  are reclaimed and finalized on the GUI thread without changing automatic GC
+  settings. No tests moved or removed.
+- Regression and original plot-service module: **9 passed**. Three fresh
+  integration runs with coverage: **87 passed, 1 skipped** each. Initial full
+  suite: **3,974 passed, 2 skipped**. Final full suite including the new test
+  and last-reference fix: **3,975 passed, 2 skipped** with coverage. Hosted-CI
+  boundary is recorded in `notes/2026-10-10-ci-qt-cycle-collection.md`.
+
+## 2026-10-06: Plot Trace automatic surface identity regression
+
+### Follow-up: clear-and-switch compatibility recovery
+
+- Added real-menu cases in `tests/integration/app/test_plot_display_menu.py`
+  exercising both Cancel and Clear and switch, button defaults, diagnostic
+  details, checkmarks, retained plots and discarded canonical samples.
+- Added atomic reset success/failure cases to
+  `tests/unit/ui/test_plot_display_replacement.py`; extended busy-engine coverage
+  to reset requests. No tests moved or removed. All widgets use managed ownership.
+- Focused menu/replacement/host/surface/command/axis-removal validation passed
+  **76 tests** with offscreen PyQt5 and Windows fonts, using
+  `--basetemp=.pytest-runtime/display-reset-final`. Ruff check/format and normal
+  `git diff --check` pass; mypy passes for the display host. Alternative Qt bindings
+  and live instrument acquisition are outside this local validation.
+
+### Follow-up: automatic re-gridding of surface rows
+
+- Added `tests/unit/core/test_plotting_regrid.py` for duplicate mean/first/last
+  reduction, round-off repeats, interpolation of Z/value, bounds policies,
+  nearest valid boundary/error pairing, NaN gaps, independent-error propagation,
+  single-coordinate rows, invalid coordinates and strict-mode behaviour.
+- Extended surface-command integration coverage for full 501-point triangle
+  traces in all three surface forms, exact reuse of mismatched grids after
+  renderer replay, clear/new-run resets, strict validation and settings persistence.
+  The original manual branch-selection case is replaced by automatic preparation
+  coverage and an explicit strict-mode rejection case.
+- Final helper/command/core/native-adapter/canvas plus legacy XY and service
+  verification: **266 passed** on offscreen PyQt5 with Windows fonts, using
+  `--basetemp=.pytest-runtime/regrid-final`. Ruff check/format and normal
+  `git diff --check` pass; mypy passes on helper/service. No physical magnet,
+  interactive GPU or alternative Qt-binding validation is claimed.
+
+- Added five regression cases to
+  `tests/integration/sequence/test_plot_surface_commands.py`: empty, missing and
+  whitespace saved IDs produce unique persistent identities shared across worker
+  loop slices; clearing a loaded ID stays stable across executions; the reported
+  501-point triangle rejects repeated current cells and its descending branch
+  retains two complete rows. Extended invalid-request coverage to an explicit
+  expression returning whitespace. No tests moved or removed.
+- Validation uses the project Conda environment, offscreen Qt and Windows fonts.
+  Final command/core/native-adapter checks passed 60 cases on Python 3.14.7 /
+  PyQt5 5.15.11 / Qt 5.15.15. Ruff check and format checks passed for the three
+  changed Python files; normal repository `git diff --check` passed.
+  This does not validate physical magnet hardware or the hosted Qt matrix.
+
+## 2026-10-02: Native Cartesian XYZ and XY intensity displays
+
+### Follow-up: discoverable Cartesian axis removal
+
+- Added a plot context-menu `Remove Axis` submenu with individual extra-axis
+  actions and `Remove All Extra Axes`. Reuses existing removal semantics:
+  default bottom/left axes stay, trace samples are retained/reassigned and
+  anchored markers are removed. Existing Configure Axes removal remains.
+- Added two managed-widget cases in
+  `tests/unit/ui/widgets/test_plot_axis_removal.py` covering reassignment,
+  marker cleanup, public/exported axis descriptions and removal enabling an
+  empty Cartesian-to-intensity-to-XYZ switch. Updated the existing context-menu
+  assertion; no tests moved or removed. XY data must still be cleared before
+  changing to a renderer that cannot accept its binding.
+- Validation: axis-removal, plot-widget, mouse-axis and display-replacement
+  modules passed **127 tests** in the project Conda environment with offscreen
+  PyQt5 and Windows fonts. Ruff check/format and `git diff --check` passed.
+
+- Added 19 adapter/geometry cases in `tests/unit/ui/test_surface_canvas.py`,
+  10 real command/replacement/configuration cases in
+  `tests/integration/app/test_surface_displays.py` and one optional native GPU
+  case in `tests/integration/app/test_surface_display_opengl.py`. Added one
+  registry duplicate-entry regression and extended bundled-factory discovery
+  expectations. No existing tests were moved or removed. Owned widgets and all
+  configuration pages use the shared managed fixtures.
+- Renderers negotiate surface version one and retain exact cells incrementally.
+  A 1001-cell test proves no snapshot/repaint occurs per incoming point. Native
+  geometry tests prove missing/NaN rectangles do not acquire triangles; an
+  intensity pixel test distinguishes measured zero, missing cells and NaNs.
+  Real worker trace/serpentine point loops, compatible replay, rejected switches,
+  cached configuration refresh, colour limits and saved camera/zoom are covered.
+- Full offscreen verbose runs: **3910 passed, two skipped** (72.43 and 72.86 s):
+  `pytest -vv --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/surface-displays-final`. Final log:
+  `.pytest-runtime/surface-displays-final.log`. One skip is the existing suite
+  skip; the native GPU test deliberately skips on Qt's offscreen platform.
+- Native Windows GPU framebuffer test passed twice, including after scene
+  cleanup changes: `QT_QPA_PLATFORM=windows pytest -q
+  tests/integration/app/test_surface_display_opengl.py`. A hidden native context
+  reported NVIDIA OpenGL 4.6.0; mesh, point and axis-line pixels were verified
+  without GL errors. GLTextItem's widget/QPainter path and interactive mouse
+  gestures are outside this hidden-framebuffer proof. Local binding is PyQt5
+  5.15.11 / Qt 5.15.15, Python 3.14.7, PyQtGraph 0.14.0 and PyOpenGL 3.1.10;
+  hosted PyQt6 validation remains outstanding.
+- Quiet full-suite invocations intermittently abort with a Qt access violation
+  while a plotting worker waits for completion. The affected integration prefix
+  passes separately (74 passed/one skip before the final settings cases), and
+  the crash also reproduces with all three new renderer test modules excluded
+  (`.pytest-runtime/surface-lifecycle-baseline.log`). The precise native cause
+  is unresolved; successful verbose runs do not establish a fix for quiet mode.
+  Adapter shutdown was made idempotent, callbacks use owned Qt slots, and the
+  widget property avoids a self-reference cycle. No global teardown or exception
+  suppression was added.
+- Focused adapter/native workflow/registry checks passed 38 cases before adding
+  two saved-factory preference cases. Ruff check/format, mypy on four display
+  modules and `git diff --check` pass. Fresh-interpreter discovery confirms no
+  eager renderer/OpenGL import. Editable metadata includes three display entry
+  points and PyOpenGL; project and all three Conda files plus the recipe agree.
+- User documentation and both design plans now describe delivered features,
+  linear-axis/uncertainty/marker limits and validation boundaries. Incremental
+  Sphinx rebuild passes with five existing import warnings; a clean build retains
+  the established 497-warning baseline. A wheel build succeeds; its three new
+  renderer modules, display entry points and PyOpenGL requirement were verified.
+  The only added runtime dependency is
+  PyOpenGL, chosen by the user; temporary Matplotlib packages were removed.
+
+## 2026-10-02: Plot command XYZ/intensity bindings and live display controls
+
+- Added 19 surface-contract cases in `tests/unit/core/test_plotting_surfaces.py`
+  and 25 worker/configuration/replay workflows in
+  `tests/integration/sequence/test_plot_surface_commands.py`. No existing tests
+  moved or removed. Cached plugin tabs use `managed_plugin_config_tabs`, and
+  test displays/services use scoped managed Qt ownership.
+- Verified explicit fixed-Y trace slices, multiple XYZ/intensity point sources,
+  serpentine cell mapping, duplicate/reacquisition policy, run reset, metadata,
+  immutable source capture, missing values, incremental storage, saved generated
+  actions, headless execution, transactional replay/refusal and failure rollback.
+  Configuration checks cover capability/axis changes, preserving unsupported
+  saved forms, source-catalogue refresh and ignoring data-only notifications.
+- Full suite: **3,880 passed, one skipped**, 3,881 collected, 95.11 seconds:
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-command-extensions-full`. Log:
+  `.pytest-runtime/plot-command-extensions-full.log`. Final focused regression
+  after documentation/import cleanup: **212 passed**.
+- Ruff check/format, focused mypy (seven source files), `git diff --check` and
+  15 contract doctests passed. Sphinx built with its existing 497 warnings.
+  Rendered/inspected both XYZ pages at 540px width and corrected narrow nested
+  editors before delivery. Used project Conda, Python 3.14.7 and offscreen
+  PyQt5 5.15.11 with Windows fonts. No cross-binding CI/GPU claims.
+- Stages 1/2 handover and extension semantics:
+  `notes/2026-10-01-plot-command-extension-plan.md`. Production intensity/3D
+  factories remain stages 3/4 and must explicitly negotiate surface support.
+
+## 2026-10-01: Plot display author guide and final handover Stage 5
+
+- Added two cases in `tests/integration/app/test_plot_display_example.py`.
+  They load the exact downloadable factory example, simulate installed discovery,
+  run existing trace/point commands on the engine worker inside MainWindow,
+  append data, replay through Cartesian and reject an incompatible marker
+  snapshot. No existing tests moved or removed; windows use managed Qt ownership.
+- Focused example/host/registry/replacement/menu checks: **36 passed**.
+- Full suite: **3,836 passed, one skipped**, 3,837 collected, 71.44 seconds:
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-stage5-full`. Output:
+  `.pytest-runtime/plot-stage5-full.log`.
+- Ruff check/format, focused mypy (11 source files) and `git diff --check` passed.
+  All 15 contract doctests and the command plan's XYZ trace-slice example passed.
+  Sphinx built the guide/downloadable example with the existing 497-warning
+  baseline. Used project Conda, Python 3.14.7, offscreen PyQt5 5.15.11 and fonts.
+  No hosted cross-binding CI or GPU validation is claimed.
+- All five foundation stages are complete; handover:
+  `notes/2026-10-01-plot-display-stage5.md`. The command-extension plan records
+  single-loop trace slices, nested-loop points and which plotting APIs to reuse;
+  optional surface controls, grouping/topology and renderers remain future work.
 
 This is the historical migration log for the test-suite restructure. Durable
 test layout and philosophy guidance lives in `notes/testing_guidelines.md`.
 
 This document records the test-suite restructure so future Codex sessions can
 continue without rediscovering the same coverage map.
+
+## 2026-10-01: Plot replacement, settings and UI Stage 4
+
+- Added 12 cases in `tests/unit/ui/test_plot_display_replacement.py` and two
+  menu workflows in `tests/integration/app/test_plot_display_menu.py`. No
+  existing tests moved or rewritten; old and failed candidate teardown stays
+  scoped to host-owned adapters/widget containers.
+- Verified explicit Cartesian state round trips through a non-PyQtGraph test
+  adapter: data/errors, source bindings/metadata and auxiliary channels, user
+  styles/titles, hidden traces, named axes, scales/ranges, active axes, exact
+  legend height and marker IDs/anchors. Covered idle engine/queue refusal,
+  hydration/capability failure rollback, generation advancement, unsupported
+  style retention, restart settings without arrays, corrupt settings fallback
+  and View-menu selection/refusal feedback.
+- Focused legacy plotting, engine and application regression: 294 passed.
+  Final replacement/menu selection: 14 passed.
+- Final full suite: **3,834 passed, one skipped**, 3,835 collected, 69.37 seconds;
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-stage4-full`. Output is retained locally in
+  `.pytest-runtime/plot-stage4-full.log`.
+- Changed-file Ruff check/format, focused mypy (11 source files) and
+  `git diff --check` passed. The plotting page's 15 doctest examples passed;
+  Sphinx built successfully with the existing 497-warning baseline.
+- Used project Conda, Python 3.14.7, offscreen PyQt5 5.15.11 and Windows fonts.
+  No other Qt binding, hardware or GPU renderer validation is claimed.
+- Handover: `notes/2026-10-01-plot-replacement-stage4.md`. The replaceable
+  Cartesian foundation is complete; further production displays remain separate.
+
+## 2026-10-01: Plot display host and factories Stage 3
+
+- Added ten registry cases and ten host cases under
+  `tests/unit/ui/test_plot_display_registry.py` and
+  `tests/unit/ui/test_plot_display_host.py`; no existing tests moved or rewritten.
+  Host-owned services shut down before scoped adapter/widget teardown.
+- Covered lazy factory discovery, bundled fallback without installed metadata,
+  import/version/ID failures, startup selection fallback, interface validation,
+  partial widget cleanup, worker ownership, close/cancellation and a minimal
+  portable display receiving real engine trace/point commands inside MainWindow.
+  Cartesian compatibility checks cover eager named axes and point-label edits
+  retaining their observable rename signal while using the service queue.
+- Initial focused gate: 47 passed. The portable axis refinement passed 144
+  producer/service/host tests; the final host selection passed all ten cases.
+  Initial full suite: 3,819 passed, one skipped (70.12 seconds).
+- Final full suite including the label-edit repair: **3,820 passed, one skipped**,
+  3,821 collected (82.40 seconds), using
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-stage3-final`. Local output is retained at
+  `.pytest-runtime/plot-stage3-final.log`.
+- Mypy passed for ten source files covering display interfaces, host, registry,
+  factory, service and bridge. Changed-file Ruff check/format and
+  `git diff --check` passed. All 15 plotting doctest examples passed; Sphinx
+  built successfully with the existing 497-warning baseline.
+- Source entry-point registration was verified; installed editable metadata
+  currently has no entries in the new group. No install refresh was performed.
+  The bundled source fallback and isolated third-party discovery are tested.
+- Used the project Conda environment, Python 3.14.7, offscreen PyQt5 5.15.11
+  and Windows fonts. These results do not claim hosted cross-binding CI.
+- Handover: `notes/2026-10-01-plot-host-stage3.md`. Live replacement/replay and
+  versioned display settings remain Stage 4 work.
+
+## 2026-10-01: Plot service routing Stage 2
+
+- Added 15 service cases in `tests/unit/core/test_plotting_service.py` and eight
+  real engine/compatibility workflows in
+  `tests/integration/sequence/test_plot_service_commands.py`. Existing tests
+  were not moved or rewritten. The tests use managed widget ownership and
+  release the borrowed plot service before Qt teardown.
+- Coverage includes GUI-only rendering from workers, request ordering and
+  exactly-once completion, immutable data, metadata/style acknowledgement,
+  invalid/unsupported requests, renderer failures, bounded pending work,
+  headless execution, pause/stop/timeout/shutdown, repeated endpoint attachment,
+  legacy keyword/return-value semantics and saved/generated command execution.
+- Complete-suite validation: **3,800 passed, one skipped**, 3,801 collected;
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/plot-stage2-full` (69.89 seconds). Used the project
+  Conda environment, Python 3.14.7, offscreen PyQt5 5.15.11 and Windows fonts.
+  This does not establish the other Qt bindings' CI results.
+- Focused mypy for `core/plotting` and `ui/plotting_bridge.py` passed (five files).
+  Changed-file Ruff check/format and `git diff --check` passed; all 15 plotting
+  documentation doctest examples passed. Sphinx retains unrelated existing
+  API documentation warnings, as recorded in Stage 1.
+- The implementation and next-stage boundaries are in
+  `notes/2026-10-01-plot-service-stage2.md`. Host/factory discovery and display
+  replacement are not implemented by this stage.
+
+## 2026-10-01: Plot display contract Stage 1
+
+- Added `tests/unit/core/test_plotting_contracts.py` with 41 cases for owned
+  immutable array/metadata snapshots, malformed shapes, generalised coordinate
+  bindings and units, spherical conventions, independent intensity, capability
+  rejection, markers, axis ranges and terminal results. No existing tests moved
+  or changed; application plotting remains on the original implementation.
+- Pre-change baseline: 262 passed across the Cartesian plot widget, mouse axes,
+  plot trace/point/clear/marker commands, extremum transform and main window.
+- New contracts plus the same baseline: 303 passed. After refining snapshot
+  output typing, the 41 contract cases passed again. Commands used the project
+  Conda environment with offscreen PyQt5 5.15.11 and Windows fonts, Python 3.14.7.
+- `python -m doctest -v docs/plotting_contracts.rst`: 15 examples passed.
+  `mypy src/stoner_measurement/core/plotting --follow-imports=silent` passed;
+  Ruff check and format apply to the new package and test module.
+- Full collection: 3,778 tests with `pytest --collect-only -q -p no:cacheprovider`.
+  The focused combined run used `-q --tb=short -p no:cacheprovider` and
+  `--basetemp=.pytest-runtime/plot-stage1-final`; collection output is retained
+  locally at `.pytest-runtime/plot-stage1-collection.txt`.
+- Fresh-process contract import loaded neither PyQtGraph nor OpenGL. Records
+  contain no widgets; existing package-level Qt imports are unchanged.
+- Sphinx HTML build completed with exit code 0. The new page's title warning
+  was corrected. Existing API documentation still warns about obsolete
+  `core.sequence`/`core.runner` imports and other existing source/stub formatting;
+  this is not a warning-free documentation baseline. Markdownlint was unavailable
+  in the installed tools; Markdown spacing, links and line lengths were checked
+  locally. Generated autosummary sources were removed after the build.
+- The API examples are in `docs/plotting_contracts.rst`; compatibility, consumer
+  inventory and state ownership are in `notes/2026-10-01-plot-contract-stage1.md`.
+  Stage 2 dispatcher, tickets, pause/stop delivery and renderer lifecycle are not
+  implemented or claimed as tested by these record tests.
+
+## 2026-10-01: SR830 auto-function completion deadlines
+
+- Extended `tests/unit/instruments/drivers/test_srs830.py` with simulated slow
+  completion, active time-constant readback, bounded timeout, transport-timeout
+  preservation, explicit-deadline and connection-failure cases. No tests moved.
+- Focused driver run: 34 passed using `conda run -n stoner_measurement pytest
+  tests/unit/instruments/drivers/test_srs830.py -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/sr830-auto`. Ruff passed for the driver and tests.
+- Related driver, lock-in contract and multi-lock-in plugin regressions: 163
+  passed in the project Conda environment with offscreen PyQt5. The run covered
+  the SR830/SR7265 driver modules, lock-in exports, per-lock-in settings and
+  `tests/test_k6221_multi_sr830_plugin.py`. `git diff --check` passed.
+- Timing policy and remaining bench checks are in `notes/sr830_autosensitivity.md`.
 
 ## 2026-09-23: Lock-in reset selection and conditional overload retry
 
@@ -1054,7 +1381,6 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   serial opening, timeout configuration, I/O, short writes, partial reads,
   timeout, purge, cleanup, and status errors without a driver or device.
 
-
 ## 2026-09-20 Codacy test policy
 
 - Exclude tests from Prospector and Codacy's separate complexity metric using
@@ -1065,7 +1391,6 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - Final focused verification of the retained changes: 485 tests passed on
   offscreen PyQt5; Ruff, targeted Pylint and Bandit checks passed.
 - See `notes/2026-09-20-codacy-cleanup.md` for the snapshot and validation scope.
-
 
 ## 2026-09-21: Optional secondary temperature controller
 
@@ -1095,7 +1420,6 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   Replaced the obsolete owner-local stability selector case with shared selection
   and offline-choice retention. No unrelated test migration was performed.
 
-
 ## 2026-09-21: Plot mouse-axis selection
 
 - Added tests/unit/ui/widgets/test_plot_mouse_axes.py for real Qt clicks, pan,
@@ -1106,7 +1430,9 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   tests/unit/ui/widgets/test_plot_mouse_axes.py
   tests/unit/plugins/command/test_plot_markers_command.py -q -p no:cacheprovider`.
 - Ruff check and format passed for both changed Python files.
-- Visual check: rendered the dark-theme plot with bottom/right active and a marker. PyQt5 checks passed; PyQt6 validation was unavailable because that binding could not be imported in this environment.
+- Visual check: rendered the dark-theme plot with bottom/right active and a
+  marker. PyQt5 checks passed; PyQt6 validation was unavailable because that
+  binding could not be imported in this environment.
 
 ## 2026-09-22: Secondary-controller regression follow-up
 
@@ -1130,3 +1456,105 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   through that module passed when selected together separately. The Qt abort
   remains unisolated; the split runs are not a claim of a clean single-process
   full-suite run.
+
+## 2026-09-22: CI configuration-page lifetime failure
+
+- GitHub run `35713068841`, commit `124beb3f`, aborted in the Python 3.14 /
+  PyQt6 job; the other three matrix jobs passed. The exception was
+  `QGraphicsTextItem has been deleted` in PyQtGraph `LabelItem.resizeEvent`
+  during pytest-qt event processing at the Keithley 2400 configuration test.
+- That test registered only Settings with `qtbot`; its scan-preview page and
+  the configuration pages in the preceding Multi-SR830 module lacked scoped
+  ownership. This matches the previously diagnosed deferred-event lifetime
+  failure, although the precise originating page cannot be proved from the
+  CI stack alone.
+- Added `managed_plugin_config_tabs`, which registers every returned page with
+  `managed_qt_widget`. Applied it to the Keithley 2400 configuration test and
+  all 14 Multi-SR830 configuration tests. No assertions or tests were removed;
+  the existing modules remain in place for this bounded lifecycle repair.
+- Baseline: the two affected modules passed locally (119 tests), so the CI
+  crash was not reproduced in the available PyQt5 environment.
+- Validation: affected modules plus `tests/unit/plugins/trace/test_trace_plugin.py`
+  passed 156 tests. A single-process full run passed 3,717 tests with one skip:
+  `pytest -q --tb=short -p no:cacheprovider
+  --basetemp=.pytest-runtime/ci-lifecycle-full` (72.52 seconds).
+  Commands used the project Conda environment, offscreen Qt and Windows fonts.
+- Ruff check/format and `git diff --check` passed. Local Python is 3.14.7 with
+  PyQt5 5.15.11; PyQt6 cannot be imported. The patch still needs hosted PyQt6
+  validation before the CI failure can be considered resolved.
+- The exact Keithley configuration node also passed in ten separate fresh
+  pytest processes. An earlier repeated-node invocation collected 20 entries
+  but executed only one, so it is not counted as repeated validation.
+
+## 2026-10-10: Codacy plotting maintenance
+
+- No tests were added, moved or removed. The registry discovery fake now uses
+  a local exception reference for Pylint narrowing; its failure contract and
+  existing assertions are unchanged.
+- The focused plotting selection passed 381 tests under Python 3.14.7 / PyQt5
+  5.15.11, offscreen with Windows fonts and pytest caching disabled. It covers
+  surface/service transactions, display discovery/replacement, plot and axis
+  widgets, command signals and sequence integration.
+- Commands and scope are recorded in
+  [the maintenance note](2026-10-10-codacy-cleanup.md). No new Qt page ownership
+  or test migration work was required; other bindings were not validated.
+
+## 2026-10-10: plotting performance batches
+
+- Extended existing core service/regrid and native canvas test modules; no
+  tests were moved or removed. Added deterministic checks for bulk redraws,
+  notification deduplication, immutable buffer isolation, snapshot/graphics
+  reuse, topology invalidation, prepared validation, colour-bar ordering,
+  ordered group failures/capacity rejection, dispatch yielding and engine use
+  of condition-based readiness. Timing probes remain outside CI assertions.
+- Existing scoped `managed_qt_widget` ownership is retained. The native GPU
+  test now updates an existing mesh before painting its hidden framebuffer.
+- Each of the five batches passed its focused selection and ran the standalone
+  probe. Final verbose combined plotting/sequence selection: 560 passed;
+  native Windows OpenGL: 1 passed. Python 3.14.7 / PyQt5 5.15.11 were validated.
+- A quiet combined run reproduced the previously documented Windows Qt access
+  violation during a surface worker wait. Scoped fixture ownership was checked;
+  the failure remains unresolved. No global teardown or suppression was added.
+- Detailed scope, measurements and limits are recorded in
+  [the performance review](2026-10-10-plotting-performance-review.md).
+
+## 2026-10-10: Cartesian bottom-axis layout
+
+- Added four parameterized viewport-containment cases to the existing
+  `tests/unit/ui/widgets/test_plot_widget.py`; no tests were moved or removed.
+  They cover larger labels, additional bottom/top/right axes, legend resizing
+  and repeated window resizing, with scoped managed widget ownership.
+- Focused plotting/axis/display/service regression selection: 171 passed.
+  The new cases also passed at 150% Qt scaling (4 passed). Ruff, formatting,
+  error-level Pylint for the changed production module and diff checks passed.
+- Reproduction details and validation limits are recorded in
+  [the axis-layout note](2026-10-10-cartesian-axis-layout.md).
+
+## 2026-10-10: Engine and command performance
+
+- Added focused concurrency coverage in `tests/unit/core/test_controller_polling.py`
+  and extended existing controller/command modules for worker timer ownership,
+  slow-poll GUI responsiveness, completion invalidation, focused flow snapshots,
+  state notifications, pending X-ray motion and propagated failures. Added a
+  Make Safe failure case retaining the zero-field heater gate.
+- The legacy magnet publisher poll case now waits for asynchronous publication
+  before shutdown. No tests were moved or removed, and scoped Qt ownership is
+  retained. Production hardware protocols and passive monitor defaults remain.
+- Final expanded controller/command/state/scan/monitor/panel/sequence selection:
+  1509 passed, 1 skipped. Ruff, error-level Pylint and diff checks passed.
+  Follow-up deadline/cancellation/controller/sequence selection: 209 passed.
+  Batch counts, simulated timing results and bench-validation limits are in
+  [the implementation note](2026-10-10-engine-command-performance-implementation.md).
+
+## 2026-10-13: per-sequence display preferences
+
+- Added `tests/integration/app/test_sequence_display_preference.py` with scoped
+  managed application/widget ownership and explicit GUI handover coverage.
+- Extended the existing display-menu fake to model active-document updates;
+  isolated display selection in the legacy exception-attribution test. No tests
+  were moved or removed. The legacy serializer and engine monoliths remain.
+- Affected app, plotting-sequence, serializer, engine, SaveCommand, display-host,
+  and clipboard selection: 353 passed, 2 skipped on offscreen PyQt5. Ruff and
+  diff checks passed. Targeted mypy matches the 23-error untouched-HEAD baseline.
+- Commands, contracts and validation limits are recorded in
+  [the preference note](2026-10-13-sequence-display-preference.md).

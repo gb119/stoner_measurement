@@ -90,7 +90,11 @@ def sequence_json_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         stack.append((path, node))
         seen.add(path)
 
-    return {"version": metadata.get("version", __version__), "steps": roots}
+    return {
+        "version": metadata.get("version", __version__),
+        "display_plugin": metadata.get("display_plugin", "cartesian"),
+        "steps": roots,
+    }
 
 
 def metadata_from_flattened(entries: Iterable[str]) -> dict[str, Any]:

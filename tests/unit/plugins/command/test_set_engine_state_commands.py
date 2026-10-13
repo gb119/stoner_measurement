@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
+from qtpy.QtCore import QObject, Signal
 from qtpy.QtWidgets import QComboBox, QLineEdit
 
+from stoner_measurement.core.controller_polling import ControllerUpdates
 from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command import (
@@ -306,6 +310,39 @@ def test_legacy_flow_json_restores_runtime_expressions(qapp):
     assert restored.channel_expr == "selected_channel"
     assert restored.setpoint_expr == "base_flow * 2"
     assert restored.wait_expr == "True"
+
+
+def test_position_wait_wakes_on_published_state_without_extra_read(qapp, engine, monkeypatch):
+    pending = SimpleNamespace(reading=SimpleNamespace(angle=0.0, angular_rate=0.0),
+                              target_angle=45.0, at_target=False, stable=False)
+    reached = SimpleNamespace(reading=SimpleNamespace(angle=45.0, angular_rate=0.0),
+                              target_angle=45.0, at_target=True, stable=True)
+    fake = _StateEngine([pending])
+    class Publisher(QObject):
+        state_updated = Signal(object)
+
+    publisher = Publisher()
+    fake._state_updates = ControllerUpdates(publisher)
+    command = SetPositionCommand()
+    command.setpoint_expr = "45"
+    engine.add_plugin("set_position", command)
+    monkeypatch.setattr(command, "_ensure_engine", lambda: fake)
+
+    def publish():
+        time.sleep(0.05)
+        fake.states = [reached]
+        publisher.state_updated.emit(reached)
+
+    worker = threading.Thread(target=publish)
+    worker.start()
+    started = time.monotonic()
+    try:
+        command.execute()
+    finally:
+        worker.join()
+    assert time.monotonic() - started < 0.4
+    assert fake.index == 1
+    assert command.output_value("At Target") == 1.0
 
 
 if __name__ == "__main__":

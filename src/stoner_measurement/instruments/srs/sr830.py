@@ -563,20 +563,63 @@ class SRS830(LockInAmplifier):
         }
         self.write(f"RMOD {mapping[mode]}")
 
-    def auto_gain(self) -> None:
-        """Execute the SR830 auto-gain routine."""
-        self.write("AGAN")
-        self.wait_for_ifc()
+    def _run_auto_function(self, command: str, timeout: float | None) -> None:
+        """Run an auto function with a deadline separate from the I/O timeout."""
+        with self._lock:
+            if timeout is None:
+                # Query before starting: front-panel changes can invalidate caches.
+                timeout = max(120.0, 30.0 * self.get_time_constant(), self.transport.timeout)
+            self.write(command)
+            self.wait_for_ifc(timeout=timeout)
 
-    def auto_phase(self) -> None:
-        """Execute the SR830 auto-phase routine."""
-        self.write("APHS")
-        self.wait_for_ifc()
+    def auto_gain(self, *, timeout: float | None = None) -> None:
+        """Execute the SR830 auto-gain routine and wait for completion.
 
-    def auto_reserve(self) -> None:
-        """Execute the SR830 auto-reserve routine."""
-        self.write("ARSV")
-        self.wait_for_ifc()
+        Keyword Parameters:
+            timeout (float | None):
+                Completion timeout in seconds. Defaults to the longest of
+                120 seconds, 30 active time constants and the I/O timeout.
+
+        Raises:
+            TimeoutError:
+                If command completion is not reported before the deadline.
+
+        Notes:
+            The SR830 does nothing if its time constant exceeds one second.
+        """
+        self._run_auto_function("AGAN", timeout)
+
+    def auto_phase(self, *, timeout: float | None = None) -> None:
+        """Execute the SR830 auto-phase routine and wait for completion.
+
+        Keyword Parameters:
+            timeout (float | None):
+                Completion timeout in seconds. Defaults to the longest of
+                120 seconds, 30 active time constants and the I/O timeout.
+
+        Raises:
+            TimeoutError:
+                If command completion is not reported before the deadline.
+
+        Notes:
+            Completion does not guarantee settled outputs. Allow several
+            time constants before measuring or repeating auto phase.
+        """
+        self._run_auto_function("APHS", timeout)
+
+    def auto_reserve(self, *, timeout: float | None = None) -> None:
+        """Execute the SR830 auto-reserve routine and wait for completion.
+
+        Keyword Parameters:
+            timeout (float | None):
+                Completion timeout in seconds. Defaults to the longest of
+                120 seconds, 30 active time constants and the I/O timeout.
+
+        Raises:
+            TimeoutError:
+                If command completion is not reported before the deadline.
+        """
+        self._run_auto_function("ARSV", timeout)
 
     def auto_offset_channel(self, channel: LockInOutputChannel) -> None:
         """Execute the SR830 auto-offset routine for a specified output channel.

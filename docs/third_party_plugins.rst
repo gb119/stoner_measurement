@@ -8,6 +8,12 @@ standard Python *entry-points* system; once a third-party package is installed
 in the same Python environment as the application, its plugins are
 automatically discovered at start-up.
 
+Measurement display factories use the separate
+``stoner_measurement.plot_displays`` entry-point group and do not inherit
+``BasePlugin``. See :doc:`plotting_contracts` for their factory, widget ownership
+and communications interfaces. See :doc:`plot_display_plugins` for a complete
+external factory example and authoring guidance.
+
 .. contents:: On this page
    :local:
    :depth: 2

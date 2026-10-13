@@ -24,7 +24,10 @@ class SetDiffractometerCommand(SetEngineStateCommand):
     Motion uses the speed and coupled datum offset already configured in the
     X-ray engine. The preferred instrument is reconnected automatically when
     required. The inherited **Wait expression** controls whether the command
-    waits for completion.
+    waits for completion. With ``False``, the move runs in the background and
+    outputs describe the latest known position with At Target false while
+    motion is pending. Eventual failures are reported by the engine and retained
+    in :attr:`operation`; waiting commands propagate failures to the sequence.
 
     Final theta, 2-theta, detector counts, and at-target state are published as
     scalar outputs.
@@ -37,6 +40,9 @@ class SetDiffractometerCommand(SetEngineStateCommand):
             2-theta.
         wait_expr (str):
             Whether to wait for the target; defaults to "True".
+        operation (XrayOperation | None):
+            Read-only ticket for the latest background move. Once ``done`` is
+            set, ``result()`` returns the completed state or raises its error.
         instance_name (str):
             Inherited Python identifier for this instance in the Script tab and
             QtConsole.
@@ -65,6 +71,24 @@ class SetDiffractometerCommand(SetEngineStateCommand):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.axes = XrayMotionMode.COUPLED
+        self._operation = None
+
+    def execute(self) -> None:
+        """Start a tracked move and preserve failure/cancellation on waiting runs."""
+        self._operation = None
+        try:
+            super().execute()
+        except BaseException:
+            if self._operation is not None and not self._operation.done.is_set():
+                self._ensure_engine().cancel_operation()
+            raise
+        if self._stop_requested() and self._operation is not None:
+            self._ensure_engine().cancel_operation()
+
+    @property
+    def operation(self):
+        """Latest background ticket; inspect ``done`` and call ``result()`` after completion."""
+        return self._operation
 
     @property
     def name(self) -> str:
@@ -87,16 +111,30 @@ class SetDiffractometerCommand(SetEngineStateCommand):
         return engine
 
     def _set_target(self, engine: XrayControllerEngine, setpoint: float) -> None:
-        engine.move_to(setpoint, self.axes)
+        start_move = getattr(engine, "start_move", None)
+        if start_move is None:
+            engine.move_to(setpoint, self.axes)
+        else:
+            self._operation = start_move(setpoint, self.axes)
 
     def _read_state(self, engine: XrayControllerEngine):
+        if self._operation is not None:
+            if self._operation.done.is_set():
+                return self._operation.result()
+            return engine.get_engine_state()
         return engine.read_controller_state() or engine.get_engine_state()
 
     def _target_reached(self, state, setpoint: float) -> bool:
         del setpoint
+        if self._operation is not None:
+            if not self._operation.done.is_set():
+                return False
+            state = self._operation.result()
         return bool(state.at_target and not state.moving)
 
     def _state_values(self, state) -> dict[str, float]:
+        if self._operation is not None and self._operation.done.is_set():
+            state = self._operation.result()
         snapshot = state.snapshot
         return {
             "Theta": math.nan if snapshot is None else float(snapshot.theta_deg),
@@ -112,7 +150,4 @@ class SetDiffractometerCommand(SetEngineStateCommand):
         return {"axes": self.axes.value}
 
     def _restore_specific_json(self, data: dict[str, Any]) -> None:
-        self.axes = normalise_xray_motion_mode(
-            data.get("axes", XrayMotionMode.COUPLED.value)
-        )
-
+        self.axes = normalise_xray_motion_mode(data.get("axes", XrayMotionMode.COUPLED.value))

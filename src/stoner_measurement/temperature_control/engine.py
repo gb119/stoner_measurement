@@ -23,8 +23,13 @@ from datetime import UTC, datetime
 from traceback import format_exc
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QObject, QTimer
+from qtpy.QtCore import QObject
 
+from stoner_measurement.core.controller_polling import (
+    ControllerPoller,
+    ControllerTimer,
+    ControllerUpdates,
+)
 from stoner_measurement.instruments.addressing import (
     parse_ethernet_address,
     parse_serial_address,
@@ -148,7 +153,9 @@ class _ControllerSession(QObject):
         self._latest_state: TemperatureEngineState = TemperatureEngineState(engine_status=self._status)
         self._latest_state_time: float | None = None
 
-        self._timer = QTimer(self)
+        self._controller_poller = ControllerPoller()
+        self._state_updates = ControllerUpdates(self.publisher)
+        self._timer = ControllerTimer(self)
         self._engine_lock = threading.RLock()
         self._polling_rate_hz = 1.0
         self._timer.setInterval(_DEFAULT_POLL_INTERVAL_MS)
@@ -201,6 +208,8 @@ class _ControllerSession(QObject):
             cls._singleton = cls()
             app = _qapp()
             if app is not None:
+                if cls._singleton.thread() != app.thread():
+                    cls._singleton.moveToThread(app.thread())
                 app.aboutToQuit.connect(cls._singleton.shutdown)
         return cls._singleton
 
@@ -845,13 +854,7 @@ class _ControllerSession(QObject):
                 logger.exception("Failed to set input channel for loop %d", loop)
                 raise
             caps = self._driver.get_capabilities()
-            try:
-                if caps.has_ramp:
-                    self._driver.set_ramp_rate(loop, ramp_rate)
-                    self._driver.set_ramp_enabled(loop, ramp_enabled)
-            except Exception:
-                logger.exception("Failed to set ramp for loop %d", loop)
-                raise
+            self._set_supported_ramp(loop, ramp_rate, ramp_enabled, caps.has_ramp)
             try:
                 if caps.has_pid:
                     self._driver.set_pid(loop, pid_p, pid_i, pid_d)
@@ -863,6 +866,20 @@ class _ControllerSession(QObject):
             except Exception:
                 logger.exception("Failed to set heater range for loop %d", loop)
                 raise
+
+    def _set_supported_ramp(
+        self, loop: int, ramp_rate: float, ramp_enabled: bool, supported: bool
+    ) -> None:
+        """Apply ramp settings when the connected driver supports them."""
+        if not supported:
+            return
+        assert self._driver is not None
+        try:
+            self._driver.set_ramp_rate(loop, ramp_rate)
+            self._driver.set_ramp_enabled(loop, ramp_enabled)
+        except Exception:
+            logger.exception("Failed to set ramp for loop %d", loop)
+            raise
 
     def set_manual_heater_output(self, loop: int, output: float) -> None:
         """Set the manual heater output for open-loop control of *loop*.
@@ -1299,6 +1316,7 @@ class _ControllerSession(QObject):
             >>> e.status
             <EngineStatus.STOPPED: 'stopped'>
         """
+        self._controller_poller.close()
         self._timer.stop()
         with self._engine_lock:
             if self._driver is not None:
@@ -1312,6 +1330,7 @@ class _ControllerSession(QObject):
             self._invalidate_state()
         if TemperatureControllerEngine._singleton is self:
             TemperatureControllerEngine._singleton = None
+        self._controller_poller.join()
         logger.info("TemperatureControllerEngine: shut down.")
 
     def _disconnect_driver(self, driver: TemperatureController, *, log_context: str) -> None:
@@ -1342,7 +1361,7 @@ class _ControllerSession(QObject):
     @pyqtSlot()
     def _poll(self) -> None:
         """Query the instrument, compute derived quantities, and publish results."""
-        self.read_controller_state()
+        self._controller_poller.request(self.read_controller_state)
 
     def _build_state(self, *, evaluate_stability=True) -> TemperatureEngineState:
         """Query the driver and return a full :class:`TemperatureEngineState`.

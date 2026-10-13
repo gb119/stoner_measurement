@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
+from stoner_measurement.core.plotting.contracts import AddMarker, RemoveMarkers
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.qt_compat import pyqtSignal
 
@@ -95,7 +96,7 @@ class AddPlotMarkerCommand(CommandPlugin):
             _safe_disconnect(self.add_plot_marker, old_plot.add_data_marker)
         self._sequence_engine_ref = engine
         new_plot = getattr(engine, "plot_widget", None)
-        if new_plot is not None:
+        if new_plot is not None and getattr(engine, "plot_client", None) is None:
             self.add_plot_marker.connect(new_plot.add_data_marker)
 
     @property
@@ -112,6 +113,9 @@ class AddPlotMarkerCommand(CommandPlugin):
             evaluated = self.eval(self.label_expr)
             if evaluated is not None and str(evaluated).strip():
                 label = str(evaluated)
+        self._submit_plot_operation(
+            AddMarker({"x": x, "y": y}, axes={"x": "bottom", "y": "left"}, label=label)
+        )
         self.add_plot_marker.emit(x, y, label)
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
@@ -206,7 +210,7 @@ class RemovePlotMarkersCommand(CommandPlugin):
             _safe_disconnect(self.clear_plot_markers, old_plot.clear_data_markers)
         self._sequence_engine_ref = engine
         new_plot = getattr(engine, "plot_widget", None)
-        if new_plot is not None:
+        if new_plot is not None and getattr(engine, "plot_client", None) is None:
             self.clear_plot_markers.connect(new_plot.clear_data_markers)
 
     @property
@@ -216,6 +220,7 @@ class RemovePlotMarkersCommand(CommandPlugin):
 
     def execute(self) -> None:
         """Request removal of every marker from the main plot."""
+        self._submit_plot_operation(RemoveMarkers())
         self.clear_plot_markers.emit()
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
