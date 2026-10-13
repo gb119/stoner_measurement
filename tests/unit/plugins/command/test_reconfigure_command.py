@@ -18,6 +18,9 @@ from stoner_measurement.plugins.command.reconfigure import rebuild_delayed_confi
 from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.ui.dock_panel import DockPanel
 
+# These command contracts execute generated scripts without testing GUI rendering.
+pytestmark = pytest.mark.usefixtures("null_plot_display_host")
+
 
 class ResourceTrace(DummyPlugin):
     """Fake hardware owner that records setup and closes partial resources."""

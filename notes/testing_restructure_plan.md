@@ -1558,3 +1558,17 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   diff checks passed. Targeted mypy matches the 23-error untouched-HEAD baseline.
 - Commands, contracts and validation limits are recorded in
   [the preference note](2026-10-13-sequence-display-preference.md).
+
+## 2026-10-13: CI pytest null display host
+
+- The Keithley set and Reconfigure command modules now opt into the shared
+  `null_plot_display_host` fixture. All command assertions are retained; no
+  existing tests were moved or removed.
+- Added `tests/unit/core/test_null_plot_display_host.py` for generated worker
+  execution, no-display request completion, rejected selection and cancellation.
+  The fixture uses the real renderer-free PlotService and creates no widgets.
+- CI evidence, reproduction and validation are recorded in
+  [the CI repair note](2026-10-13-ci-pytest-null-host.md).
+- Full single-process validation with coverage and JUnit reporting: 4031 passed,
+  2 skipped, zero failures/errors, clean exit on offscreen PyQt5 / Python 3.14.
+  Ruff check/format and whitespace checks pass. Hosted matrix confirmation remains.

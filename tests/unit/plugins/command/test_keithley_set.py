@@ -11,6 +11,9 @@ from stoner_measurement.plugins.command.keithley_set import (
     Keithley6221SetCommand,
 )
 
+# These command contracts execute generated scripts without testing GUI rendering.
+pytestmark = pytest.mark.usefixtures("null_plot_display_host")
+
 
 @pytest.mark.parametrize("cls", [Keithley2400SetCommand, Keithley6221SetCommand])
 def test_command_roundtrip_and_settings(qapp, managed_qt_widget, cls):

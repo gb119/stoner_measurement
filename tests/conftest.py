@@ -5,6 +5,7 @@ from __future__ import annotations
 import gc
 import shutil
 from pathlib import Path
+from threading import Event
 from typing import TypeVar
 from uuid import uuid4
 
@@ -13,11 +14,42 @@ from qtpy.QtCore import QCoreApplication, QEvent
 from qtpy.QtWidgets import QApplication, QMessageBox, QWidget
 
 from stoner_measurement import resources
+from stoner_measurement.core.plotting.service import PlotService
 from stoner_measurement.core.plugin_manager import PluginManager
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.plugins.trace import DummyPlugin
 
 _WidgetT = TypeVar("_WidgetT", bound=QWidget)
+
+
+class _NullPlotDisplayHost:
+    """Test-only display selection with the real renderer-free plotting service.
+
+    Model Cartesian and polar selections without constructing any widgets.
+    Requests complete with NO_DISPLAY rather than pretending to render data.
+    """
+
+    def __init__(self, engine: SequenceEngine) -> None:
+        self.factory_id = "cartesian"
+        self.service = PlotService(parent=engine)
+
+    def select_display(self, factory_id: str, *, stop_event: Event | None = None) -> None:
+        """Accept supported selections and propagate cancellation or missing IDs."""
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError("Sequence stopped before selecting its display.")
+        if factory_id not in {"cartesian", "polar"}:
+            raise RuntimeError(f"Unknown test display factory: {factory_id!r}")
+        self.factory_id = factory_id
+
+
+@pytest.fixture
+def null_plot_display_host(engine, monkeypatch):
+    """Opt an engine into widget-free display selection for non-rendering tests."""
+    host = _NullPlotDisplayHost(engine)
+    monkeypatch.setattr(engine, "plot_display_host", host)
+    monkeypatch.setattr(engine, "plot_client", host.service)
+    yield host
+    host.service.shutdown()
 
 
 @pytest.fixture(scope="session")
