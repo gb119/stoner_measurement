@@ -13,11 +13,10 @@ channels:
 dependencies:
   - python>=3.13
   - pip
-  - pip:
-      - build
-      - twine
-      - check-manifest
-      - pyft232>=0.12
+  - python-build
+  - twine
+  - check-manifest
+  - pyft232>=0.12
   - setuptools>=61
   # Runtime dependencies
   - asteval>=1.0
