@@ -11,6 +11,7 @@ from stoner_measurement.instruments.lockin_amplifier import (
     LockInInputSource,
     LockInLineFilter,
 )
+from stoner_measurement.instruments.signal_recovery import SR7265Status
 from stoner_measurement.instruments.srs import SRS830LIAStatus
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
@@ -32,6 +33,8 @@ def test_old_common_filters_migrate_with_per_entry_overrides(qapp):
     ]
     restored = BasePlugin.from_json(saved)
     old, new = restored._lockin_entries
+    assert old.reset_lockin is True
+    new.reset_lockin = False
     assert (old.filter_slope, old.input_coupling, old.line_filter) == (
         24,
         LockInInputCoupling.DC,
@@ -88,6 +91,8 @@ def test_controls_edit_only_the_selected_lockin(qapp, managed_qt_widget):
         combo = table.cellWidget(rows[label], 1)
         combo.setCurrentIndex(combo.findData(value))
     first, second = plugin._lockin_entries
+    table.cellWidget(rows["Reset Lockin"], 1).setChecked(False)
+    assert second.reset_lockin is False
     assert first.to_json() == LockInEntry().to_json()
     assert (
         second.filter_slope,
@@ -157,8 +162,8 @@ def test_clear_stale_overload_then_check_reasserted_status(qapp, fresh):
     state = {"status": SRS830LIAStatus.INPUT_OR_RESERVE_OVERLOAD}
     lockin = MagicMock()
 
-    def write(command):
-        events.append(command)
+    def clear():
+        events.append("*CLS")
         state["status"] = SRS830LIAStatus.NONE
 
     def advance(delay):
@@ -170,7 +175,7 @@ def test_clear_stale_overload_then_check_reasserted_status(qapp, fresh):
         events.append("read")
         return state["status"]
 
-    lockin.write.side_effect = write
+    lockin.clear.side_effect = clear
     lockin.read_lia_status.side_effect = read
     plugin._lockins = [lockin]
     with patch(
@@ -181,7 +186,83 @@ def test_clear_stale_overload_then_check_reasserted_status(qapp, fresh):
                 plugin._clear_configuration_lia_status()
         else:
             plugin._clear_configuration_lia_status()
-    assert events == ["*CLS", "wait", "read"]
+    expected = ["*CLS", "wait", "read"]
+    if fresh.has_overload:
+        expected += ["wait", "*CLS", "wait", "read"]
+    assert events == expected
+
+
+@pytest.mark.parametrize("model", list(LockInModel))
+@pytest.mark.parametrize("reset", [False, True])
+def test_reset_option_controls_connection_and_configuration(qapp, model, reset):
+    plugin = Keithley6221_MultiSR830Plugin()
+    entry = LockInEntry(model=model, reset_lockin=reset)
+    lockin = MagicMock()
+    lockin.identify.return_value = model.value
+    with (
+        patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830.GpibTransport.from_resource_string"
+        ),
+        patch(
+            "stoner_measurement.plugins.trace.k6221_multi_sr830._lockin_driver_class",
+            return_value=MagicMock(return_value=lockin),
+        ),
+    ):
+        plugin._connect_one_lockin(entry)
+        assert lockin.reset.call_count == int(reset)
+        plugin._configure_one_lockin(entry, lockin)
+        assert lockin.reset.call_count == 2 * int(reset)
+        plugin._connect_one_lockin(entry, reset=False)
+        assert lockin.reset.call_count == 2 * int(reset)
+    lockin.set_time_constant.assert_called_once_with(plugin._time_constant)
+
+
+@pytest.mark.parametrize("multiple, delay", [(0.0, 0.3), (5.0, 0.5)])
+@pytest.mark.parametrize("persistent", [False, True])
+def test_sr830_overload_waits_then_clears_and_rechecks(qapp, multiple, delay, persistent):
+    plugin = Keithley6221_MultiSR830Plugin()
+    plugin._time_constant = 0.1
+    plugin._read_rate_multiple = multiple
+    lockin = MagicMock()
+    events = []
+    overload = SRS830LIAStatus.FILTER_OVERLOAD
+    statuses = iter([overload, overload if persistent else SRS830LIAStatus.NONE])
+    lockin.clear.side_effect = lambda: events.append("clear")
+
+    def read():
+        events.append("read")
+        return next(statuses)
+
+    lockin.read_lia_status.side_effect = read
+    plugin._lockins = [lockin]
+    with patch(
+        "stoner_measurement.plugins.trace.k6221_multi_sr830.time.sleep", side_effect=events.append
+    ):
+        if persistent:
+            with pytest.raises(RuntimeError, match="overloaded after configuration"):
+                plugin._clear_configuration_lia_status()
+        else:
+            plugin._clear_configuration_lia_status()
+    assert events == ["clear", 0.1, "read", pytest.approx(delay), "clear", 0.1, "read"]
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_7265_overload_rechecks_native_status_after_settling(qapp, persistent):
+    plugin = Keithley6221_MultiSR830Plugin()
+    plugin._lockin_entries[0].model = LockInModel.SR7265
+    plugin._time_constant = 0.1
+    plugin._read_rate_multiple = 5.0
+    lockin = MagicMock()
+    final = SR7265Status.OVERLOAD if persistent else SR7265Status(0)
+    lockin.read_status.side_effect = [SR7265Status.OVERLOAD, final]
+    plugin._lockins = [lockin]
+    with patch("stoner_measurement.plugins.trace.k6221_multi_sr830.time.sleep") as sleep:
+        plugin._clear_configuration_lia_status()
+    sleep.assert_called_once_with(0.5)
+    assert lockin.read_status.call_count == 2
+    lockin.check_measurement_status.assert_called_once_with(final)
+    lockin.clear.assert_not_called()
+    lockin.reset.assert_not_called()
 
 
 def test_7265_status_check_does_not_send_scpi_clear(qapp):

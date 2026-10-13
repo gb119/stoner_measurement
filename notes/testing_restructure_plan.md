@@ -6,6 +6,16 @@ test layout and philosophy guidance lives in `notes/testing_guidelines.md`.
 This document records the test-suite restructure so future Codex sessions can
 continue without rediscovering the same coverage map.
 
+## 2026-09-23: Lock-in reset selection and conditional overload retry
+
+- Extended `tests/unit/plugins/trace/test_k6221_lockin_settings.py` to cover
+  reset defaults and persistence, independent checkbox edits, connection and
+  configuration resets, and transient/persistent overload retry timing.
+- Updated the legacy plugin UI row-count expectation; no tests were moved.
+- Validation: the focused settings module and
+  `tests/test_k6221_multi_sr830_plugin.py` passed all 121 tests through the
+  project Conda environment with offscreen Qt (PyQt5). No hardware validation.
+
 ## 2026-09-15: Plot legend sizing and scrollbar contrast
 
 - Updated the existing plot-widget height check for a compact, resizable legend

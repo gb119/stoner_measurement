@@ -3,9 +3,30 @@
 from __future__ import annotations
 
 from qtpy.QtCore import QSize, Qt
-from qtpy.QtWidgets import QSizePolicy, QStyle, QTableWidget, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QScrollArea, QSizePolicy, QStyle, QTableWidget, QVBoxLayout, QWidget
 
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
+
+
+class ContentHeightScrollArea(QScrollArea):
+    """Prefer the full content height, allowing scrolling when space is limited."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Create a resizable viewport that does not consume spare vertical space."""
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        """Include all content rows and room for horizontal scrolling."""
+        hint = super().sizeHint()
+        if self.widget() is not None:
+            hint.setHeight(
+                self.widget().sizeHint().height()
+                + 2 * self.frameWidth()
+                + self.horizontalScrollBar().sizeHint().height()
+            )
+        return hint
 
 
 def set_table_visible_row_count(table: QTableWidget, row_count: int) -> None:

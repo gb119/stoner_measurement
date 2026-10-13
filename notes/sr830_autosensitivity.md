@@ -10,8 +10,15 @@ explicit per-lock-in mode:
   applies the chosen fixed range directly.
 * After all configuration and offset operations, the plugin sends `*CLS` to
   each SR830, waits 100 ms for fresh status, then reads `LIAS?`. Only overload
-  flags that reassert after the clear abort configuration. This avoids
-  rejecting a measurement because of a transient overload during setup.
+  flags that reassert after the clear trigger a settling retry. If the first
+  check is clear, configuration finishes without a cooldown wait. Otherwise,
+  wait for the longer of three time constants and the configured read cooldown,
+  send `*CLS` again, wait 100 ms, and recheck. Only a persistent overload aborts
+  configuration.
+* Each lock-in has a **Reset Lockin** checkbox (`reset_lockin`), defaulting to
+  true, including for older saved sequences. It controls driver resets during
+  both connect and configure (`*RST` on SR830; native `ADF 1` on 7265).
+  Temporary settings readback and auto-offset connections do not reset devices.
 
 The plugin's common **Enable auto-ranging** option remains responsible for
 adjusting an auto-enabled lock-in between measurements. The `Auto` dropdown
@@ -34,6 +41,8 @@ API uses voltage-table indices; the plugin converts current ranges at that
 boundary. Range matching tolerates floating-point conversion rounding.
 
 The SR7265 retains its native status check: it does not support `*CLS`.
+An initial overload gets the same conditional settling wait and a fresh native
+status read before the driver checks for remaining measurement errors.
 Protocol references: [SR830 manual, sections 5-5 and 5-20 to 5-23](https://www.thinksrs.com/downloads/PDFs/Manuals/SR830m.pdf)
 and [manufacturer's 7265 manual, sections 6.4.01 and 6.3](https://manualzz.com/doc/25586510/signal-recovery-7265-lock-in-amplifier-instruction-manual).
 The 100 ms fresh-status interval is an implementation choice that still needs

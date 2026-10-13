@@ -246,7 +246,7 @@ class TestUi:
         tables = settings_widget.findChildren(QTableWidget)
         assert tables
         table = tables[0]
-        assert table.rowCount() == 17
+        assert table.rowCount() == 18
         assert table.columnCount() == 1
         model_combo = table.cellWidget(_row_with_label(table, "Model"), 0)
         assert isinstance(model_combo, QComboBox)

@@ -35,14 +35,15 @@ from qtpy.QtWidgets import (
     QLabel,
     QMenu,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.trace_catalog_ui import bind_value_catalog_updates
 from stoner_measurement.qt_compat import pyqtSignal
+from stoner_measurement.ui.aspect_ratio_widget import ContentHeightScrollArea
 from stoner_measurement.ui.axis_mappings import AxisLabel
 from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
 
@@ -490,7 +491,10 @@ class PlotPointsCommand(CommandPlugin):
         x_axis_names, y_axis_names = _available_plot_axes(self.sequence_engine)
 
         outer = QWidget(parent)
-        outer_layout = QFormLayout(outer)
+        page_layout = QVBoxLayout(outer)
+        outer_layout = QFormLayout()
+        page_layout.addLayout(outer_layout)
+        page_layout.addStretch()
 
         x_combo = self._build_x_combos_section(outer, outer_layout, value_keys, x_axis_names)
 
@@ -506,7 +510,6 @@ class PlotPointsCommand(CommandPlugin):
 
         bind_value_catalog_updates(self, outer, _refresh_values)
 
-        outer.setLayout(outer_layout)
         return outer
 
     def _build_x_combos_section(
@@ -569,15 +572,12 @@ class PlotPointsCommand(CommandPlugin):
         y_axis_names: list[str],
         ns: dict[str, Any],
     ) -> Callable[[], None]:
-        scroll_area = QScrollArea(outer)
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        scroll_area.setMinimumHeight(150)
+        scroll_area = ContentHeightScrollArea(outer)
 
         series_container = QWidget()
         series_layout = QGridLayout(series_container)
         series_layout.setColumnStretch(0, 0)
-        series_layout.setRowStretch(9, 1)
+        series_layout.setRowStretch(10, 1)
 
         scroll_area.setWidget(series_container)
         outer_layout.addRow(scroll_area)
@@ -592,6 +592,8 @@ class PlotPointsCommand(CommandPlugin):
                 rebuild=_rebuild_columns,
             )
             self._populate_y_series_grid(context)
+            series_layout.invalidate()
+            scroll_area.updateGeometry()
 
         _rebuild_columns()
 

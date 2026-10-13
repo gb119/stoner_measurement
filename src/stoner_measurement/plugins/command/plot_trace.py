@@ -505,7 +505,9 @@ class PlotTraceCommand(CommandPlugin):
                 for i, y_col in enumerate(y_cols):
                     title = f"{self.trace_key}:{y_col}"
                     y_arr = trace_data.df[y_col].to_numpy(dtype=float)
-                    y_err = trace_data.df[e_cols[i]].to_numpy(dtype=float) if i < len(e_cols) else None
+                    y_err = (
+                        trace_data.df[e_cols[i]].to_numpy(dtype=float) if i < len(e_cols) else None
+                    )
                     self._emit_single_trace(title, x_arr, y_arr, x_err, y_err, x_axis, y_axis)
 
         x_label, y_label = self._emit_trace_axis_labels(trace_data, label_y_key)
@@ -668,8 +670,17 @@ class PlotTraceCommand(CommandPlugin):
             "Python expression evaluated at runtime in the engine namespace. "
             "Must produce a string.  Example: f'Run {run_index}'"
         )
-        x_axis_combo = self._build_plot_axis_combo(widget, axes_pair[0], self.x_axis_name, "x_axis_name")
-        y_axis_combo = self._build_plot_axis_combo(widget, axes_pair[1], self.y_axis_name, "y_axis_name")
+        x_axis_combo = self._build_plot_axis_combo(
+            widget, axes_pair[0], self.x_axis_name, "x_axis_name"
+        )
+        y_axis_combo = self._build_plot_axis_combo(
+            widget, axes_pair[1], self.y_axis_name, "y_axis_name"
+        )
+        for combo in (trace_combo, column_combo, x_combo, y_combo, x_axis_combo, y_axis_combo):
+            combo.setMinimumContentsLength(20)
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
         colour_button = self._build_colour_button(widget, self.colour)
         line_style_combo = self._build_options_combo(
             widget, ("",) + _LINE_STYLE_OPTIONS, self.line_style, "line_style"
@@ -763,7 +774,9 @@ class PlotTraceCommand(CommandPlugin):
             return
         hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
         button.setText(hex_colour)
-        button.setStyleSheet(button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour)))
+        button.setStyleSheet(
+            button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour))
+        )
 
     def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
         """Open a colour picker and return the selected hex colour or current value.
@@ -776,7 +789,9 @@ class PlotTraceCommand(CommandPlugin):
             parent (QWidget | None):
                 Parent widget for the dialog, ensuring correct modality.
         """
-        base_colour = QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
+        base_colour = (
+            QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
+        )
         selected = QColorDialog.getColor(
             base_colour,
             parent,
@@ -825,9 +840,7 @@ class PlotTraceCommand(CommandPlugin):
         names = getattr(trace_data, "names", {})
         units = getattr(trace_data, "units", {})
         get_columns_by_role = getattr(trace_data, "get_columns_by_role", None)
-        x_columns = (
-            get_columns_by_role(COLUMN_ROLE_X) if callable(get_columns_by_role) else []
-        )
+        x_columns = get_columns_by_role(COLUMN_ROLE_X) if callable(get_columns_by_role) else []
         x_key = x_columns[0] if x_columns else "x"
         x_name = names.get(x_key, "")
         if y_key:
@@ -909,7 +922,9 @@ class PlotTraceCommand(CommandPlugin):
             if isinstance(cols, list):
                 return cols
         except Exception:
-            self.log.debug("PlotTrace: failed to inspect columns for trace %r.", trace_key, exc_info=True)
+            self.log.debug(
+                "PlotTrace: failed to inspect columns for trace %r.", trace_key, exc_info=True
+            )
         return []
 
     def _build_options_combo(

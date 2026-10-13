@@ -95,7 +95,8 @@ _ROW_INPUT = 13
 _ROW_SLOPE = 14
 _ROW_COUPLING = 15
 _ROW_LINE_FILTER = 16
-_LOCKIN_TABLE_ROWS = 17
+_ROW_RESET = 17
+_LOCKIN_TABLE_ROWS = 18
 
 _LOCKIN_OUTPUT_ROWS: dict[LockInOutput, int] = {
     LockInOutput.X: _ROW_OUTPUT_X,
@@ -122,6 +123,7 @@ _LOCKIN_ROW_LABELS: list[str] = [
     "Filter slope",
     "Coupling",
     "Line filter",
+    "Reset Lockin",
 ]
 
 
@@ -257,6 +259,8 @@ class LockInEntry:
             Concrete lock-in model used for connection and configuration.
         resource (str):
             VISA resource string for the lock-in instrument.
+        reset_lockin (bool):
+            Reset the instrument during connect and configure; defaults to True.
         filter_slope (int):
             Output-filter slope in dB/octave.
         input_coupling (LockInInputCoupling):
@@ -309,6 +313,7 @@ class LockInEntry:
     phase: float | None = 0.0
     auto_sensitivity: bool = True
     auto_offsets: dict[str, float] = field(default_factory=dict)
+    reset_lockin: bool = True
 
     def to_json(self) -> dict[str, Any]:
         """Return a JSON-friendly representation of this entry."""
@@ -316,6 +321,7 @@ class LockInEntry:
             "label": self.label,
             "model": self.model.value,
             "resource": self.resource,
+            "reset_lockin": self.reset_lockin,
             "filter_slope": self.filter_slope,
             "input_coupling": self.input_coupling.value,
             "line_filter": self.line_filter.value,
@@ -379,6 +385,12 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     SR830 entries also provide output
     offset, expand factor, and reserve mode. Multiple outputs may be selected
     for each lock-in using separate check boxes for X, Y, R, and THETA.
+    **Reset Lockin** defaults to enabled for each instrument and controls resets
+    during both connect and configure. Temporary settings readback and auto-offset
+    actions preserve the instrument settings. If overload remains at the end of
+    configuration, the plugin waits for the longer of three time constants and
+    the read cooldown, clears status where supported, and checks once more before
+    reporting a persistent overload.
 
     The scan generator defines the swept values. The plugin returns one
     shared-x trace named **Signals**, with columns named from lock-in labels
@@ -668,7 +680,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         self._last_read_at = {}
         self._set_status(TraceStatus.IDLE)
 
-    def _connect_one_lockin(self, entry: LockInEntry) -> tuple[GpibTransport, SupportedLockIn]:
+    def _connect_one_lockin(
+        self, entry: LockInEntry, *, reset: bool = True
+    ) -> tuple[GpibTransport, SupportedLockIn]:
         """Create, connect, and identity-verify one configured lock-in.
 
         If any step fails the transport is closed before propagating the
@@ -678,6 +692,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         Args:
             entry (LockInEntry):
                 Lock-in configuration entry providing the VISA resource string.
+
+        Keyword Parameters:
+            reset (bool):
+                Apply the entry's reset option; False for temporary UI actions.
 
         Returns:
             (GpibTransport):
@@ -708,6 +726,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     f"Unexpected {entry.model.value} identity {identity!r} "
                     f"for resource {entry.resource!r}."
                 )
+            if reset and entry.reset_lockin:
+                lockin.reset()
         except Exception:
             try:
                 transport.close()
@@ -733,7 +753,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _read_one_temporary_lockin(self, index: int) -> tuple[int, dict[str, Any]]:
         """Read common and per-lock-in settings using a temporary connection."""
         entry = self._lockin_entries[index]
-        transport, lockin = self._connect_one_lockin(entry)
+        transport, lockin = self._connect_one_lockin(entry, reset=False)
         try:
             settings: dict[str, Any] = {
                 "time_constant": lockin.get_time_constant(),
@@ -795,7 +815,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         def _offset_one(index: int) -> None:
             entry = self._lockin_entries[index]
-            transport, lockin = self._connect_one_lockin(entry)
+            transport, lockin = self._connect_one_lockin(entry, reset=False)
             try:
                 self._wait_for_offset_stability()
                 self._auto_offset_one_lockin(entry, lockin)
@@ -876,7 +896,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             lockin (SRS830):
                 SR830 instrument driver to configure.
         """
-        lockin.reset()
+        if entry.reset_lockin:
+            lockin.reset()
         lockin.set_reference_source(LockInReferenceSource.EXTERNAL)
         lockin.set_reference_source(LockInReferenceSource.EXTERNAL, LockinRefenceEdge.FALLING)
         lockin.set_time_constant(self._time_constant)
@@ -926,14 +947,14 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             time.sleep(wait_time)
 
     def _clear_configuration_lia_status(self) -> None:
-        """Clear configuration status and reject overload or reference errors."""
+        """Clear setup status and allow one settling retry for overloads."""
         sr830s = [
             lockin
             for entry, lockin in zip(self._lockin_entries, self._lockins, strict=True)
             if entry.model is LockInModel.SR830
         ]
         for lockin in sr830s:
-            lockin.write("*CLS")
+            lockin.clear()
         if sr830s:
             # Allow a fresh status observation after clearing latched setup events.
             time.sleep(0.1)
@@ -941,6 +962,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             if entry.model is LockInModel.SR7265:
                 sr7265 = cast(SR7265, lockin)
                 status_7265 = sr7265.read_status()
+                if isinstance(status_7265, SR7265Status) and status_7265 & SR7265Status.OVERLOAD:
+                    self._wait_for_offset_stability()
+                    # The 7265 has live status and no equivalent of *CLS.
+                    status_7265 = sr7265.read_status()
                 sr7265.check_measurement_status(status_7265)
                 if isinstance(status_7265, SR7265Status) and status_7265:
                     self._log.debug(
@@ -950,6 +975,11 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     )
                 continue
             status = cast(SRS830, lockin).read_lia_status()
+            if isinstance(status, SRS830LIAStatus) and status.has_overload:
+                self._wait_for_offset_stability()
+                lockin.clear()
+                time.sleep(0.1)
+                status = cast(SRS830, lockin).read_lia_status()
             if isinstance(status, SRS830LIAStatus) and status.has_overload:
                 message = f"SR830 {entry.resource} is overloaded after configuration: {status.name or int(status)}"
                 self._log.error(message)
@@ -1372,6 +1402,16 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                     )
                 )
                 lockins_table.setCellWidget(_ROW_RESOURCE, col, resource_widget)
+
+                reset_check = QCheckBox()
+                reset_check.setChecked(entry.reset_lockin)
+                reset_check.setToolTip("Reset this lock-in during connect and configure.")
+                reset_check.toggled.connect(
+                    lambda checked, *, idx=col: setattr(
+                        self._lockin_entries[idx], "reset_lockin", bool(checked)
+                    )
+                )
+                lockins_table.setCellWidget(_ROW_RESET, col, reset_check)
 
                 self._populate_lockin_input_controls(
                     lockins_table, col, entry, _refresh_lockin_table
@@ -2293,6 +2333,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 "model",
             ),
             resource=str(data.get("resource", "GPIB0::8::INSTR")),
+            reset_lockin=bool(data.get("reset_lockin", True)),
             filter_slope=int(data.get("filter_slope", self._filter_slope)),
             input_coupling=self._parse_enum(
                 LockInInputCoupling,
